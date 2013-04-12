@@ -1,5 +1,5 @@
 /*
- * This file is a part of the tool Ghost2 to the
+ * This file is a part of the tool ethghost to the
  * Marionnet project <http://www.marionnet.org>
  *
  * Copyright (C) 2009  Jonathan Roudiere
@@ -19,6 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * This is the revision of 2009-07-07.
+ * Minor changes by Jean-Vincent Loddo 2013/04/12 (ghost2 -> ethghost)
 */
 
 
@@ -26,8 +27,8 @@
  * Interface for ghostification
  */
 
-#ifndef _GHOST2_INTERFACE_H_
-#define _GHOST2_INTERFACE_H_
+#ifndef _ETHGHOST_INTERFACE_H_
+#define _ETHGHOST_INTERFACE_H_
 
 /* Macro debug */
 #ifdef GHOST_DEBUG
@@ -39,7 +40,7 @@
 #endif
 
 /* some variable */
-#define __GHOST_VERSION__   "2.0"   /* version of this soft */
+#define __ETHGHOST_VERSION__   "2.0"   /* version of this soft */
 
 /* see include/linux/sockio.h in the Linux Kernel sources */
 #define SIOKLOG             0x894D  /* Write a string to the log     */
@@ -76,4 +77,4 @@ unsigned int ghostify_iface (const char *iface);
  */
 unsigned int unghostify_iface (const char *iface);
 
-#endif /* _GHOST2_INTERFACE_H */
+#endif /* _ETHGHOST_INTERFACE_H */

@@ -1,5 +1,5 @@
-/* 
- * This file is a part of the tool Ghost2 to the
+/*
+ * This file is a part of the tool ethghost to the
  * Marionnet project <http://www.marionnet.org>
  *
  * Copyright (C) 2009  Jonathan Roudiere
@@ -28,22 +28,22 @@
 /* need to IFNAMSIZ */
 #include <net/if.h>
 /* Ghostification interface */
-#include "ghost2-interface.h"
+#include "ethghost-interface.h"
 
 static int usage(void)
 {
-	fprintf(stderr, "Ghost2 (%s) usage :\n\n", __GHOST_VERSION__);
-	fprintf(stderr, "ghost2 -h, --help                   this help message\n");
-	fprintf(stderr, "       -v, --version                get the version\n");
-	fprintf(stderr, "       -g, --ghostify DEVICE        ghostify this interface\n");
-	fprintf(stderr, "       -u, --unghostify DEVICE      unghostify this interface\n\n");
+	fprintf(stderr, "ethghost (%s) usage :\n\n", __ETHGHOST_VERSION__);
+	fprintf(stderr, "ethghost -h, --help                   this help message\n");
+	fprintf(stderr, "         -v, --version                get the version\n");
+	fprintf(stderr, "         -g, --ghostify DEVICE        ghostify this interface\n");
+	fprintf(stderr, "         -u, --unghostify DEVICE      unghostify this interface\n\n");
 	fprintf(stderr, "DEVICE : is the name of a network interface (like : eth0, lo)\n");
 	return (EXIT_SUCCESS);
 }
 
 static int version(void)
 {
-	printf("\nGhost2 " __GHOST_VERSION__ " \n");
+	printf("\nethghost " __ETHGHOST_VERSION__ " \n");
 	printf("Copyright (C) 2009 Roudiere Jonathan\n");
 	printf("License GPLv2: GNU GPL version 2 or later <http://gnu.org/licenses/gpl.html>\n");
 	printf("\nThis is free software: you are free to change and redistribute it.\n");
@@ -101,10 +101,10 @@ int main (int argc, char *argv[])
 
 	/* Search options used */
 
-	/* debug */ 
+	/* debug */
 	dprintf("argc = %i, argv[1] = %s and argv[2] = %s, search options used.", argc, argv[1], argv[2]);
 
-	/* put in act pointer toward appropriate function */	
+	/* put in act pointer toward appropriate function */
 	if ((!(strcmp(argv[1],"-g"))) || (!(strcmp(argv[1],"--ghostify")))) {
 		dprintf("Fonction call to act : act = &(ghostify_iface);");
 		act = &(ghostify_iface);
@@ -118,7 +118,7 @@ int main (int argc, char *argv[])
 			return (EXIT_FAILURE);
 		}
 	}
-	
+
 	/* Verify lenght of the second args */
 	if (strlen(argv[2]) >= IFNAMSIZ) {
 		fprintf(stderr, "%s: Error: Invalid interface name, Exit!!\n",prog);
@@ -129,13 +129,13 @@ int main (int argc, char *argv[])
 	if ((error = act(argv[2])) == 0) {
 		dprintf("Act exit without error (%i)", error);
 		if (act == (&ghostify_iface)) {
-			printf("Ghost2: SUCCESS, interface %s has been ghostified !!\n", argv[2]);
+			printf("ethghost: SUCCESS, interface %s has been ghostified !!\n", argv[2]);
 		} else {
 			if (act == (&unghostify_iface)) {
-				printf("Ghost2: SUCCESS, interface %s has been unghostified !!\n", argv[2]);
+				printf("ethghost: SUCCESS, interface %s has been unghostified !!\n", argv[2]);
 			} else {
 				/* debug, never come here */
-				fprintf(stderr, "\nGhost2: Error: an unexpected error took place (bug ...), Exit!!\n");
+				fprintf(stderr, "\nethghost: Error: an unexpected error took place (bug ...), Exit!!\n");
 				return (EBUG);
 			}
 		}

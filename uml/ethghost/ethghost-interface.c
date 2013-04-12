@@ -1,5 +1,5 @@
 /*
- * This file is a part of the tool Ghost2 to the
+ * This file is a part of the tool ethghost to the
  * Marionnet project <http://www.marionnet.org>
  *
  * Copyright (C) 2009  Jonathan Roudiere
@@ -19,6 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * This is the revision of 2009-07-07.
+ * Minor changes by Jean-Vincent Loddo 2013/04/12 (ghost2 -> ethghost)
 */
 
 #include <stdio.h>
@@ -31,83 +32,83 @@
 #include <linux/if.h>
 #include <errno.h>
 #include <libgen.h>
-#include "ghost2-interface.h"
+#include "ethghost-interface.h"
 
 /*
- * functions used internally by __{create,destroy}_socket and 
+ * functions used internally by __{create,destroy}_socket and
  * __{un,}ghostify to display and explained errors.
  * origcode - variable use by the caller to identify itself
- * nerror 	- errno provide by the caller 
- * return	- nerror 
+ * nerror 	- errno provide by the caller
+ * return	- nerror
  */
 static int on_error (int origcode, int nerror)
 {
 	switch (origcode)
 	{
-		/* 
-		 * If we can not create socket then we send a generic message 
-		 * with the original system error message between parentheses. 
+		/*
+		 * If we can not create socket then we send a generic message
+		 * with the original system error message between parentheses.
 		 */
 		case (ESOCKCREATE) :
 			dinfo;
-			fprintf(stderr, "Ghost2: Error: Cann't create socket (%s)\n",strerror(nerror));
+			fprintf(stderr, "ethghost: Error: Cann't create socket (%s)\n",strerror(nerror));
 			break;
-		/* 
-		 * If we can not destroy socket then we send a generic message 
+		/*
+		 * If we can not destroy socket then we send a generic message
 		 * with the original system error message between parentheses.
 		 */
 		case (ESOCKDELETE) :
 			dinfo;
-			fprintf(stderr, "Ghost2: Error: Cann't destroy socket (%s)\n",strerror(nerror));
+			fprintf(stderr, "ethghost: Error: Cann't destroy socket (%s)\n",strerror(nerror));
 			break;
 		/*
 		 * If errors occur during the ghostification or the unghostification
-		 * operation, we be able to provide (in general) a more explicit message 
+		 * operation, we be able to provide (in general) a more explicit message
 		 * than the system (which don't know ghost operations).
 		 */
 		case (EGHOSTIFY) :
 			dinfo;
 			switch (nerror)
 			{
-				/* 
-				 * This error code is send by the ghostification kernel code if 
-				 * the lenght of the iface that we try to ghositify is null or 
-				 * greater than IFNAMSIZ(16) and like this tools already take care 
+				/*
+				 * This error code is send by the ghostification kernel code if
+				 * the lenght of the iface that we try to ghositify is null or
+				 * greater than IFNAMSIZ(16) and like this tools already take care
 				 * this case then kernel don't support ghost ops.
-				 */ 
-				case (EINVAL) : 
-					fprintf(stderr, "Ghost2: Error: Can not ghostify interface, are you sure\n");
-					fprintf(stderr, "Ghost2:        that your kernel supports Ghostification.\n");
+				 */
+				case (EINVAL) :
+					fprintf(stderr, "ethghost: Error: Can not ghostify interface, are you sure\n");
+					fprintf(stderr, "ethghost:        that your kernel supports Ghostification.\n");
 					break;
 				/*
 				 * This error code is send by the ghostification kernel code
 				 * if the specified interface exist and is already ghositifed.
 				 */
 				case (EEXIST) :
-					fprintf(stderr, "Ghost2: Error: Specified interface is already ghostified.\n");
+					fprintf(stderr, "ethghost: Error: Specified interface is already ghostified.\n");
 					break;
 				/*
 				 * This error code is send by the ghostification kernel code
 				 * if the specified interface (really) doesn't exist.
 				 */
 				case (ENODEV) :
-					fprintf(stderr, "Ghost2: Error: Specified interface doesn't exist (ghostify).\n");
+					fprintf(stderr, "ethghost: Error: Specified interface doesn't exist (ghostify).\n");
 					break;
 				/*
-				 * This error code is send by the ghostification kernel code if the 
-				 * specified interface exist but it cann't be ghositfied because the 
+				 * This error code is send by the ghostification kernel code if the
+				 * specified interface exist but it cann't be ghositfied because the
 				 * maximum number of interface ghostified has already been reached.
 				 */
 				case (ENOMEM) :
-					fprintf(stderr, "Ghost2: Error: Max number of ghositifed interfaces has been reached.\n");
+					fprintf(stderr, "ethghost: Error: Max number of ghositifed interfaces has been reached.\n");
 					break;
 				/*
 				 * A unknown error took place (not return but the ghostification
-				 * kernel code) so we return a generic message with the original 
-				 * system error message between parentheses. 
-				 */ 
+				 * kernel code) so we return a generic message with the original
+				 * system error message between parentheses.
+				 */
 				default :
-					fprintf(stderr, "Ghost2: Error: An error occurs during ghostification (%s).\n",strerror(nerror));
+					fprintf(stderr, "ethghost: Error: An error occurs during ghostification (%s).\n",strerror(nerror));
 			}
 			break;
 		case (EUNGHOSTIFY) :
@@ -115,42 +116,42 @@ static int on_error (int origcode, int nerror)
 			switch (nerror)
 			{
 				/*
-				 * This error code is send by the ghostification kernel code 
-				 * if the interface specified (really) doesn't exist and so 
+				 * This error code is send by the ghostification kernel code
+				 * if the interface specified (really) doesn't exist and so
 				 * it cann't be ghostified.
 				 */
 				case (ENODEV) :
-					fprintf(stderr, "Ghost2: Error: Specified interface doesn't exist (unghostify).\n");
+					fprintf(stderr, "ethghost: Error: Specified interface doesn't exist (unghostify).\n");
 					break;
 				/*
-				 * This error occurs when the specified interface is not 
+				 * This error occurs when the specified interface is not
 				 * ghostified (but it exists)
 				 */
 				case (ESRCH) :
-					fprintf(stderr, "Ghost2: Error: Specified interface is not ghostified.\n");
+					fprintf(stderr, "ethghost: Error: Specified interface is not ghostified.\n");
 					break;
-				/* 
-				 * This error code cann't be sent by the ghostification kernel 
-				 * code and arguments of the ioctl request should therefore be 
-				 * valid then certainly it is the kernel which does not support 
+				/*
+				 * This error code cann't be sent by the ghostification kernel
+				 * code and arguments of the ioctl request should therefore be
+				 * valid then certainly it is the kernel which does not support
 				 * ghostification operations.
 				 */
-				case (EINVAL) : 
-					fprintf(stderr, "Ghost2: Error: Can not unghostify interface, are you sure\n");
-					fprintf(stderr, "Ghost2:        that your kernel supports Ghostification.\n");
+				case (EINVAL) :
+					fprintf(stderr, "ethghost: Error: Can not unghostify interface, are you sure\n");
+					fprintf(stderr, "ethghost:        that your kernel supports Ghostification.\n");
 					break;
 				/*
 				 * A unknown error took place (not return but the ghostification
-				 * kernel code) so we return a generic message with the original 
-				 * system error message between parentheses. 
-				 */ 
+				 * kernel code) so we return a generic message with the original
+				 * system error message between parentheses.
+				 */
 				default :
-					fprintf(stderr, "Ghost2: Error: An error occurs during unghostification (%s).\n",strerror(nerror));
+					fprintf(stderr, "ethghost: Error: An error occurs during unghostification (%s).\n",strerror(nerror));
 			}
 			break;
 		default :
 			dinfo;
-			fprintf(stderr, "Ghost2: Error: an unexpected error took place (EBUG).\n");
+			fprintf(stderr, "ethghost: Error: an unexpected error took place (EBUG).\n");
 			return (EBUG);
 	}
 	return (nerror);
@@ -158,7 +159,7 @@ static int on_error (int origcode, int nerror)
 
 /*
  * Create socket to {ghostify,unghostify}_iface, this socket will be
- * used as file descriptor (*sk) to the ioctl request, this function 
+ * used as file descriptor (*sk) to the ioctl request, this function
  * returns EXIT_SUCCESS on success, errno on error.
  */
 static unsigned int __create_socket (int *sk)
@@ -172,23 +173,23 @@ static unsigned int __create_socket (int *sk)
 }
 
 /*
- * Destroy socket (*sk) which has been created by the function  
- * __create_socket, this function returns EXIT_SUCCESS on success, 
+ * Destroy socket (*sk) which has been created by the function
+ * __create_socket, this function returns EXIT_SUCCESS on success,
  * errno on error.
  */
 static unsigned int __destroy_socket (int *sk)
 {
 	errno = 0;
 	dinfo;
-	if ((close((int)*sk) < 0)) { 
+	if ((close((int)*sk) < 0)) {
 		return (on_error(ESOCKDELETE, errno));
 	}
 	return (EXIT_SUCCESS);
 }
 
 /*
- * Function used to Ghostify an interface (iface) by using ioctl 
- * request, return EXIT_SUCCESS on success and errno on error. 
+ * Function used to Ghostify an interface (iface) by using ioctl
+ * request, return EXIT_SUCCESS on success and errno on error.
  */
 static unsigned int __ghostify (int *sk, const char *iface)
 {
@@ -201,8 +202,8 @@ static unsigned int __ghostify (int *sk, const char *iface)
 }
 
 /*
- * Function used to UnGhostify an interface (iface) by using ioctl 
- * request, return EXIT_SUCCESS on success and errno on error. 
+ * Function used to UnGhostify an interface (iface) by using ioctl
+ * request, return EXIT_SUCCESS on success and errno on error.
  */
 static unsigned int __unghostify (int *sk, const char *iface)
 {
@@ -216,8 +217,8 @@ static unsigned int __unghostify (int *sk, const char *iface)
 
 /*
  * Function ghostify_iface, used to ghotify an interface, call internally
- * __create_socket to get a file descriptor, call __ghostify to make an 
- * ioctl request and ghostify iface (if kenrel support Ghostification) 
+ * __create_socket to get a file descriptor, call __ghostify to make an
+ * ioctl request and ghostify iface (if kenrel support Ghostification)
  * and finally call __destroy_socket. Return errno provide by a funtion
  * call internally on error or EXIT_SUCCESS on success.
  */
@@ -232,7 +233,7 @@ unsigned int ghostify_iface (const char *iface)
 
 	/* 1) create socket */
 	if ((error = __create_socket(&sk)) != 0 ) {
-		fprintf(stderr, "Ghost2: Error: in %s , Exit!!\n",__FUNCTION__);
+		fprintf(stderr, "ethghost: Error: in %s , Exit!!\n",__FUNCTION__);
 		return error;
 	}
 
@@ -240,15 +241,15 @@ unsigned int ghostify_iface (const char *iface)
 	dprintf("Socket create with success, goto __ghostify");
 	/* 2) ghostify iface */
 	if ((error =__ghostify(&sk, iface)) != 0) {
-		fprintf(stderr, "Ghost2: Error: in %s : interface %s, Exit!!\n",__FUNCTION__,iface);
+		fprintf(stderr, "ethghost: Error: in %s : interface %s, Exit!!\n",__FUNCTION__,iface);
 		/* to preserve original error (if possible) */
 		errorp = __destroy_socket(&sk);
-		return errorp ? errorp : error; 
+		return errorp ? errorp : error;
 	}
 
 	/* 3) destroy socket*/
 	if ((error = __destroy_socket(&sk)) != 0 ) {
-		fprintf(stderr, "Ghost2: Error: in %s , Exit!!\n",__FUNCTION__);
+		fprintf(stderr, "ethghost: Error: in %s , Exit!!\n",__FUNCTION__);
 	}
 
 	/* debug */
@@ -260,8 +261,8 @@ unsigned int ghostify_iface (const char *iface)
 
 /*
  * Function unghostify_iface, used to unghotify an interface, call internally
- * __create_socket to get a file descriptor, call __unghostify to make an 
- * ioctl request and unghostify iface (if kenrel support Ghostification) 
+ * __create_socket to get a file descriptor, call __unghostify to make an
+ * ioctl request and unghostify iface (if kenrel support Ghostification)
  * and finally call __destroy_socket. Return errno provide by a funtion
  * call internally on error or EXIT_SUCCESS on success.
  */
@@ -269,14 +270,14 @@ unsigned int unghostify_iface (const char *iface)
 {
 	int sk = 0;
 	int error = 0;
-	int errorp = 0; 
+	int errorp = 0;
 
 	/* debug */
 	dinfo;
 
 	/* 1) create socket */
 	if ((error = __create_socket(&sk)) != 0 ) {
-		fprintf(stderr, "Ghost2: Error: in %s , Exit!!\n",__FUNCTION__);
+		fprintf(stderr, "ethghost: Error: in %s , Exit!!\n",__FUNCTION__);
 		return error;
 	}
 
@@ -284,15 +285,15 @@ unsigned int unghostify_iface (const char *iface)
 	dprintf("Socket create with success, goto __unghostify");
 	/* 2) unghostify iface */
 	if ((error =__unghostify(&sk, iface)) != 0) {
-		fprintf(stderr, "Ghost2: Error: in %s : interface %s, Exit!!\n",__FUNCTION__,iface);
+		fprintf(stderr, "ethghost: Error: in %s : interface %s, Exit!!\n",__FUNCTION__,iface);
 		/* to preserve original error (if possible) */
 		errorp = __destroy_socket(&sk);
-		return errorp ? errorp : error; 
+		return errorp ? errorp : error;
 	}
 
 	/* 3) destroy socket*/
 	if ((error = __destroy_socket(&sk)) != 0 ) {
-		fprintf(stderr, "Ghost2: Error: in %s , Exit!!\n",__FUNCTION__);
+		fprintf(stderr, "ethghost: Error: in %s , Exit!!\n",__FUNCTION__);
 	}
 
 	/* debug */
