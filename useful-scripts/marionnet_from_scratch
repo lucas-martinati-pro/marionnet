@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Script version: 0.90.28
-# 2016.05.25
+# Script version: 0.90.29
+# 2017.05.09
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
@@ -611,7 +611,7 @@ function launch_and_log {
 
 # Support https:
 alias wget='wget --no-check-certificate'
-
+export WGET='wget --no-check-certificate'
 
 function download_tar_gz_from_definite_url {
 local BASENAME="$1" # ex: vde2
@@ -867,7 +867,7 @@ function download_our_kernels {
       "kernels_linux-2.6.18-ghost.tar.gz") WEIGHT=6032 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
   done
 }
 
@@ -887,7 +887,7 @@ function download_our_big_filesystems {
       "filesystems_machine-mandriva20100215.tar.gz") WEIGHT=540521 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
   done
 }
 
@@ -905,7 +905,7 @@ function download_our_pinocchio_filesystems {
       "filesystems_pinocchio.tar.gz") WEIGHT=77543 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }"  $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_BASE_URL/$i' | tar 1>&2 xvzf -; }"  $WEIGHT
   done
 }
 
@@ -924,7 +924,7 @@ function download_our_v1_kernels {
       "kernels_linux-3.2.64-ghost.tar.gz") WEIGHT=6646 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
   done
 }
 
@@ -943,7 +943,7 @@ function download_our_v1_tiny_filesystems {
       "filesystems_guignol.tar.gz") WEIGHT=27175 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }"  $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }"  $WEIGHT
   done
 }
 
@@ -963,7 +963,7 @@ function download_our_v1_big_filesystems {
       "filesystems_machine-debian-wheezy.tar.gz") WEIGHT=876807 ;;
       *) unset WEIGHT ;;
     esac
-    launch_and_log --sudo --script "Installing $i" "{ wget -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
+    launch_and_log --sudo --script "Installing $i" "{ $WGET -O - '$OUR_TRUNK_SPECIFIC_URL/$i' | tar 1>&2 xvzf -; }" $WEIGHT
   done
 }
 
