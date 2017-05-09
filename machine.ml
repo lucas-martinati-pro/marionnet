@@ -350,7 +350,7 @@ let make
     let () =
       on_distrib_change := (memory_related_action_on_distrib_change)::!on_distrib_change;
       let current = distribution_variant_kernel#selected in
-      memory_related_action_on_distrib_change (current)
+      if updating = None then memory_related_action_on_distrib_change (current) else ()
     in
     (* console_no widget and callback: *)
     let terminal =
