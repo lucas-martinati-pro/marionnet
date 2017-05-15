@@ -55,7 +55,7 @@ type t = {
   port_no           : int;
   show_vde_terminal : bool;
   activate_fstp     : bool;
-  rc_config         : bool * string;
+  rc_config         : bool * string; (* run commands (rc) file configuration *)
   old_name          : string;
   }
 
@@ -260,41 +260,14 @@ let make
         ()
     in
     let rc_config =
-      let hbox = GPack.hbox
-        ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
-        ~homogeneous:true
-        ()
-      in
-      let check_button =
-	GButton.check_button
-	  ~active:(fst rc_config)
-	  ~packing:(hbox#add)
-	  ()
-      in
-      let edit_button =
-        GButton.button ~stock:`EDIT ~packing:hbox#add ()
-      in
-      let content = ref (snd rc_config) in
-      let make_editing_window () =
-        let result = Egg.create () in
-        let () =
-	  Gui_source_editing.window
-	    ~title:(Printf.sprintf (f_ "%s configuration file") old_name)
-	    ~language:(`id "vde_switch")
-	    ~modal:()
-	    ~content:(!content)
-	    ~result
-	    ~create_as_dialog:()
-	    ~draw_spaces:[]
-	    ~position:`MOUSE
-	    ()
-	in
-        ignore (Thread.create (fun () -> content := Option.extract_or (Egg.wait result) !content) ());
-      in
-      ignore (edit_button#connect#clicked (make_editing_window));
-      (edit_button#misc#set_sensitive check_button#active);
-      ignore (check_button#connect#toggled (fun () -> edit_button#misc#set_sensitive check_button#active));
-      object method active = check_button#active  method content = !content end
+       Gui_bricks.make_rc_config_widget 
+         ~filter_names:[`RC; `ALL] 
+         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+         ~active:(fst rc_config)
+         ~content:(snd rc_config)
+         ~device_name:(old_name)
+         ~language:("vde_switch") (* special syntax *)
+         ()
     in
     (port_no, show_vde_terminal, activate_fstp, rc_config)
   in

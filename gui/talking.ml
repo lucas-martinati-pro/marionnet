@@ -202,26 +202,35 @@ let image_filter () =
 (* let all_files     () = let f = GFile.filter ~name:"All" () in (f#add_pattern "*"); f ;; *)
 let all_files     () = GFile.filter ~name:"All" () ~patterns: ["*"] ;;
 let script_filter () = GFile.filter ~name:"Scripts Shell/Python (*.sh *.py)"  ~patterns:[ "*.sh"; "*.py" ] () ;;
+let bash_filter   () = GFile.filter ~name:"Bash Scripts (*.sh)"  ~patterns:[ "*.sh"; "*.rc" ] () ;;
+let rc_filter     () = GFile.filter ~name:"Read command (*.rc)"  ~patterns:[ "*.rc" ] () ;;
 let mar_filter    () = GFile.filter ~name:"Marionnet projects (*.mar)" ~patterns:[ "*.mar"; ] () ;;
 let xml_filter    () = GFile.filter ~name:"XML files (*.xml)" ~patterns:[ "*.xml"; "*.XML" ] () ;;
+let txt_filter    () = GFile.filter ~name:"Text files (*.txt)" ~patterns:[ "*.txt"; "*.TXT" ] () ;;
 let jpeg_filter   () = GFile.filter ~name:"JPEG files (*.jpg *.jpeg)" ~patterns:[ "*.jpg"; "*.JPG"; "*.jpeg"; "*.JPEG" ] ();;
 let png_filter    () = GFile.filter ~name:"PNG files (*.png)" ~patterns:[ "*.png"; "*.PNG" ] () ;;
 
 (** Filters for Marionnet *)
 (* type filter_name = [ `MAR | `ALL | `IMG | `SCRIPT | `XML | `JPEG | `PNG ];; *)
 
+type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `RC | `TXT | `XML ];;
+
 (** The kit of all defined filters *)
-let allfilters = [ `ALL ; `MAR ; `IMG ; `SCRIPT ; `XML ; `JPEG ]
+let allfilters : filter_name list = 
+  [ `ALL ; `MAR ; `IMG ; `SCRIPT ; `BASH; `RC; `TXT; `XML ; `JPEG ]
 ;;
 
 let get_filter_by_name = function
+  | `ALL    -> all_files     ()
   | `MAR    -> mar_filter    ()
   | `IMG    -> image_filter  ()
   | `SCRIPT -> script_filter ()
+  | `BASH   -> bash_filter   ()
+  | `RC     -> rc_filter   ()
+  | `TXT    -> txt_filter    ()
   | `XML    -> xml_filter    ()
   | `JPEG   -> jpeg_filter   ()
   | `PNG    -> png_filter    ()
-  | `ALL    -> all_files     ()
   | `DOT name -> Dot_widget.filter_of_format name
 ;;
 
@@ -362,15 +371,48 @@ let ask_for_fresh_writable_filename
     ask_for_file ~enrich ~title ~valid ?filters ?filter_names ?extra_widget ~action:`SAVE ~gen_id:"filename" ~help in
   result;;
 
-(** The edialog asking for an existing filename. *)
-let ask_for_existing_filename ?(enrich=mkenv []) ~title ?(filter_names = allfilters) ?(help=None) () =
+let dialog_error_choosed_file_doesnt_exist () =
+  Simple_dialogs.error
+    (s_ "File choice")
+    (s_ "The file doesn't exist!\nYou must choose an existing file name.")
+    ()
+
+let dialog_error_choosed_file_is_not_a_text_file () =
+  Simple_dialogs.error (s_ "File choice") (s_ "The file is not a text file") ()
+
+let dialog_error_choosed_file_is_too_big_to_be_imported (limit:string) =
+  Simple_dialogs.error
+    (s_ "File choice")
+    (Printf.sprintf (f_ "The file is too big to be imported\nYou must choose a file smaller than %s.") limit)
+    ()
+
+let file_size_kb (filename) = 
+  let s = Unix.stat (filename) in
+  (s.Unix.st_size + 1024) / 1024
+
+let is_text_file (filename) =
+  if (Sys.command "which file 1>/dev/null 2>/dev/null") <> 0 then true (* we suppose that *) else (* continue: *)
+  match Shell.Files.file ~opt:"-L -b --mime-type 2>/dev/null" filename with
+  | [answer] -> ((String.sub answer 0 4) = "text")
+  | _ -> false
+
+(** The edialog asking for an existing readable/writable filename. *)
+let ask_for_existing_rw_filename ?(enrich=mkenv []) ~title ?(filter_names = allfilters) ?(help=None) () =
   let valid = fun x ->
-    if not (Sys.file_exists x)
-    then ((Simple_dialogs.error
-             (s_ "File choice")
-             (s_ "The file doesn't exists!\nYou must choose an exiting file name.")
-             ()); false)
-    else (UnixExtra.regfile_rw_or_link_to x) 
+    if not (Sys.file_exists x) then (dialog_error_choosed_file_doesnt_exist (); false) else (* continue: *)
+    UnixExtra.regfile_rw_or_link_to x
+  in
+  ask_for_file ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
+;;
+
+(** The edialog asking for an existing filename which content may be imported as a string. *)
+let ask_for_existing_importable_text_filename ?(enrich=mkenv []) ?(max_size_kb=1024) ~title ?(filter_names = allfilters) ?(help=None) () =
+  let valid = fun x ->
+    if not (Sys.file_exists x) then (dialog_error_choosed_file_doesnt_exist (); false) else (* continue: *)
+    if not (is_text_file x)    then (dialog_error_choosed_file_is_not_a_text_file (); false) else (* continue: *)
+    let size_kb = file_size_kb x in
+    if not (size_kb < max_size_kb) then (dialog_error_choosed_file_is_too_big_to_be_imported ((string_of_int max_size_kb)^" Kb"); false) else (* continue: *)
+    UnixExtra.regfile_r_or_link_to x (* Just readable *)
   in
   ask_for_file ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
 ;;

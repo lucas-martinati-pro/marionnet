@@ -390,7 +390,7 @@ fi
    # Ex: machine-debian-wheezy-42007
    virtualfs_name="${virtual_disk##*/}"
    local i
-   for i in /mnt/hostfs/{marionnet-,$virtualfs_name.}relay*; do
+   for i in /mnt/hostfs/{$virtualfs_name.,marionnet-}relay*; do
      echo "Source-ing $i ..."
      source "$i";
    done

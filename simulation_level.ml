@@ -749,6 +749,7 @@ class uml_process =
       ?(kernel_console_arguments:string option)
       ~(filesystem_file_name)
       ?(filesystem_relay_script:string option)
+      ?(rcfile_content:string option)
       ~(dynamically_get_the_cow_file_name_source:unit->string option)
       ~(cow_file_name)
       ~states_directory
@@ -1103,13 +1104,22 @@ class uml_process =
         0o777 (* a+rwx; To do: this should be made slightly more restrictive... *);
     with _ -> ());
     (* Now fill this directory: *)
-    (* Copy the `filesystem_relay_script' if exists: *)
+    (* Copy the `filesystem_relay_script' if any: *)
     let () =
       Option.iter
         (fun relay ->
            let dest = Filename.concat (self#hostfs_directory_pathname) (Filename.basename relay) in
            UnixExtra.file_copy relay dest)
         (filesystem_relay_script)
+    in
+    (* Copy the rcfile_content into `marionnet-relay.rcfile' if any: *)
+    let () =
+      Option.iter
+        (fun content ->
+           let relay = "marionnet-relay.rcfile" in
+           let dest = Filename.concat (self#hostfs_directory_pathname) relay in
+           UnixExtra.rewrite dest content)
+        (rcfile_content)
     in
     (* Create the file `boot_parameters_pathname': *)
     let descriptor =
@@ -1560,6 +1570,7 @@ class virtual ['parent] machine_or_router =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(filesystem_relay_script)
+      ?(rcfile_content)
       ~(filesystem_file_name)
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
@@ -1633,6 +1644,7 @@ object(self)
               ~kernel_file_name
               ?kernel_console_arguments
               ?filesystem_relay_script
+              ?rcfile_content
               ~filesystem_file_name
               ~dynamically_get_the_cow_file_name_source
               ~cow_file_name

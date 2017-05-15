@@ -240,7 +240,8 @@ val button_image_popuping_a_menu :
   ?label_position:[ `BOTTOM | `LEFT | `RIGHT | `TOP ] ->
   ?tooltip:string ->
   packing:(GObj.widget -> unit) ->
-  ?stock:GtkStock.id -> ?stock_size:[ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] ->
+  ?stock:GtkStock.id -> 
+  ?stock_size:[ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] ->
   ?file:string ->
   unit -> (GMenu.menu * GButton.button * GPack.box)
 
@@ -254,4 +255,24 @@ val make_check_items_renewer_v2 :
   callback:(string -> bool -> unit) ->
   unit -> (GMenu.menu -> unit)
 
+(* Example of usage:
+ make_rc_config_widget 
+   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+   ~active:(fst rc_config)
+   ~content:(snd rc_config)
+   ~device_name:(old_name)
+   ~language:("bash")
+   ()
+*)
+val make_rc_config_widget :
+  ?height:int -> ?width:int -> (* window paremeters *)
+  ?filter_names:Talking.EDialog.filter_name list ->
+  (* --- *)
+  packing:(GObj.widget -> unit) ->
+  active: bool ->
+  content:string ->
+  device_name:string ->
+  language:string ->
+  unit -> (* object *) < active:bool; content:string;  set_sensitive:bool->unit > (* end *)
+  
 val test : unit -> char option

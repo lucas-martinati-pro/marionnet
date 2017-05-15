@@ -47,33 +47,17 @@ module EDialog :
     val xml_filter    : unit -> GFile.filter
     val jpeg_filter   : unit -> GFile.filter
     val png_filter    : unit -> GFile.filter
-    val allfilters    : [> `ALL | `IMG | `JPEG | `MAR | `SCRIPT | `XML ] list
 
-    val get_filter_by_name :
-      [< `ALL
-       | `DOT of Dot.output_format
-       | `IMG
-       | `JPEG
-       | `MAR
-       | `PNG
-       | `SCRIPT
-       | `XML ] ->
-      GFile.filter
+    type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `RC | `TXT | `XML ]
+    val allfilters : filter_name list
+
+    val get_filter_by_name : filter_name -> GFile.filter
 
     val ask_for_file :
       ?enrich:string Environments.string_env ->
       ?title:string ->
       ?valid:(string -> bool) ->
-      ?filter_names:[< `ALL
-                     | `DOT of Dot.output_format
-                     | `IMG
-                     | `JPEG
-                     | `MAR
-                     | `PNG
-                     | `SCRIPT
-                     | `XML
-                     > `ALL `IMG `JPEG `MAR `SCRIPT `XML ]
-                    list ->
+      ?filter_names:filter_name list ->
       ?filters:GFile.filter list ->
       ?extra_widget:GObj.widget * (unit -> string) ->
       ?action:GtkEnums.file_chooser_action ->
@@ -90,33 +74,23 @@ module EDialog :
       ?enrich:string Environments.string_env ->
       title:string ->
       ?filters:GFile.filter list ->
-      ?filter_names:[< `ALL
-                     | `DOT of Dot.output_format
-                     | `IMG
-                     | `JPEG
-                     | `MAR
-                     | `PNG
-                     | `SCRIPT
-                     | `XML
-                     > `ALL `IMG `JPEG `MAR `SCRIPT `XML ]
-                    list ->
+      ?filter_names:filter_name list ->
       ?extra_widget:GObj.widget * (unit -> string) ->
       ?help:(unit -> unit) option ->
       unit -> string Environments.string_env option
 
-    val ask_for_existing_filename :
+    val ask_for_existing_rw_filename :
       ?enrich:Shell.filexpr Environments.string_env ->
       title:string ->
-      ?filter_names:[< `ALL
-                     | `DOT of Dot.output_format
-                     | `IMG
-                     | `JPEG
-                     | `MAR
-                     | `PNG
-                     | `SCRIPT
-                     | `XML
-                     > `ALL `IMG `JPEG `MAR `SCRIPT `XML ]
-                    list ->
+      ?filter_names:filter_name list ->
+      ?help:(unit -> unit) option ->
+      unit -> string Environments.string_env option
+
+    val ask_for_existing_importable_text_filename :
+      ?enrich:Shell.filexpr Environments.string_env ->
+      ?max_size_kb:int -> (* 1024 (i.e. 1 Mb)*)
+      title:string ->
+      ?filter_names:filter_name list ->
       ?help:(unit -> unit) option ->
       unit -> string Environments.string_env option
 

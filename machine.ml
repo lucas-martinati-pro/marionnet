@@ -36,6 +36,30 @@ module Const = struct
  (* let memory_max = 256 *)
  (* In order to test with selinux: *)
  let memory_max = 1024
+ 
+ let initial_content_for_rcfiles =
+"#!/bin/bash
+# ---
+# This script will be executed (sourced) as final step 
+# of the virtual machine bootstrap process.
+# ---
+# Several variables are set at this point, as for instance:
+# hostname hostfs guestkind ubda timezone console_no
+# Examples:
+# ---
+# virtualfs_kind='machine'
+# virtualfs_name='machine-debian-wheezy-08367'
+# mem='80M'
+# mtu_eth0='1500'
+# mac_address_eth0='02:04:06:15:ad:0a'
+# mit_magic_cookie_1='e33a9778b5b4d71059c83760473211bb'
+# PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+# ---
+# Note also that the current working directory is '/', 
+# that is to say PWD='/'
+# ---
+" ;;
+
 end
 
 (* The type of data returned by the dialog: *)
@@ -48,6 +72,7 @@ type t = {
   distribution       : string;          (* epithet *)
   variant            : string option;
   kernel             : string;          (* epithet *)
+  rc_config          : bool * string;   (* run commands (rc) file configuration *)
   console_no         : int;
   terminal           : string;
   old_name           : string;
@@ -89,6 +114,7 @@ module Make_menus (Params : sig
          distribution = distribution;
          variant = variant;
 	 kernel = kernel;
+         rc_config = rc_config; 
 	 console_no = console_no;
          terminal = terminal;
          old_name = _ ;
@@ -104,6 +130,7 @@ module Make_menus (Params : sig
           ~epithet:distribution
           ?variant:variant
           ~kernel
+          ~rc_config
           ~console_no
  	  ~terminal
           ())
@@ -126,6 +153,7 @@ module Make_menus (Params : sig
      let distribution = m#get_epithet in
      let variant = m#get_variant in
      let kernel = m#get_kernel in
+     let rc_config = m#get_rc_config in
      let console_no = m#get_console_no in
      let terminal = m#get_terminal in
      (* The user cannot remove receptacles used by a cable. *)
@@ -136,6 +164,7 @@ module Make_menus (Params : sig
        ~memory ~port_no ~port_no_min
        ~distribution ?variant
        ~kernel
+       ~rc_config
        ~console_no
        ~terminal
        ~updating:() (* the user cannot change the distrib & variant *)
@@ -150,6 +179,7 @@ module Make_menus (Params : sig
          distribution = distribution;
          variant = variant;
 	 kernel = kernel;
+         rc_config = rc_config;
 	 console_no = console_no;
          terminal = terminal;
          old_name = old_name;
@@ -162,6 +192,7 @@ module Make_menus (Params : sig
           ~name ~label
           ~memory ~port_no
 	  ~kernel
+          ~rc_config
 	  ~console_no ~terminal
       in
       st#network_change action ();
@@ -254,6 +285,7 @@ let make
  ?distribution
  ?variant
  ?kernel
+ ?(rc_config=(false, Const.initial_content_for_rcfiles))
  ?(updating:unit option)
  ?(console_no=1)
  ?terminal
@@ -273,7 +305,7 @@ let make
       ?label
       ()
   in
-  let (memory, port_no, distribution_variant_kernel, console_no, terminal) =
+  let (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
@@ -283,6 +315,7 @@ let make
          (s_ "Distribution");
          (s_ "Variant");
          (s_ "Kernel");
+         (s_ "Startup configuration");
          (s_ "Consoles");
          (s_ "Terminal");
          ]
@@ -329,6 +362,30 @@ let make
         ~packing
         vm_installations
     in
+    (* --- *)
+    let rc_config =
+       Gui_bricks.make_rc_config_widget 
+         ~width:800
+         ~filter_names:[`BASH; `ALL] 
+         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+         ~active:(fst rc_config)
+         ~content:(snd rc_config)
+         ~device_name:(old_name)
+         ~language:("sh")
+         ()
+    in
+    let rc_config_related_action_on_distrib_change d =
+      let sensitive = (vm_installations#marionnet_relay_supported_by d) in
+      rc_config#set_sensitive (sensitive);
+    in
+    (* --- *)
+    (* Register `rc_config' callback according to current distribution:  *)
+    let () =
+      on_distrib_change := (rc_config_related_action_on_distrib_change)::!on_distrib_change;
+      let current = distribution_variant_kernel#selected in
+      rc_config_related_action_on_distrib_change (current)
+    in
+    (* --- *)
     form#add_section "Access";
     (* console_no widget and callback: *)
     let console_no =
@@ -365,7 +422,7 @@ let make
       Option.iter (fun v -> result#set_active_value v) terminal;
       result
     in
-    (memory, port_no, distribution_variant_kernel, console_no, terminal)
+    (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal)
   in
   (* TODO: to be fully implemented or removed: *)
   terminal#box#misc#set_sensitive false;
@@ -377,6 +434,7 @@ let make
     let distribution  = distribution_variant_kernel#selected in
     let variant       = distribution_variant_kernel#slave0#selected in
     let kernel        = distribution_variant_kernel#slave1#selected in
+    let rc_config = (rc_config#active, rc_config#content) in
     let variant = match variant with
     | "none" -> None
     | x      -> Some x
@@ -390,6 +448,7 @@ let make
         Data.distribution = distribution;
         Data.variant = variant;
         Data.kernel = kernel;
+        Data.rc_config = rc_config;
         Data.console_no = console_no;
         Data.terminal = terminal;
         Data.old_name = old_name;
@@ -471,6 +530,7 @@ class machine
   ?epithet
   ?variant
   ?kernel
+  ?(rc_config=(false,""))
   ?(console_no=1)
   ?terminal
   ~port_no
@@ -524,6 +584,10 @@ class machine
     | false ->
         self#failwith "value %d not in the memory range [%d,%d]" x Const.memory_min Const.memory_max
 
+  val mutable rc_config : bool * string  = rc_config
+  method get_rc_config = rc_config
+  method set_rc_config x = rc_config <- x
+
   val mutable console_no : int = console_no
   initializer ignore (self#check_console_no console_no)
   method get_console_no = console_no
@@ -551,6 +615,7 @@ class machine
       ("distrib"  ,  self#get_epithet  );
       ("variant"  ,  self#get_variant_as_string);
       ("kernel"   ,  self#get_kernel   );
+      ("rc_config", Marshal.to_string self#get_rc_config []);
       ("console_no", (string_of_int self#get_console_no));
       ("terminal" ,  self#get_terminal );
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
@@ -566,6 +631,7 @@ class machine
   | ("variant"  , "" )-> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (Some x)
   | ("kernel"   , x ) -> self#set_kernel x
+  | ("rc_config", x ) -> self#set_rc_config (Marshal.from_string x 0)
   | ("console_no" , x ) -> self#set_console_no (int_of_string x)
   | ("terminal" , x ) -> self#set_terminal x
   | ("eth"      , x ) (* backward-compatibility *)
@@ -578,6 +644,11 @@ class machine
     let id = self#id in
     let cow_file_name, dynamically_get_the_cow_file_name_source =
       self#create_cow_file_name_and_thunk_to_get_the_source
+    in
+    let rcfile_content =
+      match self#get_rc_config with
+      | false, _ -> None
+      | true, content -> Some content
     in
     let () =
      Log.printf5
@@ -593,6 +664,7 @@ class machine
       ~kernel_file_name:self#get_kernel_file_name
       ?kernel_console_arguments:self#get_kernel_console_arguments
       ?filesystem_relay_script:self#get_filesystem_relay_script
+      ?rcfile_content
       ~filesystem_file_name:self#get_filesystem_file_name
       ~dynamically_get_the_cow_file_name_source
       ~cow_file_name
@@ -642,12 +714,13 @@ class machine
        can use a new cow file (see the make_simulated_device method) *)
     self#destroy_right_now
 
- method update_machine_with ~name ~label ~memory ~port_no ~kernel ~console_no ~terminal =
+ method update_machine_with ~name ~label ~memory ~port_no ~kernel ~rc_config ~console_no ~terminal =
    (* first action: *)
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;
    (* then we can set the object property "name" (read by #get_name): *)
    self_as_node_with_defects#update_with ~name ~label ~port_no;
    self#set_memory memory;
+   self#set_rc_config (rc_config);
    self#set_console_no console_no;
    self#set_terminal terminal;
 
@@ -667,6 +740,7 @@ class ['parent] machine =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(filesystem_relay_script)
+      ?(rcfile_content)
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
@@ -690,6 +764,7 @@ object(self)
       ~kernel_file_name
       ?kernel_console_arguments
       ?filesystem_relay_script
+      ?rcfile_content
       ~ethernet_interface_no
       ~memory
       ?umid

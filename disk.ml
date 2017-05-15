@@ -387,7 +387,8 @@ class virtual_machine_installations
 		  ~dont_read_environment:()
 		  ~file_names:[config_file]
 		  ~variables:[ "MD5SUM"; "AUTHOR"; "DATE"; "MTIME"; "SUPPORTED_KERNELS"; "X11_SUPPORT";
-		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT"; "BINARY_LIST"; ]
+		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT"; 
+		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; ]
 		  ()
 	      in
 	      Some (config)
@@ -507,6 +508,20 @@ class virtual_machine_installations
     if config = None then false else (* continue: *)
     let x = Configuration_files.get_bool_variable "MULTIPLE_CONSOLES_SUPPORT" (Option.extract config) in
     (x = Some true)
+
+  (* The relevant configuration variable here is RC_RELAY_SUPPORT. However, if the .conf file doesn't 
+     contain a binding for such variable, we consider the binding MULTIPLE_CONSOLES_SUPPORT=true 
+     as an equivalent condition. *)
+  method marionnet_relay_supported_by (epithet) =
+    let config = String_map.find (epithet) (filesystem_config_mapping) in
+    if config = None then false else (* continue: *)
+    let config = (Option.extract config) in
+    match Configuration_files.get_bool_variable "RC_RELAY_SUPPORT" config with
+    | Some answer -> answer
+    | None ->
+        (* If there's not a binding for RC_RELAY_SUPPORT, we look at MULTIPLE_CONSOLES_SUPPORT: *)
+        let x = Configuration_files.get_bool_variable "MULTIPLE_CONSOLES_SUPPORT" config in
+        (x = Some true)
 
   method memory_min_size_of epithet =
     let config = String_map.find (epithet) (filesystem_config_mapping) in

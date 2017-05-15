@@ -112,6 +112,7 @@ class virtual_machine_installations :
 
     method terminal_manager_of            : [`distrib] epithet -> terminal_manager
     method multiple_consoles_supported_by : [`distrib] epithet -> bool
+    method marionnet_relay_supported_by   : [`distrib] epithet -> bool
 
     method memory_min_size_of       : [`distrib] epithet -> int option
     method memory_suggested_size_of : [`distrib] epithet -> int option

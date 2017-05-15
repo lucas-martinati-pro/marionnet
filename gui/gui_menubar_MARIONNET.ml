@@ -109,7 +109,7 @@ module Created_entry_project_open = Menu_factory.Make_entry
 
    let dialog =
      let filename_dialog () =
-       EDialog.ask_for_existing_filename
+       EDialog.ask_for_existing_rw_filename
          ~title:(s_ "Open an existing Marionnet project" )
          ~filter_names:[`MAR; `ALL]
          ~help:(Some Msg.help_nom_pour_le_projet) ()

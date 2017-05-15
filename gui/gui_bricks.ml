@@ -18,11 +18,11 @@
 open Gettext
 
 (** {b Example}:
-{[
+\{\[
 let tooltips = Gui_Bricks.make_tooltips_for_container window in
 tooltips label#coerce "hello";
 tooltips entry#coerce "salut";
-]}
+\]\}
 *)
 let make_tooltips_for_container w =
   let result = (GData.tooltips ()) in
@@ -33,7 +33,7 @@ let make_tooltips_for_container w =
     and input widgets at the right side of each line.
     Labels are get from the input string list while input widgets are
     added later using the method [add]. {b Example}:
-{[...
+\{\[...
 let form =
   Gui_Bricks.make_form_with_labels
     ~packing:vbox#add
@@ -41,7 +41,7 @@ let form =
 in
 let ipv4address  = GEdit.entry ~text:"10.0.2.1" ~packing:form#add () in
 let dhcp_enabled = GButton.check_button ~packing:form#add () in
-...}]
+...\}\]
 *)
 let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) ?packing string_list =
  let rows = (List.length string_list) + (section_no * 2) in
@@ -103,11 +103,11 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
 (** Wrap the given widget with a label, using an hidden table which will be packaged
     in its container (if provided). The result is the input widget itself.
     {b Example}:
-{[
+\{\[
 let entry_with_label ?packing ?max_length ?entry_text ?labelpos label_text =
   let entry = GEdit.entry ?text:entry_text ?max_length () in
   Gui_Bricks.wrap_with_label ?packing ?labelpos label_text entry
-]}
+\]\}
 *)
 let wrap_with_label ?tooltip ?packing ?(labelpos=`NORTH) label_text widget =
  let label = GMisc.label ~text:label_text () in
@@ -913,5 +913,76 @@ let make_check_items_renewer_v2
  in
  make_check_items_renewer_v1 ~get_label_active_callback_list ()
 
+(* Example of usage:
+ make_rc_config_widget 
+   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+   ~active:(fst rc_config)
+   ~content:(snd rc_config)
+   ~device_name:(old_name)
+   ~language:("vde_switch") 
+   ()
+*)
+let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `TXT; `ALL]) ~packing ~active ~content ~device_name ~language () =
+  let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
+  let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
+  let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
+  (* --- *)
+  let content = ref (content) in
+  let make_editing_window () =
+    let result = Egg.create () in
+    let () =
+      Gui_source_editing.window 
+        ?height ?width
+        ~title:(Printf.sprintf (f_ "%s configuration file") device_name)
+        ~language:(`id language)
+        ~modal:()
+        ~content:(!content)
+        ~result
+        ~create_as_dialog:()
+        ~draw_spaces:[]
+        ~position:`MOUSE
+        ()
+    in
+    ignore (Thread.create (fun () -> content := Option.extract_or (Egg.wait result) !content) ());
+  in
+  ignore (edit_button#connect#clicked (make_editing_window));
+  (edit_button#misc#set_sensitive check_button#active);
+  ignore (check_button#connect#toggled (fun () -> edit_button#misc#set_sensitive check_button#active));
+  (* --- *)
+  let open_button : GButton.button = button_image 
+    ~label:(s_ "Import" )
+    ~tooltip:(s_ "Import a configuration file" )
+    ~packing:hbox#add
+    ~stock:`ADD
+    ~stock_size:`SMALL_TOOLBAR  (* [ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] *)
+    ()
+  in
+  (* --- *)
+  let make_import_filename_dialog () =
+    let result = 
+      Talking.EDialog.ask_for_existing_importable_text_filename
+        ~title:(s_ "Import a configuration file" )
+        ~filter_names
+        (* ~help:(Some Msg.help_nom_pour_le_projet)  *)
+        ()
+    in
+    Option.iter (fun env -> let filename = (env#get "filename") in content := UnixExtra.cat filename) result
+  in
+  ignore (open_button#connect#clicked (make_import_filename_dialog));
+  (open_button#misc#set_sensitive check_button#active);
+  ignore (check_button#connect#toggled (fun () -> open_button#misc#set_sensitive check_button#active));
+  (* --- *)
+  object (self)
+    val mutable meaningfull : bool = true
+    
+    method active = meaningfull && check_button#active  
+    method content = !content 
+    
+    method set_sensitive b = 
+      let () = Log.printf1 "rc_config_widget#set_sensitive called with %b\n" (b) in
+      (hbox#misc#set_sensitive b);
+      (meaningfull <- b)
+      
+  end
 
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()
