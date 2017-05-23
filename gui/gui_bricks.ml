@@ -59,6 +59,14 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
    method coerce = table#coerce
    val mutable field_index = 0
    val mutable row_index = 0
+   val row_of_field : int array = (Array.make (Array.length labels) 0) (* Not currently used *)
+   val widgets : GObj.widget array = Array.map (fun w -> w#coerce) labels (* array updated by methods #add and #add_with_tooltip *)
+   (* --- *)
+   method private register_mapping_then_increment_row_and_field_indexes =
+     row_of_field.(field_index) <- row_index;
+     row_index <- row_index+1;
+     field_index <- field_index+1;
+   
    method private aligned_widget widget =
      let box = GBin.alignment ~xalign:0. ~yalign:0.5 ~xscale:0.0 ~yscale:0.0 () in
      box#add widget#coerce;
@@ -67,14 +75,15 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
    method add =
      let top = row_index in (* top is in the closure *)
      let field = field_index in
-     table#attach ~left:0 ~top (Array.get labels field)#coerce;
-     row_index <- row_index+1;
-     field_index <- field_index+1;
+     table#attach ~left:0 ~top (labels.(field))#coerce;
+     self#register_mapping_then_increment_row_and_field_indexes;
+     (* --- *)
      (function widget ->
        table#attach ~left:1 ~top (self#aligned_widget widget)#coerce;
+       widgets.(field) <- widget#coerce;
        )
 
-   method add_section ?(fg="lightgray") ?(size="large") ?no_line markup =
+   method add_section ?(fg="#b4b4b4") (* was "lightgray" *) ?(size="large") ?no_line markup =
      let markup =
        Printf.sprintf "<span foreground='%s' size='%s'><b>%s</b></span>" fg size markup;
      in
@@ -90,14 +99,21 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      let top = row_index in (* top is in the closure *)
      let field = field_index in
      table#attach ~left:0 ~top (Array.get labels field)#coerce;
-     row_index <- row_index+1;
-     field_index <- field_index+1;
+     self#register_mapping_then_increment_row_and_field_indexes;
+     (* --- *)
      (function widget ->
        table#attach ~left:1 ~top (self#aligned_widget widget)#coerce;
        (if just_for_label = None then tooltip widget text);
-       tooltip ((Array.get labels field)#coerce) text;
+       tooltip ((labels.(field))#coerce) text;
+       widgets.(field) <- widget#coerce;
        )
 
+   method set_sensitive ~label_text b =
+     try
+       let i,_ = ListExtra.findi ((=)label_text) string_list in
+       (labels.(i)#misc#set_sensitive b;
+        widgets.(i)#misc#set_sensitive b)
+     with Not_found -> ()
  end
 
 (** Wrap the given widget with a label, using an hidden table which will be packaged

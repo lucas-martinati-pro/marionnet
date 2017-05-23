@@ -24,6 +24,7 @@ val make_form_with_labels :
   < add : GObj.widget -> unit;
     add_with_tooltip : ?just_for_label:unit -> string -> GObj.widget -> unit;
     add_section: ?fg:string -> ?size:string -> ?no_line:unit -> string -> unit;
+    set_sensitive: label_text:string -> bool -> unit;
     coerce : GObj.widget;
     table : GPack.table >
 

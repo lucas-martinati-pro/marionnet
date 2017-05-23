@@ -43,20 +43,20 @@ module Const = struct
 # This script will be executed (sourced) as final step 
 # of the virtual machine bootstrap process.
 # ---
-# Several variables are set at this point, as for instance:
-# hostname hostfs guestkind ubda timezone console_no
-# Examples:
+# Several variables are set at this point.
+# Examples: (some values depend on your settings)
 # ---
+# hostname='m5'
+# mem='80M'
 # virtualfs_kind='machine'
 # virtualfs_name='machine-debian-wheezy-08367'
-# mem='80M'
-# mtu_eth0='1500'
 # mac_address_eth0='02:04:06:15:ad:0a'
+# mtu_eth0='1500'
 # mit_magic_cookie_1='e33a9778b5b4d71059c83760473211bb'
 # PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 # ---
-# Note also that the current working directory is '/', 
-# that is to say PWD='/'
+# Your effective user and group IDs are uid=0 (root), gid=0 (root), 
+# and the current working directory is '/', that is to say PWD='/'
 # ---
 " ;;
 
@@ -317,7 +317,7 @@ let make
          (s_ "Kernel");
          (s_ "Startup configuration");
          (s_ "Consoles");
-         (s_ "Terminal");
+         (* (s_ "Terminal"); *)
          ]
     in
     form#add_section ~no_line:() "Hardware";
@@ -347,7 +347,7 @@ let make
         form#add_with_tooltip
           (s_ "GNU/Linux distribution installed on the virtual machine.")
       in
-      let packing_variant      =
+      let packing_variant =
         form#add_with_tooltip
           (s_ "Initial hard disk state. The virtual machine will start by default with this variant of the chosen distribution.")
       in
@@ -376,7 +376,7 @@ let make
     in
     let rc_config_related_action_on_distrib_change d =
       let sensitive = (vm_installations#marionnet_relay_supported_by d) in
-      rc_config#set_sensitive (sensitive);
+      form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive)
     in
     (* --- *)
     (* Register `rc_config' callback according to current distribution:  *)
@@ -394,7 +394,8 @@ let make
     in
     let console_no_related_action_on_distrib_change d =
       let sensitive = (vm_installations#multiple_consoles_supported_by d) in
-      console_no#misc#set_sensitive (sensitive);
+      form#set_sensitive ~label_text:(s_ "Consoles") (sensitive);
+      (* console_no#misc#set_sensitive (sensitive); *)
       (if not sensitive then console_no#set_value 1.);
     in
     (* Register `console_no' callback and set it according to current distribution:  *)
@@ -416,16 +417,21 @@ let make
       let result =
         Widget.ComboTextTree.fromList
           ~callback:None
-          ~packing:(Some (form#add_with_tooltip tooltip))
+          (* ~packing:(Some (form#add_with_tooltip tooltip)) *)
           ((vm_installations#terminal_manager_of "unused epithet")#get_choice_list)
       in
       Option.iter (fun v -> result#set_active_value v) terminal;
       result
     in
+    (* --- *)
+    (* TODO: to be fully implemented or removed: *)
+    (* let () = form#set_sensitive ~label_text:(s_ "Terminal") (false) in *)
+    let () = form#add_section ~no_line:() "" in (* Just leave an empty row in place of the `terminal' widget *)
+    (* terminal#box#misc#set_sensitive false; *)
+    (* --- *)
     (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal)
   in
-  (* TODO: to be fully implemented or removed: *)
-  terminal#box#misc#set_sensitive false;
+  (* --- *)
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
