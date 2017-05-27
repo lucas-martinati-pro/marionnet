@@ -15,6 +15,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  let create = String.create  let set = String.set  end
+ENDIF
+
 (* Examples:
 
 # get_info_by_shell_command "uml_mconsole m1 config con8" ;;
@@ -104,7 +108,7 @@ let get_unread_chars_from ?blocking ~fd ~buffer () : int * int =
   let blocking = (blocking <> None) in
   let one_shot_action = lazy (Unix.set_nonblock fd') in
   let () = if blocking then Unix.clear_nonblock fd' else Lazy.force one_shot_action in
-  let x = String.create 100 in
+  let x = Bytes.create 100 in
   let rec loop count =
     let n = try Unix.read fd' x 0 100 with Unix.Unix_error (Unix.EAGAIN,_,_) -> 0 in
     let () = Buffer.add_substring buffer x 0 n in
@@ -151,7 +155,7 @@ let send_command_and_wait_answer ?(timeout=10.) ?(buffer_size=1024) ?umid ?con ?
   (* The command will be echoed replacing '\n' by '\r\n', so: *)
   let echoed_cmd =
     let result = cmd^"\n" in
-    let () = String.set result (cmd_length-1) '\r' in
+    let () = Bytes.set result (cmd_length-1) '\r' in
     result
   in
   let (_, offset_answer) = get_unread_chars_from ~buffer ~fd () in

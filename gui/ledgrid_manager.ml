@@ -16,6 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  let create = String.create  let set = String.set  end
+ENDIF
 
 let blinker_thread_socket_file_name =
   let result = UnixExtra.temp_file ~prefix:".marionnet-blinker-server-socket-" () in
@@ -241,7 +244,7 @@ object (self)
         let _ = Unix.bind socket (Unix.ADDR_UNIX blinker_thread_socket_file_name) in
         Log.printf ("ledgrid_manager: Still alive\n");
         let maximum_message_size = 1000 in
-        let buffer = String.create maximum_message_size in
+        let buffer = Bytes.create maximum_message_size in
         Log.printf ("ledgrid_manager: Ok, entering the thread main loop\n");
         while true; do
           (* ==== Beginning of the reasonable version ==== *)

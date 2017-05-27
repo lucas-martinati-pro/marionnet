@@ -25,7 +25,12 @@ C_OBJECTS_TO_LINK +=
 EXCLUDE_FROM_SOURCE_FINDING=uml
 
 OCAMLBRICKS=$(LIBRARYPREFIX)/ocamlbricks
-PP_OPTION = camlp4of -I $(OCAMLBRICKS) gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo -I chip
+
+# Transmit the information about the compiler version in order to activate conditional compilation:
+# Empty for OCaml 3.x.y series, set to "-DOCAML4_02_OR_LATER" for 4.02.y or later:  
+OCAML4_02_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[2-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_02_OR_LATER"; fi)
+
+PP_OPTION = camlp4of $(OCAML4_02_OR_LATER) -I $(OCAMLBRICKS) gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo -I chip
 
 OBJECTS_TO_LINK = gtkThread
 BYTE_PROGRAMS = marionnet.byte
