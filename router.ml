@@ -40,16 +40,17 @@ end
 (* The type of data returned by the dialog: *)
 module Data = struct
 type t = {
-  name               : string;
-  label              : string;
-  port_0_ipv4_config : Ipv4.config;
-  port_0_ipv6_config : Ipv6.config option;
-  port_no            : int;
-  distribution       : string;          (* epithet *)
-  variant            : string option;
-  kernel             : string;          (* epithet *)
-  show_unix_terminal : bool;
-  old_name           : string;
+  name                 : string;
+  label                : string;
+  port_0_ipv4_config   : Ipv4.config;
+  port_0_ipv6_config   : Ipv6.config option;
+  port_no              : int;
+  distribution         : string;          (* epithet *)
+  variant              : string option;
+  kernel               : string;          (* epithet *)
+  show_quagga_terminal : bool;
+  show_unix_terminal   : bool;
+  old_name             : string;
   }
 
 let to_string t = "<obj>" (* TODO? *)
@@ -89,6 +90,7 @@ module Make_menus (Params : sig
          distribution = distribution;
          variant = variant;
 	 kernel = kernel;
+         show_quagga_terminal = show_quagga_terminal;
          show_unix_terminal = show_unix_terminal;
          old_name = _ ;
          }
@@ -104,6 +106,7 @@ module Make_menus (Params : sig
           ?variant:variant
           ~kernel
 	  ~port_no
+ 	  ~show_quagga_terminal
  	  ~show_unix_terminal
           ())
       in
@@ -123,6 +126,7 @@ module Make_menus (Params : sig
      let distribution = r#get_epithet in
      let variant = r#get_variant in
      let kernel = r#get_kernel in
+     let show_quagga_terminal = r#get_show_quagga_terminal in
      let show_unix_terminal = r#get_show_unix_terminal in
      let port_no = r#get_port_no in
      let port_0_ipv4_config = r#get_port_0_ipv4_config in
@@ -131,7 +135,8 @@ module Make_menus (Params : sig
      let port_no_min = st#network#port_no_lower_of (r :> User_level.node)
      in
      Dialog_add_or_update.make
-       ~title ~name ~label ~distribution ?variant ~show_unix_terminal
+       ~title ~name ~label ~distribution ?variant 
+       ~show_quagga_terminal ~show_unix_terminal
        ~port_no ~port_no_min
        ~port_0_ipv4_config
        ~port_0_ipv6_config
@@ -146,6 +151,7 @@ module Make_menus (Params : sig
          port_0_ipv6_config = port_0_ipv6_config;
          port_no = port_no;
 	 kernel = kernel;
+         show_quagga_terminal = show_quagga_terminal;
          show_unix_terminal = show_unix_terminal;
          old_name = old_name;
          }
@@ -154,7 +160,7 @@ module Make_menus (Params : sig
       let r = ((Obj.magic d):> User_level_router.router) in
       let action () =
         r#update_router_with
-          ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel ~show_unix_terminal
+          ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel ~show_quagga_terminal ~show_unix_terminal
       in
       st#network_change action ();
 
@@ -247,6 +253,7 @@ let make
  ?variant
  ?kernel
  ?(updating:unit option)
+ ?(show_quagga_terminal=false)
  ?(show_unix_terminal=false)
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
@@ -270,7 +277,7 @@ let make
       ?label
       ()
   in
-  let ((s1,s2,s3,s4,s5), port_0_ipv6_config_obj, port_no, distribution_variant_kernel, show_unix_terminal) =
+  let ((s1,s2,s3,s4,s5), port_0_ipv6_config_obj, port_no, distribution_variant_kernel, show_quagga_terminal, show_unix_terminal) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
@@ -281,7 +288,8 @@ let make
          (s_ "Distribution");
          (s_ "Variant");
          (s_ "Kernel");
-         (s_ "Show unix terminal");
+         (s_ "Show Quagga terminal");
+         (s_ "Show Unix terminal");
          ]
     in
     form#add_section ~no_line:() "Hardware";
@@ -328,13 +336,20 @@ let make
         vm_installations
     in
     form#add_section "Access";
+    let show_quagga_terminal =
+      GButton.check_button
+        ~active:show_quagga_terminal
+        ~packing:(form#add_with_tooltip (s_ "Do you want access the router also by a Quagga terminal (CISCO-IOS-like commands)?" ))
+        ()
+    in
+    (* --- *)
     let show_unix_terminal =
       GButton.check_button
         ~active:show_unix_terminal
         ~packing:(form#add_with_tooltip (s_ "Do you want access the router also by a Unix terminal?" ))
         ()
     in
-    (port_0_ipv4_config, port_0_ipv6_config_obj, port_no, distribution_variant_kernel, show_unix_terminal)
+    (port_0_ipv4_config, port_0_ipv6_config_obj, port_no, distribution_variant_kernel, show_quagga_terminal, show_unix_terminal)
   in
   let get_widget_data () :'result =
     let name = name#text in
@@ -360,6 +375,7 @@ let make
     | "none" -> None
     | x      -> Some x
     in
+    let show_quagga_terminal = show_quagga_terminal#active in
     let show_unix_terminal = show_unix_terminal#active in
       { Data.name = name;
         Data.label = label;
@@ -369,6 +385,7 @@ let make
         Data.distribution = distribution;
         Data.variant = variant;
         Data.kernel = kernel;
+        Data.show_quagga_terminal = show_quagga_terminal;
         Data.show_unix_terminal = show_unix_terminal;
         Data.old_name = old_name;
         }
@@ -464,6 +481,7 @@ class router
   ?epithet
   ?variant
   ?kernel
+  ?(show_quagga_terminal=false)
   ?(show_unix_terminal=false)
   ?terminal
   ~port_no
@@ -518,8 +536,12 @@ class router
   (** Get the full host pathname to the directory containing the guest hostfs
       filesystem: *)
   method hostfs_directory_pathname =
-    let d = ((Option.extract !simulated_device) :> User_level.node Simulation_level.router) in
+    let d = ((Option.extract !simulated_device) :> User_level.node Simulation_level.device) in
     d#hostfs_directory_pathname
+
+  val mutable show_quagga_terminal : bool = show_quagga_terminal
+  method get_show_quagga_terminal = show_quagga_terminal
+  method set_show_quagga_terminal x = show_quagga_terminal <- x
 
   val mutable show_unix_terminal : bool = show_unix_terminal
   method get_show_unix_terminal = show_unix_terminal
@@ -539,23 +561,26 @@ class router
        cow_file_name
        self#get_kernel_file_name
     in
-    new Simulation_level.router
-      ~parent:self
-      ~kernel_file_name:self#get_kernel_file_name
-      ?kernel_console_arguments:self#get_kernel_console_arguments
-      ?filesystem_relay_script:self#get_filesystem_relay_script
-      ~filesystem_file_name:self#get_filesystem_file_name
-      ~dynamically_get_the_cow_file_name_source
-      ~cow_file_name
-      ~states_directory:(self#get_states_directory)
-      ~ethernet_interface_no:self#get_port_no
-      ~umid:self#get_name
-      ~id
-      ~show_unix_terminal:self#get_show_unix_terminal
-      ~working_directory:(network#working_directory)
-      ~unexpected_death_callback:self#destroy_because_of_unexpected_death
-      ()
-
+    let device = 
+      new Simulation_level.router
+        ~parent:self
+        ~kernel_file_name:self#get_kernel_file_name
+        ?kernel_console_arguments:self#get_kernel_console_arguments
+        ?filesystem_relay_script:self#get_filesystem_relay_script
+        ~filesystem_file_name:self#get_filesystem_file_name
+        ~dynamically_get_the_cow_file_name_source
+        ~cow_file_name
+        ~states_directory:(self#get_states_directory)
+        ~ethernet_interface_no:self#get_port_no
+        ~umid:self#get_name
+        ~id
+        ~show_quagga_terminal:self#get_show_quagga_terminal
+        ~show_unix_terminal:self#get_show_unix_terminal
+        ~working_directory:(network#working_directory)
+        ~unexpected_death_callback:self#destroy_because_of_unexpected_death
+        ()
+    in
+    (device :> User_level.node_with_ports_card Simulation_level.device)
 
   (** Here we also have to manage cow files... *)
   method private gracefully_shutdown_right_now =
@@ -594,7 +619,8 @@ class router
       ("distrib"  ,  self#get_epithet  );
       ("variant"  ,  self#get_variant_as_string);
       ("kernel"   ,  self#get_kernel   );
-      ("show_unix_terminal" , string_of_bool (self#get_show_unix_terminal));
+      ("show_quagga_terminal" , string_of_bool (self#get_show_quagga_terminal));
+      ("show_unix_terminal"   , string_of_bool (self#get_show_unix_terminal));
       ("terminal" ,  self#get_terminal );
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
       ])
@@ -607,7 +633,8 @@ class router
   | ("variant"  , "") -> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (Some x)
   | ("kernel"   , x ) -> self#set_kernel x
-  | ("show_unix_terminal", x ) -> self#set_show_unix_terminal (bool_of_string x)
+  | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (bool_of_string x)
+  | ("show_unix_terminal", x )   -> self#set_show_unix_terminal   (bool_of_string x)
   | ("terminal" , x ) -> self#set_terminal x
   | ("port_no"  , x ) -> self#set_port_no  (int_of_string x)
   | _ -> () (* Forward-comp. *)
@@ -643,14 +670,15 @@ class router
      self#get_name 0 "IPv6 address"
      (Option.extract_map_or (port_0_ipv6_config) (Ipv6.string_of_config) "");
 
- method update_router_with ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel ~show_unix_terminal =
+ method update_router_with ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel ~show_quagga_terminal ~show_unix_terminal =
    (* first action: *)
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;
    (* then we can set the object property "name" (read by #get_name): *)
    self_as_node_with_ledgrid_and_defects#update_with ~name ~label ~port_no;
    self#set_port_0_ipv4_config (port_0_ipv4_config);
    self#set_port_0_ipv6_config (port_0_ipv6_config);
-   self#set_show_unix_terminal show_unix_terminal;
+   self#set_show_quagga_terminal (show_quagga_terminal);
+   self#set_show_unix_terminal (show_unix_terminal);
 
 end;;
 
@@ -661,6 +689,9 @@ end (* module User_level_router *)
 (*-----*)
 
 module Simulation_level = struct
+
+class virtual ['parent] device = ['parent] Simulation_level.device
+
 (** A router: just a [machine_or_router] with [router = true] *)
 class ['parent] router =
   fun ~(parent:'parent)
@@ -674,12 +705,13 @@ class ['parent] router =
       ~(ethernet_interface_no)
       ?umid
       ~id
+      ~show_quagga_terminal
       ~show_unix_terminal
       ~working_directory
       ~unexpected_death_callback
       () ->
-object(self)
-  inherit ['parent] Simulation_level.machine_or_router
+  object(self)
+    inherit ['parent] Simulation_level.machine_or_router_with_accessory_processes
       ~parent
       ~router:true
       ~filesystem_file_name(* :"/usr/marionnet/filesystems/router.debian.lenny.sid.fs" *)
@@ -702,8 +734,31 @@ object(self)
       ~unexpected_death_callback
       ()
       as super
-  method device_type = "router"
-end
+    
+    method device_type = "router"
+
+    initializer 
+      match show_quagga_terminal with
+      | false -> ()
+      | true ->
+        let name = parent#get_name in
+        let host = self#ip_address_eth42 in
+        let port_number = 2601 in
+        let xterm_title = Printf.sprintf "%s Quagga terminal (CISCO-IOS-like %d)" name (port_number) in
+        self#add_accessory_process
+          (new Simulation_level.telnet_process
+            ~xterm_title
+            ~host
+            ~port_number
+            ~delay:1. (* not necessary, could be 0. *)
+            ~unexpected_death_callback:
+              (fun i _ ->
+                  Death_monitor.stop_monitoring i;
+                  Log.printf2 "Terminal of router %s closed (pid %d).\n" name i)
+            ())
+
+    
+  end (* object router *)
 
 end (* module Simulation_level *)
 

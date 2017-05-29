@@ -411,8 +411,8 @@ let make
       if updating = None then memory_related_action_on_distrib_change (current) else ()
     in
     (* console_no widget and callback: *)
-    let terminal =
-      let tooltip = (s_ "Type of terminal to use to control the virtual machine. Possible choices are: X HOST terminal (providing the possibility to launch graphical applications on the host X server) and X NEST (an independent graphic server displaying all the X windows of a virtual machines).")
+    let _terminal =
+      let _tooltip = (s_ "Type of terminal to use to control the virtual machine. Possible choices are: X HOST terminal (providing the possibility to launch graphical applications on the host X server) and X NEST (an independent graphic server displaying all the X windows of a virtual machines).")
       in
       let result =
         Widget.ComboTextTree.fromList
@@ -429,7 +429,7 @@ let make
     let () = form#add_section ~no_line:() "" in (* Just leave an empty row in place of the `terminal' widget *)
     (* terminal#box#misc#set_sensitive false; *)
     (* --- *)
-    (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal)
+    (memory, port_no, distribution_variant_kernel, rc_config, console_no, _terminal)
   in
   (* --- *)
   let get_widget_data () :'result =
@@ -577,7 +577,8 @@ class machine
 
   (** Get the full host pathname to the directory containing the guest hostfs filesystem: *)
   method hostfs_directory_pathname =
-    (Option.extract !simulated_device)#hostfs_directory_pathname
+    let d = ((Option.extract !simulated_device) :> User_level.node Simulation_level.device) in
+    d#hostfs_directory_pathname
 
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
@@ -665,25 +666,28 @@ class machine
        self#get_kernel_file_name
        self#is_xnest_enabled
     in
-    new Simulation_level.machine
-      ~parent:self
-      ~kernel_file_name:self#get_kernel_file_name
-      ?kernel_console_arguments:self#get_kernel_console_arguments
-      ?filesystem_relay_script:self#get_filesystem_relay_script
-      ?rcfile_content
-      ~filesystem_file_name:self#get_filesystem_file_name
-      ~dynamically_get_the_cow_file_name_source
-      ~cow_file_name
-      ~states_directory:(self#get_states_directory)
-      ~ethernet_interface_no:self#get_port_no
-      ~memory:self#get_memory
-      ~console_no:self#get_console_no
-      ~umid:self#get_name
-      ~id
-      ~xnest:self#is_xnest_enabled
-      ~working_directory:(network#working_directory)
-      ~unexpected_death_callback:self#destroy_because_of_unexpected_death
-      ()
+    let device = 
+      new Simulation_level.machine
+        ~parent:self
+        ~kernel_file_name:self#get_kernel_file_name
+        ?kernel_console_arguments:self#get_kernel_console_arguments
+        ?filesystem_relay_script:self#get_filesystem_relay_script
+        ?rcfile_content
+        ~filesystem_file_name:self#get_filesystem_file_name
+        ~dynamically_get_the_cow_file_name_source
+        ~cow_file_name
+        ~states_directory:(self#get_states_directory)
+        ~ethernet_interface_no:self#get_port_no
+        ~memory:self#get_memory
+        ~console_no:self#get_console_no
+        ~umid:self#get_name
+        ~id
+        ~xnest:self#is_xnest_enabled
+        ~working_directory:(network#working_directory)
+        ~unexpected_death_callback:self#destroy_because_of_unexpected_death
+        ()
+    in
+    (device :> User_level.node_with_ports_card Simulation_level.device)
 
  (** Here we also have to manage cow files... *)
  method private gracefully_shutdown_right_now =
@@ -739,6 +743,9 @@ end (* module User_level_machine *)
 (*-----*)
 
 module Simulation_level = struct
+
+class virtual ['parent] device = ['parent] Simulation_level.device
+
 (** A machine: just a [machine_or_router] with [router = false] *)
 class ['parent] machine =
   fun ~(parent:'parent)

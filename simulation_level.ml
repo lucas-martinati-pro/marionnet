@@ -568,6 +568,38 @@ class unixterm_process =
 
 end;; (* class unixterm_process *)
 
+(** This is used to implement the router component. *)
+class telnet_process =
+  fun ?xterm_title
+      ?(host="localhost")
+      ?(port_number=2601)
+      ?(delay=0.) (* wait this number of seconds before to really launch the process *)
+      ~unexpected_death_callback
+      () ->
+  let xterm_title = match xterm_title with
+   | None    -> []
+   | Some t  -> ["-T"; t]
+  in
+  let timeout = 45 in (* seconds *)
+  let command_launched_by_xterm = Printf.sprintf "marionnet_telnet.sh %s %d %d" (host) (port_number) (timeout) in
+  let arguments = List.concat [
+       xterm_title;
+       [ "-e"; command_launched_by_xterm ];
+       ]
+  in
+  let () = Thread.delay delay in
+  object(self)
+   inherit process
+      "xterm"
+      arguments
+      ~stdin:an_input_descriptor_never_sending_anything
+      ~stdout:dev_null_out
+      ~stderr:dev_null_out
+      ~unexpected_death_callback
+      () as super
+
+end;; (* class telnet_process *)
+
 (** Return a list of option arguments to be passed to wirefilter in order to implement
     the given defects: *)
 let defects_to_command_line_options
@@ -891,6 +923,9 @@ class uml_process =
       ~unexpected_death_callback
       () as super
 
+  method ip_address_eth42 = ip42
+  method tap_name = tap_name
+      
   method swap_file_name =
     swap_file_name
 
@@ -1450,6 +1485,26 @@ object(self)
 end;; (* class main_process_with_n_hublets_and_cables *)
 
 
+class accessory_processes_stuff () = object
+
+  val mutable accessory_processes = []
+  method add_accessory_process (p:process) =
+    accessory_processes <- p::accessory_processes
+
+  method private terminate_accessory_processes =
+    List.iter (fun p -> try p#terminate with _ -> ()) accessory_processes
+
+  method private spawn_accessory_processes =
+    List.iter (fun p -> p#spawn) (List.rev accessory_processes)
+
+  method private stop_accessory_processes =
+    List.iter (fun p -> p#stop) accessory_processes
+
+  method private continue_accessory_processes =
+    List.iter (fun p -> p#continue) (List.rev accessory_processes)
+   
+end (* object accessory_processes_stuff *)
+
 (** Add some accessory processes running together with the main process. *)
 class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_processes =
   fun ~(parent:'parent)
@@ -1469,21 +1524,7 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
       ()
       as super
 
-  val mutable accessory_processes = []
-  method add_accessory_process (p:process) =
-    accessory_processes <- p::accessory_processes
-
-  method private terminate_accessory_processes =
-    List.iter (fun p -> try p#terminate with _ -> ()) accessory_processes
-
-  method private spawn_accessory_processes =
-    List.iter (fun p -> p#spawn) (List.rev accessory_processes)
-
-  method private stop_accessory_processes =
-    List.iter (fun p -> p#stop) accessory_processes
-
-  method private continue_accessory_processes =
-    List.iter (fun p -> p#continue) (List.rev accessory_processes)
+  inherit accessory_processes_stuff ()
 
   (* Redefined: *)
   method destroy =
@@ -1666,6 +1707,7 @@ object(self)
               ~guestkind:(if router then "router" else "machine")
               ());
 
+  method ip_address_eth42 = self#get_uml_process#ip_address_eth42
   method terminate_processes = self#terminate_processes_private ~gracefully:false ()
   method gracefully_terminate_processes = self#terminate_processes_private ~gracefully:true ()
   method stop_processes = self#get_uml_process#stop
@@ -1726,3 +1768,71 @@ object(self)
 
   (** There's no need to override super#destroy. See the comment above. *)
 end;;
+
+class virtual ['parent] machine_or_router_with_accessory_processes =
+  fun ~(parent:'parent)
+      ~(router:bool)
+      ~(kernel_file_name)
+      ?(kernel_console_arguments)
+      ?(filesystem_relay_script)
+      ?(rcfile_content)
+      ~(filesystem_file_name)
+      ~dynamically_get_the_cow_file_name_source
+      ~(cow_file_name)
+      ~states_directory
+      ~(ethernet_interface_no)
+      ~(memory) (* in megabytes *)
+      ~(console_no)
+      ~(console)
+      ~xnest
+      ?umid
+      ~id
+      ?show_unix_terminal
+      ~working_directory      
+      ~unexpected_death_callback
+      () ->
+  object(self)
+
+  inherit ['parent] machine_or_router
+      ~parent ~router 
+      ~kernel_file_name ?kernel_console_arguments
+      ?filesystem_relay_script ?rcfile_content
+      ~filesystem_file_name 
+      ~dynamically_get_the_cow_file_name_source
+      ~cow_file_name ~states_directory
+      ~ethernet_interface_no 
+      ~memory ~console_no ~console ~xnest 
+      ?umid ~id ?show_unix_terminal ~working_directory      
+      ~unexpected_death_callback
+      ()
+      as super
+
+  inherit accessory_processes_stuff ()
+
+  (* Redefined: *)
+  method destroy =
+   self#terminate_accessory_processes;
+   super#destroy
+
+  (* Redefined: *)
+  method gracefully_shutdown =
+   self#terminate_accessory_processes;
+   super#gracefully_shutdown
+
+  method spawn_processes =
+    super#spawn_processes;
+    self#spawn_accessory_processes;
+
+  method terminate_processes =
+    self#terminate_accessory_processes;
+    super#terminate_processes;
+
+  method stop_processes =
+    self#stop_accessory_processes;
+    super#stop_processes;
+
+  method continue_processes =
+    super#continue_processes;
+    self#continue_accessory_processes;
+
+end (* class machine_or_router_with_accessory_processes *)

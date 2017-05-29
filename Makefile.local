@@ -48,7 +48,7 @@ NATIVE_PROGRAMS = marionnet.native
 ROOT_NATIVE_PROGRAMS = marionnet-daemon.native
 
 ROOT_PROGRAMS = marionnet-daemon.byte marionnet-daemon.native
-OTHER_PROGRAMS_TO_INSTALL =
+OTHER_PROGRAMS_TO_INSTALL = scripts/marionnet_telnet.sh
 
 # menu_factory.ml menu_factory.mli chip.ml are not documented because they
 # get ocamldoc (with -pp camlp4of) confused

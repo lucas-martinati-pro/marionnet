@@ -217,6 +217,26 @@ class unixterm_process :
     method terminate : unit
   end
 
+class telnet_process :
+  ?xterm_title:string ->
+  ?host:string ->
+  ?port_number:int -> (* 2601 *)
+  ?delay:float ->     (* 0. *)
+  unexpected_death_callback:(int -> process_name -> unit) ->
+  unit ->
+  object
+    method append_arguments : process_name list -> unit
+    method continue : unit
+    method get_pid : pid
+    method get_pid_option : pid option
+    method gracefully_terminate : unit
+    method is_alive : bool
+    method spawn : unit
+    method stop : unit
+    method stop_monitoring : ?current_pid:int -> unit -> unit
+    method terminate : unit
+  end
+  
 val defects_to_command_line_options :
   ?rightward_loss:float ->
   ?rightward_duplication:float ->
@@ -310,6 +330,9 @@ class uml_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
+    method ip_address_eth42 : string (* "172.23.%i.%i" *)
+    method tap_name : string
+   (* --- *)
     method append_arguments : process_name list -> unit
     method continue : unit
     method create_swap_file : unit
@@ -331,21 +354,6 @@ type device_state = Off | On | Sleeping | Destroyed
 val device_state_to_string : device_state -> string
 exception CantGoFromStateToState of device_state * device_state
 
-(* Provokes a Fatal error: exception Assert_failure("typing/ctype.ml", 261, 23)
-   at compilation time: *)
-(* type 'a user_level_parent_type = < get_name : string; .. > as 'a *)
-(* using the constraint *)
-(*    constraint 'parent = _ user_level_parent *)
-(* almost 2 times *)
-
-type user_level_parent = <
- get_name : string;
- ports_card : <
-    get_my_inward_defects_by_index  : int -> defects_object;
-    get_my_outward_defects_by_index : int -> defects_object;
-    >
- >
-
 class virtual ['parent] device :
   parent:'parent ->
   hublet_no:int ->
@@ -354,25 +362,29 @@ class virtual ['parent] device :
   unit ->
   object
     constraint 'parent = < get_name : string; .. > as 'b
+    (* --- *)
     method virtual device_type : string
-    method virtual spawn_processes : unit
-    method virtual stop_processes : unit
-    method virtual continue_processes : unit
+    (* --- *)
+    method virtual spawn_processes     : unit
+    method virtual stop_processes      : unit
+    method virtual continue_processes  : unit
     method virtual terminate_processes : unit
-
+    (* --- *)
+    method get_hublet_no              : int
+    method get_hublet_process_list    : hublet_process list
     method get_hublet_process_of_port : int -> hublet_process
-    method get_hublet_process_list  : hublet_process list
-    method get_hublet_no : int
-
+    (* --- *)
     method get_state : device_state
-    method gracefully_shutdown : unit
-    method gracefully_terminate_processes : unit
     method hostfs_directory_pathname : string
-    method startup : unit
-    method suspend : unit
-    method resume : unit
-    method shutdown : unit
-    method destroy : unit
+    (* --- *)
+    method startup             : unit
+    method suspend             : unit
+    method resume              : unit
+    method shutdown            : unit
+    method destroy             : unit
+    method gracefully_shutdown : unit
+    (* --- *)
+    method gracefully_terminate_processes : unit
     method execute_the_unexpected_death_callback : int -> string -> unit
   end
 
@@ -384,6 +396,7 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
   unexpected_death_callback:(unit -> unit) ->
   unit ->
   object
+    (* --- *)
     constraint 'parent = <
       get_name : string;
       ports_card : <
@@ -391,27 +404,13 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
 	get_my_outward_defects_by_index : int -> defects_object;
         .. >;
       .. >
-    method continue_processes : unit
-    method destroy : unit
-    method virtual device_type : string
-    method get_hublet_process_of_port : int -> hublet_process
-    method get_hublet_process_list : hublet_process list
-    method get_hublet_no : int
+    (* --- *)
+    inherit ['parent] device
+    (* --- *)
+    method spawn_internal_cables        : unit
     method get_internal_cable_processes : ethernet_cable_process list
-    method get_state : device_state
-    method gracefully_shutdown : unit
-    method gracefully_terminate_processes : unit
-    method hostfs_directory_pathname : string
-    method resume : unit
-    method shutdown : unit
-    method spawn_processes : unit
-    method spawn_internal_cables : unit
-    method startup : unit
-    method stop_processes : unit
-    method suspend : unit
-    method terminate_processes : unit
+    (* --- *)
     method add_accessory_process : process -> unit
-    method execute_the_unexpected_death_callback : int -> string -> unit
   end
 
 class virtual ['parent] hub_or_switch :
@@ -426,35 +425,18 @@ class virtual ['parent] hub_or_switch :
   unexpected_death_callback:(unit -> unit) ->
   unit ->
   object
-    constraint 'parent = <
-      get_name : string;
-      ports_card : <
-	get_my_inward_defects_by_index  : int -> defects_object;
-	get_my_outward_defects_by_index : int -> defects_object;
-        .. >;
-      .. >
-    method continue_processes : unit
-    method destroy : unit
+    (* --- *)
+    inherit ['parent] main_process_with_n_hublets_and_cables_and_accessory_processes
+    (* --- *)
     method virtual device_type : string
-    method get_hublet_process_of_port : int -> hublet_process
-    method get_hublet_process_list : hublet_process list
-    method get_hublet_no : int
-    method get_internal_cable_processes : ethernet_cable_process list
-    method get_state : device_state
-    method gracefully_shutdown : unit
-    method gracefully_terminate_processes : unit
-    method hostfs_directory_pathname : string
-    method resume : unit
-    method shutdown : unit
-    method spawn_processes : unit
-    method spawn_internal_cables : unit
-    method startup : unit
-    method stop_processes : unit
-    method suspend : unit
+    (* --- *)
+    method spawn_processes     : unit
+    method stop_processes      : unit
+    method continue_processes  : unit
     method terminate_processes : unit
-    method add_accessory_process : process -> unit
-    method get_management_socket_name : string option
-    method execute_the_unexpected_death_callback : int -> string -> unit
+    (* --- *)
+    method get_management_socket_name   : string option
+    (* --- *)
   end
 
 
@@ -481,6 +463,7 @@ class virtual ['parent] machine_or_router :
   unexpected_death_callback:(unit -> unit) ->
   unit ->
   object
+    (* --- *)
     constraint 'parent = <
       get_name : string;
       ports_card : <
@@ -488,23 +471,43 @@ class virtual ['parent] machine_or_router :
 	get_my_outward_defects_by_index : int -> defects_object;
         .. >;
       .. >
-    method continue_processes : unit
-    method destroy : unit
+    (* --- *)
+    inherit ['parent] device
+    (* --- *)
     method virtual device_type : string
-    method get_hublet_process_of_port : int -> hublet_process
-    method get_hublet_process_list : hublet_process list
-    method get_hublet_no : int
-    method get_state : device_state
-    method gracefully_shutdown : unit
-    method gracefully_terminate_processes : unit
-    method hostfs_directory_pathname : string
-    method resume : unit
-    method shutdown : unit
-    method spawn_processes : unit
-    method startup : unit
-    method stop_processes : unit
-    method suspend : unit
+    (* --- *)
+    method spawn_processes     : unit
+    method stop_processes      : unit
+    method continue_processes  : unit
     method terminate_processes : unit
-    method execute_the_unexpected_death_callback : int -> string -> unit
+    (* --- *)
+    method ip_address_eth42 : string
   end
 
+class virtual ['parent] machine_or_router_with_accessory_processes :
+  parent:'parent ->
+  router:bool ->
+  kernel_file_name:process_name ->
+  ?kernel_console_arguments:string ->
+  ?filesystem_relay_script:string ->
+  ?rcfile_content:string ->
+  filesystem_file_name:string ->
+  dynamically_get_the_cow_file_name_source:(unit -> string option) ->
+  cow_file_name:string ->
+  states_directory:string ->
+  ethernet_interface_no:int ->
+  memory:int ->
+  console_no:int ->
+  console:string ->
+  xnest:bool ->
+  ?umid:string ->
+  id:int ->
+  ?show_unix_terminal:bool ->
+  working_directory:string ->
+  unexpected_death_callback:(unit -> unit) ->
+  unit ->
+  object
+    inherit ['parent] machine_or_router
+    (* --- *)
+    method add_accessory_process : process -> unit
+  end
