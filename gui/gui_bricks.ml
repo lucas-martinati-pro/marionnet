@@ -1001,4 +1001,29 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `T
       
   end
 
+(* Example: quagga-terminal + {zebra, osp, ..} *)
+let make_check_button_with_related_alternatives ~packing ~active ?(active_alternative=0) ?use_markup ~(alternatives:string list) () =
+  let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
+  let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
+  (* --- *)
+  let (combo, (_, column)) = 
+    GEdit.combo_box_text ~packing:(hbox#add) ~strings:(alternatives) ?use_markup () 
+  in 
+  let () = combo#set_active (active_alternative) in
+  let () = combo#misc#set_sensitive (check_button#active) in
+  ignore (check_button#connect#toggled (fun () -> combo#misc#set_sensitive check_button#active));
+  (* --- *)
+  object (self)
+    val mutable meaningfull : bool = true
+    
+    method active = meaningfull && check_button#active  
+    method selected_alternative = 
+      Option.map (fun row -> combo#model#get ~row ~column) combo#active_iter
+    
+    method set_sensitive b = 
+      let () = Log.printf1 "make_check_button_with_related_alternatives#set_sensitive called with %b\n" (b) in
+      (hbox#misc#set_sensitive b);
+      (meaningfull <- b)
+  end
+  
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()

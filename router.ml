@@ -68,6 +68,7 @@ enable password zebra
 
 end
 
+type port_number = int (* *)
 
 (* The type of data returned by the dialog: *)
 module Data = struct
@@ -80,7 +81,7 @@ type t = {
   distribution         : string;          (* epithet *)
   variant              : string option;
   kernel               : string;          (* epithet *)
-  show_quagga_terminal : bool;
+  show_quagga_terminal : (port_number) option;
   show_unix_terminal   : bool;
   rc_config            : bool * string; (* run commands (rc) file configuration *)
   old_name             : string;
@@ -140,7 +141,7 @@ module Make_menus (Params : sig
           ?variant:variant
           ~kernel
 	  ~port_no
- 	  ~show_quagga_terminal
+ 	  ?show_quagga_terminal
  	  ~show_unix_terminal
  	  ~rc_config
           ())
@@ -172,7 +173,7 @@ module Make_menus (Params : sig
      in
      Dialog_add_or_update.make
        ~title ~name ~label ~distribution ?variant 
-       ~show_quagga_terminal ~show_unix_terminal ~rc_config
+       ?show_quagga_terminal ~show_unix_terminal ~rc_config
        ~port_no ~port_no_min
        ~port_0_ipv4_config
        ~port_0_ipv6_config
@@ -290,7 +291,7 @@ let make
  ?variant
  ?kernel
  ?(updating:unit option)
- ?(show_quagga_terminal=false)
+ ?show_quagga_terminal
  ?(show_unix_terminal=false)
  ?(rc_config=(false, Const.initial_content_for_rcfiles))
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
@@ -384,7 +385,7 @@ let make
     let rc_config =
        Gui_bricks.make_rc_config_widget 
          ~height:600 ~width:600
-         ~filter_names:[`RC; `ALL] 
+         ~filter_names:[`RC; `TXT; `ALL] 
          ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
          ~active:(fst rc_config)
          ~content:(snd rc_config)
@@ -418,10 +419,15 @@ let make
     in
     (* --- *)
     form#add_section "Access";
+    (* --- *)
+    (* show_quagga_terminal : < active:bool; selected_alternative:string option;  set_sensitive:bool->unit > *)
     let show_quagga_terminal =
-      GButton.check_button
-        ~active:show_quagga_terminal
+      Gui_bricks.make_check_button_with_related_alternatives 
+        ~active:(show_quagga_terminal<>None)
+        ?active_alternative:(Option.map (quagga_alternatives#index_of_port) (show_quagga_terminal))
+        (* ~use_markup:true *)
         ~packing:(form#add_with_tooltip (s_ "Do you want access the router also by a Quagga terminal (CISCO-IOS-like commands)?" ))
+        ~alternatives:(quagga_alternatives#message_list)
         ()
     in
     (* --- *)
@@ -458,7 +464,14 @@ let make
     | x      -> Some x
     in
     let rc_config = (rc_config#active, rc_config#content) in
-    let show_quagga_terminal = show_quagga_terminal#active in
+    (* --- *)      
+    let show_quagga_terminal : (port_number option) = 
+      match (show_quagga_terminal#active), (show_quagga_terminal#selected_alternative) with
+      | false, _          -> None
+      | true, None        -> Some 2601 (* default port_number ("zebra") *)
+      | true, Some choice -> Some (quagga_alternatives#port_of_message choice)
+    (* --- *)
+    in
     let show_unix_terminal = show_unix_terminal#active in
       { Data.name = name;
         Data.label = label;
@@ -482,7 +495,7 @@ let make
 (*-----*)
   WHERE
 (*-----*)
-
+    
  let help_callback =
    let title = (s_ "ADD OR MODIFY A ROUTER") in
    let msg   = (s_ "\
@@ -565,7 +578,7 @@ class router
   ?epithet
   ?variant
   ?kernel
-  ?(show_quagga_terminal=false)
+  ?show_quagga_terminal
   ?(show_unix_terminal=false)
   ?(rc_config=(false,""))
   ?terminal
@@ -624,9 +637,10 @@ class router
     let d = ((Option.extract !simulated_device) :> User_level.node Simulation_level.device) in
     d#hostfs_directory_pathname
 
-  val mutable show_quagga_terminal : bool = show_quagga_terminal
+  val mutable show_quagga_terminal : (port_number option) = show_quagga_terminal
   method get_show_quagga_terminal = show_quagga_terminal
-  method set_show_quagga_terminal x = show_quagga_terminal <- x
+  method set_show_quagga_terminal ox = 
+    show_quagga_terminal <- Option.bind ox (fun x -> if quagga_alternatives#valid_port x then Some x else None)
 
   val mutable show_unix_terminal : bool = show_unix_terminal
   method get_show_unix_terminal = show_unix_terminal
@@ -668,7 +682,7 @@ class router
         ~ethernet_interface_no:self#get_port_no
         ~umid:self#get_name
         ~id
-        ~show_quagga_terminal:self#get_show_quagga_terminal
+        ?show_quagga_terminal:self#get_show_quagga_terminal
         ~show_unix_terminal:self#get_show_unix_terminal
         ?rcfile_content
         ~working_directory:(network#working_directory)
@@ -714,7 +728,7 @@ class router
       ("distrib"  ,  self#get_epithet  );
       ("variant"  ,  self#get_variant_as_string);
       ("kernel"   ,  self#get_kernel   );
-      ("show_quagga_terminal" , string_of_bool (self#get_show_quagga_terminal));
+      ("show_quagga_terminal" , Marshal.to_string (self#get_show_quagga_terminal) []);
       ("show_unix_terminal"   , string_of_bool (self#get_show_unix_terminal));
       ("rc_config"            , Marshal.to_string self#get_rc_config []);
       ("terminal" ,  self#get_terminal );
@@ -729,7 +743,7 @@ class router
   | ("variant"  , "") -> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (Some x)
   | ("kernel"   , x ) -> self#set_kernel x
-  | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (bool_of_string x)
+  | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (Marshal.from_string x 0)
   | ("show_unix_terminal", x )   -> self#set_show_unix_terminal   (bool_of_string x)
   | ("rc_config", x )            -> self#set_rc_config (Marshal.from_string x 0)
   | ("terminal" , x ) -> self#set_terminal x
@@ -803,7 +817,7 @@ class ['parent] router =
       ~(ethernet_interface_no)
       ?umid
       ~id
-      ~show_quagga_terminal
+      ?show_quagga_terminal
       ~show_unix_terminal
       ?rcfile_content
       ~working_directory
@@ -847,18 +861,18 @@ class ['parent] router =
 
     initializer 
       match show_quagga_terminal with
-      | false -> ()
-      | true ->
+      | None -> ()
+      | Some port_number ->
         let name = parent#get_name in
         let host = self#ip_address_eth42 in
-        let port_number = 2601 in
-        let xterm_title = Printf.sprintf "%s Quagga terminal (CISCO-IOS-like %d)" name (port_number) in
+        let protocol = quagga_alternatives#acronym_of_port (port_number) in
+        let xterm_title = Printf.sprintf "%s Quagga terminal (CISCO-IOS-like %s)" name (protocol) in
         self#add_accessory_process
           (new Simulation_level.telnet_process
             ~xterm_title
             ~host
             ~port_number
-            ~delay:1. (* not necessary, could be 0. *)
+            ~delay:2. (* not necessary, could be 0. *)
             ~unexpected_death_callback:
               (fun i _ ->
                   Death_monitor.stop_monitoring i;
@@ -869,6 +883,61 @@ class ['parent] router =
   end (* object router *)
 
 end (* module Simulation_level *)
+
+(*-----*)
+  WHERE
+(*-----*)
+
+ (* A simple data structure (object), with some methods to deal about alternatives, indexes and port numbers: *)
+ let quagga_alternatives
+   : < message_list     : string list;
+       index_of_message : string -> int; 
+       index_of_port    : port_number -> int;
+       port_of_message  : string -> port_number;
+       acronym_of_port  : port_number -> string;
+       valid_port       : port_number -> bool; > 
+       =
+   let message_port_list = 
+      [ ("ZEBRA (port 2601)", 2601);
+        ("RIP (port 2602)"  , 2602);
+        ("RIPNG (port 2603)", 2603);
+        ("OSPF (port 2604)" , 2604);
+        ("BGP (port 2605)"  , 2605);
+        ("OSPF6 (port 2606)", 2606);
+        ("ISIS (port 2608)" , 2608); ]
+   in
+   let message_list, port_list = 
+     List.split message_port_list 
+   in
+   let message_array, port_array = 
+     (Array.of_list message_list, Array.of_list port_list) 
+   in 
+   let acronym_array = (* ["ZEBRA"; "RIP"; "RIPNG"; "OSPF"; "BGP"; "OSPF6"; "ISIS"] *)
+     Array.map (fun m -> Scanf.sscanf m "%s" (fun s->s)) message_array 
+   in
+   (* ---*) 
+   object (self)
+     method message_list = message_list
+     (* ---*) 
+     method index_of_port p = 
+       fst (ListExtra.findi ((=)p) (port_list))
+     (* ---*) 
+     method index_of_message msg = 
+       fst (ListExtra.findi ((=)msg) (message_list))
+     (* ---*) 
+     method port_of_message msg =
+       let index =  self#index_of_message msg in
+       port_array.(index)
+     (* ---*) 
+     method acronym_of_port p =
+       let index =  self#index_of_port p in
+       acronym_array.(index)
+     (* ---*) 
+     method valid_port x = not (x<2601 || x>2608 || x=2607)
+     (* ---*) 
+   end (* object `quagga_alternatives' *)       
+
+ (* --- *)  
 
 
 (** Just for testing: *)

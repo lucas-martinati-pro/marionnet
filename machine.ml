@@ -410,7 +410,7 @@ let make
       let current = distribution_variant_kernel#selected in
       if updating = None then callback (current) else ()
     in
-    (* console_no widget and callback: *)
+    (* Terminal type: *)
     let _terminal =
       let _tooltip = (s_ "Type of terminal to use to control the virtual machine. Possible choices are: X HOST terminal (providing the possibility to launch graphical applications on the host X server) and X NEST (an independent graphic server displaying all the X windows of a virtual machines).")
       in

@@ -276,4 +276,12 @@ val make_rc_config_widget :
   language:string ->
   unit -> (* object *) < active:bool; content:string;  set_sensitive:bool->unit > (* end *)
   
+val make_check_button_with_related_alternatives : 
+  packing:(GObj.widget -> unit) ->
+  active: bool ->
+  ?active_alternative:int -> (* 0 *)
+  ?use_markup:bool -> (* false *)
+  alternatives:string list -> 
+  unit -> (* object *) < active:bool; selected_alternative:string option;  set_sensitive:bool->unit > (* end *)
+  
 val test : unit -> char option
