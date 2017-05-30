@@ -321,20 +321,13 @@ let make
          ]
     in
     form#add_section ~no_line:() "Hardware";
-    (* Ugly hack: the callback will be correctly defined later: *)
+    (* --- *)
     let on_distrib_change = ref [] (* a list of callbacks *) in
     (* --- *)
-    (* memory widget and callback: *)
+    (* memory widget: *)
     let memory =
       Gui_bricks.spin_byte ~lower:memory_min ~upper:memory_max ~step_incr:8
       ~packing:(form#add_with_tooltip (s_ "Amount of RAM to be reserved for this machine.")) memory
-    in
-    let memory_related_action_on_distrib_change d =
-      let memory_min = (vm_installations#memory_min_size_of d) in
-      let () = Option.iter (fun x -> memory#adjustment#set_bounds ~lower:(float_of_int x) ()) memory_min in
-      let memory_suggested = (vm_installations#memory_suggested_size_of d) in
-      let () = Option.iter (fun x -> memory#set_value (float_of_int x)) memory_suggested in
-      ()
     in
     (* port_no widget: *)
     let port_no =
@@ -374,16 +367,16 @@ let make
          ~language:("sh")
          ()
     in
-    let rc_config_related_action_on_distrib_change d =
-      let sensitive = (vm_installations#marionnet_relay_supported_by d) in
-      form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive)
-    in
     (* --- *)
-    (* Register `rc_config' callback according to current distribution:  *)
+    (* Register and call the "Startup configuration" callback according to current distribution:  *)
     let () =
-      on_distrib_change := (rc_config_related_action_on_distrib_change)::!on_distrib_change;
+      let callback d =
+        let sensitive = (vm_installations#marionnet_relay_supported_by d) in
+        form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive)
+      in
+      on_distrib_change := (callback)::!on_distrib_change;
       let current = distribution_variant_kernel#selected in
-      rc_config_related_action_on_distrib_change (current)
+      callback (current)
     in
     (* --- *)
     form#add_section "Access";
@@ -392,23 +385,30 @@ let make
       Gui_bricks.spin_byte ~lower:1 ~upper:8 ~step_incr:1
       ~packing:(form#add_with_tooltip (s_ "Number of consoles (tty0, tty1 ...) of the virtual machine")) console_no
     in
-    let console_no_related_action_on_distrib_change d =
-      let sensitive = (vm_installations#multiple_consoles_supported_by d) in
-      form#set_sensitive ~label_text:(s_ "Consoles") (sensitive);
-      (* console_no#misc#set_sensitive (sensitive); *)
-      (if not sensitive then console_no#set_value 1.);
-    in
-    (* Register `console_no' callback and set it according to current distribution:  *)
+    (* Register and call the "Consoles" callback and set it according to current distribution:  *)
     let () =
-      on_distrib_change := (console_no_related_action_on_distrib_change)::!on_distrib_change;
+      let callback d =
+        let sensitive = (vm_installations#multiple_consoles_supported_by d) in
+        form#set_sensitive ~label_text:(s_ "Consoles") (sensitive);
+        (* console_no#misc#set_sensitive (sensitive); *)
+        (if not sensitive then console_no#set_value 1.);
+      in
+      on_distrib_change := (callback)::!on_distrib_change;
       let current = distribution_variant_kernel#selected in
-      console_no_related_action_on_distrib_change (current)
+      callback (current)
     in
     (* Register `memory' callback and set it according to current distribution:  *)
     let () =
-      on_distrib_change := (memory_related_action_on_distrib_change)::!on_distrib_change;
+      let callback d =
+        let memory_min = (vm_installations#memory_min_size_of d) in
+        let () = Option.iter (fun x -> memory#adjustment#set_bounds ~lower:(float_of_int x) ()) memory_min in
+        let memory_suggested = (vm_installations#memory_suggested_size_of d) in
+        let () = Option.iter (fun x -> memory#set_value (float_of_int x)) memory_suggested in
+        ()
+      in
+      on_distrib_change := (callback)::!on_distrib_change;
       let current = distribution_variant_kernel#selected in
-      if updating = None then memory_related_action_on_distrib_change (current) else ()
+      if updating = None then callback (current) else ()
     in
     (* console_no widget and callback: *)
     let _terminal =

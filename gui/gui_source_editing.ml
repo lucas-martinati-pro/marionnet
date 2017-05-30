@@ -98,6 +98,7 @@ let window
   List.iter (fun w -> hbox#set_child_packing ~expand:false ~fill:false w#coerce) [button_cancel; button_ok];
   let language_manager = Lazy.force language_manager in
   let lang = Option.bind language (language_manager#get_language) in
+  (* let () = Option.iter (fun l -> Printf.kfprintf flush stderr "gui_source_editing: lang=%s\n" l#name) lang in *)
   win#set_allow_shrink true;
   source_view#misc#modify_font_by_name font_name;
   source_view#source_buffer#set_highlight_matching_brackets true;

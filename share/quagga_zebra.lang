@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+ Author: Jean-Vincent Loddo
+ Copyright (C) 2017  Jean-Vincent Loddo
+ Copyright (C) 2017  Université Paris 13
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Library General Public
+ License as published by the Free Software Foundation; either
+ version 2 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Library General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+-->
+<language id="quagga_zebra" _name="quagga_zebra" version="2.0" _section="Others">
+  <metadata>
+    <property name="mimetypes">text/x-quagga_zebra</property>
+    <property name="globs">*.quagga_zebra</property>
+    <property name="line-comment-start">!</property>
+  </metadata>
+
+  <styles>
+    <style id="keyword" _name="Keyword" map-to="def:keyword"/>
+    <style id="comment" _name="Comment" map-to="def:comment"/>
+  </styles>
+
+  <definitions>
+
+    <context id="line-comment" style-ref="comment" end-at-line-end="true" class="comment" class-disabled="no-spell-check">
+      <start>!</start>
+      <include>
+        <context ref="def:in-comment"/>
+      </include>
+    </context>
+
+    <context id="keywords" style-ref="keyword">
+      <keyword>hostname</keyword>
+      <keyword>password</keyword>
+      <keyword>enable</keyword>
+      <!-- -->
+      <keyword>interface</keyword>
+      <keyword>address</keyword>
+      <keyword>ip</keyword>
+      <keyword>ipv6</keyword>
+      <keyword>forwarding</keyword>
+      <keyword>exit</keyword>
+      <keyword>route</keyword>
+      <!-- -->
+      <keyword>log</keyword>
+      <keyword>trap</keyword>
+      <keyword>stdout</keyword>
+      <keyword>no</keyword>
+      <keyword>file</keyword>
+      <keyword>syslog</keyword>
+      <keyword>monitor</keyword>
+      <keyword>facility</keyword>
+      <keyword>record-priority</keyword>
+      <keyword>timestamp</keyword>
+      <keyword>precision</keyword>
+      <keyword>commands</keyword>
+      <keyword>service</keyword>
+      <keyword>password-encryption</keyword>
+      <keyword>advanced-vty</keyword>
+      <keyword>terminal-length</keyword>
+      <keyword>line</keyword>
+      <keyword>vty</keyword>
+      <keyword>banner</keyword>
+      <keyword>motd</keyword>
+      <keyword>default</keyword>
+      <keyword>exec-timeout</keyword>
+      <keyword>access-class</keyword>
+      <!-- -->
+      <keyword>link-detect</keyword>
+      <keyword>suppress-ra</keyword>
+      <keyword>ra-interval</keyword>
+      <keyword>nd</keyword>
+      <keyword>prefix</keyword>
+      <!-- -->
+    </context>
+
+    <context id="quagga_zebra">
+      <include>
+        <context ref="line-comment"/>
+        <context ref="keywords"/>
+      </include>
+    </context>
+
+  </definitions>
+
+</language>

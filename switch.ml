@@ -271,7 +271,7 @@ let make
     in
     (port_no, show_vde_terminal, activate_fstp, rc_config)
   in
-
+  (* --- *)
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
