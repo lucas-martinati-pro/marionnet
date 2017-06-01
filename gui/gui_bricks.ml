@@ -17,6 +17,15 @@
 
 open Gettext
 
+type form = < (* object *)
+  add              : GObj.widget -> unit;
+  add_with_tooltip : ?just_for_label:unit -> string -> GObj.widget -> unit;
+  add_section      : ?fg:string -> ?size:string -> ?no_line:unit -> string -> unit;
+  set_sensitive    : label_text:string -> bool -> unit;
+  coerce           : GObj.widget;
+  table            : GPack.table;
+  >
+
 (** {b Example}:
 \{\[
 let tooltips = Gui_Bricks.make_tooltips_for_container window in
@@ -43,7 +52,7 @@ let ipv4address  = GEdit.entry ~text:"10.0.2.1" ~packing:form#add () in
 let dhcp_enabled = GButton.check_button ~packing:form#add () in
 ...\}\]
 *)
-let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) ?packing string_list =
+let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) ?packing string_list : form =
  let rows = (List.length string_list) + (section_no * 2) in
  let table = GPack.table ~row_spacings ~col_spacings ~rows ~columns:2 ~homogeneous:false ?packing () in
  let labels =
@@ -942,6 +951,8 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `T
   let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
   let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
   let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
+  let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
+  let () = set_tooltip (edit_button) (s_ "Edit the configuration file") in
   (* --- *)
   let content = ref (content) in
   let make_editing_window () =
@@ -967,7 +978,7 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `T
   (* --- *)
   let open_button : GButton.button = button_image 
     ~label:(s_ "Import" )
-    ~tooltip:(s_ "Import a configuration file" )
+    ~tooltip:(s_ "Import a configuration file")
     ~packing:hbox#add
     ~stock:`ADD
     ~stock_size:`SMALL_TOOLBAR  (* [ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] *)
@@ -1025,5 +1036,18 @@ let make_check_button_with_related_alternatives ~packing ~active ?(active_altern
       (hbox#misc#set_sensitive b);
       (meaningfull <- b)
   end
+  
+(* --- *)  
+let make_notebook_of_assoc_list ?homogeneous_tabs ~packing (tws: (string * GObj.widget) list) =
+  let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
+  let () = 
+    List.iter 
+      (fun (text, widget) -> 
+         let tab_label = (GMisc.label ~text ())#coerce in
+         let _ = notebook#append_page ~tab_label widget in
+         ())
+      tws
+  in
+  notebook
   
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()

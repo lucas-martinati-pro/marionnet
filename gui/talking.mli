@@ -48,7 +48,7 @@ module EDialog :
     val jpeg_filter   : unit -> GFile.filter
     val png_filter    : unit -> GFile.filter
 
-    type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `RC | `TXT | `XML ]
+    type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `CONF | `RC | `TXT | `XML ]
     val allfilters : filter_name list
 
     val get_filter_by_name : filter_name -> GFile.filter

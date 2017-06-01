@@ -203,6 +203,7 @@ let image_filter () =
 let all_files     () = GFile.filter ~name:"All" () ~patterns: ["*"] ;;
 let script_filter () = GFile.filter ~name:"Scripts Shell/Python (*.sh *.py)"  ~patterns:[ "*.sh"; "*.py" ] () ;;
 let bash_filter   () = GFile.filter ~name:"Bash Scripts (*.sh)"  ~patterns:[ "*.sh"; "*.rc" ] () ;;
+let conf_filter   () = GFile.filter ~name:"Configuration files (*.conf *.config)"  ~patterns:[ "*.conf"; "*.config" ] () ;;
 let rc_filter     () = GFile.filter ~name:"Read command (*.rc)"  ~patterns:[ "*.rc" ] () ;;
 let mar_filter    () = GFile.filter ~name:"Marionnet projects (*.mar)" ~patterns:[ "*.mar"; ] () ;;
 let xml_filter    () = GFile.filter ~name:"XML files (*.xml)" ~patterns:[ "*.xml"; "*.XML" ] () ;;
@@ -211,13 +212,11 @@ let jpeg_filter   () = GFile.filter ~name:"JPEG files (*.jpg *.jpeg)" ~patterns:
 let png_filter    () = GFile.filter ~name:"PNG files (*.png)" ~patterns:[ "*.png"; "*.PNG" ] () ;;
 
 (** Filters for Marionnet *)
-(* type filter_name = [ `MAR | `ALL | `IMG | `SCRIPT | `XML | `JPEG | `PNG ];; *)
-
-type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `RC | `TXT | `XML ];;
+type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `CONF | `RC | `TXT | `XML ];;
 
 (** The kit of all defined filters *)
 let allfilters : filter_name list = 
-  [ `ALL ; `MAR ; `IMG ; `SCRIPT ; `BASH; `RC; `TXT; `XML ; `JPEG ]
+  [ `ALL ; `MAR ; `IMG ; `SCRIPT ; `BASH; `CONF; `RC; `TXT; `XML ; `JPEG ]
 ;;
 
 let get_filter_by_name = function
@@ -226,7 +225,8 @@ let get_filter_by_name = function
   | `IMG    -> image_filter  ()
   | `SCRIPT -> script_filter ()
   | `BASH   -> bash_filter   ()
-  | `RC     -> rc_filter   ()
+  | `CONF   -> conf_filter   ()
+  | `RC     -> rc_filter     ()
   | `TXT    -> txt_filter    ()
   | `XML    -> xml_filter    ()
   | `JPEG   -> jpeg_filter   ()

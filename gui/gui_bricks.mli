@@ -15,19 +15,22 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+type form = < (* object *)
+  add              : GObj.widget -> unit;
+  add_with_tooltip : ?just_for_label:unit -> string -> GObj.widget -> unit;
+  add_section      : ?fg:string -> ?size:string -> ?no_line:unit -> string -> unit;
+  set_sensitive    : label_text:string -> bool -> unit;
+  coerce           : GObj.widget;
+  table            : GPack.table;
+  >
+   
 val make_form_with_labels :
   ?section_no:int ->
   ?row_spacings:int ->
   ?col_spacings:int ->
   ?packing:(GObj.widget -> unit) ->
-  string list ->
-  < add : GObj.widget -> unit;
-    add_with_tooltip : ?just_for_label:unit -> string -> GObj.widget -> unit;
-    add_section: ?fg:string -> ?size:string -> ?no_line:unit -> string -> unit;
-    set_sensitive: label_text:string -> bool -> unit;
-    coerce : GObj.widget;
-    table : GPack.table >
-
+  string list -> form
+  
 val wrap_with_label :
   ?tooltip:string ->
   ?packing:(GObj.widget -> unit) ->
@@ -284,4 +287,15 @@ val make_check_button_with_related_alternatives :
   alternatives:string list -> 
   unit -> (* object *) < active:bool; selected_alternative:string option;  set_sensitive:bool->unit > (* end *)
   
+(* Example of usage::
+let notebook = 
+  let b1 = GButton.button ~label:"b1" () in
+  let b2 = GButton.button ~label:"b2" () in
+  make_notebook_of_assoc_list ~packing [("aaa", b1#coerce); ("bbb", b2#coerce)] ;;
+*)
+val make_notebook_of_assoc_list : 
+  ?homogeneous_tabs:bool ->
+  packing:(GObj.widget -> unit) -> 
+  (string * GObj.widget) list -> GPack.notebook
+
 val test : unit -> char option
