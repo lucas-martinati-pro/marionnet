@@ -1,6 +1,6 @@
 (* This file is part of Marionnet, a virtual network laboratory
-   Copyright (C) 2010  Jean-Vincent Loddo
-   Copyright (C) 2010  Université Paris 13
+   Copyright (C) 2010-2017  Jean-Vincent Loddo
+   Copyright (C) 2010-2017  Université Paris 13
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ open Gettext;;
 #load "where_p4.cmo"
 ;;
 
-(* Machine related constants: *)
+(* Machine component related constants: *)
 (* TODO: make it configurable! *)
 module Const = struct
  let port_no_default = 1
@@ -796,5 +796,26 @@ end;;
 end (* module Simulation_level *)
 
 
-(** Just for testing: *)
+(** For testing: *)
 let test = Dialog_add_or_update.make
+(*
+val test :
+  ?title:string ->
+  ?name:string ->
+  ?label:string ->
+  ?memory:int ->
+  ?memory_min:int ->
+  ?memory_max:int ->
+  ?port_no:int ->
+  ?port_no_min:int ->
+  ?port_no_max:int ->
+  ?distribution:string ->
+  ?variant:string ->
+  ?kernel:string ->
+  ?rc_config:bool * string ->
+  ?updating:unit ->
+  ?console_no:int ->
+  ?terminal:string ->
+  ?help_callback:(unit -> unit) ->
+  ?ok_callback:(Data.t -> Data.t option) ->
+  ?dialog_image_file:string -> unit -> Data.t option*)
