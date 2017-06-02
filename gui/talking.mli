@@ -54,6 +54,7 @@ module EDialog :
     val get_filter_by_name : filter_name -> GFile.filter
 
     val ask_for_file :
+      ?parent: GWindow.window_skel ->
       ?enrich:string Environments.string_env ->
       ?title:string ->
       ?valid:(string -> bool) ->
@@ -66,11 +67,13 @@ module EDialog :
       unit -> string Environments.string_env option
 
     val ask_for_existing_writable_folder_pathname_supporting_sparse_files :
+      ?parent: GWindow.window_skel ->
       ?enrich:Shell.filexpr Environments.string_env ->
       ?help:(unit -> unit) option ->
       title:string -> unit -> Shell.filexpr Environments.string_env option
 
     val ask_for_fresh_writable_filename :
+      ?parent: GWindow.window_skel ->
       ?enrich:string Environments.string_env ->
       title:string ->
       ?filters:GFile.filter list ->
@@ -80,6 +83,7 @@ module EDialog :
       unit -> string Environments.string_env option
 
     val ask_for_existing_rw_filename :
+      ?parent: GWindow.window_skel ->
       ?enrich:Shell.filexpr Environments.string_env ->
       title:string ->
       ?filter_names:filter_name list ->
@@ -87,6 +91,7 @@ module EDialog :
       unit -> string Environments.string_env option
 
     val ask_for_existing_importable_text_filename :
+      ?parent: GWindow.window_skel ->
       ?enrich:Shell.filexpr Environments.string_env ->
       ?max_size_kb:int -> (* 1024 (i.e. 1 Mb)*)
       title:string ->

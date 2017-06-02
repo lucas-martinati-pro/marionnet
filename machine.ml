@@ -295,7 +295,7 @@ let make
  () :'result option =
   let old_name = name in
   let vm_installations =  Disk.get_machine_installations () in
-  let (w,_,name,label) =
+  let (dialog_machine, _, name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
@@ -306,7 +306,7 @@ let make
       ()
   in
   let (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal) =
-    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
+    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_machine#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
@@ -360,6 +360,7 @@ let make
        Gui_bricks.make_rc_config_widget 
          ~width:800
          ~filter_names:[`BASH; `ALL] 
+         ~parent:(dialog_machine :> GWindow.window_skel)
          ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
          ~active:(fst rc_config)
          ~content:(snd rc_config)
@@ -462,7 +463,7 @@ let make
 
   in
   (* The result of make is the result of the dialog loop (of type 'result option): *)
-  Gui_bricks.Dialog_run.ok_or_cancel w ~ok_callback ~help_callback ~get_widget_data ()
+  Gui_bricks.Dialog_run.ok_or_cancel (dialog_machine) ~ok_callback ~help_callback ~get_widget_data ()
 
 
 (*-----*)

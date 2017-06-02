@@ -239,6 +239,7 @@ let get_filter_by_name = function
 (** The edialog asking for file or folder. It returns a simple environment with an unique identifier
     [gen_id] bound to the selected name *)
 let ask_for_file
+  ?(parent: GWindow.window_skel option)
   ?(enrich=mkenv [])
   ?(title="FILE SELECTION")
   ?(valid:(string->bool)=(fun x->true))
@@ -253,7 +254,10 @@ let ask_for_file
       ~icon:Icon.icon_pixbuf
       ~action:action
       ~title
-      ~modal:true () 
+      ~modal:true
+      ?parent
+      ~destroy_with_parent:true
+      ()
   in
   dialog#unselect_all ;
   if (help=None) then () else dialog#add_button_stock `HELP `HELP ;
@@ -300,6 +304,7 @@ let ask_for_file
 
 (** The edialog asking for an existing and writable directory. *)
 let ask_for_existing_writable_folder_pathname_supporting_sparse_files
+ ?(parent: GWindow.window_skel option)
  ?(enrich=mkenv [])
  ?(help=None)
  ~title
@@ -347,11 +352,12 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
         end
     else true
   in 
-  ask_for_file ~enrich ~title ~valid ~filter_names:[] ~action:`SELECT_FOLDER ~gen_id:"foldername" ~help ()
+  ask_for_file ?parent ~enrich ~title ~valid ~filter_names:[] ~action:`SELECT_FOLDER ~gen_id:"foldername" ~help ()
   
 
 (** The edialog asking for a fresh and writable filename. *)
 let ask_for_fresh_writable_filename
+  ?(parent: GWindow.window_skel option)
   ?(enrich=mkenv [])
   ~title
   ?(filters:(GFile.filter list) option)
@@ -368,7 +374,7 @@ let ask_for_fresh_writable_filename
     else (UnixExtra.viable_freshname x)
   in
   let result =
-    ask_for_file ~enrich ~title ~valid ?filters ?filter_names ?extra_widget ~action:`SAVE ~gen_id:"filename" ~help in
+    ask_for_file ?parent ~enrich ~title ~valid ?filters ?filter_names ?extra_widget ~action:`SAVE ~gen_id:"filename" ~help in
   result;;
 
 let dialog_error_choosed_file_doesnt_exist () =
@@ -397,16 +403,16 @@ let is_text_file (filename) =
   | _ -> false
 
 (** The edialog asking for an existing readable/writable filename. *)
-let ask_for_existing_rw_filename ?(enrich=mkenv []) ~title ?(filter_names = allfilters) ?(help=None) () =
+let ask_for_existing_rw_filename ?parent ?(enrich=mkenv []) ~title ?(filter_names = allfilters) ?(help=None) () =
   let valid = fun x ->
     if not (Sys.file_exists x) then (dialog_error_choosed_file_doesnt_exist (); false) else (* continue: *)
     UnixExtra.regfile_rw_or_link_to x
   in
-  ask_for_file ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
+  ask_for_file ?parent ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
 ;;
 
 (** The edialog asking for an existing filename which content may be imported as a string. *)
-let ask_for_existing_importable_text_filename ?(enrich=mkenv []) ?(max_size_kb=1024) ~title ?(filter_names = allfilters) ?(help=None) () =
+let ask_for_existing_importable_text_filename ?parent ?(enrich=mkenv []) ?(max_size_kb=1024) ~title ?(filter_names = allfilters) ?(help=None) () =
   let valid = fun x ->
     if not (Sys.file_exists x) then (dialog_error_choosed_file_doesnt_exist (); false) else (* continue: *)
     if not (is_text_file x)    then (dialog_error_choosed_file_is_not_a_text_file (); false) else (* continue: *)
@@ -414,7 +420,7 @@ let ask_for_existing_importable_text_filename ?(enrich=mkenv []) ?(max_size_kb=1
     if not (size_kb < max_size_kb) then (dialog_error_choosed_file_is_too_big_to_be_imported ((string_of_int max_size_kb)^" Kb"); false) else (* continue: *)
     UnixExtra.regfile_r_or_link_to x (* Just readable *)
   in
-  ask_for_file ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
+  ask_for_file ?parent ~enrich ~title ~valid ~filter_names ~action:`OPEN ~gen_id:"filename" ~help ()
 ;;
 
 (** Generic constructor for question dialogs.

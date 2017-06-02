@@ -272,6 +272,7 @@ val make_rc_config_widget :
   ?height:int -> ?width:int -> (* window paremeters *)
   ?filter_names:Talking.EDialog.filter_name list ->
   (* --- *)
+  parent: GWindow.window_skel -> (* don't worry if the parent is a dialog: you can always perform (dialog :> GWindow.window_skel) *)
   packing:(GObj.widget -> unit) ->
   active: bool ->
   content:string ->

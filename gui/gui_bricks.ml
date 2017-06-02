@@ -947,12 +947,27 @@ let make_check_items_renewer_v2
    ~language:("vde_switch") 
    ()
 *)
-let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `TXT; `ALL]) ~packing ~active ~content ~device_name ~language () =
-  let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
-  let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
-  let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
+let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCRIPT; `TXT; `ALL]) ~parent ~packing ~active ~content ~device_name ~language () =
   let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
+  let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
+  (* --- *)
+  let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
+  (* --- *)
+  let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
   let () = set_tooltip (edit_button) (s_ "Edit the configuration file") in
+  (* --- *)
+  let open_button : GButton.button = button_image 
+    ~label:(s_ "Import" )
+    ~tooltip:(s_ "Import a configuration file")
+    ~packing:hbox#add
+    ~stock:`ADD
+    ~stock_size:`SMALL_TOOLBAR  (* [ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] *)
+    ()
+  in
+  (* Shortcuts: *)
+  let buttons = [check_button#coerce; edit_button#coerce; open_button#coerce] in
+  let buttons_now_insensitive () = List.iter (fun b -> b#misc#set_sensitive false) buttons in
+  let buttons_now_sensitive   () = List.iter (fun b -> b#misc#set_sensitive true)  buttons in
   (* --- *)
   let content = ref (content) in
   let make_editing_window () =
@@ -965,34 +980,30 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`RC; `BASH; `SCRIPT; `T
         ~modal:()
         ~content:(!content)
         ~result
-        ~create_as_dialog:()
+        ~create_as_dialog:(parent)
         ~draw_spaces:[]
         ~position:`MOUSE
         ()
     in
-    ignore (Thread.create (fun () -> content := Option.extract_or (Egg.wait result) !content) ());
+    ignore (Thread.create (fun () -> buttons_now_insensitive (); content := Option.extract_or (Egg.wait result) !content; buttons_now_sensitive ()) ());
   in
   ignore (edit_button#connect#clicked (make_editing_window));
   (edit_button#misc#set_sensitive check_button#active);
   ignore (check_button#connect#toggled (fun () -> edit_button#misc#set_sensitive check_button#active));
   (* --- *)
-  let open_button : GButton.button = button_image 
-    ~label:(s_ "Import" )
-    ~tooltip:(s_ "Import a configuration file")
-    ~packing:hbox#add
-    ~stock:`ADD
-    ~stock_size:`SMALL_TOOLBAR  (* [ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] *)
-    ()
-  in
-  (* --- *)
   let make_import_filename_dialog () =
+    let () = buttons_now_insensitive () in
     let result = 
       Talking.EDialog.ask_for_existing_importable_text_filename
-        ~title:(s_ "Import a configuration file" )
+        ~parent (* <= relevant to close and destroy this dialog if the user close the parent dialog; 
+                      NOTE: the behaviour is not the expected (but is not disturbing) probably because the window is modal. *)
+        ~title:(Printf.sprintf (f_ "Import a configuration file for %s") device_name)
+        (* ~title:(s_ "Import a configuration file" ) *)
         ~filter_names
         (* ~help:(Some Msg.help_nom_pour_le_projet)  *)
         ()
     in
+    let () = buttons_now_sensitive () in
     Option.iter (fun env -> let filename = (env#get "filename") in content := UnixExtra.cat filename) result
   in
   ignore (open_button#connect#clicked (make_import_filename_dialog));

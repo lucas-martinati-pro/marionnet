@@ -61,21 +61,23 @@ let window
   ?(width=650)
   ?(draw_spaces=[`SPACE; `NEWLINE])
   ?close_means_cancel
-  ?create_as_dialog (* not as window (in order to be drawn on top of another dialog) *)
+  (* not as window (in order to be drawn on top of another dialog). This information carry out the window_skel parent: *)
+  ?(create_as_dialog : GWindow.window_skel option)
   ?(position=`CENTER)
   ~title
   ~(result:(string option) Egg.t)
   ()
   =
   let modal = Option.to_bool modal in
-  let (win, vbox, win_connect_destroy) = match create_as_dialog with
-  | None ->
-      let win = GWindow.window ~modal ~title ~position () in
-      let () = win#set_destroy_with_parent true in
-      ((win :> GWindow.window_skel), GPack.vbox ~packing:win#add (), win#connect#destroy)
-  | Some () ->
-      let win = GWindow.dialog ~destroy_with_parent:true ~modal ~title ~position () in
-      ((win :> GWindow.window_skel), win#vbox, win#connect#destroy)
+  let (win, vbox, win_connect_destroy) = 
+    match create_as_dialog with
+    | None ->
+        let win = GWindow.window ~modal ~title ~position () in
+        let () = win#set_destroy_with_parent true in
+        ((win :> GWindow.window_skel), GPack.vbox ~packing:win#add (), win#connect#destroy)
+    | Some parent ->
+        let win = GWindow.dialog ~parent ~destroy_with_parent:true ~modal ~title ~position () in
+        ((win :> GWindow.window_skel), win#vbox, win#connect#destroy)
   in
   let scrolled_win = GBin.scrolled_window
       ~hpolicy:`AUTOMATIC ~vpolicy:`AUTOMATIC

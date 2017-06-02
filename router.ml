@@ -556,7 +556,7 @@ let make
     | Some v -> (true, Ipv6.string_of_config v)
   in
   let vm_installations =  Disk.get_router_installations () in
-  let (w,_,name,label) =
+  let (dialog_router,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
@@ -567,7 +567,7 @@ let make
       ()
   in
   let ((s1,s2,s3,s4,s5), port_0_ipv6_config_obj, port_no, distribution_variant_kernel, show_unix_terminal, quagga_widgets) =
-    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
+    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_router#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
@@ -658,7 +658,7 @@ let make
         () 
     in
     (* --- *)
-    let quagga_text_and_forms (* : array of (acronym, (string, form)) *) =
+    let quagga_textkey_and_forms (* : array of (acronym, ("%s startup config.", form)) *) =
       Array.map 
         (* --- *)
         (fun acronym -> 
@@ -686,10 +686,11 @@ let make
             Gui_bricks.make_rc_config_widget 
               ~height:600 ~width:600
               ~filter_names:[`CONF; `RC; `TXT; `ALL] 
+              ~parent:(dialog_router :> GWindow.window_skel)
               ~packing:(subform#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
               ~active:(fst rc_config)
               ~content:(snd rc_config)
-              ~device_name:(old_name)
+              ~device_name:(Printf.sprintf "%s (%s)" old_name (String.uppercase acronym))
               ~language:("quagga_zebra") (* special syntax TODO: ("quagga_"^acronym) *)
               ()
           in
@@ -697,7 +698,7 @@ let make
           let () =
             let callback d =
               let sensitive = (vm_installations#marionnet_relay_supported_by d) in begin
-              subform#set_sensitive ~label_text:text_startup_config (sensitive);
+              subform#set_sensitive ~label_text:text_startup_config (sensitive); (* <=== text key (text_startup_config) used here *)
               widget#set_sensitive (sensitive);
               end
             in
@@ -708,7 +709,7 @@ let make
           in
           (acronym, widget))
         (* --- *)
-        quagga_text_and_forms
+        quagga_textkey_and_forms
     in
     let quagga_terminal_widgets =
       Array.map 
@@ -722,10 +723,10 @@ let make
           in
           (acronym, widget))
         (* --- *)
-        quagga_text_and_forms
+        quagga_textkey_and_forms
     in
     let _quagga_notebook : GPack.notebook =  
-      let assoc_list = Array.to_list (Array.map (fun (acronym, (_, form)) -> (acronym, form#coerce)) quagga_text_and_forms) in
+      let assoc_list = Array.to_list (Array.map (fun (acronym, (_, form)) -> (acronym, form#coerce)) quagga_textkey_and_forms) in
       Gui_bricks.make_notebook_of_assoc_list
         ~homogeneous_tabs:true
         ~packing:vbox#add
@@ -792,7 +793,7 @@ let make
 
   in
   (* The result of make is the result of the dialog loop (of type 'result option): *)
-  Gui_bricks.Dialog_run.ok_or_cancel w ~ok_callback ~help_callback ~get_widget_data ()
+  Gui_bricks.Dialog_run.ok_or_cancel (dialog_router) ~ok_callback ~help_callback ~get_widget_data ()
 
 
 (*-----*)

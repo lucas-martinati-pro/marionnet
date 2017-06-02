@@ -220,7 +220,7 @@ let make
  ?(dialog_image_file=Initialization.Path.images^"ico.switch.dialog.png")
  () :'result option =
   let old_name = name in
-  let (w,_,name,label) =
+  let (dialog_switch,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
@@ -231,7 +231,7 @@ let make
       ()
   in
   let (port_no, show_vde_terminal, activate_fstp, rc_config) =
-    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
+    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_switch#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
@@ -261,7 +261,8 @@ let make
     in
     let rc_config =
        Gui_bricks.make_rc_config_widget 
-         ~filter_names:[`RC; `ALL] 
+         ~filter_names:[`CONF; `RC; `ALL] 
+         ~parent:(dialog_switch :> GWindow.window_skel)
          ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
          ~active:(fst rc_config)
          ~content:(snd rc_config)
@@ -289,7 +290,7 @@ let make
         }
   in
   (* The result of make is the result of the dialog loop (of type 'result option): *)
-  Gui_bricks.Dialog_run.ok_or_cancel w ~ok_callback ~help_callback ~get_widget_data ()
+  Gui_bricks.Dialog_run.ok_or_cancel (dialog_switch) ~ok_callback ~help_callback ~get_widget_data ()
 
 (*-----*)
   WHERE
