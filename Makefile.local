@@ -30,7 +30,7 @@ OCAMLBRICKS=$(LIBRARYPREFIX)/ocamlbricks
 # Empty for OCaml 3.x.y series, set to "-DOCAML4_02_OR_LATER" for 4.02.y or later:  
 OCAML4_02_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[2-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_02_OR_LATER"; fi)
 
-PP_OPTION = camlp4of $(OCAML4_02_OR_LATER) -I $(OCAMLBRICKS) gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo -I chip
+PP_OPTION = camlp4of $(OCAML4_02_OR_LATER) -I $(OCAMLBRICKS) gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo
 
 OBJECTS_TO_LINK = gtkThread
 BYTE_PROGRAMS = marionnet.byte
@@ -50,20 +50,17 @@ ROOT_NATIVE_PROGRAMS = marionnet-daemon.native
 ROOT_PROGRAMS = marionnet-daemon.byte marionnet-daemon.native
 OTHER_PROGRAMS_TO_INSTALL = scripts/marionnet_telnet.sh
 
-# menu_factory.ml menu_factory.mli chip.ml are not documented because they
+# menu_factory.ml menu_factory.mli are not documented because they
 # get ocamldoc (with -pp camlp4of) confused
-UNDOCUMENTED=version.ml gui.ml chip_example_expanded.ml chip_example.ml menu_factory.ml menu_factory.mli chip.ml
+UNDOCUMENTED=version.ml gui.ml
 
 # Before building the main targets we have to create the machine-generated
 # sources:
 MANUALLY_PRE_COPY_IN_build =     \
   gettext_extract_pot_p4.conf    \
-  chip/chip_parser_p4.ml         \
   scripts/can-directory-host-sparse-files.sh
 
-MANUALLY_PRE_MAKE_IN_build =     \
-  chip/chip_parser_p4.cmo
-
+MANUALLY_PRE_MAKE_IN_build =
 MANUALLY_POST_MAKE_IN_build = 
 
 marionnet.byte marionnet.native : manually_pre_actions version.ml gui.ml
@@ -73,9 +70,6 @@ compile_for_testing:
 	make PP_OPTION="$(PP_OPTION) -DDOCUMENTATION_OR_DEBUGGING"
 
 ########## Manually generated targets (not through ocamlbuild)
-
-_build/chip/chip_parser_p4.cmo: chip/chip_parser_p4.ml
-	@ocamlc -c -I +camlp4 -pp camlp4of camlp4lib.cma -o $@ $<
 
 run: marionnet.byte
 	(export WORKING=`pwd`; OCAMLRUNPARAM="b" $$WORKING/_build/marionnet.byte) | tee /tmp/LOG
