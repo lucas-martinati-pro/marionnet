@@ -82,6 +82,216 @@
       <keyword>ra-interval</keyword>
       <keyword>nd</keyword>
       <keyword>prefix</keyword>
+      <!-- ==================== -->
+      <!-- RIP-related keywords -->
+      <!-- ==================== -->
+      <keyword>router</keyword>
+      <keyword>rip</keyword>
+      <keyword>neighbor</keyword>
+      <keyword>passive-interface</keyword>
+      <keyword>split-horizon</keyword>
+      <keyword>version</keyword>
+      <keyword>redistribute</keyword>
+      <keyword>kernel</keyword>
+      <keyword>metric</keyword>
+      <keyword>route-map</keyword>
+      <keyword>static</keyword>
+      <keyword>connected</keyword>
+      <keyword>ospf</keyword>
+      <keyword>bgp</keyword>
+      <keyword>default-information</keyword>
+      <keyword>originate</keyword>
+      <keyword>distribute-list</keyword>
+      <keyword>default-metric</keyword>
+      <keyword>offset-list</keyword>
+      <keyword>distance</keyword>
+      <keyword>match</keyword>
+      <keyword>prefix-list</keyword>
+      <keyword>next-hop</keyword>
+      <keyword>timers</keyword>
+      <keyword>basic</keyword>
+      <!-- ====================== -->
+      <!-- RIPng-related keywords -->
+      <!-- ====================== -->
+      <keyword>flush_timer</keyword>
+      <keyword>in</keyword>
+      <keyword>out</keyword>
+      <!-- ======================= -->
+      <!-- OSPFv2-related keywords -->
+      <!-- ======================= -->
+      <keyword>abr-type</keyword>
+      <keyword>rfc1583compatibility</keyword>
+      <keyword>log-adjacency-changes</keyword>
+      <keyword>throttle</keyword>
+      <keyword>spf</keyword>
+      <keyword>max-metric</keyword>
+      <keyword>router-lsa</keyword>
+      <keyword>on-startup</keyword>
+      <keyword>on-shutdown</keyword>
+      <keyword>administrative</keyword>
+      <keyword>auto-cost</keyword>
+      <keyword>reference-bandwidth</keyword>
+      <keyword>area</keyword>
+      <keyword>not-advertise</keyword>
+      <keyword>substitute</keyword>
+      <keyword>virtual-link</keyword>
+      <keyword>shortcut</keyword>
+      <keyword>stub</keyword>
+      <keyword>no-summary</keyword>
+      <keyword>default-cost</keyword>
+      <keyword>export-list</keyword>
+      <keyword>import-list</keyword>
+      <keyword>filter-list</keyword>
+      <keyword>authentication</keyword>
+      <keyword>message-digest</keyword>
+      <keyword>metric-type</keyword>
+      <keyword>always</keyword>
+      <keyword>opaque-lsa</keyword>
+      <keyword>capability</keyword>
+      <keyword>opaque-link</keyword>
+      <keyword>opaque-area</keyword>
+      <keyword>opaque-external</keyword>
+      <keyword>adv-router</keyword>
+      <keyword>self-originate</keyword>
+      <keyword>mpls-te</keyword>
+      <keyword>router-address</keyword>
+      <keyword>inter-as area</keyword>
+      <keyword>router-info</keyword>
+      <keyword>pce</keyword>
+      <keyword>domain</keyword>
+      <keyword>as</keyword>
+      <keyword>flag</keyword>
+      <keyword>scope</keyword>
+      <!-- ======================= -->
+      <!-- OSPFv3-related keywords -->
+      <!-- ======================= -->
+      <keyword>ospf6</keyword>
+      <keyword>hello-interval</keyword>
+      <keyword>dead-interval</keyword>
+      <keyword>retransmit-interval</keyword>
+      <keyword>priority</keyword>
+      <keyword>transmit-delay</keyword>
+      <keyword>broadcast</keyword>
+      <keyword>point-to-point</keyword>
+      <!-- ===================== -->
+      <!-- ISIS-related keywords -->
+      <!-- ===================== -->
+      <keyword>isis</keyword>
+      <keyword>net</keyword>
+      <keyword>dynamic</keyword>
+      <keyword>area-password</keyword>
+      <keyword>domain-password</keyword>
+      <keyword>clear</keyword>
+      <keyword>md5</keyword>
+      <keyword>metric-style</keyword>
+      <keyword>narrow</keyword>
+      <keyword>transition</keyword>
+      <keyword>wide</keyword>
+      <keyword>set-overload-bit</keyword>
+      <keyword>lsp-gen-interval</keyword>
+      <keyword>lsp-refresh-interval</keyword>
+      <keyword>level-1</keyword>
+      <keyword>level-1-2</keyword>
+      <keyword>level-2</keyword>
+      <keyword>level-2-only</keyword>
+      <keyword>max-lsp-lifetime</keyword>
+      <keyword>spf-interval</keyword>
+      <keyword>is-type</keyword>
+      <keyword>circuit-type</keyword>
+      <keyword>csnp-interval</keyword>
+      <keyword>hello</keyword>
+      <keyword>padding</keyword>
+      <keyword>hello-multiplier</keyword>
+      <keyword>psnp-interval</keyword>
+      <!-- ===================== -->
+      <!-- BGP-related keywords -->
+      <!-- ===================== -->
+      <keyword>bestpath</keyword>
+      <keyword>as-path</keyword>
+      <keyword>confed</keyword>
+      <keyword>multipath-relax</keyword>
+      <keyword>compare-routerid</keyword>
+      <keyword>dampening</keyword>
+      <keyword>deterministic-med</keyword>
+      <keyword>always-compare-med</keyword>
+      <keyword>aggregate-address</keyword>
+      <keyword>as-set</keyword>
+      <keyword>summary-only</keyword>
+      <keyword>remote-as</keyword>
+      <keyword>ebgp-multihop</keyword>
+      <keyword>description</keyword>
+      <keyword>next-hop-self</keyword>
+      <keyword>update-source</keyword>
+      <keyword>default-originate</keyword>
+      <keyword>port</keyword>
+      <keyword>send-community</keyword>
+      <keyword>weight</keyword>
+      <keyword>local-as</keyword>
+      <keyword>no-prepend</keyword>
+      <keyword>replace-as</keyword>
+      <keyword>maximum-prefix</keyword>
+      <keyword>ttl-security</keyword>
+      <keyword>hops</keyword>
+      <keyword>route-reflector</keyword>
+      <keyword>allow-outbound-policy</keyword>
+      <keyword>peer-group</keyword>
+      <keyword>vpnv4</keyword>
+      <keyword>all</keyword>
+      <keyword>vpn</keyword>
+      <keyword>access-list</keyword>
+      <keyword>encap</keyword>
+      <keyword>permit</keyword>
+      <keyword>deny</keyword>
+      <keyword>last-as</keyword>
+      <keyword>expanded</keyword>
+      <keyword>community-list</keyword>
+      <keyword>exact-match</keyword>
+      <keyword>none</keyword>
+      <keyword>additive</keyword>
+      <keyword>delete</keyword>
+      <keyword>community</keyword>
+      <keyword>extcommunity-list</keyword>
+      <keyword>standard</keyword>
+      <keyword>extcommunity</keyword>
+      <keyword>strict-capability-match</keyword>
+      <keyword>dont-capability-negotiate</keyword>
+      <keyword>override-capability</keyword>
+      <keyword>cluster-id</keyword>
+      <keyword>route-reflector-client</keyword>
+      <keyword>multiple-instance</keyword>
+      <keyword>cisco</keyword>
+      <keyword>zebra</keyword>
+      <keyword>view</keyword>
+      <!-- ============= -->
+      <!-- Filtering etc -->
+      <!-- ============= -->
+      <keyword>seq</keyword>
+      <keyword>le</keyword>
+      <keyword>ge</keyword>
+      <keyword>sequence-number</keyword>
+      <keyword>detail</keyword>
+      <keyword>local-preference</keyword>
+      <keyword>aspath</keyword>
+      <keyword>call</keyword>
+      <keyword>on-match</keyword>
+      <keyword>continue</keyword>
+      <keyword>goto</keyword>
+      <keyword>off-link</keyword>
+      <keyword>no-autoconfig</keyword>
+      <keyword>msec</keyword>
+      <keyword>ra-lifetime</keyword>
+      <keyword>reachable-time</keyword>
+      <keyword>managed-config-flag</keyword>
+      <keyword>other-config-flag</keyword>
+      <keyword>home-agent-config-flag</keyword>
+      <keyword>home-agent-preference</keyword>
+      <keyword>home-agent-lifetime</keyword>
+      <keyword>adv-interval-option</keyword>
+      <keyword>router-preference</keyword>
+      <keyword>low</keyword>
+      <keyword>high</keyword>
+      <keyword>medium</keyword>
+      <keyword>mtu</keyword>
       <!-- -->
     </context>
 

@@ -44,6 +44,8 @@ module Const = struct
 ! IP routing manager
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 !
@@ -76,6 +78,8 @@ enable password zebra
 ! RFC2453, RFC1058 (RIP is Routing Information Protocol v.2)
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 router rip
@@ -97,6 +101,8 @@ router rip
 ! RFC2080 (RIP protocol for IPv6)
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 router ripng
@@ -114,6 +120,8 @@ router ripng
 ! RFC2328 (OSPF is Open Shortest Path First v.2)
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 router ospf
@@ -136,6 +144,8 @@ router ospf
 ! RFC2740 (OSPF6 is Open Shortest Path First v.3 for IPv6)
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 router ospf6
@@ -161,6 +171,8 @@ router ospf6
 ! RFC1771, RFC2858 (BGP is Border Gateway Protocol v.4)
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 !
@@ -192,6 +204,8 @@ enable password zebra
 ! ISO10589, RFC1195, RFC5308
 ! See: http://www.nongnu.org/quagga/docs/quagga.html
 !---
+! Note: leave passwords unchanged or change them in the same way
+! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
 !
@@ -684,7 +698,7 @@ let make
           let widget = 
             let rc_config = List.assoc acronym rc_config in
             Gui_bricks.make_rc_config_widget 
-              ~height:600 ~width:600
+              ~width:800 ~height:600 (* 800x600 *) 
               ~filter_names:[`CONF; `RC; `TXT; `ALL] 
               ~parent:(dialog_router :> GWindow.window_skel)
               ~packing:(subform#add_with_tooltip (s_ "Check to activate a startup configuration" )) 

@@ -19,11 +19,24 @@
 
 # Simple starting/stopping script for Buildroot's quagga installation
 
+# Note that we are root:root when this function is called:
+function make_var_quagga_dir {
+  local TARGET=${1:-"/var/quagga"}
+  mkdir -p $TARGET
+  chown quagga:quagga $TARGET
+}
+
 function start {
+ local VARDIR="/var/quagga"
+ [[ -d $VARDIR ]] || make_var_quagga_dir $VARDIR
+ # --- 
  for i in /etc/quagga/*.conf; do 
   j=$(basename $i); 
   p=${j%.conf}; 
-  which &>/dev/null $p && eval $p -d -f $i;  
+  pidfile=$VARDIR/$p.pid
+  if which &>/dev/null $p; then
+    eval $p -d -f $i -i $pidfile
+  fi
  done
 }
 
@@ -69,6 +82,7 @@ function status {
  rm $TMPFILE
 }
 
+# Main:
 
 case "$1" in
   start) start ;;
