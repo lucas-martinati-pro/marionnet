@@ -359,7 +359,7 @@ let make
     let rc_config =
        Gui_bricks.make_rc_config_widget 
          ~width:800
-         ~filter_names:[`BASH; `ALL] 
+         ~filter_names:[`BASH; `RC; `ALL] 
          ~parent:(dialog_machine :> GWindow.window_skel)
          ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
          ~active:(fst rc_config)
@@ -623,7 +623,7 @@ class machine
       ("distrib"  ,  self#get_epithet  );
       ("variant"  ,  self#get_variant_as_string);
       ("kernel"   ,  self#get_kernel   );
-      ("rc_config", Marshal.to_string self#get_rc_config []);
+      ("rc_config",  Marshal.to_string self#get_rc_config []);
       ("console_no", (string_of_int self#get_console_no));
       ("terminal" ,  self#get_terminal );
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
