@@ -754,7 +754,8 @@ class ['parent] machine =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(filesystem_relay_script)
-      ?(rcfile_content)
+      (* ?(rcfile_content) *)
+      ?(rcfile_content="# Nothing to do this time\n")
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
@@ -778,7 +779,7 @@ object(self)
       ~kernel_file_name
       ?kernel_console_arguments
       ?filesystem_relay_script
-      ?rcfile_content
+      ~rcfile_content
       ~ethernet_interface_no
       ~memory
       ?umid

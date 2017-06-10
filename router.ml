@@ -71,6 +71,7 @@ module Const = struct
 ! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
+!log file /var/quagga/zebra.log
 !
 !=== INTERFACE CONFIGURATION ===
 !interface IFNAME
@@ -106,6 +107,7 @@ enable password zebra
 password zebra
 enable password zebra
 router rip
+!log file /var/quagga/ripd.log
 !
 !  network ADDRESS/PREFIX
 !  network IFNAME
@@ -129,6 +131,7 @@ router rip
 password zebra
 enable password zebra
 router ripng
+!log file /var/quagga/ripngd.log
 !
 !  network ADDRESS/PREFIX
 !  network IFNAME
@@ -148,6 +151,7 @@ router ripng
 password zebra
 enable password zebra
 router ospf
+!log file /var/quagga/ospfd.log
 !
 !  network ADDRESS/PREFIX area ADDRESS
 !  area ADDRESS range ADDRESS/PREFIX [substitute ADDRESS/PREFIX]
@@ -172,6 +176,7 @@ router ospf
 password zebra
 enable password zebra
 router ospf6
+!log file /var/quagga/ospf6d.log
 !
 !=== EXAMPLES (tip: uncomment and adapt) ===
 !
@@ -198,6 +203,7 @@ router ospf6
 ! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
+!log file /var/quagga/bgpd.log
 !
 !=== EXAMPLES (tip: uncomment and adapt) ===
 !
@@ -231,6 +237,7 @@ enable password zebra
 ! for all services (zebra, rip, ripng, ospf, bgp, ospf6, isis)
 password zebra
 enable password zebra
+!log file /var/quagga/isisd.log
 !
 !=== EXAMPLES (tip: uncomment and adapt) ===
 !
@@ -267,7 +274,8 @@ enable password zebra
        (* --- *)
        initial_content_for_rcfiles : string array;
        rc_config_initialization : (string * (bool * string)) list;
-       config_file_of_lowercase_acronym : string -> string; (* "zebra" -> "/etc/quagga/zebra.conf" *)
+       config_file_of_lowercase_acronym    : string -> string; (* "zebra" -> "/etc/quagga/zebra.conf" *)
+       config_content_of_lowercase_acronym : string -> string; (* "zebra" -> "!ZEBRA configuration file\n..." *)
        port_of_lowercase_acronym        : string -> port_number
        (* --- *)
        > 
@@ -348,6 +356,10 @@ enable password zebra
      method config_file_of_lowercase_acronym (acronym) =
        let index =  self#index_of_lowercase_acronym (acronym) in
        Printf.sprintf "/etc/quagga/%s" config_files.(index)
+     (* ---*) 
+     method config_content_of_lowercase_acronym (acronym) =
+       let index =  self#index_of_lowercase_acronym (acronym) in
+       initial_content_for_rcfiles.(index)
      (* ---*) 
      method port_of_lowercase_acronym (acronym) =
        let index =  self#index_of_lowercase_acronym (acronym) in
@@ -790,6 +802,7 @@ let make
         (* --- *)
         quagga_textkey_and_forms
     in
+    (* --- *)
     let _quagga_notebook : GPack.notebook =  
       let assoc_list = Array.to_list (Array.map (fun (acronym, (_, form)) -> (acronym, form#coerce)) quagga_textkey_and_forms) in
       Gui_bricks.make_notebook_of_assoc_list
@@ -1038,7 +1051,15 @@ class router
       | true, content -> Some content
     in
     let rcfile_quagga_contents : (Const.quagga_lowercase_acronym * string) list =
-      ListExtra.filter_map (fun (k,(b,c)) -> if b then Some (k,c) else None) self#get_rc_config_quagga
+      (* ListExtra.filter_map (fun (k,(b,c)) -> if b then Some (k,c) else None) self#get_rc_config_quagga *)
+      List.map 
+        (fun (k,(b,c)) -> 
+           if b then (k,c) else (* continue: *)
+           (* Get the default content (configuration) for the key `k': *)
+           let c0 = Const.quagga_alternatives#config_content_of_lowercase_acronym (k) in
+           (k,c0)
+           ) 
+        self#get_rc_config_quagga
     in
     let () =
      Log.printf4
@@ -1223,8 +1244,8 @@ class ['parent] router =
         (rcfile_quagga_contents)
     in
     (* --- *)
-    (* The Unix rc-file will be executed (sourced) after the quagga settings: *)
-    let xs = match rcfile_unix_content with None -> xs | Some content -> List.append xs [content] in
+    (* The Unix rc-file will be executed (sourced) BEFORE the quagga settings: *)
+    let xs = match rcfile_unix_content with None -> xs | Some content -> content::xs in
     (* --- *)
     if xs = [] then None else Some (String.concat "\n" xs)
   in

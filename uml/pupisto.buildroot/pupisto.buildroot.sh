@@ -527,6 +527,7 @@ cp $QUAGGA_DIR/quagga etc/init.d/
 chmod +x etc/init.d/quagga
 mkdir -p etc/quagga
 cp -f $QUAGGA_DIR/{*.conf,README.ports} etc/quagga/
+for i in etc/quagga/*.conf; do cp -f $i $i.default; done
 # Add group and system user:
 echo "quaggavty:x:116:" >> etc/group
 echo "quagga:x:117:" >> etc/group
