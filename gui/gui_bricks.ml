@@ -1061,4 +1061,24 @@ let make_notebook_of_assoc_list ?homogeneous_tabs ~packing (tws: (string * GObj.
   in
   notebook
   
+let make_notebook_of_assoc_array_with_check_buttons 
+  ?(tooltip=(s_ "Check to activate")) 
+  ?homogeneous_tabs
+  ~packing 
+  (tbws: (string * bool * GObj.widget) array) 
+  =
+  let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
+  let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
+  Array.map 
+    (fun (text, active, widget) -> 
+        let hbox = GPack.hbox ~homogeneous:false(*true*) () in
+        let label = GMisc.label ~text ~packing:(hbox#add) () in
+        let activate = GButton.check_button ~active ~packing:(hbox#add) () in
+        let _ = activate#connect#toggled (fun () -> widget#misc#set_sensitive activate#active) in
+        let () = widget#misc#set_sensitive activate#active in
+        let () = set_tooltip hbox (tooltip) in
+        let _ = notebook#append_page ~tab_label:(hbox#coerce) widget in
+        activate)
+    tbws
+  
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()

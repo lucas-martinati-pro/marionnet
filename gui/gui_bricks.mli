@@ -299,4 +299,10 @@ val make_notebook_of_assoc_list :
   packing:(GObj.widget -> unit) -> 
   (string * GObj.widget) list -> GPack.notebook
 
+val make_notebook_of_assoc_array_with_check_buttons :                                                                                                                         
+  ?tooltip:string -> (* s_ "Check to activate" *)
+  ?homogeneous_tabs:bool ->
+  packing:(GObj.widget -> unit) ->
+  (string * bool * GObj.widget) array -> GButton.toggle_button array
+
 val test : unit -> char option
