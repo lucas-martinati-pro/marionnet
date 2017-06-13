@@ -1163,6 +1163,7 @@ class uml_process =
     let out_channel = Unix.out_channel_of_descr descriptor in
     let write (name, value) = Printf.fprintf out_channel "%s='%s'\n" name value in
     (* --- *)
+    write ("x11_display_number", X.guest_display_dot_screen);
     Option.iter (fun x -> write ("mit_magic_cookie_1",x)) X.mit_magic_cookie_1;
     (* --- *)
     List.iter

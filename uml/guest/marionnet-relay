@@ -246,7 +246,8 @@ fi
  ###########################################
 
  # Setting DISPLAY
- x11_display_number=${x11_display_number#:} # x11_display_number is currently unused
+ # x11_display_number means and should be renamed "x11_display_number_and_screen":
+ x11_display_number=${x11_display_number#:} 
  DISPLAY_VALUE=172.23.0.254:${x11_display_number:-0}
 
  # Support for `ssh' tunnelling:

@@ -32,20 +32,22 @@ pushd $FLATTENED_DIRECTORY; find $MARIONNET_HOME/* -maxdepth 0 -type d -exec ln 
 # Preamble:
 PREAMBLE=$(mktemp)
 cat > $PREAMBLE  <<EOF
+#require "ocamlbricks";;
+#load "ocamlbricks.cma";;
+Ocamlbricks_log.enable ();;
+Printexc.record_backtrace true;;
 #require "unix";;
 #require "threads";;
 #require "str";;
 #require "lablgtk2";;
 #require "lablgtk2.glade";;
 #require "lablgtk2.sourceview2";;
-#require "ocamlbricks";;
-Ocamlbricks_log.enable ();;
-Printexc.record_backtrace true;;
 (* --- *)
+#load "gtkThread.cmo";;
 #load "marionnet.cma";;
 (* --- *)
 Sys.chdir "$(realpath $FLATTENED_DIRECTORY)" ;;
-let back = GMain.Main.main ;;
+(* let back = GMain.Main.main ;; *)
 EOF
 
 export OCAMLRUNPARAM=-b
@@ -56,6 +58,7 @@ ln -sf ../../share
 ln -sf ../../po
 
 # Go:
+export MARIONNET_DEBUG=true
 utop -init $PREAMBLE || CODE=$?
 rm -f $PREAMBLE
 exit $CODE
