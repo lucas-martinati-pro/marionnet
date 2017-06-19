@@ -19,12 +19,17 @@
 
 (** This is the client side of the Marionnet-daemon support: *)
 
-open Daemon_language;;
+(* open Daemon_language;; *)
 open Gettext;;
 
-module Recursive_mutex = MutexExtra.Recursive ;;
-let socket_name = Daemon_parameters.socket_name;;
-let inter_keepalive_interval = Daemon_parameters.inter_keepalive_interval;;
+(* Convenient aliases: *)
+module Parameters      = Daemon_parameters
+module Language        = Daemon_language
+module Recursive_mutex = MutexExtra.Recursive
+(* --- *)
+
+let socket_name = Parameters.socket_name;;
+let inter_keepalive_interval = Parameters.inter_keepalive_interval;;
 
 (** The mutex we use to avoid sending concurrent messages to the same socket
     from different threads: *)
@@ -37,17 +42,18 @@ let the_daemon_client_socket =
 
 (** Is the connection with the daemon currently up? *)
 let can_we_communicate_with_the_daemon_bool_ref =
-  ref true;;
+  ref true
+
 let can_we_communicate_with_the_daemon () =
   Recursive_mutex.with_mutex the_daemon_client_mutex
     (fun () ->
-      !can_we_communicate_with_the_daemon_bool_ref);;
+       !can_we_communicate_with_the_daemon_bool_ref)
 
 (** Stop trying to communicate with the daemon: *)
 let disable_daemon_support () =
   Recursive_mutex.with_mutex the_daemon_client_mutex
     (fun () ->
-      can_we_communicate_with_the_daemon_bool_ref := false);;
+       can_we_communicate_with_the_daemon_bool_ref := false)
 
 (** Send the given request (in abstract syntax) to the server, and return
     its response, still in abstract syntax.
@@ -58,19 +64,19 @@ let ask_the_server request =
     (fun () ->
       try
         if can_we_communicate_with_the_daemon () then begin
-          let buffer = String.make message_length 'x' in
-          let request_as_string = print_request request in
-          let sent_byte_no = Unix.send the_daemon_client_socket request_as_string 0 message_length [] in
+          let buffer = String.make Language.message_length 'x' in
+          let request_as_string = Language.print_request request in
+          let sent_byte_no = Unix.send the_daemon_client_socket request_as_string 0 Language.message_length [] in
           (if not (sent_byte_no == sent_byte_no) then
             failwith "send() failed");
           let received_byte_no =
-            Unix.read the_daemon_client_socket buffer 0 message_length in
-          (if received_byte_no < message_length then
+            Unix.read the_daemon_client_socket buffer 0 Language.message_length in
+          (if received_byte_no < Language.message_length then
             failwith "recv() failed, or the message is ill-formed");
-          let response = parse_response buffer in
+          let response = Language.parse_response buffer in
           response
         end else
-          (Error "the socket to the daemon is down");
+          (Language.Error "the socket to the daemon is down");
       with e -> begin
         Log.printf1 "ask_the_server failed: %s\n" (Printexc.to_string e);
         disable_daemon_support ();
@@ -78,14 +84,14 @@ let ask_the_server request =
           (s_ "Failure in daemon communication")
           (s_ "Error in trying to communicate with the daemon.\nThe application should remain usable, but without the features requiring root access...")
           ();
-        (Error "the socket to the daemon just went down");
-      end);;
+        (Language.Error "the socket to the daemon just went down");
+      end)
 
 (** The thunk implementing the thread which periodically sends keepalives: *)
 let thread_sending_keepalives_thunk () =
   try
     while true do
-      let _ = ask_the_server IAmAlive in
+      let _ = ask_the_server Language.IAmAlive in
       (try
         Thread.delay inter_keepalive_interval;
       with e -> begin
@@ -97,15 +103,15 @@ let thread_sending_keepalives_thunk () =
   with e -> begin
     Log.printf1 "The keepalive-sending thread failed: %s.\n" (Printexc.to_string e);
     Log.printf "Bailing out.\n";
-  end;;
+  end
 
 (** This should be called *before* communicating with the daemon in any way: *)
-let initialize_daemon_client () =
+let initialize_daemon_client () = begin
   Log.printf "Connecting to the daemon socket...\n";
   Unix.connect the_daemon_client_socket (Unix.ADDR_UNIX socket_name);
-  Log.printf "Ok, connected with success.\n"
-;;
+  Log.printf "Ok, connected with success.\n";
+  end
 
 (** Make a new thread sending keepalives to the daemon: *)
 let start_thread_sending_keepalives () =
-  ignore (Thread.create thread_sending_keepalives_thunk ());;
+  ignore (Thread.create thread_sending_keepalives_thunk ())

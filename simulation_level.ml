@@ -855,6 +855,7 @@ class uml_process =
        "xterm="^Initialization.marionnet_terminal;
        (* Ghost interface configuration. The IP address is relative to a *host* tap: *)
        "eth42=tuntap,"^tap_name^","^(random_ghost_mac_address ())^",172.23.0.254";
+       "debug_mode="^(if Global_options.Debug_level.are_we_debugging () then "true" else "");
      ]
   in
   (* Exam *)

@@ -150,7 +150,7 @@ module Debug_level = struct
 
   (** Interpret the current state as suffix to append to shell commands. *)
   let redirection () =
-    if are_we_debugging () then "" else " >/dev/null 2>/dev/null "
+    if are_we_debugging () then "" else " 1>/dev/null 2>/dev/null "
 
 end (* Initialization.Debug_level *)
 

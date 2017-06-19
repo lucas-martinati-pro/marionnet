@@ -16,6 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* Activate log: *)   
+let () = Log.Tuning.Set.debug_level (fun () -> 1)
+
 (* Convenient aliases: *)
 module Parameters      = Daemon_parameters
 module Language        = Daemon_language
@@ -38,18 +41,56 @@ let string_of_client client =
 let the_daemon_mutex =
   Recursive_mutex.create ()
 
+(* ----------------------------------------------------------------------- 
+                          CLIENT INFORMATIONS
+                        and related structures
+   ----------------------------------------------------------------------- *)
+
 (** An associative structure mapping each client to its resources: *)
-let resource_map =
+let resource_map : (client, Language.resource) Hashmmap.hashmultimap =
   new Hashmmap.hashmultimap ()
+
+let ownership (client: client) (resource : Language.resource) : bool =
+  resource_map#mem client resource
 
 (** An associative structure mapping each client to the time of the death
     of its resources (unless they send messages, of course): *)
-let client_death_time_map =
+let client_death_time_map : (client, float) Hashmap.hashmap =
   new Hashmap.hashmap ()
 
 (** An associative structure mapping each client to its socket: *)
-let socket_map =
+let socket_map : (client, Unix.file_descr) Hashmap.hashmap =
   new Hashmap.hashmap ()
+
+(** An associative structure mapping each client to its declared uid: *)
+let uid_map : (client, Language.uid) Hashmmap.hashmultimap =
+  new Hashmmap.hashmultimap ()
+
+(* Add the binding (client, uid) if the requested resource contains this information: *)
+let uid_map_add (client: client) = function
+| Language.SocketTap (_tap_name, uid, _bridge_name) -> 
+    (* Note that the following test is implicitely performed by the method #add with ocamlbricks revno >= 452 *)
+    if uid_map#mem (client) (uid) 
+      then () 
+      else uid_map#add (client) (uid)
+| _ -> () (* Nothing to do *)
+
+(** Useful to check the consistency before destroying a resource: *)  
+let uid_consistency (client: client) (uid : Language.uid) : bool =
+  let () = Log.printf2 "Looking for client-uid consistency: (#%d, %d)... \n" client uid in 
+  match (uid_map#lookup client) with
+  | [uid'] when uid = uid'  -> true
+  | [uid'] when uid <> uid' ->
+      let () = Log.printf1 "Error: the client %d has previously declared another uid!\n" client in 
+      false
+  | [] ->
+      let () = Log.printf1 "Error: the client %d has not a declared uid!\n" client in 
+      false
+  | _ -> 
+      let () = Log.printf1 "Error: the client %d has too many declared uid!\n" client in 
+      false
+
+(* ----------------------------------------------- END of CLIENT STRUCTURES *)
 
 (** Seed the random number generator: *)
 let () = Random.self_init ()
@@ -65,8 +106,12 @@ let make_fresh_tap_name () =
 
 (** Generate a random name, very probably unique, for a new tap
     for the socket component: *)
-let make_fresh_tap_name_for_socket () =
-  make_fresh_name "sktap"
+let make_fresh_tap_name_for_world_bridge () =
+  make_fresh_name "wbtap"
+
+(** Accepted tap prefixes for destructions: *)  
+let accepted_tap_prefixes = 
+  ["tap"; "wbtap"]
 
 (** Actually make a tap at the OS level: *)
 let make_system_tap (tap_name : Language.tap_name) uid ip_address =
@@ -74,57 +119,87 @@ let make_system_tap (tap_name : Language.tap_name) uid ip_address =
   let command_line =
     Printf.sprintf
       "{ tunctl -u %i -t %s && ifconfig %s 172.23.0.254 netmask 255.255.255.255 up; route add %s %s; }"
-      uid tap_name tap_name ip_address tap_name 
+      (uid) (tap_name) (tap_name) (ip_address) (tap_name) 
   in begin
   Log.system_or_fail command_line;
   Log.printf1 "The tap %s was created with success\n" tap_name
   end
 
-(** Actually make a tap at the OS level for the bridge socket component: *)
-let make_system_tap_for_socket (tap_name : Language.tap_name) uid bridge_name =
+(** Actually make a tap at the OS level for the world bridge component: *)
+let make_system_tap_for_world_bridge (tap_name : Language.tap_name) uid bridge_name =
   Log.printf1 "Making the tap %s...\n" tap_name;
   let command_line =
     Printf.sprintf
       "{ tunctl -u %i -t %s && ifconfig %s 0.0.0.0 promisc up && brctl addif %s %s; }"
-      uid
-      tap_name
-      tap_name
-      bridge_name tap_name 
+      (uid) (tap_name) (tap_name) (bridge_name) (tap_name) 
   in begin
   let on_error = Printf.sprintf "tunctl -d %s" tap_name in
   Log.system_or_fail ~on_error command_line;
   Log.printf1 "The tap %s was created with success\n" tap_name
   end
 
-(** Actually destroy a tap at the OS level: *)
-let destroy_system_tap (tap_name : Language.tap_name) =
+let destroy_system_tap_OLD (tap_name : Language.tap_name) =
   Log.printf1 "Destroying the tap %s...\n" tap_name;
   let redirection = Global_options.Debug_level.redirection () in
   let command_line =
     Printf.sprintf
-      "while ! (ifconfig %s down && tunctl -d %s %s); do echo 'I can not destroy %s yet %s...'; sleep 1; done&"
-      tap_name tap_name redirection tap_name redirection 
+      "while ! (ifconfig %s down && tunctl -d %s %s); do echo 'I can not destroy %s yet...' %s ; sleep 1; done&"
+      (tap_name) (tap_name) (redirection) (tap_name) (redirection) 
   in begin
   Log.system_or_fail ~hide_output:false ~hide_errors:false command_line;
-  Log.printf1 "The tap %s was destroyed with success\n" tap_name
+  Log.printf1 "Launched command to destroy tap %s in background. It's probably destroyed now.\n" tap_name
   end
-
+  
+let repeat_obstinately 
+  ?(delay=1.) 
+  ?(delay_increasing=(fun x -> x +. 1.)) 
+  ?(max_attempts=100) (* with increasing \x.x+1 => max waiting time = 100*101/2=5000 seconds > 1 day *)
+  (thunk:unit->bool) : unit -> unit =    
+  let rec loop (delay) (attempts) =
+    if attempts > max_attempts then () else (* continue: *)
+    if thunk () then () else (* continue: *)
+    let () = Thread.delay (delay) in
+    loop (delay_increasing delay) (attempts+1)
+  in
+  fun () -> loop delay 0
+  
+let remove_tuntap ~(command:string) (tap_name : Language.tap_name) : bool =
+  (* --- *)
+  let () = Log.printf1 "Destroying the TUN/TAP interface %s...\n" tap_name in
+  (* Try to remove the tuntap with the provided shell command: *)
+  let () = ignore (Unix.system command) in
+  (* Now test if the tap exists: *)
+  let ifconfig_tap = Printf.sprintf "ifconfig %s 2>/dev/null 1>/dev/null" (tap_name) in
+  match (Unix.system ifconfig_tap) with
+  (* --- *)  
+  | Unix.WEXITED 0 (* Damn, the tap still exists! *) ->
+      let () = Log.printf1 "Failed to destroy the TUN/TAP interface %s\n" tap_name in
+      false
+  (* --- *)  
+  | _ -> (* The tap doesn't exist. It's fine: *)
+     let () = Log.printf1 "The TUN/TAP interface %s was destroyed with success\n" tap_name in
+     true 
+     
 (** Actually destroy a tap at the OS level for the socket component: *)
-let destroy_system_tap_for_socket (tap_name : Language.tap_name) uid bridge_name =
-  Log.printf1 "Destroying the tap %s...\n" tap_name;
-  let command_line =
-    (* This is currently disabled. We have to decide what to do about this: *)
-    Printf.sprintf
-      "{ ifconfig %s down && brctl delif %s %s && tunctl -d %s; }"
-      tap_name bridge_name tap_name tap_name 
-  in begin
-  Log.system_or_fail command_line;
-  Log.printf1 "The tap %s was destroyed with success\n" tap_name;
-  end
+let destroy_system_tap_for_world_bridge (tap_name : Language.tap_name) (uid (*unused*))  (bridge_name) =
+  let command =
+    Printf.sprintf "ifconfig %s down && brctl delif %s %s && tunctl -d %s"
+      (tap_name)  (bridge_name) (tap_name)  (tap_name) 
+  in
+  let thunk () : bool = remove_tuntap ~command (tap_name) in
+  let _ = Thread.create (repeat_obstinately thunk) () in
+  ()
 
+(** Actually destroy a tap at the OS level: *)
+let destroy_system_tap (tap_name : Language.tap_name) =
+  let command = Printf.sprintf "ifconfig %s down && tunctl -d %s" (tap_name) (tap_name) in
+  let thunk () : bool = remove_tuntap ~command (tap_name) in
+  let _ = Thread.create (repeat_obstinately thunk) () in
+  ()
+  
 (** Instantiate the given pattern, actually create the system object, and return
     the instantiated resource: *)
-let make_system_resource resource_pattern =
+let make_system_resource resource_pattern : Language.resource =
   match resource_pattern with
   (* --- *)    
   | Language.AnyTap(uid, ip_address) ->
@@ -133,8 +208,8 @@ let make_system_resource resource_pattern =
       Language.Tap tap_name
   (* --- *)    
   | Language.AnySocketTap(uid, bridge_name) ->
-      let tap_name = make_fresh_tap_name_for_socket () in
-      make_system_tap_for_socket tap_name uid bridge_name;
+      let tap_name = make_fresh_tap_name_for_world_bridge () in
+      make_system_tap_for_world_bridge tap_name uid bridge_name;
       Language.SocketTap(tap_name, uid, bridge_name)
 
 (** Actually destroyed the system object named by the given resource: *)
@@ -143,7 +218,7 @@ let destroy_system_resource resource =
   | Language.Tap tap_name ->
       destroy_system_tap tap_name
   | Language.SocketTap(tap_name, uid, bridge_name) ->
-      destroy_system_tap_for_socket tap_name uid bridge_name
+      destroy_system_tap_for_world_bridge tap_name uid bridge_name
 
 (** Create a suitable resource matching the given pattern, and return it.
     Synchronization is performed inside this function, hence the caller doesn't need
@@ -160,6 +235,7 @@ let make_resource client resource_pattern =
         let resource = make_system_resource resource_pattern in
         Log.printf2 "Adding %s for %s\n" (Language.string_of_daemon_resource resource) (string_of_client client);
         resource_map#add client resource;
+        uid_map_add client resource;
         resource
       with e -> begin
         Log.printf3 "Failed (%s) when making the resource %s for %s; bailing out.\n"
@@ -171,7 +247,7 @@ let make_resource client resource_pattern =
 
 (** Destroy the given resource. Synchronization is performed inside this function,
     hence the caller doesn't need to worry about it: *)
-let destroy_resource client resource =
+let destroy_resource (client) (resource) =
   Recursive_mutex.with_mutex (the_daemon_mutex)
     (fun () ->
       try
@@ -194,9 +270,13 @@ let destroy_all_client_resources client =
     (fun () ->
       try
         Log.printf1 "Removing all %s's resources:\n" (string_of_client client);
+        (* --- *)  
         List.iter
           (fun resource -> destroy_resource client resource)
           (resource_map#lookup client);
+        (* --- *)  
+        let () =  uid_map#remove ~all:true client in
+        (* --- *)  
         Log.printf1 "All %s's resources were removed with success.\n" (string_of_client client);
       with e -> begin
         Log.printf2 "Failed (%s) when removing %s's resources; continuing anyway.\n"
@@ -384,9 +464,8 @@ let connection_server_thread (client, socket) =
     while true do
       Log.printf "Beginning of the iteration.\n";
       (* We want the message to be initially invalid, at every iteration, to
-         avoid the risk of not seeing a receive error. Just to play it extra
-        safe: *)
-      let buffer = String.make Language.message_length 'x' in
+         avoid the risk of not seeing a receive error. Just to play it extra safe: *)
+      let buffer = String.make (Language.message_length) 'x' in
       (* We don't want to block indefinitely on read() because the socket could
          be closed by another thread; so we simply select() with a timeout: *)
       let (ready_for_read, _, failed) =
@@ -408,19 +487,34 @@ let connection_server_thread (client, socket) =
         if received_byte_no < Language.message_length then
           failwith "recv() failed, or the message is ill-formed"
         else begin
-          let request = Language.parse_request buffer in
-          Log.printf1 "The request is\n  %s\n" (Language.string_of_daemon_request request);
-          keep_alive_client client;
-          let response =
-            try
-              serve_request request client
-            with e ->
-              Error (Printexc.to_string e)
+          (* --- *)
+          let request : Language.secure_daemon_request = 
+            Language.parse_request 
+              ~ownership:(ownership client)
+              ~uid_consistency:(uid_consistency client)
+              ~accepted_address_prefix:"172.23."   (* tap adresses are in this range *)
+              ~accepted_tap_prefixes buffer        (* defined above: ["tap"; "wbtap"] *)
           in
+          keep_alive_client client;
+          (* --- *)
+          let response =
+            match request with
+            | Either.Right error_msg -> 
+                let () = Log.printf1 "Invalid request: %s\n" error_msg in
+                Language.Error (error_msg)
+            (* --- *)
+            | Either.Left request -> 
+                let () = Log.printf1 "The request is\n  %s\n" (Language.string_of_daemon_request request) in
+                (try
+                   serve_request request client
+                 with e ->
+                   Language.Error (Printexc.to_string e))
+          in
+          (* --- *)
           Log.printf1 "My response is\n  %s\n" (Language.string_of_daemon_response response);
           let sent_byte_no = Unix.send socket (Language.print_response response) 0 Language.message_length [] in
-          (if not (sent_byte_no == sent_byte_no) then
-            failwith "send() failed");
+          (if not (sent_byte_no == sent_byte_no) then failwith "send() failed");
+          (* --- *)
         end; (* inner else *)
       end else begin
         (* If we arrived here select() returned due to the timeout, and we
