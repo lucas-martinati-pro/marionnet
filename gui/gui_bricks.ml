@@ -1072,7 +1072,7 @@ let make_notebook_of_assoc_array_with_check_buttons
   Array.map 
     (fun (text, active, widget) -> 
         let hbox = GPack.hbox ~homogeneous:false(*true*) () in
-        let label = GMisc.label ~text ~packing:(hbox#add) () in
+        let _label = GMisc.label ~text ~packing:(hbox#add) () in
         let activate = GButton.check_button ~active ~packing:(hbox#add) () in
         let _ = activate#connect#toggled (fun () -> widget#misc#set_sensitive activate#active) in
         let () = widget#misc#set_sensitive activate#active in

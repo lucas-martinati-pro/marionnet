@@ -692,7 +692,7 @@ class globalState = fun () ->
       close_out ch;
       let cmdline =
         let splines = string_of_bool (Cortex.get self#network#dotoptions#curved_lines) in (* Appel de methode Cortex !!!!!!!!!!!!!!! *)
-        Printf.sprintf "dot -Gsplines=%s -Efontname=FreeSans -Nfontname=FreeSans -Tpng -o '%s' '%s'" splines ft fs
+        Printf.sprintf "dot -Gsplines=%s -Efontname=FreeSans -Nfontname=FreeSans -Tpng -o '%s' '%s' 2>/dev/null" splines ft fs
       in
       let exit_code = Sys.command cmdline in
       (* --- *)
