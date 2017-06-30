@@ -367,104 +367,123 @@ object(self)
   method device_type = "world_bridge"
 
   val the_hublet_process = ref None
-  method private get_the_hublet_process =
+  method private extract_the_hublet_process =
     match !the_hublet_process with
       Some the_hublet_process -> the_hublet_process
-    | None -> failwith "world_bridge: get_the_hublet_process was called when there is no such process"
+    | None -> failwith "world_bridge: extract_the_hublet_process was called when there is no such process"
 
-  val world_bridge_hub_process = ref None
-  method private get_world_bridge_hub_process =
-    match !world_bridge_hub_process with
-    | Some p -> p
-    | None -> failwith "world_bridge: get_world_bridge_hub_process was called when there is no such process"
-
-  val world_bridge_tap_name = ref None
-  method private get_world_bridge_tap_name =
-    match !world_bridge_tap_name with
-    | Some t -> t
-    | None -> failwith "world_bridge_tap_name: non existing tap"
+  val mutable world_bridge_hub_process = None
+  val mutable world_bridge_tap_name = None
+  val mutable internal_cable_process = None
 
   (** Create the tap via the daemon, and return its name.
       Fail if a the tap already exists: *)
-  method private make_world_bridge_tap =
-    match !world_bridge_tap_name with
-      None ->
-        let tap_name =
+  method private make_world_bridge_tap : string option =
+    match world_bridge_tap_name with
+    | None ->
+        let tap_name_option =
           let server_response =
             Daemon_client.ask_the_server
-              (Make (AnySocketTap((Unix.getuid ()), bridge_name))) in
+              (Make (AnySocketTap((Unix.getuid ()), bridge_name))) 
+          in
           (match server_response with
-          | Created (SocketTap(tap_name, _, _)) -> tap_name
-          | _ -> "non-existing-tap") in
-        world_bridge_tap_name := Some tap_name;
-        tap_name
-    | Some _ ->
-        failwith "a tap for the world bridge already exists"
+           | Created (SocketTap(tap_name, _, _)) -> 
+               Some tap_name
+           | _ -> 
+               let () = Log.printf "Marionnet daemon refused to create a TUN/TAP interface\n" in
+               None (* "non-existing-tap" *)
+           ) 
+        in
+        let () = world_bridge_tap_name <- tap_name_option in
+        tap_name_option
+    (* --- *)    
+    | Some tap_name ->
+        let () = Log.printf1 "A tap for the world bridge already exists: %s\n" tap_name in
+        Some tap_name
 
   method private destroy_world_bridge_tap =
-    (try
-      ignore (Daemon_client.ask_the_server
-                (Destroy (SocketTap(self#get_world_bridge_tap_name,
-                                     (Unix.getuid ()),
-                                     bridge_name))));
-    with e -> begin
-      Log.printf1
-        "WARNING: Failed in destroying a host tap for a world bridge: %s\n"
-        (Printexc.to_string e);
-    end);
-    world_bridge_tap_name := None
+    Option.iter 
+      (fun tap_name ->
+          try
+            let cmd = Destroy (SocketTap(tap_name, (Unix.getuid ()), bridge_name)) in
+            let _ = Daemon_client.ask_the_server cmd in
+            (world_bridge_tap_name <- None)
+          (* --- *)
+          with e -> begin
+            Log.printf1
+              "WARNING: Failed in destroying a host tap for a world bridge: %s\n"
+              (Printexc.to_string e);
+          end)
+      (world_bridge_tap_name)
 
-  val internal_cable_process = ref None
+  (* --- *)
+  initializer 
+    begin
+      assert ((List.length self#get_hublet_process_list) = 1);
+      (* --- *)
+      the_hublet_process := Some (self#get_hublet_process_of_port 0);
+      (* --- *)
+      world_bridge_hub_process <- self#make_world_bridge_hub_process
+    end  
+  (* --- *)
+  
 
-  initializer
-    assert ((List.length self#get_hublet_process_list) = 1);
-    the_hublet_process :=
-      Some (self#get_hublet_process_of_port 0);
-    world_bridge_hub_process :=
-      Some self#make_world_bridge_hub_process
+  method private make_world_bridge_hub_process : (world_bridge_hub_process option) =
+    let () = 
+      if world_bridge_hub_process <> None then () else (* continue: *)
+      Option.iter
+        (fun tap_name ->
+          let result = 
+            new world_bridge_hub_process
+              ~tap_name
+              ~working_directory
+              ~unexpected_death_callback:self#execute_the_unexpected_death_callback
+              ()
+            in
+            world_bridge_hub_process <- Some result)
+        (* --- *)   
+        (self#make_world_bridge_tap)
+    in
+    world_bridge_hub_process
+     
+  method spawn_processes = 
+   Option.iter
+     (* --- *)         
+     (fun the_world_bridge_hub_process ->
+        (* Spawn the hub process, and wait to be sure it's started: *)
+        let () = the_world_bridge_hub_process#spawn in
+        (* Create the internal cable process from the single hublet to the hub, and spawn it: *)
+         let the_internal_cable_process =
+           Simulation_level.make_ethernet_cable_process
+             ~left_end:the_world_bridge_hub_process
+             ~right_end:self#extract_the_hublet_process
+             ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index 0)
+             ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index 0)
+             ~unexpected_death_callback:self#execute_the_unexpected_death_callback
+             () 
+         in
+         internal_cable_process <- Some the_internal_cable_process;
+         the_internal_cable_process#spawn)
+     (* --- *)         
+     self#make_world_bridge_hub_process 
 
-  method private make_world_bridge_hub_process =
-    new world_bridge_hub_process
-      ~tap_name:self#make_world_bridge_tap
-      ~working_directory
-      ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-      ()
-
-  method spawn_processes =
-    (match !world_bridge_hub_process with
-    | None ->
-        world_bridge_hub_process := Some self#make_world_bridge_hub_process
-    | Some the_world_bridge_hub_process ->
-        ());
-    (* Spawn the hub process, and wait to be sure it's started: *)
-    self#get_world_bridge_hub_process#spawn;
-    (* Create the internal cable process from the single hublet to the hub,
-       and spawn it: *)
-    let the_internal_cable_process =
-      Simulation_level.make_ethernet_cable_process
-        ~left_end:self#get_world_bridge_hub_process
-        ~right_end:self#get_the_hublet_process
-        ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index 0)
-        ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index 0)
-        ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-        () in
-    internal_cable_process := Some the_internal_cable_process;
-    the_internal_cable_process#spawn
-
-  method terminate_processes =
+  method terminate_processes = begin
+    let () = 
+      Log.printf3 "world_bridge %s#terminate_processes:  internal_cable_process=%s  world_bridge_hub_process=%s\n"
+        (parent#name) (Option.to_string internal_cable_process) (Option.to_string world_bridge_hub_process)
+    in
     (* Terminate the internal cable process and the hub process: *)
-    (match !internal_cable_process with
-      Some the_internal_cable_process ->
-        Task_runner.do_in_parallel
-          [ (fun () -> the_internal_cable_process#terminate);
-            (fun () -> self#get_world_bridge_hub_process#terminate) ]
-    | None ->
-        assert false);
+    let () = 
+      Task_runner.do_in_parallel
+        [ (fun () -> Option.iter (fun obj -> obj#terminate) internal_cable_process);
+          (fun () -> Option.iter (fun obj -> obj#terminate) world_bridge_hub_process); ]
+    in
     (* Destroy the tap, via the daemon: *)
     self#destroy_world_bridge_tap;
     (* Unreference everything: *)
-    internal_cable_process := None;
-    world_bridge_hub_process := None;
+    internal_cable_process <- None;
+    world_bridge_hub_process <- None;
+    end
 
   (** As world bridges are stateless from the point of view of the user, stop/continue
       aren't distinguishable from terminate/spawn: *)
