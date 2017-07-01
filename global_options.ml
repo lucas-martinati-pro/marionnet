@@ -56,11 +56,23 @@ let get_workaround_wirefilter_problem () =
     (fun () ->
       !workaround_wirefilter_problem);;
 
-(** The name of the host bridge device used to implement network sockets: *)
-let ethernet_socket_bridge_name =
+(** The name of the host bridge device used to implement the "world bridge" component: *)
+let ethernet_world_bridge_name =
   let default = "br0" in
   Configuration.extract_string_variable_or ~default "MARIONNET_BRIDGE";;
 
+let check_bridge_existence_and_warning () : unit = 
+  let bridge_name = ethernet_world_bridge_name in
+  let cmd = Printf.sprintf "brctl showmacs %s 1>/dev/null 2>/dev/null" (bridge_name) in
+  if (Unix.system cmd) <> (Unix.WEXITED 0) then (* warning: *)
+    let title = (Gettext.s_ "Ethernet bridge not found") in
+    let message =
+      Printf.sprintf
+        (Gettext.f_ "The Ethernet bridge \"%s\" (specified for this purpose\nin the file \"marionnet.conf\") was not found on your system.\nPlease ask your administrator to setup it with something like:\n\n<tt><small>sudo brctl addbr %s\nsudo brctl addif %s %s    # or another interface(s)\nsudo ifconfig %s up\n</small></tt>\nin order to fix this problem. Otherwise, there will be no chance to run the world bridge component properly on your system.")
+        (bridge_name) (bridge_name) (bridge_name) ("eth0") (bridge_name)
+    in
+    Simple_dialogs.warning ~modal:true title message ()
+  
 (** Keyboard layout in Xnest sessions; `None' means `don't set anything' *)
 let keyboard_layout = Configuration.get_string_variable "MARIONNET_KEYBOARD_LAYOUT" ;;
 

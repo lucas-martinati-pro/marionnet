@@ -43,6 +43,7 @@ type t = {
 let to_string t = "<obj>" (* TODO? *)
 end (* Data *)
 
+
 module Make_menus (Params : sig
   val st      : State.globalState
   val packing : [ `toolbar of GButton.toolbar | `menu_parent of Menu_factory.menu_parent ]
@@ -64,6 +65,7 @@ module Make_menus (Params : sig
     let ok_callback t = Gui_bricks.Ok_callback.check_name t.name t.old_name st#network#name_exists t
 
     let dialog () =
+      let () = Global_options.check_bridge_existence_and_warning () in
       let name = st#network#suggestedName "B" in
       Dialog_add_or_update.make ~title:(s_ "Add world bridge") ~name ~ok_callback ()
 
@@ -301,7 +303,7 @@ class world_bridge =
   method private make_simulated_device =
    ((new Simulation_level_world_bridge.world_bridge
         ~parent:self
-        ~bridge_name:Global_options.ethernet_socket_bridge_name
+        ~bridge_name:Global_options.ethernet_world_bridge_name
         ~working_directory:(network#working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)

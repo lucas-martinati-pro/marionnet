@@ -462,6 +462,14 @@ class globalState = fun () ->
 	Log.printf1 "state#open_project_sync: Failed with exception %s\n" (Printexc.to_string e);
       );
       self#register_state_after_save_or_open;
+      (* --- *)
+      let () = 
+        let there_are_world_bridges = 
+          (self#network#get_nodes_such_that ~devkind:`World_bridge (fun _ -> true)) <> []
+        in
+        if (there_are_world_bridges) then Global_options.check_bridge_existence_and_warning ()
+      in
+      (* --- *)
       ()
     end (* function synchronous_loading *)
     in

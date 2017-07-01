@@ -23,9 +23,10 @@ open Gettext;;
 let utf8 x = x;; (* We currently don't use this. It works better :-) *)
 
 (** Generic constructor for message dialog *)
-let message win_title msg_title msg_content img_file () =
-  let d=new Gui.dialog_MESSAGE () in
+let message win_title ?modal (msg_title) (msg_content) (img_file) () =
+  let d = new Gui.dialog_MESSAGE () in
   d#toplevel#set_resizable true;
+  Option.iter (d#toplevel#set_modal) modal;
   let _ = d#closebutton_MESSAGE#connect#clicked ~callback:(d#toplevel#destroy) in
   d#toplevel#set_icon (Some Icon.icon_pixbuf);
   d#toplevel#set_title (utf8 win_title);
@@ -39,20 +40,20 @@ let message win_title msg_title msg_content img_file () =
 ;;
 
 (** Specific constructor for help messages *)
-let help title msg () =
-  message (s_ "Help") title msg "ico.help.orig.png" ();;
+let help ?modal title msg () =
+  message ?modal (s_ "Help") title msg "ico.help.orig.png" ();;
 
 (** Specific constructor for error messages *)
-let error title msg () =
-  message (s_ "Error") title msg "ico.error.orig.png" ();;
+let error ?modal title msg () =
+  message ?modal (s_ "Error") title msg "ico.error.orig.png" ();;
 
 (** Specific constructor for warning messages *)
-let warning title msg () =
-  message (s_ "Warning") title msg "ico.warning.orig.png" ();;
+let warning ?modal title msg () =
+  message ?modal (s_ "Warning") title msg "ico.warning.orig.png" ();;
 
 (** Specific constructor for info messages *)
-let info title msg () =
-  message (s_ "Information") title msg "ico.info.orig.png" ();;
+let info ?modal title msg () =
+  message ?modal (s_ "Information") title msg "ico.info.orig.png" ();;
 
 (** Show a new dialog displaying a progress bar *)
 let make_progress_bar_dialog =
