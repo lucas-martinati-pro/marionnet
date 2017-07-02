@@ -67,3 +67,10 @@ let extract_string_variable_or ?k ?unsuitable_value ~default varname =
 
 let get_string_variable ?k ?unsuitable_value varname =
   Configuration_files.Logging.get_string_variable ?k ?unsuitable_value varname (configuration)
+
+type source = [ `Filename of string | `Environment ] (* Configuration_files.source *)
+  
+let get_string_variable_with_source ?k ?unsuitable_value varname =
+  Configuration_files.With_source.get_string_variable ?k ?unsuitable_value varname (configuration)
+
+  
