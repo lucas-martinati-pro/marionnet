@@ -119,6 +119,8 @@ let ask_text_dialog
     ?max_length
     ?(enable_cancel=false)
     ?(cancel_callback=(fun () -> ()))
+    ?(border_width=40)
+    ?(spacing=20)
     ~ok_callback
     () =
   let window =
@@ -130,7 +132,7 @@ let ask_text_dialog
       ~icon:Icon.icon_pixbuf
       ~resizable:false
       () in
-  let vbox = GPack.vbox ~packing:window#add () in
+  let vbox = GPack.vbox ~packing:window#add ~border_width ~spacing () in
   let _ = GMisc.label ~text:label ~packing:vbox#add ~line_wrap:true () in
   let entry = GEdit.entry ~text:initial_text ?max_length ~packing:vbox#add () in
   ignore (entry#connect#changed

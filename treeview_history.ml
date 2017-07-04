@@ -21,6 +21,7 @@
 open Gettext;;
 module Row_item = Treeview.Row_item ;;
 module Row = Treeview.Row ;;
+type row_id = Treeview.row_id;; (* string *)
 
 (** A function to be called for starting up a given device in a given state. This very ugly
     kludge is needed to avoid a cyclic depencency between mariokit and states_interface *)
@@ -61,6 +62,15 @@ object(self)
   method get_row_timestamp = self#get_String_field (timestamp_header)
   method set_row_timestamp = self#set_String_field (timestamp_header)
 
+  val highlight_header = "_highlight"
+  method get_row_highlight : row_id -> bool = self#get_CheckBox_field (highlight_header)
+  method set_row_highlight : row_id -> bool -> unit   = self#set_CheckBox_field (highlight_header)
+
+  (* The date is simply the first word of the (unique line of the) timestamp: *)
+  method get_row_date (row_id) = 
+    let ts = self#get_row_timestamp (row_id) in
+    List.hd (List.hd (StringExtra.Text.Matrix.of_string ts))
+  
   val prefixed_filesystem_header = "Prefixed filesystem"
   method get_row_prefixed_filesystem = self#get_String_field (prefixed_filesystem_header)
   method set_row_prefixed_filesystem = self#set_String_field (prefixed_filesystem_header)
@@ -313,6 +323,13 @@ object(self)
     let linearized_complete_forest = Forest.to_list self#get_complete_forest in
     List.length linearized_complete_forest
 
+  method export_as_machine_or_router_variant row_id =
+    let type_ = self#get_row_type row_id in
+    match type_ with
+    | "machine" -> self#export_as_machine_variant (row_id)
+    | "router" ->  self#export_as_router_variant  (row_id)
+    | _ -> () (* ignore (do nothing) *)
+
   method export_as_machine_variant row_id =
     self#export_as_variant ~router:false row_id
 
@@ -343,6 +360,7 @@ object(self)
     Simple_dialogs.ask_text_dialog
       ~title:(s_ "Choose the variant name")
       ~label:(s_ "Enter the new variant name; this name must begin with a letter and can contain letters, numbers, dashes and underscores.")
+      ~initial_text:("snapshot-"^(self#get_row_date row_id))
       ~constraint_predicate:
 	  (fun s ->
 	    (String.length s > 0) &&
@@ -373,7 +391,7 @@ object(self)
       Log.system_or_fail command_line;
       Simple_dialogs.info
         (s_ "Success")
-        ((s_ "The variant has been exported to the file") ^ " \"" ^ new_variant_pathname ^ "\".")
+        ((s_ "The variant has been exported to the file") ^ "\n\n<tt><small>" ^ new_variant_pathname ^ "</small></tt>\n")
         ()
     with _ -> begin
       (* Remove any partial copy: *)
@@ -394,7 +412,7 @@ the machine itself (you should expand the tree).") new_variant_pathname)
       self#add_icon_column
         ~header:type_header
         ~shown_header:(s_ "Type")
-        ~strings_and_pixbufs:[ "router", Initialization.Path.images^"treeview-icons/router.xpm";
+        ~strings_and_pixbufs:[ "router",  Initialization.Path.images^"treeview-icons/router.xpm";
                                "machine", Initialization.Path.images^"treeview-icons/machine.xpm"; ]
         () in
     let _ =
@@ -436,23 +454,29 @@ the machine itself (you should expand the tree).") new_variant_pathname)
     self#set_contextual_menu_title "Filesystem history operations";
 
     self#add_menu_item
-     (s_  "Export as machine variant")
+      (* --- *)
+      (s_  "Export as machine variant")
+      (* --- *)
       (fun selected_rowid_if_any ->
         (Option.to_bool selected_rowid_if_any) &&
         (let row_id = Option.extract selected_rowid_if_any in
-        let type_ = self#get_row_type row_id in
-        type_ = "machine"))
+         let type_ = self#get_row_type row_id in
+         type_ = "machine"))
+      (* --- *)
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
         self#export_as_machine_variant row_id);
 
     self#add_menu_item
+      (* --- *)
       (s_ "Export as router variant")
+      (* --- *)
       (fun selected_rowid_if_any ->
         (Option.to_bool selected_rowid_if_any) &&
         (let row_id = Option.extract selected_rowid_if_any in
-        let type_ = self#get_row_type row_id in
-        type_ = "router"))
+         let type_ = self#get_row_type row_id in
+         type_ = "router"))
+      (* --- *)
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
         self#export_as_router_variant row_id);
@@ -532,7 +556,7 @@ the machine itself (you should expand the tree).") new_variant_pathname)
         self#remove_all_states);
 
      (* J.V. *)
-      self#set_after_update_callback after_user_edit_callback;
+      self#set_after_update_callback (after_user_edit_callback);
 
 end;;
 
@@ -543,9 +567,45 @@ module The_unique_treeview = Stateful_modules.Variable (struct
   end)
 let extract = The_unique_treeview.extract
 
+
+(* Add the button "Snapshot" at right side of the treeview. *)
+let add_snapshot_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GButton.toolbar) (treeview:t) : unit =
+  let packing = toolbar#add in
+  let b = Gui_bricks.button_image ~window ~packing ~file:"ico.snapshot.42x42.png" () in
+  let () =
+    let set_tip = (GData.tooltips ())#set_tip in
+    set_tip b#coerce ~text:(s_ "Export the selected snapshot as a variant");
+  in
+  (* Sensitiveness: *)
+  let () = 
+    let () = b#misc#set_sensitive false in
+    (* --- *)
+    treeview#append_on_selection_changed_callback
+      (fun () -> 
+        let sensitive =
+          match treeview#selected_row_id with
+          | None -> false
+          | Some row_id ->
+             (* We have to distinguish snapshots from backends: *)
+             (treeview#parent_of row_id) <> None (* not a root => is a snapshot *)
+             (* Ugly version using timestamp: *)
+             (* (String.length (treeview#get_row_timestamp row_id) > 10) *)
+        in
+        b#misc#set_sensitive sensitive)
+  in
+  (* Behaviour on click: *)
+  let callback () = 
+    Option.iter 
+      (fun row_id -> treeview#export_as_machine_or_router_variant row_id)
+      (treeview#selected_row_id)
+  in
+  let () = ignore (b#connect#clicked ~callback) in
+  ()
+
 let make ~(window:GWindow.window) ~(hbox:GPack.box) ~after_user_edit_callback ~method_directory ~method_filename () =
   let result = new t ~packing:(hbox#add) ~after_user_edit_callback ~method_directory ~method_filename () in
-  let () = Treeview.add_expand_and_collapse_button ~window ~hbox (result:>Treeview.t) in
+  let toolbar = Treeview.add_expand_and_collapse_button ~window ~hbox (result:>Treeview.t) in
+  let _snapshots = add_snapshot_button ~window ~hbox ~toolbar (result) in
   The_unique_treeview.set result;
   result
 

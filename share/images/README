@@ -65,3 +65,12 @@ released by its author "Saki" under the GNU LGPL v3.
 http://www.oxygen-icons.org/
 Original file (24x24) downloaded from:
 http://www.iconarchive.com/show/snowish-icons-by-saki/Actions-zoom-out-icon.html
+
+8) ico.snapshot.42x42.png is the icon named "camera"
+released by its author "hatalar205" under License CC-Zero 1.0
+https://openclipart.org/detail/170939/camera
+Original file (svg) downloaded from:
+https://openclipart.org/download/170939/1340823706.svg
+convert -resize 42x42 1340823706.svg ico.snapshot.42x42.png
+mv 1340823706.svg ico.snapshot.svg
+

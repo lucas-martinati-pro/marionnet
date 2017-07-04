@@ -220,7 +220,8 @@ module Backward_compatibility = struct
   
 end (* Backward_compatibility *)
 
-type row_id = int;;
+(* type row_id = int;; *)
+type row_id = string;;
 
 module Defaults = struct
  let highlight_foreground_color = "Black";;
@@ -245,12 +246,10 @@ let () = last_used_id := !last_used_id + 1 in
 let _ =
   if reserved then
     match default with
-      Some _ ->
-        ()
-    | None ->
-        failwith ("The column "^ header ^" is reserved but has no default")
-  else
-    () in
+      Some _ -> ()
+    | None   -> failwith ("The column "^ header ^" is reserved but has no default")
+  else () 
+in
 object(self)
   val id = !last_used_id
   method id = id
@@ -258,8 +257,7 @@ object(self)
   method header = header
   method shown_header = shown_header
   method hidden = hidden
-  method is_reserved =
-    reserved
+  method is_reserved =reserved
   method has_default =
     match default with
       Some _ -> true
@@ -293,8 +291,8 @@ type column_header = string ;;
 exception RowConstraintViolated    of constraint_name ;;
 exception ColumnConstraintViolated of column_header ;;
 
-class string_column =
-fun ~(treeview:treeview)
+class string_column = fun 
+    ~(treeview:treeview)
     ?hidden:(hidden=false)
     ?reserved:(reserved=false)
     ?default
@@ -303,7 +301,9 @@ fun ~(treeview:treeview)
     ~(header:string)
     ?(shown_header)
     ?constraint_predicate:(constraint_predicate = (fun (_ : Row_item.t) -> true))
-    () -> object(self)
+    () -> 
+  object(self)
+  
   inherit column ~hidden ~reserved ?default ~header ?shown_header ~constraint_predicate () as super
 
   method can_contain x =
@@ -320,7 +320,8 @@ fun ~(treeview:treeview)
         [ `EDITABLE false;
           `FOREGROUND treeview#get_highlight_foreground_color;
           `STYLE (if italic then `ITALIC else `NORMAL);
-          `WEIGHT (if bold then `BOLD else `NORMAL); ] in
+          `WEIGHT (if bold then `BOLD else `NORMAL); ] 
+    in
     let highlight_column = (treeview#get_column "_highlight" :> column) in
     let highlight_color_column = (treeview#get_column "_highlight-color" :> column) in
     let col = GTree.view_column
@@ -422,7 +423,7 @@ fun ~(treeview:treeview)
       treeview#run_after_update_callback id;
     with e -> begin
       Log.printf1
-        "on_edit: a callback raised an exception (%s), or a constraint was violated.\n"
+        "Treeview.editable_string_column#on_edit: a callback raised an exception (%s), or a constraint was violated.\n"
         (Printexc.to_string e);
       flush_all ();
     end);
@@ -455,16 +456,14 @@ fun ~(treeview:treeview)
   method append_to_view (view : GTree.view) =
     let highlight_column = treeview#get_column "_highlight" in
     let highlight_color_column = treeview#get_column "_highlight-color" in
-    let renderer =
-      GTree.cell_renderer_toggle
-        [ `ACTIVATABLE true;
-          `RADIO false; ] in
+    let renderer = GTree.cell_renderer_toggle [ `ACTIVATABLE true; `RADIO false; ] in
     let col = GTree.view_column
         ~title:self#shown_header
         ~renderer:(renderer, [ "active", self#gtree_column;
                                "cell_background_set", (highlight_column#gtree_column);
                                "cell_background", (highlight_color_column#gtree_column); ])
-        () in
+        () 
+    in
     let _ = renderer#connect#toggled ~callback:(fun path -> self#on_toggle path) in
     let _ = view#append_column col in
     col#set_resizable true;
@@ -521,20 +520,25 @@ fun ~(treeview:treeview)
       (!after_toggle_commit_callback) id old_content new_content;
       treeview#run_after_update_callback id;
     with _ -> begin
-      Log.printf "on_toggle: a callback raised an exception, or a constraint was violated.\n";
+      Log.printf "Treeview.checkbox_column#on_toggle: a callback raised an exception, or a constraint was violated.\n";
     end);
 
   (** Bind a callback to be called just before an toggle is committed to data structures.
       The callback parameters are the row id, the old and the new value. If the callback
       throws an exception then no modification is committed, and the after_toggle_commit
       callback is not called. *)
-  method set_before_toggle_commit_callback (callback : string -> bool -> bool -> unit) =
+  method set_before_toggle_commit_callback (callback : row_id -> bool -> bool -> unit) =
     before_toggle_commit_callback := callback
 
   (** Bind a callback to be called just *after* an toggle is committed to data structures.
       The callback parameters are the row id, the old and the new value. *)
-  method set_after_toggle_commit_callback (callback : string -> bool -> bool -> unit) =
+  method set_after_toggle_commit_callback (callback : row_id -> bool -> bool -> unit) =
     after_toggle_commit_callback := callback
+ 
+  method append_after_toggle_commit_callback (callback : row_id -> bool -> bool -> unit) =
+    let current = !after_toggle_commit_callback in
+    after_toggle_commit_callback := (fun r b0 b1 -> (current r b0 b1); callback r b0 b1)
+ 
 end
 
 and (*class *) icon_column =
@@ -557,7 +561,7 @@ object(self)
   method private lookup predicate =
     let singleton = List.filter predicate strings_and_pixbufs in
     if not ((List.length singleton) = 1) then begin
-      Log.printf1 "ERROR: icon name lookup failed: found %i results instead of 1\n" (List.length singleton);
+      Log.printf1 "Treeview.icon_column#lookup: ERROR: icon name lookup failed: found %i results instead of 1\n" (List.length singleton);
       List.iter
         (fun (name, pixbuf) ->
           Log.printf2
@@ -664,7 +668,9 @@ let hbox =
     ~homogeneous:false
     ~packing:(vbox#pack ~expand:true ~padding:0)
     ~spacing:0
-    () in
+    () 
+in
+(* The most important widget here: *)
 let view =
   GTree.view
     ~packing:(hbox#pack ~expand:true ~padding:0)
@@ -674,7 +680,8 @@ let view =
     ~headers_visible:true
     ~headers_clickable:true
     ~rules_hint:true
-    () in
+    () 
+in
 let _ =
   GRange.scrollbar
     `VERTICAL
@@ -689,6 +696,9 @@ let _ =
     () in
 let counter = new Counter.c ~initial_value:0 () in
 object(self)
+
+  (* To allow a low-level access: *)
+  method view = view
 
   method gtree_column_list : GTree.column_list = gtree_column_list
   method counter = counter
@@ -713,10 +723,20 @@ object(self)
     try
       ((Hashtbl.find get_column header) :> column)
     with e -> begin
-      Log.printf2 "treeview: get_column: failed in looking for column \"%s\" (%s)\n" header (Printexc.to_string e);
+      Log.printf2 "Treeview.treeview#get_column: failed in looking for column \"%s\" (%s)\n" header (Printexc.to_string e);
       raise e; (* re-raise *)
     end
 
+  (* Special case: any treeview will contain this column (initialized here, see later): *)  
+  val mutable the_highlight_checkbox_column : checkbox_column option = None  
+  (* --- *)
+  method set_highlight_checkbox_column (checkbox_column) : unit =
+    the_highlight_checkbox_column <- Some checkbox_column
+  (* --- *)
+  method get_highlight_checkbox_column : checkbox_column =
+    Option.extract (the_highlight_checkbox_column)
+  (* --- *)
+    
   (* Useful to filter information loaded from uncompatible files: *)  
   method column_headers =
     Hashtbl.fold (fun k _ ks -> k::ks) (get_column) []
@@ -782,26 +802,54 @@ object(self)
   method columns =
     !columns
 
-  val double_click_on_row_callback = ref (fun _ -> ())
-  val collapse_row_callback = ref (fun _ -> ())
-  val expand_row_callback = ref (fun _ -> ())
-
-  method set_double_click_on_row_callback callback =
+  val double_click_on_row_callback  = ref (fun (id:string) -> ())
+  val simple_click_on_row_callback  = ref (fun (id:string) -> ())
+  val collapse_row_callback         = ref (fun (id:string) -> ())
+  val expand_row_callback           = ref (fun (id:string) -> ())
+  val on_cursor_changed_callback    = ref (fun () -> ())
+  val on_selection_changed_callback = ref (fun () -> ())
+  
+  method set_double_click_on_row_callback (callback) =
     double_click_on_row_callback := callback
 
-  method set_collapse_row_callback callback =
+  method set_simple_click_on_row_callback (callback) =
+    simple_click_on_row_callback := callback
+    
+  method set_collapse_row_callback (callback) =
     collapse_row_callback := callback
 
-  method set_expand_row_callback callback =
+  method set_expand_row_callback (callback) =
     expand_row_callback := callback
 
+  method set_on_cursor_changed_callback (callback) =
+    on_cursor_changed_callback := callback
+
+  method append_on_cursor_changed_callback (callback) =
+    let current = !on_cursor_changed_callback in
+    on_cursor_changed_callback := (fun () -> current (); callback ())
+
+  method set_on_selection_changed_callback (callback) =
+    on_selection_changed_callback := callback
+    
+  method append_on_selection_changed_callback (callback) =
+    let current = !on_selection_changed_callback in
+    on_selection_changed_callback := (fun () -> current (); callback ())
+    
   (** This returns the just-created column *)
   method private add_column (column : column) : unit =
     columns := !columns @ [ column ];
     Hashtbl.add get_column column#header column
 
+  method private on_cursor_changed () =
+    Log.printf ~v:2 "Treeview: cursor changed\n";
+    !on_cursor_changed_callback ()
+
+  method private on_selection_changed () =
+    Log.printf ~v:2 "Treeview: selection changed\n";
+    !on_selection_changed_callback ()
+    
   method private on_row_activation path column =
-    let id = self#path_to_id path in
+    let id : string = self#path_to_id path in
     !double_click_on_row_callback id
 
   method private on_row_collapse iter _ =
@@ -820,7 +868,7 @@ object(self)
   method select_row row_id =
     view#selection#select_path (self#id_to_path row_id)
 
-  method selected_row_id =
+  method selected_row_id : string option =
     match view#selection#get_selected_rows with
       [] -> None
     | path :: [] -> (Some (self#path_to_id path))
@@ -844,8 +892,8 @@ object(self)
   method add_separator_menu_item =
     menu_items := !menu_items @ [ None ]
 
-  method private show_contextual_menu event =
-    (* Update the selection to be just the pointed row, if any: *)
+  (* Also update the selection to be just the pointed row, if any: *)
+  method private selected_row_id_of_event (event) : string option =
     let x = int_of_float (GdkEvent.Button.x event) in
     let y = int_of_float (GdkEvent.Button.y event) in
     let selected_row_id =
@@ -856,8 +904,13 @@ object(self)
           Some id
       | None ->
           self#unselect;
-          None) in
-    Log.printf "Showing the contextual menu\n";
+          None) 
+    in
+    selected_row_id
+    
+  method private show_contextual_menu (event) =
+    let selected_row_id = self#selected_row_id_of_event (event) in
+    Log.printf ~v:2 "Treeview: showing the contextual menu\n";
     let menu = GMenu.menu () in
     List.iter
       (fun menu_item ->
@@ -872,6 +925,12 @@ object(self)
       !menu_items;
     menu#popup ~button:(GdkEvent.Button.button event) ~time:(GdkEvent.Button.time event)
 
+  method private button_press_callback (event) =
+    let selected_row_id = self#selected_row_id_of_event (event) in
+    Log.printf ~v:2 "Treeview: button press callback\n";
+    Option.iter (!simple_click_on_row_callback) selected_row_id;
+    ()
+    
   method create_store_and_view =
     let the_tree_store = GTree.tree_store gtree_column_list in
     tree_store := Some the_tree_store;
@@ -880,16 +939,24 @@ object(self)
         if not column#hidden then
           column#append_to_view view)
       self#columns;
-    ignore (view#connect#row_activated ~callback:self#on_row_activation);
-    ignore (view#connect#row_collapsed ~callback:self#on_row_collapse);
-    ignore (view#connect#row_expanded ~callback:self#on_row_expand);
+    (* --- *)         
+    ignore (view#connect#row_activated     ~callback:self#on_row_activation);
+    ignore (view#connect#row_collapsed     ~callback:self#on_row_collapse);
+    ignore (view#connect#row_expanded      ~callback:self#on_row_expand);
+    ignore (view#connect#cursor_changed    ~callback:self#on_cursor_changed);
+    ignore (view#selection#connect#changed ~callback:self#on_selection_changed);
+    (* --- *)                
     ignore (view#event#connect#button_press
       ~callback:(fun event ->
-		    if GdkEvent.Button.button event = 3 then begin
-		      self#show_contextual_menu event;
-		      true (* we handled the event *)
-		    end else
-		      false (* we didn't handle the event *)));
+                    (* We handled the event only in the cases 3 (`TWO_BUTTON_PRESS): *)
+                    let code = GdkEvent.Button.button event in
+                    let () = Log.printf1 ~v:2 "Treeview: GdkEvent.Button.button event = %d\n" code in
+                    match code with
+                    | 3 -> (self#show_contextual_menu  event; true)
+                    | 1 -> (self#button_press_callback event; false) (* `BUTTON_PRESS treated but not handled *)
+                    | _ -> false (* we didn't handle the event *))
+                    );
+    (* --- *)                
     view#set_model (Some the_tree_store#coerce)
 
   method store =
@@ -1138,7 +1205,7 @@ object(self)
                  column#set row_id ~initialize:true ~row_iter:new_row_iter ~ignore_constraints:true datum);
             with e -> begin
               Log.printf2
-                "WARNING: error (I guess the problem is an unknown column) %s (%s)\n"
+                "Treeview.treeview#set_complete_forest: WARNING: error (I guess the problem is an unknown column) %s (%s)\n"
                 column_header
                 (Printexc.to_string e);
             end)
@@ -1195,7 +1262,7 @@ object(self)
 
   method save ?(with_forest_treatment=fun x->x) () =
     let file_name = self#filename in
-    Log.printf1 "treeview#save: saving into %s\n" file_name;
+    Log.printf1 "Treeview.treeview#save: saving into %s\n" file_name;
     let forest = with_forest_treatment (self#get_complete_forest) in
     next_identifier_and_content_forest_marshaler#to_file
       (self#counter#get_next_fresh_value, forest)
@@ -1204,7 +1271,7 @@ object(self)
   method load ?(file_name=self#filename) ~(project_version : [ `v0 | `v1 | `v2 ]) () =
     self#detach_view_in
       (fun () ->
-        let () = Log.printf1 "Preparing to load a treeview content from file %s\n" file_name in
+        let () = Log.printf1 "Treeview.treeview#load: Preparing to load a treeview content from file %s\n" file_name in
         let () = self#clear in
         try
           let (next_identifier, complete_forest) =
@@ -1221,14 +1288,14 @@ object(self)
               complete_forest
           in
           let () = self#set_complete_forest complete_forest in
-          let () = Log.printf1 "Ok, treeview content successfully loaded from: %s\n" file_name in
+          let () = Log.printf1 "Treeview.treeview#load: Ok, treeview content successfully loaded from: %s\n" file_name in
           let () =           
             if (Global_options.Debug_level.get ()) >= 3 then (* we have to set the verbosity to level 3 *)
             Forest.print_forest ~string_of_node:Row.to_pretty_string ~channel:stderr (complete_forest)
           in
           ()
         with e -> begin
-          Log.printf2 "Loading the treeview %s: failed (%s); I'm setting an empty forest, in the hope that nothing serious will happen\n\n" file_name (Printexc.to_string e);
+          Log.printf2 "Treeview.treeview#load: Loading the treeview %s: failed (%s); I'm setting an empty forest, in the hope that nothing serious will happen\n\n" file_name (Printexc.to_string e);
         end);
     (* This must be executed with the view attached, as it operates on the GUI: *)
     self#collapse_everything;
@@ -1388,6 +1455,7 @@ object(self)
         self#iter_on_tree f iter;
         if self#store#iter_next iter then
           self#iter_on_forest f (Some iter)
+  
   method iter_on_tree f (iter:Gtk.tree_iter) =
     (* iter may be destructively modified, but we don't want to expose this to
        the user: *)
@@ -1399,11 +1467,13 @@ object(self)
 
   method expand_row id =
     view#expand_row (self#id_to_path id)
+  
   method expand_everything =
     view#expand_all ()
 
   method collapse_everything =
     view#collapse_all ()
+  
   method collapse_row id =
     view#collapse_row (self#id_to_path id)
 
@@ -1414,15 +1484,15 @@ object(self)
 
   method highlight_row row_id =
     let highlight_color_column = self#get_column "_highlight" in
-    highlight_color_column#set row_id (Row_item.CheckBox true)
+    highlight_color_column#set (row_id) (Row_item.CheckBox true)
 
   method unhighlight_row row_id =
     let highlight_color_column = self#get_column "_highlight" in
-    highlight_color_column#set row_id (Row_item.CheckBox false)
+    highlight_color_column#set (row_id) (Row_item.CheckBox false)
 
   method set_row_highlight_color color row_id =
     let highlight_color_column = self#get_column "_highlight-color" in
-    highlight_color_column#set row_id (Row_item.String color)
+    highlight_color_column#set (row_id) (Row_item.String color)
 
   method get_row_list =
     Forest.to_list self#get_complete_forest
@@ -1523,13 +1593,16 @@ object(self)
         ~default:(fun () -> Row_item.String self#get_highlight_color)
         ~hidden:hide_reserved_fields
         () in
-    let _ =
+    let ckboxcol =
       self#add_checkbox_column
         ~header:"_highlight"
         ~reserved:true
         ~default:(fun () -> Row_item.CheckBox false)
         ~hidden:hide_reserved_fields
         () in
+    let () = 
+       self#set_highlight_checkbox_column (ckboxcol) 
+    in
     ();
 
     self#add_menu_item
@@ -1537,11 +1610,13 @@ object(self)
       (fun _ -> true)
       (fun selected_rowid_if_any ->
         self#expand_everything);
+        
     self#add_menu_item
       (s_ "Collapse all")
       (fun _ -> true)
       (fun selected_rowid_if_any ->
         self#collapse_everything);
+        
     self#add_separator_menu_item;
 end;;
 
@@ -1656,7 +1731,7 @@ class virtual treeview_with_a_primary_key_Name_column
  end
 
 (* Add the two buttons "Expand all" and "Collapse all" at right side of the treeview. *)
-let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (treeview:t) : unit =
+let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (treeview:t) : GButton.toolbar =
   let toolbar =
     let packing w = hbox#pack ~expand:false w in
     GButton.toolbar ~orientation:`VERTICAL ~packing ()
@@ -1674,4 +1749,4 @@ let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (t
     set b1 (fun () -> treeview#expand_everything);
     set b2 (fun () -> treeview#collapse_everything)
   in
-  ()
+  toolbar
