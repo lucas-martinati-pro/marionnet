@@ -25,6 +25,16 @@
 open Gettext;;
 module Row_item = Treeview.Row_item ;;
 
+(* --- *)
+(* Ex: Some "Jean-Vincent Loddo" *)
+let get_full_user_name () : string option =
+  let user = Sys.getenv "USER" in
+  let cmd = Printf.sprintf "getent passwd %s | cut -d: -f 5 | cut -d, -f 1" user in
+  match UnixExtra.run cmd with
+  | (full_name, Unix.WEXITED 0) -> Some (StringExtra.chop full_name)
+  | _ -> None
+(* --- *)
+
 class t =
 fun ~packing
     ~method_directory 
@@ -84,12 +94,13 @@ object(self)
 
   (** Ask the user to choose a file, and return its pathname. Fail if the user doesn't
       choose a file or cancels: *)
-  method private ask_file =
+  method (* private *) ask_file : string option =
     let dialog = GWindow.file_chooser_dialog
         ~icon:Icon.icon_pixbuf
         ~action:`OPEN
         ~title:((*utf8*)(s_ "Choose the document to import"))
-        ~modal:true () in
+        ~modal:true () 
+    in
     dialog#add_button_stock `CANCEL `CANCEL;
     dialog#add_button_stock `OK `OK;
     dialog#unselect_all;
@@ -100,22 +111,23 @@ object(self)
                     (s_ "README") (* it's nice to also support something like LISEZMOI... *)]
          ());
     dialog#set_default_response `OK;
+    (* --- *)
     (match dialog#run () with
       `OK ->
         (match dialog#filename with
           Some result ->
             dialog#destroy ();
             Log.printf1 "* Ok: \"%s\"\n" result;
-            result
+            Some result
         | None -> begin
             dialog#destroy ();
-            failwith "No document was selected"
+            Log.printf "* No document was selected\n";
+            None
           end)
     | _ ->
         dialog#destroy ();
-        Log.printf "* Cancel\n";
-        failwith "You cancelled");
-
+        Log.printf "* You cancelled\n";
+        None)
 
   method private file_to_format pathname =
     if Filename.check_suffix pathname ".html" || 
@@ -212,7 +224,14 @@ object(self)
     let row_id =
       self#add_row
         [ filename_header, Row_item.String internal_file_name;
-          format_header,   Row_item.String format ] in
+          format_header,   Row_item.String format ] 
+    in
+    let title = Filename.chop_extension (Filename.basename user_path_name) in
+    let otype = FilenameExtra.get_extension user_path_name in
+    let oauth = get_full_user_name () in
+    let () = self#set_row_title (row_id) title in
+    let () = Option.iter (self#set_row_type   row_id) otype in
+    let () = Option.iter (self#set_row_author row_id) oauth in
     row_id
 
   initializer
@@ -273,7 +292,7 @@ object(self)
       (s_ "Import a document")
       (fun _ -> true)
       (fun _ ->
-        ignore (self#import_document self#ask_file));
+        ignore (Option.map self#import_document self#ask_file));
 
     self#add_menu_item
       (s_ "Display this document")
@@ -306,9 +325,22 @@ module The_unique_treeview = Stateful_modules.Variable (struct
   end)
 let extract = The_unique_treeview.extract
 
+
+(* Add the button "Import" at right side of the treeview. *)
+let add_import_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GButton.toolbar) (treeview:t) : unit =
+  let packing = toolbar#add in
+  (* --- *)  
+  let b = Gui_bricks.button_image ~window ~packing ~stock:`ADD ~stock_size:`SMALL_TOOLBAR ~tooltip:(s_ "Import a document") () in
+  (* --- *)
+  (* Behaviour on click: *)
+  let callback () = ignore (Option.map treeview#import_document treeview#ask_file) in
+  let () = ignore (b#connect#clicked ~callback) in
+  ()
+
 let make ~(window:GWindow.window) ~(hbox:GPack.box) ~after_user_edit_callback ~method_directory ~method_filename () =
   let result = new t ~packing:(hbox#add) ~after_user_edit_callback ~method_directory ~method_filename () in
-  let _toolbar = Treeview.add_expand_and_collapse_button ~window ~hbox (result:>Treeview.t) in
+  let toolbar = Treeview.add_expand_and_collapse_button ~window ~hbox (result:>Treeview.t) in
+  let _import = add_import_button ~window ~hbox ~toolbar (result) in
   The_unique_treeview.set result;
   result
 ;;
