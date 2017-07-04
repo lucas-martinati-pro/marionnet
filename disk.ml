@@ -602,8 +602,8 @@ let vm_installations_and_epithet_of_prefixed_filesystem prefixed_filesystem =
   let epithet = String.sub prefixed_filesystem (p+1) ((String.length prefixed_filesystem)-(p+1)) in
   let vm_installations =
     (match prefix with
-     | "machine-" -> get_machine_installations ()
-     | "router-"  -> get_router_installations ()
+     | "machine-" -> Lazy_perishable.force (get_machine_installations)
+     | "router-"  -> Lazy_perishable.force (get_router_installations)
      | _ -> (assert false)
      )
   in
@@ -625,8 +625,8 @@ let root_export_dirname_of_prefixed_filesystem prefixed_filesystem =
 
 module Make_and_check_installations (Unit:sig end) = struct
 
-  let machines = get_machine_installations ()
-  let routers  = get_router_installations ()
+  let machines = Lazy_perishable.force (get_machine_installations)
+  let routers  = Lazy_perishable.force (get_router_installations)
 
   let () = begin
     machines#check_filesystems_MTIME_consistency ();

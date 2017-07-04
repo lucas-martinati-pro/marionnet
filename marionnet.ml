@@ -280,8 +280,8 @@ let check_call ~action ~arg ~error_message =
 let check_dependency command_line error_message =
   check_call ~action:Log.system_or_fail ~arg:command_line ~error_message
 
-let machine_installations = Disk.get_machine_installations ()
-let router_installations = Disk.get_router_installations ()
+let machine_installations = Lazy_perishable.force (Disk.get_machine_installations)
+let router_installations  = Lazy_perishable.force (Disk.get_router_installations)
 
 (** Check whether we have UML computer filesystems: *)
 let () =

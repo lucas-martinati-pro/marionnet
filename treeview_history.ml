@@ -369,13 +369,14 @@ object(self)
       ~enable_cancel:true
       ~ok_callback:(fun variant_name ->
 	self#actually_export_as_variant
+	  ~router
 	  ~cow_name
 	  ~variant_dir
 	  ~variant_name ())
       ()
 
 
-  method private actually_export_as_variant ~variant_dir ~cow_name ~variant_name () =
+  method private actually_export_as_variant ~router ~variant_dir ~cow_name ~variant_name () =
     (* Perform the actual copy: *)
     let cow_path = (self#directory) in
     let new_variant_pathname = Filename.concat variant_dir variant_name in
@@ -386,9 +387,14 @@ object(self)
         variant_dir
         cow_fullname
         cow_fullname
-        new_variant_pathname in
+        new_variant_pathname 
+    in
     try
       Log.system_or_fail command_line;
+      (* --- *)
+      if router then Lazy_perishable.set_expired (Disk.get_router_installations)
+                else Lazy_perishable.set_expired (Disk.get_machine_installations);
+      (* --- *)
       Simple_dialogs.info
         (s_ "Success")
         ((s_ "The variant has been exported to the file") ^ "\n\n<tt><small>" ^ new_variant_pathname ^ "</small></tt>\n")

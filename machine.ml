@@ -294,7 +294,7 @@ let make
  ?(dialog_image_file=Initialization.Path.images^"ico.machine.dialog.png")
  () :'result option =
   let old_name = name in
-  let vm_installations =  Disk.get_machine_installations () in
+  let vm_installations =  Lazy_perishable.force (Disk.get_machine_installations) in
   let (dialog_machine, _, name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
@@ -543,7 +543,7 @@ class machine
   ~port_no
   ()
   =
-  let vm_installations = Disk.get_machine_installations () in
+  let vm_installations = Lazy_perishable.force (Disk.get_machine_installations) in
   let network_alias = network in
 
   object (self) inherit OoExtra.destroy_methods ()

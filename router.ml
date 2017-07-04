@@ -631,7 +631,7 @@ let make
     | None   -> (false, "2001:db9::ff/32")
     | Some v -> (true, Ipv6.string_of_config v)
   in
-  let vm_installations =  Disk.get_router_installations () in
+  let vm_installations = Lazy_perishable.force (Disk.get_router_installations) in
   let (dialog_router,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
@@ -1019,7 +1019,7 @@ class router
   ~port_no
   ()
   =
-  let vm_installations = Disk.get_router_installations () in
+  let vm_installations = Lazy_perishable.force (Disk.get_router_installations) in
   let network_alias = network in
   (* The ifconfig treeview wants a port 0 configuration at creation time:*)
   let ifconfig_port_row_completions =
