@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Script version: 0.90.29
-# 2017.05.09
+# Script version: 0.90.30
+# 2017.09.22
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
@@ -82,7 +82,7 @@ COMMAND_LINE="$(realpath $COMMAND_LINE) "$@""
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hp:m:b:o:gG:t:kl:d:v:NVDKPFTAOc:"
+OPTSTRING="hp:m:b:o:gG:t:kl:d:v:y:NVDKPFTAOc:"
 
 function parse_cmdline {
 local i j flag
@@ -153,6 +153,9 @@ for i in "$@"; do
      ;;
     --prefix)
      ARGS+=("-p");
+     ;;
+    --proxy|--http-proxy)
+     ARGS+=("-y");
      ;;
     --tmpdir)
      ARGS+=("-t");
@@ -237,6 +240,7 @@ Options:
   -l, --lablgtk VERSION         Set lablgtk's version
   -v, --vde VERSION             Set vde2's version
   -d, --dot VERSION 		Set dot's (graphviz) version
+  -y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
   -N, --bytecode		Generate bytecode only (no native executables)
   -V, --no-vde			Do nothing about vde
   -D, --no-dot			Do nothing about dot (graphviz)
@@ -259,6 +263,7 @@ Defaults:
   - dot's (graphviz') version is ${GRAPHVIZ_VERSION:-latest}
   - using godi: $USING_GODI
   - keep debris: $KEEP_DEBRIS
+  - http proxy: $http_proxy
   - generate bytecode only: $GENERATE_BYTECODE
   - ignore vde: $IGNORE_VDE
   - ignore dot: $IGNORE_DOT
@@ -357,6 +362,19 @@ if [[ -n ${option_k} ]]; then
  KEEP_DEBRIS=yes
 else
  KEEP_DEBRIS=no
+fi
+
+# Option -y, --proxy
+if [[ -n ${option_y} ]]; then
+ HTTP_PROXY_IP_PORT="${option_y_arg#http://}"
+ # ---
+ # Environment variables used by `wget':
+ export http_proxy="http://${HTTP_PROXY_IP_PORT}/"
+ export https_proxy=$http_proxy
+ export ftp_proxy=$http_proxy
+ export dns_proxy=$http_proxy
+ export rsync_proxy=$http_proxy
+ export no_proxy="localhost,127.0.0.1"
 fi
 
 # Option -c, --continue
