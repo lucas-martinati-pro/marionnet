@@ -47,7 +47,7 @@ let an_input_descriptor_never_sending_anything =
     within a [device] class (see the comments about DFA states below).
     It makes no sense to implement {e two} distinct protection mechanisms
     performing the same checks *)
-exception ProcessIsntInTheRightState of string;;
+(* exception ProcessIsntInTheRightState of string;; *) (* <- defined in the interface (simulation_level.mli) *)
 
 (** This is used to spawn and control a concurrent Unix process: *)
 class virtual process =
@@ -1240,7 +1240,7 @@ let device_state_to_string s =
     Off -> "off" | On -> "on" | Sleeping -> "sleeping" | Destroyed -> "destroyed";;
 
 (** What happens the user tries to follow a non-existing DFA transition *)
-exception CantGoFromStateToState of device_state * device_state;;
+(* exception CantGoFromStateToState of device_state * device_state;; *) (* <- defined in the interface (simulation_level.mli) *)
 
 (** The base class of simulated devices. Either one parameter or the other one must be
     supplied (note the ugly hack in which which both parameters are shadows to compute

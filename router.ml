@@ -17,6 +17,14 @@
 
 open Gettext;;
 
+IFNDEF OCAML4_04_OR_LATER THEN
+let lowercase  = String.lowercase
+let uppercase  = String.uppercase
+ELSE
+let lowercase  = String.lowercase_ascii
+let uppercase  = String.uppercase_ascii
+ENDIF
+
 (** Gui-related stuff for the user-level component "router". *)
 
 (* The module containing the add/update dialog is defined later,
@@ -318,7 +326,7 @@ enable password zebra
      Array.map (fun m -> Scanf.sscanf m "%s" (fun s->s)) message_array 
    in
    let lowercase_acronym_array = 
-     Array.map (String.lowercase) uppercase_acronym_array
+     Array.map (lowercase) uppercase_acronym_array
    in
    let lowercase_acronym_list = 
      Array.to_list (lowercase_acronym_array)
@@ -755,7 +763,7 @@ let make
       Array.map 
         (* --- *)
         (fun acronym -> 
-          let u = (String.uppercase acronym) in
+          let u = (uppercase acronym) in
           let text_startup_config : string = Printf.sprintf (f_ "%s startup config.") u in (* dynamically sensitive *)
           let text_show_terminal  : string = Printf.sprintf (f_ "Show %s terminal")   u in
           let form = 
@@ -783,7 +791,7 @@ let make
               ~packing:(subform#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
               ~active:(fst rc_config)
               ~content:(snd rc_config)
-              ~device_name:(Printf.sprintf "%s (%s)" old_name (String.uppercase acronym))
+              ~device_name:(Printf.sprintf "%s (%s)" old_name (uppercase acronym))
               ~language:("quagga_zebra") (* special syntax TODO: ("quagga_"^acronym) *)
               ()
           in
@@ -1348,7 +1356,7 @@ class ['parent] router =
         (fun acronym ->
             let name = parent#get_name in
             let host = self#ip_address_eth42 in
-            let protocol = String.uppercase acronym in
+            let protocol = uppercase acronym in
             let port_number = Const.quagga_alternatives#port_of_lowercase_acronym (acronym) in
             let xterm_title = Printf.sprintf "%s Quagga terminal (CISCO-IOS-like %s)" name (protocol) in
             self#add_accessory_process
