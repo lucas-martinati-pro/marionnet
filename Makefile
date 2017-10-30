@@ -935,7 +935,7 @@ meta.ml: META CONFIGME
 
 meta.ml.released: meta.ml
 	if [ -d .bzr ]; then \
-	cp $< $@
+	cp $< $@; \
 	fi; \
 
 ###########################################################################
