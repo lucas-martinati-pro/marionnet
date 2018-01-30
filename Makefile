@@ -1,7 +1,7 @@
 # This -*- makefile -*- is part of our build system for OCaml projects
 # Copyright (C) 2008, 2009  Luca Saiu
-# Copyright (C) 2008, 2010, 2016  Jean-Vincent Loddo
-# Copyright (C) 2008, 2009, 2010, 2016  Université Paris 13
+# Copyright (C) 2008, 2010, 2016, 2018  Jean-Vincent Loddo
+# Copyright (C) 2008, 2009, 2010, 2016, 2018  Université Paris 13
 # Updated in 2008 by Jonathan Roudiere
 # Thanks to JulioJu (https://github.com/JulioJu) for the patch
 # about prefix_install
@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# This is the revision of 2016-06-07.
+# This is the revision of 2018-01-30.
 
 ######################################################################
 # This make file is general-purpose: the actual project-dependant part
@@ -35,6 +35,11 @@
 # Implementation of targets. Note that the user is *not* supposed to
 # override these, but only to define the project-dependant '-local'
 # versions:
+
+# ---
+# NOTE: The files Makefile and Makefile.local may be debugged with:
+# make --debug=b,v,i ENTRY
+# ---
 
 # Makefiles (this one as those in other parts) use extensively the bash shell
 SHELL=/bin/bash
@@ -56,18 +61,21 @@ c-modules:
 	done
 
 BUILD_FROM_STUFF = \
-	@( echo "Building $(1)..."; \
+	@( echo "[L1] => Building $(1)..."; \
 	shopt -s execfail; set -e; \
 	for x in $(2); do \
-	  echo "Building \"$$x\"..."; \
-	  if $(MAKE) $$x; then \
-	    echo "Ok, \"$$x\" was built with success."; \
+	  echo "[L2] => Building \"$$x\"..."; \
+	  if test -f _build/$$x; then \
+	    echo "[L2] <= Ok, \"$$x\" was already built."; \
+	  elif $(MAKE) $$x; then \
+	    echo "[L2] <= Ok, \"$$x\" was built with success."; \
 	  else \
-	    echo "FAILED when building \"$$x\"."; \
+	    echo "[L2] <= FAILED when building \"$$x\" ."; \
+	    echo "[L1] <= FAILED when building \"$(1)\" ."; \
 	    exit -1; \
 	  fi; \
 	done; \
-	echo "Success: $(1) were built.")
+	echo "[L1] <= Success: $(1) were built.")
 
 # Build only data:
 data: ocamlbuild-stuff data-local $(DATA)
@@ -93,22 +101,22 @@ programs: c-modules programs-local
 # "libraries" or "programs". *Don't* put a space before the argument.
 BUILD_NATIVE_ANDOR_BYTECODE = \
 	(if [ "$$( $(call NATIVE) )" == 'native' ]; then \
-	  echo "Building native $(1)..."; \
+	  echo "[N1] => Building native $(1)..."; \
 	  if $(MAKE) native-$(1); then \
-	    echo "Success: native $(1) were built."; \
+	    echo "[N1] <= Success: native $(1) were built."; \
 	  else \
-	    echo "FAILURE: could not build native $(1)."; \
+	    echo "[N1] <= FAILURE: could not build native $(1)."; \
 	    exit -1; \
 	  fi; \
 	else \
 	  echo "NOT building native $(1)..."; \
 	fi; \
 	if [ "$$( $(call BYTE) )" == 'byte' ]; then \
-	  echo "Builing bytecode $(1)..."; \
+	  echo "[B1] => Building bytecode $(1)..."; \
 	  if $(MAKE) byte-$(1); then \
-	    echo "Success: bytecode $(1) were built."; \
+	    echo "[B1] <= Success: bytecode $(1) were built."; \
 	  else \
-	    echo "FAILURE: could not build bytecode $(1)."; \
+	    echo "[B1] <= FAILURE: could not build bytecode $(1)."; \
 	    exit -1; \
 	  fi; \
 	else \

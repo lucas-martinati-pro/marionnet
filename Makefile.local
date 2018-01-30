@@ -64,7 +64,7 @@ MANUALLY_PRE_COPY_IN_build =     \
   scripts/can-directory-host-sparse-files.sh
 
 MANUALLY_PRE_MAKE_IN_build =
-MANUALLY_POST_MAKE_IN_build = 
+
 
 marionnet.byte marionnet.native : manually_pre_actions version.ml gui.ml
 
@@ -135,13 +135,15 @@ uninstall-local: uninstall-mo
 copy-failsafe-marionnet.conf:
 	cp etc/marionnet.conf share/
 
-_build/marionnet.pot: marionnet.byte
+_build/marionnet.pot:
 	@msgcat -s --use-first $(shell find _build/ -name "*.ml.pot") > $@
+	cp $@ po/messages.pot
 
 pot: _build/marionnet.pot
-	cp _build/marionnet.pot po/messages.pot
+	cp $< po/messages.pot
 
-main-local: pot
+# main-local: pot
+MANUALLY_POST_MAKE_IN_build = marionnet.pot
 
 # Useful to discover widgets containing translatable strings
 gui.po: gui/gui.xml
