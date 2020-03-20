@@ -32,9 +32,9 @@ let text_subtitle = match Initialization.released with
 ;;
 
 let text =
-"<small>Copyright (C) 2007-2012 Jean-Vincent Loddo
-Copyright (C) 2007-2012 Luca Saiu
-Copyright (C) 2007-2012 Université Paris 13
+"<small>Copyright (C) 2007-2020 Jean-Vincent Loddo
+Copyright (C) 2007-2020 Luca Saiu
+Copyright (C) 2007-2020 Université Paris 13
 
 <i>Marionnet comes with <b>absolutely no warranty</b>.
 This is free software, covered by the GNU GPL.

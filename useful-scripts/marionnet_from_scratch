@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Script version: 0.94.0
-# 2019.05.16
+# Script version: 0.94.2
+# 2020.02.09
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
@@ -234,7 +234,7 @@ Options:
   -v, --vde VERSION             Set vde2's version
   -d, --dot VERSION 		Set dot's (graphviz) version
   -y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
-  -N, --bytecode		Generate bytecode only (no native executables)
+  -N, --bytecode		Generate bytecode executables (no native code)
   -V, --no-vde			Do nothing about vde
   -D, --no-dot			Do nothing about dot (graphviz)
   -K, --no-kernels 		Don't download kernels
@@ -255,7 +255,7 @@ Defaults:
   - dot's (graphviz') version is ${GRAPHVIZ_VERSION:-latest}
   - keep debris: $KEEP_DEBRIS
   - http proxy: $http_proxy
-  - generate bytecode only: $GENERATE_BYTECODE
+  - generate bytecode: $GENERATE_BYTECODE
   - ignore vde: $IGNORE_VDE
   - ignore dot: $IGNORE_DOT
   - ignore kernels: $IGNORE_KERNELS
@@ -854,6 +854,11 @@ function echo_required_debian_packages {
   fi 1>&2
  fi
 
+ # In Ubuntu >= 16, add overlay-scrollbar-gtk2
+ if are_we_in_ubuntu_version_or_greater "16"; then
+  LIST+="overlay-scrollbar-gtk2 "
+ fi
+
  # Return the list:
  echo "$LIST"
 }
@@ -1124,7 +1129,6 @@ cd marionnet
 cp ../ocamlbricks/CONFIGME .
 
 # make
-
 case $GENERATE_BYTECODE in
  yes)
   MARIONNET_MAKE_COMMAND='make clean byte'
@@ -1133,6 +1137,9 @@ case $GENERATE_BYTECODE in
  no)
   MARIONNET_MAKE_COMMAND='make clean native'
   WEIGHT=2780316
+  # Patch the Makefile in order to prevent any bytecode generation:
+  sed -i Makefile.local -e '/^BYTE_PROGRAMS/d' -e '/^ROOT_BYTE_PROGRAMS/d'
+  # ---
   ;;
 esac
 

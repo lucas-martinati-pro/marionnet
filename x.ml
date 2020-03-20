@@ -25,7 +25,7 @@ let try_to_fix_DISPLAY () : display_number option =
     let cmd = Printf.sprintf "DISPLAY=:%d.0 xset -q 2>/dev/null 1>/dev/null" n in
     match (Unix.system cmd) with
     | Unix.WEXITED 127 -> None (* xset probably not installed *)
-    | Unix.WEXITED 0 -> 
+    | Unix.WEXITED 0 ->
         let () = Log.printf1 "DISPLAY fixed to value :%d.0\n" n in
         let () = Unix.putenv "DISPLAY" (Printf.sprintf ":%d.0" n) in
         Some n
@@ -36,7 +36,7 @@ let try_to_fix_DISPLAY () : display_number option =
 (** The syntax of $DISPLAY is: [host]:display[.screen] *)
 let get_host_display_screen_from_string =
  let fail x = failwith (Printf.sprintf "Ill-formed DISPLAY string: '%s'" x) in
- fun x -> 
+ fun x ->
   let split_rigth_part y =
     match (StringExtra.split ~d:'.' y) with
     | [ display; screen ] -> (display, screen)
@@ -62,8 +62,8 @@ let get_host_display_screen_from_string =
 let get_host_display_screen () =
   try
     let x = Sys.getenv "DISPLAY" in
-    let x = 
-      if x<>"" then x else 
+    let x =
+      if x<>"" then x else
       match try_to_fix_DISPLAY () with
       | None   -> raise Not_found (* It's just like it weren't defined... *)
       | Some n -> Sys.getenv "DISPLAY"
@@ -73,16 +73,16 @@ let get_host_display_screen () =
   with Not_found ->
     failwith "The environment variable DISPLAY is not defined or empty, and Marionnet requires X.\nBailing out...";;
 
-(* Redefinition: *)    
+(* Redefinition: *)
 let get_host_display_screen () =
  try  get_host_display_screen ()
  with _ -> begin
-   ignore (try_to_fix_DISPLAY ()); 
+   ignore (try_to_fix_DISPLAY ());
    get_host_display_screen ()
    end
-    
+
 (* Global variables: *)
-let host, display, screen = 
+let host, display, screen =
   get_host_display_screen ()
 
 
@@ -102,14 +102,14 @@ let mit_magic_cookie_1 : string option =
 (* Just an alias: *)
 let cookie = mit_magic_cookie_1
 
-let socket_file_of_index (index) = 
+let socket_file_of_index (index) =
   Printf.sprintf "/tmp/.X11-unix/X%i" (index)
 
 (* Useful for xnest: *)
 let get_unused_local_display =
   let _last_used_local_display_index = ref 0 in
   let mutex = Mutex.create () in
-  fun () -> 
+  fun () ->
     Mutex.lock mutex;
     let exists pathname =
       try
@@ -150,14 +150,14 @@ let is_local_AF_INET_service_open ?(host_addr:string option) ~(port:int) () =
    | Unix.Unix_error (Unix.ECONNREFUSED, _,_) -> false
    | _ -> false
 
-type port_number = int 
+type port_number = int
 (* --- *)
 let get_unused_local_AF_INET_port_number ?(starting_from=6000) () : port_number =
   let rec loop i =
     if is_local_AF_INET_service_open ~port:i () then loop (i+1) else i
   in
   loop (starting_from)
-   
+
 (* Global variables: *)
 let host_addr = Unix.string_of_inet_addr ((Unix.gethostbyname host).Unix.h_addr_list.(0))
 and port = 6000 + (try (int_of_string display) with _ -> 0)
@@ -189,39 +189,40 @@ let ignore_but_notify ?do_not_fail (thunk) () =
    end
 
 (* By default the display number for the guest is the same of the host: *)
-let guest_display = ref (port - 6000) 
+let guest_display = ref (port - 6000)
 
-(* Try to fix problems defining at the same time the good value for `guest_display'. 
+(* Try to fix problems defining at the same time the good value for `guest_display'.
    If required and possible, we will try to launch a pseudo X server running on port 6000.
    In this way, the *old* virtual machines (debian-lenny, pinocchio, ...) which suppose
    DISPLAY=172.23.0.254:0 will to be able to connect to the host X server.
    Instead, new machines will be able even when guest_display<>0.
 *)
 let fix_X_problems : unit =
-  (* --- *)    
+  (* --- *)
   let socketfile = Printf.sprintf "/tmp/.X11-unix/X%s" display in
   let socketfile_exists = Sys.file_exists socketfile in
-  (* --- *)    
+  (* --- *)
   let no_fork = None (* Yes fork, i.e. create a process for each connection *) in
   (* let no_fork = Some () (* use Marionnet's threads *) in *)
-  (* --- *)    
+  (* --- *)
   let range4 = "172.23.0.0/24" in
-  (* --- *)    
-  let warning (available_port) (case) = 
+  let range6 = "fe80::/64" in
+  (* --- *)
+  let warning (available_port) (case) =
     if available_port <> 6000 then
       match mit_magic_cookie_1 with
-      (*--- *)      
-      | None -> 
+      (*--- *)
+      | None ->
           Log.printf3
-            "%s WARNING: to enable X on old virtual machines set: DISPLAY=172.23.0.254:%d.%s\n" 
+            "%s WARNING: to enable X on old virtual machines set: DISPLAY=172.23.0.254:%d.%s\n"
             case (!guest_display) (screen)
-      (*--- *)      
+      (*--- *)
       | Some mit_magic_cookie_1 ->
-          Log.printf5 
-            "%s WARNING: to enable X on old virtual machines set:\n---\nDISPLAY=172.23.0.254:%d.%s\nxauth add 172.23.0.254:%d . %s\n---\n" 
+          Log.printf5
+            "%s WARNING: to enable X on old virtual machines set:\n---\nDISPLAY=172.23.0.254:%d.%s\nxauth add 172.23.0.254:%d . %s\n---\n"
             case (!guest_display) (screen) (!guest_display) (mit_magic_cookie_1)
   in
-  (* --- *)    
+  (* --- *)
   match is_X_server_listening_TCP_connections, host_addr with
 
   (* Case n°1: an X server runs on localhost:0 and accepts TCP connection: *)
@@ -231,8 +232,8 @@ let fix_X_problems : unit =
   (* Case n°2: an X server runs on localhost and accepts TCP connection,
       but on a display Y<>0. We morally set up a PAT (Port Address Translation)
       172.23.0.254:6000 -> 127.0.0.1:(6000+Y) simply using the unix socket.
-      If 6000 is busy by another process (X server), we will find a free port number. 
-      Supposing 6042 be the first port number free after 6000, the PAT will be: 
+      If 6000 is busy by another process (X server), we will find a free port number.
+      Supposing 6042 be the first port number free after 6000, the PAT will be:
       172.23.0.254:6042 -> 127.0.0.1:(6000+Y) and guest_display=42  *)
   | true,  "127.0.0.1" when port<>6000 && socketfile_exists ->
       (* Equivalent to: socat TCP-LISTEN:6000,fork,reuseaddr UNIX-CONNECT:/tmp/.X11-unix/X? *)
@@ -241,9 +242,9 @@ let fix_X_problems : unit =
       let () = Log.printf2 "(case 2) Starting a socat service: 0.0.0.0:%d -> %s\n" available_port socketfile in
       let () = warning (available_port) "(case 2)" in
       (* --- *)
-      ignore_but_notify 
-        ~do_not_fail:() 
-        (Network.Socat.inet4_of_unix_stream_server ?no_fork ~range4 ~port:available_port ~socketfile) ()
+      ignore_but_notify
+        ~do_not_fail:()
+        (Network.Socat.inet_of_unix_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~socketfile) ()
 
   (* Case n°3: an X server seems to run on localhost accepting TCP connection,
       but the display is Y<>0 and there isn't a corresponding unix socket.
@@ -259,9 +260,9 @@ let fix_X_problems : unit =
       let () = Log.printf3 "(case 3) Starting a socat service: 0.0.0.0:%d -> %s:%d\n" available_port host_addr port in
       let () = warning (available_port) "(case 3)" in
       (* --- *)
-      ignore_but_notify 
-        ~do_not_fail:() 
-        (Network.Socat.inet4_of_inet_stream_server ?no_fork ~range4 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
+      ignore_but_notify
+        ~do_not_fail:()
+        (Network.Socat.inet_of_inet_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
 
   (* Case n°4: probably a telnet or a ssh -X connection.
       Idem: the following command doesn't solve completely the problem: we have also to
@@ -272,9 +273,9 @@ let fix_X_problems : unit =
       let () = guest_display := (available_port - 6000) in
       Log.printf3 "(case 4) Starting a socat service: 0.0.0.0:%d -> %s:%d\n" available_port host_addr port;
       let () = warning (available_port) "(case 4)" in
-      ignore_but_notify 
-        ~do_not_fail:() 
-        (Network.Socat.inet4_of_inet_stream_server ?no_fork ~range4 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
+      ignore_but_notify
+        ~do_not_fail:()
+        (Network.Socat.inet_of_inet_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
 
   (* Case n°5: an X server seems to run on localhost but it doesn't accept TCP connections.
       We simply redirect connection requests to the unix socket: *)
@@ -284,9 +285,9 @@ let fix_X_problems : unit =
       let () = guest_display := (available_port - 6000) in
       Log.printf2 "(case 5) Starting a socat service: 0.0.0.0:%d -> %s\n" available_port socketfile;
       let () = warning (available_port) "(case 5)" in
-      ignore_but_notify 
+      ignore_but_notify
         ~do_not_fail:()
-        (Network.Socat.inet4_of_unix_stream_server ?no_fork ~range4 ~port:available_port ~socketfile) ()
+          (Network.Socat.inet_of_unix_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~socketfile) ()
 
   | false, _ ->
       Log.printf "(case 6) Warning: X connections are not available for virtual machines.\n"
@@ -307,6 +308,6 @@ end (* Settings_at_loading_time *)
 
 let guest_display = 
   string_of_int (!(Settings_at_loading_time.guest_display))
-  
-let guest_display_dot_screen = 
+
+let guest_display_dot_screen =
   Printf.sprintf "%s.%s" (guest_display) (screen)

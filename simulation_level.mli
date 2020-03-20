@@ -236,7 +236,7 @@ class telnet_process :
     method stop_monitoring : ?current_pid:int -> unit -> unit
     method terminate : unit
   end
-  
+
 val defects_to_command_line_options :
   ?rightward_loss:float ->
   ?rightward_duplication:float ->
@@ -304,7 +304,7 @@ val ethernet_interface_to_boot_parameters_bindings :
 val ethernet_interface_to_uml_command_line_argument :
   string -> int -> < get_socket_name : string; .. > -> string
 
-val random_ghost_mac_address : unit -> string
+val random_mac_address : unit -> string
 
 class uml_process :
   kernel_file_name:process_name ->

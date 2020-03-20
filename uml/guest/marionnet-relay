@@ -2,8 +2,8 @@
 
 # This file is part of Marionnet, a virtual network laboratory
 # Copyright (C) 2007  Luca Saiu
-# Copyright (C) 2007-2017  Jean-Vincent Loddo
-# Copyright (C) 2007-2017  Université Paris 13
+# Copyright (C) 2007-2020  Jean-Vincent Loddo
+# Copyright (C) 2007-2020  Université Paris 13
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -103,6 +103,14 @@ function start {
  fi
 
  ###########################################
+ #     Ghost interface (eth42) IPv4        #
+ ###########################################
+
+ # Activate immediately our special network interface
+ # linked by the UML kernel to a tun/tap on the host side:
+ [[ -n $ip42 ]] && ifconfig eth42 $ip42/16 up &>/dev/null
+
+ ###########################################
  #             xterm title                 #
  ###########################################
 
@@ -193,13 +201,24 @@ fi
  fi
 
  ###########################################
- #        Ghost interface (eth42)          #
+ #              eth42                      #
+ # Activate ghostification or wait for the #
+ #   IPv6 link-local self-configuration    #
  ###########################################
 
- # Activate and immediately "ghostify" our special network
- # interface communicating with the host:
- ifconfig eth42 $ip42 up &>/dev/null
- if type ethghost; then ethghost -g eth42; fi &>/dev/null
+ # ifconfig eth42 $ip42/16 up &>/dev/null # <= previously done
+ if type ethghost; then
+   ethghost -g eth42;
+ else
+   # Leave the time (max 5 seconds) to the
+   # IPv6 self-configuration:
+   attempt=0
+   while ! ping6 -I eth42 -c 1 ${host_ipv6_address_eth42}; do
+     sleep 1s
+     let attempt+=1
+     [[ $attempt -lt 5 ]] || break
+   done 1>&2
+ fi &>/dev/null
 
  ###########################################
  #             /etc/fstab                  #
@@ -247,8 +266,20 @@ fi
 
  # Setting DISPLAY
  # x11_display_number means and should be renamed "x11_display_number_and_screen":
- x11_display_number=${x11_display_number#:} 
- DISPLAY_VALUE=172.23.0.254:${x11_display_number:-0}
+ x11_display_number=${x11_display_number#:}
+
+ # If the interface eth42 has been previously ghostified, the following ping fails
+ # and we will continue using the TCP/IPv4 stack for X11 forwarding. Conversely,
+ # if the interface eth2 is visible to the user (probably a student), we try to use
+ # the TCP/IPv6 stack instead. Furthermore, we remove the IPv4 address in order to
+ # prevent the student to be confused by a machine already configured which should
+ # be not.
+ if ping6 -I eth42 -c 1 ${host_ipv6_address_eth42} &>/dev/null; then
+   DISPLAY_VALUE="[${host_ipv6_address_eth42}%eth42]:${x11_display_number}"
+   ip addr del $ip42/16 dev eth42
+ else
+   DISPLAY_VALUE=172.23.0.254:${x11_display_number:-0}
+ fi
 
  # Support for `ssh' tunnelling:
  if [[ -n "${mit_magic_cookie_1}" ]] && type -t xauth &>/dev/null; then
@@ -265,6 +296,7 @@ fi
  # variable DISPLAY:
  for i in /etc/profile /etc/bash.bashrc /root/.bash_profile /root/.bashrc; do
   if [[ -f $i ]]; then
+    sed -i -e '/^export DISPLAY=/d' $i
     append_line_if_needed "export DISPLAY=$DISPLAY_VALUE" $i
     if [[ -n $XAUTHORITY ]]; then append_line_if_needed "export XAUTHORITY=$XAUTHORITY" $i; fi
     break;
@@ -348,7 +380,7 @@ fi
  TARGET=/etc/quagga
  { [[ -d $TARGET ]] && grep -q quagga /etc/group && ls -ld $TARGET |  awk '{print $4}' | grep -q root && chown -R quagga:quagga $TARGET; } || true
  # ---
- 
+
  if [[ $virtualfs_kind = "router" || $guestkind = "router" ]]; then
    # Activate IP (v4/v6) forwarding:
    echo 1 > /proc/sys/net/ipv4/ip_forward

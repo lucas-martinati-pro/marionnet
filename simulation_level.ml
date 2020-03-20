@@ -415,7 +415,7 @@ class vde_switch_process =
       ~stderr:dev_null_out
       ~socket_name_prefix
       ?management_socket
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
   initializer
@@ -433,7 +433,7 @@ class switch_process =
   fun ~(port_no:int)
       ?socket_name_prefix
       ?management_socket
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
 object(self)
@@ -442,7 +442,7 @@ object(self)
       ~port_no
       ?socket_name_prefix
       ?management_socket
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -453,7 +453,7 @@ class hub_process =
   fun ~(port_no:int)
       ?socket_name_prefix
       ?management_socket
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
 object(self)
@@ -462,7 +462,7 @@ object(self)
       ~port_no
       ?socket_name_prefix
       ?management_socket
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -471,7 +471,7 @@ end;;
 (** A Hublet process is just a Hub process with exactly two ports *)
 class hublet_process =
   fun ?index
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
   let socket_name_prefix = match index with
@@ -482,7 +482,7 @@ class hublet_process =
    inherit hub_process
       ~port_no:2
       ~socket_name_prefix
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -758,7 +758,7 @@ let ethernet_interface_to_uml_command_line_argument umid port_index hublet =
   (ifconfig#get_port_attribute_by_index umid port_index "MAC address") ^
   ",unix," ^ (Shell.escaped_filename (hublet#get_socket_name)) ^ "/ctl";;
 
-let random_ghost_mac_address () =
+let random_mac_address () =
   let random () = Printf.sprintf "%02x" (Random.int 256) in
   let octet0 = "42" in
   let octet1 = "42" in
@@ -768,12 +768,56 @@ let random_ghost_mac_address () =
   let octet5 = random () in
   Printf.sprintf "%s:%s:%s:%s:%s:%s" octet0 octet1 octet2 octet3 octet4 octet5;;
 
+(* Source: RFC 4862 (Ipv6 stateless address autoconfiguration).
+   Simpler specification in this blog: http://www.sput.nl/internet/ipv6/ll-mac.html
+   ---
+   Example: "42:42:1d:93:f9:65" -> "fe80::4042:1dff:fe93:f965"
+   *)
+let ipv6_link_local_address_of_MAC (mac:string) : string =
+  let xs = Scanf.sscanf mac "%1s%1s:%2s:%2s:%2s:%2s:%2s" (fun b1x b1y b2 b3 b4 b5 b6 -> [| b1x; b1y; b2; b3; b4; b5; b6 |]) in
+  (* val xs : string array = [|"4"; "2"; "42"; "1d"; "93"; "f9"; "65"|] *)
+  let y : int = Scanf.sscanf xs.(1) "%1x" (fun y -> y) in (* 2 *)
+  let y' = Printf.sprintf "%1x" (y lxor 2) in
+  let () = xs.(1) <- y' in (* xs = [|"4"; "0"; "42"; "1d"; "93"; "f9"; "65"|] *)
+  let result = Printf.sprintf "fe80::%s%s%s:%sff:fe%s:%s%s" xs.(0) xs.(1) xs.(2) xs.(3) xs.(4) xs.(5) xs.(6) in
+  (* val result : string = "fe80::4042:1dff:fe93:f965" *)
+  result
+
 (** Create a fresh sparse file name for swap and return it: *)
 let create_swap_file_name ~parent =
   UnixExtra.temp_file
     ~parent
     ~prefix:"sparse-swap-"
     ();;
+
+(** Source: https://www.tldp.org/HOWTO/Linux+IPv6-HOWTO/
+    TODO: move it in Ocamlbricks (module Linux) *)
+let get_ipv6_address_of (intf) (* Ex: "tap418733" *) : string option (* Ex: Some "fe80::ece2:98ff:fec0:9d45" *) =
+  let filename = "/proc/net/if_inet6" in
+  try begin
+    let m = StringExtra.Text.Matrix.from_file (filename) in
+    let line = List.find (fun xs -> List.mem (intf) xs) m in
+    let a0 = List.hd line in
+    let xs = Array.init 8 (fun i -> String.sub a0 (i*4) 4) in
+    let a1 = String.concat ":" (Array.to_list xs) in
+    let a2 = Ipv6.to_string (Ipv6.of_string a1) in
+    Some a2
+  end with _ -> None
+
+(* TODO: move it in Ocamlbricks (module Linux) *)
+let get_MAC_address_of (intf) (* Ex: "tap418733" *) : string option (* Ex: Some "72:45:63:69:6a:04" *) =
+  let filename = Printf.sprintf "/sys/class/net/%s/address" intf in
+  try begin
+    let xs = StringExtra.Text.from_file filename in (* ["72:45:63:69:6a:04"] *)
+    Some (List.hd xs)
+  end with _ -> None
+
+(* May be used with any kind of interface, not only tun/tap:
+   TODO: move it in Ocamlbricks (module Linux) *)
+let predict_ipv6_link_local_address_of (tap) : string =
+  match get_MAC_address_of (tap) with
+  | None -> ""
+  | Some mac -> (try (ipv6_link_local_address_of_MAC mac) with _ -> "")
 
 (** The UML process used to implement machines and routers: *)
 class uml_process =
@@ -796,7 +840,7 @@ class uml_process =
       ?(show_unix_terminal=false)
       ?xnest_display_number
       ?(guestkind="machine") (* or "router" *)
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
   let swap_file_name =
@@ -829,15 +873,13 @@ class uml_process =
   let ip42 = Printf.sprintf "172.23.%i.%i" octet2 octet3 in
   let _ = Log.printf2 "uml_process: creating %s: eth42 has IP %s\n" umid ip42 in
   let tap_name =
-    match Daemon_client.ask_the_server
-            (Make (AnyTap((Unix.getuid ()),
-                          (* "172.23.0.254" *) ip42))) with
-    | Created (Tap tap_name) ->
-        tap_name
-    | _ ->
-        "wrong-tap-name"
+    match Daemon_client.ask_the_server (Make (AnyTap((Unix.getuid ()), ip42))) (* "172.23.0.254" *) with
+    | Created (Tap tap_name) -> tap_name
+    | _ ->  "wrong-tap-name"
   in
   (* Basic parameters: *)
+  let eth42_mac_address = random_mac_address () in
+  (* --- *)
   let command_line_arguments =
     List.append
       (List.map
@@ -854,7 +896,7 @@ class uml_process =
        "guestkind="^guestkind;
        "xterm="^Initialization.marionnet_terminal;
        (* Ghost interface configuration. The IP address is relative to a *host* tap: *)
-       "eth42=tuntap,"^tap_name^","^(random_ghost_mac_address ())^",172.23.0.254";
+       "eth42=tuntap,"^tap_name^","^(eth42_mac_address)^",172.23.0.254";
        "debug_mode="^(if Global_options.Debug_level.are_we_debugging () then "true" else "");
      ]
   in
@@ -926,7 +968,7 @@ class uml_process =
 
   method ip_address_eth42 = ip42
   method tap_name = tap_name
-      
+
   method swap_file_name =
     swap_file_name
 
@@ -1167,6 +1209,7 @@ class uml_process =
     write ("x11_display_number", X.guest_display_dot_screen);
     Option.iter (fun x -> write ("mit_magic_cookie_1",x)) X.mit_magic_cookie_1;
     (* --- *)
+    let _ = Sys.command "ifconfig -a" in
     List.iter
       write
       (* Here we leave "ethernet_interfaces_no" instead of "ethernet_interface_no" *)
@@ -1176,11 +1219,18 @@ class uml_process =
              (List.map
                 (fun (ei, h) -> ethernet_interface_to_boot_parameters_bindings umid ei h)
                 (List.combine (ListExtra.range 0 (ethernet_interface_no - 1)) hublet_processes)))
-          [(* A non-standard binding we use to identify the IP address of eth42 in the guest: *)
-           "ip42", ip42;
-           (* A non-standard binding we use to pass the virtual machine name to the guest: *)
-           "hostname", umid;
-         ]));
+          [(* We use a non-standard binding to identify the Ipv4 and IPv6 addresses of eth42 in the guest: *)
+           ("ip42", ip42); (* for compatibility with old VM *)
+           ("host_ipv4_address_eth42", ip42);
+           (* The following extraction should fail because, at this time, the tap interface cannot be automatically
+              configured by the host kernel which will see this interface as not connected, even if created.
+              The IPv6's self-configuration will be activated only when the corresponding interface, in the virtual
+              machine, will be set up. So, the really useful call in the following line is to the function
+              `predict_ipv6_link_local_address_of': *)
+           ("host_ipv6_address_eth42", Option.extract_or (get_ipv6_address_of tap_name) (predict_ipv6_link_local_address_of tap_name));
+           (* We use a non-standard binding to pass the virtual machine name to the guest: *)
+           ("hostname", umid);
+          ]));
     flush_all ();
     (try
       close_out out_channel;
@@ -1253,7 +1303,7 @@ let device_state_to_string s =
 class virtual ['parent] device
  ~(parent:'parent)
  ~hublet_no (* TODO: remove it, use instead parent#get_port_no *)
- ~working_directory      
+ ~working_directory
  ~(unexpected_death_callback: unit -> unit)
  ()
  =
@@ -1263,7 +1313,7 @@ class virtual ['parent] device
      (fun index ->
         new hublet_process
               ~index
-              ~working_directory      
+              ~working_directory
               ~unexpected_death_callback
               ())
  in
@@ -1396,7 +1446,7 @@ class virtual ['parent] main_process_with_n_hublets_and_cables
   ~(parent:'parent)
   ~hublet_no
   ?(last_user_visible_port_index=(hublet_no-1))
-  ~working_directory      
+  ~working_directory
   ~unexpected_death_callback
   ()
   =
@@ -1404,7 +1454,7 @@ object(self)
   inherit ['parent] device
       ~parent
       ~hublet_no
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -1504,7 +1554,7 @@ class accessory_processes_stuff () = object
 
   method private continue_accessory_processes =
     List.iter (fun p -> p#continue) (List.rev accessory_processes)
-   
+
 end (* object accessory_processes_stuff *)
 
 (** Add some accessory processes running together with the main process. *)
@@ -1512,7 +1562,7 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
   fun ~(parent:'parent)
       ~hublet_no
       ?(last_user_visible_port_index:int option)
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
  object(self)
@@ -1521,7 +1571,7 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
       ~parent
       ~hublet_no
       ?last_user_visible_port_index
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -1567,7 +1617,7 @@ class virtual ['parent] hub_or_switch =
       ?management_socket
       ?fstp
       ?rcfile
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
  object(self)
@@ -1576,7 +1626,7 @@ class virtual ['parent] hub_or_switch =
       ~parent
       ~hublet_no
       ?last_user_visible_port_index
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -1593,7 +1643,7 @@ class virtual ['parent] hub_or_switch =
               ?management_socket
               ?fstp
               ?rcfile
-              ~working_directory      
+              ~working_directory
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback
               ())
 
@@ -1626,7 +1676,7 @@ class virtual ['parent] machine_or_router =
       ?umid:(umid="uml-" ^ (string_of_int (gensym ())))
       ~id
       ?show_unix_terminal
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
 let half_hublet_no = ethernet_interface_no in
@@ -1638,7 +1688,7 @@ object(self)
   inherit ['parent] device
       ~parent
       ~hublet_no:(half_hublet_no * 2)
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       ()
       as super
@@ -1703,7 +1753,7 @@ object(self)
               ?xnest_display_number:(
                  if xnest then Some self#get_xnest_process#display_number_as_server
                           else None)
-              ~working_directory      
+              ~working_directory
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback
               (* The following parameter will be given to the uml process: *)
               ~guestkind:(if router then "router" else "machine")
@@ -1790,21 +1840,21 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ?umid
       ~id
       ?show_unix_terminal
-      ~working_directory      
+      ~working_directory
       ~unexpected_death_callback
       () ->
   object(self)
 
   inherit ['parent] machine_or_router
-      ~parent ~router 
+      ~parent ~router
       ~kernel_file_name ?kernel_console_arguments
       ?filesystem_relay_script ?rcfile_content
-      ~filesystem_file_name 
+      ~filesystem_file_name
       ~dynamically_get_the_cow_file_name_source
       ~cow_file_name ~states_directory
-      ~ethernet_interface_no 
-      ~memory ~console_no ~console ~xnest 
-      ?umid ~id ?show_unix_terminal ~working_directory      
+      ~ethernet_interface_no
+      ~memory ~console_no ~console ~xnest
+      ?umid ~id ?show_unix_terminal ~working_directory
       ~unexpected_death_callback
       ()
       as super
