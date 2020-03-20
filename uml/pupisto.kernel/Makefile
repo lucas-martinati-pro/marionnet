@@ -24,7 +24,7 @@ help:
 	@echo "   or: make help"
 	@echo "Example: make 3.2.48"
 
-2.% 3.%: dependencies
+2.% 3.% 4.%: dependencies
 	./pupisto.kernel.sh $(OPTIONS) $@
 
 clean:
@@ -40,7 +40,10 @@ show_versions:
 #                     Dependencies
 # =============================================================
 
-REQUIRED_PACKAGES=binutils wget patch ccache gcc gcc-multilib libc6-i386 libc6-dev-i386
+GCC=$(shell find /usr/bin/ -name "gcc-[0-9]*" | tr '-' ' ' | sort -n -k 2 | tail -n 1 | tr ' ' '-')
+
+# REQUIRED_PACKAGES=binutils wget patch ccache gcc-4.8 gcc-4.8-multilib libc6-i386 libc6-dev-i386
+REQUIRED_PACKAGES=binutils wget patch gcc-4.8 gcc-4.8-multilib libc6-i386 libc6-dev-i386
 dependencies:
 	@echo "Required packages: $(REQUIRED_PACKAGES)"
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
@@ -52,4 +55,11 @@ dependencies:
 		else \
 		  exit 1; \
 		fi
+	@echo "---"
+	sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
+	sudo update-alternatives --set gcc /usr/bin/gcc-4.8
+	@echo "---"
+	@echo "Note: after compilation you should restore your gcc version with:";
+	@echo "sudo update-alternatives --set gcc $(GCC)"
+	@echo "---"
 	@echo Ok.

@@ -33,8 +33,8 @@ export EDITOR="nano"
 function field { local N=${1:-1}; shift; cat "$@" | awk -v N=$N '{print $N}'; }
 export field
 
-# Like `which' but reads links recursively. Useful for instance to quickly know
-# if a binary name corresponds to busybox:
+# Like `which' but reads links recursively. Useful for instance to quickly know
+# if a binary name corresponds to busybox:
 function what {
  local W B
  if W=$(which "$1"); then

@@ -20,39 +20,53 @@
 #                     Building `wheezy'
 # =============================================================
 
-KERNEL_VERSION=3.2.60
+WHEEZY_KERNEL_VERSION=3.2.60
+WHEEZY_ARCH=i386
+WHEEZY_FSTYPE=ext2
 
 wheezy: dependencies
-	./pupisto.debian.sh --kernel $(KERNEL_VERSION) -t ext2 -r wheezy
+	./pupisto.debian.sh --kernel $(WHEEZY_KERNEL_VERSION) -t $(WHEEZY_FSTYPE) -a $(WHEEZY_ARCH) -r wheezy
 
 wheezy-no-kernel: dependencies
-	./pupisto.debian.sh --kernel $(KERNEL_VERSION) -t ext2 --no-kernel -r wheezy
+	./pupisto.debian.sh --kernel $(WHEEZY_KERNEL_VERSION) -t $(WHEEZY_FSTYPE) -a $(WHEEZY_ARCH) --no-kernel -r wheezy
 
 wheezy-custom: dependencies
-	@echo "./pupisto.debian.sh --kernel $(KERNEL_VERSION) -t ext2 -r wheezy --custom"
+	@echo "./pupisto.debian.sh --kernel $(WHEEZY_KERNEL_VERSION) -t $(WHEEZY_FSTYPE) -a $(WHEEZY_ARCH) -r wheezy --custom"
 	@echo "NOT IMPLEMENTED YET"
 
 wheezy-edit:
 	$(EDITOR) pupisto.debian.sh.files/package_catalog/package_catalog.wheezy.selection
 
-squeeze: dependencies
-	@echo "./pupisto.debian.sh --kernel $(KERNEL_VERSION) -t btrfs -r squeeze"
+
+# =============================================================
+#                     Building `stretch'
+# =============================================================
+
+STRETCH_KERNEL_VERSION=4.14.36
+STRETCH_ARCH=amd64
+STRETCH_FSTYPE=ext4
+
+stretch: dependencies
+	./pupisto.debian.sh --kernel $(STRETCH_KERNEL_VERSION) -t $(STRETCH_FSTYPE) -a $(STRETCH_ARCH) -r stretch
+
+stretch-no-kernel: dependencies
+	./pupisto.debian.sh --kernel $(STRETCH_KERNEL_VERSION) -t $(STRETCH_FSTYPE) -a $(STRETCH_ARCH) --no-kernel -r stretch
+
+stretch-custom: dependencies
+	@echo "./pupisto.debian.sh --kernel $(STRETCH_KERNEL_VERSION) -t $(STRETCH_FSTYPE) -a $(STRETCH_ARCH) -r stretch --custom"
 	@echo "NOT IMPLEMENTED YET"
 
-squeeze-no-kernel: dependencies
-	@echo "./pupisto.debian.sh --kernel $(KERNEL_VERSION) -t btrfs --no-kernel -r squeeze"
-	@echo "NOT IMPLEMENTED YET"
-
-squeeze-edit:
-	@echo $(EDITOR) pupisto.debian.sh.files/package_catalog/package_catalog.wheezy.selection
-	@echo "NOT IMPLEMENTED YET"
+stretch-edit:
+	$(EDITOR) pupisto.debian.sh.files/package_catalog/package_catalog.stretch.selection
 
 # =============================================================
 #                     Dependencies
 # =============================================================
 
 # REQUIRED_PACKAGES=debootstrap fakeroot fakechroot
-REQUIRED_PACKAGES=debootstrap realpath
+REQUIRED_PACKAGES=debootstrap
+# realpath is now in coreutils
+
 dependencies:
 	@echo "Required packages: $(REQUIRED_PACKAGES)"
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
@@ -75,10 +89,8 @@ clean:
 	sudo rm -rf _build.*
 
 help:
-	@echo "Usage: make wheezy"
-	@echo "   or: make wheezy-custom    # NOT IMPLEMENTED YET"
-	@echo "   or: make squeeze          # NOT IMPLEMENTED YET"
-	@echo "   or: make squeeze-custom   # NOT IMPLEMENTED YET"
+	@echo "Usage: make stretch"
+	@echo "   or: make wheezy"
 	@echo "   or: make dependencies"
 	@echo "   or: make clean"
 	@echo "   or: make help-pupisto"
@@ -88,4 +100,4 @@ help-pupisto:
 	./pupisto.debian.sh --help
 
 edit:
-	$(EDITOR) *.sh pupisto.debian.sh.files/package_catalog/package_catalog.*.selection ../pupisto.common/*.sh
+	$(EDITOR) Makefile *.sh pupisto.debian.sh.files/package_catalog/package_catalog.*.selection ../pupisto.common/*.sh

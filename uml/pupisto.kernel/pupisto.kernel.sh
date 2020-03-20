@@ -286,7 +286,9 @@ pushd "$TWDIR"
 
 # Download, uncompress and untar the kernel:
 local KERNEL_SUBDIR=${VERSION%.*}
-local KERNEL_SUBDIR=${KERNEL_SUBDIR//3.*/3.x}
+# Fix the kernel location:
+KERNEL_SUBDIR=${KERNEL_SUBDIR//3.*/3.x}
+KERNEL_SUBDIR=${KERNEL_SUBDIR//4.*/4.x}
 
 # To save the tarball:
 mkdir -p $DOWNLOADS_DIRECTORY
@@ -359,7 +361,9 @@ local PROCESSOR_NO=$(\grep "^processor.*:" /proc/cpuinfo | sort | uniq | wc -l)
 
 # Launch the compilation process with the virtual `um' architecture (ARCH),
 # and with `i386' target host architecture (SUBARCH)
-make -j $PROCESSOR_NO ARCH=um SUBARCH=i386
+# make -j $PROCESSOR_NO ARCH=um SUBARCH=i386
+make ARCH=um SUBARCH=i386
+# make ARCH=um # 64 bits!
 
 cp -a linux linux-${VERSION}${GHOST_SUFFIX}-unstripped
 strip linux

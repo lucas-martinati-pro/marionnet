@@ -55,7 +55,7 @@ set -e
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hmc:Kk:dn:s:r:t:L"
+OPTSTRING="hmc:Kk:dn:s:r:t:a:L"
 
 function parse_cmdline {
 local i j flag
@@ -75,6 +75,9 @@ for i in "$@"; do
      ;;
     --name)
       ARGS+=("-n");
+     ;;
+    --arch)
+      ARGS+=("-a");
      ;;
     --kernel)
       ARGS+=("-k");
@@ -175,21 +178,23 @@ developpers for pedagogical reasons.
 ----------------------------
 
 Options:
-  -r/--release       set the release between \"wheezy\" (default) or \"squeeze\"
-  -t/--fstype        set the filesystem type (default \"ext3\")
-  -m/--custom        customize the package selection interactively
-  -k/--kernel VERS   set the kernel version (for headers and/or to compile)
-  -K/--no-kernel     do not compile the kernel
-  -c/--continue DIR  continue a previously broken execution in directory DIR
-  -s/--server URL    set the HTTP/DIR Debian server
-  -L/--no-locales    don't install \"locales\" and purge *.mo files
-  -h/--help          Print this message and exit
+  -r/--release RELEASE  set the release by name (default or \"${DEFAULT_RELEASE}\")
+  -a/--arch ARCH        set the architecture i386 or amd64 (default \"${DEFAULT_ARCH}\")
+  -t/--fstype TYPE      set the filesystem type (default \"${DEFAULT_FSTYPE}\")
+  -m/--custom           customize the package selection interactively
+  -k/--kernel VERSION   set the kernel version (default ${DEFAULT_KERNEL_VERSION})
+  -K/--no-kernel        do not compile the kernel
+  -c/--continue DIR     continue a previously broken execution in directory DIR
+  -s/--server URL       set the HTTP/DIR Debian server
+  -L/--no-locales       don't install \"locales\" and purge *.mo files
+  -h/--help             Print this message and exit
 ---
 Defaults:
-  --release \"wheezy\"
+  --release \"${DEFAULT_RELEASE}\"
+  --arch ${DEFAULT_ARCH}
   --kernel ${DEFAULT_KERNEL_VERSION}
   --fstype ${DEFAULT_FSTYPE}
-  --server \"http://ftp.debian.org/debian/\"
+  --server \"${DEFAULT_SERVER}\"
 
 Notes
   - If the kernel is compiled (you can disable it with -K) it will
@@ -200,21 +205,25 @@ Notes
     password several times
 
 Examples:
-$ ${0##*/} -r wheezy
-$ ${0##*/} -k 3.0.8 --custom -t ext4 -r wheezy"
+$ ${0##*/} -r ${DEFAULT_RELEASE}
+$ ${0##*/} -k ${DEFAULT_KERNEL_VERSION} --custom -t ${DEFAULT_FSTYPE} -r ${DEFAULT_RELEASE}"
  exit $1
 }
 
-# http://http.debian.net/debian
+# Defaults:
+
+DEFAULT_RELEASE="stretch"
+DEFAULT_ARCH="amd64" # previously i386
+DEFAULT_SERVER="http://ftp.debian.org/debian/"
 
 # Note that 2.6.30 is the first header's version allowing a
 # successfully buildroot compilation (2.6.18 fails)
 # Another possible default could be 2.6.32 (last statically-linked
 # available version of our patched (ghost2) kernel)
-DEFAULT_KERNEL_VERSION=3.2.58
+DEFAULT_KERNEL_VERSION="4.14.18"
 
-# We set this default to "ext2" in order to obtain smaller filesystems:
-DEFAULT_FSTYPE="ext2"
+# We set this default to "ext4" in order to obtain smaller filesystems:
+DEFAULT_FSTYPE="ext4"
 
 # Manage now your options in a convenient order
 #
@@ -232,7 +241,13 @@ fi
 if [[ -n ${option_r} ]]; then
  RELEASE=$option_r_arg
 else
- RELEASE="wheezy"
+ RELEASE=$DEFAULT_RELEASE
+fi
+# Option -a --arch
+if [[ -n ${option_a} ]]; then
+ ARCH=$option_a_arg
+else
+ ARCH=$DEFAULT_ARCH
 fi
 # Option -t --fstype
 if [[ -n ${option_t} ]]; then
@@ -244,7 +259,7 @@ fi
 if [[ -n ${option_s} ]]; then
  HTTP_SERVER=$option_s_arg
 else
- HTTP_SERVER="http://ftp.debian.org/debian/"
+ HTTP_SERVER="$DEFAULT_SERVER"
 fi
 # Option -d --debug
 if [[ -n ${option_d} ]]; then
@@ -267,8 +282,8 @@ if [[ -n ${option_c} ]]; then
 fi
 
 # TODO:
-if [[ ! $RELEASE = wheezy ]]; then
-  echo "Sorry, currently only \`wheezy' is supported by this script. Exiting."
+if [[ ! $RELEASE = "wheezy" && ! $RELEASE = "stretch" ]]; then
+  echo "Sorry, currently only \`wheezy' and \`stretch' are supported by this script. Exiting."
   exit 1
 fi
 
@@ -349,7 +364,6 @@ PUPISTO_DIR=$PWD
 # Initialize the file registering actions to be performed once:
 set_once_actions_file $TWDIR/ONCE_ACTIONS_FILE
 
-ARCH=i386
 PUPISTO_FILES=pupisto.debian.sh.files
 
 # Unnecessary therefore essential ;-)
@@ -537,7 +551,7 @@ function make_ethghost {
  rm -rf $ETHGHOST
 }
 
-# Compile ethghost into the 32-bits filesystem.
+# Compile ethghost into a 32-bits or 64-bits filesystem.
 # Here we suppose that the apt sources have been fixed:
 function compile_and_install_ethghost {
  # global DEBIANROOT
@@ -1010,10 +1024,10 @@ once launch_debootstrap_and_then_apt_get_install
 once fix_apt_sources_update_and_upgrade
 
 # Fix locales (if installed) to "en_US.UTF-8":
-once fix_locales
+#once fix_locales
 
-# Remove package `udev' (and packages depending to)
-once remove_package udev || true
+# Remove package `udev' (and packages depending to it)
+#once remove_package udev || true
 
 # Fix /etc/inittab:
 once fix_etc_inittab
@@ -1059,15 +1073,15 @@ once fix_etc_issue
 once prevent_non_vital_services_from_starting
 
 # Create devices /dev/ubd? for virtual disks:
-once mknod_for_virtual_disks
+# once mknod_for_virtual_disks
 
 # Prevent a noising warning window to appear when
 # wireshark is called as root (that is usual with
-# Marionnet:
+# Marionnet):
 once fix_wireshark_init_lua
 
 # Install this nice program, useful for labs about IPv6 compliance:
-once install_ipv6_care
+# once install_ipv6_care || true
 
 # Final cleaning:
 once clean_debian_filesystem
