@@ -1209,7 +1209,6 @@ class uml_process =
     write ("x11_display_number", X.guest_display_dot_screen);
     Option.iter (fun x -> write ("mit_magic_cookie_1",x)) X.mit_magic_cookie_1;
     (* --- *)
-    let _ = Sys.command "ifconfig -a" in
     List.iter
       write
       (* Here we leave "ethernet_interfaces_no" instead of "ethernet_interface_no" *)

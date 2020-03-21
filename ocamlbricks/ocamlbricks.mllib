@@ -1,0 +1,99 @@
+# This file is part of our reusable OCaml BRICKS library
+# Copyright (C) 2008  Luca Saiu
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# This is simply a list of the OCaml modules (*not* filenames) to be included
+# in the library:
+Argv
+ArrayExtra
+ArrayTk
+Bit
+Bitmasks
+Bitmmasks
+Cache
+Cloakroom
+Configuration_files
+Container
+Cortex
+#Cortex2
+Cortex_lib
+Counter
+Default
+Dot
+Dot_widget
+Egg
+Either
+Endpoint
+Environments
+Extreme_sharing
+FilenameExtra
+Fix
+Forest
+Functor
+Future
+Gettext_builder
+HDag
+Hashmap
+Hashmmap
+Hashset
+Hashmset
+HashtblExtra
+Ind
+Ipv4
+Ipv6
+Lazy_perishable
+Linux
+ListExtra
+#Lock
+#Locked
+Log_builder
+Loop
+MapExtra
+Marshallable_classes
+Memo
+Meta_ocamlbricks
+Mrproper
+MutexExtra
+Multimap
+Network
+Ocamlbricks_log
+OoExtra
+Oomarshal
+Option
+Permutation
+PervasivesExtra
+#PHDag
+#Polyperdag_v1
+QueueExtra
+Range
+Rev
+Selections
+Semaphore
+Shell
+SetExtra
+Spinning
+Stateful_modules
+StrExtra
+StringExtra
+String_queue
+Sugar
+StackExtra
+SysExtra
+ThreadExtra
+Thunk
+UnixExtra
+Widget
+Wrapper

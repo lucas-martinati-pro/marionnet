@@ -1,0 +1,179 @@
+# This -*- makefile -*- is part of our reusable OCaml BRICKS library
+# Copyright (C) 2008, 2011  Luca Saiu
+# Copyright (C) 2008, 2010, 2011  Jean-Vincent Loddo
+# Copyright (C) 2008, 2010, 2011  Université Paris 13
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Set this variable to "-verbose 0" for more details
+OCAMLBUILD_OPTIONS=-quiet
+
+COMPILE_OPTIONS += -g -thread
+DIRECTORIES_TO_INCLUDE = threads lablgtk2 camlp4
+LIBRARIES_TO_LINK = str unix threads lablgtk
+
+# NATIVE_PROGRAMS += mutexExtra_test.native
+# BYTE_PROGRAMS += mutexExtra_test.byte
+
+NATIVE_LIBRARY_NAME = ocamlbricks.cmxa
+BYTE_LIBRARY_NAME = ocamlbricks.cma
+
+NATIVE_LIBRARIES = $(shell \
+  if which ocamlopt.opt &>/dev/null || which ocamlopt &>/dev/null;\
+  then echo $(NATIVE_LIBRARY_NAME); fi)
+
+BYTE_LIBRARIES = $(shell \
+  if which ocamlc.opt &>/dev/null || which ocamlc &>/dev/null;\
+  then echo $(BYTE_LIBRARY_NAME); fi)
+
+# Empty for OCaml 3.x.y series, set to "-DOCAML4_OR_LATER" for 4.x.y or later:  
+OCAML4_OR_LATER=$(shell if grep -q "^[4-9]" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_OR_LATER"; fi)
+
+# Transmit the information about the compiler version in order to 
+# activate conditional compilation:
+PP_OPTION = camlp4of $(OCAML4_OR_LATER)
+
+GETTEXT=GETTEXT
+C_OBJECTS_TO_LINK = gettext-c-wrapper does-process-exist-c-wrapper waitpid-c-wrapper
+OTHER_LIBRARY_FILES_TO_INSTALL = _build/{gettext-c-wrapper.o,does-process-exist-c-wrapper.o,gettext_extract_pot_p4.cmo,waitpid-c-wrapper.o,include_type_definitions_p4.cmo,include_as_string_p4.cmo,where_p4.cmo,option_extract_p4.cmo,raise_p4.cmo,log_module_loading_p4.cmo}
+
+MANUALLY_PRE_COPY_IN_build =     \
+  GETTEXT/gettext_extract_pot_p4.ml{,i} \
+  GETTEXT/gettext-c-wrapper.c \
+  EXTRA/does-process-exist-c-wrapper.c \
+  EXTRA/waitpid-c-wrapper.c \
+  CAMLP4/include_type_definitions_p4.ml{,i} \
+  CAMLP4/include_as_string_p4.ml{,i} \
+  CAMLP4/where_p4.ml{,i} \
+  CAMLP4/option_extract_p4.ml{,i} \
+  CAMLP4/common_tools_for_preprocessors.ml{,i} \
+  CAMLP4/raise_p4.ml{,i} \
+  CAMLP4/log_module_loading_p4.ml{,i}
+
+
+MANUALLY_PRE_MAKE_IN_build =      \
+  gettext_extract_pot_p4.cm{i,o} \
+  include_type_definitions_p4.cm{i,o} \
+  include_as_string_p4.cm{i,o} \
+  where_p4.cm{i,o} \
+  option_extract_p4.cm{i,o} \
+  raise_p4.cm{i,o} \
+  log_module_loading_p4.cm{i,o} \
+  libocamlbricks_stubs.a
+
+main-local: meta_ocamlbricks.ml
+
+meta_ocamlbricks.ml: meta.ml
+	cp $< meta_ocamlbricks.ml
+
+EXCLUDE_FROM_EDITING=meta_ocamlbricks.ml
+
+# include_type_definitions_p4
+
+_build/include_type_definitions_p4.cmi: CAMLP4/include_type_definitions_p4.mli
+	ocamlc -c -I +camlp4 -pp camlp4of -o $@ $<
+
+_build/include_type_definitions_p4.cmo: CAMLP4/include_type_definitions_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+# include_as_string_p4
+
+_build/include_as_string_p4.cmi: CAMLP4/include_as_string_p4.mli
+	ocamlc -c -I +camlp4 -pp camlp4of -o $@ $<
+
+_build/include_as_string_p4.cmo: CAMLP4/include_as_string_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/where_p4.cmi: CAMLP4/where_p4.mli
+	ocamlc -c -I +camlp4 -pp camlp4of -o $@ $<
+
+_build/where_p4.cmo: CAMLP4/where_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/option_extract_p4.cmi: CAMLP4/option_extract_p4.mli
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/option_extract_p4.cmo: CAMLP4/option_extract_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/raise_p4.cmi: CAMLP4/raise_p4.mli
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/raise_p4.cmo: CAMLP4/raise_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/log_module_loading_p4.cmi: CAMLP4/log_module_loading_p4.mli
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+_build/log_module_loading_p4.cmo: CAMLP4/log_module_loading_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of -o $@ $<
+
+# gettext_extract_pot_p4
+
+_build/gettext_extract_pot_p4.cmi: $(GETTEXT)/gettext_extract_pot_p4.mli
+	ocamlc -c -I +camlp4 -pp camlp4of camlp4lib.cma -o $@ $<
+
+_build/gettext_extract_pot_p4.cmo: $(GETTEXT)/gettext_extract_pot_p4.ml
+	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of camlp4lib.cma -o $@ $<
+
+_build/libocamlbricks_stubs.a: $(GETTEXT)/gettext-c-wrapper.c  EXTRA/does-process-exist-c-wrapper.c  EXTRA/waitpid-c-wrapper.c
+	@(mkdir _build &> /dev/null || true); \
+	cd _build; \
+	ocamlc -c -verbose $(GETTEXT)/gettext-c-wrapper.c; \
+	ocamlc -c -verbose EXTRA/does-process-exist-c-wrapper.c; \
+	ocamlc -c -verbose EXTRA/waitpid-c-wrapper.c; \
+	ocamlmklib -verbose -oc ocamlbricks_stubs gettext-c-wrapper.o does-process-exist-c-wrapper.o waitpid-c-wrapper.o
+
+MANUALLY_POST_MAKE_IN_build= rebuild-library-with-linkall  install-all-files-in-a-single-local-directory
+
+# idempotent
+_build/rebuild-library-with-linkall: 
+	@chmod +x Makefile.d/ocamlmklib_wrapper.sh
+	@Makefile.d/ocamlmklib_wrapper.sh $(C_OBJECTS_TO_LINK)
+
+FLATTENED_DIRECTORY=_build/_build.flattened
+_build/install-all-files-in-a-single-local-directory:
+	@mkdir -p $(FLATTENED_DIRECTORY); 
+	@find _build/ -path $(FLATTENED_DIRECTORY) -prune -o -type f -exec cp -fl {} $(FLATTENED_DIRECTORY)/ \;
+	@echo "Success: ocamlbricks was rebuilt linking all stubs and was installed for marionnet in a local directory ($(FLATTENED_DIRECTORY)).";
+
+preprocessors: _build/gettext_extract_pot_p4.cmo
+
+rebuilding:
+	$(MAKE) _build/rebuild-library-with-linkall
+
+# install-libraries-local: _build/rebuild-library-with-linkall preprocessors
+install-libraries-local: rebuilding preprocessors
+
+# Remove the automatically-generated documentation on clean:
+clean-local:
+	@rm -rf doc/html
+	@rm -f meta_ocamlbrics.ml _build/meta_ocamlbrics.ml
+	@rm -rf _build/does_process_exist.o
+	@rm -rf _build/waitpid-c-wrapper.o
+
+compile_for_testing:
+	@if grep -q "DDOCUMENTATION_OR_DEBUGGING" $(LOGFILE); then echo "Fine, already compiled for testing."; else make clean; fi; \
+	make PP_OPTION="$(PP_OPTION) -DDOCUMENTATION_OR_DEBUGGING"
+
+# Test without installation
+LIBRARY_TO_TEST=_build/ocamlbricks.cma
+test: compile_for_testing rebuilding
+	@chmod +x Makefile.d/test_with.sh
+	@Makefile.d/test_with.sh "ocaml"
+
+# Test without installation with the utop toplevel
+test_with_utop: compile_for_testing rebuilding
+	@chmod +x Makefile.d/test_with.sh
+	@Makefile.d/test_with.sh "utop"
