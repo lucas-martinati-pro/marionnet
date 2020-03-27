@@ -299,6 +299,12 @@ module Process : sig
    ?pid:int ->
    unit -> unit
 
+
+(* Wait until a process die (child or unrelated). Passive waiting based on Inotify.
+   The polling_interval is guarantees not to fall into unfortunate cases (race conditions)
+   where the caller would be blocked indefinitely on a read operation. *)
+ val wait_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
+
 end (* Process *)
 
 (* Returns the first ipv6 address corresponding to the interface in the file "/proc/net/if_inet6".

@@ -81,14 +81,14 @@ let temp_dir ?temp_dir ?(prefix="") ?(suffix="") ?(perm=0o755) () =
   Unix.chmod result perm; (* Yes, we insist because it seems necessary... *)
   result
 
-let to_absolute ?parent x =
+let rec to_absolute ?parent x =
   if not (Filename.is_relative x) then x else
   let parent =
     match parent with
     | None -> Sys.getcwd ()
     | Some p ->
         if Filename.is_relative p
-          then failwith "to_absolute: non-absolute parent provided"
+          then to_absolute ?parent:None (p)
           else p
   in
   Filename.concat parent x
@@ -96,6 +96,49 @@ let to_absolute ?parent x =
 (** Note that the empty string became "." *)
 let make_explicit x =
   if Filename.is_implicit x then Filename.concat "./" x else x
+
+(* String.split_on_char requires Ocaml >= 4.04.0 *)
+IFDEF OCAML4_04_OR_LATER THEN
+let split_on_char = String.split_on_char
+ELSE
+let split_on_char d s = StringExtra.split ~do_not_squeeze:() ~d s
+ENDIF
+
+let simplify s =
+  let s = make_explicit s in
+  let xs = split_on_char '/' s in
+  (* --- *)
+  let rec loop acc = function
+  | [] -> acc
+  | ".."::".."::xs -> loop (".."::acc) (".."::xs)
+  | ".."::x::xs -> loop acc xs
+  | x::xs -> loop (x::acc) xs
+  in
+  let rec fixpoint xs =
+    let ys = loop [] (List.rev xs) in
+    if ys = xs then ys else
+    fixpoint ys
+  in
+  (* --- *)
+  let remove_first_repeated_go_up xs =
+    let xs = Array.of_list xs in
+    match ArrayExtra.searchi (fun x -> x<>"..") xs with
+    | None -> []
+    | Some (i,_) -> (ArrayExtra.sub xs i) |> Array.to_list
+  in
+  (* --- *)
+  let first, ys = match xs with hd::tl -> (hd, tl) | _ -> assert false in
+  (* --- *)
+  let zs = List.filter (fun y -> y<>"." && y<>"") ys in
+  let result =
+    if first = "" (* s is an absolute path *)
+      then (String.concat "/" (first::(remove_first_repeated_go_up (fixpoint zs))))
+      else (String.concat "/" (first::(fixpoint zs)))
+  in
+  (* --- *)
+  if result = "" then "/" else
+  result
+
 
 let remove_trailing_slashes_and_dots =
   let make_explicit_alias = make_explicit in

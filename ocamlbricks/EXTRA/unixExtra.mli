@@ -284,5 +284,11 @@ end
 
 val realpath : ?s:unit -> string -> string option
 
+IFDEF OCAML4_04_OR_LATER THEN
+(** Return something (not None) if and only if all the items in the chain of symlinks,
+    included the final target (that is not a symlink) exist. *)
+val realpath_exists : string -> string option
+ENDIF
+
 (** Poor man profiling tool (based on Unix.gettimeofday): *)
 val perf : ('a -> 'b) -> 'a -> 'b * float

@@ -1071,7 +1071,7 @@ let is_symlink filename =
 (* This version is thread_unsafe because of Sys.chdir. *)
 module Thread_unsafe = struct
 
- (** See the unix command realpath: *)
+ (** See the unix command realpath (which has the same strange semantics): *)
  let realpath ?s x =
   let x = match s with
   | None    -> resolve_symlink x
@@ -1106,6 +1106,62 @@ module Mutex = MutexExtra.Recursive
 let mutex = Mutex.create ()
 
 let realpath ?s x = Mutex.apply_with_mutex mutex (Thread_unsafe.realpath ?s) x
+
+IFDEF OCAML4_04_OR_LATER THEN
+(** Slightly different from `realpath' in the sense that this function returns
+    something (not None) if and only if all the items in the chain of symlinks,
+    included the final target (that is not a symlink) exist.
+    Example:
+      Sys.command "ln -s /usr/bin /tmp/usr-bin" ;;
+      - : int = 0
+
+      Sys.command "realpath /tmp/usr-bin/non-existing-binary" ;;
+      /usr/bin/non-existing-binary
+      - : int = 0
+
+      UnixExtra.realpath "/tmp/usr-bin/non-existing-binary" ;;
+      - : string option = Some "/usr/bin/non-existing-binary"
+
+      UnixExtra.realpath_exists "/tmp/usr-bin/" ;;
+      - : string option = Some "/usr/bin"
+
+      UnixExtra.realpath_exists "/tmp/usr-bin" ;;
+      - : string option = Some "/usr/bin"
+
+      UnixExtra.realpath_exists "/usr/bin/non-existing-exe" ;;
+      - : string option = None
+      *)
+let rec realpath_exists =
+  let rec follow d dx =
+    try
+      let y = Unix.readlink dx in
+      let y0 = Filename.dirname  y in
+      let y1 = Filename.basename y in
+      let d' = if y0 = "." then d else if Filename.is_relative y0 then Printf.sprintf "%s/%s" d y0 else y0 in
+      let dy = Printf.sprintf "%s/%s" d' y1 in
+      follow d' dy
+    with Unix.Unix_error (_,_,_) -> dx
+  in
+  fun x ->
+    let x = Printf.sprintf "%s/%s" (Filename.dirname x) (Filename.basename x) in
+    (* --- *)
+    if not (Sys.file_exists x) then None else (* continue: *)
+    (* Follow the link, if any, in order to have something real: *)
+    let dy = follow (Filename.dirname x) x in
+    (* --- *)
+    if not (Sys.file_exists dy) then None else (* continue: *)
+    (* --- *)
+    (* If, after resolution, the target still remains relative,
+       we transform it in an absolute path: *)
+    let dz = FilenameExtra.simplify (FilenameExtra.to_absolute dy) in
+    (* Now we have to recursively solve symlinks on the directory part. The result will be a
+       path composed by real directory names (not symlinks) terminating with a real directory
+       or file name (again, not a symlink): *)
+    match (Filename.dirname dz) with
+    | "/" -> Some (dz)
+    |  d  -> Option.bind (realpath_exists d) (fun d' -> Some (Filename.concat d' (Filename.basename dz)))
+
+ENDIF
 
 (** Version working in the both cases implicit/explicit program
     reference as a shell interpreter. *)

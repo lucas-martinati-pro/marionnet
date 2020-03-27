@@ -18,6 +18,10 @@
 (* Do not remove the following line: it's an ocamldoc workaround!*)
 (** *)
 
+open Flip
+module Log = Ocamlbricks_log
+(* --- *)
+
 type pid = int
 
 module Process = struct
@@ -335,6 +339,53 @@ module Process = struct
   main_loop 1 (wait_delay)
 
  end (* Kill_descendants *)
+
+ (* Wait until a process die (child or unrelated).
+    Relevant discussion here: https://www.linuxjournal.com/content/non-child-process-exit-notification-support
+    ---
+    val wait_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
+    *)
+ let wait_process ?verbose ?(polling_interval=10.) (pid) =
+   let verbose = Option.to_bool verbose in
+   (* --- *)
+   let proc_exe = Printf.sprintf "/proc/%d/exe" pid in
+   let exe = UnixExtra.realpath_exists (proc_exe) in
+   if exe = None then () else (* continue: *)
+   (* --- *)
+   let exe = Option.extract exe in
+   (* --- *)
+   (* Because the kernel reuses process identifiers, we have to work around the problem: *)
+   let physiognomy () : (int * int64 * int64) option = (* ppid, starttime, startstack *)
+     (flip) Option.map (stat pid) (fun s ->
+        s.ppid, s.starttime, s.startstack)
+   in
+   (* --- *)
+   let produce_event () =
+     try (Unix.openfile exe [Unix.O_RDONLY] 0o644) |> Unix.close with _ -> ()
+   in
+   (* --- *)
+   let timeout t =
+    ignore (Thread.create (fun () -> Thread.delay t; produce_event ()) ())
+   in
+   (* --- *)
+   let  fd = Inotify.create () in
+   let _wd = Inotify.add_watch fd (exe) [Inotify.S_Close_nowrite] in
+   (* --- *)
+   let phsmy = physiognomy () in
+   (* --- *)
+   let rec loop () =
+     let () = timeout (polling_interval) in
+     let _evs = Inotify.read fd in
+     let () = if verbose then Log.printf1 "wait_process: something happened about process %d\n" (pid) in
+     if phsmy = physiognomy () then loop () else (* exit *)
+     ()
+   in
+   (* --- *)
+   let () = loop () in
+   let () = Unix.close fd in
+   ()
+
+ (* --- *)
 
  include Kill_descendants
 

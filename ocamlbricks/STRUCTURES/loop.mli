@@ -196,7 +196,7 @@ val for_queue : ('a Queue.t, 's, int, 'a) u
 (* Example of functor's fold conversion (requires OCaml >= 4.03):
    let for_stack ?break = Loop.unidir_of_functor (Stack.fold) ?break ;; *)
 IFDEF OCAML4_03_OR_LATER THEN
-val for_stack : ('a Queue.t, 's, int, 'a) u
+val for_stack : ?break:('a -> index -> 'b -> bool) -> range:'b Stack.t -> init:'a -> ('a -> index -> 'b -> 'a) -> 'a
 ENDIF
 
 (* Example of functor's fold conversion (requires OCaml >= 4.07):

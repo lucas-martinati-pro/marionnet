@@ -21,15 +21,17 @@ OCAMLBUILD_OPTIONS=-quiet
 
 # BYTE_COMPILE_OPTIONS += -custom -ccopt -L./ -cclib -L./
 COMPILE_OPTIONS += -g -thread
-DIRECTORIES_TO_INCLUDE = threads lablgtk2 camlp4
-LIBRARIES_TO_LINK = str unix threads lablgtk
+DIRECTORIES_TO_INCLUDE = threads inotify lablgtk2 camlp4
+LIBRARIES_TO_LINK = str unix threads inotify lablgtk
 
 # Version of ocamlbricks project corresponding
 # to the content of our local copy ocamlbricks/
-OCAMLBRICKS_ORIGINAL_REVNO=489
+OCAMLBRICKS_ORIGINAL_REVNO=494
 
 # NATIVE_PROGRAMS += mutexExtra_test.native
+# NATIVE_PROGRAMS += realpath.native
 # BYTE_PROGRAMS += mutexExtra_test.byte
+
 
 NATIVE_LIBRARY_NAME = ocamlbricks.cmxa
 BYTE_LIBRARY_NAME = ocamlbricks.cma
@@ -46,16 +48,16 @@ BYTE_LIBRARIES = $(shell \
 OCAML4_OR_LATER=$(shell if grep -q "^[4-9]" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_OR_LATER"; fi)
 
 # Empty for OCaml 3.x.y series, set to "-DOCAML4_02_OR_LATER" for 4.02.y or later:
-OCAML4_02_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[2-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_02_OR_LATER"; fi)
+OCAML4_02_OR_LATER=$(shell if grep -q "^\([5-9]\)\|^\(4[.]\([1-9]\|0[2-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_02_OR_LATER"; fi)
 
 # Empty for OCaml 3.x.y series, set to "-DOCAML4_03_OR_LATER" for 4.03.y or later:
-OCAML4_03_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[3-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_03_OR_LATER"; fi)
+OCAML4_03_OR_LATER=$(shell if grep -q "^\([5-9]\)\|^\(4[.]\([1-9]\|0[3-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_03_OR_LATER"; fi)
 
 # Empty for OCaml 3.x.y series, set to "-DOCAML4_04_OR_LATER" for 4.04.y or later:
-OCAML4_04_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[4-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_04_OR_LATER"; fi)
+OCAML4_04_OR_LATER=$(shell if grep -q "^\([5-9]\)\|^\(4[.]\([1-9]\|0[4-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_04_OR_LATER"; fi)
 
 # Empty for OCaml 3.x.y series, set to "-DOCAML4_07_OR_LATER" for 4.07.y or later:
-OCAML4_07_OR_LATER=$(shell if grep -q "^\([5-9]\)\|\(4[.]\([1-9]\|0[7-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_07_OR_LATER"; fi)
+OCAML4_07_OR_LATER=$(shell if grep -q "^\([5-9]\)\|^\(4[.]\([1-9]\|0[7-9]\)\)" <<<"$(OCAML_VERSION)"; then echo "-DOCAML4_07_OR_LATER"; fi)
 
 # Transmit the information about the compiler version in order to
 # activate conditional compilation:
@@ -188,15 +190,5 @@ compile_for_testing:
 # Test without installation
 LIBRARY_TO_TEST=_build/ocamlbricks.cma
 test: compile_for_testing rebuilding
-	@chmod +x Makefile.d/test_with.sh
-	@Makefile.d/test_with.sh "ocaml"
-
-# Test without installation with the utop toplevel
-test_with_utop: compile_for_testing rebuilding
-	@chmod +x Makefile.d/test_with.sh
-	@Makefile.d/test_with.sh "utop"
-
-# Test without installation with the utop toplevel
-test_with_utop+widgets: compile_for_testing rebuilding
-	@chmod +x Makefile.d/test_with.sh
-	@Makefile.d/test_with.sh "utop" "lablgtk2"
+	@chmod +x ./test_with_utop.sh
+	./test_with_utop.sh --caller "make"
