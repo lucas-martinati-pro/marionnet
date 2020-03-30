@@ -270,6 +270,9 @@ module Dir : sig
  val map_with_kind     : ?follow:unit -> (string -> Unix.file_kind -> 'a) -> t -> 'a list
  val fold_with_kind    : ?follow:unit -> ('a -> string -> Unix.file_kind -> 'a) -> 'a -> t -> 'a
 
+ (* Try to remove anything possible. Return true if all the removing operation succeed (all files and subdirectories). *)
+ val remove_recursively : ?verbose:unit -> t -> bool
+
 end (* Dir *)
 
 val date : ?gmt:unit -> ?dash:string -> ?dot:string -> ?colon:string -> ?no_time:unit -> ?no_sec:unit -> ?no_date:unit

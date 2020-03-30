@@ -74,7 +74,7 @@ let get_out_channel log_channel =
 module Make
  (Tuning:sig
      val verbosity    : int              (* dynamic *)
-     val debug_level  : unit -> int      (* dynamic *) 
+     val debug_level  : unit -> int      (* dynamic *)
      val log_channel  : log_channel      (* static  *)
      val synchronized : bool             (* static  *)
    end) : Result =
@@ -112,9 +112,9 @@ module Make
 
   let unprotected_test_is_log_disable ?v ?(force=false) () =
     not ((Tuning.is_log_enabled ?v ()) || force)
-    
+
   let printf_unsynchronized ?(banner=true) (frmt:('a, out_channel, unit) format) : 'a =
-    let () = 
+    let () =
       match banner with
       | false -> ()
       | true  ->
@@ -124,7 +124,7 @@ module Make
 	  Printf.kfprintf flush out_channel "%s" prefix
     in
     Printf.kfprintf flush out_channel frmt
-    
+
   (* Take a format string and either use it for Printf.printf, or use it
      for a dummy printf-like function which does nothing, according to
      whether we're in debug mode or not: *)
@@ -146,31 +146,31 @@ module Make
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2) ()
      else printf_unsynchronized ?banner frmt x1 x2
-     
+
   let printf3 ?v ?force ?banner frmt x1 x2 x3 =
    if unprotected_test_is_log_disable ?v ?force () then Printf.ifprintf out_channel frmt x1 x2 x3 else
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2 x3) ()
      else printf_unsynchronized ?banner frmt x1 x2 x3
-     
+
   let printf4 ?v ?force ?banner frmt x1 x2 x3 x4 =
    if unprotected_test_is_log_disable ?v ?force () then Printf.ifprintf out_channel frmt x1 x2 x3 x4 else
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2 x3 x4) ()
      else printf_unsynchronized ?banner frmt x1 x2 x3 x4
-     
+
   let printf5 ?v ?force ?banner frmt x1 x2 x3 x4 x5 =
    if unprotected_test_is_log_disable ?v ?force () then Printf.ifprintf out_channel frmt x1 x2 x3 x4 x5 else
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5) ()
      else printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5
-     
+
   let printf6 ?v ?force ?banner frmt x1 x2 x3 x4 x5 x6 =
    if unprotected_test_is_log_disable ?v ?force () then Printf.ifprintf out_channel frmt x1 x2 x3 x4 x5 x6 else
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5 x6) ()
      else printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5 x6
-     
+
   let printf7 ?v ?force ?banner frmt x1 x2 x3 x4 x5 x6 x7 =
    if unprotected_test_is_log_disable ?v ?force () then Printf.ifprintf out_channel frmt x1 x2 x3 x4 x5 x6 x7 else
    if Tuning.synchronized
@@ -188,7 +188,7 @@ module Make
    if Tuning.synchronized
      then apply_with_mutex (fun () -> printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5 x6 x7 x8 x9) ()
      else printf_unsynchronized ?banner frmt x1 x2 x3 x4 x5 x6 x7 x8 x9
-     
+
   let print_exn ?v ?force ?banner ?(prefix="") ?suffix e =
    match suffix with
    | None        -> printf2 ?v ?force ?banner "%s%s\n"   prefix (Printexc.to_string e)
@@ -197,7 +197,7 @@ module Make
   module Unprotected = struct
 
     let printf ?v ?(force=false) ?banner frmt =
-      if force || (Tuning.is_log_enabled ?v ()) 
+      if force || (Tuning.is_log_enabled ?v ())
 	then printf_unsynchronized ?banner frmt
 	else Printf.ifprintf out_channel frmt (* do nothing (with type 'a) *)
 
@@ -224,6 +224,22 @@ module Make_simple (Tuning:sig val is_log_enabled : unit -> bool end) =
 module Extend_with_wrappers (Log : Result) = struct
 include Log
 
+type command = string
+
+(** Run Unix.system with the given argument, and raise exception in case of failure;
+    return unit on success. *)
+let (*UnixExtra.*)system_or_fail ?(hide_output=false) ?(hide_errors=false) command =
+  let suffix1 = if hide_output then " 1>/dev/null" else "" in
+  let suffix2 = if hide_errors then " 2>/dev/null" else "" in
+  let command = Printf.sprintf "%s%s%s" command suffix1 suffix2 in
+  match Unix.system command with
+  | Unix.WEXITED 0   -> ()
+  | Unix.WEXITED n   -> failwith (Printf.sprintf "Unix.system: the process exited with %i" n)
+  | Unix.WSIGNALED _
+  | Unix.WSTOPPED _  -> failwith "Unix.system: the process was signaled or stopped"
+;;
+
+
 (** Wrapper for [UnixExtra.system_or_fail]: run system with the given argument,
     and raise exception in case of failure; return unit on success.
     Commands are automatically logged in debug mode. Furthermore, when debugging
@@ -240,13 +256,13 @@ let system_or_fail ?on_error ?hide_output ?hide_errors (command_line:string) =
   let hide_errors = extract_hide_decision hide_errors in
   let () = Log.printf1 "Executing: %s\n" command_line in
   try
-    UnixExtra.system_or_fail ~hide_output ~hide_errors command_line
+    (*UnixExtra.*)system_or_fail ~hide_output ~hide_errors command_line
   with e ->
    begin
     (match on_error with
     | None         -> ()
     | Some command ->
-        try UnixExtra.system_or_fail ~hide_output ~hide_errors command with _ -> ()
+        try (*UnixExtra.*)system_or_fail ~hide_output ~hide_errors command with _ -> ()
     );
     raise e
    end

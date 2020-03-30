@@ -21,6 +21,8 @@ IFNDEF OCAML4_02_OR_LATER THEN
 module Bytes = struct  let create = String.create  let set = String.set  end
 ENDIF
 
+module Log = Ocamlbricks_log
+
 (** A {e filename} is a string. *)
 type filename = string;;
 
@@ -885,7 +887,6 @@ module Dir = struct
 
   (* --- with kind --- *)
 
-
   (* This protection is necessary because there is a time period between the call of `Unix.readdir'
      and the successive call to `Unix.stat'. In this period the entry may be deleted.  *)
   let file_kind_of ?follow dir =
@@ -922,6 +923,33 @@ module Dir = struct
 
   let map_with_kind ?follow f dir =
     List.rev (fold_with_kind ?follow (fun xs x k -> (f x k)::xs) [] dir)
+
+  (* val bool_of_unsafe_tool : ('a -> 'b) -> ('a -> bool) *)
+  let bool_of_unsafe_tool f x =
+    try let () = ignore (f x) in true with _ -> false
+
+  let rec remove_recursively ?verbose t =
+    let () = if verbose = Some () then Log.printf1 "UnixExtra.Dir.remove_recursively: entering directory %s\n" t in
+    try
+      let content_success =
+        Flip.flip2 (fold_with_kind ?follow:None) true t (fun s x ->
+          let tx = (Filename.concat t x) in
+          function
+          (* Directory *)
+          | Unix.S_DIR -> (remove_recursively ?verbose tx) && s
+          (* Any other: (S_LNK | S_CHR | S_BLK | S_FIFO |  S_SOCK) *)
+          | _ ->
+             let () = if verbose = Some () then Log.printf1 "UnixExtra.Dir.remove_recursively: about to unlink %s\n" tx in
+             (bool_of_unsafe_tool Unix.unlink tx) && s
+          )
+      in
+      (bool_of_unsafe_tool Unix.rmdir t) && content_success
+    with e ->
+      let () = if verbose = Some () then
+        Log.printf1 "UnixExtra.Dir.remove_recursively: exception: %s\n" (Printexc.to_string e)
+      in
+      false
+
 
 end (* Dir *)
 

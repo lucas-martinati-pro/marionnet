@@ -20,7 +20,7 @@
  *)
 
 (** Facility for tracing program activities, specially using threads.
-    Essentially, this module provides a set of functions [Log.printf<N>], where N 
+    Essentially, this module provides a set of functions [Log.printf<N>], where N
     is the number of arguments following the format. These functions print your
     messages only when the current debugging level of the application rises
     above ([>=]) the verbosity. Two ore more modules may be built
@@ -133,6 +133,8 @@ module Make_simple :
   functor
     (Tuning : sig val is_log_enabled : unit -> bool end) -> Result
 
+type command = string
+
 (** {b Example}:
 {[
 (* Initialized later, by Global_options, in order to break the ciclic dependency: *)
@@ -152,12 +154,12 @@ module Extend_with_wrappers :
       include Result
 
       val system_or_fail :
-        ?on_error:UnixExtra.command ->
-        ?hide_output:bool -> ?hide_errors:bool -> UnixExtra.command -> unit
+        ?on_error:command ->
+        ?hide_output:bool -> ?hide_errors:bool -> command -> unit
 
       val system_or_ignore :
-        ?on_error:UnixExtra.command ->
-        ?hide_output:bool -> ?hide_errors:bool -> UnixExtra.command -> unit
+        ?on_error:command ->
+        ?hide_output:bool -> ?hide_errors:bool -> command -> unit
 
       val print_backtrace : unit -> unit
     end
