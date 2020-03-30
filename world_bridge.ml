@@ -287,7 +287,7 @@ class world_bridge =
       ~port_prefix:"eth"
       ()
     as self_as_node_with_defects
-    
+
   method defects_device_type = "world_bridge"
   method polarity = User_level.MDI_Auto (* Because is not pedagogic anyway. *)
   method string_of_devkind = "world_bridge"
@@ -304,7 +304,7 @@ class world_bridge =
    ((new Simulation_level_world_bridge.world_bridge
         ~parent:self
         ~bridge_name:Global_options.ethernet_world_bridge_name
-        ~working_directory:(network#working_directory)
+        ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
 
@@ -365,7 +365,7 @@ object(self)
       ~unexpected_death_callback
       ()
       as super
-      
+
   method device_type = "world_bridge"
 
   val the_hublet_process = ref None
@@ -386,25 +386,25 @@ object(self)
         let tap_name_option =
           let server_response =
             Daemon_client.ask_the_server
-              (Make (AnySocketTap((Unix.getuid ()), bridge_name))) 
+              (Make (AnySocketTap((Unix.getuid ()), bridge_name)))
           in
           (match server_response with
-           | Created (SocketTap(tap_name, _, _)) -> 
+           | Created (SocketTap(tap_name, _, _)) ->
                Some tap_name
-           | _ -> 
+           | _ ->
                let () = Log.printf "Marionnet daemon refused to create a TUN/TAP interface\n" in
                None (* "non-existing-tap" *)
-           ) 
+           )
         in
         let () = world_bridge_tap_name <- tap_name_option in
         tap_name_option
-    (* --- *)    
+    (* --- *)
     | Some tap_name ->
         let () = Log.printf1 "A tap for the world bridge already exists: %s\n" tap_name in
         Some tap_name
 
   method private destroy_world_bridge_tap =
-    Option.iter 
+    Option.iter
       (fun tap_name ->
           try
             let cmd = Destroy (SocketTap(tap_name, (Unix.getuid ()), bridge_name)) in
@@ -419,23 +419,23 @@ object(self)
       (world_bridge_tap_name)
 
   (* --- *)
-  initializer 
+  initializer
     begin
       assert ((List.length self#get_hublet_process_list) = 1);
       (* --- *)
       the_hublet_process := Some (self#get_hublet_process_of_port 0);
       (* --- *)
       world_bridge_hub_process <- self#make_world_bridge_hub_process
-    end  
+    end
   (* --- *)
-  
+
 
   method private make_world_bridge_hub_process : (world_bridge_hub_process option) =
-    let () = 
+    let () =
       if world_bridge_hub_process <> None then () else (* continue: *)
       Option.iter
         (fun tap_name ->
-          let result = 
+          let result =
             new world_bridge_hub_process
               ~tap_name
               ~working_directory
@@ -443,14 +443,14 @@ object(self)
               ()
             in
             world_bridge_hub_process <- Some result)
-        (* --- *)   
+        (* --- *)
         (self#make_world_bridge_tap)
     in
     world_bridge_hub_process
-     
-  method spawn_processes = 
+
+  method spawn_processes =
    Option.iter
-     (* --- *)         
+     (* --- *)
      (fun the_world_bridge_hub_process ->
         (* Spawn the hub process, and wait to be sure it's started: *)
         let () = the_world_bridge_hub_process#spawn in
@@ -462,20 +462,20 @@ object(self)
              ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index 0)
              ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index 0)
              ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-             () 
+             ()
          in
          internal_cable_process <- Some the_internal_cable_process;
          the_internal_cable_process#spawn)
-     (* --- *)         
-     self#make_world_bridge_hub_process 
+     (* --- *)
+     self#make_world_bridge_hub_process
 
   method terminate_processes = begin
-    let () = 
+    let () =
       Log.printf3 "world_bridge %s#terminate_processes:  internal_cable_process=%s  world_bridge_hub_process=%s\n"
         (parent#name) (Option.to_string internal_cable_process) (Option.to_string world_bridge_hub_process)
     in
     (* Terminate the internal cable process and the hub process: *)
-    let () = 
+    let () =
       Task_runner.do_in_parallel
         [ (fun () -> Option.iter (fun obj -> obj#terminate) internal_cable_process);
           (fun () -> Option.iter (fun obj -> obj#terminate) world_bridge_hub_process); ]

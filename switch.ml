@@ -260,10 +260,10 @@ let make
         ()
     in
     let rc_config =
-       Gui_bricks.make_rc_config_widget 
-         ~filter_names:[`CONF; `RC; `ALL] 
+       Gui_bricks.make_rc_config_widget
+         ~filter_names:[`CONF; `RC; `ALL]
          ~parent:(dialog_switch :> GWindow.window_skel)
-         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
          ~active:(fst rc_config)
          ~content:(snd rc_config)
          ~device_name:(old_name)
@@ -383,7 +383,7 @@ class switch =
       ~port_prefix:"port"
       ()
     as self_as_node_with_ledgrid_and_defects
-    
+
   method ledgrid_label = "Switch"
   method defects_device_type = "switch"
   method polarity = User_level.MDI_X
@@ -431,7 +431,7 @@ class switch =
        ~show_vde_terminal  (* TODO: why not accessible from parent? *)
        ?fstp
        ?rcfile_content
-       ~working_directory:(network#working_directory)
+       ~working_directory:(network#project_working_directory)
        ~unexpected_death_callback
        ()) :> User_level.node Simulation_level.device)
 
@@ -598,7 +598,7 @@ object(self)
 	       let answer =
 	         Either.extract (wait_vde_switch_until_ports_will_be_allocated ~numports:(!numports) ~socketfile ())
 	       in
-	       (if answer <> !numports then 
+	       (if answer <> !numports then
 	          Log.printf3 "Unexpected vde_switch %s answer: %d instead of the expected value %d. Ignoring.\n" name answer !numports
 	        );
 	       Log.printf2 "Ok, the vde_switch %s has now %d allocated ports.\n" name !numports;

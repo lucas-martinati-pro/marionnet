@@ -30,11 +30,12 @@ open Gettext
 open State
 open Talking
 
-module S = Serial
+(* module S = Serial *)
 module G = Gui_source_editing
+(* module I = Inotify_test *)
 
 (* Enter the right directory: *)
-let _enter_the_right_directory = 
+let _enter_the_right_directory =
   try Sys.chdir (Initialization.Path.marionnet_home)
   with _ -> failwith ("Could not enter the directory (" ^ Initialization.Path.marionnet_home ^ ")")
 
@@ -42,7 +43,7 @@ let _enter_the_right_directory =
     attributes of the application *)
 let st = new globalState ()
 
-(** Add a global thunk allowing to invoke the sketch refresh method, 
+(** Add a global thunk allowing to invoke the sketch refresh method,
     visible from many modules: *)
 let () = Sketch.Refresh_sketch_thunk.set (fun () -> st#refresh_sketch)
 

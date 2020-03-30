@@ -25,9 +25,9 @@
 OCAMLBUILD_OPTIONS= -quiet -Xs uml,ocamlbricks
 OCAMLBRICKS_STUBS=ocamlbricks_stubs
 COMPILE_OPTIONS += -g -w x -I $(OCAMLBRICKS) -cclib -l$(OCAMLBRICKS_STUBS)
-DIRECTORIES_TO_INCLUDE = camlp4 threads lablgtk2 lablglade lablgtksourceview2
+DIRECTORIES_TO_INCLUDE = camlp4 threads inotify lablgtk2 lablglade lablgtksourceview2
 # ocamlbricks
-LIBRARIES_TO_LINK = unix threads str lablgtk lablglade lablgtksourceview2 ocamlbricks
+LIBRARIES_TO_LINK = unix threads str inotify lablgtk lablglade lablgtksourceview2 ocamlbricks
 #C_OBJECTS_TO_LINK +=
 EXCLUDE_FROM_SOURCE_FINDING=uml
 

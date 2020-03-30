@@ -1,7 +1,7 @@
 (* This file is part of Marionnet, a virtual network laboratory
    Copyright (C) 2007, 2008, 2009  Luca Saiu
-   Copyright (C) 2009, 2010  Jean-Vincent Loddo
-   Copyright (C) 2007, 2008, 2009, 2010  Université Paris 13
+   Copyright (C) 2009-2020  Jean-Vincent Loddo
+   Copyright (C) 2007-2020  Université Sorbonne Paris Nord
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -819,6 +819,7 @@ let predict_ipv6_link_local_address_of (tap) : string =
   | None -> ""
   | Some mac -> (try (ipv6_link_local_address_of_MAC mac) with _ -> "")
 
+
 (** The UML process used to implement machines and routers: *)
 class uml_process =
   fun ~(kernel_file_name)
@@ -829,6 +830,7 @@ class uml_process =
       ~(dynamically_get_the_cow_file_name_source:unit->string option)
       ~(cow_file_name)
       ~states_directory
+      ~hostfs_directory
       ?swap_file_name
       ~(ethernet_interface_no)
       ~(hublet_processes)
@@ -861,11 +863,8 @@ class uml_process =
         Some xnest_display_number -> "none"
       | None -> console
   in
-  let hostfs_pathname =
-    Printf.sprintf "%s/hostfs/%i" (Filename.dirname (Filename.dirname cow_file_name)) id
-  in
   let boot_parameters_pathname =
-    Printf.sprintf "%s/boot_parameters" hostfs_pathname
+    Printf.sprintf "%s/boot_parameters" hostfs_directory
   in
   let truncated_id = id mod 65535 in
   let octet2 = truncated_id / 255 in
@@ -891,7 +890,7 @@ class uml_process =
        "umid=" ^ umid;
        "mem=" ^ (string_of_int memory) ^ "M";
        "root=98:0";
-       "hostfs=" ^ (Shell.escaped_filename hostfs_pathname);
+       "hostfs=" ^ (Shell.escaped_filename hostfs_directory);
        "hostname="^umid;
        "guestkind="^guestkind;
        "xterm="^Initialization.marionnet_terminal;
@@ -1169,24 +1168,16 @@ class uml_process =
 	Log.printf2 "%s#terminate: UML process with pid %d successfully terminated.\n" umid current_pid;
        end
 
-  method hostfs_directory_pathname =
-    hostfs_pathname
+  method hostfs_directory =
+    hostfs_directory
 
-  (** Create the host directory shared by hostfs and its content, if they don't already
-      exist; otherwise do nothing. *)
+  (** Fill the content of the host directory mounted guest-side in /mnt/hostfs/: *)
   method private make_hostfs_stuff_if_not_already_present =
-    (* Make the directory: *)
-    (try
-      Unix.mkdir
-        self#hostfs_directory_pathname
-        0o777 (* a+rwx; To do: this should be made slightly more restrictive... *);
-    with _ -> ());
-    (* Now fill this directory: *)
     (* Copy the `filesystem_relay_script' if any: *)
     let () =
       Option.iter
         (fun relay ->
-           let dest = Filename.concat (self#hostfs_directory_pathname) (Filename.basename relay) in
+           let dest = Filename.concat (self#hostfs_directory) (Filename.basename relay) in
            UnixExtra.file_copy relay dest)
         (filesystem_relay_script)
     in
@@ -1195,7 +1186,7 @@ class uml_process =
       Option.iter
         (fun content ->
            let relay = "marionnet-relay.rcfile" in
-           let dest = Filename.concat (self#hostfs_directory_pathname) relay in
+           let dest = Filename.concat (self#hostfs_directory) relay in
            UnixExtra.rewrite dest content)
         (rcfile_content)
     in
@@ -1239,7 +1230,7 @@ class uml_process =
   (** Destroy the host directory shared by hostfs. This should only be called at machine
      deletion time. *)
   method remove_hostfs_directory =
-    ignore (Unix.system (Printf.sprintf "rm -rf '%s'" self#hostfs_directory_pathname));
+    ignore (Unix.system (Printf.sprintf "rm -rf '%s'" self#hostfs_directory));
     ()
 
   method private grant_host_x_server_access =
@@ -1356,8 +1347,9 @@ class virtual ['parent] device
       hublet_process_array;
 
   (** This is just to allow some implicit type conversions... *)
-  method hostfs_directory_pathname : string =
-    failwith ("hostfs_directory_pathname is not available for a " ^ self#device_type)
+  method hostfs_directory : string =
+    assert false
+   (* failwith ("hostfs_directory is not available for a " ^ self#device_type) *)
 
   (** Transitions are implemented with a simple change of internal state
       (which may fail if the current state is not appropriate for the
@@ -1667,6 +1659,7 @@ class virtual ['parent] machine_or_router =
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
+      ~hostfs_directory
       ~(ethernet_interface_no)
       ~(memory) (* in megabytes *)
       ~(console_no)
@@ -1712,19 +1705,20 @@ object(self)
       None -> failwith "machine_or_router: get_xnest_process was called when there's no process"
     | Some xnest_process -> xnest_process
 
-  method hostfs_directory_pathname =
+  method hostfs_directory =
     match !uml_process with
-      None ->
-        failwith "machine_or_router: hostfs_directory_pathname was called when there's no process"
-    | Some uml_process ->
-        uml_process#hostfs_directory_pathname
+      None -> failwith "machine_or_router: hostfs_directory was called when there's no process"
+    | Some uml_process -> uml_process#hostfs_directory
+
+  method private remove_hostfs_directory =
+    match !uml_process with
+      None -> failwith "machine_or_router: remove_hostfs_directory was called when there's no process"
+    | Some uml_process -> uml_process#remove_hostfs_directory
 
   initializer
     let all_hublets = self#get_hublet_process_list in
-    outer_hublet_processes :=
-      ListExtra.select_from_to all_hublets 0 (half_hublet_no - 1);
-    inner_hublet_processes :=
-      ListExtra.select_from_to all_hublets (half_hublet_no) (2 * half_hublet_no - 1);
+    outer_hublet_processes := ListExtra.select_from_to all_hublets 0 (half_hublet_no - 1);
+    inner_hublet_processes := ListExtra.select_from_to all_hublets (half_hublet_no) (2 * half_hublet_no - 1);
     (if xnest then
       xnest_process :=
         Some (new xnest_process
@@ -1741,6 +1735,7 @@ object(self)
               ~dynamically_get_the_cow_file_name_source
               ~cow_file_name
               ~states_directory
+              ~hostfs_directory
               ~ethernet_interface_no
               ~hublet_processes:self#get_inner_hublet_processes
               ~memory
@@ -1749,9 +1744,7 @@ object(self)
               ~console
               ~id
               ?show_unix_terminal
-              ?xnest_display_number:(
-                 if xnest then Some self#get_xnest_process#display_number_as_server
-                          else None)
+              ?xnest_display_number:(if xnest then Some self#get_xnest_process#display_number_as_server else None)
               ~working_directory
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback
               (* The following parameter will be given to the uml process: *)
@@ -1818,7 +1811,8 @@ object(self)
     internal_cable_processes := [];
 
   (** There's no need to override super#destroy. See the comment above. *)
-end;;
+
+end;; (* class machine_or_router *)
 
 class virtual ['parent] machine_or_router_with_accessory_processes =
   fun ~(parent:'parent)
@@ -1831,6 +1825,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
+      ~hostfs_directory
       ~(ethernet_interface_no)
       ~(memory) (* in megabytes *)
       ~(console_no)
@@ -1850,7 +1845,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ?filesystem_relay_script ?rcfile_content
       ~filesystem_file_name
       ~dynamically_get_the_cow_file_name_source
-      ~cow_file_name ~states_directory
+      ~cow_file_name ~states_directory ~hostfs_directory
       ~ethernet_interface_no
       ~memory ~console_no ~console ~xnest
       ?umid ~id ?show_unix_terminal ~working_directory

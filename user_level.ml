@@ -992,11 +992,14 @@ class virtual virtual_machine_with_history_and_ifconfig
 
   object (self)
 
-  initializer
+  (* -------------- *)
+  initializer begin
     self#add_my_ifconfig ?port_row_completions:ifconfig_port_row_completions self#get_port_no;
     self#add_destroy_callback (lazy self#destroy_my_ifconfig);
     self#add_my_history;
     self#add_destroy_callback (lazy self#destroy_my_history);
+    end
+  (* -------------- *)
 
   (* Paramters *)
   method history_icon = history_icon
@@ -1119,19 +1122,57 @@ class virtual virtual_machine_with_history_and_ifconfig
     network#history#remove_device_tree self#get_name;
 
   method update_virtual_machine_with ~name ~port_no kernel =
-    network#ifconfig#update_port_no self#get_name port_no;
-    network#ifconfig#rename self#get_name name;
-    network#history#rename  self#get_name name;
-    self#set_kernel kernel;
+    begin
+      network#ifconfig#update_port_no self#get_name port_no;
+      network#ifconfig#rename self#get_name name;
+      network#history#rename  self#get_name name;
+      self#rename_hostfs_directory ~to_name:(name) ();
+      self#set_kernel kernel;
+    end
 
   method get_states_directory =
     let history = (network#history:Treeview_history.t) in
     history#directory
 
+  (* Define the hostfs_directory.
+     Dinamically dependent from the project pathname and the name of the machine/router: *)
+  method get_hostfs_directory ?(name=self#get_name) () =
+    Printf.sprintf "%s/hostfs/%s" (network#project_root_pathname) (name)
+
+  (* Make the hostfs sub-directory related to the machine/router: *)
+  method private create_hostfs_directory_if_needed =
+    (* Modalities are "a+rwx"; To do: this should be made slightly more restrictive... *)
+    try Unix.mkdir (self#get_hostfs_directory ()) 0o777
+    with _ ->
+      Log.printf1 "component \"%s\": failed to create the hostfs_directory\n" (self#get_name)
+
+
+  (* Make the hostfs sub-directory related to the machine/router: *)
+  method private remove_hostfs_directory =
+    (* ignore (Unix.system (Printf.sprintf "rm -rf '%s'" self#get_hostfs_directory)); *)
+    if UnixExtra.Dir.remove_recursively (self#get_hostfs_directory ())
+    then ()
+    else Log.printf1 "component \"%s\": failed to remove the hostfs_directory\n" (self#get_name)
+
+  (* Rename the hostfs sub-directory after the renaming of the machine/router: *)
+  method private rename_hostfs_directory ~to_name () =
+    let from_name = self#get_hostfs_directory () in
+    let   to_name = self#get_hostfs_directory ~name:(to_name) () in
+    try Unix.rename (from_name) (to_name)
+    with _ ->
+       Log.printf3 "component \"%s\": failed to rename from '%s' to '%s'\n" (self#get_name) (from_name) (to_name)
+
+  (* -------------- *)
+  initializer begin
+    self#create_hostfs_directory_if_needed;
+    self#add_destroy_callback (lazy self#remove_hostfs_directory);
+    end
+  (* -------------- *)
+
   method create_cow_file_name_and_thunk_to_get_the_source =
     let history = (network#history:Treeview_history.t) in
-    let cow_file_name = 
-      Filename.concat (history#directory) (history#add_state_for_device self#get_name) 
+    let cow_file_name =
+      Filename.concat (history#directory) (history#add_state_for_device self#get_name)
     in
     (* Thunk that will be used by the simulation level to retreive
        the source cow file to be copied (if needed). The procedure
@@ -1197,22 +1238,26 @@ class type virtual cable = object
 end
 
 (** Class modelling the user-level network *)
-class network ~(project_working_directory: unit -> string option) () =
+class network
+   ~(project_working_directory: unit -> string option)
+   ~(project_root_pathname    : unit -> string option)
+   ()
+ =
  let ledgrid_manager = Ledgrid_manager.the_one_and_only_ledgrid_manager in
  (* --- *)
  (* A network is essentially a graph, i.e. a set of nodes and a set of edges (cables).
-    Both these sets will be implemented by Queue.t encapsulated in a Cortex.t, in order 
+    Both these sets will be implemented by Queue.t encapsulated in a Cortex.t, in order
     to be able to program in a reactive style.
-    For this kind of cortex, the default equality is not suitable because the inner value 
-    is a Queue.t, that is to say an *immutable* reference. Thus, we have to redefine it. 
+    For this kind of cortex, the default equality is not suitable because the inner value
+    is a Queue.t, that is to say an *immutable* reference. Thus, we have to redefine it.
     Note that we exploit the partial application to define the equality correctly.
-    Actually, when the cortex will be solicited for an evaluation, it will call this 
+    Actually, when the cortex will be solicited for an evaluation, it will call this
     function on its current value to obtain a *predicate* for committed values. *)
- let queue_equality = 
+ let queue_equality =
    fun xs -> (* just an argument after the lambda! but we can exploit it to define a predicate: *)
-     let xs' = (QueueExtra.to_list xs) in 
+     let xs' = (QueueExtra.to_list xs) in
      fun ys -> (QueueExtra.to_list ys) = xs'
- in  
+ in
  (* --- *)
  object (self)
  inherit Xforest.interpreter ()
@@ -1223,29 +1268,30 @@ class network ~(project_working_directory: unit -> string option) () =
  method ifconfig = Treeview_ifconfig.extract ()
  method history  = Treeview_history.extract ()
 
- method working_directory = Option.extract (project_working_directory ())
+ method project_working_directory = Option.extract (project_working_directory ())
+ method project_root_pathname     = Option.extract (project_root_pathname ())
 
  (* Immutable field. See the previous comment about the equality: *)
- val nodes : (node Queue.t) Cortex.t = 
+ val nodes : (node Queue.t) Cortex.t =
    Cortex.return ~equality:(queue_equality) (Queue.create ())
- (* --- *)  
+ (* --- *)
  method nodes = nodes
  method private nodes_append x = Cortex.apply nodes (Queue.push x)
  method private nodes_remove x = Cortex.apply nodes (QueueExtra.filter ((<>)x))
  method get_node_list          = Cortex.apply nodes (QueueExtra.to_list)
  method set_node_list xs       = Cortex.set   nodes (QueueExtra.of_list xs)
- method is_node_list_empty     = Cortex.apply nodes (Queue.is_empty) 
+ method is_node_list_empty     = Cortex.apply nodes (Queue.is_empty)
 
  (* Immutable field. See the previous comment about the equality: *)
- val cables : (cable Queue.t) Cortex.t = 
+ val cables : (cable Queue.t) Cortex.t =
    Cortex.return ~equality:(queue_equality) (Queue.create ())
- (* --- *)  
+ (* --- *)
  method cables = cables
  method private cables_append x = Cortex.apply cables (Queue.push x)
  method private cables_remove x = Cortex.apply cables (QueueExtra.filter ((<>)x))
  method get_cable_list          = Cortex.apply cables (QueueExtra.to_list)
  method set_cable_list xs       = Cortex.set   cables (QueueExtra.of_list xs)
- method is_cable_list_empty     = Cortex.apply cables (Queue.is_empty) 
+ method is_cable_list_empty     = Cortex.apply cables (Queue.is_empty)
 
  (** Buffers to backup/restore data. *)
  val mutable nodes_buffer  : (node  list) = []
@@ -1374,7 +1420,7 @@ class network ~(project_working_directory: unit -> string option) () =
 
  method get_cables_involved_by_node_name (node_name) =
    List.filter (fun c->c#is_node_involved node_name) self#get_cable_list
-   
+
  method busy_port_indexes_of_node (node:node) =
    let node_name = node#get_name in
    let related_busy_pairs =
@@ -1642,7 +1688,7 @@ edge [headclip=true,minlen=1.6,color=\""^self#dotoptions#crossover_cable_color^"
  with e ->
     (Log.printf1
        "Warning: exception raised in network#dotTrad:\n%s\nRe-raising.\n"
-       (Printexc.to_string e); 
+       (Printexc.to_string e);
      raise e)
 
 initializer
@@ -1662,7 +1708,7 @@ module Xml = struct
  (** Parse the file containing an xforest representation of the network.
      The given network is updated during the parsing. *)
  let load_network ~(project_version: [`v0|`v1|`v2]) (net:network) (fname:string) =
-  let (forest:Xforest.t) = 
+  let (forest:Xforest.t) =
     match project_version with
     | `v2 | `v1 -> network_marshaller#from_file (fname)
     | `v0       -> Forest_backward_compatibility.load_from_old_file (fname)

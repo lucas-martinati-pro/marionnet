@@ -71,14 +71,14 @@ class project_paths
   let (/) = Filename.concat in
   (* --- *)
   object (self)
-    
+
     (** The project filename, ex: Some "/home/donald/foo.mar" *)
     val filename    : filename option Cortex.t = Cortex.return (project_filename)
     method filename = filename
     method get_filename   = Cortex.get filename
     method set_filename x = Cortex.set filename x
     method unset_filename = Cortex.set filename None
-    
+
     (** The parent of the project working directory, ex: "/tmp" *)
     val temporary_directory : pathname Cortex.t = Cortex.return "/tmp"
     method temporary_directory = temporary_directory
@@ -86,10 +86,10 @@ class project_paths
     method set_temporary_directory x = Cortex.set temporary_directory x
 
     (* --- *)
-    
-    (** The project working directory is coupled with the the project root base name, 
-        which is the name of the root directory in the tarball containing the project. 
-        Examples: 
+
+    (** The project working directory is coupled with the the project root base name,
+        which is the name of the root directory in the tarball containing the project.
+        Examples:
           working_directory = "/tmp/marionnet-588078453.dir"
           root_basename     = "foo"
           root_pathname     = "/tmp/marionnet-588078453.dir/foo"   *)
@@ -97,16 +97,17 @@ class project_paths
     (* --- *)
     method get_working_directory   = Cortex.apply data fst
     method get_root_basename       = Cortex.apply data snd
+
     method set_working_directory x = ignore (Cortex.move data (fun (_,y) -> (x,y)))
     method set_root_basename     y = ignore (Cortex.move data (fun (x,_) -> (x,y)))
     method unset_root_pathname     = Cortex.set data (None, None)
     (* --- *)
-    method extract_working_directory_and_root_basename = 
+    method extract_working_directory_and_root_basename =
       let x,y = Cortex.get data in ((Option.extract x), (Option.extract y))
     (* --- *)
     method root_pathname_cortex = data
     method root_pathname = Cortex.apply data (uncurry2 (Option.map2 Filename.concat))
-    method extract_root_pathname     = (Option.extract self#root_pathname) 
+    method extract_root_pathname     = (Option.extract self#root_pathname)
     method private extract_concat  z = (Option.extract self#root_pathname) / z
     method private possibly_concat z = (Option.map2 (/) (self#root_pathname) (Some z))
     (* --- *)
@@ -117,22 +118,22 @@ class project_paths
       let () = self#set_working_directory (Some result) in
       result
     (* --- *)
-    (* The project root base name is by default the basename of the filename without 
-       the extension and without funny (UTF-8) chars (replaced by '_'). 
-       In this way we prevent some troubles with UML and VDE tools. *) 
+    (* The project root base name is by default the basename of the filename without
+       the extension and without funny (UTF-8) chars (replaced by '_').
+       In this way we prevent some troubles with UML and VDE tools. *)
     method private make_a_root_basename_from_filename (filename) : basename =
       let base = (Filename.basename filename) in
       let name = try (Filename.chop_extension base) with _ -> base in
       let result = StrExtra.Global.replace (Str.regexp "[^a-zA-Z0-9_-.]+") (fun _ -> "_") name in
       result
     (* --- *)
-    (* Note that this method waits until the filename and the project working directory will be defined. *) 
+    (* Note that this method waits until the filename and the project working directory will be defined. *)
     method set_root_basename_from_filename : basename option =
-      let obasename = Option.map (self#make_a_root_basename_from_filename) (self#get_filename) in 
+      let obasename = Option.map (self#make_a_root_basename_from_filename) (self#get_filename) in
       let _ = Cortex.move ~guard:(fun (pwd,_) -> pwd<>None) (data) (fun (x,_) -> (x, obasename)) in
       obasename
     (* --- *)
-    (* Create the skeleton of project's directories. The `root_pathname' is the catenation of the 
+    (* Create the skeleton of project's directories. The `root_pathname' is the catenation of the
        project-working-directory and the root_basename choosen according to the provided filename. *)
     method make_root_pathname_subdirs : unit =
       let root_pathname = Option.extract (self#root_pathname) in
@@ -141,23 +142,23 @@ class project_paths
       let () = List.iter (fun x-> Unix.mkdir (root_pathname / x) perm) (self#subdirs) in
       ()
     (* --- *)
-    (* Create the temporary subdir local to the project working directory: *)     
-    method make_local_temp_dir = 
+    (* Create the temporary subdir local to the project working directory: *)
+    method make_local_temp_dir =
       let root_pathname = Option.extract (self#root_pathname) in
       let perm = 0o755 in
       let () = Unix.mkdir (root_pathname / "tmp") perm in
       ()
     (* --- *)
-    method private set_filename_and_root_basename ?root_basename ~filename () = begin 
-      let root_basename = 
-        Option.extract_or_force (root_basename) (lazy (self#make_a_root_basename_from_filename filename)) 
+    method private set_filename_and_root_basename ?root_basename ~filename () = begin
+      let root_basename =
+        Option.extract_or_force (root_basename) (lazy (self#make_a_root_basename_from_filename filename))
       in
       let () = self#set_filename (Some filename) in
       let () = self#set_root_basename (Some root_basename) in
       ()
       end
     (* --- *)
-    method change_filename_and_root_basename ?root_basename ~filename () = begin 
+    method change_filename_and_root_basename ?root_basename ~filename () = begin
       let old_root = Option.extract (self#root_pathname) in
       let       () = self#set_filename_and_root_basename ?root_basename ~filename () in
       let new_root = Option.extract (self#root_pathname) in
@@ -166,7 +167,7 @@ class project_paths
     (* --- *)
     method reset_and_remove_the_project_working_directory =
       (* Save the value in order to remove this directory as final action: *)
-      let opwd = self#get_working_directory in 
+      let opwd = self#get_working_directory in
       let   () = self#unset_filename in
       let   () = self#unset_root_pathname in
       (* --- *)
@@ -198,11 +199,11 @@ class project_paths
     method dotSketchFile           = self#tmpDir            / "sketch.dot"
     method pngSketchFile           = self#tmpDir            / "sketch.png"
     (* --- *)
-    
+
   end (* class project_paths *)
 
-  
-(** The class modelling the global state of the application. 
+
+(** The class modelling the global state of the application.
     All method with the suffix "_sync" are synchronous and they don't call the task manager.
     In other words, the caller of these methods should ensure the correct order of tasks. *)
 class globalState = fun () ->
@@ -210,7 +211,12 @@ class globalState = fun () ->
   (* Note that the project working directory will be accessible also from the network structure: *)
   let project_paths = new project_paths () in
   let win           = new Gui.window_MARIONNET () in
-  let net           = new User_level.network ~project_working_directory:(fun () -> project_paths#get_working_directory) () in
+  let net =
+    new User_level.network
+          ~project_working_directory:(fun () -> project_paths#get_working_directory)
+          ~project_root_pathname:(fun () -> project_paths#root_pathname)
+          ()
+  in
   (* --- *)
   object (self)
 
@@ -220,9 +226,9 @@ class globalState = fun () ->
   (** The virtual network: *)
   method network = net
 
-  (** Manager of project-related paths: *) 
+  (** Manager of project-related paths: *)
   method project_paths = project_paths
-  
+
   (** Access methods for the dot options, used for drawing the virtual network. *)
   method dotoptions = net#dotoptions
 
@@ -235,7 +241,7 @@ class globalState = fun () ->
   method active_project = (self#project_paths#get_filename <> None)
 
   (** Are we working with an active project with some node defined? *)
-  method runnable_project = 
+  method runnable_project =
     self#active_project && (not self#network#is_node_list_empty)
 
   (* Containers for widgets that must be sensitive when a project is active, runnable or not active: *)
@@ -249,17 +255,17 @@ class globalState = fun () ->
 
   val sensitive_cable_menu_entries : GObj.widget StackExtra.t = StackExtra.create ()
   method sensitive_cable_menu_entries = sensitive_cable_menu_entries
-  
+
  (* The treeview `ifconfig' may be used to derive the informations about the project version
     if necessary. This may be done inspecting the existence and the content of its related files:
     - `v0 is the version of marionnet 0.90.x series
     - `v1 is the version of trunk revno >= 445 with ocamlbricks revno >= 387 (2013/11/17) to trunk revno 460 (included);
           the treeview `ifconfig' is saved in an incompatible (forest) format in states/ports (as in `v0)
     - `v2 is the version of trunk revno >= 461 and marionnet 1.0;
-          the treeview `ifconfig' is saved in an incompatible (forest) format in states/ifconfig, in order to prevent 
+          the treeview `ifconfig' is saved in an incompatible (forest) format in states/ifconfig, in order to prevent
           seg-faults of old binaries reading a new project *)
   method opening_project_version : [ `v0 | `v1 | `v2 ] option = (* None stands for undefined, i.e. failed to identify *)
-    try 
+    try
       let version = PervasivesExtra.get_first_line_of_file (self#project_paths#version_file) in
       match version with
       | Some "v0" -> Some `v0   (* marionnet 0.90.x *)
@@ -268,16 +274,16 @@ class globalState = fun () ->
       | _         -> self#treeview#ifconfig#try_to_understand_in_which_project_version_we_are
     with _ -> None
 
-  (* Project are saved anymway in the newest version: *)  
+  (* Project are saved anymway in the newest version: *)
   method closing_project_version : [ `v0 | `v1 | `v2 ] = `v2
-    
-  method private string_of_project_version : [ `v0 | `v1 | `v2 ] -> string = 
+
+  method private string_of_project_version : [ `v0 | `v1 | `v2 ] -> string =
     function `v0 -> "v0" | `v1 -> "v1" | `v2 -> "v2"
 
-  method private project_version_of_string : string -> [ `v0 | `v1 | `v2 ] = 
+  method private project_version_of_string : string -> [ `v0 | `v1 | `v2 ] =
     function "v0" -> `v0 | "v1" -> `v1 | "v2" -> `v2 | _ -> assert false
-    
-  (** New project which will be saved into the given filename. 
+
+  (** New project which will be saved into the given filename.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
   method new_project ~filename  =
     (* First reset the old network, waiting for all devices to terminate: *)
@@ -286,9 +292,9 @@ class globalState = fun () ->
     (* --- *)
     let _  = self#project_paths#set_filename_and_create_the_project_working_directory (filename) in
     (* In a new project the root_basename is derived from the filename: *)
-    let _  = self#project_paths#set_root_basename_from_filename in 
-    (* Create the skeleton of project's directories. The `root_pathname' is 
-       the catenation of the project-working-directory and the root_basename 
+    let _  = self#project_paths#set_root_basename_from_filename in
+    (* Create the skeleton of project's directories. The `root_pathname' is
+       the catenation of the project-working-directory and the root_basename
        choosen according to the provided filename. *)
     let () = self#project_paths#make_root_pathname_subdirs in
     (* --- *)
@@ -300,7 +306,7 @@ class globalState = fun () ->
     let () = self#refresh_sketch in
     ()
 
-  (** Close the current project. The project is lost if the user hasn't saved it. 
+  (** Close the current project. The project is lost if the user hasn't saved it.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
   method close_project = begin
     Log.printf "state#close_project: BEGIN\n";
@@ -406,21 +412,21 @@ class globalState = fun () ->
       in
       (* --- *)
       (* In a pre-existent project the root_basename is derived from the tarball: *)
-      let () = self#project_paths#set_root_basename (Some tarball_root) in 
+      let () = self#project_paths#set_root_basename (Some tarball_root) in
       (* --- *)
       (* Create the project's tmp subdirectory: *)
       let () = self#project_paths#make_local_temp_dir in
       (* --- *)
       (* Determine the version of the project we are opening: *)
-      let project_version : [ `v0 | `v1 | `v2 ] = 
+      let project_version : [ `v0 | `v1 | `v2 ] =
         match self#opening_project_version with
         | Some v -> v
         | None   -> failwith "state#open_project_sync: project version cannot be identified"
       in
       let project_version_as_string = self#string_of_project_version project_version in
       Log.printf1 "state#open_project_sync: project version is %s\n" (project_version_as_string);
-      let () = 
-        if project_version <> self#closing_project_version then 
+      let () =
+        if project_version <> self#closing_project_version then
         Simple_dialogs.warning
           (s_ "Project in old file format")
           (s_ "This project will be automatically converted in a format not compatible with previous versions of this software. If you want to preserve compatibility, don't save it or save it with another name.")
@@ -430,7 +436,7 @@ class globalState = fun () ->
       (* Dot_tuning.network will be undumped after the network,
 	in order to support cable inversions. *)
       let dotAction () =
-        let () = 
+        let () =
 	  try
 	    let () = self#dotoptions#load_from_file ~project_version (self#project_paths#dotoptionsFile) in
 	    Log.printf ("state#open_project_sync: dotoptions recovered\n")
@@ -463,8 +469,8 @@ class globalState = fun () ->
       );
       self#register_state_after_save_or_open;
       (* --- *)
-      let () = 
-        let there_are_world_bridges = 
+      let () =
+        let there_are_world_bridges =
           (self#network#get_nodes_such_that ~devkind:`World_bridge (fun _ -> true)) <> []
         in
         if (there_are_world_bridges) then Global_options.check_bridge_existence_and_warning ()
@@ -529,7 +535,7 @@ class globalState = fun () ->
    end
 
   method private load_treeviews ~project_version () =
-    List.iter 
+    List.iter
       (fun (treeview : Treeview.t) -> treeview#load ~project_version ())
       self#get_treeview_list
 
@@ -578,7 +584,7 @@ class globalState = fun () ->
     Log.printf "state#save_project BEGIN\n";
     (* --- *)
     let filename = Option.extract (self#project_paths#get_filename) in
-    let project_working_directory, project_root_basename = 
+    let project_working_directory, project_root_basename =
       (self#project_paths#extract_working_directory_and_root_basename)
     in
     (* --- *)
@@ -722,7 +728,7 @@ class globalState = fun () ->
         (Log.printf1
            "Warning: exception raised in really_refresh_sketch:\n%s\nIgnoring.\n"
            (Printexc.to_string e))
-      
+
   (* The structure (counter) for the reactive sketch refreshing: *)
   val refresh_sketch_counter = Cortex.return 0
   method refresh_sketch_counter = refresh_sketch_counter
@@ -731,7 +737,7 @@ class globalState = fun () ->
   method refresh_sketch =
    let _ = Cortex.move (refresh_sketch_counter) (fun x -> x+1) in ()
 
-  (* --- *) 
+  (* --- *)
   method network_change : 'a. ('a -> unit) -> 'a -> unit =
   fun action obj ->
    begin
@@ -830,8 +836,8 @@ class globalState = fun () ->
    Log.printf "Main thread: quit has been scheduled.\n";
    end
 
- initializer 
+ initializer
     let _ = Cortex.on_commit_append (refresh_sketch_counter) (fun _ _ -> self#really_refresh_sketch) in
     ()
-    
+
 end;; (* class globalState *)

@@ -280,7 +280,7 @@ class cloud =
   method private make_simulated_device =
    ((new Simulation_level_cloud.cloud
         ~parent:self
-        ~working_directory:(network#working_directory)
+        ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
 

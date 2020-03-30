@@ -44,13 +44,13 @@ module Data : sig
     }
 end (* Data *)
 
-module Make_menus : 
+module Make_menus :
   functor
     (Params : sig
                 val st      : State.globalState
                 val packing : [ `menu_parent of Menu_factory.menu_parent | `toolbar of GButton.toolbar ]
-              end) -> 
-  sig 
+              end) ->
+  sig
     (* This functor produces a side effect on the GUI. No code has to be exported. *)
   end
 
@@ -99,6 +99,7 @@ module User_level_machine : sig
       method get_variant_as_string        : [ `variant ] Disk.epithet
       method get_variant_realpath         : Disk.realpath option
       method get_states_directory         : string
+      method get_hostfs_directory : ?name:string (* self#get_name *) -> unit -> string
       method get_kernel                   : [ `kernel ] Disk.epithet
       method get_kernel_console_arguments : string option
       method get_kernel_file_name         : Disk.realpath
@@ -134,7 +135,6 @@ module User_level_machine : sig
       method simulated_device_state          : User_level.simulated_device_automaton_state
       method make_simulated_device           : User_level.node_with_ports_card Simulation_level.device
       method next_simulated_device_state     : User_level.simulated_device_automaton_state option
-      method hostfs_directory_pathname       : string
       method has_hublet_processes            : bool
       method has_ledgrid                     : bool
       method can_startup                     : bool
@@ -194,13 +194,13 @@ module User_level_machine : sig
       method is_correct : bool
       method is_xnest_enabled : bool
       (* --- *)
-      method update_machine_with : 
+      method update_machine_with :
         name:string -> label:string -> memory:int -> port_no:int -> kernel:[ `kernel ] Disk.epithet -> rc_config:bool * string ->
         console_no:int -> terminal:string -> unit
       method update_virtual_machine_with : name:string -> port_no:int -> [ `kernel ] Disk.epithet -> unit
       method update_with                 : name:string -> label:string -> port_no:int -> unit
     end
-    
+
 end (* User_level_machine *)
 
 
@@ -216,6 +216,7 @@ module (*Machine.*)Simulation_level : sig
     dynamically_get_the_cow_file_name_source : (unit -> string option) ->
     cow_file_name             : string ->
     states_directory          : string ->
+    hostfs_directory          : string ->
     ethernet_interface_no     : int ->
     ?memory                   : int ->
     ?umid                     : string ->
@@ -237,13 +238,12 @@ module (*Machine.*)Simulation_level : sig
       method device_type : string
       method execute_the_unexpected_death_callback : int -> string -> unit
       method get_hublet_no : int
-      method get_hublet_process_list : Simulation_level.hublet_process list
-      method get_hublet_process_of_port :
-        int -> Simulation_level.hublet_process
+      method get_hublet_process_list    : Simulation_level.hublet_process list
+      method get_hublet_process_of_port : int -> Simulation_level.hublet_process
       method get_state : Simulation_level.device_state
       method gracefully_shutdown : unit
       method gracefully_terminate_processes : unit
-      method hostfs_directory_pathname : string
+      method hostfs_directory : string
       method ip_address_eth42 : string
       method resume : unit
       method shutdown : unit
@@ -253,6 +253,6 @@ module (*Machine.*)Simulation_level : sig
       method suspend : unit
       method terminate_processes : unit
     end
-  
+
 end (* Machine.Simulation_level *)
 

@@ -1,6 +1,6 @@
 (* This file is part of Marionnet
-   Copyright (C) 2010  Jean-Vincent Loddo
-   Copyright (C) 2010  Université Paris 13
+   Copyright (C) 2010-2020  Jean-Vincent Loddo
+   Copyright (C) 2010-2020  Université Sorbonne Paris Nord
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -315,6 +315,7 @@ class uml_process :
   dynamically_get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
+  hostfs_directory:string ->
   ?swap_file_name:string ->
   ethernet_interface_no:int ->
   hublet_processes:< get_socket_name : string; .. > list ->
@@ -333,14 +334,14 @@ class uml_process :
     method ip_address_eth42 : string (* "172.23.%i.%i" *)
     method tap_name : string
    (* --- *)
-    method append_arguments : process_name list -> unit
+    method append_arguments : string list -> unit
     method continue : unit
     method create_swap_file : unit
     method delete_swap_file : unit
     method get_pid : pid
     method get_pid_option : pid option
     method gracefully_terminate : unit
-    method hostfs_directory_pathname : string
+    method hostfs_directory : string
     method is_alive : bool
     method remove_hostfs_directory : unit
     method spawn : unit
@@ -375,7 +376,7 @@ class virtual ['parent] device :
     method get_hublet_process_of_port : int -> hublet_process
     (* --- *)
     method get_state : device_state
-    method hostfs_directory_pathname : string
+    method hostfs_directory : string
     (* --- *)
     method startup             : unit
     method suspend             : unit
@@ -451,6 +452,7 @@ class virtual ['parent] machine_or_router :
   dynamically_get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
+  hostfs_directory:string ->
   ethernet_interface_no:int ->
   memory:int ->
   console_no:int ->
@@ -480,6 +482,7 @@ class virtual ['parent] machine_or_router :
     method stop_processes      : unit
     method continue_processes  : unit
     method terminate_processes : unit
+(*     method remove_hostfs_directory : unit *)
     (* --- *)
     method ip_address_eth42 : string
   end
@@ -495,6 +498,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   dynamically_get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
+  hostfs_directory:string ->
   ethernet_interface_no:int ->
   memory:int ->
   console_no:int ->

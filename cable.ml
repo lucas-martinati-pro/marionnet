@@ -828,7 +828,7 @@ and cable =
            ~blinker_thread_socket_file_name:(network#ledgrid_manager#blinker_thread_socket_file_name)
            ?left_blink_command
            ?right_blink_command
-           ~working_directory:(network#working_directory)
+           ~working_directory:(network#project_working_directory)
            ~unexpected_death_callback:self#destroy_because_of_unexpected_death
            ())
 

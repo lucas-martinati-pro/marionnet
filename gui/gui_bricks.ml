@@ -75,7 +75,7 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      row_of_field.(field_index) <- row_index;
      row_index <- row_index+1;
      field_index <- field_index+1;
-   
+
    method private aligned_widget widget =
      let box = GBin.alignment ~xalign:0. ~yalign:0.5 ~xscale:0.0 ~yscale:0.0 () in
      box#add widget#coerce;
@@ -300,7 +300,7 @@ let check_name name old_name name_exists t =
   then begin
     Simple_dialogs.error
       (s_ "Ill-formed name" )
-      ("Admissible characters are letters and underscores." ) ();
+      ("Admissible characters are letters, digits and underscores." ) ();
     None   (* refused *)
   end else
   if (name <> old_name) && name_exists name
@@ -593,15 +593,15 @@ module Reactive_widget = struct
    and node = item
    and port = item
 
-  let item_of_abstract_combo_box_text (xs, oi) : item option = 
+  let item_of_abstract_combo_box_text (xs, oi) : item option =
     Option.bind oi (fun i -> Option.apply_or_catch (List.nth xs) i)
-   
-  (** Slightly high-level combo_box_text class. The object is a couple widget-cortex where the cortex 
-      represents abstractly the state of the widget. This state is the list of items with the selected 
-      one, if any. When the cortex changes, the widget is destroyed and a new widget is regenerated. 
+
+  (** Slightly high-level combo_box_text class. The object is a couple widget-cortex where the cortex
+      represents abstractly the state of the widget. This state is the list of items with the selected
+      one, if any. When the cortex changes, the widget is destroyed and a new widget is regenerated.
       Conversely, when the widget changes, the cortex's selected value is updated. *)
   class combo_box_text
-    ~(strings:string list) 
+    ~(strings:string list)
     ?active
     ?width
     ?height
@@ -622,7 +622,7 @@ module Reactive_widget = struct
     val mutable widget = make_widget ?active (strings)
     method private widget_get : string option = GEdit.text_combo_get_active widget
     method private widget_set (active : int option) : unit = Option.iter ((fst widget)#set_active) active
-    method private widget_remake (strings, active) = 
+    method private widget_remake (strings, active) =
       begin
         (fst widget)#destroy ();
         widget <- make_widget ?active strings;
@@ -630,8 +630,8 @@ module Reactive_widget = struct
       end
     (* --- *)
     (* widget -> cortex (to call for all created widgets) *)
-    method private set_widget_to_cortex_connection = 
-      let change_state (xs0,_) = (* current state *) 
+    method private set_widget_to_cortex_connection =
+      let change_state (xs0,_) = (* current state *)
         let a1 = Option.bind (self#widget_get) (fun x -> ListExtra.indexOf x xs0) in
         (xs0, a1)
       in
@@ -639,14 +639,14 @@ module Reactive_widget = struct
       ()
     (* --- *)
     (* cortex -> widget *)
-    method private set_cortex_to_widget_connection = 
-      let on_commit (xs0,a0) (xs1,a1) = (* previous and proposed states *) 
-        if xs0 = xs1 then (self#widget_set a1) else (self#widget_remake (xs1,a1)) 
+    method private set_cortex_to_widget_connection =
+      let on_commit (xs0,a0) (xs1,a1) = (* previous and proposed states *)
+        if xs0 = xs1 then (self#widget_set a1) else (self#widget_remake (xs1,a1))
       in
       let _ = Cortex.on_commit_append (cortex) (on_commit) in
       ()
     (* --- *)
-    method destroy () = 
+    method destroy () =
       let () = (fst widget)#destroy () in
       let () = Cortex.defuse cortex in
       ()
@@ -657,23 +657,23 @@ module Reactive_widget = struct
        (* --- *)
        (* Add a resistance to the cortex: *)
        let resistance (xs0,a0) (xs1,a1) = (* previous and proposed states *)
-         let () = Log.printf4 "combo_box_text RESISTANCE: previous: %s [%d]  proposed: %s [%d]\n" 
+         let () = Log.printf4 "combo_box_text RESISTANCE: previous: %s [%d]  proposed: %s [%d]\n"
            (String.concat "," xs0) (Option.extract_or a0 (-1)) (String.concat "," xs1) (Option.extract_or a1 (-1))
          in
          (* If the proposed state has no selected item, we activate the previously selected item, if it exists in the new list: *)
          let (xs1, a1) =
            match (xs0,a0), (xs1,a1) with
-           | ((_::_), Some i0), ((_::_), None) ->     
+           | ((_::_), Some i0), ((_::_), None) ->
                let previously_active_item = (List.nth xs0 i0) in
                let a1' = ListExtra.indexOf (previously_active_item) (xs1) in
                (xs1, a1')
-           | (_,_) -> (xs1, a1)      
+           | (_,_) -> (xs1, a1)
          in
          (xs1, a1) (* result of resistance! *)
        in
        let _ = Cortex.on_proposal_append (self#cortex) (resistance) in
        ()
-       
+
   end (* class combo_box_text *)
 
   (* Domain power (four times): *)
@@ -681,7 +681,7 @@ module Reactive_widget = struct
 
   let endpoints_partition_from_names
    ?(allow_loopback=true)              (* allow the two endpoints (n0 and n1) to be the same node *)
-   (xys : (string * string) list)      (* The (node, port) list to partition *) 
+   (xys : (string * string) list)      (* The (node, port) list to partition *)
    (* Current constraints: *)
    (n0 : string option)                (* first  node name, if selected *)
    (p0 : string option)                (* first  port name, if selected *)
@@ -697,18 +697,18 @@ module Reactive_widget = struct
    let index_of_optional_item (x : string option) xs =
      x >>= (fun x -> (Option.map fst (ListExtra.searchi ((=)x) xs)))
    in
-   let substract ~node ~port xys = 
+   let substract ~node ~port xys =
      match (allow_loopback, node, port) with
      | (false, Some n0, _)       -> List.filter (fun (n,p)->n<>n0) xys
      | (true,  Some n0, Some p0) -> List.filter ((<>)(n0,p0)) xys
      | _                         -> xys
    in
-   let ports_of x nps = 
+   let ports_of x nps =
      ListExtra.filter_map (fun (n,p)-> if n=x then Some p else None) nps
    in
    (* --- *)
    let extract_or_take_from_list (node) (port) (nps) : string * string =
-     match node, port with 
+     match node, port with
      | None, _                                -> List.hd nps
      | Some n, Some p when List.mem (n,p) nps -> (n, p)
      | Some n, _                              -> (n, List.assoc n nps)
@@ -729,27 +729,27 @@ module Reactive_widget = struct
    let xs1_active = index_of_optional_item (Some n1) xs1 in
    let ys1_active = index_of_optional_item (Some p1) ys1 in
    (* --- *)
-   let () = Log.printf4 "group RESISTANCE: finishing we have (%s,%s) (%s,%s)\n" n0 p0 n1 p1 in 
+   let () = Log.printf4 "group RESISTANCE: finishing we have (%s,%s) (%s,%s)\n" n0 p0 n1 p1 in
    let w1 = (xs0, xs0_active) in
    let w2 = (ys0, ys0_active) in
    let w3 = (xs1, xs1_active) in
    let w4 = (ys1, ys1_active) in
    (w1,w2,w3,w4)
    ;;
-   
-  (* Version suitable as resistance for the cortex group: *) 
-  let endpoints_partition_law ?allow_loopback (xys) 
-    : (abstract_combo_box_text) power4 -> (abstract_combo_box_text) power4 -> (abstract_combo_box_text) power4 
+
+  (* Version suitable as resistance for the cortex group: *)
+  let endpoints_partition_law ?allow_loopback (xys)
+    : (abstract_combo_box_text) power4 -> (abstract_combo_box_text) power4 -> (abstract_combo_box_text) power4
     =
-    fun (_,_,_,_) (c1,c2,c3,c4) -> (* previous and proposed states *) 
+    fun (_,_,_,_) (c1,c2,c3,c4) -> (* previous and proposed states *)
       let n0 : string option = item_of_abstract_combo_box_text c1 in (* first  node name, if selected *)
       let p0 : string option = item_of_abstract_combo_box_text c2 in (* first  port name, if selected *)
       let n1 : string option = item_of_abstract_combo_box_text c3 in (* second node name, if selected *)
       let p1 : string option = item_of_abstract_combo_box_text c4 in (* second port name, if selected *)
       (* --- *)
       endpoints_partition_from_names ?allow_loopback xys n0 p0 n1 p1
-   
-  (* Version suitable to guess the initial division of choices (items) of the four widgets: *)  
+
+  (* Version suitable to guess the initial division of choices (items) of the four widgets: *)
   let guess_humanly_speaking_enpoints ?n0 ?p0 ?n1 ?p1 xys =
     let ((xs0,_),(ys0,_),(xs1,_),(ys1,_)) = endpoints_partition_from_names ~allow_loopback:false xys n0 p0 n1 p1 in
     let x0 = Option.apply_or_catch List.hd xs0 in
@@ -758,7 +758,7 @@ module Reactive_widget = struct
     let y1 = Option.apply_or_catch List.hd ys1 in
     ((x0,y0),(x1,y1))
 
- 
+
   class cable_input_widget
    ?n0 ?p0 ?n1 ?p1
    ?width
@@ -767,8 +767,8 @@ module Reactive_widget = struct
    ~free_node_port_list
    ()
    =
-   let () = Log.printf1 "new cable_input_widget() called with: %s\n" 
-     (String.concat " " (List.map (fun (x,y) -> Printf.sprintf "%s.%s" x y) free_node_port_list)) 
+   let () = Log.printf1 "new cable_input_widget() called with: %s\n"
+     (String.concat " " (List.map (fun (x,y) -> Printf.sprintf "%s.%s" x y) free_node_port_list))
    in
    let (w1,w2,w3,w4) = endpoints_partition_from_names (free_node_port_list) n0 p0 n1 p1 in
    let (xs0, xs0_active) = w1 in
@@ -792,29 +792,29 @@ module Reactive_widget = struct
      let packing = packing_p1 in
      new combo_box_text ~strings:ys1 ?active:ys1_active ?width ?height ?packing ()
    in
-   let cortex_group = 
-     Cortex.group_quadruple 
-       ~on_proposal:(endpoints_partition_law ~allow_loopback:true (free_node_port_list))  
-       (n0_combo_box_text#cortex) (p0_combo_box_text#cortex) 
+   let cortex_group =
+     Cortex.group_quadruple
+       ~on_proposal:(endpoints_partition_law ~allow_loopback:true (free_node_port_list))
+       (n0_combo_box_text#cortex) (p0_combo_box_text#cortex)
        (n1_combo_box_text#cortex) (p1_combo_box_text#cortex)
    in
    object (self)
-     
-     method get_cortex_group = cortex_group 
+
+     method get_cortex_group = cortex_group
      method get_combo_boxes  = (n0_combo_box_text, p0_combo_box_text, n1_combo_box_text, p1_combo_box_text)
-     
+
      method get_widget_data =
        ((n0_combo_box_text#get, p0_combo_box_text#get), (n1_combo_box_text#get, p1_combo_box_text#get))
 
      method destroy =
-       let () = 
+       let () =
          List.iter
            (fun w->w#destroy ())
            [n0_combo_box_text; p0_combo_box_text; n1_combo_box_text; p1_combo_box_text]
        in
        let () = Cortex.defuse cortex_group in
        ()
-       
+
     initializer
        (* Very important to provoke the cortex_group's stabilization: *)
        n0_combo_box_text#activate_first;
@@ -939,12 +939,12 @@ let make_check_items_renewer_v2
  make_check_items_renewer_v1 ~get_label_active_callback_list ()
 
 (* Example of usage:
- make_rc_config_widget 
-   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+ make_rc_config_widget
+   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
    ~active:(fst rc_config)
    ~content:(snd rc_config)
    ~device_name:(old_name)
-   ~language:("vde_switch") 
+   ~language:("vde_switch")
    ()
 *)
 let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCRIPT; `TXT; `ALL]) ~parent ~packing ~active ~content ~device_name ~language () =
@@ -956,7 +956,7 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
   let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
   let () = set_tooltip (edit_button) (s_ "Edit the configuration file") in
   (* --- *)
-  let open_button : GButton.button = button_image 
+  let open_button : GButton.button = button_image
     ~label:(s_ "Import" )
     ~tooltip:(s_ "Import a configuration file")
     ~packing:hbox#add
@@ -973,7 +973,7 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
   let make_editing_window () =
     let result = Egg.create () in
     let () =
-      Gui_source_editing.window 
+      Gui_source_editing.window
         ?height ?width
         ~title:(Printf.sprintf (f_ "%s configuration file") device_name)
         ~language:(`id language)
@@ -993,9 +993,9 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
   (* --- *)
   let make_import_filename_dialog () =
     let () = buttons_now_insensitive () in
-    let result = 
+    let result =
       Talking.EDialog.ask_for_existing_importable_text_filename
-        ~parent (* <= relevant to close and destroy this dialog if the user close the parent dialog; 
+        ~parent (* <= relevant to close and destroy this dialog if the user close the parent dialog;
                       NOTE: the behaviour is not the expected (but is not disturbing) probably because the window is modal. *)
         ~title:(Printf.sprintf (f_ "Import a configuration file for %s") device_name)
         (* ~title:(s_ "Import a configuration file" ) *)
@@ -1012,15 +1012,15 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
   (* --- *)
   object (self)
     val mutable meaningfull : bool = true
-    
-    method active = meaningfull && check_button#active  
-    method content = !content 
-    
-    method set_sensitive b = 
+
+    method active = meaningfull && check_button#active
+    method content = !content
+
+    method set_sensitive b =
       let () = Log.printf1 "rc_config_widget#set_sensitive called with %b\n" (b) in
       (hbox#misc#set_sensitive b);
       (meaningfull <- b)
-      
+
   end
 
 (* Example: quagga-terminal + {zebra, osp, ..} *)
@@ -1028,49 +1028,49 @@ let make_check_button_with_related_alternatives ~packing ~active ?(active_altern
   let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
   let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
   (* --- *)
-  let (combo, (_, column)) = 
-    GEdit.combo_box_text ~packing:(hbox#add) ~strings:(alternatives) ?use_markup () 
-  in 
+  let (combo, (_, column)) =
+    GEdit.combo_box_text ~packing:(hbox#add) ~strings:(alternatives) ?use_markup ()
+  in
   let () = combo#set_active (active_alternative) in
   let () = combo#misc#set_sensitive (check_button#active) in
   ignore (check_button#connect#toggled (fun () -> combo#misc#set_sensitive check_button#active));
   (* --- *)
   object (self)
     val mutable meaningfull : bool = true
-    
-    method active = meaningfull && check_button#active  
-    method selected_alternative = 
+
+    method active = meaningfull && check_button#active
+    method selected_alternative =
       Option.map (fun row -> combo#model#get ~row ~column) combo#active_iter
-    
-    method set_sensitive b = 
+
+    method set_sensitive b =
       let () = Log.printf1 "make_check_button_with_related_alternatives#set_sensitive called with %b\n" (b) in
       (hbox#misc#set_sensitive b);
       (meaningfull <- b)
   end
-  
-(* --- *)  
+
+(* --- *)
 let make_notebook_of_assoc_list ?homogeneous_tabs ~packing (tws: (string * GObj.widget) list) =
   let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
-  let () = 
-    List.iter 
-      (fun (text, widget) -> 
+  let () =
+    List.iter
+      (fun (text, widget) ->
          let tab_label = (GMisc.label ~text ())#coerce in
          let _ = notebook#append_page ~tab_label widget in
          ())
       tws
   in
   notebook
-  
-let make_notebook_of_assoc_array_with_check_buttons 
-  ?(tooltip=(s_ "Check to activate")) 
+
+let make_notebook_of_assoc_array_with_check_buttons
+  ?(tooltip=(s_ "Check to activate"))
   ?homogeneous_tabs
-  ~packing 
-  (tbws: (string * bool * GObj.widget) array) 
+  ~packing
+  (tbws: (string * bool * GObj.widget) array)
   =
   let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
   let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
-  Array.map 
-    (fun (text, active, widget) -> 
+  Array.map
+    (fun (text, active, widget) ->
         let hbox = GPack.hbox ~homogeneous:false(*true*) () in
         let _label = GMisc.label ~text ~packing:(hbox#add) () in
         let activate = GButton.check_button ~active ~packing:(hbox#add) () in
@@ -1080,5 +1080,5 @@ let make_notebook_of_assoc_array_with_check_buttons
         let _ = notebook#append_page ~tab_label:(hbox#coerce) widget in
         activate)
     tbws
-  
+
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()

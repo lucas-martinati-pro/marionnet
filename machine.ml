@@ -36,11 +36,11 @@ module Const = struct
  (* let memory_max = 256 *)
  (* In order to test with selinux: *)
  let memory_max = 1024
- 
+
  let initial_content_for_rcfiles =
 "#!/bin/bash
 # ---
-# This script will be executed (sourced) as final step 
+# This script will be executed (sourced) as final step
 # of the virtual machine bootstrap process.
 # ---
 # Several variables are set at this point.
@@ -55,7 +55,7 @@ module Const = struct
 # mit_magic_cookie_1='e33a9778b5b4d71059c83760473211bb'
 # PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 # ---
-# Your effective user and group IDs are uid=0 (root), gid=0 (root), 
+# Your effective user and group IDs are uid=0 (root), gid=0 (root),
 # and the current working directory is '/', that is to say PWD='/'
 # ---
 " ;;
@@ -114,7 +114,7 @@ module Make_menus (Params : sig
          distribution = distribution;
          variant = variant;
 	 kernel = kernel;
-         rc_config = rc_config; 
+         rc_config = rc_config;
 	 console_no = console_no;
          terminal = terminal;
          old_name = _ ;
@@ -214,8 +214,8 @@ module Make_menus (Params : sig
 
     let reaction name =
       let d = (st#network#get_node_by_name name) in
-      let r = ((Obj.magic d):> User_level_machine.machine) in
-      let action () = r#destroy in
+      let m = ((Obj.magic d):> User_level_machine.machine) in
+      let action () = m#destroy in
       st#network_change action ();
 
   end
@@ -357,11 +357,11 @@ let make
     in
     (* --- *)
     let rc_config =
-       Gui_bricks.make_rc_config_widget 
+       Gui_bricks.make_rc_config_widget
          ~width:800
-         ~filter_names:[`BASH; `RC; `ALL] 
+         ~filter_names:[`BASH; `RC; `ALL]
          ~parent:(dialog_machine :> GWindow.window_skel)
-         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
          ~active:(fst rc_config)
          ~content:(snd rc_config)
          ~device_name:(old_name)
@@ -576,11 +576,6 @@ class machine
   (* Redefinition: *)
   method dot_fontsize_statement = ""
 
-  (** Get the full host pathname to the directory containing the guest hostfs filesystem: *)
-  method hostfs_directory_pathname =
-    let d = ((Option.extract !simulated_device) :> User_level.node Simulation_level.device) in
-    d#hostfs_directory_pathname
-
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
   initializer ignore (self#check_memory memory)
@@ -667,7 +662,7 @@ class machine
        self#get_kernel_file_name
        self#is_xnest_enabled
     in
-    let device = 
+    let device =
       new Simulation_level.machine
         ~parent:self
         ~kernel_file_name:self#get_kernel_file_name
@@ -678,13 +673,14 @@ class machine
         ~dynamically_get_the_cow_file_name_source
         ~cow_file_name
         ~states_directory:(self#get_states_directory)
+        ~hostfs_directory:(self#get_hostfs_directory ())
         ~ethernet_interface_no:self#get_port_no
         ~memory:self#get_memory
         ~console_no:self#get_console_no
         ~umid:self#get_name
         ~id
         ~xnest:self#is_xnest_enabled
-        ~working_directory:(network#working_directory)
+        ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()
     in
@@ -692,8 +688,8 @@ class machine
 
  (** Here we also have to manage cow files... *)
  method private gracefully_shutdown_right_now =
-    Log.printf1 "Calling hostfs_directory_pathname on %s...\n" self#name;
-    let hostfs_directory_pathname = self#hostfs_directory_pathname in
+    Log.printf1 "Calling hostfs_directory on %s...\n" self#name;
+    let hostfs_directory = self#get_hostfs_directory () in
     Log.printf "Ok, we're still alive\n";
     (* Do as usual... *)
     self_as_node_with_defects#gracefully_shutdown_right_now;
@@ -703,13 +699,13 @@ class machine
       Log.printf1 "Adding the report on %s to the texts interface\n" self#name;
       treeview_documents#import_report
         ~machine_or_router_name:self#name
-        ~pathname:(hostfs_directory_pathname ^ "/report.html")
+        ~pathname:(hostfs_directory ^ "/report.html")
         ();
       Log.printf1 "Added the report on %s to the texts interface\n" self#name;
       Log.printf1 "Adding the history on %s to the texts interface\n" self#name;
       treeview_documents#import_history
         ~machine_or_router_name:self#name
-        ~pathname:(hostfs_directory_pathname ^ "/bash_history.text")
+        ~pathname:(hostfs_directory ^ "/bash_history.text")
         ();
       Log.printf1 "Added the history on %s to the texts interface\n" self#name;
     end);
@@ -759,6 +755,7 @@ class ['parent] machine =
       ~dynamically_get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
+      ~hostfs_directory
       ~(ethernet_interface_no)
       ?(memory=40) (* in megabytes *)
       ?umid
@@ -768,6 +765,7 @@ class ['parent] machine =
       ~working_directory
       ~unexpected_death_callback
       () ->
+(* --- *)
 object(self)
   inherit ['parent] Simulation_level.machine_or_router
       ~parent
@@ -776,6 +774,7 @@ object(self)
       ~dynamically_get_the_cow_file_name_source
       ~cow_file_name
       ~states_directory
+      ~hostfs_directory
       ~kernel_file_name
       ?kernel_console_arguments
       ?filesystem_relay_script

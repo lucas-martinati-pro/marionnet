@@ -321,7 +321,7 @@ class hub =
     ((new Simulation_level_hub.hub
         ~parent:self
         ~hublet_no
-        ~working_directory:(network#working_directory)
+        ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback
         ()) :> User_level.node Simulation_level.device)
 

@@ -11,7 +11,7 @@ type simulated_device_automaton_state = NoDevice | DeviceOff | DeviceOn | Device
 exception ForbiddenTransition
 val raise_forbidden_transition : string -> 'a
 
-module Recursive_mutex : MutexExtra.Extended_signature 
+module Recursive_mutex : MutexExtra.Extended_signature
   with type t = MutexExtra.Recursive.t
 
 class virtual ['a] simulated_device :
@@ -104,7 +104,7 @@ class port :
   end
 
 type defects = < duplication: float;  flip: float;  loss: float;  max_delay: float;  min_delay: float >
-  
+
 class ['a] ports_card :
   network:< defects : Treeview_defects.t; .. > ->
   parent:'a ->
@@ -227,7 +227,7 @@ class virtual node_with_ports_card :
     method virtual to_tree : Xforest.tree
     method user_port_offset : int
   end
-  
+
 class type virtual node = node_with_ports_card
 
 class virtual node_with_defects_zone :
@@ -453,8 +453,7 @@ class virtual node_with_ledgrid_and_defects :
   end
 
 class virtual virtual_machine_with_history_and_ifconfig :
-  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t;
-            .. > ->
+  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; .. > ->
   ?epithet:[ `distrib ] Disk.epithet ->
   ?variant:string ->
   ?kernel:[ `kernel ] Disk.epithet ->
@@ -489,7 +488,10 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method get_kernel_file_name : Disk.realpath
     method private virtual get_name : string
     method private virtual get_port_no : int
+    (* --- *)
     method get_states_directory : string
+    method get_hostfs_directory : ?name:string (* self#get_name *) -> unit -> string
+    (* --- *)
     method get_terminal : string
     method get_variant : [ `variant ] Disk.epithet option
     method get_variant_as_string : [ `variant ] Disk.epithet
@@ -587,12 +589,16 @@ class type virtual cable =
 
 class network :
   project_working_directory: (unit -> string option) ->
+  project_root_pathname    : (unit -> string option) ->
   unit ->
   object ('a)
     method ifconfig          : Treeview_ifconfig.t
     method defects           : Treeview_defects.t
     method history           : Treeview_history.t
-    method working_directory : string
+    (* --- *)
+    method project_working_directory : string  (* Ex: "/tmp/marionnet-588078453.dir" *)
+    method project_root_pathname     : string  (* Ex: "/tmp/marionnet-588078453.dir/foo" *)
+    (* --- *)
     method ledgrid_manager   : Ledgrid_manager.ledgrid_manager
     method dotoptions        : Sketch.tuning
     (* --- *)

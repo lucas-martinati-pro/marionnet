@@ -441,7 +441,7 @@ class world_gateway =
 	~port_no:self#get_port_no
 	~network_address
 	~dhcp_enabled
-        ~working_directory:(network#working_directory)
+        ~working_directory:(network#project_working_directory)
 	~unexpected_death_callback:self#destroy_because_of_unexpected_death
 	()) :> User_level.node Simulation_level.device)
 
