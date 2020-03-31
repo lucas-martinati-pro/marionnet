@@ -71,12 +71,8 @@ fun program
       not been spawn yet: *)
   method get_pid =
     match !pid with
-      (Some p) -> p
+    | (Some p) -> p
     | _ -> raise (ProcessIsntInTheRightState "get_pid")
-
-  (** Get the spawn process pid, as an option: *)
-  method get_pid_option =
-    !pid
 
   (** Startup the process using command_line, and return its pid *)
   method spawn =
@@ -107,7 +103,7 @@ fun program
           basename
           new_pid
 
-  method stop_monitoring ?(current_pid=self#get_pid) () =
+  method private stop_monitoring ?(current_pid=self#get_pid) () =
     try
       Log.printf2 ~v:2 "process#stop_monitoring: about to call the Death_monitor for %s (pid %i)\n"
         basename current_pid;
@@ -204,7 +200,7 @@ fun program
         process when its OCaml object gets GC'd: *)
     Gc.finalise
       (fun process ->
-(*        Log.printf "GC'ing a process object. I hope it's not running :-)\n"; *)
+        (* Log.printf "GC'ing a process object. I hope it's not running :-)\n"; *)
         try process#terminate with _ -> ())
       self
 end;;

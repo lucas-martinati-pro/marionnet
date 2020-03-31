@@ -17,8 +17,8 @@
 
 exception ProcessIsntInTheRightState of string
 
-type process_name = Death_monitor.process_name (* string *)
-type pid = Death_monitor.Map.key (* int *)
+type process_name = string
+type pid = int
 
 class virtual process :
   process_name ->
@@ -30,15 +30,16 @@ class virtual process :
   unit ->
   object
     method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
+    method spawn     : unit
+    method stop      : unit
+    method continue  : unit
     method terminate : unit
+    method gracefully_terminate : unit
+    (* --- *)
+    method get_pid   : pid
+    method is_alive  : bool
+    (* --- *)
+(*     method terminAte : ?gracefully:unit -> unit -> unit *)
   end
 
 class xnest_process :
@@ -50,18 +51,9 @@ class xnest_process :
   title:'a ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
+    inherit process
     method display_number_as_server : process_name
     method display_string_as_client : string
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
   end
 
 class virtual process_which_creates_a_socket_at_spawning_time :
@@ -76,18 +68,9 @@ class virtual process_which_creates_a_socket_at_spawning_time :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
+    inherit process
     method get_socket_name : string
     method get_management_socket_name : string option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
   end
 
 class vde_switch_process :
@@ -102,18 +85,7 @@ class vde_switch_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method get_socket_name : process_name
-    method get_management_socket_name : string option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process_which_creates_a_socket_at_spawning_time
   end
 
 class switch_process :
@@ -124,18 +96,7 @@ class switch_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method get_socket_name : process_name
-    method get_management_socket_name : string option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process_which_creates_a_socket_at_spawning_time
   end
 
 class hub_process :
@@ -146,18 +107,7 @@ class hub_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method get_socket_name : process_name
-    method get_management_socket_name : string option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process_which_creates_a_socket_at_spawning_time
   end
 
 class hublet_process :
@@ -166,18 +116,7 @@ class hublet_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method get_socket_name : process_name
-    method get_management_socket_name : string option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process_which_creates_a_socket_at_spawning_time
   end
 
 class slirpvde_process :
@@ -187,16 +126,7 @@ class slirpvde_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process
   end
 
 class unixterm_process :
@@ -205,16 +135,7 @@ class unixterm_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process
   end
 
 class telnet_process :
@@ -225,16 +146,7 @@ class telnet_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
+    inherit process
   end
 
 val defects_to_command_line_options :
@@ -269,16 +181,7 @@ class ethernet_cable_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
     object
-      method append_arguments : process_name list -> unit
-      method continue : unit
-      method get_pid : pid
-      method get_pid_option : pid option
-      method gracefully_terminate : unit
-      method is_alive : bool
-      method spawn : unit
-      method stop : unit
-      method stop_monitoring : ?current_pid:int -> unit -> unit
-      method terminate : unit
+      inherit process
     end
 
 type defects_object =
@@ -297,6 +200,7 @@ val make_ethernet_cable_process :
   leftward_defects: defects_object ->
   rightward_defects: defects_object ->
   unexpected_death_callback:(int -> process_name -> unit) ->
+  (* --- *)
   unit -> ethernet_cable_process
 
 val ethernet_interface_to_boot_parameters_bindings :
@@ -332,22 +236,15 @@ class uml_process :
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
   object
+    inherit process
+   (* --- *)
     method ip_address_eth42 : string (* "172.23.%i.%i" *)
     method tap_name : string
    (* --- *)
-    method append_arguments : string list -> unit
-    method continue : unit
     method create_swap_file : unit
     method delete_swap_file : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method swap_file_name : string
-    method terminate : unit
+    method swap_file_name   : string
+   (* --- *)
   end
 
 type device_state = Off | On | Sleeping | Destroyed
