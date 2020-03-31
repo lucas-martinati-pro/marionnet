@@ -247,7 +247,8 @@ val defects_to_command_line_options :
   ?leftward_duplication:float ->
   ?leftward_flip:float ->
   ?leftward_min_delay:float ->
-  ?leftward_max_delay:float -> unit -> string list
+  ?leftward_max_delay:float ->
+  unit -> string list
 
 class ethernet_cable_process :
   left_end:< get_socket_name : string; .. > ->
@@ -267,25 +268,25 @@ class ethernet_cable_process :
   ?leftward_max_delay:float ->
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
-  object
-    method append_arguments : process_name list -> unit
-    method continue : unit
-    method get_pid : pid
-    method get_pid_option : pid option
-    method gracefully_terminate : unit
-    method is_alive : bool
-    method spawn : unit
-    method stop : unit
-    method stop_monitoring : ?current_pid:int -> unit -> unit
-    method terminate : unit
-  end
+    object
+      method append_arguments : process_name list -> unit
+      method continue : unit
+      method get_pid : pid
+      method get_pid_option : pid option
+      method gracefully_terminate : unit
+      method is_alive : bool
+      method spawn : unit
+      method stop : unit
+      method stop_monitoring : ?current_pid:int -> unit -> unit
+      method terminate : unit
+    end
 
 type defects_object =
-  < duplication : float;
-    flip        : float;
-    loss        : float;
-    max_delay   : float;
-    min_delay   : float >
+       < duplication : float;
+         flip        : float;
+         loss        : float;
+         max_delay   : float;
+         min_delay   : float >
 
 val make_ethernet_cable_process :
   left_end:< get_socket_name : string; .. > ->
@@ -312,7 +313,7 @@ class uml_process :
   filesystem_file_name:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
-  dynamically_get_the_cow_file_name_source:(unit -> string option) ->
+  get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
   hostfs_directory:string ->
@@ -341,9 +342,7 @@ class uml_process :
     method get_pid : pid
     method get_pid_option : pid option
     method gracefully_terminate : unit
-    method hostfs_directory : string
     method is_alive : bool
-    method remove_hostfs_directory : unit
     method spawn : unit
     method stop : unit
     method stop_monitoring : ?current_pid:int -> unit -> unit
@@ -374,9 +373,6 @@ class virtual ['parent] device :
     method get_hublet_no              : int
     method get_hublet_process_list    : hublet_process list
     method get_hublet_process_of_port : int -> hublet_process
-    (* --- *)
-    method get_state : device_state
-    method hostfs_directory : string
     (* --- *)
     method startup             : unit
     method suspend             : unit
@@ -449,7 +445,7 @@ class virtual ['parent] machine_or_router :
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->
-  dynamically_get_the_cow_file_name_source:(unit -> string option) ->
+  get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
   hostfs_directory:string ->
@@ -482,7 +478,6 @@ class virtual ['parent] machine_or_router :
     method stop_processes      : unit
     method continue_processes  : unit
     method terminate_processes : unit
-(*     method remove_hostfs_directory : unit *)
     (* --- *)
     method ip_address_eth42 : string
   end
@@ -495,7 +490,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->
-  dynamically_get_the_cow_file_name_source:(unit -> string option) ->
+  get_the_cow_file_name_source:(unit -> string option) ->
   cow_file_name:string ->
   states_directory:string ->
   hostfs_directory:string ->

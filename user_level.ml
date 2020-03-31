@@ -103,9 +103,8 @@ class virtual ['parent] simulated_device () = object(self)
 
   method virtual get_name : string
 
-  (** The device implementing the object in the simulated network, if any (this is
-      ref None when the device has not been started yet, or some state modification
-      happened) *)
+  (** The device implementing the object in the simulated network, if any (this is ref None
+      when the device has not been started yet, or some state modification happened) *)
   val simulated_device : 'parent Simulation_level.device option ref =
     ref None
 
@@ -469,7 +468,7 @@ fun ~(network:< .. >)
   inherit Xforest.interpreter ()
 
   (** The global network. It's a pain to have to access this via a global variable
-      define in Marionnet *)
+      defined in Marionnet *)
   val network = network
 
   method virtual can_suspend : bool
@@ -1179,7 +1178,7 @@ class virtual virtual_machine_with_history_and_ifconfig
        looks backward in the tree searching the first ancestor with
        a cow_file_name corresponding to an existing file. If there
        are no existing files, it looks for the optional variant_realpath.*)
-    let dynamically_get_the_cow_file_name_source =
+    let get_the_cow_file_name_source =
       let rec find_first_existing_ancestor cow_file_name =
         match history#get_parent_cow_file_name ~cow_file_name () with
           (* The state hasn't a parent with an existing cow_file_name: its a root.
@@ -1201,7 +1200,7 @@ class virtual virtual_machine_with_history_and_ifconfig
       in
       fun () -> find_first_existing_ancestor cow_file_name
     in
-    (cow_file_name, dynamically_get_the_cow_file_name_source)
+    (cow_file_name, get_the_cow_file_name_source)
 
 end;; (* class virtual_machine_with_history_and_ifconfig *)
 

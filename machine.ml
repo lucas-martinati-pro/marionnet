@@ -645,7 +645,7 @@ class machine
  (** Create the simulated device *)
  method private make_simulated_device =
     let id = self#id in
-    let cow_file_name, dynamically_get_the_cow_file_name_source =
+    let cow_file_name, get_the_cow_file_name_source =
       self#create_cow_file_name_and_thunk_to_get_the_source
     in
     let rcfile_content =
@@ -670,7 +670,7 @@ class machine
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ?rcfile_content
         ~filesystem_file_name:self#get_filesystem_file_name
-        ~dynamically_get_the_cow_file_name_source
+        ~get_the_cow_file_name_source
         ~cow_file_name
         ~states_directory:(self#get_states_directory)
         ~hostfs_directory:(self#get_hostfs_directory ())
@@ -752,7 +752,7 @@ class ['parent] machine =
       ?(filesystem_relay_script)
       (* ?(rcfile_content) *)
       ?(rcfile_content="# Nothing to do this time\n")
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
       ~hostfs_directory
@@ -771,7 +771,7 @@ object(self)
       ~parent
       ~router:false
       ~filesystem_file_name
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~cow_file_name
       ~states_directory
       ~hostfs_directory

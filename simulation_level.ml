@@ -827,7 +827,7 @@ class uml_process =
       ~(filesystem_file_name)
       ?(filesystem_relay_script:string option)
       ?(rcfile_content:string option)
-      ~(dynamically_get_the_cow_file_name_source:unit->string option)
+      ~(get_the_cow_file_name_source:unit->string option)
       ~(cow_file_name)
       ~states_directory
       ~hostfs_directory
@@ -1168,16 +1168,13 @@ class uml_process =
 	Log.printf2 "%s#terminate: UML process with pid %d successfully terminated.\n" umid current_pid;
        end
 
-  method hostfs_directory =
-    hostfs_directory
-
   (** Fill the content of the host directory mounted guest-side in /mnt/hostfs/: *)
-  method private make_hostfs_stuff_if_not_already_present =
+  method private make_hostfs_content =
     (* Copy the `filesystem_relay_script' if any: *)
     let () =
       Option.iter
         (fun relay ->
-           let dest = Filename.concat (self#hostfs_directory) (Filename.basename relay) in
+           let dest = Filename.concat (hostfs_directory) (Filename.basename relay) in
            UnixExtra.file_copy relay dest)
         (filesystem_relay_script)
     in
@@ -1186,7 +1183,7 @@ class uml_process =
       Option.iter
         (fun content ->
            let relay = "marionnet-relay.rcfile" in
-           let dest = Filename.concat (self#hostfs_directory) relay in
+           let dest = Filename.concat (hostfs_directory) relay in
            UnixExtra.rewrite dest content)
         (rcfile_content)
     in
@@ -1227,12 +1224,6 @@ class uml_process =
       Unix.close descriptor; (* To do: understand which one is really needed. *)
     with _ -> ())
 
-  (** Destroy the host directory shared by hostfs. This should only be called at machine
-     deletion time. *)
-  method remove_hostfs_directory =
-    ignore (Unix.system (Printf.sprintf "rm -rf '%s'" self#hostfs_directory));
-    ()
-
   method private grant_host_x_server_access =
     let redirection = Global_options.Debug_level.redirection () in
     try
@@ -1250,7 +1241,7 @@ class uml_process =
     end*)
 
   method private copy_cow_file_if_needed =
-    match dynamically_get_the_cow_file_name_source () with
+    match get_the_cow_file_name_source () with
     | None -> ()
     | Some source_pathname ->
         ignore
@@ -1269,7 +1260,7 @@ class uml_process =
     super#spawn
 
   initializer
-    self#make_hostfs_stuff_if_not_already_present
+    self#make_hostfs_content
 end;;
 
 (** {2 Generic simulation infrastructure} *)
@@ -1310,7 +1301,6 @@ class virtual ['parent] device
  object(self)
   (** The internal state, as a DFA state *)
   val mutable state = Off
-  method get_state = state
 
   method virtual device_type : string
 
@@ -1345,11 +1335,6 @@ class virtual ['parent] device
          (try sp#terminate with _ -> ());
          Log.printf2  "device#terminate_hublets: ok, a hublet process (pid %i) of %s was terminated\n" pid name)
       hublet_process_array;
-
-  (** This is just to allow some implicit type conversions... *)
-  method hostfs_directory : string =
-    assert false
-   (* failwith ("hostfs_directory is not available for a " ^ self#device_type) *)
 
   (** Transitions are implemented with a simple change of internal state
       (which may fail if the current state is not appropriate for the
@@ -1429,7 +1414,8 @@ class virtual ['parent] device
       some subclasses may override it to do something different *)
   method gracefully_terminate_processes =
     self#terminate_processes
-end;;
+
+end;; (* class device *)
 
 
 (** The common schema for user-level hubs, switches and gateways: *)
@@ -1656,7 +1642,7 @@ class virtual ['parent] machine_or_router =
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
       ~hostfs_directory
@@ -1705,16 +1691,6 @@ object(self)
       None -> failwith "machine_or_router: get_xnest_process was called when there's no process"
     | Some xnest_process -> xnest_process
 
-  method hostfs_directory =
-    match !uml_process with
-      None -> failwith "machine_or_router: hostfs_directory was called when there's no process"
-    | Some uml_process -> uml_process#hostfs_directory
-
-  method private remove_hostfs_directory =
-    match !uml_process with
-      None -> failwith "machine_or_router: remove_hostfs_directory was called when there's no process"
-    | Some uml_process -> uml_process#remove_hostfs_directory
-
   initializer
     let all_hublets = self#get_hublet_process_list in
     outer_hublet_processes := ListExtra.select_from_to all_hublets 0 (half_hublet_no - 1);
@@ -1732,7 +1708,7 @@ object(self)
               ?filesystem_relay_script
               ?rcfile_content
               ~filesystem_file_name
-              ~dynamically_get_the_cow_file_name_source
+              ~get_the_cow_file_name_source
               ~cow_file_name
               ~states_directory
               ~hostfs_directory
@@ -1822,7 +1798,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
       ~hostfs_directory
@@ -1844,7 +1820,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~kernel_file_name ?kernel_console_arguments
       ?filesystem_relay_script ?rcfile_content
       ~filesystem_file_name
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~cow_file_name ~states_directory ~hostfs_directory
       ~ethernet_interface_no
       ~memory ~console_no ~console ~xnest

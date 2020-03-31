@@ -1096,7 +1096,7 @@ class router
   (** Create the simulated device *)
   method private make_simulated_device =
     let id = self#id in
-    let cow_file_name, dynamically_get_the_cow_file_name_source =
+    let cow_file_name, get_the_cow_file_name_source =
       self#create_cow_file_name_and_thunk_to_get_the_source
     in
     let rcfile_unix_content =
@@ -1130,7 +1130,7 @@ class router
         ?kernel_console_arguments:self#get_kernel_console_arguments
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ~filesystem_file_name:self#get_filesystem_file_name
-        ~dynamically_get_the_cow_file_name_source
+        ~get_the_cow_file_name_source
         ~cow_file_name
         ~states_directory:(self#get_states_directory)
         ~hostfs_directory:(self#get_hostfs_directory ())
@@ -1273,7 +1273,7 @@ class virtual ['parent] device = ['parent] Simulation_level.device
 (** A router: just a [machine_or_router] with [router = true] *)
 class ['parent] router =
   fun ~(parent:'parent)
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~(cow_file_name)
       ~states_directory
       ~hostfs_directory
@@ -1325,7 +1325,7 @@ class ['parent] router =
       ?kernel_console_arguments
       ?filesystem_relay_script
       ?rcfile_content
-      ~dynamically_get_the_cow_file_name_source
+      ~get_the_cow_file_name_source
       ~cow_file_name
       ~states_directory
       ~hostfs_directory

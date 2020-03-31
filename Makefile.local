@@ -138,7 +138,7 @@ gui-help: gui.ml
 clean-local: clean-mo clean-doc
 	@rm -f VERSION BUILD-TIME version.ml;
 	@rm -f share/gui.glade.patched gui.ml;
-	@echo "Warning: the local copy of ocamlbricks is not cleaned. Use \`make mrproper' to do that."
+	@echo "Warning: the local copy of ocamlbricks has not been cleaned up. Use \`make mrproper' to do that."
 
 # Clean also the local copy of ocamlbricks:
 mrproper: clean
