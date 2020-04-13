@@ -22,8 +22,6 @@
     Process death is not detected immediately, as the implementation is based on
     polling. *)
 
-(* open Mutex *)
-
 type process_name = string                      (* name of the executable program we're monitoring *)
 type pid = int                                  (* process identifier *)
 (* --- *)

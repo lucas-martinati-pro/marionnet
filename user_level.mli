@@ -248,11 +248,10 @@ class virtual node_with_defects_zone :
 class virtual node_with_defects :
   network:(< add_node : node -> 'c; defects : Treeview_defects.t;
              del_node_by_name : string -> unit;
-             get_cables_involved_by_node_name : string ->
-                                              < decrement_alive_endpoint_no : 'd;
-                                                increment_alive_endpoint_no : 'e;
-                                                show : string -> string; .. >
-                                              list;
+             get_cables_involved_by_node_name :
+               string ->  (< decrement_alive_endpoint_no : 'd;
+                             increment_alive_endpoint_no : 'e;
+                             show : string -> string; .. >) list;
              .. >
            as 'b) ->
   name:string ->

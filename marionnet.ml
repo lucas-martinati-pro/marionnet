@@ -30,9 +30,7 @@ open Gettext
 open State
 open Talking
 
-(* module S = Serial *)
 module G = Gui_source_editing
-(* module I = Inotify_test *)
 
 (* Enter the right directory: *)
 let _enter_the_right_directory =

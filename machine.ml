@@ -15,9 +15,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-open Gettext;;
 
 (** User-level component "machine" implementation. *)
+
+open Gettext;;
+
+type filename = string;;
+type pid = int;;
 
 (* The module containing the add/update dialog is defined later,
    using the syntax extension "where" *)
@@ -731,7 +735,160 @@ class machine
    self#set_console_no console_no;
    self#set_terminal terminal;
 
-end;;
+ (* Watching thread as future (may be tasted): *)
+ val mutable hostfs_watching_thread : (unit Future.t) option = None
+ (* --- *)
+ (* Most of them are probably not active: *)
+ val mutable pts_relays : (filename * (((exn, unit) Either.t Future.t) * Future.Control.t)) list = []
+ (* --- *)
+ method private stop_pts_relays ?host_pts ?all () =
+   let try_to_kill (ctrl) =
+     let (pid, tid, kill_method) = ctrl in
+     let () = Log.printf3 "machine[%s]#stop_pts_relay: about to break relay %d.%d\n" (self#name) (pid) (tid) in
+     kill_method ()
+   in
+   let () =
+     match host_pts, all with
+     (* --- *)
+     | Some pts, _ ->
+         ListExtra.search (fun (fname, (prm, ctrl)) -> fname=pts) (pts_relays) |> Option.iter (fun (fname, (prm, ctrl)) -> begin
+              try_to_kill (ctrl)
+            end)
+     (* --- *)
+     | _,  Some () ->
+         Flip.flip (List.iter) (pts_relays) (fun (fname, (prm, ctrl)) -> begin
+              try_to_kill (ctrl)
+            end)
+     | _, _ -> ()
+   in
+   (* --- *)
+   (* Remove non active futures (threads or forks) and prevent zombies, if any: *)
+   let garbage_collection () =
+     pts_relays <- Flip.flip (List.filter) (pts_relays) (fun (fname, (prm, ctrl)) -> begin
+        let to_be_removed = (Future.terminated prm) in
+        (* --- *)
+        let () = if (to_be_removed) then
+          let (pid, tid, kill_method) = ctrl in
+          try Unix.waitpid [Unix.WNOHANG] (pid) |> ignore with _ -> ()
+        in
+        not (to_be_removed)
+       end)
+   in
+   (* Leave a time to process forks to exit: *)
+   let () = Thread.delay 0.1 in
+   (* Do it: *)
+   let () = garbage_collection () in
+   ()
+ (* --- *)
+ (* Launch, a bit of garbage collection, then register the new relay: *)
+ method private start_pts_relay ?no_fork ~host_pts () =
+  try
+    (* --- *)
+    (* Check existence and delay twice: *)
+    let () = if Sys.file_exists (host_pts) then () else Thread.delay 1. in (* N°1 *)
+    let () = if Sys.file_exists (host_pts) then () else Thread.delay 2. in (* N°2 *)
+    let () = if Sys.file_exists (host_pts) then () else
+      let () = Log.printf2 "machine[%s]#start_pts_relay: file %s NOT FOUND\n" (self#name) (host_pts) in
+      assert false
+    in
+    (* !!!!! TODO: Attenzione: da generalizzare ai casi in cui il server graphico è accessibile con inet4/6 (p.e. tunnel ssh) !!!!!! *)
+    let socketfile = Printf.sprintf "/tmp/.X11-unix/X%s" X.display in
+    (* --- *)
+    let () = Log.printf5 "machine[%s]#start_pts_relay: about to start a pts relay %s -> %s (fork=%b) (terminal=%s)\n"
+      (self#name) (host_pts) (socketfile) (no_fork=None) (self#get_terminal)
+    in
+    let (prm, ctrl) : ((exn, unit) Either.t Future.t) * (Future.Control.t) =
+      Network.Socat.pts_of_unix_stream_server ?no_fork ~filename:(host_pts) ~socketfile ()
+    in
+    let (pid, tid, _) = ctrl in
+    let () =
+      Log.printf3 "machine[%s]#start_pts_relay: future (pid %d.%d) started to deserve an X11 application\n" (self#name) (pid) (tid) ;
+      Flip.flip Option.iter (Future.taste prm) (function
+        | Either.Left  e  -> Log.printf2 "machine[%s]#start_pts_relay: exception: %s\n" (self#name) (Printexc.to_string e)
+        | Either.Right () -> Log.printf2 "machine[%s]#start_pts_relay: fork %d strangely exited!\n" (self#name) (pid)
+        )
+    in
+    (* --- *)
+    let () = pts_relays <- (host_pts, (prm, ctrl)) :: pts_relays in
+    ()
+  with e ->
+    let () = Log.print_exn ~prefix:"machine[%s]#start_pts_relay: FAILED with: " e in
+    ()
+
+ (* --- *)
+ (* Called at initialization-time. The thread will be automatically stopped
+    when the instance wil be destroyed. *)
+ method private start_hostfs_x11_directory_watching_thread () : unit Future.t =
+     (* --- *)
+   let hostfs_x11_directory = Filename.concat (self#get_hostfs_directory ()) ".X11-unix" in
+   let () = try Unix.mkdir (hostfs_x11_directory) 0o777 with _ -> () in
+   let () = try Unix.chmod (hostfs_x11_directory) 0o777 with _ -> () in
+   (* --- *)
+   let callback =
+     (* --- *)
+     let ropened = Str.regexp "^ttyS[1-9][0-9]*[-]pts[1-9][0-9]*.opened$" in
+     let rclosed = Str.regexp "^ttyS[1-9][0-9]*[-]pts[1-9][0-9]*.closed$" in
+     (* --- *)
+     fun ((wd, ks, _, opath) as _event) ->
+       if opath = None then true (* return *) else (* continue: *)
+       (* --- *)
+       let path     = Option.extract opath in
+       let fullpath = Filename.concat (hostfs_x11_directory) (path) in
+       let host_pts = String.trim (PervasivesExtra.get_file_content (fullpath)) in (* Ex: "/dev/pts/10" *)
+       (* --- *)
+       if StrExtra.First.matchingp (ropened) (path) then
+         let () = self#start_pts_relay (**) ~no_fork:() (**) ~host_pts () in
+         true (* continue watching directory (to serve other guest's X11 connections) *)
+       (* --- *)
+       else (* elif: *)
+       if StrExtra.First.matchingp (rclosed) (path) then
+         let () = self#stop_pts_relays ~host_pts () in
+         true
+       else
+         (* do nothing and continue watching: *)
+         true
+   (* --- end callback *)
+   in
+   let exit_door = ".break_watching" in
+   (* --- *)
+   let break_watching () : unit =
+     let filename = Filename.concat (hostfs_x11_directory) (exit_door) in
+     PervasivesExtra.put_file_content ~filename "Bye"
+   in
+   (* --- *)
+   let action () =
+     Linux.watch_directory ~verbose:()
+         ~exit_door:".break_watching"
+         ~selector:[Inotify.S_Close_write]
+         ~pathfilter:(Str.regexp "^ttyS[1-9][0-9]*[-]pts[1-9][0-9]*.[oc][pl][eo][ns]ed$")
+         ~callback
+         (hostfs_x11_directory)
+   in
+   let result = Future.thread action () in
+   let () = Log.printf1 "machine[%s]#start_hostfs_x11_directory_watching_thread: STARTED a watching thread\n" (self#name) in
+   (* --- *)
+   let () = self#add_destroy_callback (lazy (break_watching ())) in
+   let () = self#add_destroy_callback (lazy (self#stop_pts_relays ~all:() ())) in
+   (* --- *)
+   let () = hostfs_watching_thread <- Some (result) in
+   result
+
+ (* -------------- *)
+ initializer begin
+   (* Should depend on "X11_SUPPORT": *)
+   let flag = (vm_installations#terminal_manager_of self#get_epithet)#is_hostxserver (self#get_terminal) in
+   (* BUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *)
+   (* flag is always true!!! and (self#get_epithet) is not correct when a project is load: *)
+   (* [22983.8]: machine[m1]#start_hostfs_x11_directory_watching_thread: CONDITION=true EPITHET='default' <= opened project KO (debian-wheezy-08367) *)
+   (* [22983.0]: machine[m2]#start_hostfs_x11_directory_watching_thread: CONDITION=true EPITHET='guignol-18474' <= new machine OK *)
+   (* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *)
+   let () = Log.printf3 "machine[%s]#start_hostfs_x11_directory_watching_thread: CONDITION=%b EPITHET='%s'\n" (self#name) (flag) (self#get_epithet) in
+   let () = if flag then ignore (self#start_hostfs_x11_directory_watching_thread ()) in
+   ()
+   end
+  (* -------------- *)
+
+end;; (* class machine *)
 
 end (* module User_level_machine *)
 

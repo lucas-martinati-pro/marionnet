@@ -30,16 +30,16 @@ class virtual process :
   unit ->
   object
     method append_arguments : process_name list -> unit
+    (* --- *)
     method spawn     : unit
     method stop      : unit
     method continue  : unit
-    method terminate : unit
     method gracefully_terminate : unit
+    method terminate : unit
     (* --- *)
-    method get_pid   : pid
     method is_alive  : bool
+    method get_pid   : pid
     (* --- *)
-(*     method terminAte : ?gracefully:unit -> unit -> unit *)
   end
 
 class xnest_process :
@@ -69,7 +69,7 @@ class virtual process_which_creates_a_socket_at_spawning_time :
   unit ->
   object
     inherit process
-    method get_socket_name : string
+    method get_socket_name            : string
     method get_management_socket_name : string option
   end
 
@@ -160,6 +160,7 @@ val defects_to_command_line_options :
   ?leftward_flip:float ->
   ?leftward_min_delay:float ->
   ?leftward_max_delay:float ->
+  (* --- *)
   unit -> string list
 
 class ethernet_cable_process :
@@ -179,6 +180,7 @@ class ethernet_cable_process :
   ?leftward_min_delay:float ->
   ?leftward_max_delay:float ->
   unexpected_death_callback:(int -> process_name -> unit) ->
+  (* --- *)
   unit ->
     object
       inherit process

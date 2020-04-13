@@ -93,7 +93,7 @@ StrExtra
 StringExtra
 String_queue
 Sugar
-#StackExtra
+StackExtra
 SysExtra
 ThreadExtra
 Thunk

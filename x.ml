@@ -306,7 +306,7 @@ let _ =
 end (* Settings_at_loading_time *)
 (* ------------------------------------------*)
 
-let guest_display = 
+let guest_display =
   string_of_int (!(Settings_at_loading_time.guest_display))
 
 let guest_display_dot_screen =
