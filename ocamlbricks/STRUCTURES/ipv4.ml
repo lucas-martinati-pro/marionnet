@@ -224,6 +224,8 @@ Hosts:     %d
 (** Similar tools working on strings and producing strings. *)
 module String = struct
 
+ type t = string (* alias *)
+
  let is_valid_ipv4 x =
    try let _ = of_string x in true with _ -> false
 

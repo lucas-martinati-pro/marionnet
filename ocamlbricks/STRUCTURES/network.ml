@@ -18,6 +18,38 @@ IFNDEF OCAML4_02_OR_LATER THEN
 module Bytes = struct  let create = String.create  let set = String.set  end
 ENDIF
 
+(* --------------------------- *)
+(*     Abstract addresses      *)
+(* --------------------------- *)
+
+type filename = string
+type socketfile = filename
+type ipv4_or_v6 = string
+type port = int
+
+(* User-friendly server address specification: *)
+type server_address = [
+ | `unix  of socketfile
+ | `inet  of ipv4_or_v6 * port
+ ]
+(* --- *)
+
+(* A channel is a "port", "gate" or "endpoint", *connected* in some way,
+   in the general sense of "plugged", to another port, gate or endpoint
+   accessible by the same or another thread, belonging the same or another
+   process, running on the same or another OS. *)
+(* --------------------------- *)
+class type abstract_channel =
+(* --------------------------- *)
+  object
+    method send    : string -> unit
+    method receive : ?at_least:int -> unit -> string
+    (* method peek : ?at_least:int -> unit -> (string, string) Either.t *)
+    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
+    (* Low-level (should be private) method. Descriptors may be the the same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
+  end
+
 module Log = Ocamlbricks_log
 
 type pid = int
@@ -33,21 +65,6 @@ type tutoring_thread_behaviour = ThreadExtra.Easy_API.options
 
 (* Protect an action from any kind of exception: *)
 let protect f x : unit = try f x with _ -> ()
-
-(* A channel is a "port", "gate" or "endpoint", *connected* in some way,
-   in the general sense of "plugged", to another port, gate or endpoint
-   accessible by the same or another thread, belonging the same or another
-   process, running on the same or another OS.
-*)
-class type abstract_channel =
-  object
-    method send    : string -> unit
-    method receive : ?at_least:int -> unit -> string
-    (* method peek    : ?at_least:int -> unit -> (string, string) Either.t *)
-    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
-    (* The same for input and output: *)
-    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
-  end
 
 let string_of_sockaddr = function
   | Unix.ADDR_UNIX x -> x
@@ -322,7 +339,7 @@ let inet6_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range6 ?ipv6 ?
   (server_thread, (Unix.string_of_inet_addr ipv6), assigned_port)
 
 (* Dual stack inet4 and inet6: *)
-let inet_server ?max_pending_requests ?tutor_behaviour ?no_fork
+let dual_inet_server ?max_pending_requests ?tutor_behaviour ?no_fork
   ?range4 ?range6 ?ipv4 ?ipv6 ?port server_fun
   =
   let (thrd4, addr4, port4) as r4 =
@@ -617,14 +634,14 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
       (* --- *)
       (match shutdown_command with
       | Unix.SHUTDOWN_RECEIVE | Unix.SHUTDOWN_ALL ->
-	  (try Unix.close fd0 with _ -> ());
-	  (try Unix.unlink (socketfile_of_sockaddr sockaddr0) with _ -> ());
+	  protect Unix.close fd0;
+	  protect Unix.unlink (socketfile_of_sockaddr sockaddr0);
       | _ -> ()
       );
       (* --- *)
       (match shutdown_command with
       | Unix.SHUTDOWN_SEND | Unix.SHUTDOWN_ALL ->
-	  (try Unix.unlink (socketfile_of_sockaddr sockaddr1) with _ -> ());
+	  protect Unix.unlink (socketfile_of_sockaddr sockaddr1);
       | _ -> ()
       )
     with e ->
@@ -737,7 +754,6 @@ let dgram_input_port_of ?dgram_output_port ~my_stream_inet_addr () =
   (fd0, sockaddr0, dgram_input_port)
 ;;
 
-type socketfile = string
 type 'a stream_protocol    = stream_channel -> 'a
 type 'a seqpacket_protocol = seqpacket_channel -> 'a
 type 'a dgram_protocol  = (stream_channel -> dgram_channel) * (dgram_channel -> 'a)
@@ -791,13 +807,12 @@ let stream_inet6_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?
   let server_fun = server_fun_of_stream_protocol ?max_input_size protocol in
   inet6_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range6 ?ipv6 ?port server_fun
 
-
 (* stream - inet (both 4 and 6) trying to reserve for ipv6 the same port reserved for ipv4: *)
-let stream_inet_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
+let dual_stream_inet_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
   ?range4 ?range6 ?ipv4 ?ipv6 ?port ~(protocol:stream_channel -> unit) ()
   =
   let server_fun = server_fun_of_stream_protocol ?max_input_size protocol in
-  inet_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port server_fun
+  dual_inet_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port server_fun
 
 let stream_dgram_protocol_composition
   ~(bootstrap : stream_channel -> dgram_channel)
@@ -839,83 +854,87 @@ let dgram_inet6_server ?max_pending_requests ?stream_max_input_size ?tutor_behav
   inet6_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range6 ?ipv6 ?port server_fun
 
 (* datagram - inet *)
-let dgram_inet_server ?max_pending_requests ?stream_max_input_size ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port
+let dual_dgram_inet_server ?max_pending_requests ?stream_max_input_size ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port
   ~(bootstrap : stream_channel   -> dgram_channel)
   ~(protocol  : dgram_channel -> unit)
   () =
   let protocol_composition = stream_dgram_protocol_composition ~bootstrap ~protocol in
   let server_fun = server_fun_of_stream_protocol ?max_input_size:stream_max_input_size protocol_composition in
-  inet_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port server_fun
+  dual_inet_server ?max_pending_requests ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port server_fun
 
-
-let client ?seqpacket client_fun sockaddr =
+(* This functions acts in four steps:
+   (1) determine the socket type (seqpacket/stream),
+   (2) get a socket structure (file_descr) of the related domain (unix/inet) and type (seqpacket/stream),
+   (3) connect with this socket (file_descr) to the server@sockaddr,
+   (4) execute the protocol (client_fun)
+   *)
+let client ?seqpacket (client_fun: Unix.file_descr (*socket*) -> (exn, 'a) Either.t) (sockaddr : Unix.sockaddr) : (exn, 'a) Either.t =
+  (* --- *)
   let socket_type =
     match seqpacket with
     | None    -> Unix.SOCK_STREAM
     | Some () -> Unix.SOCK_SEQPACKET (* implies domain = Unix.ADDR_UNIX *)
   in
-  let socket = Either.apply_or_catch (Unix.socket (Unix.domain_of_sockaddr sockaddr) socket_type) 0 in
-  Either.bind
-    socket
-    (fun socket ->
-      try
-	Unix.connect socket sockaddr;
-	(try Unix.set_close_on_exec socket with Invalid_argument _ -> ());
-	client_fun socket
-      with e ->
-	begin
-	  Unix.close socket;
-	  Either.Left (Connecting e)
-	end)
+  (* --- *)
+  let socket : (exn, Unix.file_descr) Either.t =
+    Either.apply_or_catch (Unix.socket (Unix.domain_of_sockaddr sockaddr) socket_type) 0
+  in
+  (* --- *)
+  Either.bind (socket) (fun socket ->
+    try
+      Unix.connect socket sockaddr;
+      (try Unix.set_close_on_exec socket with Invalid_argument _ -> ());
+      client_fun (socket)
+    with e ->
+      begin
+        protect Unix.close socket;
+        Either.Left (Connecting e)
+      end)
 
-let unix_client ?seqpacket ~socketfile client_fun =
+(* --- *)
+let unix_client ?seqpacket ~socketfile (client_fun) =
   let sockaddr = Unix.ADDR_UNIX socketfile in
-  client ?seqpacket client_fun sockaddr
+  client ?seqpacket (client_fun) sockaddr
 
-let inet_client ~ipv4_or_v6 ~port client_fun =
+(* --- *)
+let inet_client ~ipv4_or_v6 ~port (client_fun) =
   try
-    let ipv4_or_v6 = Unix.inet_addr_of_string ipv4_or_v6 in
+    let ipv4_or_v6 = Unix.inet_addr_of_string (ipv4_or_v6) in
     let sockaddr = Unix.ADDR_INET (ipv4_or_v6, port) in
-    client client_fun sockaddr
+    client (client_fun) sockaddr
   with e -> Either.Left e
 
-(* stream - unix *)
-let stream_unix_client ?max_input_size ~socketfile ~(protocol:stream_channel -> 'a) () =
-  let client_fun = server_fun_of_stream_protocol ?max_input_size protocol in
-  unix_client ~socketfile client_fun
+(* --- *)
+(* Multi-domain (unix/inet) stream client: *)
+let stream_client ?max_input_size ~(target: server_address) ~(protocol:stream_channel -> 'a) () =
+  let client_fun = server_fun_of_stream_protocol ?max_input_size (protocol) in
+  match target with
+  | `unix (socketfile)       -> unix_client ~socketfile (client_fun)
+  | `inet (ipv4_or_v6, port) -> inet_client ~ipv4_or_v6 ~port (client_fun)
 
+(* --- *)
 (* seqpacket - unix *)
 let seqpacket_unix_client ?max_input_size ~socketfile ~(protocol:'a seqpacket_protocol) () =
-  let client_fun = server_fun_of_seqpacket_protocol ?max_input_size protocol in
-  unix_client ~seqpacket:() ~socketfile client_fun
+  let client_fun = server_fun_of_seqpacket_protocol ?max_input_size (protocol) in
+  unix_client ~seqpacket:() ~socketfile (client_fun)
 
-(* stream - inet (v4 or v6) *)
-let stream_inet_client ?max_input_size ~ipv4_or_v6 ~port ~(protocol:stream_channel -> 'a) () =
-  let client_fun = server_fun_of_stream_protocol ?max_input_size protocol in
-  inet_client ~ipv4_or_v6 ~port client_fun
-
-(* datagram - unix *)
-let dgram_unix_client ?stream_max_input_size ~socketfile
+(* --- *)
+(* Multi-domain (unix/inet) dgram client: *)
+let dgram_client ?stream_max_input_size
+  ~target
   ~(bootstrap : stream_channel -> dgram_channel)
   ~(protocol  : dgram_channel  -> 'a)
   () =
-  let protocol_composition = stream_dgram_protocol_composition ~bootstrap ~protocol in
-  let client_fun = server_fun_of_stream_protocol ?max_input_size:stream_max_input_size protocol_composition in
-  unix_client ~socketfile client_fun
-
-(* datagram - inet4 or inet6 *)
-let dgram_inet_client ?stream_max_input_size
-  ~ipv4_or_v6
-  ~port
-  ~(bootstrap : stream_channel -> dgram_channel)
-  ~(protocol  : dgram_channel  -> 'a)
-  () =
-  let protocol_composition = stream_dgram_protocol_composition ~bootstrap ~protocol in
-  let client_fun = server_fun_of_stream_protocol ?max_input_size:stream_max_input_size protocol_composition in
-  inet_client ~ipv4_or_v6 ~port client_fun
+  let protocol_composition = (stream_dgram_protocol_composition) ~bootstrap ~protocol in
+  let client_fun = server_fun_of_stream_protocol ?max_input_size:(stream_max_input_size) (protocol_composition) in
+  match target with
+  | `unix (socketfile)       -> unix_client ~socketfile (client_fun)
+  | `inet (ipv4_or_v6, port) -> inet_client ~ipv4_or_v6 ~port (client_fun)
 
 
+(* --------------------*)
 module Socat = struct
+(* --------------------*)
 
 (* (Using "UTF-8 Box Drawing")
 
@@ -965,7 +984,7 @@ let crossover_link (chA : abstract_channel) (chB : abstract_channel) : unit =
   ()
 
  (* -------------------------------- *
-         of_unix_stream_server
+         of_stream_server
   * -------------------------------- *)
 
 (** Example:
@@ -976,79 +995,85 @@ let crossover_link (chA : abstract_channel) (chB : abstract_channel) : unit =
 xterm Xt error: Can't open display: 127.0.0.1:42
   : int = 1
 
-# Network.Socat.inet4_of_unix_stream_server ~port:6042 ~socketfile:"/tmp/.X11-unix/X0" () ;;
-  : Thread.t * string * int = (<abstr>, "0.0.0.0", 6042)
+# Network.Socat.inet4_of_stream_server ~port:6042 ~target:`unix("/tmp/.X11-unix/X0") () ;;
+  : Thread.t * Ipv4.string * port = (<abstr>, "0.0.0.0", 6042)
 
 # Sys.command "DISPLAY=127.0.0.1:42 xterm" ;;
   : int = 0 ]} *)
-  let inet4_of_unix_stream_server
+  let inet4_of_stream_server
     (* inet4 server parameters: *)
     ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range4 ?ipv4 ?port
-    (* unix client parameters and inet4 server result: *)
-    ~socketfile () : Thread.t * string * int
+    (* client parameters and inet4 server result: *)
+    ~target
+    () : Thread.t * Ipv4.string * port
     =
     stream_inet4_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
       ?range4 ?ipv4 ?port
       ~protocol:begin fun (chA:stream_channel) ->
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_unix_client ?max_input_size ~socketfile
+	  ignore (stream_client ?max_input_size ~target
 	    ~protocol:begin fun (chB:stream_channel) ->
 	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
-  let inet6_of_unix_stream_server
+  (* --- *)
+
+  let inet6_of_stream_server
     (* inet6 server parameters: *)
     ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range6 ?ipv6 ?port
-    (* unix client parameters and inet6 server result: *)
-    ~socketfile () : Thread.t * string * int
+    (* client parameters and inet6 server result: *)
+    ~target () : Thread.t * Ipv6.string * port
     =
     stream_inet6_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
       ?range6 ?ipv6 ?port
       ~protocol:begin fun (chA:stream_channel) ->
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_unix_client ?max_input_size ~socketfile
+	  ignore (stream_client ?max_input_size ~target
 	    ~protocol:begin fun (chB:stream_channel) ->
 	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
-  let inet_of_unix_stream_server
+  (* --- *)
+
+  let dual_inet_of_stream_server
     (* inet6 server parameters: *)
     ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port
-    (* unix client parameters and inet6 server result: *)
-    ~socketfile () : (Thread.t * string * int) * (Thread.t * string * int)
+    (* client parameters and inet6 server result: *)
+    ~target () : (Thread.t * Ipv4.string * port) * (Thread.t * Ipv6.string * port)
     =
-    stream_inet_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
+    dual_stream_inet_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
       ?range4 ?range6 ?ipv4 ?ipv6 ?port
       ~protocol:begin fun (chA:stream_channel) ->
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_unix_client ?max_input_size ~socketfile
+	  ignore (stream_client ?max_input_size ~target
 	    ~protocol:begin fun (chB:stream_channel) ->
 	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
-
-  let unix_of_unix_stream_server
+  (* --- *)
+  let unix_of_stream_server
     (* unix server parameters: *)
     ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?socketfile
-    (* unix client parameters and unix server result: *)
-    ~dsocketfile () : Thread.t * string
+    (* client parameters and unix server result: *)
+    ~target () : Thread.t * socketfile
     =
     stream_unix_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?socketfile
       ~protocol:begin fun (chA:stream_channel) ->
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_unix_client ?max_input_size ~socketfile:dsocketfile
+	  ignore (stream_client ?max_input_size ~target
 	    ~protocol:begin fun (chB:stream_channel) ->
 	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
 
-  let pts_of_unix_stream_server_FORK
-    ?max_input_size ?file_perm ~filename (* <= pts parameters: *)
-    ~socketfile                          (* <= unix client parameters and unix server result: *)
+  (* --- *)
+  let pts_of_stream_server_FORK
+    ?max_input_size ?file_perm ~filename (* <= pts parameters *)
+    ~target                              (* <= server address *)
     ()
     : ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
     =
@@ -1057,7 +1082,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
       Pts.Apply_protocol.as_fork ?max_input_size ?file_perm ~filename ~protocol:begin fun (chA:Pts.stream_channel) ->
           (* --- *)
           (* When a connection is opened the pts-peer became a client of the remote unix server: *)
-          ignore (stream_unix_client ?max_input_size ~socketfile ~protocol:begin fun (chB:stream_channel) ->
+          ignore (stream_client ?max_input_size ~target ~protocol:begin fun (chB:stream_channel) ->
                 (* --- *)
                 crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
                 (* --- *)
@@ -1070,9 +1095,10 @@ xterm Xt error: Can't open display: 127.0.0.1:42
     (y, ctrl)
 
 
-  let pts_of_unix_stream_server_THREAD
+  (* --- *)
+  let pts_of_stream_server_THREAD
     ?max_input_size ?file_perm ~filename (* <= pts parameters: *)
-    ~socketfile                          (* <= unix client parameters and unix server result: *)
+    ~target                              (* <= server address *)
     ()
     : ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
     =
@@ -1082,7 +1108,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
       Pts.Apply_protocol.as_thread ?max_input_size ?file_perm ~filename ~protocol:begin fun (chA:Pts.stream_channel) ->
           (* --- *)
           (* When a connection is opened the pts-peer became a client of the remote unix server: *)
-          ignore (stream_unix_client ?max_input_size ~socketfile ~protocol:begin fun (chB:stream_channel) ->
+          ignore (stream_client ?max_input_size ~target ~protocol:begin fun (chB:stream_channel) ->
                 let () =
                   Egg.release ctrl (Future.Control.make ~kill:(fun () ->
                       chA#walk_through_the_exit_door () |> ignore
@@ -1098,80 +1124,14 @@ xterm Xt error: Can't open display: 127.0.0.1:42
     in
     (y, Egg.wait ctrl)
 
-
-  let pts_of_unix_stream_server ?no_fork =
+  (* --- *)
+  let pts_of_stream_server ?no_fork =
     match no_fork with
-    | None    -> pts_of_unix_stream_server_FORK
-    | Some () -> pts_of_unix_stream_server_THREAD
-
-
- (* -------------------------------- *
-         of_inet_stream_server
-  * -------------------------------- *)
-
-  let unix_of_inet_stream_server
-    (* unix server parameters: *)
-    ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?socketfile
-    (* inet client parameters and unix server result: *)
-    ~ipv4_or_v6 ~port () : Thread.t * string
-    =
-    stream_unix_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?socketfile
-      ~protocol:begin fun (chA:stream_channel) ->
-	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port
-	    ~protocol:begin fun (chB:stream_channel) ->
-	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
-	     end (* client protocol *) ())
-       end (* server protocol *) ()
-
-  let inet4_of_inet_stream_server
-    (* inet4 server parameters: *)
-    ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range4 ?ipv4 ?port
-    (* inet client parameters and inet4 server result: *)
-    ~ipv4_or_v6 ~dport () : Thread.t * string * int
-    =
-    stream_inet4_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range4 ?ipv4 ?port
-      ~protocol:begin fun (chA:stream_channel) ->
-	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
-	    ~protocol:begin fun (chB:stream_channel) ->
-	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
-	     end (* client protocol *) ())
-       end (* server protocol *) ()
-
-  let inet6_of_inet_stream_server
-    (* inet4 server parameters: *)
-    ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range6 ?ipv6 ?port
-    (* inet client parameters and inet4 server result: *)
-    ~ipv4_or_v6 ~dport () : Thread.t * string * int
-    =
-    stream_inet6_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
-      ?range6 ?ipv6 ?port
-      ~protocol:begin fun (chA:stream_channel) ->
-	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
-	    ~protocol:begin fun (chB:stream_channel) ->
-	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
-	     end (* client protocol *) ())
-       end (* server protocol *) ()
-
-  let inet_of_inet_stream_server
-    (* inet4 server parameters: *)
-    ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork ?range4 ?range6 ?ipv4 ?ipv6 ?port
-    (* inet client parameters and inet4 server result: *)
-    ~ipv4_or_v6 ~dport () : (Thread.t * string * int) * (Thread.t * string * int)
-    =
-    stream_inet_server ?max_pending_requests ?max_input_size ?tutor_behaviour ?no_fork
-      ?range4 ?range6 ?ipv4 ?ipv6 ?port
-      ~protocol:begin fun (chA:stream_channel) ->
-	  (* When a connection is accepted the server became a client of the remote unix server: *)
-	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
-	    ~protocol:begin fun (chB:stream_channel) ->
-	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
-	     end (* client protocol *) ())
-       end (* server protocol *) ()
+    | None    -> pts_of_stream_server_FORK
+    | Some () -> pts_of_stream_server_THREAD
 
 end (* module Socat *)
+
 
 IFDEF DOCUMENTATION_OR_DEBUGGING THEN
 module Examples = struct

@@ -19,6 +19,9 @@
 (** The internal representation of an ipv6 address. *)
 type t = int array
 
+(* Alias indicating the purpose of the string: *)
+type string = String.t
+
 (** The integer implicitely representing the netmask. Admissible values are in the range [0..128]. *)
 type cidr = int
 
@@ -58,6 +61,8 @@ type ipcalc_result =
 val ipcalc : t -> cidr -> ipcalc_result
 
 module String : sig
+
+ type t = string (* alias *)
 
  val is_valid_ipv6   : string -> bool
  val is_valid_config : string -> bool

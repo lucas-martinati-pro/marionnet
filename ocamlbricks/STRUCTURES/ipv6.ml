@@ -202,6 +202,8 @@ HostMax:   %s
 (** Similar tools working on strings and producing strings. *)
 module String = struct
 
+ type t = string (* alias *)
+
  let is_valid_ipv6 x =
    try let _ = of_string x in true with _ -> false
 

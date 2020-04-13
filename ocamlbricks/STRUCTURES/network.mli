@@ -17,6 +17,39 @@
 
 (** High-level interface for client-server programming. *)
 
+(* --------------------------- *)
+(*     Abstract addresses      *)
+(* --------------------------- *)
+
+type filename = string
+type socketfile = filename
+type ipv4_or_v6 = string
+type port = int
+
+(* User-friendly server address specification: *)
+type server_address = [
+ | `unix  of socketfile
+ | `inet  of ipv4_or_v6 * port
+ ]
+
+(* A channel is a "port", "gate" or "endpoint", *connected* in some way,
+   in the general sense of "plugged", to another port, gate or endpoint
+   accessible by the same or another thread, belonging the same or another
+   process, running on the same or another OS. *)
+(* --------------------------- *)
+class type abstract_channel =
+(* --------------------------- *)
+  object
+    method send    : string -> unit
+    method receive : ?at_least:int -> unit -> string
+    (* method peek : ?at_least:int -> unit -> (string, string) Either.t *)
+    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
+    (* Low-level (should be private) method. Descriptors may be the the same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
+  end
+
+(* --- *)
+
 type pid = int
 
 exception Accepting  of exn
@@ -31,16 +64,6 @@ val socketfile_of_sockaddr         : Unix.sockaddr -> string
 val inet_addr_and_port_of_sockaddr : Unix.sockaddr -> Unix.inet_addr * int
 
 val domain_of_inet_addr : Unix.inet_addr -> Unix.socket_domain
-
-class type abstract_channel =
-  object
-    method send    : string -> unit
-    method receive : ?at_least:int -> unit -> string
-    (* method peek    : ?at_least:int -> unit -> (string, string) Either.t *)
-    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
-    (* The same for input and output: *)
-    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
-  end
 
 (** Example:
 {[# Network.socketname_in_a_fresh_made_directory "ctrl" ;;
@@ -69,7 +92,9 @@ val fresh_socketname :
   ?suffix:string ->
   unit -> string
 
+(* --------------------------- *)
 class stream_channel :
+(* --------------------------- *)
   ?max_input_size:int ->
   Unix.file_descr ->
   object
@@ -118,8 +143,9 @@ val line_oriented_channel_of_stream_channel : stream_channel ->
     peek    : unit   -> string option;
     >
 
-
+(* --------------------------- *)
 class seqpacket_channel :
+(* --------------------------- *)
   ?max_input_size:int ->
   Unix.file_descr ->
   object
@@ -144,7 +170,9 @@ class seqpacket_channel :
     method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
   end
 
+(* --------------------------- *)
 class dgram_channel :
+(* --------------------------- *)
   ?max_input_size:int ->
   fd0:Unix.file_descr ->
   sockaddr1:Unix.sockaddr ->
@@ -197,11 +225,11 @@ type tutoring_thread_behaviour = ThreadExtra.Easy_API.options
 val seqpacket_unix_server :
   ?max_pending_requests:int ->
   ?max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?socketfile:string ->
   protocol:(seqpacket_channel -> unit) ->
-  unit -> Thread.t * string
+  unit -> Thread.t * socketfile
 
 val seqpacket_unix_client :
   ?max_input_size:int ->
@@ -209,282 +237,232 @@ val seqpacket_unix_client :
   protocol:(seqpacket_channel -> 'a) ->
   unit -> (exn,'a) Either.t
 
-(** {2 Stream Unix Domain } *)
+(** {2 Stream Unix/Internet Domain } *)
+
+(* Multi-domain (unix/inet) stream client: *)
+val stream_client :
+  ?max_input_size:int ->
+  target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
+  protocol:(stream_channel -> 'a) ->
+  unit -> (exn,'a) Either.t
 
 val stream_unix_server :
   ?max_pending_requests:int ->
   ?max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?socketfile:string ->
   protocol:(stream_channel -> unit) ->
-  unit -> Thread.t * string
-
-val stream_unix_client :
-  ?max_input_size:int ->
-  socketfile:string ->
-  protocol:(stream_channel -> 'a) ->
-  unit -> (exn,'a) Either.t
-
-(** {2 Stream Internet Domain } *)
+  unit -> Thread.t * socketfile
 
 val stream_inet4_server :
   ?max_pending_requests:int ->
   ?max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range4:string ->
-  ?ipv4:string ->
+  ?ipv4:Ipv4.string ->
   ?port:int ->
   protocol:(stream_channel -> unit) ->
-  unit -> Thread.t * string * int
+  unit -> Thread.t * Ipv4.string * port
 
 val stream_inet6_server :
   ?max_pending_requests:int ->
   ?max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range6:string ->
-  ?ipv6:string ->
+  ?ipv6:Ipv6.string ->
   ?port:int ->
   protocol:(stream_channel -> unit) ->
-  unit -> Thread.t * string * int
+  unit -> Thread.t * Ipv6.string * port
 
-val stream_inet_server :
+(* Dual stack server (both IPv4&v6): *)
+val dual_stream_inet_server :
   ?max_pending_requests:int ->
   ?max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range4:string ->
   ?range6:string ->
-  ?ipv4:string ->
-  ?ipv6:string ->
+  ?ipv4:Ipv4.string ->
+  ?ipv6:Ipv6.string ->
   ?port:int ->
   protocol:(stream_channel -> unit) ->
-  unit -> (Thread.t * string * int) * (Thread.t * string * int)
+  unit -> (Thread.t * Ipv4.string * port) * (Thread.t * Ipv6.string * port)
 
-val stream_inet_client :
-  ?max_input_size:int ->
-  ipv4_or_v6:string ->
-  port:int ->
-  protocol:(stream_channel -> 'a) ->
+(** {2 Datagram Unix/Internet Domain } *)
+
+(* Multi-domain (unix/inet) datagram client: *)
+val dgram_client :
+  ?stream_max_input_size:int ->
+  target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
+  bootstrap:(stream_channel -> dgram_channel) ->
+  protocol:(dgram_channel -> 'a) ->
   unit -> (exn,'a) Either.t
 
-(* datagram - unix *)
+(* datagram - unix server *)
 
 val dgram_unix_server :
   ?max_pending_requests:int ->
   ?stream_max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?socketfile:string ->
   bootstrap:(stream_channel -> dgram_channel) ->
   protocol:(dgram_channel -> unit) ->
-  unit -> Thread.t * string
+  unit -> Thread.t * socketfile
 
-val dgram_unix_client :
-  ?stream_max_input_size:int ->
-  socketfile:string ->
-  bootstrap:(stream_channel -> dgram_channel) ->
-  protocol:(dgram_channel -> 'a) ->
-  unit -> (exn,'a) Either.t
 
-(* datagram - inet & inet6 *)
+(* datagram - inet4 & inet6 servers *)
 
 val dgram_inet4_server :
   ?max_pending_requests:int ->
   ?stream_max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range4:string ->
-  ?ipv4:string ->
+  ?ipv4:Ipv4.string ->
   ?port:int ->
   bootstrap:(stream_channel -> dgram_channel) ->
   protocol:(dgram_channel -> unit) ->
-  unit -> Thread.t * string * int
+  unit -> Thread.t * Ipv4.string * port
 
 val dgram_inet6_server :
   ?max_pending_requests:int ->
   ?stream_max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range6:string ->
-  ?ipv6:string ->
+  ?ipv6:Ipv6.string ->
   ?port:int ->
   bootstrap:(stream_channel -> dgram_channel) ->
   protocol:(dgram_channel -> unit) ->
-  unit -> Thread.t * string * int
+  unit -> Thread.t * Ipv6.string * port
 
-val dgram_inet_server :
+(* Dual stack server (both IPv4&v6): *)
+val dual_dgram_inet_server :
   ?max_pending_requests:int ->
   ?stream_max_input_size:int ->
-  ?tutor_behaviour:tutoring_thread_behaviour ->
+  ?tutor_behaviour:ThreadExtra.Easy_API.options ->
   ?no_fork:unit ->
   ?range4:string ->
   ?range6:string ->
-  ?ipv4:string ->
-  ?ipv6:string ->
+  ?ipv4:Ipv4.string ->
+  ?ipv6:Ipv6.string ->
   ?port:int ->
   bootstrap:(stream_channel -> dgram_channel) ->
   protocol:(dgram_channel -> unit) ->
-  unit -> (Thread.t * string * int) * (Thread.t * string * int)
-
-val dgram_inet_client :
-  ?stream_max_input_size:int ->
-  ipv4_or_v6:string ->
-  port:int ->
-  bootstrap:(stream_channel -> dgram_channel) ->
-  protocol:(dgram_channel -> 'a) ->
-  unit -> (exn,'a) Either.t
+  unit -> (Thread.t * Ipv4.string * port) * (Thread.t * Ipv6.string * port)
 
 
+(* ----------------*)
 module Socat : sig
+(* ----------------*)
+
+(* (Using "UTF-8 Box Drawing")
+
+                  ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+                  ┆              (Process)               ┆
+                  ┆            crossover-link            ┆
+                  ┆     chA                     chB      ┆
+     ░░░░░░░░░░░░░┆    ┌───┐receive     receive┌───┐     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░┄┄┄┄┄┄┄>│ 0 │───────>\ /<───────│ 0 │<┄┄┄┄┄┄┄░░░░░░░░░░░
+     ░░░░░░░░░░░░░┆    ├───┤         ╳         ├───┤     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░<┄┄┄┄┄┄┄│ 1 │<───────/ \───────>│ 1 │┄┄┄┄┄┄┄>░░░░░░░░░░░
+     ░░░░░░░░░░░░░┆    └───┘ send         send └───┘     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░└┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░░░░░░░░  Unix Operating System  ░░░░░░░░░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░░░ acting itself as a crossover-link ░░░░░░░░░░░░░░░░
+     ░░░░░░░░░░░ with other endpoints for both chA and chB. ░░░░░░░░░░░
+     ░░ Such related endpoints may be TCP/IP sockets (TCP/UDP/SCTP), ░░
+     ░░░  Unix sockets, pseudo-terminals, etc, and may require the  ░░░
+     ░░░ support of Internet (IPv4/v6) as well as the local system. ░░░
+     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+*)
 
  (* -------------------------------- *
-         of_unix_stream_server
+         of_stream_server
   * -------------------------------- *)
 
-  val inet4_of_unix_stream_server :
-    (* inet4 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range4:string ->
-    ?ipv4:string ->
-    ?port:int ->
-    (* unix client parameters: *)
-    socketfile:string ->
-    unit ->
-      (* inet4 server result: *)
-      Thread.t * string * int
-
-  val inet6_of_unix_stream_server :
-    (* inet6 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range6:string ->
-    ?ipv6:string ->
-    ?port:int ->
-    (* unix client parameters: *)
-    socketfile:string ->
-    unit ->
-      (* inet6 server result: *)
-      Thread.t * string * int
-
-  val inet_of_unix_stream_server :
-    (* inet4 and inet6 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range4:string ->
-    ?range6:string ->
-    ?ipv4:string ->
-    ?ipv6:string ->
-    ?port:int ->
-    (* unix client parameters: *)
-    socketfile:string ->
-    unit ->
-      (* inet4 and inet6 dual server result: *)
-      (Thread.t * string * int) * (Thread.t * string * int)
-
-  val unix_of_unix_stream_server :
+  val unix_of_stream_server :
     (* unix server parameters: *)
     ?max_pending_requests:int ->
     ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
+    ?tutor_behaviour:ThreadExtra.Easy_API.options ->
     ?no_fork:unit ->
     ?socketfile:string ->
-    (* unix client parameters: *)
-    dsocketfile:string ->
+    (* client parameters: *)
+    target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
     unit ->
       (* unix server result: *)
-      Thread.t * string
+      Thread.t * socketfile
 
-  val pts_of_unix_stream_server :
+  val inet4_of_stream_server :
+    (* inet4 server parameters: *)
+    ?max_pending_requests:int ->
+    ?max_input_size:int ->
+    ?tutor_behaviour:ThreadExtra.Easy_API.options ->
+    ?no_fork:unit ->
+    ?range4:string ->
+    ?ipv4:Ipv4.string ->
+    ?port:int ->
+    (* client parameters: *)
+    target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
+    unit ->
+      (* inet4 server result: *)
+      Thread.t * Ipv4.string * port
+
+  val inet6_of_stream_server :
+    (* inet6 server parameters: *)
+    ?max_pending_requests:int ->
+    ?max_input_size:int ->
+    ?tutor_behaviour:ThreadExtra.Easy_API.options ->
+    ?no_fork:unit ->
+    ?range6:string ->
+    ?ipv6:Ipv6.string ->
+    ?port:int ->
+    (* client parameters: *)
+    target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
+    unit ->
+      (* inet6 server result: *)
+      Thread.t * Ipv6.string * port
+
+  (* Dual stack server (both IPv4&v6): *)
+  val dual_inet_of_stream_server :
+    (* inet4 and inet6 server parameters: *)
+    ?max_pending_requests:int ->
+    ?max_input_size:int ->
+    ?tutor_behaviour:ThreadExtra.Easy_API.options ->
+    ?no_fork:unit ->
+    ?range4:string ->
+    ?range6:string ->
+    ?ipv4:Ipv4.string ->
+    ?ipv6:Ipv6.string ->
+    ?port:int ->
+    (* client parameters: *)
+    target:server_address -> (* Ex: `unix("/tmp/.X11-unix/X0") or `inet("192.168.1.16", 80) *)
+    unit ->
+      (* inet4 and inet6 dual server result: *)
+      (Thread.t * Ipv4.string * port) * (Thread.t * Ipv6.string * port)
+
+ (* -------------------------------- *
+        Linux's pseudo-terminals
+  * -------------------------------- *)
+
+  val pts_of_stream_server :
     (* launch as fork (default) or as thread: *)
     ?no_fork:unit ->
     (* pts parameters: *)
     ?max_input_size:int ->
     ?file_perm:int ->
     filename:string -> (* Ex: "/dev/pts/10" *)
-    (* unix client parameters: *)
-    socketfile:string ->
+    (* client parameters: *)
+    target:server_address -> (* stream server address (socketfile or (ipv4_or_v6, port)) *)
     (* --- *)
     unit ->
       (* pts result with its controller (if ~no_fork is set, the controller contains the pid of the process itself). *)
       ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
-
- (* -------------------------------- *
-         of_inet_stream_server
-  * -------------------------------- *)
-
-  val unix_of_inet_stream_server :
-    (* unix server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?socketfile:string ->
-    (* inet client parameters: *)
-    ipv4_or_v6:string ->
-    port:int ->
-    unit ->
-      (* unix server result: *)
-      Thread.t * string
-
-  val inet4_of_inet_stream_server :
-    (* inet4 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range4:string ->
-    ?ipv4:string ->
-    ?port:int ->
-    (* inet client parameters: *)
-    ipv4_or_v6:string ->
-    dport:int ->
-    unit ->
-      (* inet4 server result: *)
-      Thread.t * string * int
-
-  val inet6_of_inet_stream_server :
-    (* inet4 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range6:string ->
-    ?ipv6:string ->
-    ?port:int ->
-    (* inet client parameters: *)
-    ipv4_or_v6:string ->
-    dport:int ->
-    unit ->
-      (* inet4 server result: *)
-      Thread.t * string * int
-
-  val inet_of_inet_stream_server :
-    (* inet4 server parameters: *)
-    ?max_pending_requests:int ->
-    ?max_input_size:int ->
-    ?tutor_behaviour:tutoring_thread_behaviour ->
-    ?no_fork:unit ->
-    ?range4:string ->
-    ?range6:string ->
-    ?ipv4:string ->
-    ?ipv6:string ->
-    ?port:int ->
-    (* inet client parameters: *)
-    ipv4_or_v6:string ->
-    dport:int ->
-    unit ->
-      (* inet4 and inet6 dual server result: *)
-      (Thread.t * string * int) * (Thread.t * string * int)
 
 end
 
@@ -500,20 +478,20 @@ module Examples : sig
 
   (* Here the method #receive is redefined as #input_line, thus the parameter `max_input_size' is
      meaningless in this case and the whole line is received by the server: *)
-  val stream_unix_echo_server : ?no_fork:unit -> ?socketfile:string -> unit -> Thread.t * string
+  val stream_unix_echo_server : ?no_fork:unit -> ?socketfile:string -> unit -> Thread.t * socketfile
   val stream_unix_echo_client : socketfile:string -> unit -> (exn, unit) Either.t
 
   (* Sending a message bigger than 10 characters, we receive a bad (trunked) echo: *)
-  val seqpacket_unix_echo_server : ?no_fork:unit -> ?socketfile:string -> unit -> Thread.t * string
+  val seqpacket_unix_echo_server : ?no_fork:unit -> ?socketfile:string -> unit -> Thread.t * socketfile
   val seqpacket_unix_echo_client : socketfile:string -> unit -> (exn, unit) Either.t
 
-  val dgram_unix_echo_server : ?no_fork:unit -> ?stream_socketfile:string -> unit -> Thread.t * string
+  val dgram_unix_echo_server : ?no_fork:unit -> ?stream_socketfile:string -> unit -> Thread.t * socketfile
   val dgram_unix_echo_client : stream_socketfile:string -> unit -> (exn, unit) Either.t
 
-  val stream_inet_echo_server : ?no_fork:unit -> ?inet6:unit -> ?port:int -> unit -> Thread.t * string * int
+  val stream_inet_echo_server : ?no_fork:unit -> ?inet6:unit -> ?port:int -> unit -> Thread.t * string * port
   val stream_inet_echo_client : ipv4_or_v6:string -> port:int -> unit -> (exn, unit) Either.t
 
-  val dgram_inet_echo_server : ?no_fork:unit -> ?inet6:unit -> ?port:int -> unit -> Thread.t * string * int
+  val dgram_inet_echo_server : ?no_fork:unit -> ?inet6:unit -> ?port:int -> unit -> Thread.t * string * port
   val dgram_inet_echo_client : ipv4_or_v6:string -> port:int -> unit -> (exn, unit) Either.t
 
 end

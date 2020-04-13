@@ -26,7 +26,7 @@ LIBRARIES_TO_LINK = str unix threads inotify lablgtk
 
 # Version of ocamlbricks project corresponding
 # to the content of our local copy ocamlbricks/
-OCAMLBRICKS_ORIGINAL_REVNO=503
+OCAMLBRICKS_ORIGINAL_REVNO=504
 
 # Uncomment the test you want to compile:
 # NATIVE_PROGRAMS += mutexExtra_test.native

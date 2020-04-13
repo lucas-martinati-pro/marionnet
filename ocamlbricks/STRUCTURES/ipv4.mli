@@ -19,6 +19,9 @@
 (** The internal representation of an ipv4 address. *)
 type t = int * int * int * int
 
+(* Alias indicating the purpose of the string: *)
+type string = String.t
+
 (** The integer implicitely representing the netmask.
     Admissible values are in the range [0..32]. *)
 type cidr = int
@@ -85,6 +88,8 @@ val ipcalc : t -> cidr -> ipcalc_result
 (** {2 String checking} *)
 
 module String : sig
+
+ type t = string (* alias *)
 
  val is_valid_ipv4    : string -> bool
  val is_valid_netmask : string -> bool
