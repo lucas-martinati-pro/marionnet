@@ -54,6 +54,32 @@ let of_fallible_application ?(fallback=fun _ _ -> ()) f x =
 let apply_or_catch ?(fallback=fun _ _ -> ()) f x =
  try Some (f x) with e -> ((fallback e x); None)
 
+let protect f x =
+ try Some (f x) with e -> None
+
+(* val try_finalize : finally:('a -> (exn, 'b) Either.t -> 'c) -> ('a -> 'b) -> 'a -> 'b option *)
+let try_finalize ~finally f x =
+  let y = Either.protect f x in
+  let _ = Either.protect2 finally x y in
+  match y with
+  | Either.Right y -> Some y
+  | Either.Left e  -> None
+
+(* val find   : 'a list -> ('a -> 'b option) -> 'b option *)
+let rec find xs p =
+  match xs with
+  | []    -> None
+  | x::xs ->
+    (match (p x) with
+     | None -> find xs p
+     | y -> y
+     )
+
+(* val exists : 'a list -> ('a -> 'b option) -> bool
+   exists xs f = ((find xs f) <> None) *)
+let exists xs f = ((find xs f) <> None)
+let for_all xs f = List.for_all (fun x -> (f x) <> None) (xs)
+
 let extract_from_list ?(acc=[]) xs =
  let rec loop = function
  | [] -> acc

@@ -16,11 +16,34 @@
 
 
 (** Similar to [Thread.create] with two differences:
+
     (1) you may create a killable thread (but only a limited number of threads
-        of your application may be killable at the same time)
+        of your application may be killable at the same time, i.e. 31)
+
     (2) you are able to call [ThreadExtra.at_exit] in the function ('a -> 'b)
-        that will be executed in the created thread. *)
+        that will be executed in the created thread.
+
+    Note that there are only 31 (from signal 34 to 64, hence 64-34+1=31) possible threads per process that
+    may run simultaneously with the capability of being killed. For this reason, when the option ~killable
+    is set up, the call is blocking until a "signal slot" became available for the thread that will be created.
+    *)
 val create : ?killable:unit -> ('a -> 'b) -> 'a -> Thread.t
+val future : ?killable:unit -> ('a -> 'b) -> 'a -> 'b Future.t
+
+(* Similar to Unix.read but with a way to exit waiting. The "exit_door" should be a read
+   descriptor fd0 resulting from a [let fd0, fd1 = Unix.pipe ()]. With this trick, the
+   read mechanism can be broken (by a Failure exception) simply providing ~exit_door:fd0
+   and closing the write descriptor fd1 when desired. *)
+val read_with_exit_door :
+  ?timeout:float -> (* (-1.) i.e. no timeout by default *)
+  exit_door:Unix.file_descr (* read descriptor of Unix.pipe *) ->
+  Unix.file_descr -> string (* buffer *) -> int (* offset *) -> int (* len *) -> int
+
+(* See `read_with_exit_door': *)
+val recv_with_exit_door :
+  ?timeout:float -> (* (-1.) i.e. no timeout by default *)
+  exit_door:Unix.file_descr (* read descriptor of Unix.pipe *) ->
+  Unix.file_descr -> string (* buffer *) -> int (* offset *) -> int (* len *) -> int
 
 (** Create a thread that waits for a process termination. By default the process is killed if
     the application terminates (by default we suppose that the application is the father and
@@ -32,7 +55,7 @@ val waitpid_thread :
   ?perform_when_suspended:(pid:int -> unit) ->
   ?perform_when_resumed:(pid:int -> unit) ->
   ?fallback:(pid:int -> exn -> unit) ->
-  ?do_not_kill_process_if_exit:unit ->
+  ?do_not_kill_child_at_exit:unit ->
   unit -> (pid:int -> Thread.t)
 
 (** Apply [Unix.fork] immediately creating a thread that waits for the termination of this fork. *)
@@ -43,8 +66,8 @@ val fork_with_tutor :
   ?perform_when_suspended:(pid:int -> unit) ->
   ?perform_when_resumed:(pid:int -> unit) ->
   ?fallback:(pid:int -> exn -> unit) ->
-  ?do_not_kill_process_if_exit:unit ->
-  ('a -> 'b) -> 'a -> Thread.t
+  ?do_not_kill_child_at_exit:unit ->
+  ('a -> 'b) -> 'a -> unit Future.t
 
 module Easy_API : sig
 
@@ -58,7 +81,7 @@ module Easy_API : sig
     ?perform_when_suspended:(pid:int -> unit) ->
     ?perform_when_resumed:(pid:int -> unit) ->
     ?fallback:(pid:int -> exn -> unit) ->
-    ?do_not_kill_process_if_exit:unit ->
+    ?do_not_kill_child_at_exit:unit ->
     unit -> options
 
   val waitpid_thread :
@@ -67,7 +90,7 @@ module Easy_API : sig
 
   val fork_with_tutor :
     ?options:options ->
-    ('a -> 'b) -> 'a -> Thread.t
+    ('a -> 'b) -> 'a -> unit Future.t
 
 end (* Easy_API *)
 

@@ -20,14 +20,34 @@ ENDIF
 
 module Log = Ocamlbricks_log
 
-exception Accepting of exn
+type pid = int
+
+exception Accepting  of exn
 exception Connecting of exn
-exception Receiving of exn
-exception Sending   of exn
-exception Closing   of exn
-exception Binding   of exn
+exception Receiving  of exn
+exception Sending    of exn
+exception Closing    of exn
+exception Binding    of exn
 
 type tutoring_thread_behaviour = ThreadExtra.Easy_API.options
+
+(* Protect an action from any kind of exception: *)
+let protect f x : unit = try f x with _ -> ()
+
+(* A channel is a "port", "gate" or "endpoint", *connected* in some way,
+   in the general sense of "plugged", to another port, gate or endpoint
+   accessible by the same or another thread, belonging the same or another
+   process, running on the same or another OS.
+*)
+class type abstract_channel =
+  object
+    method send    : string -> unit
+    method receive : ?at_least:int -> unit -> string
+    (* method peek    : ?at_least:int -> unit -> (string, string) Either.t *)
+    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
+    (* The same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
+  end
 
 let string_of_sockaddr = function
   | Unix.ADDR_UNIX x -> x
@@ -35,7 +55,7 @@ let string_of_sockaddr = function
       Printf.sprintf "%s:%d" (Unix.string_of_inet_addr inet_addr) port
 
 (** Extract the name of the associated socket file from a unix domain sockaddr.
-   Raises [Invalid_argument] if the sockaddr is not in the unix domain. *)
+    Raises [Invalid_argument] if the sockaddr is not in the unix domain. *)
 let socketfile_of_sockaddr = function
   | Unix.ADDR_UNIX x -> x
   | _ -> invalid_arg "Network.socketfile_of_sockaddr"
@@ -311,7 +331,7 @@ let inet_server ?max_pending_requests ?tutor_behaviour ?no_fork
   let () = Log.printf1 "dual stack server: inet4 thread started (%d)\n" (Thread.id thrd4) in
   let return_raising e =
     Log.print_exn ~prefix:"dual stack server: I cannot start both servers because of: " e;
-    (* Try to kill thrd4 after having waited 1 second (thrd4 shoud have the time tu register its killing thunk),
+    (* Try to kill thrd4 after having waited 1 second (thrd4 should have the time tu register its killing thunk),
        but do this in another thread, in order to return immediately: *)
     ThreadExtra.delayed_kill 1. thrd4;
     raise e
@@ -340,6 +360,10 @@ let fix_SO_RCVBUF_if_needed ~max_input_size fd =
 
 class common_low_level_methods_on_socket fd =
  object
+
+ (* Low-level method (but suitable for Unix.select): *)
+  method get_IO_file_descriptors = (fd, fd) (* input, output (is the same) *)
+
   method get_send_buffer_size   = Unix.getsockopt_int fd Unix.SO_SNDBUF
   method set_send_buffer_size x = Unix.setsockopt_int fd Unix.SO_SNDBUF x
 
@@ -348,6 +372,7 @@ class common_low_level_methods_on_socket fd =
 
   method get_close_linger   = Unix.getsockopt_optint fd Unix.SO_LINGER
   method set_close_linger x = Unix.setsockopt_optint fd Unix.SO_LINGER x
+
  end
 
 (* High-level representation of the structure available, after a connection, to both endpoints.
@@ -363,14 +388,17 @@ class stream_or_seqpacket_bidirectional_channel ?(max_input_size=1514) ?seqpacke
   method shutdown ?receive ?send () =
     try
       let shutdown_command =
-	match receive, send with
-	| None, None | Some (), None -> Unix.SHUTDOWN_RECEIVE
-	| None, Some () -> Unix.SHUTDOWN_SEND
-	| Some (), Some () -> Unix.SHUTDOWN_ALL
+        match receive, send with
+        | None,    None
+        | Some (), None    -> Unix.SHUTDOWN_RECEIVE
+        | None,    Some () -> Unix.SHUTDOWN_SEND
+        | Some (), Some () -> Unix.SHUTDOWN_ALL
       in
-      Unix.shutdown fd shutdown_command
+      let y1 = Either.protect2 (Unix.shutdown) (fd) (shutdown_command) in
+      let y2 = Either.protect  (Unix.close) (fd) in
+      Either.raise_first_if_any [y1; y2]
     with e ->
-      Log.print_exn ~prefix:"channel#shutdown: " e;
+      Log.print_exn ~prefix:"Network.stream_or_seqpacket_channel#shutdown: " e;
       raise (Closing e)
 
   method sockaddr0 = Unix.getsockname fd
@@ -382,7 +410,7 @@ class stream_channel ?max_input_size fd =
   let in_channel  = Unix.in_channel_of_descr  fd in
   let out_channel = Unix.out_channel_of_descr fd in
   let raise_but_also_log_it ?sending caller e =
-    let prefix = Printf.sprintf "stream_channel#%s: " caller in
+    let prefix = Printf.sprintf "Network.stream_channel#%s: " caller in
     let () = Log.print_exn ~prefix e in
     if sending=None then raise (Receiving e) else raise (Sending e)
   in
@@ -411,6 +439,14 @@ class stream_channel ?max_input_size fd =
   object
   inherit stream_or_seqpacket_bidirectional_channel ?max_input_size fd as super
 
+  (* Redefined: *)
+  method shutdown ?receive ?send () = begin
+    super#shutdown ?receive ?send ();
+    protect close_in   in_channel;
+    protect close_out out_channel;
+    protect Unix.close fd;
+    end
+
   method receive ?at_least () : string =
     let return = return_of_at_least at_least in
     try
@@ -418,7 +454,7 @@ class stream_channel ?max_input_size fd =
       (if n=0 then failwith "received 0 bytes (peer terminated?)");
       return (String.sub input_buffer 0 n)
     with e ->
-      Log.print_exn ~prefix:"stream_channel#receive: " e;
+      Log.print_exn ~prefix:"Network.stream_channel#receive: " e;
       let _ = return "" in
       raise (Receiving e)
 
@@ -430,11 +466,11 @@ class stream_channel ?max_input_size fd =
       if n>=at_least
        then Some (String.sub input_buffer 0 n)
        else
-         let () = if at_least>0 then Log.printf2 "stream_channel#peek: received %d bytes (expected at least %d)\n" n at_least in
+         let () = if at_least>0 then Log.printf2 "Network.stream_channel#peek: received %d bytes (expected at least %d)\n" n at_least in
          None
     with e ->
       Unix.clear_nonblock fd;
-      Log.print_exn ~prefix:"stream_channel#peek: result is None because of exception: " e;
+      Log.print_exn ~prefix:"Network.stream_channel#peek: result is None because of exception: " e;
       None
 
   method send (x:string) : unit =
@@ -448,7 +484,7 @@ class stream_channel ?max_input_size fd =
     try
       send_stream_loop x 0 (String.length x)
     with e ->
-      Log.print_exn ~prefix:"stream_channel#send: " e;
+      Log.print_exn ~prefix:"Network.stream_channel#send: " e;
       raise (Sending e)
 
   method input_char       () : char   = tutor0 Pervasives.input_char in_channel "input_char"
@@ -499,7 +535,7 @@ class seqpacket_channel ?max_input_size fd =
       (if n=0 then failwith "received 0 bytes (peer terminated?)");
       String.sub input_buffer 0 n
     with e ->
-      Log.print_exn ~prefix:"seqpacket_channel#receive: " e;
+      Log.print_exn ~prefix:"Network.seqpacket_channel#receive: " e;
       raise (Receiving e)
 
   method peek () : string option =
@@ -510,7 +546,7 @@ class seqpacket_channel ?max_input_size fd =
       if n>0 then Some (String.sub input_buffer 0 n) else None
     with e ->
       Unix.clear_nonblock fd;
-      Log.print_exn ~prefix:"seqpacket_channel#peek: result is None because of exception: " e;
+      Log.print_exn ~prefix:"Network.seqpacket_channel#peek: result is None because of exception: " e;
       None
 
   method send (x:string) : unit =
@@ -521,7 +557,7 @@ class seqpacket_channel ?max_input_size fd =
 	failwith (Printf.sprintf "failed sending a seqpacket: no more than %d bytes sent!" n)
       else ()
     with e ->
-      Log.print_exn ~prefix:"seqpacket_channel#send: " e;
+      Log.print_exn ~prefix:"Network.seqpacket_channel#send: " e;
       raise (Sending e)
 
 end (* class seqpacket_channel *)
@@ -543,7 +579,7 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
       (if sockaddr <> sockaddr1 then raise (Unexpected_sender (string_of_sockaddr sockaddr)));
       String.sub input_buffer 0 n
     with e ->
-      Log.print_exn ~prefix:"dgram_channel#receive: " e;
+      Log.print_exn ~prefix:"Network.dgram_channel#receive: " e;
       raise (Receiving e)
 
   method peek () : string option =
@@ -555,7 +591,7 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
       if n>0 then Some (String.sub input_buffer 0 n) else None
     with e ->
       Unix.clear_nonblock fd0;
-      Log.print_exn ~prefix:"dgram_channel#peek: result is None because of exception: " e;
+      Log.print_exn ~prefix:"Network.dgram_channel#peek: result is None because of exception: " e;
       None
 
   method send (x:string) : unit =
@@ -563,33 +599,36 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
       let len = String.length x in
       (* fd0 represents where I want to receive the answer: *)
       let n = Unix.sendto fd0 x 0 len [] sockaddr1 in
-      if n<len then failwith (Printf.sprintf "dgram_channel#send: no more than %d bytes sent (instead of %d)" n len) else
+      if n<len then failwith (Printf.sprintf "no more than %d bytes sent (instead of %d)" n len) else
       ()
     with e ->
-      Log.print_exn ~prefix:"dgram_channel#send: " e;
+      Log.print_exn ~prefix:"Network.dgram_channel#send: " e;
       raise (Sending e)
 
   method shutdown ?receive ?send () =
     try
       let shutdown_command =
 	match receive, send with
-	| None, None | Some (), None -> Unix.SHUTDOWN_RECEIVE
-	| None, Some () -> Unix.SHUTDOWN_SEND
+	| None,    None
+	| Some (), None    -> Unix.SHUTDOWN_RECEIVE
+	| None,    Some () -> Unix.SHUTDOWN_SEND
 	| Some (), Some () -> Unix.SHUTDOWN_ALL
       in
+      (* --- *)
       (match shutdown_command with
       | Unix.SHUTDOWN_RECEIVE | Unix.SHUTDOWN_ALL ->
 	  (try Unix.close fd0 with _ -> ());
 	  (try Unix.unlink (socketfile_of_sockaddr sockaddr0) with _ -> ());
       | _ -> ()
       );
+      (* --- *)
       (match shutdown_command with
       | Unix.SHUTDOWN_SEND | Unix.SHUTDOWN_ALL ->
 	  (try Unix.unlink (socketfile_of_sockaddr sockaddr1) with _ -> ());
       | _ -> ()
       )
     with e ->
-      Log.print_exn ~prefix:"dgram_channel#shutdown: " e;
+      Log.print_exn ~prefix:"Network.dgram_channel#shutdown: " e;
       raise (Closing e)
 
   method sockaddr0 = sockaddr0
@@ -611,7 +650,7 @@ let dgram_input_socketfile_of ?dgram_output_socketfile ~stream_socketfile () =
     let result = Unix.socket Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
     let socketfile = bind_to in
     bind result (Unix.ADDR_UNIX socketfile);
-    Log.printf1 "Unix datagram socket bound to %s\n" socketfile;
+    Log.printf1 "Network.dgram_input_socketfile_of: unix datagram socket bound to %s\n" socketfile;
     result
   in
   let socketfile1 = dgram_output_socketfile in
@@ -878,16 +917,27 @@ let dgram_inet_client ?stream_max_input_size
 
 module Socat = struct
 
-(* The following code is a macro, not a function, in order to bypass the type-system.
-   Actually, the type-system doesn't understand the compatibility among a function and
-   actuals that are objects of different types. In our case, channel objects may have
-   the #receive method slightly different, but all of these methods can be called in a
-   default way, just giving them the argument (). The following code should generate
-   only this constraint, even if it would not so easy to express. On the contrary,
-   the generated constraint is that the function will accept only actuals of type
-   < receive : unit -> string; send : string -> unit; .. >.
-   We bypass this problem using a macro: *)
-DEFINE MACRO_CROSSOVER_LINK (chA,chB) =
+(* (Using "UTF-8 Box Drawing")
+
+                  ┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┐
+                  ┆              (Process)               ┆
+                  ┆            crossover-link            ┆
+                  ┆     chA                     chB      ┆
+     ░░░░░░░░░░░░░┆    ┌───┐receive     receive┌───┐     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░┄┄┄┄┄┄┄>│ 0 │───────>\ /<───────│ 0 │<┄┄┄┄┄┄┄░░░░░░░░░░░
+     ░░░░░░░░░░░░░┆    ├───┤         ╳         ├───┤     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░<┄┄┄┄┄┄┄│ 1 │<───────/ \───────>│ 1 │┄┄┄┄┄┄┄>░░░░░░░░░░░
+     ░░░░░░░░░░░░░┆    └───┘ send         send └───┘     ┆░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░└┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░░░░░░░░  Unix Operating System  ░░░░░░░░░░░░░░░░░░░░░
+     ░░░░░░░░░░░░░░░ acting itself as a crossover-link ░░░░░░░░░░░░░░░░
+     ░░░░░░░░░░░ with other endpoints for both chA and chB. ░░░░░░░░░░░
+     ░░ Such related endpoints may be TCP/IP sockets (TCP/UDP/SCTP), ░░
+     ░░░  Unix sockets, pseudo-terminals, etc, and may require the  ░░░
+     ░░░ support of Internet (IPv4/v6) as well as the local system. ░░░
+     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+*)
+let crossover_link (chA : abstract_channel) (chB : abstract_channel) : unit =
   let rec loop_A_to_B () =
     try
       let x  = (try chA#receive () with e -> chB#shutdown ~send:()    (); raise e) in
@@ -904,8 +954,14 @@ DEFINE MACRO_CROSSOVER_LINK (chA,chB) =
   in
   let thread_A_to_B = Thread.create loop_A_to_B () in
   let thread_B_to_A = Thread.create loop_B_to_A () in
-  Thread.join thread_A_to_B;
+  let id_BA = (Thread.id (thread_B_to_A)) in
+  let id_AB = (Thread.id (thread_A_to_B)) in
+  (* --- *)
+  Log.printf2 "Network.crossover_link: hope to join thread .%d, then .%d\n" id_BA id_AB ;
   Thread.join thread_B_to_A;
+  Log.printf2 "Network.crossover_link: joined thread %d, now hope to join .%d\n" id_BA id_AB;
+  Thread.join thread_A_to_B;
+  Log.printf2 "Network.crossover_link: joined both threads .%d and .%d. Great.\n" id_BA id_AB;
   ()
 
  (* -------------------------------- *
@@ -937,7 +993,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_unix_client ?max_input_size ~socketfile
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -953,7 +1009,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_unix_client ?max_input_size ~socketfile
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -969,7 +1025,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_unix_client ?max_input_size ~socketfile
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -985,9 +1041,68 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_unix_client ?max_input_size ~socketfile:dsocketfile
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
+
+
+  let pts_of_unix_stream_server_FORK
+    ?max_input_size ?file_perm ~filename (* <= pts parameters: *)
+    ~socketfile                          (* <= unix client parameters and unix server result: *)
+    ()
+    : ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
+    =
+    (* Go: *)
+    let y, pid =
+      Pts.Apply_protocol.as_fork ?max_input_size ?file_perm ~filename ~protocol:begin fun (chA:Pts.stream_channel) ->
+          (* --- *)
+          (* When a connection is opened the pts-peer became a client of the remote unix server: *)
+          ignore (stream_unix_client ?max_input_size ~socketfile ~protocol:begin fun (chB:stream_channel) ->
+                (* --- *)
+                crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
+                (* --- *)
+            end (* client protocol *) ())
+          (* --- *)
+        end (* server protocol *)
+        ()
+    in
+    let ctrl = Future.Control.make ~pid () in
+    (y, ctrl)
+
+
+  let pts_of_unix_stream_server_THREAD
+    ?max_input_size ?file_perm ~filename (* <= pts parameters: *)
+    ~socketfile                          (* <= unix client parameters and unix server result: *)
+    ()
+    : ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
+    =
+    let ctrl = Egg.create () in
+    (* Go: *)
+    let y =
+      Pts.Apply_protocol.as_thread ?max_input_size ?file_perm ~filename ~protocol:begin fun (chA:Pts.stream_channel) ->
+          (* --- *)
+          (* When a connection is opened the pts-peer became a client of the remote unix server: *)
+          ignore (stream_unix_client ?max_input_size ~socketfile ~protocol:begin fun (chB:stream_channel) ->
+                let () =
+                  Egg.release ctrl (Future.Control.make ~kill:(fun () ->
+                      chA#walk_through_the_exit_door () |> ignore
+                      ) () )
+                in
+                (* --- *)
+                crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
+                (* --- *)
+            end (* client protocol *) ())
+          (* --- *)
+        end (* server protocol *)
+        ()
+    in
+    (y, Egg.wait ctrl)
+
+
+  let pts_of_unix_stream_server ?no_fork =
+    match no_fork with
+    | None    -> pts_of_unix_stream_server_FORK
+    | Some () -> pts_of_unix_stream_server_THREAD
 
 
  (* -------------------------------- *
@@ -1005,7 +1120,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -1020,7 +1135,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -1036,7 +1151,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 
@@ -1052,7 +1167,7 @@ xterm Xt error: Can't open display: 127.0.0.1:42
 	  (* When a connection is accepted the server became a client of the remote unix server: *)
 	  ignore (stream_inet_client ?max_input_size ~ipv4_or_v6 ~port:dport
 	    ~protocol:begin fun (chB:stream_channel) ->
-	        MACRO_CROSSOVER_LINK (chA,chB)
+	        crossover_link (chA :> abstract_channel) (chB :> abstract_channel)
 	     end (* client protocol *) ())
        end (* server protocol *) ()
 

@@ -65,8 +65,57 @@ let iter f = function
  | Right b -> (f b)
  | _ -> ()
 
-let apply_or_catch f x =
+let protect f x =
  try Right (f x) with e -> Left e
+
+let protect2 f x y =
+ try Right (f x y) with e -> Left e
+
+let protect3 f x y z =
+ try Right (f x y z) with e -> Left e
+
+(* Alias: *)
+let apply_or_catch = protect
+
+let try_finalize ~finally f x =
+  let y = protect f x in
+  let _ = protect2 finally x y in
+  y
+
+(* If is_left, leave the exception slip away: *)
+let extract_or_raise = function
+| Right y -> y
+| Left e  -> raise e
+
+let swap = function
+ | Left  x -> Right x
+ | Right x -> Left x
+
+let flip = swap
+
+(* val find : 'a list -> ('a -> ('e,'b) Either) -> 'b option *)
+let rec find xs p =
+  match xs with
+  | []    -> None
+  | x::xs ->
+    (match (p x) with
+    | Left e -> find xs p
+    | Right y -> Some y
+    )
+
+(* val exists : 'a list -> ('a -> ('e,'b) Either) -> bool
+   exists xs f = ((find xs f) <> None) *)
+let exists xs f = ((find xs f) <> None)
+
+(* all right *)
+let for_all xs f =
+  List.for_all (fun x -> match (f x) with Left _ -> false | Right _ -> true) (xs)
+
+let raise_first_if_any (eys : (exn, 'a) t list) : unit =
+  match (find eys swap) with
+  | None -> ()
+  | Some e -> raise e
+
 
 let of_bool = function
  | false -> Left ()
@@ -75,6 +124,14 @@ let of_bool = function
 let to_bool = function
  | Left  _ -> false
  | Right _ -> true
+
+(* Alias for `to_bool': *)
+let is_right = to_bool
+
+(* to_bool |> not *)
+let is_left = function
+ | Left  _ -> true
+ | Right _ -> false
 
 let list_of = function Left _ -> [] | Right b -> [b]
 

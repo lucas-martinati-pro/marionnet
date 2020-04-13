@@ -66,6 +66,7 @@ MapExtra
 #Marshallable_classes
 Memo
 Meta_ocamlbricks
+Misc
 #Mrproper
 MutexExtra
 Multimap
@@ -78,6 +79,7 @@ Option
 PervasivesExtra
 #PHDag
 #Polyperdag_v1
+Pts
 QueueExtra
 Range
 #Rev
@@ -86,12 +88,12 @@ Semaphore
 Shell
 SetExtra
 #Spinning
-StackExtra
 Stateful_modules
 StrExtra
 StringExtra
 String_queue
 Sugar
+#StackExtra
 SysExtra
 ThreadExtra
 Thunk

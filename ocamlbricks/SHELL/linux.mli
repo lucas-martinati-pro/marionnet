@@ -18,6 +18,8 @@
 (** Specific functions for [Linux]. *)
 
 type pid = int
+type filename = string
+type directory = string
 
 (** The number of processors, read from /proc/cpuinfo: *)
 val processor_no : int lazy_t
@@ -300,10 +302,11 @@ module Process : sig
    unit -> unit
 
 
-(* Wait until a process die (child or unrelated). Passive waiting based on Inotify.
-   The polling_interval is guarantees not to fall into unfortunate cases (race conditions)
+(* Wait until a process die (child or unrelated).
+   Implemented as passive waiting based on Inotify.
+   The polling_interval is a guarantees of not to fall into unfortunate cases (race conditions)
    where the caller would be blocked indefinitely on a read operation. *)
- val wait_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
+ val watch_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
 
 end (* Process *)
 
@@ -318,3 +321,57 @@ val get_ipv6_address_of   : string -> string option
      - : string list = ["fe80::5297:708f:75a3:7a99"; "2a01:cb00:1d3:e400:78b5:5904:d7e3:7c7f"] *)
 val get_ipv6_addresses_of : string -> string list
 
+(* Help about Inotify:
+   ---
+     type selector = (* Type of event masks. *)
+     | S_Access | S_Attrib | S_Close_write | S_Close_nowrite | S_Create | S_Delete | S_Delete_self | S_Modify | S_Move_self
+     | S_Moved_from | S_Moved_to | S_Open | S_Dont_follow | S_Mask_add | S_Oneshot | S_Onlydir | S_Move | S_Close | S_All
+
+     type event_kind = (* Type of observed events. *)
+     | Access | Attrib | Close_write | Close_nowrite | Create | Delete | Delete_self | Modify | Move_self | Moved_from
+     | Moved_to | Open | Ignored | Isdir | Q_overflow | Unmount
+   ---
+   Example:
+   ---
+     Linux.watch_directory ~verbose:() ~exit_door:".hidden_file" ~selector:[Inotify.S_Close_write; Inotify.S_Open]
+         ~pathfilter:(Str.regexp "abc[0-7]$") ~callback:(fun _ -> prerr_endline "!!!CALLBACK!!!"; true) "/tmp/FOO" ;;
+
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+       ∟ watch=1 cookie=0 events=OPEN "aaa"
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE "aaa"
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+       ∟ watch=1 cookie=0 events=OPEN "abc"
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc"
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+       ∟ watch=1 cookie=0 events=OPEN "abc16"
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc16"
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # date >/tmp/FOO/abc1
+       ∟ watch=1 cookie=0 events=OPEN "abc1"
+     !!!CALLBACK!!!
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc1"
+     !!!CALLBACK!!!
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # touch /tmp/FOO/abc1
+       ∟ watch=1 cookie=0 events=OPEN "abc1"
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc1"
+     !!!CALLBACK!!!
+     !!!CALLBACK!!!
+     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # echo > /tmp/FOO/.hidden_file
+       ∟ watch=1 cookie=0 events=OPEN ".hidden_file"
+       ∟ watch=1 cookie=0 events=CLOSE_WRITE ".hidden_file"
+     - : unit = ()
+   ---
+   Wait until something happen (by default a `close_write' event) in a directory.
+   Implemented as passive waiting based on Inotify.
+   This function never raises exceptions except Invalid_argument at starting if the provided directory
+   does not exist. The function simply returns when the directory does not exist anymore or when the
+   optional argument ?exit_door is set up and the provided filename is written.
+*)
+val watch_directory :
+  ?verbose:unit ->
+  ?ignore_unexisting_arg:unit ->         (* return immediately (instead of fail) when the directory doesn't exist. *)
+  ?exit_door:filename ->                 (* exit if an event Inotify.S_Close_write occurs about this filename *)
+  ?selector:Inotify.selector list ->     (* [Inotify.S_Close_write] *)
+  ?pathfilter:Str.regexp ->              (* select only events which involve a path matching the regular expression *)
+  callback:(Inotify.event -> bool) ->    (* treat the event then say if we have to continue in watching the directory *)
+  directory -> unit

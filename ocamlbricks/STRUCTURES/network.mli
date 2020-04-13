@@ -17,18 +17,30 @@
 
 (** High-level interface for client-server programming. *)
 
-exception Accepting of exn
+type pid = int
+
+exception Accepting  of exn
 exception Connecting of exn
-exception Receiving of exn
-exception Sending   of exn
-exception Closing   of exn
-exception Binding   of exn
+exception Receiving  of exn
+exception Sending    of exn
+exception Closing    of exn
+exception Binding    of exn
 
 val string_of_sockaddr             : Unix.sockaddr -> string
 val socketfile_of_sockaddr         : Unix.sockaddr -> string
 val inet_addr_and_port_of_sockaddr : Unix.sockaddr -> Unix.inet_addr * int
 
 val domain_of_inet_addr : Unix.inet_addr -> Unix.socket_domain
+
+class type abstract_channel =
+  object
+    method send    : string -> unit
+    method receive : ?at_least:int -> unit -> string
+    (* method peek    : ?at_least:int -> unit -> (string, string) Either.t *)
+    method shutdown : ?receive:unit -> ?send:unit -> unit -> unit
+    (* The same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
+  end
 
 (** Example:
 {[# Network.socketname_in_a_fresh_made_directory "ctrl" ;;
@@ -95,6 +107,8 @@ class stream_channel :
     method get_close_linger : int option
     method set_close_linger : int option -> unit
 
+    (* The same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
   end
 
 
@@ -126,6 +140,8 @@ class seqpacket_channel :
     method get_close_linger : int option
     method set_close_linger : int option -> unit
 
+    (* The same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
   end
 
 class dgram_channel :
@@ -154,6 +170,8 @@ class dgram_channel :
     method get_close_linger : int option
     method set_close_linger : int option -> unit
 
+    (* The same for input and output: *)
+    method get_IO_file_descriptors : Unix.file_descr * Unix.file_descr
 end
 
 val dgram_input_socketfile_of :
@@ -386,6 +404,19 @@ module Socat : sig
       (* unix server result: *)
       Thread.t * string
 
+  val pts_of_unix_stream_server :
+    (* launch as fork (default) or as thread: *)
+    ?no_fork:unit ->
+    (* pts parameters: *)
+    ?max_input_size:int ->
+    ?file_perm:int ->
+    filename:string -> (* Ex: "/dev/pts/10" *)
+    (* unix client parameters: *)
+    socketfile:string ->
+    (* --- *)
+    unit ->
+      (* pts result with its controller (if ~no_fork is set, the controller contains the pid of the process itself). *)
+      ((exn, unit) Either.t Future.t * Future.Control.t) (* the second is a triple (pid, tid, kill_thunk) *)
 
  (* -------------------------------- *
          of_inet_stream_server

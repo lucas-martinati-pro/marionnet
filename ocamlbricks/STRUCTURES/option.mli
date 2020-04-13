@@ -42,6 +42,16 @@ val iter2 : ('a -> 'b -> unit) -> 'a option -> 'b option -> unit
 val filter : ('a -> bool) -> 'a option -> 'a option
 
 val apply_or_catch : ?fallback:(exn -> 'a -> unit) -> ('a -> 'b) -> 'a -> 'b option
+(* apply_or_catch simplified: *)
+val protect : ('a -> 'b) -> ('a -> 'b option)
+
+(* Note that ~finally is itself protected by exceptions and its result is ignored. *)
+val try_finalize : finally:('a -> (exn, 'b) Either.t -> 'ignored) -> ('a -> 'b) -> 'a -> 'b option
+
+(* Find the first result that succeed (not None): *)
+val find    : 'a list -> ('a -> 'b option) -> 'b option
+val exists  : 'a list -> ('a -> 'b option) -> bool (* exists  xs f = ((find xs f) <> None) *)
+val for_all : 'a list -> ('a -> 'b option) -> bool (* for_all xs f = not (exists xs (fun x -> not (f x))) *)
 
 val of_bool : bool -> unit option
 val to_bool : 'a option -> bool

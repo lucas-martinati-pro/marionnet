@@ -44,7 +44,7 @@ let with_mutex mutex thunk =
   with e -> begin
     Mutex.unlock mutex;
     (Printf.eprintf
-      "Semaphore.with_mutex: exception %s raised in critical section. Unlocking and re-raising.\n"
+      "Egg.with_mutex: exception %s raised in critical section. Unlocking and re-raising.\n"
       (Printexc.to_string e));
     raise e;
   end
@@ -65,7 +65,7 @@ let wait t =
 let taste t =
   with_mutex t.mutex (fun () -> t.egg)
 
-(** [release t v] release the value [v] (the egg) for the structure [t]. Broadcast all pending readers. 
+(** [release t v] release the value [v] (the egg) for the structure [t]. Broadcast all pending readers.
     Future readers will get the egg immediately without blocking. This call is typically performed once forever. *)
 let release t v =
   with_mutex t.mutex (fun () ->

@@ -984,7 +984,7 @@ module Process = struct
    | WCONTINUED       -> (Printf.sprintf "Process.WCONTINUED")
 
  (** Similar to waitpid but protected from the exception [Unix.Unix_error (Unix.EINTR, _, _)].
-     If this exception is raised, the function recall itself in order to wait again: *)
+     If this exception is raised, the function recalls itself in order to wait again: *)
  let rec waitpid_non_intr ?(wait_flags=[]) pid =
   try
     Either.Right (waitpid wait_flags pid)

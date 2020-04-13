@@ -25,6 +25,29 @@ ENDIF
 module Log = Ocamlbricks_log
 module ULog = Ocamlbricks_log.Unprotected (* for critical sections *)
 
+(* Similar to Unix.read but with a way to exit waiting. The "exit_door" should be a read
+   descriptor fd0 resulting from a [let fd0, fd1 = Unix.pipe ()]. With this trick, the
+   read mechanism can be broken (by a Failure exception) simply providing ~exit_door:fd0
+   and closing the write descriptor fd1 when desired. *)
+let read_with_exit_door ?(timeout=(-1.)) ~exit_door fd buffer offset len =
+  let rs, _, _ = Thread.select [exit_door; fd] [] [] (timeout)  in
+  if List.mem (exit_door) rs then raise (Failure "ThreadExtra.read_with_exit_door: about to exit a read call") else (* continue: *)
+  (* --- *)
+  if rs = [] then (* timeout => 0 bytes read before timeout => *) 0 else (* continue: *)
+  (* --- *)
+  Unix.read fd buffer offset len
+
+(* See `read_with_exit_door': *)
+let recv_with_exit_door ?(timeout=(-1.)) ~exit_door fd buffer offset len =
+  let rs, _, _ = Thread.select [exit_door; fd] [] [] (timeout)  in
+  if List.mem (exit_door) rs then raise (Failure "ThreadExtra.recv_with_exit_door: about to exit a read call") else (* continue: *)
+  (* --- *)
+  if rs = [] then (* timeout => 0 bytes read before timeout => *) 0 else (* continue: *)
+  (* --- *)
+  let msg_flags = [] in
+  Unix.recv fd buffer offset len (msg_flags)
+
+
 module Exit_function = struct
 
   include MutexExtra.Just_give_me_an_apply_with_mutex (struct end)
@@ -289,7 +312,7 @@ end (* module Available_signals *)
     (64-34+1) possible threads per process that may run simultaneously with the capability of being killed.
     Thus, this call is blocking: the caller wait until a "signal slot" became available for the thread that
     will be created. *)
-let create_killable =
+let create_killable (thread_creator) =
   let handler id s =
     let id' = Thread.id (Thread.self ()) in
     (if id <> id' then
@@ -330,12 +353,12 @@ let create_killable =
         raise e
       end
     in
-    let thread = Thread.create f' x in
-    thread
+    (* Thread.create f' x *)
+    thread_creator f' x
 
 
 (** Similar to [Thread.create] but you must call this function if you want to use [ThreadExtra.at_exit] in your thread. *)
-let create_non_killable f x =
+let create_non_killable (thread_creator) f x =
     let final_actions () =
       Available_signals.child_remove_thunk_for_killing_me_if_any ();
       Exit_function.do_at_exit ()
@@ -353,13 +376,14 @@ let create_non_killable f x =
         raise e
       end
     in
-    Thread.create f' x
+    (* Thread.create f' x *)
+    thread_creator f' x
 
-let create ?killable f x =
+(* thread_creator will be Thread.create or Future.future: *)
+let create_with (thread_creator) ?killable f x =
   match killable with
-  | None -> create_non_killable f x
-  | Some () -> create_killable f x
-
+  | None    -> create_non_killable (thread_creator) f x
+  | Some () -> create_killable     (thread_creator) f x
 
 module Waitpid_thread_standard_implementation = struct
 
@@ -375,19 +399,20 @@ let rec waitpid_non_intr ?(wait_flags=[]) pid =
        end
 
 let waitpid_thread
+  (thread_creator)
   ?killable
   ?(before_waiting=fun ~pid -> ())
   ?(after_waiting=fun ~pid status -> ())
   ?perform_when_suspended
   ?(fallback=fun ~pid e -> ())
-  ?do_not_kill_process_if_exit
+  ?do_not_kill_child_at_exit
   ()
   =
   let tutor_behaviour =
     let process_alive = ref true in
     let tutor_preamble pid =
       Log.printf1 "Thread created for tutoring (waitpid-ing) process %d\n" pid;
-      if (pid <= 0) || (do_not_kill_process_if_exit = Some ()) then () else
+      if (pid <= 0) || (do_not_kill_child_at_exit = Some ()) then () else
       Exit_function.at_exit
 	(fun () ->
 	  if !process_alive then begin
@@ -419,7 +444,7 @@ let waitpid_thread
       in
       loop ()
     in
-  fun ~pid -> create ?killable tutor_behaviour pid
+  fun ~pid -> (create_with thread_creator) ?killable tutor_behaviour pid
 
 end (* module Waitpid_thread_standard_implementation *)
 
@@ -440,20 +465,21 @@ let rec waitpid_non_intr ?(wait_flags=[]) pid =
        end
 
 let waitpid_thread
+  (thread_creator)
   ?killable
   ?(before_waiting=fun ~pid -> ())
   ?(after_waiting=fun ~pid status -> ())
   ?perform_when_suspended
   ?perform_when_resumed
   ?(fallback=fun ~pid e -> ())
-  ?do_not_kill_process_if_exit
+  ?do_not_kill_child_at_exit
   ()
   =
   let tutor_behaviour =
     let process_alive = ref true in
     let tutor_preamble pid =
       Log.printf1 "Thread created for tutoring (waitpid-ing) process %d\n" pid;
-      if (pid <= 0) || (do_not_kill_process_if_exit = Some ()) then () else
+      if (pid <= 0) || (do_not_kill_child_at_exit = Some ()) then () else
       Exit_function.at_exit
 	(fun () ->
 	  if !process_alive then begin
@@ -502,44 +528,50 @@ let waitpid_thread
       in
       loop ()
     in
-  fun ~pid -> create ?killable tutor_behaviour pid
+  fun ~pid -> (create_with thread_creator) ?killable tutor_behaviour pid
 
 end (* module Waitpid_thread_catching_resume_event *)
 
 (* Switch between the two implementation, according to the need of
    catching `resume' events: *)
 let waitpid_thread
+  (thread_creator)
   ?killable ?before_waiting ?after_waiting ?perform_when_suspended ?perform_when_resumed
-  ?fallback ?do_not_kill_process_if_exit ()
+  ?fallback ?do_not_kill_child_at_exit ()
   =
   match perform_when_resumed with
   | None ->
       Waitpid_thread_standard_implementation.waitpid_thread
+        (thread_creator)
         ?killable ?before_waiting ?after_waiting ?perform_when_suspended
-        ?fallback ?do_not_kill_process_if_exit ()
+        ?fallback ?do_not_kill_child_at_exit ()
   | Some perform_when_resumed ->
       Waitpid_thread_catching_resume_event.waitpid_thread
+        (thread_creator)
         ?killable ?before_waiting ?after_waiting ?perform_when_suspended
         ~perform_when_resumed
-        ?fallback ?do_not_kill_process_if_exit ()
+        ?fallback ?do_not_kill_child_at_exit ()
 
 
 let fork_with_tutor
+  (thread_creator : (UnixExtra.pid -> unit) -> UnixExtra.pid -> 'a)
   ?killable
   ?before_waiting
   ?after_waiting
   ?perform_when_suspended
   ?perform_when_resumed
   ?fallback
-  ?do_not_kill_process_if_exit
+  ?do_not_kill_child_at_exit
   f x
   =
-  let tutor =
-    waitpid_thread ?killable ?before_waiting ?after_waiting ?perform_when_suspended ?perform_when_resumed ?fallback ?do_not_kill_process_if_exit ()
+  let tutor : (pid:UnixExtra.pid -> 'a) =
+    waitpid_thread
+      (thread_creator)
+      ?killable ?before_waiting ?after_waiting ?perform_when_suspended ?perform_when_resumed ?fallback ?do_not_kill_child_at_exit ()
   in
   let pid = Unix.getpid () in
   let id = Thread.id (Thread.self ()) in
-  let thread =
+  let created =
     match Unix.fork () with
     | 0 ->
 	(* The child here: *)
@@ -556,24 +588,37 @@ let fork_with_tutor
 	end
     | child_pid ->
 	(* The father here creates a process-tutor thread per child: *)
-	tutor child_pid
+	tutor ~pid:child_pid
   in
-  thread
+  created
 ;;
 
+let create ?killable f x =
+  match killable with
+  | None    -> create_non_killable (Thread.create) f x
+  | Some () -> create_killable     (Thread.create) f x
+
+let future ?killable f x =
+  match killable with
+  | None    -> create_non_killable (Future.make) f x
+  | Some () -> create_killable     (Future.make) f x
+
+(* Redefinitions: *)
+let fork_with_tutor ?killable = fork_with_tutor (Future.future) ?killable
+let waitpid_thread  ?killable = waitpid_thread  (Thread.create) ?killable
 
 
 module Easy_API = struct
 
   (* Tutoring thread options: *)
   type options = {
-    mutable killable                    : unit option;
-    mutable before_waiting              : (pid:int -> unit) option;
-    mutable after_waiting               : (pid:int -> Unix.process_status -> unit) option;
-    mutable perform_when_suspended      : (pid:int -> unit) option;
-    mutable perform_when_resumed        : (pid:int -> unit) option;
-    mutable fallback                    : (pid:int -> exn -> unit) option;
-    mutable do_not_kill_process_if_exit : unit option;
+    mutable killable                  : unit option;
+    mutable before_waiting            : (pid:int -> unit) option;
+    mutable after_waiting             : (pid:int -> Unix.process_status -> unit) option;
+    mutable perform_when_suspended    : (pid:int -> unit) option;
+    mutable perform_when_resumed      : (pid:int -> unit) option;
+    mutable fallback                  : (pid:int -> exn -> unit) option;
+    mutable do_not_kill_child_at_exit : unit option;
     }
 
   let make_defaults () = {
@@ -583,12 +628,12 @@ module Easy_API = struct
     perform_when_suspended = None;
     perform_when_resumed = None;
     fallback = None;
-    do_not_kill_process_if_exit = None;
+    do_not_kill_child_at_exit = None;
     }
 
   let make_options
     ?enrich ?killable ?before_waiting ?after_waiting ?perform_when_suspended ?perform_when_resumed
-    ?fallback ?do_not_kill_process_if_exit ()
+    ?fallback ?do_not_kill_child_at_exit ()
     =
     let t = match enrich with None -> make_defaults () | Some t -> t in
     let () = t.killable <- killable in
@@ -597,7 +642,7 @@ module Easy_API = struct
     let () = t.perform_when_suspended <- perform_when_suspended in
     let () = t.perform_when_resumed <- perform_when_resumed in
     let () = t.fallback <- fallback in
-    let () = t.do_not_kill_process_if_exit <- do_not_kill_process_if_exit in
+    let () = t.do_not_kill_child_at_exit <- do_not_kill_child_at_exit in
     t
 
   let apply_with_options ?options
@@ -607,7 +652,7 @@ module Easy_API = struct
        ?perform_when_suspended:(pid:int -> unit) ->
        ?perform_when_resumed:(pid:int -> unit) ->
        ?fallback:(pid:int -> exn -> unit) ->
-       ?do_not_kill_process_if_exit:unit -> 'a -> 'b)
+       ?do_not_kill_child_at_exit:unit -> 'a -> 'b)
     arg
     =
     match options with
@@ -619,9 +664,9 @@ module Easy_API = struct
        let perform_when_suspended = t.perform_when_suspended in
        let perform_when_resumed = t.perform_when_resumed in
        let fallback = t.fallback in
-       let do_not_kill_process_if_exit = t.do_not_kill_process_if_exit in
+       let do_not_kill_child_at_exit = t.do_not_kill_child_at_exit in
        f ?killable ?before_waiting ?after_waiting ?perform_when_suspended ?perform_when_resumed
-         ?fallback ?do_not_kill_process_if_exit arg
+         ?fallback ?do_not_kill_child_at_exit arg
 
   let waitpid_thread  ?options () = apply_with_options ?options (waitpid_thread) ()
   let fork_with_tutor ?options f  = apply_with_options ?options (fork_with_tutor) f

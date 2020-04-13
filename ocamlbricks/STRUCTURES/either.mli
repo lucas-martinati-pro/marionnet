@@ -30,6 +30,9 @@ val extract_from_list : ?acc:'b list -> ('a,'b) t list -> 'b list
 val get_left  : ('a,'b) t -> 'a
 val get_right : ('a,'b) t -> 'b
 
+val swap : ('a,'b) t -> ('b,'a) t
+val flip : ('a,'b) t -> ('b,'a) t (* alias for `swap' *)
+
 (* Injections: *)
 val left  : 'a -> ('a,'b) t
 val right : 'b -> ('a,'b) t
@@ -39,10 +42,30 @@ val map  : ('b -> 'c) -> ('a,'b) t -> ('a,'c) t
 val bind : ('a,'b) t -> ('b -> ('a,'c) t) -> ('a,'c) t
 val return : 'b -> ('a,'b) t
 
+val protect  : ('a -> 'b) -> 'a -> (exn, 'b) t
+val protect2 : ('a -> 'b -> 'c) -> 'a -> 'b -> (exn, 'c) t
+val protect3 : ('a -> 'b -> 'c -> 'd) -> 'a -> 'b -> 'c -> (exn, 'd) t
+
+(* Note that ~finally is itself protected by exceptions and its result is ignored. *)
+val try_finalize : finally:('a -> (exn, 'b) t -> 'ignored) -> ('a -> 'b) -> 'a -> (exn, 'b) t
+
+(* If is_left, leave the exception slip away: *)
+val extract_or_raise : (exn, 'a) t -> 'a
+
+(* alias for `protect': *)
 val apply_or_catch : ('a -> 'b) -> 'a -> (exn, 'b) t
 
-val of_bool : bool -> (unit, unit) t
-val to_bool : ('a,'b) t -> bool
+val find    : 'a list -> ('a -> ('e,'b) t) -> 'b option
+val exists  : 'a list -> ('a -> ('e,'b) t) -> bool
+val for_all : 'a list -> ('a -> ('e,'b) t) -> bool
+
+(* xs ⊢> Option.bind (find xs swap) (raise) |> ignore *)
+val raise_first_if_any : (exn, 'a) t list -> unit
+
+val of_bool  : bool -> (unit, unit) t
+val to_bool  : ('a,'b) t -> bool
+val is_right : ('a,'b) t -> bool (* alias of to_bool *)
+val is_left  : ('a,'b) t -> bool (* to_bool |> not *)
 
 val list_of : ('a,'b) t -> 'b list
 

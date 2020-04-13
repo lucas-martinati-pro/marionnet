@@ -23,6 +23,9 @@ module Log = Ocamlbricks_log
 (* --- *)
 
 type pid = int
+type filename = string
+type directory = string
+(* --- *)
 
 module Process = struct
 
@@ -343,9 +346,9 @@ module Process = struct
  (* Wait until a process die (child or unrelated).
     Relevant discussion here: https://www.linuxjournal.com/content/non-child-process-exit-notification-support
     ---
-    val wait_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
+    val watch_process : ?verbose:unit -> ?polling_interval:float (* 10. seconds *) -> pid -> unit
     *)
- let wait_process ?verbose ?(polling_interval=10.) (pid) =
+ let watch_process ?verbose ?(polling_interval=10.) (pid) =
    let verbose = Option.to_bool verbose in
    (* --- *)
    let proc_exe = Printf.sprintf "/proc/%d/exe" pid in
@@ -454,3 +457,77 @@ let get_ipv6_addresses_of (intf) (* Ex: "tap418733" *) : string list =
        let a2 = Ipv6.to_string (Ipv6.of_string a1) in
        a2)
     (lines)
+
+
+(* Waiting for something to happen in a subdirectory (by default a `close_write' event). *)
+let watch_directory ?verbose ?ignore_unexisting_arg ?exit_door ?(selector=[Inotify.S_Close_write]) ?pathfilter ~callback (dir) : unit =
+  let verbose = Option.to_bool verbose in
+  (* --- *)
+  let dir' = UnixExtra.realpath_exists (dir) in
+  (* --- *)
+  if dir' = None then
+    let () = if verbose then Log.printf1 "Linux.watch_directory: directory %s not found\n" dir in
+    if ignore_unexisting_arg = Some () then () else invalid_arg "Linux.watch_directory: directory not found"
+  else (* continue: *)
+  (* --- *)
+  let dir = Option.extract dir' in
+  (* --- *)
+  let exit_door_flag, selector, skip_close_write, exit_door_callback =
+    match exit_door with
+    | None           -> (false, selector, false, (fun _ _ -> true))
+    | Some _filename ->
+        let exit_door_callback ks opath = (List.mem Inotify.Close_write ks) && (opath = exit_door) in
+        (* exit_door => Inotify.S_Close_write *)
+        if (List.exists (fun s -> s=Inotify.S_Close_write || s=Inotify.S_All || s=Inotify.S_Close) selector)
+          then  (true,  selector,                          false,            exit_door_callback)
+          else  (true,  (Inotify.S_Close_write::selector), true (* skip! *), exit_door_callback)
+  in
+  (* --- *)
+  let selector' = (Inotify.S_Delete_self)::selector in
+  let selector' = if verbose then Inotify.S_Move_self::selector' else selector' in
+  (* type event = watch * event_kind list * int32 * string option *)
+  let callback' =
+    (* Accessory: *)
+    let is_optional_path_matching_regexp (regexp) = function
+    | None      -> false
+    | Some path -> StrExtra.First.matchingp regexp path
+    in
+    (* --- *)
+    match pathfilter with
+    (* --- *)
+    | None ->
+        (function ((wd, ks, _, path) as event) ->
+           if (List.mem Inotify.Delete_self ks) then false else (* continue: *)
+           if (exit_door_flag)   && (exit_door_callback ks path) then false else (* continue: *)
+           if (skip_close_write) && (List.mem Inotify.Close_write ks) then true (* skip *) else (* continue: *)
+           callback event)
+    (* --- *)
+    | Some regexp ->
+       (* --- *)
+        (function ((wd, ks, _, path) as event) ->
+           if (List.mem Inotify.Delete_self ks) then false else (* continue: *)
+           if (exit_door_flag) && (exit_door_callback ks path) then false else (* continue: *)
+           if (skip_close_write) && (List.mem Inotify.Close_write ks) then true (* skip *) else (* continue: *)
+           if not (is_optional_path_matching_regexp (regexp) (path))  then true (* skip *) else (* continue: *)
+           callback event)
+  in
+  (* --- *)
+  let fd  = Inotify.create () in
+  let _wd = Inotify.add_watch fd (dir) (selector') in
+  let callback = List.for_all (callback') in
+  (* --- *)
+  let rec loop () =
+    let evs = Inotify.read fd in
+    let () = if verbose then begin
+      Log.printf2
+        "Linux.watch_directory: something happened about directory %s\n  ∟ %s\n"
+        (dir) (String.concat "\n  ∟ " (List.map Inotify.string_of_event evs))
+      end
+    in
+    if callback evs then loop () else (* exit *)
+    ()
+  in
+  (* --- *)
+  let () = try loop () with _ -> () in
+  let () = Unix.close fd in
+  ()

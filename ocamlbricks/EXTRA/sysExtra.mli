@@ -54,6 +54,10 @@ val fold_on_signals : ?except:(int list) -> ('a -> int -> Sys.signal_behavior ->
 
 val log_signal_reception : ?except:(int list) -> unit -> unit
 
+(* For 64-bits architectures is 8 (bytes), for 32-bits ones is 4 (bytes).
+   Calculated at loading time: *)
+val bytes_per_int : int
+
 IFDEF DOCUMENTATION_OR_DEBUGGING THEN
 module Test : sig
   val log_signal_reception : unit -> unit

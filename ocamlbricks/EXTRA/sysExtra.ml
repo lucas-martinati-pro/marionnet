@@ -346,6 +346,21 @@ let description_of_signal i =
 (* Redefined in order to remove the ?caller parameter: *)
 let fold_on_signals ?except f s = fold_on_signals ?except f s
 
+(* For 64-bits architectures is 8 (bytes), for 32-bits ones is 4 (bytes).
+   Calculated at loading time: *)
+IFDEF OCAML4_03_OR_LATER THEN
+let bytes_per_int =
+  let dpi = int_of_float ((log (float_of_int max_int)) /. (log 2.)) in
+  let k = dpi / 8 in
+  if dpi mod 8 = 0 then k else (k+1)
+ELSE
+let bytes_per_int =
+  let dpi = Sys.int_size in
+  let k = dpi / 8 in
+  if dpi mod 8 = 0 then k else (k+1)
+ENDIF
+
+
 IFDEF DOCUMENTATION_OR_DEBUGGING THEN
 module Test = struct
 (* May be tested from the shell:
