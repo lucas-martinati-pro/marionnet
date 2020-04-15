@@ -134,8 +134,7 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
   val max_input_size = max_input_size
 
   method private is_channel_active () : bool =
-    let succeed f x : bool = try let _ = f x in true with _ -> false in (* DOVE METTERLA (Misc?) *)
-    List.for_all (succeed Unix.fstat) [fd0; fd1; exit_door0; exit_door1]
+    List.for_all (Misc.succeed Unix.fstat) [fd0; fd1; exit_door0; exit_door1]
 
   method receive ?at_least () : string =
     let fd = fd0 in
@@ -189,19 +188,25 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
   method walk_through_the_exit_door () =
     Either.protect Unix.close exit_door1
 
-  method shutdown ?receive ?send () =
+  method private walked_through_the_exit_door =
+    not (Misc.succeed Unix.fstat exit_door1)
+
+  method shutdown ?(receive:unit option) ?(send:unit option) () : unit =
+    (* --- *)
+    if not self#walked_through_the_exit_door then
+      (* Log.printf "Pts.stream_channel#shutdown: Nothing to do for now.\n" *)
+      let () = Log.printf "Pts.stream_channel#shutdown: Nothing to do for now, except walk through the exit door...\n" in
+      self#walk_through_the_exit_door () |> ignore
+    else (* continue: *)
     (* --- *)
     let close_in_channel  () = if Lazy.is_val (in_channel)  then close_in  (Lazy.force in_channel)  else () in
     let close_out_channel () = if Lazy.is_val (out_channel) then close_out (Lazy.force out_channel) else () in
     (* --- *)
-    (* Anyway close exit doors. Note that :: compose in the reverse order w.r.t. ";" or "let-in" ... *)
-    let ys1 : (exn, unit) Either.t list =
-      (Either.protect Unix.close exit_door0) ::
-      (Either.protect Unix.close exit_door1) :: (* ... so this descriptor is the first closed *)
-      []
-    in
+    (* Anyway close exit door. *)
+    let y1 : (exn, unit) Either.t =  (Either.protect Unix.close exit_door0) in
     (* --- *)
-    let ys2 : (exn, unit) Either.t list =
+    (* Note that :: compose in the reverse order w.r.t. ";" or "let-in": *)
+    let y2s : (exn, unit) Either.t list =
      (match receive, send with
       | Some (), None -> (Either.protect Unix.close fd0) :: (Either.protect close_in_channel  ()) :: []
       | None, Some () -> (Either.protect Unix.close fd1) :: (Either.protect close_out_channel ()) :: []
@@ -212,7 +217,7 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
     (* --- *)
     try
       (* Re-raise the first occurred exception, but *all* close operations have been performed: *)
-      Either.raise_first_if_any (List.append ys1 ys2);
+      Either.raise_first_if_any (y1::y2s);
       Log.printf "Pts.stream_channel#shutdown: Done.\n"
       (* --- *)
     with e ->
@@ -265,3 +270,91 @@ let as_call ?max_input_size ?file_perm ~filename ~protocol () =
     Future.fork (as_call ?max_input_size ?file_perm ~filename ~protocol) ()
 
 end (* Apply_protocol *)
+
+(* =================================================
+   The class Pts.stream_channel defined above solves
+   (with the technique of the "exit_door") a problem
+   (bug?) described below.
+   =================================================
+
+(*  An UML-kernel opens "/dev/ttyS3" and instantiates this way "/dev/pts/24" on the host side,
+    where an ocaml interpreter (utop with OCaml 4.04.2) is running.
+    In this toplevel we perform the following actions: *)
+
+    # let ch = new Pts.stream_channel "/dev/pts/24" ;;
+    val ch : Pts.stream_channel = <obj>
+
+    # let fd0,fd1 = ch#get_IO_file_descriptors ;;
+    val fd0 : Unix.file_descr = <abstr>
+    val fd1 : Unix.file_descr = <abstr>
+
+    # let t = Thread.create (fun _ -> let rs, ws, es = Thread.select [fd0] [] [fd0; fd1] (-(1.)) in Misc.pr "HERE: #rs=%d  #ws=%d  #es=%d\n"
+      (List.length rs) (List.length ws) (List.length es)) () ;;
+    val t : Thread.t = <abstr>
+
+    (* The UML-instance closes now "/dev/ttyS3" and... nothing happens: *)
+
+    # Thread.yield ();;
+    - : unit = ()
+
+    (* Moreover: *)
+
+    # Unix.close fd0 ;;
+    - : unit = ()
+
+    # Thread.yield ();;
+    - : unit = ()
+
+    # Unix.close fd1 ;;
+    - : unit = ()
+
+    # Thread.yield ();;
+    - : unit = ()
+
+(*  ---
+    So, the thread remains stucked on the call Thread.select (the same happens directly with Unix.read).
+    If we try using some pipe's file descriptor in place of "exceptional conditions" (see manual-ocaml/libref/Unix.html),
+    the result is the same:
+    --- *)
+
+    # let (exit_door0, exit_door1) = Unix.pipe () ;;
+
+    # let t = Thread.create (fun _ -> let rs, ws, es = Thread.select [fd0] [] [exit_door0; exit_door1] (-(1.)) in Misc.pr "HERE: #rs=%d  #ws=%d  #es=%d\n"
+      (List.length rs) (List.length ws) (List.length es)) () ;;
+
+(*  ---
+    Don't panic: if we place the `exit_door0' together with fd0 in the place of "descriptors to check for reading", we obtain the solution:
+    --- *)
+
+    # let ch = new Pts.stream_channel "/dev/pts/24" ;;
+    val ch : Pts.stream_channel = <obj>
+
+    # let fd0,fd1 = ch#get_IO_file_descriptors ;;
+    val fd0 : Unix.file_descr = <abstr>
+    val fd1 : Unix.file_descr = <abstr>
+
+    # let (exit_door0, exit_door1) = Unix.pipe () ;;
+    val exit_door0 : Unix.file_descr = <abstr>
+    val exit_door1 : Unix.file_descr = <abstr>
+
+    # let t = Thread.create (fun _ -> let rs, ws, es = Thread.select [fd0; exit_door0] [] [] (-(1.)) in Misc.pr "HERE: #rs=%d  #ws=%d  #es=%d\n"
+      (List.length rs) (List.length ws) (List.length es)) () ;;
+    val t : Thread.t = <abstr>
+
+    (* The UML-instance close now "/dev/ttyS3" *)
+
+    # Thread.yield ();;
+    - : unit = ()
+
+    # Unix.close exit_door1 ;;
+    - : unit = ()
+    HERE: #rs=1  #ws=0  #es=0
+
+(*  ---
+    It's ok now, and the descriptor that belongs the list `rs' is, of course, `exit_door0' (not `fd0').
+    CONCLUSION:
+     (1) is this behaviour a bug?
+     (2) if is a bug, which is the responsible among UML-Linux (guest), x86_64-Linux (host), pseudo-terminals or the binding OCaml-Unix?
+    --- *)
+
+--- *)

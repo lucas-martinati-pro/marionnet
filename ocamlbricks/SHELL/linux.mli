@@ -336,27 +336,27 @@ val get_ipv6_addresses_of : string -> string list
      Linux.watch_directory ~verbose:() ~exit_door:".hidden_file" ~selector:[Inotify.S_Close_write; Inotify.S_Open]
          ~pathfilter:(Str.regexp "abc[0-7]$") ~callback:(fun _ -> prerr_endline "!!!CALLBACK!!!"; true) "/tmp/FOO" ;;
 
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+     [25890.0]: watch_directory: something happened in /tmp/FOO
        ∟ watch=1 cookie=0 events=OPEN "aaa"
        ∟ watch=1 cookie=0 events=CLOSE_WRITE "aaa"
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+     [25890.0]: watch_directory: something happened in /tmp/FOO
        ∟ watch=1 cookie=0 events=OPEN "abc"
        ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc"
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+     [25890.0]: watch_directory: something happened in /tmp/FOO
        ∟ watch=1 cookie=0 events=OPEN "abc16"
        ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc16"
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # date >/tmp/FOO/abc1
+     [25890.0]: watch_directory: something happened in /tmp/FOO    # date >/tmp/FOO/abc1
        ∟ watch=1 cookie=0 events=OPEN "abc1"
      !!!CALLBACK!!!
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO
+     [25890.0]: watch_directory: something happened in /tmp/FOO
        ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc1"
      !!!CALLBACK!!!
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # touch /tmp/FOO/abc1
+     [25890.0]: watch_directory: something happened in /tmp/FOO    # touch /tmp/FOO/abc1
        ∟ watch=1 cookie=0 events=OPEN "abc1"
        ∟ watch=1 cookie=0 events=CLOSE_WRITE "abc1"
      !!!CALLBACK!!!
      !!!CALLBACK!!!
-     [25890.0]: watch_directory: something happened about directory /tmp/FOO    # echo > /tmp/FOO/.hidden_file
+     [25890.0]: watch_directory: something happened in /tmp/FOO    # echo > /tmp/FOO/.hidden_file
        ∟ watch=1 cookie=0 events=OPEN ".hidden_file"
        ∟ watch=1 cookie=0 events=CLOSE_WRITE ".hidden_file"
      - : unit = ()

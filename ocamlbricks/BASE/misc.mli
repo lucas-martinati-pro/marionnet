@@ -19,6 +19,9 @@
 (* Protect an action from any kind of exception: *)
 val protect : ('a -> unit) -> 'a -> unit
 
+(* Apply a function and detect if it returns an ordinary result without raising any exception: *)
+val succeed : ('a -> 'b) -> 'a -> bool
+
 (* Print immediately a message on stderr. For debugging purposes: *)
 val pr : ('a, out_channel, unit, unit) format4 -> 'a
 

@@ -30,11 +30,17 @@ module ULog = Ocamlbricks_log.Unprotected (* for critical sections *)
    read mechanism can be broken (by a Failure exception) simply providing ~exit_door:fd0
    and closing the write descriptor fd1 when desired. *)
 let read_with_exit_door ?(timeout=(-1.)) ~exit_door fd buffer offset len =
-  let rs, _, _ = Thread.select [exit_door; fd] [] [] (timeout)  in
+  (* let () = Log.printf "ThreadExtra.read_with_exit_door: about to call select...\n" in *)
+  let rs, ws, es = Thread.select [exit_door; fd] [] [] (timeout)  in
+  (* let () = Log.printf3 "ThreadExtra.read_with_exit_door: select returned with:  #rs=%d  #ws=%d  #es=%d\n" (List.length rs) (List.length ws) (List.length es) in *)
   if List.mem (exit_door) rs then raise (Failure "ThreadExtra.read_with_exit_door: about to exit a read call") else (* continue: *)
   (* --- *)
   if rs = [] then (* timeout => 0 bytes read before timeout => *) 0 else (* continue: *)
   (* --- *)
+  (*  let () = Log.printf2 "ThreadExtra.read_with_exit_door: about to call a blocking Unix.read (active: fd=%b exit_door:%b)...\n"
+        (Misc.succeed Unix.fstat fd)
+        (Misc.succeed Unix.fstat exit_door)
+  in *)
   Unix.read fd buffer offset len
 
 (* See `read_with_exit_door': *)

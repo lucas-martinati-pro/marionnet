@@ -520,7 +520,7 @@ let watch_directory ?verbose ?ignore_unexisting_arg ?exit_door ?(selector=[Inoti
     let evs = Inotify.read fd in
     let () = if verbose then begin
       Log.printf2
-        "Linux.watch_directory: something happened about directory %s\n  ∟ %s\n"
+        "Linux.watch_directory: something happened in %s\n  ∟ %s\n"
         (dir) (String.concat "\n  ∟ " (List.map Inotify.string_of_event evs))
       end
     in

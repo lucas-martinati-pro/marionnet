@@ -34,6 +34,11 @@ type server_address = [
  ]
 (* --- *)
 
+let string_of_server_address = function
+ | `unix  socketfile         -> Printf.sprintf "unix(%s)" socketfile
+ | `inet  (ipv4_or_v6, port) -> Printf.sprintf "inet(%s,%d)" ipv4_or_v6 port
+
+
 (* A channel is a "port", "gate" or "endpoint", *connected* in some way,
    in the general sense of "plugged", to another port, gate or endpoint
    accessible by the same or another thread, belonging the same or another
@@ -1246,7 +1251,7 @@ let dgram_inet_echo_client ~ipv4_or_v6 ~port () =
   let protocol ch =
     simple_echo_client_protocol ch
   in
-  dgram_inet_client ~bootstrap ~protocol ~ipv4_or_v6 ~port ()
+  dgram_client ~target:(`inet(ipv4_or_v6, port)) ~bootstrap ~protocol ()
 
 let dgram_unix_echo_client ~stream_socketfile () =
   let bootstrap (ch:stream_channel) =
@@ -1261,7 +1266,7 @@ let dgram_unix_echo_client ~stream_socketfile () =
   let protocol (ch:dgram_channel) =
     simple_echo_client_protocol ch
   in
-  dgram_unix_client ~bootstrap ~protocol ~socketfile:stream_socketfile ()
+  dgram_client ~target:(`unix (stream_socketfile)) ~bootstrap ~protocol ()
 
 let stream_unix_echo_server ?no_fork ?socketfile () =
   let socketfile =
@@ -1281,7 +1286,7 @@ let stream_unix_echo_client ~socketfile () =
   let protocol (ch:stream_channel) =
     simple_echo_client_protocol (line_oriented_channel_of_stream_channel ch)
   in
-  stream_unix_client ~protocol ~socketfile ()
+  stream_client ~target:(`unix socketfile) ~protocol ()
 
 let seqpacket_unix_echo_server ?no_fork ?socketfile () =
   let socketfile =
@@ -1320,7 +1325,7 @@ let stream_inet_echo_client ~ipv4_or_v6 ~port () =
   let protocol ch =
     simple_echo_client_protocol (line_oriented_channel_of_stream_channel ch)
   in
-  stream_inet_client ~protocol ~ipv4_or_v6 ~port ()
+  stream_client ~target:(`inet(ipv4_or_v6, port)) ~protocol ()
 
 
 end (* module Examples *)

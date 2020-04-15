@@ -31,3 +31,5 @@ let try_finalize ~finally f x =
   | Either.Right y -> y
   | Either.Left e  -> raise e
 
+(* Apply a function and detect if it returns an ordinary result without raising any exception: *)
+let succeed f x : bool = try let _ = f x in true with _ -> false

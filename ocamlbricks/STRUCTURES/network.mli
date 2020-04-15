@@ -32,6 +32,8 @@ type server_address = [
  | `inet  of ipv4_or_v6 * port
  ]
 
+val string_of_server_address : server_address -> string
+
 (* A channel is a "port", "gate" or "endpoint", *connected* in some way,
    in the general sense of "plugged", to another port, gate or endpoint
    accessible by the same or another thread, belonging the same or another
