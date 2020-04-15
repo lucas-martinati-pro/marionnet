@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2020  Jean-Vincent Loddo
+# Copyright (C) 2020  Université Sorbonne Paris Nord
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+### BEGIN INIT INFO
+# Provides:          marionnet-dummy-xserver
+# Required-Start:    $local_fs $network $syslog $marionnet-relay
+# Required-Stop:
+# Should-Start:
+# Should-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: start/stop the pseudo xserver for guest applications
+# Description:
+#  This server accept connections from the Unix socket "/tmp/.X11-unix/Xd"
+#  (corresponding to DISPLAY=:d.0) and, for an accepted connexion, starts
+#  the script /usr/bin/marionnet-dummy-xservice that do the job.
+#  Basically, this job is nothing more than a "socat" service (/usr/bin/socat,
+#  see "man socat") connecting this socket to an available (simulated) serial
+#  port in the range /dev/ttySx. The UML kernel will be kind enough to provide
+#  an associated pseudo-terminal (/dev/pts/x) on host side, and marionnet.native,
+#  running on host side, will provide the rest of connection from the good
+#  pseudo-terminal to the real X11 server.
+#  The marionnet-dummy-xserver is itself implemented with /usr/bin/socat
+#  in order to facilitate the installation of all the necessary stuff in
+#  the guest GNU/Linux systems.
+### END INIT INFO
+
+# Install with:
+# sudo systemctl enable marionnet-dummy-xserver
+# ---
+
+trap '' SIGTERM
+trap '' SIGINT
+
+LOGFILE="/var/log.X11.socat"
+PIDFILE="/var/log.X11.socat.pid"
+
+SERVICE_BASENAME="marionnet-dummy-xservice"
+SERVICE_FULLNAME="/usr/bin/$SERVICE_BASENAME"
+if [[ ! -x $SERVICE_FULLNAME ]]; then
+  SERVICE_FULLNAME=$(type -p $SERVICE_BASENAME)
+fi
+
+# DISPLAY=somewhere:1.16 => 1
+function get_display_no {
+ # global DISPLAY
+ local X=${1:-$DISPLAY}
+ local Y=${X##*:}
+ echo ${Y%%.*}
+}
+
+function find_DISPLAY_value {
+  local RESULT
+  for i in /etc/profile /etc/bash.bashrc /root/.bash_profile /root/.bashrc; do
+    if [[ -f $i ]]; then
+      RESULT=$(grep -o "^DISPLAY=.*:[0-9.]*$" $i)
+    fi
+  done
+  echo $RESULT
+}
+
+# ======================================================== #
+#                        START ()                          #
+# ======================================================== #
+
+function start {
+
+  echo -n "Marionnet's X11 dummy server starting... "
+  # ---
+  if [[ -z $DISPLAY ]]; then eval $(find_DISPLAY_value); fi
+  # ---
+  if [[ -n $DISPLAY ]]; then
+    DISPLAY_NUMBER=$(get_display_no $DISPLAY)
+  else
+    # Default:
+    DISPLAY_NUMBER=0
+  fi
+  # ---
+  # Go:
+  socat -d -d UNIX-LISTEN:/tmp/.X11-unix/X${DISPLAY_NUMBER},fork  EXEC:$SERVICE_FULLNAME &>$LOGFILE &
+  echo $! > $PIDFILE
+  # ---
+  echo "OK"
+
+} ########################## END of function start()
+
+
+# ======================================================== #
+#                        STOP ()                           #
+# ======================================================== #
+
+function stop {
+
+  echo -n "Marionnet's X11 dummy server shutdown... "
+  [[ -s $PIDFILE ]] && kill $(<$PIDFILE)
+  echo "OK"
+
+} ########################## END of function stop()
+
+
+# Main:
+case "$1" in
+  start) start ;;
+   stop) stop ;;
+      *) echo "Usage: $0 {start|stop}"
+         exit 1 ;;
+esac
+

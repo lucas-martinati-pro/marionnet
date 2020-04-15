@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2020  Jean-Vincent Loddo
+# Copyright (C) 2020  Université Sorbonne Paris Nord
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Description:
+#  This server accept connections from the Unix socket "/tmp/.X11-unix/Xd"
+#  (corresponding to DISPLAY=:d.0) and, for an accepted connexion, starts
+#  the script /usr/bin/marionnet-dummy-xservice that do the job.
+#  Basically, this job is nothing more than a "socat" service (/usr/bin/socat,
+#  see "man socat") connecting this socket to an available (simulated) serial
+#  port in the range /dev/ttySx. The UML kernel will be kind enough to provide
+#  an associated pseudo-terminal (/dev/pts/x) on host side, and marionnet.native,
+#  running on host side, will provide the rest of connection from the good
+#  pseudo-terminal to the real X11 server.
+#  The marionnet-dummy-xserver is itself implemented with /usr/bin/socat
+#  in order to facilitate the installation of all the necessary stuff in
+#  the guest GNU/Linux systems.
+
+# Global settings:
+TARGET_DIR="/mnt/hostfs/.X11-unix"
+BAUDS_LIST="4000000 3500000 3000000 2500000 2000000 1500000 1152000 921600 576000 460800 230400 115200 57600 38400"
+
+# Usage: if SOURCEING; then echo "SOURCEING"; else echo "NOT SOURCEING"; fi
+_SOURCEING_X="$0"; _SOURCEING_Y="$BASH_SOURCE"; function SOURCEING { [[ ! ${_SOURCEING_X} = ${_SOURCEING_Y} ]]; }
+
+# DISPLAY=somewhere:1.16 => 1
+function get_display_no {
+ # global DISPLAY
+ local X=${1:-$DISPLAY}
+ local Y=${X##*:}
+ echo ${Y%%.*}
+}
+
+# Is this really necessary for UML serial devices?
+# Well, we do it in doubt...
+function set_maximal_baud_rate {
+  local DEVICE=${1:-/dev/ttyS2}
+  local BAUDS
+  for BAUDS in $BAUDS_LIST; do
+    stty -F $DEVICE $BAUDS && break
+  done &>/dev/null
+}
+
+function make_ttySi_if_needed {
+  local i=${1:-2}
+  local DEVICE=/dev/ttyS$i
+  # ---
+  if ! test -e $DEVICE; then
+    mknod -m 666 $DEVICE c 4 $i
+    chgrp dialout $DEVICE && chgrp root $DEVICE
+  fi &>/dev/null
+  # ---
+  chmod 666 $DEVICE &>/dev/null
+  set_maximal_baud_rate $DEVICE
+}
+
+function get_devices_busy_by_socat {
+  local SOCAT_PROCESSES DEVICE p
+  # ---
+  SOCAT_PROCESSES=$(pgrep "^socat$")
+  # ---
+  for p in $SOCAT_PROCESSES; do
+    DEVICE=$(grep -z -o '/dev/ttyS[0-9]*,' /proc/$p/cmdline 2>/dev/null)
+    DEVICE=${DEVICE%%,}
+    [[ -z $DEVICE ]] || echo $DEVICE
+  done 2>/dev/null
+}
+
+function extract_UML_kernel_message_of {
+  local DEVICE_INDEX=${1:-2}
+  grep -i "Serial line [0-9]* assigned device" | grep -w "$DEVICE_INDEX" | tail -n 1 | grep -o '/dev/pts/[0-9]*'
+}
+
+function get_host_device_assigned_to {
+  local DEVICE_INDEX=${1:-2}
+  local DEVICE=${2:-/dev/ttyS$DEVICE_INDEX}
+  # ---
+  local RESULT
+  # ---
+  # The following bash redirection causes a UML-kernel reaction,
+  # visible though `dmesg' or /proc/kmsg
+  read -N 0 <$DEVICE
+  sync
+  RESULT=$(dmesg | extract_UML_kernel_message_of $DEVICE_INDEX)
+  if [[ -z $RESULT ]]; then
+    sleep 1; sync
+    RESULT=$(dmesg | extract_UML_kernel_message_of $DEVICE_INDEX)
+  fi
+  # ---
+  echo $RESULT
+}
+
+# Search for the first free serial port, starting from 5 (6th) :
+function main {
+  # global TARGET_DIR
+  local DEVICE_INDEX DEVICE HOST_DEVICE MSG_OPENED MSG_CLOSED
+  # ---
+  for DEVICE_INDEX in {5..255}; do
+    # ---
+    make_ttySi_if_needed $DEVICE_INDEX
+    # ---
+    DEVICE=/dev/ttyS$DEVICE_INDEX
+    # ---
+    if ! get_devices_busy_by_socat | grep -q $DEVICE; then
+      mkdir -p $TARGET_DIR
+      chmod a+rw $TARGET_DIR
+      # ---
+      HOST_DEVICE=$(get_host_device_assigned_to $DEVICE_INDEX)
+      # ---
+      MSG_OPENED=$TARGET_DIR/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.opened  # Ex: ttyS7-pts15.opened
+      MSG_CLOSED=$TARGET_DIR/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.closed  # Ex: ttyS7-pts15.closed
+      # ---
+      # Send to marionnet the name of the /dev/pts/x device involved by guest $DEVICE:
+      echo $HOST_DEVICE > $MSG_OPENED
+      # ---
+      # Send to marionnet the name of the /dev/pts/x device closed just now:
+      trap "echo $HOST_DEVICE > $MSG_CLOSED" EXIT ERR
+      # ---
+      socat STDIO OPEN:$DEVICE,raw,echo=0
+      # ---
+      # Send to marionnet the name of the /dev/pts/x device closed just now:
+      echo $HOST_DEVICE > $MSG_CLOSED
+      # ---
+      exit 0
+    fi
+  done
+}
+
+# ---
+SOURCEING || main "$@"
+# ---

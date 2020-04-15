@@ -31,3 +31,4 @@ val cookie             : string option  (* Just an alias for `mit_magic_cookie_1
 
 val get_unused_local_display : unit -> string
 
+val xserver_address : Network.server_address option (* Ex: Some (`inet ("127.0.0.1", 6000)) *)

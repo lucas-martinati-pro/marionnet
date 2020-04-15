@@ -19,7 +19,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ### BEGIN INIT INFO
-# Provides:          marionnet-startup
+# Provides:          marionnet-relay
 # Required-Start:    $local_fs $network $syslog
 # Required-Stop:
 # Should-Start:
@@ -50,6 +50,10 @@ fi
 # Fix the PATH:
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+function not_found_error_notification {
+  echo "ERROR: command not found:  $1  (but we keep going)" 1>&2
+}
+
 # ======================================================== #
 #                        START ()                          #
 # ======================================================== #
@@ -57,6 +61,12 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 function start {
 
  echo -n "Marionnet startup configuration... "
+
+ # ---
+ # Dependencies' errors:
+ for i in ifconfig ping ping6 hostname mount ip route xauth sed grep chmod chown socat; do
+   type -p $i &>/dev/null || not_found_error_notification $i;
+ done
 
  function append_line_if_needed {
   local LINE="$1"
@@ -279,6 +289,25 @@ fi
    ip addr del $ip42/16 dev eth42
  else
    DISPLAY_VALUE=172.23.0.254:${x11_display_number:-0}
+ fi
+
+ # ---------------------------
+ # Marionnet X11 dummy server?
+ # ---------------------------
+ XSERVER="/etc/init.d/marionnet-dummy-xserver"
+ XSERVICE="marionnet-dummy-xservice"
+ # ---
+ # Change the DISPLAY if eth42 is not running (disabled with Marionnet), or
+ # if the machine includes all the stuff to bypass eth42 and the marionnet-daemon:
+ # ---
+ if ! ifconfig eth42 up &>/dev/null || \
+  { test -x "$XSERVER" && type &>/dev/null -p "$XSERVICE"; }
+ then
+   # Clean directory .X11-unix
+   DISPLAY_VALUE=:${x11_display_number:-":0.0"}
+   mkdir -p /mnt/hostfs/.X11-unix
+   rm -f /mnt/hostfs/.X11-unix/*
+   chmod a+rwx /mnt/hostfs/.X11-unix
  fi
 
  # Support for `ssh' tunnelling:

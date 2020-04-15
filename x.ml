@@ -132,8 +132,13 @@ let get_unused_local_display_number ?(starting_from=0) () : display_number =
   loop (starting_from)
 
 (* ---------------------------------------------------------------------------*)
-module Settings_at_loading_time : sig val guest_display : int ref end = struct
+module Settings_at_loading_time : sig
 (* ---------------------------------------------------------------------------*)
+   val guest_display   : int ref
+   val xserver_address : Network.server_address option ref
+  end
+(* --------------------------------------------------------*)
+= struct
 
 (* Note that this function really tries to establish a connection (which is immediately closed).
    Do not use with a one-shot service (it must accept more than one connection): *)
@@ -191,6 +196,10 @@ let ignore_but_notify ?do_not_fail (thunk) () =
 (* By default the display number for the guest is the same of the host: *)
 let guest_display = ref (port - 6000)
 
+(* This reference is initialized here as first approximation.
+   May be changed by the section `fix_X_problems': *)
+let xserver_address = ref (Some (`inet (host_addr, port)))
+
 (* Try to fix problems defining at the same time the good value for `guest_display'.
    If required and possible, we will try to launch a pseudo X server running on port 6000.
    In this way, the *old* virtual machines (debian-lenny, pinocchio, ...) which suppose
@@ -206,6 +215,7 @@ let fix_X_problems : unit =
   (* let no_fork = Some () (* use Marionnet's threads *) in *)
   (* --- *)
   let range4 = "172.23.0.0/24" in
+  let range4 = "0.0.0.0/0" in
   let range6 = "fe80::/64" in
   (* --- *)
   let warning (available_port) (case) =
@@ -242,9 +252,12 @@ let fix_X_problems : unit =
       let () = Log.printf2 "(case 2) Starting a socat service: 0.0.0.0:%d -> %s\n" available_port socketfile in
       let () = warning (available_port) "(case 2)" in
       (* --- *)
+      let target = (`unix socketfile) in
+      let () = xserver_address := Some target in
+      (* --- *)
       ignore_but_notify
         ~do_not_fail:()
-        (Network.Socat.inet_of_unix_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~socketfile) ()
+        (Network.Socat.dual_inet_of_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~target) ()
 
   (* Case n°3: an X server seems to run on localhost accepting TCP connection,
       but the display is Y<>0 and there isn't a corresponding unix socket.
@@ -260,9 +273,12 @@ let fix_X_problems : unit =
       let () = Log.printf3 "(case 3) Starting a socat service: 0.0.0.0:%d -> %s:%d\n" available_port host_addr port in
       let () = warning (available_port) "(case 3)" in
       (* --- *)
+      let target = `inet(host_addr,port) in
+      let () = xserver_address := Some target in
+      (* --- *)
       ignore_but_notify
         ~do_not_fail:()
-        (Network.Socat.inet_of_inet_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
+        (Network.Socat.dual_inet_of_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~target) ()
 
   (* Case n°4: probably a telnet or a ssh -X connection.
       Idem: the following command doesn't solve completely the problem: we have also to
@@ -273,9 +289,13 @@ let fix_X_problems : unit =
       let () = guest_display := (available_port - 6000) in
       Log.printf3 "(case 4) Starting a socat service: 0.0.0.0:%d -> %s:%d\n" available_port host_addr port;
       let () = warning (available_port) "(case 4)" in
+      (* --- *)
+      let target = `inet(host_addr,port) in
+      let () = xserver_address := Some target in
+      (* --- *)
       ignore_but_notify
         ~do_not_fail:()
-        (Network.Socat.inet_of_inet_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~ipv4_or_v6:host_addr ~dport:port) ()
+        (Network.Socat.dual_inet_of_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~target) ()
 
   (* Case n°5: an X server seems to run on localhost but it doesn't accept TCP connections.
       We simply redirect connection requests to the unix socket: *)
@@ -285,11 +305,16 @@ let fix_X_problems : unit =
       let () = guest_display := (available_port - 6000) in
       Log.printf2 "(case 5) Starting a socat service: 0.0.0.0:%d -> %s\n" available_port socketfile;
       let () = warning (available_port) "(case 5)" in
+      (* --- *)
+      let target = (`unix socketfile) in
+      let () = xserver_address := Some target in
+      (* --- *)
       ignore_but_notify
         ~do_not_fail:()
-          (Network.Socat.inet_of_unix_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~socketfile) ()
+          (Network.Socat.dual_inet_of_stream_server ?no_fork ~range4 ~range6 ~port:available_port ~target) ()
 
   | false, _ ->
+      let () = xserver_address := None in
       Log.printf "(case 6) Warning: X connections are not available for virtual machines.\n"
 ;;
 
@@ -311,3 +336,10 @@ let guest_display =
 
 let guest_display_dot_screen =
   Printf.sprintf "%s.%s" (guest_display) (screen)
+
+let xserver_address =
+  !(Settings_at_loading_time.xserver_address)
+
+let () =
+  let v = Option.to_string ~a:(Network.string_of_server_address) (xserver_address) in
+  Log.printf2 "Report on X11 diagnostics and settings:  DISPLAY: %s  XSERVER: %s\n" (guest_display_dot_screen) (v)

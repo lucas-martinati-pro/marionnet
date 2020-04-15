@@ -478,7 +478,7 @@ let ask_vde_switch_for_current_active_ports ~socketfile () =
     ch#output_line "port/print";
     scan_vde_switch_answer_to_port_print ch
   in
-  Network.stream_unix_client ~socketfile ~protocol ()
+  Network.stream_client ~target:(`unix socketfile) ~protocol ()
 
 let wait_vde_switch_until_ports_will_be_allocated ~numports ~socketfile () =
   let rec protocol (ch:Network.stream_channel) =
@@ -486,7 +486,7 @@ let wait_vde_switch_until_ports_will_be_allocated ~numports ~socketfile () =
     let active_ports = scan_vde_switch_answer_to_port_print ch in
     if active_ports >= numports then active_ports else (Thread.delay 0.2; (protocol ch))
   in
-  Network.stream_unix_client ~socketfile ~protocol ()
+  Network.stream_client ~target:(`unix socketfile) ~protocol ()
 
 (*let send_commands_to_vde_switch ~socketfile ~commands () =
   Log.printf "Sending commands to a switch:\n---\n%s\n---\n" commands;
@@ -527,7 +527,7 @@ let send_commands_to_vde_switch_and_get_answers ~socketfile ~commands ()
           (line, answer))
        lines
   in
-  Network.stream_unix_client ~socketfile ~protocol ()
+  Network.stream_client ~target:(`unix socketfile) ~protocol ()
 
 let rec repeat_until_exception f x =
  try ignore (f x); repeat_until_exception f x with _ -> ()
@@ -544,7 +544,7 @@ let send_commands_to_vde_switch_ignoring_answers ~socketfile ~commands () =
           ())
        lines
   in
-  Network.stream_unix_client ~socketfile ~protocol ()
+  Network.stream_client ~target:(`unix socketfile) ~protocol ()
 
 
 (** A switch: just a [hub_or_switch] with [hub = false] *)

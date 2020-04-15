@@ -791,14 +791,14 @@ class machine
       let () = Log.printf2 "machine[%s]#start_pts_relay: file %s NOT FOUND\n" (self#name) (host_pts) in
       assert false
     in
-    (* !!!!! TODO: Attenzione: da generalizzare ai casi in cui il server graphico è accessibile con inet4/6 (p.e. tunnel ssh) !!!!!! *)
-    let socketfile = Printf.sprintf "/tmp/.X11-unix/X%s" X.display in
+    if X.xserver_address = None then failwith "X server not available" else (* continue: *)
+    let target : Network.server_address = Option.extract (X.xserver_address) in
     (* --- *)
     let () = Log.printf5 "machine[%s]#start_pts_relay: about to start a pts relay %s -> %s (fork=%b) (terminal=%s)\n"
-      (self#name) (host_pts) (socketfile) (no_fork=None) (self#get_terminal)
+      (self#name) (host_pts) (Network.string_of_server_address target) (no_fork=None) (self#get_terminal)
     in
     let (prm, ctrl) : ((exn, unit) Either.t Future.t) * (Future.Control.t) =
-      Network.Socat.pts_of_unix_stream_server ?no_fork ~filename:(host_pts) ~socketfile ()
+      Network.Socat.pts_of_stream_server ?no_fork ~filename:(host_pts) ~target ()
     in
     let (pid, tid, _) = ctrl in
     let () =
@@ -837,7 +837,7 @@ class machine
        let host_pts = String.trim (PervasivesExtra.get_file_content (fullpath)) in (* Ex: "/dev/pts/10" *)
        (* --- *)
        if StrExtra.First.matchingp (ropened) (path) then
-         let () = self#start_pts_relay (**) ~no_fork:() (**) ~host_pts () in
+         let () = self#start_pts_relay (**) (*~no_fork:()*) (**) ~host_pts () in
          true (* continue watching directory (to serve other guest's X11 connections) *)
        (* --- *)
        else (* elif: *)
