@@ -35,8 +35,8 @@ type server_address = [
 (* --- *)
 
 let string_of_server_address = function
- | `unix  socketfile         -> Printf.sprintf "unix(%s)" socketfile
- | `inet  (ipv4_or_v6, port) -> Printf.sprintf "inet(%s,%d)" ipv4_or_v6 port
+ | `unix  socketfile         -> Printf.sprintf "unix:%s" socketfile
+ | `inet  (ipv4_or_v6, port) -> Printf.sprintf "inet:%s:%d" ipv4_or_v6 port
 
 
 (* A channel is a "port", "gate" or "endpoint", *connected* in some way,

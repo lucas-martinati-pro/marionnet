@@ -53,9 +53,13 @@ PIDFILE="/var/log.X11.socat.pid"
 
 SERVICE_BASENAME="marionnet-dummy-xservice"
 SERVICE_FULLNAME="/usr/bin/$SERVICE_BASENAME"
+# ---
 if [[ ! -x $SERVICE_FULLNAME ]]; then
   SERVICE_FULLNAME=$(type -p $SERVICE_BASENAME)
 fi
+# ---
+# Standard location for local X11 unix-domain sockets:
+SOCKET_DIR="/tmp/.X11-unix"
 
 # DISPLAY=somewhere:1.16 => 1
 function get_display_no {
@@ -80,7 +84,8 @@ function find_DISPLAY_value {
 # ======================================================== #
 
 function start {
-
+  local DISPLAY_NUMBER
+  # ---
   echo -n "Marionnet's X11 dummy server starting... "
   # ---
   if [[ -z $DISPLAY ]]; then eval $(find_DISPLAY_value); fi
@@ -92,8 +97,10 @@ function start {
     DISPLAY_NUMBER=0
   fi
   # ---
+  mkdir -p $SOCKET_DIR
+  chmod a+rwx $SOCKET_DIR
   # Go:
-  socat -d -d UNIX-LISTEN:/tmp/.X11-unix/X${DISPLAY_NUMBER},fork  EXEC:$SERVICE_FULLNAME &>$LOGFILE &
+  socat -d -d UNIX-LISTEN:$SOCKET_DIR/X${DISPLAY_NUMBER},reuseaddr,fork  EXEC:$SERVICE_FULLNAME &>$LOGFILE &
   echo $! > $PIDFILE
   # ---
   echo "OK"

@@ -17,7 +17,9 @@
 
 
 (* Protect an action from any kind of exception: *)
-val protect : ('a -> unit) -> 'a -> unit
+val protect  : ('a -> unit) -> 'a -> unit
+val protect2 : ('a -> 'b -> unit) -> ('a -> 'b -> unit)
+val protect3 : ('a -> 'b -> 'c -> unit) -> ('a -> 'b -> 'c -> unit)
 
 (* Apply a function and detect if it returns an ordinary result without raising any exception: *)
 val succeed : ('a -> 'b) -> 'a -> bool

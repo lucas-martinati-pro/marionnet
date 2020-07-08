@@ -17,7 +17,9 @@
 
 
 (* Protect an action from any kind of exception: *)
-let protect f x : unit = try f x with _ -> ()
+let protect  f x : unit = try f x with _ -> ()
+let protect2 f x y : unit = try f x y with e -> ()
+let protect3 f x y z : unit = try f x y z with e -> ()
 
 (* Print immediately a message on stderr. For debugging purposes: *)
 let pr fmt = Printf.kfprintf flush stderr fmt

@@ -54,8 +54,9 @@ let of_fallible_application ?(fallback=fun _ _ -> ()) f x =
 let apply_or_catch ?(fallback=fun _ _ -> ()) f x =
  try Some (f x) with e -> ((fallback e x); None)
 
-let protect f x =
- try Some (f x) with e -> None
+let protect f x = try Some (f x) with e -> None
+let protect2 f x y = try Some (f x y) with e -> None
+let protect3 f x y z = try Some (f x y z) with e -> None
 
 (* val try_finalize : finally:('a -> (exn, 'b) Either.t -> 'c) -> ('a -> 'b) -> 'a -> 'b option *)
 let try_finalize ~finally f x =

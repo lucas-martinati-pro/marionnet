@@ -946,7 +946,8 @@ class uml_process =
             [ "con=none"; "ssl="^console; "console=ttyS0" ]
         | false ->
             let () = Log.printf1 "uml_process: creating %s: using default console arguments for new pairs filesystem/kernels\n" umid in
-            [ "con0="^console; ]
+            (*[ "con0="^console; ]*)
+            [ "ssl=pts"; "con="^console;]
   in
   let command_line_arguments =
     command_line_arguments @ console_related_arguments

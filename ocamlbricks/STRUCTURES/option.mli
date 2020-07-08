@@ -43,7 +43,9 @@ val filter : ('a -> bool) -> 'a option -> 'a option
 
 val apply_or_catch : ?fallback:(exn -> 'a -> unit) -> ('a -> 'b) -> 'a -> 'b option
 (* apply_or_catch simplified: *)
-val protect : ('a -> 'b) -> ('a -> 'b option)
+val protect  : ('a -> 'b) -> ('a -> 'b option)
+val protect2 : ('a -> 'b -> 'c) -> ('a -> 'b -> 'c option)
+val protect3 : ('a -> 'b -> 'c -> 'd) -> ('a -> 'b -> 'c -> 'd option)
 
 (* Note that ~finally is itself protected by exceptions and its result is ignored. *)
 val try_finalize : finally:('a -> (exn, 'b) Either.t -> 'ignored) -> ('a -> 'b) -> 'a -> 'b option

@@ -375,7 +375,7 @@ let make
     (* --- *)
     (* Register and call the "Startup configuration" callback according to current distribution:  *)
     let () =
-      let callback d =
+      let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
         let sensitive = (vm_installations#marionnet_relay_supported_by d) in
         form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive)
       in
@@ -392,7 +392,7 @@ let make
     in
     (* Register and call the "Consoles" callback and set it according to current distribution:  *)
     let () =
-      let callback d =
+      let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
         let sensitive = (vm_installations#multiple_consoles_supported_by d) in
         form#set_sensitive ~label_text:(s_ "Consoles") (sensitive);
         (* console_no#misc#set_sensitive (sensitive); *)
@@ -404,7 +404,7 @@ let make
     in
     (* Register `memory' callback and set it according to current distribution:  *)
     let () =
-      let callback d =
+      let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
         let memory_min = (vm_installations#memory_min_size_of d) in
         let () = Option.iter (fun x -> memory#adjustment#set_bounds ~lower:(float_of_int x) ()) memory_min in
         let memory_suggested = (vm_installations#memory_suggested_size_of d) in
@@ -735,6 +735,31 @@ class machine
    self#set_console_no console_no;
    self#set_terminal terminal;
 
+ (* ---------------------------------------------------------------------
+        Code section about X11-forwarding based on pseudo-terminals:
+    --------------------------------------------------------------------- *)
+ (*
+                    HOST SIDE                  |          GUEST SIDE
+                                               |
+  [] <======-marionnet-fork-or-thread-======>[]|[]<=========-socat-=========>[]
+  unix/inet                     pseudo-terminal|serial port    /tmp/.X11-uix/X0
+  X11 server socket            Ex:"/dev/pts/29"|Ex:"/dev/ttyS4"     unix socket
+  Ex:(inet 127.0.0.1:6010)                     |
+
+  The marionnet-dummy-xserver, running on guest side, accepts connections from the Unix socket "/tmp/.X11-unix/Xd"
+  (corresponding to DISPLAY=:d.0) and, for an accepted connexion, starts the script marionnet-dummy-xservice that do the job.
+  Basically, this job is nothing more than a "socat" service (/usr/bin/socat, see "man socat") connecting this socket to an
+  available (simulated) serial port in the range /dev/ttySx. The UML kernel will be kind enough to provide an associated
+  pseudo-terminal (/dev/pts/x) on host side, and marionnet.native, running on host side, will provide the rest of connection
+  from the good pseudo-terminal to the real X11 server. The marionnet-dummy-xserver is itself implemented with /usr/bin/socat
+  (instead of another "native-program" of this repository) in order to facilitate the installation of all the necessary stuff
+  in the guest GNU/Linux systems.
+  ---
+  The little script "uml/guest/make-tarball-for-guest-system.sh" builds easily a tarball, with all the stuff
+  (/etc/init.d/marionnet-{relay,dummy-xserver}, /usr/bin/marionnet-dummy-xservice), ready to be extracted in the
+  root directory of the guest filesystem.
+ *)
+
  (* Watching thread as future (may be tasted): *)
  val mutable hostfs_watching_thread : (unit Future.t) option = None
  (* --- *)
@@ -794,8 +819,8 @@ class machine
     if X.xserver_address = None then failwith "X server not available" else (* continue: *)
     let target : Network.server_address = Option.extract (X.xserver_address) in
     (* --- *)
-    let () = Log.printf5 "machine[%s]#start_pts_relay: about to start a pts relay %s -> %s (fork=%b) (terminal=%s)\n"
-      (self#name) (host_pts) (Network.string_of_server_address target) (no_fork=None) (self#get_terminal)
+    let () = Log.printf4 "machine[%s]#start_pts_relay: about to start a pts relay (%s) %s -> %s\n"
+      (self#name) (if no_fork=None then "fork" else "thread") (host_pts) (Network.string_of_server_address target)
     in
     let (prm, ctrl) : ((exn, unit) Either.t Future.t) * (Future.Control.t) =
       Network.Socat.pts_of_stream_server ?no_fork ~filename:(host_pts) ~target ()
@@ -821,8 +846,8 @@ class machine
  method private start_hostfs_x11_directory_watching_thread () : unit Future.t =
      (* --- *)
    let hostfs_x11_directory = Filename.concat (self#get_hostfs_directory ()) ".X11-unix" in
-   let () = try Unix.mkdir (hostfs_x11_directory) 0o777 with _ -> () in
-   let () = try Unix.chmod (hostfs_x11_directory) 0o777 with _ -> () in
+   let () = Misc.protect2 Unix.mkdir (hostfs_x11_directory) 0o777 in
+   let () = Misc.protect2 Unix.chmod (hostfs_x11_directory) 0o777 in
    (* --- *)
    let callback =
      (* --- *)

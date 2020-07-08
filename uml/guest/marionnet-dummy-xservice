@@ -32,7 +32,7 @@
 #  the guest GNU/Linux systems.
 
 # Global settings:
-TARGET_DIR="/mnt/hostfs/.X11-unix"
+MARIONNET_WATCHING_DIR="/mnt/hostfs/.X11-unix"
 BAUDS_LIST="4000000 3500000 3000000 2500000 2000000 1500000 1152000 921600 576000 460800 230400 115200 57600 38400"
 
 # Usage: if SOURCEING; then echo "SOURCEING"; else echo "NOT SOURCEING"; fi
@@ -61,14 +61,14 @@ function make_ttySi_if_needed {
   local DEVICE=/dev/ttyS$i
   # ---
   if ! test -e $DEVICE; then
-    mknod -m 666 $DEVICE c 4 $i
-    chgrp dialout $DEVICE && chgrp root $DEVICE
+    # mknod -m 666 /dev/ttyS0 c 4 64
+    mknod -m 666 $DEVICE c 4 $((64+i))
+    chgrp dialout $DEVICE || chgrp root $DEVICE
   fi &>/dev/null
   # ---
   chmod 666 $DEVICE &>/dev/null
   set_maximal_baud_rate $DEVICE
 }
-
 function get_devices_busy_by_socat {
   local SOCAT_PROCESSES DEVICE p
   # ---
@@ -94,7 +94,8 @@ function get_host_device_assigned_to {
   # ---
   # The following bash redirection causes a UML-kernel reaction,
   # visible though `dmesg' or /proc/kmsg
-  read -N 0 <$DEVICE
+  # read -N 0 <$DEVICE
+  touch $DEVICE
   sync
   RESULT=$(dmesg | extract_UML_kernel_message_of $DEVICE_INDEX)
   if [[ -z $RESULT ]]; then
@@ -105,25 +106,26 @@ function get_host_device_assigned_to {
   echo $RESULT
 }
 
-# Search for the first free serial port, starting from 5 (6th) :
+# Search for the first free serial port, starting from 1 (2nd) :
 function main {
-  # global TARGET_DIR
+  # global MARIONNET_WATCHING_DIR
   local DEVICE_INDEX DEVICE HOST_DEVICE MSG_OPENED MSG_CLOSED
   # ---
-  for DEVICE_INDEX in {5..255}; do
+  # Start from /dev/ttyS1 (excluding /dev/ttyS0):
+  for DEVICE_INDEX in {1..255}; do
     # ---
     make_ttySi_if_needed $DEVICE_INDEX
     # ---
     DEVICE=/dev/ttyS$DEVICE_INDEX
     # ---
     if ! get_devices_busy_by_socat | grep -q $DEVICE; then
-      mkdir -p $TARGET_DIR
-      chmod a+rw $TARGET_DIR
+      mkdir -p   ${MARIONNET_WATCHING_DIR}
+      chmod a+rw ${MARIONNET_WATCHING_DIR}
       # ---
       HOST_DEVICE=$(get_host_device_assigned_to $DEVICE_INDEX)
       # ---
-      MSG_OPENED=$TARGET_DIR/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.opened  # Ex: ttyS7-pts15.opened
-      MSG_CLOSED=$TARGET_DIR/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.closed  # Ex: ttyS7-pts15.closed
+      MSG_OPENED=${MARIONNET_WATCHING_DIR}/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.opened  # Ex: ttyS7-pts15.opened
+      MSG_CLOSED=${MARIONNET_WATCHING_DIR}/ttyS${DEVICE_INDEX}-pts${HOST_DEVICE##*/}.closed  # Ex: ttyS7-pts15.closed
       # ---
       # Send to marionnet the name of the /dev/pts/x device involved by guest $DEVICE:
       echo $HOST_DEVICE > $MSG_OPENED

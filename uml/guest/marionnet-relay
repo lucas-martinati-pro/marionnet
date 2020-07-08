@@ -304,10 +304,11 @@ fi
   { test -x "$XSERVER" && type &>/dev/null -p "$XSERVICE"; }
  then
    # Clean directory .X11-unix
-   DISPLAY_VALUE=:${x11_display_number:-":0.0"}
-   mkdir -p /mnt/hostfs/.X11-unix
-   rm -f /mnt/hostfs/.X11-unix/*
-   chmod a+rwx /mnt/hostfs/.X11-unix
+   DISPLAY_VALUE=:${x11_display_number:-"0.0"}
+   MARIONNET_WATCHING_DIR="/mnt/hostfs/.X11-unix"
+   mkdir -p $MARIONNET_WATCHING_DIR
+   rm -f $MARIONNET_WATCHING_DIR/?*
+   chmod a+rwx $MARIONNET_WATCHING_DIR
  fi
 
  # Support for `ssh' tunnelling:

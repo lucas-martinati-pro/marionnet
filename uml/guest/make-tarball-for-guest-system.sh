@@ -42,8 +42,13 @@ echo "(to be performed in the UML terminal as \"root\"):"
 echo "---"
 echo "  cd /"
 echo "  tar xvzf /mnt/hostfs/${TARGET#../}"
+echo "  chown root:root $FILES"
 echo "  systemctl enable marionnet-relay"
 echo "  systemctl enable marionnet-dummy-xserver"
+echo "  # or for old System-V based machines:"
+echo '  # for i in $(find /etc/rc?.d/ -name "*marionnet-relay"); do ln -s ../init.d/marionnet-dummy-xserver ${i%S*marionnet-relay}/S20marionnet-dummy-xserver; done'
+echo "  # update-rc.d marionnet-dummy-xserver enable"
+echo "  # reboot"
 echo "---"
 
 # Mr proper:
