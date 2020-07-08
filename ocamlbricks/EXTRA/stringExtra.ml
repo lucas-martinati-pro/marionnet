@@ -18,11 +18,12 @@
 (** *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
-(** The type of the standard [String.blit]. *)
-type blit_function = string -> int -> string -> int -> int -> unit
+(** The type of the standard [Bytes.blit]. *)
+type blit_function = bytes -> int -> bytes -> int -> int -> unit
 
 (** Make a blit function that uses the argument [~(perform:char->int->unit)]
     to perform an action for any scanned character. The first
@@ -33,13 +34,13 @@ type blit_function = string -> int -> string -> int -> int -> unit
     ... ]} *)
 let blitting ~(perform:char->int->unit) : blit_function =
  fun s1 ofs1 s2 ofs2 len ->
-  if len < 0 || ofs1 < 0 || ofs1 > String.length s1 - len
-             || ofs2 < 0 || ofs2 > String.length s2 - len
-  then invalid_arg "String.blitting" else
+  if len < 0 || ofs1 < 0 || ofs1 > Bytes.length s1 - len
+             || ofs2 < 0 || ofs2 > Bytes.length s2 - len
+  then invalid_arg "Bytes.blitting" else
   let ofs1=ref ofs1 in
   let ofs2=ref ofs2 in
   for i=1 to len do
-    let c = s1.[!ofs1] in
+    let c = Bytes.get s1 (!ofs1) in
     let i = !ofs2 in
     (perform c i);
     (Bytes.set s2 i c);
@@ -47,16 +48,16 @@ let blitting ~(perform:char->int->unit) : blit_function =
     incr ofs2;
   done
 
-(** Import the content of the [Unix] file descriptor. The optional [?(blit=String.blit)] allows
+(** Import the content of the [Unix] file descriptor. The optional [?(blit=Bytes.blit)] allows
     to perform some operations during the copy of characters (see the function {!StringExtra.blitting}). *)
-let from_descr ?(blit:blit_function=String.blit) (fd:Unix.file_descr) : string =
+let from_descr ?(blit:blit_function=Bytes.blit) (fd:Unix.file_descr) : string =
  let q = Queue.create () in
  let buffer_size = 8192 in
  let buff = Bytes.create buffer_size in
  let rec loop1 acc_n =
   begin
    let n = (Unix.read fd buff 0 buffer_size)    in
-   if (n=0) then acc_n else ((Queue.push ((String.sub buff 0 n),n) q); loop1 (acc_n + n))
+   if (n=0) then acc_n else ((Queue.push ((Bytes.sub buff 0 n),n) q); loop1 (acc_n + n))
    end in
  let dst_size = loop1 0 in
  let dst = Bytes.create dst_size in
@@ -67,17 +68,17 @@ let from_descr ?(blit:blit_function=String.blit) (fd:Unix.file_descr) : string =
   loop2 (dstoff+src_size)
   end in
  (loop2 0);
- dst
+ Bytes.to_string dst
 
 (** Similar to {!StringExtra.from_descr} but the user provides the file name instead of the file descriptor. *)
-let from_file ?(blit:blit_function=String.blit) (filename:string) : string =
+let from_file ?(blit:blit_function=Bytes.blit) (filename:string) : string =
  let fd = (Unix.openfile filename [Unix.O_RDONLY;Unix.O_RSYNC] 0o640) in
  let result = from_descr ~blit fd in
  (Unix.close fd);
  result
 
 (** Similar to {!StringExtra.from_descr} but the user provides the [Pervasives.in_channel] instead of the file descriptor. *)
-let from_channel ?(blit:blit_function=String.blit) in_channel : string =
+let from_channel ?(blit:blit_function=Bytes.blit) in_channel : string =
  from_descr ~blit (Unix.descr_of_in_channel in_channel)
 
 (** Make a copy of a string performing an action for any scanned character. *)
@@ -85,8 +86,8 @@ let from_string ~(perform:char->int->unit) (src:string) : string =
  let len = String.length src in
  let dst = Bytes.create len in
  let blit = blitting ~perform in
- (blit src 0 dst 0 len);
- dst
+ (blit (Bytes.of_string src) 0 dst 0 len);
+ Bytes.to_string dst
 
 (** [nth_index_from s n c nth] return the index of the [nth]
     occurrence of the character [c] searching in [s] from the offset [n].
@@ -315,7 +316,8 @@ let assemble (xs:char list) : string =
  let rec loop i = function
   | []    -> ()
   | x::xs -> (Bytes.set s i x); loop (i+1) xs
- in (loop 0 xs); s
+ in (loop 0 xs);
+ (Bytes.to_string s)
 
 (** Disassemble (split) the string and return the reversed list of its characters. {b Example}:
 {[# disassemble_reversing "abcd" ;;
@@ -332,11 +334,12 @@ let disassemble_reversing ?(acc=[]) (s:string) : char list =
  : string = "dcba" ]} *)
 let assemble_reversing ?length (xs:char list) : string =
  let n = match length with None -> List.length xs | Some x->x in
- let s = String.make n ' ' in
+ let s = Bytes.make n ' ' in
  let rec loop i = function
   | []    -> ()
   | x::xs -> (Bytes.set s i x); loop (i-1) xs
- in (loop (n-1) xs); s
+ in (loop (n-1) xs);
+ (Bytes.to_string s)
 
 end
 
@@ -382,7 +385,7 @@ let init n f  =
  for i = 0 to n-1 do
    (Bytes.set s i (f i))
  done;
- s
+ Bytes.to_string s
 
 (** Similar to [Array.map]. {b Example}:
 {[# map (fun x -> if x='a' then 'A' else x) "aaabbbac" ;;
@@ -516,15 +519,18 @@ let word ?blanks (s:string) =
   fun i -> try ws.(i-1) with _ -> ""
 
 (** Catenate a list of strings in an efficient way: the target string is created once
-    (not as happen with a fold of [^]). The optional [?(blit=String.blit)] allows
+    (not as happen with a fold of [^]). The optional [?(blit=blit.blit)] allows
     to perform some operations during the copy of characters (see the function {!StringExtra.blitting}). *)
-let concat ?(blit:blit_function=String.blit) xs =
+let concat ?(blit:blit_function=Bytes.blit) xs =
  let len  = List.fold_left (fun k s -> k+(String.length s)) 0 xs in
  let dst  = Bytes.create len in
  let _ =
     List.fold_left
-    (fun k src -> let l=(String.length src) in (blit src 0 dst k l); (k+l)) 0 xs in
- dst
+    (fun k src ->
+       let src = Bytes.of_string src in
+       let l=(Bytes.length src) in (blit src 0 dst k l); (k+l)) 0 xs
+ in
+ Bytes.to_string dst
 
 (** Remove all occurrences of a character from a string. *)
 let rm d s = concat (split ~d s) ;;
@@ -791,3 +797,37 @@ let make_wide str n =
   | l when l = n -> str
   | l when l < n ->  str^(String.make (n-l) ' ')
   | l (* l > n*) ->  String.sub str 0 n
+
+
+ (* val group_by : ('a -> 'b) -> 'a list -> ('b * 'a list) list
+    The result is sorted by labels ('b) with standard `compare':
+    Example:
+      group_by (String.length) [ "a"; "b"; "abc"; "ab"; "bc"; "bcd"; "abcd"; "cd"; "cde"; "defg" ] ;;
+      - : (int * string list) list =
+      [(1, ["b"; "a"]); (2, ["cd"; "bc"; "ab"]); (3, ["cde"; "bcd"; "abc"]); (4, ["defg"; "abcd"])]
+    *)
+ let group_by f xs =
+   let lxs = List.map (fun x -> (f x, x)) xs in
+   let ht = Hashtbl.create 0 in
+   let () = List.iter (fun (l,x) -> Hashtbl.add ht l x) lxs in
+   let keys = Hashtbl.fold (fun l x s -> l::s) ht [] in
+   let keys = List.sort_uniq (compare) keys in
+   List.map (fun l -> l, Hashtbl.find_all ht l) keys
+
+ (* val partition : ('a -> 'b) -> 'a list -> ('a list) list
+    As `group_by', but removing labels from the result:
+      partition (String.length) [ "a"; "b"; "abc"; "ab"; "bc"; "bcd"; "abcd"; "cd"; "cde"; "defg" ] ;;
+      - : string list list = [["b"; "a"]; ["cd"; "bc"; "ab"]; ["cde"; "bcd"; "abc"]; ["defg"; "abcd"]]
+    *)
+ let partition f xs =
+   List.map snd (group_by f xs)
+
+(* absorption [ "a"; "b"; "abc"; "ab"; "bc"; "bcd"; "abcd"; "cd"; "cde"; "defg" ]  ;;
+    - : string list = ["b"; "a"; "cd"; "defg"]
+    *)
+let absorption (xs) =
+  let xss = partition (String.length) xs in
+  let yss = Array.of_list xss in
+  let yss = List.mapi (fun i xs -> List.filter (fun x -> i=0 || List.for_all (fun y -> not (is_prefix y x)) yss.(i-1)) xs) xss in
+  List.concat yss
+

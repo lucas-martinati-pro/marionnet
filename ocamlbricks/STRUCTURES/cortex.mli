@@ -53,6 +53,7 @@ val set     : ?guard:('a -> bool) -> 'a t -> 'a -> unit
 val propose : ?guard:('a -> bool) -> 'a t -> 'a -> 'a * bool
 val move    : ?guard:('a -> bool) -> 'a t -> ('a -> 'a) -> 'a * bool
 val apply   : ?guard:('a -> bool) -> 'a t -> ('a -> 'b) -> 'b
+val apply2  : ?guard:('a -> bool) -> 'a t -> ('a -> 'b -> 'c) -> 'b -> 'c
 
 module Async : sig
   val set  : ?guard:('a -> bool) -> 'a t -> 'a -> unit
@@ -554,5 +555,5 @@ module Example2 : sig
   val look : ('a * 'b t) t -> 'b
   val member : ('a * 'b t) t -> 'b t
   end
-end (* functor Make_Examples() *)  
+end (* functor Make_Examples() *)
 ENDIF

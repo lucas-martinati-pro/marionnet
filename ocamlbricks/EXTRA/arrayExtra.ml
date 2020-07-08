@@ -66,6 +66,101 @@ let init2 n f =
 let split xys = init2 (Array.length xys) (fun i -> xys.(i))
 let combine xs ys = Array.init (Array.length xs) (fun i -> xs.(i), ys.(i))
 
+(** {b Example}:
+{[
+# product2 [|1;2;3|] [|'a';'b'|] ;;
+  : (int * char) array = [|(1, 'a'); (1, 'b'); (2, 'a'); (2, 'b'); (3, 'a'); (3, 'b')|]
+]} *)
+let product2 xs ys =
+  let n1 = Array.length xs in
+  let n2 = Array.length ys in
+  let n = n1 * n2 in
+  if n=0 then [||] else
+  let xys = Array.make n (xs.(0), ys.(0)) in
+  (* --- *)
+  let () =
+    for i = 0 to (n1-1) do
+      let offset = i * n2 in
+      for j = 0 to (n2-1) do
+        xys.(offset + j) <- (xs.(i), ys.(j))
+      done;
+    done
+  in
+  (* --- *)
+  xys
+
+(* val product_fold_left2  : 'a array -> 'b array -> 's -> ('s -> 'a -> 'b -> 's) -> 's
+   ---
+   product_fold_left2 [|1;2;3|] [|"aaa";"bbb"|] [] (fun s x y -> (x,y)::s) ;;
+   - : (int * string) list =
+   [(3, "bbb"); (3, "aaa"); (2, "bbb"); (2, "aaa"); (1, "bbb"); (1, "aaa")]
+*)
+let product_fold_left2 xs ys s f =
+  let n1 = Array.length xs in
+  let n2 = Array.length ys in
+  let n = n1 * n2 in
+  if n=0 then s else
+  (* --- *)
+  let s = ref s in
+  let () =
+    for i = 0 to (n1-1) do
+      for j = 0 to (n2-1) do
+        s := f (!s) xs.(i) ys.(j)
+      done;
+    done
+  in
+  (* --- *)
+  (!s)
+
+(* val product_fold_lefti2  : 'a array -> 'b array -> 's -> (int * int -> 's -> 'a -> 'b -> 's) -> 's
+   ---
+   product_fold_lefti2 [|true; false|] [|"aaa";"bbb"|] [] (fun ij s x y -> (ij,(x,y))::s) ;;
+   - : ((int * int) * (bool * string)) list =
+   [((1, 1), (false, "bbb")); ((1, 0), (false, "aaa")); ((0, 1), (true, "bbb")); ((0, 0), (true, "aaa"))]
+*)
+let product_fold_lefti2 xs ys s f =
+  let n1 = Array.length xs in
+  let n2 = Array.length ys in
+  let n = n1 * n2 in
+  if n=0 then s else
+  (* --- *)
+  let s = ref s in
+  let () =
+    for i = 0 to (n1-1) do
+      for j = 0 to (n2-1) do
+        s := f (i,j) (!s) xs.(i) ys.(j)
+      done;
+    done
+  in
+  (* --- *)
+  (!s)
+
+(* val product3 : 'a array -> 'b array -> 'c array -> ('a * 'b * 'c) array *)
+let product3 xs ys zs =
+  let n1 = Array.length xs in
+  let n2 = Array.length ys in
+  let n3 = Array.length zs in
+  let n = n1 * n2 * n3 in
+  if n=0 then [||] else
+  let xyzs = Array.make n (xs.(0), ys.(0), zs.(0)) in
+  (* --- *)
+  let () =
+    let n23 = n2 * n3 in
+    for i = 0 to (n1-1) do
+      let offset1 = i * n23 in
+      for j = 0 to (n2-1) do
+        let offset2 = offset1 + j * n3 in
+          for h = 0 to (n3-1) do
+            xyzs.(offset2 + h) <- (xs.(i), ys.(j), zs.(h))
+          done;
+      done;
+    done
+  in
+  (* --- *)
+  xyzs
+
+
+
 let sorted_copy ?(compare=Pervasives.compare) xs =
   let ys = (Array.copy xs) in
   (Array.sort compare ys);
@@ -191,6 +286,97 @@ let searchi p s =
   let x = s.(i) in
   if (p x) then (Some (i,x)) else loop (i+1)
  in loop 0
+
+(* A deterministic random generator: *)
+let random_int =
+  let seed = Random.get_state (Random.init 72152816) in
+  Random.State.int seed
+
+(* val findi_opt :
+      ?round_from:int ->
+      ?round_from_random:unit ->
+      ('a -> bool) -> 'a array -> (int * 'a) option
+    Example:
+      findi_opt ~round_from_random:() (Pred.even) [|1; 30; 5; 7; 9; 11; 13; 18; 19 |];;
+      - : (int * int) option = Some (7, 18)
+      findi_opt ~round_from_random:() (Pred.even) [|1; 30; 5; 7; 9; 11; 13; 18; 19 |];;
+      - : (int * int) option = Some (1, 30)
+*)
+let findi_opt ?(round_from=0) ?round_from_random p s =
+  let l = Array.length s in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop k i =
+    let i = i mod l in
+    if k>=l then None else
+    let x = s.(i) in
+    if (p x) then (Some (i,x)) else loop (k+1) (i+1)
+  in loop 0 (round_from)
+
+let find_opt ?(round_from=0) ?round_from_random p s =
+  let l = Array.length s in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop k i =
+    let i = i mod l in
+    if k>=l then None else
+    let x = s.(i) in
+    if (p x) then (Some x) else loop (k+1) (i+1)
+  in loop 0 (round_from)
+
+(* val findi_map : ?round_from:int -> ?round_from_random:unit -> ('a -> 'b option) -> 'a array -> (int * 'b) option *)
+let findi_map ?(round_from=0) ?round_from_random p s =
+  let l = Array.length s in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop k i =
+    let i = i mod l in
+    if k>=l then None else
+    let x = s.(i) in
+    match p x with
+    | Some y -> Some (i,y)
+    | None -> loop (k+1) (i+1)
+  in loop 0 (round_from)
+
+(* val find_map : ?round_from:int -> ?round_from_random:unit -> ('a -> 'b option) -> 'a array -> 'b option *)
+let find_map ?(round_from=0) ?round_from_random p s =
+  let l = Array.length s in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop k i =
+    let i = i mod l in
+    if k>=l then None else
+    let x = s.(i) in
+    match p x with
+    | None -> loop (k+1) (i+1)
+    | success -> success
+  in loop 0 (round_from)
+
+
+(* val findi_folding : ?round_from:int -> ?round_from_random:unit -> 's -> 'a array -> ('s -> int -> 'a -> 'b option * 's) -> (int * 'b) option * 's *)
+let findi_folding ?(round_from=0) ?round_from_random s xs p =
+  let l = Array.length xs in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop acc k i =
+    let i = i mod l in
+    if k>=l then (None, acc) else
+    let x = xs.(i) in
+    let y, acc = p acc i x in
+    match y with
+    | Some y -> (Some (i,y), acc)
+    | None   -> loop (acc) (k+1) (i+1)
+  in loop s 0 (round_from)
+
+(* val find_folding : ?round_from:int -> ?round_from_random:unit -> 's -> 'a array -> ('s -> 'a -> 'b option * 's) -> 'b option * 's *)
+let find_folding ?(round_from=0) ?round_from_random s xs p =
+  let l = Array.length xs in
+  let round_from = match round_from_random with None -> round_from | Some () -> random_int l in
+  let rec loop acc k i =
+    let i = i mod l in
+    if k>=l then (None, acc) else
+    let x = xs.(i) in
+    let y, acc = p acc x in
+    match y with
+    | Some y -> (Some y, acc)
+    | None   -> loop (acc) (k+1) (i+1)
+  in loop s 0 (round_from)
+
 
 let find p s =
  let l = Array.length s in
@@ -664,7 +850,7 @@ let random_permutation xs =
   let () =
     Array.iteri
       (fun i x ->
-        let choice = i + (Random.int (n-i)) in
+        let choice = i + (random_int (n-i)) in
         js.(i)<-js.(choice); js.(choice)<-x)
       js
   in

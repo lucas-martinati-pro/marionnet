@@ -16,9 +16,13 @@
 
 (** Additional features for the standard module [String]. *)
 
+IFNDEF OCAML4_02_OR_LATER THEN
+type bytes = string
+ENDIF
+
 (** {2 Importing & copying} *)
 
-type blit_function = string -> int -> string -> int -> int -> unit
+type blit_function = bytes -> int -> bytes -> int -> int -> unit
 val blitting : perform:(char -> int -> unit) -> blit_function
 
 val from_descr   : ?blit:blit_function -> Unix.file_descr -> string
@@ -41,7 +45,8 @@ val rexists         : (char -> bool) -> string -> int option
 
 (** {2 Relations} *)
 
-val is_prefix       : string -> string -> bool
+val is_prefix      : string -> string -> bool
+val absorption     : string list -> string list
 
 (** {2 Extracting sub-strings} *)
 

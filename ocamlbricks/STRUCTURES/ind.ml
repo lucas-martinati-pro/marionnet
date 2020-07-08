@@ -78,7 +78,7 @@ let is_key_member_of t : 'k -> 'bool =
 let map_keys f t =
   let k1s = get_original_keys t in
   let k2s = Array.map f k1s in
-  let ht2 = Hashset.extract_ht (Hashset.of_array k2s) in
+  let ht2 = Hashset.to_hashtbl (*copy!*) (Hashset.of_array k2s) in
   { t with keys = Keys (ht2, k2s) }
 
 (* -------------------- *)
@@ -709,7 +709,7 @@ module As_vector = struct
       let ks, xs = ArrayTk.Tuple_array.split2 (kxs) in
       let hset = Hashset.of_array ks in
       let ks' = Hashset.to_array hset in
-      let ht  = Hashset.extract_ht hset in (* mapping key -> index *)
+      let ht  = Hashset.to_hashtbl (*copy!*) hset in (* mapping key -> index *)
       let n = Array.length ks' in
       let xss, _ =
         ArrayTk.Partition.partitioni ~outer_size:n (fun i _x -> Hashtbl.find ht ks.(i)) xs

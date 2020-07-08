@@ -23,7 +23,8 @@
 (** *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
 type filename = string
@@ -190,7 +191,7 @@ let get_file_content ~filename =
     (fun in_channel length ->
        let s = Bytes.create length in
        really_input in_channel s 0 length;
-       s)
+       Bytes.to_string s)
 
 let put_file_content ?perm ~filename content =
   with_open_out_bin ?perm ~filename

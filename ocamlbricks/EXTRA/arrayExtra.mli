@@ -44,10 +44,19 @@ val exists  : (int -> 'a -> bool) -> 'a array -> bool
 val lexists : (int -> 'a -> bool) -> 'a array -> int option
 val rexists : (int -> 'a -> bool) -> 'a array -> int option
 
-val search  : ('a -> bool) -> 'a array -> 'a option
-val searchi : ('a -> bool) -> 'a array -> (int * 'a) option
-val find    : ('a -> bool) -> 'a array -> 'a
-val findi   : ('a -> bool) -> 'a array -> (int * 'a)
+val search    : ('a -> bool) -> 'a array -> 'a option
+val searchi   : ('a -> bool) -> 'a array -> (int * 'a) option
+val find      : ('a -> bool) -> 'a array -> 'a
+val findi     : ('a -> bool) -> 'a array -> (int * 'a)
+(* --- *)
+val find_opt      : ?round_from:int -> ?round_from_random:unit -> ('a -> bool) -> 'a array -> 'a option
+val findi_opt     : ?round_from:int -> ?round_from_random:unit -> ('a -> bool) -> 'a array -> (int * 'a) option
+(* --- *)
+val find_map      : ?round_from:int -> ?round_from_random:unit -> ('a -> 'b option) -> 'a array -> 'b option
+val findi_map     : ?round_from:int -> ?round_from_random:unit -> ('a -> 'b option) -> 'a array -> (int * 'b) option
+(* --- *)
+val find_folding  : ?round_from:int -> ?round_from_random:unit -> 's -> 'a array -> ('s -> 'a -> 'b option * 's) -> 'b option * 's
+val findi_folding : ?round_from:int -> ?round_from_random:unit -> 's -> 'a array -> ('s -> int -> 'a -> 'b option * 's) -> (int * 'b) option * 's
 
 val search_longest_sequence : ?leftmost:unit -> ('a -> bool) -> 'a array -> (int * int) option
 val shared_property : ('a -> 'b) -> 'a array -> bool
@@ -108,6 +117,14 @@ val fold_binop : ('a -> 'a -> 'a) -> 'a array -> 'a
 val init2 : int -> (int -> 'a *'b) -> 'a array * 'b array
 val split : ('a * 'b) array -> 'a array * 'b array
 val combine : 'a array -> 'b array -> ('a * 'b) array
+
+(* Cartesian products: *)
+val product2 : 'a array -> 'b array -> ('a * 'b) array
+val product3 : 'a array -> 'b array -> 'c array -> ('a * 'b * 'c) array
+
+(* Fold without allocating the cartesian product (product2) of arguments: *)
+val product_fold_left2   : 'a array -> 'b array -> 's -> ('s -> 'a -> 'b -> 's) -> 's
+val product_fold_lefti2  : 'a array -> 'b array -> 's -> (int * int -> 's -> 'a -> 'b -> 's) -> 's
 
 val cut : lengths:int list -> 'a array -> 'a array list
 

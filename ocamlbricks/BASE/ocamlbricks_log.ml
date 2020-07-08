@@ -26,6 +26,6 @@ include Log_builder.Make (struct
   let synchronized = true          (* using threads *)
  end);;
 
-let enable  () = Tuning.Set.debug_level (fun () -> 1)
+let enable ?(level=1) () = Tuning.Set.debug_level (fun () -> level)
 let disable () = Tuning.Set.debug_level (fun () -> 0)
 

@@ -18,8 +18,10 @@
 (** *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
+
 
 module Log = Ocamlbricks_log
 
@@ -243,7 +245,7 @@ let file_move input_name output_name =
 let put ?(perm=0o644) (fname:filename) (x:content) : unit =
   let fd = (Unix.openfile fname [Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC] perm) in
   let n = String.length x in
-  ignore (Unix.write fd x 0 n);
+  ignore (Unix.write fd (Bytes.of_string x) 0 n);
   (Unix.close fd)
 ;;
 
@@ -255,7 +257,7 @@ let rewrite = put;;
 let append ?(perm=0o644) (fname:filename) (x:content) =
   let fd = (Unix.openfile fname [Unix.O_CREAT; Unix.O_WRONLY; Unix.O_APPEND] perm) in
   let n  = String.length x in
-  ignore (Unix.write fd x 0 n);
+  ignore (Unix.write fd (Bytes.of_string x) 0 n);
   (Unix.close fd)
 ;;
 
@@ -272,13 +274,13 @@ let cat (fname:filename) =
   let rec loop acc =
     begin
     let n = (Unix.read fd buff 0 len) in
-    let s = String.sub buff 0 n in
-    if (n<len) then (String.concat "" (List.rev (s::acc)))
+    let s = Bytes.sub buff 0 n in
+    if (n<len) then (Bytes.concat (Bytes.of_string "") (List.rev (s::acc)))
     else loop (s::acc)
     end in
   let result = loop [] in
   let () = Unix.close fd in
-  result
+  (Bytes.to_string result)
 ;;
 
 

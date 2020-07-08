@@ -19,11 +19,11 @@
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
-(* When this source is read (preprocessing), the variable OCAML4_02_OR_LATER is not set, 
+(* When this source is read (preprocessing), the variable OCAML4_02_OR_LATER is not set,
    even if we are compiling with OCaml 4.02.x or later.
    This means that the pseudo module Bytes will be used in any case, but it's not a problem. *)
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  let create=String.create  let set=String.set  let sub=String.sub  let blit=String.blit  let to_string x = x end
 ENDIF
 
 open Camlp4.PreCast
@@ -40,19 +40,19 @@ let from_descr (fd:Unix.file_descr) : string =
  let rec loop1 acc_n =
   begin
    let n = (Unix.read fd buff 0 buffer_size)    in
-   if (n=0) then acc_n else ((Queue.push ((String.sub buff 0 n),n) q); loop1 (acc_n + n))
+   if (n=0) then acc_n else ((Queue.push ((Bytes.sub buff 0 n),n) q); loop1 (acc_n + n))
    end in
  let dst_size = loop1 0 in
  let dst = Bytes.create dst_size in
  let rec loop2 dstoff = if dstoff>=dst_size then () else
   begin
   let (src,src_size) = Queue.take q in
-  (String.blit src 0 dst dstoff src_size);
+  (Bytes.blit src 0 dst dstoff src_size);
   loop2 (dstoff+src_size)
   end in
  (loop2 0);
 (* (Printf.eprintf "Preprocessing: include_as_string: the length of the included string is %d\n" dst_size);*)
- dst
+ Bytes.to_string dst
 ;;
 
 let from_file (filename:string) : string =

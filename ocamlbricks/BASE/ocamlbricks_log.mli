@@ -14,7 +14,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-val enable  : unit -> unit
+val enable  : ?level:int (* 1 *) -> unit -> unit
 val disable : unit -> unit
 
 val printf  : ?v:int -> ?force:bool -> ?banner:bool -> ((unit, out_channel, unit) format) -> unit

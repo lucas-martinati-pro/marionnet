@@ -150,7 +150,7 @@ let uniq ?(opt="") text = Wrapper.textfilter "uniq" ~opt text ;;
 let wc text : int =
  Wrapper.make
    ~it:(Some StringExtra.Text.to_string)
-   ~ot:(StringExtra.chop || int_of_string)
+   ~ot:(StringExtra.chop ||> int_of_string)
    "wc -w"
    ~input:(Some text) () ;;
 
@@ -171,7 +171,7 @@ let cc ?(strict=false) text : int =
  let it = Some(if strict then (String.concat "") else (StringExtra.Text.to_string)) in
  Wrapper.make
    ~it
-   ~ot:(StringExtra.chop || int_of_string)
+   ~ot:(StringExtra.chop ||> int_of_string)
    "wc -c"
    ~input:(Some text) () ;;
 
@@ -214,7 +214,7 @@ let glob ?(null=false) (args:filexpr) =
 
  let file ?(opt="") (arg:filexpr) =
   Wrapper.make ~at:Treat.identity ~ot:StringExtra.Text.of_string "file" ~opt ~args:(Some arg) ();;
-  
+
  let nl ?(opt="") (arg:filexpr) =
   Wrapper.make ~at:Treat.identity ~ot:StringExtra.Text.of_string "nl" ~opt ~args:(Some arg) ();;
 
@@ -390,12 +390,12 @@ let rec kill_descendants_by_ps ?(pid=Unix.getpid ()) () =
  kill_children_by_ps ~pid ()
 ;;
 
-(** Escape blanks, parenthesis, '&', '*' and '?'. 
+(** Escape blanks, parenthesis, '&', '*' and '?'.
 {b Example:}
 {[# escaped_filename "foo (v0.1)" ;;
-  : string = "foo\\ \\(v0.1\\)" 
+  : string = "foo\\ \\(v0.1\\)"
 ]}*)
-let escaped_filename : string -> string = 
-  StrExtra.Global.substitute (Str.regexp "[ )(&*?]") (Printf.sprintf "\\%s") 
+let escaped_filename : string -> string =
+  StrExtra.Global.substitute (Str.regexp "[ )(&*?]") (Printf.sprintf "\\%s")
 ;;
 

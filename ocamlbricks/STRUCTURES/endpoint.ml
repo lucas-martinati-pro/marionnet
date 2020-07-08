@@ -17,7 +17,8 @@
 (** Abstract channel endpoints (sources and sinks). *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
 (** Abstract source (or negative) channel endpoints. *)
@@ -47,8 +48,9 @@ let to_string = function
     do not must be closed. If the user has given a filename, the on-the-fly created
     descriptor must be closed. *)
 let to_file_descr =
-  let in_descr_of_string s =
-    let len = (String.length s) in
+  let in_descr_of_string (s:string) =
+    let s = Bytes.of_string s in
+    let len = (Bytes.length s) in
     let (pread,pwrite) = Unix.pipe () in
     let count = (Unix.write pwrite s 0 len) in
     (assert (count = len));
@@ -98,18 +100,18 @@ let fold_lines (f : 'a -> recno -> line -> 'a) s t : 'a =
       fun ch ->
         let acc = ref s in
         let i = ref 1 in
-        let () = 
+        let () =
           try while true do
             let line = input_line ch in
             let acc' = (f !acc !i line) in
             incr i;
             acc := acc';
-          done    
+          done
           with End_of_file -> ()
         in
         !acc
     end
-    
+
 let map_lines (f : recno -> line -> 'a) t : 'a array =
   let (xs, size) = fold_lines (fun (acc,_) i line -> ((f i line)::acc),i) ([],0) t in
   ArrayExtra.of_known_length_list ~reversing:true size xs

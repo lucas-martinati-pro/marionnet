@@ -189,10 +189,6 @@ let lift_to_the_top_positions pred xs =
   let (ys,zs) = List.partition pred xs in
   List.append ys zs
 
-
-open Sugar
-
-
 (** Similar to the standard [List.hd], but retrieve the list of first elements (by default [n=1] as in [List.hd]).
     Thus, the result is a list. *)
 let rec head ?(n:int=1) (l:'a list) : ('a list) =
@@ -358,10 +354,13 @@ let rec shuffle l = if l = [] then [] else
 let permute f l = List.map (fun i -> List.nth l (f i)) (indexes l)
 
 (** Return a random permutation function for the given list. *)
-let shuffler l = l => (indexes || shuffle || asFunction )
+(* let shuffler l = l |> (indexes |>| shuffle |>| asFunction) *)
+let shuffler l =
+  indexes l |> shuffle |> asFunction
 
 (** Return a random list of indexes for the given list. *)
-let shuffleIndexes l = l => (indexes || shuffle)
+let shuffleIndexes l =
+  indexes l |> shuffle
 
 (** The {e folding} of lists is simply a [List.fold_left] specialization:
      - the first element is the {b head} of the list
@@ -470,14 +469,13 @@ let rec combine4 l1 l2 l3 l4 = match (l1,l2,l3,l4) with
  | (x1,x2,x3,x4,x5,x6,x7,x8)::r -> let (s1,s2,s3,s4,s5,s6,s7,s8) = (split8 r) in (x1::s1,x2::s2,x3::s3,x4::s4,x5::s5,x6::s6,x7::s7,x8::s8)
  ;;
 
-(** Cartesian products: *)
+(** (Heterogeneous) cartesian products: *)
 
 let rec product2 xs ys =
   match xs with
   | []    -> []
   | x::xs -> List.append (List.map (fun y -> (x,y)) ys) (product2 xs ys)
 ;;
-
 
 let rec product3 xs ys zs = match xs with x::xs -> List.append (List.map (fun (y,z) -> (x,y,z)) (product2 ys zs)) (product3 xs ys zs) | [] -> [] ;;
 let rec product4 xs ys zs us = match xs with x::xs -> List.append (List.map (fun (y,z,u) -> (x,y,z,u)) (product3 ys zs us)) (product4 xs ys zs us) | [] -> [] ;;
@@ -486,22 +484,54 @@ let rec product6 xs ys zs us vs ts = match xs with x::xs -> List.append (List.ma
 let rec product7 xs ys zs us vs ts ws = match xs with x::xs -> List.append (List.map (fun (y,z,u,v,t,w) -> (x,y,z,u,v,t,w)) (product6 ys zs us vs ts ws)) (product7 xs ys zs us vs ts ws) | [] -> [] ;;
 let rec product8 xs ys zs us vs ts ws ls = match xs with x::xs -> List.append (List.map (fun (y,z,u,v,t,w,l) -> (x,y,z,u,v,t,w,l)) (product7 ys zs us vs ts ws ls)) (product8 xs ys zs us vs ts ws ls) | [] -> [] ;;
 
-(* General case: *)
-type 'a tuple = 'a list
+module Homegeneous_cartesian_products = struct
 
-(** {b Example}:
-# product [[1;2;3];[4;5];[6]] ;;
-  : int list list =
-[[1; 4; 6]; [1; 5; 6]; [2; 4; 6]; [2; 5; 6]; [3; 4; 6]; [3; 5; 6]]
-*)
-let rec product : 'a list tuple -> 'a tuple list = function
-| [] -> []
-| [xs] -> List.map (fun x -> [x]) xs
-| xs::yss ->
-    match xs with
-    | x::xs -> List.append (List.map (fun ys -> x::ys) (product yss)) (product (xs::yss))
-    | [] -> []
-;;
+  (* General case: *)
+  type 'a n_tuple = 'a list (* a n-tuple i.e. a list (of homogeneous elements) of length 3 *)
+  type 'a choices = 'a list
+
+  (** Thanks to Gabriel Scherer for the basic case correction ([] ⊢> [[]])
+      and for the more concise definition.
+      Source: http://gallium.inria.fr/blog/on-the-nary-cartesian-product/
+      ---
+      {b Example}:
+      # product [[1;2;3];[4;5];[6]] ;;
+        : int list list =
+      [[1; 4; 6]; [1; 5; 6]; [2; 4; 6]; [2; 5; 6]; [3; 4; 6]; [3; 5; 6]]
+      ---
+      Generated tuples have the length equals to the number of arguments:
+  *)
+  let rec product : ('a choices) n_tuple -> ('a n_tuple) choices  =
+    function
+    | [] -> [[]]
+    | xs :: xss ->
+        let rest = product xss in
+        List.concat
+          (List.map (fun x -> List.map (fun r -> x::r) rest) xs)
+
+  (* Slightly more memory-saving than (List.map ∘ product): the last level lists (tuples)
+    of the product are directly passed to the mapped function. So, these tuples are made
+    and immediately consumed. However, all tuples of intermediary levels (rest) are generated
+    as usual with `product'. *)
+  let product_map xss f =
+    match xss with
+    | [] -> [f []]
+    | xs :: xss ->
+        let rest = product xss in
+        List.concat
+          (List.map (fun x -> List.map (fun r -> f (x::r)) rest) xs)
+
+  let product0 = product []
+  let product1 x1 = product [x1]
+  let product2 x1 x2 = product [x1; x2]
+  let product3 x1 x2 x3 = product [x1; x2; x3]
+  let product4 x1 x2 x3 x4 = product [x1; x2; x3; x4]
+  let product5 x1 x2 x3 x4 x5 = product [x1; x2; x3; x4; x5]
+  let product6 x1 x2 x3 x4 x5 x6 = product [x1; x2; x3; x4; x5; x6]
+  let product7 x1 x2 x3 x4 x5 x6 x7 = product [x1; x2; x3; x4; x5; x6; x7]
+  let product8 x1 x2 x3 x4 x5 x6 x7 x8 = product [x1; x2; x3; x4; x5; x6; x7; x8]
+
+end (* Homegeneous_cartesian_products *)
 
 module Assoc = struct
 
@@ -686,6 +716,49 @@ let rec prefixes = function
 | [] -> [[]]
 | x::xs -> []::(List.map (fun p -> x::p) (prefixes xs))
 
+(* val group_by : ('a -> 'b) -> 'a list -> ('b * 'a list) list
+  The result is sorted by labels ('b) with standard `compare':
+  Example:
+    group_by (String.length) [ "a"; "b"; "abc"; "ab"; "bc"; "bcd"; "abcd"; "cd"; "cde"; "defg" ] ;;
+    - : (int * string list) list =
+    [(1, ["b"; "a"]); (2, ["cd"; "bc"; "ab"]); (3, ["cde"; "bcd"; "abc"]); (4, ["defg"; "abcd"])]
+  *)
+let group_by f xs =
+  let lxs = List.map (fun x -> (f x, x)) xs in
+  let ht = Hashtbl.create 0 in
+  let () = List.iter (fun (l,x) -> Hashtbl.add ht l x) lxs in
+  let keys = Hashtbl.fold (fun l x s -> l::s) ht [] in
+  let keys = List.sort_uniq (compare) keys in
+  List.map (fun l -> l, Hashtbl.find_all ht l) keys
+
+(* val partition : ('a -> 'b) -> 'a list -> ('a list) list
+   As `group_by', but removing labels from the result:
+     partition (String.length) [ "a"; "b"; "abc"; "ab"; "bc"; "bcd"; "abcd"; "cd"; "cde"; "defg" ] ;;
+     - : string list list = [["b"; "a"]; ["cd"; "bc"; "ab"]; ["cde"; "bcd"; "abc"]; ["defg"; "abcd"]]
+  *)
+let partition f xs =
+  List.map snd (group_by f xs)
+
+(* val is_prefix : ?equality:('a -> 'a -> bool) -> 'a list -> 'a list -> bool *)
+let is_prefix ?(equality=(=)) xs ys =
+  let rec loop = function
+  | ([], _) -> true
+  | (x::xs, y::ys) -> if equality x y then loop (xs,ys) else false
+  | (_,_) -> false
+  in
+  loop (xs,ys)
+
+(* val absorption : ?equality:('a -> 'a -> bool) (*(=)*) -> ('a list) list -> ('a list) list
+   absorption [ [1]; [2]; [1;2;3]; [1;2]; [2;3]; [2;3;4]; [1;2;3;4]; [3;4]; [3;4;5]; [4;5;6;7] ] ;;
+   - : int list list = [[2]; [1]; [3; 4]; [4; 5; 6; 7]]
+*)
+let absorption ?equality (xs)(*: ('a list) list)*) =
+  let is_prefix = is_prefix ?equality in
+  let xss = partition (List.length) xs in
+  let yss = Array.of_list xss in
+  let yss = List.mapi (fun i xs -> List.filter (fun x -> i=0 || List.for_all (fun y -> not (is_prefix y x)) yss.(i-1)) xs) xss in
+  List.concat yss
+
 (* --- Printing --- *)
 
 (** {b Examples}:
@@ -723,3 +796,94 @@ let rec make f s =
   match f s with
   | None -> []
   | Some (xs, s) -> List.append xs (make f s)
+
+
+module Memo
+ : sig
+    class ['a] t : 'a list ->
+      object
+        method self   : 'a list
+        method length : int
+        method hd     : 'a
+        method tl     : 'a list
+        (* --- *)
+        method rev : 'a list
+        (* --- *)
+        method sort   : 'a list
+        method sort_uniq : 'a list
+        method sort_uniq_reverse : 'a list
+        (* --- *)
+        method max : 'a
+        method min : 'a
+      end
+    val make : 'a list -> 'a t
+  end
+ = struct
+
+  class ['a] t (xs:'a list) =
+    (* --- *)
+    let hd     = lazy (List.hd xs) in
+    let tl     = lazy (List.tl xs) in
+    let length = lazy (List.length xs) in
+    let rev    = lazy (List.rev xs) in
+    (* --- *)
+    let sort              = lazy (List.sort compare xs) in
+    let sort_uniq         = lazy (List.sort_uniq compare xs) in
+    let sort_uniq_reverse = lazy (List.sort_uniq (Flip.flip compare) xs) in
+    (* --- *)
+    let max   = lazy (sort_uniq_reverse |> Lazy.force |> List.hd) in
+    let min   = lazy (sort_uniq         |> Lazy.force |> List.hd) in
+    (* --- *)
+    object
+      (* --- *)
+      method self   = xs
+      method hd     = Lazy.force hd
+      method tl     = Lazy.force tl
+      method length = Lazy.force length
+      (* --- *)
+      method rev               = Lazy.force rev
+      method sort              = Lazy.force sort
+      method sort_uniq         = Lazy.force sort_uniq
+      method sort_uniq_reverse = Lazy.force sort_uniq_reverse
+      (* --- *)
+      method max   = Lazy.force max
+      method min   = Lazy.force min
+      (* --- *)
+    end
+
+  let make xs = new t(xs)
+
+end
+
+(* Tools for "chains", aka sorted, totally ordered lists without duplicates. *)
+module Chain = struct
+
+  type 'a t = 'a list
+
+  (*  Examples:
+      is_subset (compare) [11;15] [7;9;11;13;14;15] ;;
+      - : bool = true
+      is_subset (compare) [1;7;11;15] [7;9;11;13;14;15] ;;
+      - : bool = false
+      is_subset (compare) [7;11;15;16] [7;9;11;13;14;15] ;;
+      - : bool = false
+      ---
+      val is_subset : ?compare:('a -> 'a -> int) -> 'a t -> 'a t -> bool
+      ---
+      The smallest one (fst) is always late, starts later and arrives earlier: *)
+  let is_subset ?(compare=compare) =
+    let rec loop = function
+    | ([],[])    -> true
+    | (x::xs,[]) -> false
+    | ([],y::ys) -> true
+    | ((x::xs) as xxs, y::ys) ->
+        (match compare x y with
+        | (-1) -> false
+        |   0  -> loop (xs, ys)
+        |   1  -> loop (xxs, ys)
+        |   _  -> assert false
+        )
+    in
+    fun xs ys -> loop (xs, ys)
+
+end (* Chain *)

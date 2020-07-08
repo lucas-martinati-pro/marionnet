@@ -22,10 +22,8 @@
 
 (** Make a pipeline of functions. It's simply the function composition, of course,
     not a real pipeline (stream composition), so keep an eye on memory allocation. *)
-let (||) f g = fun x -> g (f x);;
+let (||>) f g = fun x -> g (f x);;
 
-(** Put a value into a pipelines of functions *)
-let (=>) x f = (f x);;
 (** {b Example}
 
   {[  "ls" => ( SSys.run || fst || SString.toList ) ;; ]}

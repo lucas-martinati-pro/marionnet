@@ -64,16 +64,17 @@ let ask_the_server request =
     (fun () ->
       try
         if can_we_communicate_with_the_daemon () then begin
-          let buffer = String.make Language.message_length 'x' in
-          let request_as_string = Language.print_request request in
-          let sent_byte_no = Unix.send the_daemon_client_socket request_as_string 0 Language.message_length [] in
+          let buffer = Bytes.make (Language.message_length) 'x' in
+          let request_as_bytes = (Language.print_request request) |> Bytes.of_string in
+          let sent_byte_no = Unix.send (the_daemon_client_socket) (request_as_bytes) (0) (Language.message_length) [] in
           (if not (sent_byte_no == sent_byte_no) then
             failwith "send() failed");
           let received_byte_no =
-            Unix.read the_daemon_client_socket buffer 0 Language.message_length in
+            Unix.read (the_daemon_client_socket) (buffer) (0) (Language.message_length)
+          in
           (if received_byte_no < Language.message_length then
             failwith "recv() failed, or the message is ill-formed");
-          let response = Language.parse_response buffer in
+          let response = Language.parse_response (Bytes.to_string buffer) in
           response
         end else
           (Language.Error "the socket to the daemon is down");

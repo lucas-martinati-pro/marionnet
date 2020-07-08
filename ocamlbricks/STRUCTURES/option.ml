@@ -46,6 +46,22 @@ let map2 f m1 m2  = bind m1 (function x1 -> map (f x1) m2)
 let bind2 m1 m2 f = bind m1 (function x1 -> bind m2 (f x1))
 let iter2 f m1 m2 = iter (function x1 -> iter (f x1) m2) m1
 
+(* Extend a binary operation to 'a option.
+   ---
+   map_binop (max) None None ;;
+   - : 'a option = None
+
+   map_binop (max) None (Some 3) ;;
+   - : int option = Some 3
+
+  map_binop (max) (Some 5) (Some 3) ;;
+  - : int option = Some 5
+*)
+let map_binop f x1 x2 =
+  if x1 = None then x2 else
+  if x2 = None then x1 else
+  map2 f x1 x2
+
 let filter p x = bind x (fun x -> if p x then Some x else None)
 
 let of_fallible_application ?(fallback=fun _ _ -> ()) f x =

@@ -14,6 +14,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+IFNDEF OCAML4_02_OR_LATER THEN
+type bytes = string
+ENDIF
 
 (** Similar to [Thread.create] with two differences:
 
@@ -37,13 +40,13 @@ val future : ?killable:unit -> ('a -> 'b) -> 'a -> 'b Future.t
 val read_with_exit_door :
   ?timeout:float -> (* (-1.) i.e. no timeout by default *)
   exit_door:Unix.file_descr (* read descriptor of Unix.pipe *) ->
-  Unix.file_descr -> string (* buffer *) -> int (* offset *) -> int (* len *) -> int
+  Unix.file_descr -> bytes (* buffer *) -> int (* offset *) -> int (* len *) -> int
 
 (* See `read_with_exit_door': *)
 val recv_with_exit_door :
   ?timeout:float -> (* (-1.) i.e. no timeout by default *)
   exit_door:Unix.file_descr (* read descriptor of Unix.pipe *) ->
-  Unix.file_descr -> string (* buffer *) -> int (* offset *) -> int (* len *) -> int
+  Unix.file_descr -> bytes (* buffer *) -> int (* offset *) -> int (* len *) -> int
 
 (** Create a thread that waits for a process termination. By default the process is killed if
     the application terminates (by default we suppose that the application is the father and

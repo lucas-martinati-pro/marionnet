@@ -17,45 +17,41 @@
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
-let default_size = 51
 type multiplicity = int
 
 (** The abstract type of an hashmset.
     The mutable identifier (id) and the integer associated to each key are introduced
     only to render the function `to_list' stable (see the comment below): *)
-type 'a t = { table : ('a, int * multiplicity) Hashtbl.t; mutable id : int }
-
-(** Return a copy of the provided multiset (for a persistent usage): *)
-let copy t = { table=(Hashtbl.copy t.table); id=t.id; }
+type 'a t = { table : ('a, int * multiplicity) Table.t; mutable id : int }
 
 (** The hashmset constructor. *)
-let make ?(size=default_size) () : 'a t = { table=(Hashtbl.create size); id=0; }
+let make ?weak ?identifier ?equality ?size () : 'a t = { table=(Table.make ?weak ?identifier ?equality ?size ()); id=0; }
 
-let extract_ht t = t.table
+let to_hashtbl hs = hs.table#to_hashtbl
 
 (** The member predicate. *)
-let mem (hs:'a t) (x:'a) = Hashtbl.mem hs.table x
+let mem (hs:'a t) (x:'a) = hs.table#mem x
 
 let multiplicity (hs:'a t) (x:'a) =
   try
-    let (id, mult) = Hashtbl.find hs.table x in
+    let (id, mult) = hs.table#find x in
     mult
   with Not_found -> 0
 
 (** Add (or remove, if quantity<0) a member to the hashmset. *)
 let add ?(quantity=1) (hs:'a t) (x:'a) =
   try
-    let (id, mult) = Hashtbl.find hs.table x in
+    let (id, mult) = hs.table#find x in
     let mult = mult + quantity in
     if mult <= 0 then
-      Hashtbl.remove hs.table x
+      hs.table#remove x
     else
-      Hashtbl.replace hs.table x (id, mult)
+      hs.table#replace x (id, mult)
   (* --- *)
   with Not_found ->
     if quantity <= 0 then () (* ignore *) else (* continue: *)
     let card = hs.id in
-    let () = Hashtbl.add hs.table x (card, quantity) in
+    let () = hs.table#add x (card, quantity) in
     let () = hs.id <- card + 1 in
     ()
 
@@ -64,29 +60,38 @@ let remove ?(quantity=1) (hs:'a t) (x:'a) =
   add ~quantity:(-quantity) hs x
 
 (** Make an hashmset from a list. *)
-let of_list (l:'a list) : 'a t =
+let of_list ?weak ?identifier ?equality ?size (l:'a list) : 'a t =
   let n = List.length l in
-  let size = int_of_float ((float_of_int n) /. 0.70) in
-  let hs = make ~size () in
+  let size = match size with Some s -> s | None -> int_of_float ((float_of_int n) /. 0.70) in
+  let hs = make ?weak ?identifier ?equality ~size () in
   let () = (List.iter (add hs) l) in
   hs
 
 (** Make an hashmset from an array. *)
-let of_array (xs:'a array) : 'a t =
+let of_array ?weak ?identifier ?equality ?size (xs:'a array) : 'a t =
   let n = Array.length xs in
-  let size = int_of_float ((float_of_int n) /. 0.70) in
-  let hs = make ~size () in
+  let size = match size with Some s -> s | None -> int_of_float ((float_of_int n) /. 0.70) in
+  let hs = make ?weak ?identifier ?equality ~size () in
   let () = (Array.iter (add hs) xs) in
   hs
+
+let to_list_unstable (hs:'a t) =
+  hs.table#fold (fun x (id,mult) xs -> (x,mult)::xs) []
 
 (* To render this function stable, we have to sort the extracted elements
     using the associated identifier, which is incremented each time an
     element is added. In this way, we are able to return the list of elements
     in the order of insertions. *)
-let to_list (hs:'a t) =
-  let jxs = Hashtbl.fold (fun x j jxs -> (j,x)::jxs) hs.table [] in
+let to_list_stable (hs:'a t) =
+  let jxs = hs.table#fold (fun x j jxs -> (j,x)::jxs) [] in
   let jxs = List.fast_sort (compare) jxs in
   List.map (fun ((id,mult), x) -> (x,mult)) jxs
 
-let to_array (hs:'a t) =
-  Array.of_list (to_list hs)
+(* Use ~unstable:() to speed up the answer, when the stability is not relevant. *)
+let to_list ?unstable =
+  match unstable with
+  | None    -> to_list_stable
+  | Some () -> to_list_unstable
+
+let to_array ?unstable (hs:'a t) =
+  Array.of_list (to_list ?unstable hs)

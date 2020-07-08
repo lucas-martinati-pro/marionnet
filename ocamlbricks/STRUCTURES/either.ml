@@ -74,6 +74,9 @@ let protect2 f x y =
 let protect3 f x y z =
  try Right (f x y z) with e -> Left e
 
+let force x =
+ try Right (Lazy.force x) with e -> Left e
+
 (* Alias: *)
 let apply_or_catch = protect
 
@@ -133,7 +136,14 @@ let is_left = function
  | Left  _ -> true
  | Right _ -> false
 
-let list_of = function Left _ -> [] | Right b -> [b]
+(* val to_option : ('a,'b) t -> 'b option *)
+let to_option = function
+ | Left  _ -> None
+ | Right b -> Some b
+
+let to_list = function
+ | Left  _ -> []
+ | Right b -> [b]
 
 let to_string ?(a=fun _ -> "_") ?(b=fun _ -> "_") =
  function

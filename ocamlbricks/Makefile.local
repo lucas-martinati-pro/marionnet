@@ -31,7 +31,7 @@ OCAMLBRICKS_ORIGINAL_REVNO=504
 # Uncomment the test you want to compile:
 # NATIVE_PROGRAMS += mutexExtra_test.native
 # NATIVE_PROGRAMS += realpath.native
-# NATIVE_PROGRAMS += test_future.native
+# NATIVE_PROGRAMS += test_future.native test_channel.native
 
 # BYTE_PROGRAMS += mutexExtra_test.byte
 

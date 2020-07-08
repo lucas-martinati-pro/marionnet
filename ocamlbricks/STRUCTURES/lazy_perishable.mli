@@ -18,14 +18,15 @@
 (** *)
 
 (** Lazy values with a lifetime. When the delay is expired, the value is recalculated. *)
- 
+
 type 'a t
 
-type lifetime = seconds 
+type lifetime = seconds
  and  seconds = float
+ and 'a thunk = unit -> 'a (* 'a Thunk.t *)
 
-val create : 'a Thunk.t -> lifetime -> 'a t
-val force : 'a t -> 'a
+val create : 'a thunk -> lifetime -> 'a t
+val force  : 'a t -> 'a
 
 (* The value will be recalculated when `force' will be called the next time: *)
 val set_expired : 'a t -> unit

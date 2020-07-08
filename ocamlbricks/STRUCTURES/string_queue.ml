@@ -18,7 +18,8 @@
 (** *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
 (* Each string in the queue comes with its real size <= block_size. *)
@@ -26,7 +27,7 @@ type t = {
   writer_mutex            : Mutex.t ; (* writers are queue producers. *)
   block_size              : int ;
   mutable total_size      : int ;
-  queue                   : (string * int) Queue.t ;
+  queue                   : (bytes * int) Queue.t ;
   released                : unit Egg.t;
   reader_mutex            : Mutex.t ; (* The first reader is also the producer of the catenation. *)
   mutable catenation      : string option;
@@ -43,8 +44,8 @@ let create ?(block_size=8192) () = {
   catenation      = None ;
   }
 
-(** The type of the standard [String.blit]. *)
-type blit_function = string -> int -> string -> int -> int -> unit
+(** The type of the standard [Bytes.blit]. *)
+type blit_function = bytes -> int -> bytes -> int -> int -> unit
 
 (** Thread-unsafe versions. If you are not using threads this is the module for you. *)
 module Thread_unsafe = struct
@@ -60,7 +61,7 @@ let append_from_descr ?(release=true) t (fd:Unix.file_descr) : unit =
   let rec loop acc_n =
    begin
     let n = (Unix.read fd buff 0 block_size)    in
-    if (n=0) then acc_n else ((Queue.push ((String.sub buff 0 n),n) q); loop (acc_n + n))
+    if (n=0) then acc_n else ((Queue.push ((Bytes.sub buff 0 n),n) q); loop (acc_n + n))
    end in
   let dst_size = loop current_size in
   (t.total_size <- dst_size);
@@ -69,7 +70,7 @@ let append_from_descr ?(release=true) t (fd:Unix.file_descr) : unit =
 
 (** Efficient concatenation of the string queue content. The queue internal queue is then destructively emptied
     but the result of catenation remains available for other readers. *)
-let concat ?(blit:blit_function=String.blit) t : string =
+let concat ?(blit:blit_function=Bytes.blit) t : string =
  match t.catenation with
  | Some s -> s
  | None ->
@@ -84,6 +85,7 @@ let concat ?(blit:blit_function=String.blit) t : string =
        loop (dstoff+src_size)
      end in
     (loop 0);
+    let dst = Bytes.to_string dst in
     (t.catenation <- Some dst);
     dst
    end
@@ -119,6 +121,6 @@ let from_channel ?(release=true) ?(block_size=8192) in_channel : t =
 (** Efficient concatenation of the string queue content. The catenation is performed by the first reader
     when the queue is released by a writer. If a successive reader requires the catenation, it will get it
     immediately. *)
-let concat ?(blit:blit_function=String.blit) t : string =
+let concat ?(blit:blit_function=Bytes.blit) t : string =
  let () = Egg.wait t.released in
  Mutex.with_mutex t.reader_mutex (fun () -> Thread_unsafe.concat ~blit t)

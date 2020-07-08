@@ -18,6 +18,12 @@
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
+ENDIF
+
+
 module Log = Ocamlbricks_log
 
 type 'a thread_status =
@@ -185,8 +191,8 @@ module Fork_implementation = struct
       (* --- *)
       let marshal_and_send fd1 y : unit =
         try
-          let s = Marshal.to_string (y) [Marshal.Closures] in
-          let n = String.length s in
+          let s = Marshal.to_bytes (y) [Marshal.Closures] in
+          let n = Bytes.length s in
           (* Send first the length of data (encoded with 4 bytes): *)
           let _ = Unix.write fd1 (Nat_encoding.encode_nat n) 0 4 in
           (* Then send the data: *)
@@ -227,12 +233,12 @@ module Fork_implementation = struct
             let () = marshal_and_send fd1 (y) in
             (* --- *)
             let () = Log.printf ~v:2 "Future.fork: (FORK) end of marshall_and_sent, about to send READY\n" in
-            let _n = try Unix.write rdy1 "R" 0 1 with _ -> 0 in
+            let _n = try Unix.write rdy1 (Bytes.of_string "R") 0 1 with _ -> 0 in
             protect Unix.close rdy1; (* Broken pipe => thread wake-up on read() *)
             (* --- *)
             let () = Log.printf ~v:2 "Future.fork: (FORK) about to receive ACK\n" in
             (* Wait until the fork process finished sending the result: *)
-            (try ignore (Unix.read ack0 " " 0 1) with _ -> ());
+            (try ignore (Unix.read ack0 (Bytes.of_string " ") 0 1) with _ -> ());
             (* --- *)
             let () = Log.printf ~v:2 "Future.fork: (FORK) about to close channels and exit\n" in
             protect Unix.close fd1;
@@ -275,7 +281,7 @@ module Fork_implementation = struct
             (* --- *)
             let () = Log.printf ~v:2 "Future.fork: (THREAD) about to receive RDY\n" in
             (* Wait until the fork process finished sending the result: *)
-            let r = (try (Unix.read rdy0 " " 0 1) with _ -> 0) in
+            let r = (try (Unix.read rdy0 (Bytes.of_string " ") 0 1) with _ -> 0) in
             (* --- *)
             let () = Log.printf1 ~v:2 "Future.fork: (THREAD) RDY received = %d, about to receive result\n" r in
             let () = if not (r=1) then failwith_fork_maybe_killed () in
@@ -289,7 +295,7 @@ module Fork_implementation = struct
             let () = if not (Thread.wait_timed_write ack1 1.) then failwith_fork_maybe_killed () in
             (* --- *)
             (* Send and ack to the fork process: *)
-            let a = try Unix.write ack1 "A" 0 1 with _ -> 0 in
+            let a = try Unix.write ack1 (Bytes.of_string "A") 0 1 with _ -> 0 in
             (* --- *)
             let () = protect Unix.close ack1 in
             (* --- *)

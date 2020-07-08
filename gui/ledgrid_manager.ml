@@ -278,8 +278,8 @@ object (self)
           (try
             ignore (Unix.recvfrom socket buffer 0 maximum_message_size [])
           with _ -> ());
-          let length = try String.index buffer '\n' with _ -> 0 in
-          let message = String.sub buffer 0 length in
+          let length = try Bytes.index buffer '\n' with _ -> 0 in
+          let message = (Bytes.sub buffer 0 length) |> Bytes.to_string in
           try
             let id1, port1, id2, port2 =
               (** This long formatted string is passed to VDE as a cable identifier. This allows us
@@ -316,13 +316,13 @@ object (self)
     (try Unix.unlink client_socket_file_name with _ -> ());
     Unix.bind client_socket (Unix.ADDR_UNIX client_socket_file_name);
     Log.printf "ledgrid_manager: Sending the message \"please-die\" to the blinker thread...\n";
-    let message = "please-die" in
+    let message = Bytes.of_string "please-die" in
     (try
       ignore (Unix.sendto
                 client_socket
                 message
                 0
-                ((String.length message))
+                ((Bytes.length message))
                 []
                 (Unix.ADDR_UNIX blinker_thread_socket_file_name));
     with _ -> begin

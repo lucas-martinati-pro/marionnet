@@ -94,29 +94,29 @@ class high_level_toolbar_driver () =
     iconsize_of_float (w#vscale_DOT_TUNING_ICONSIZE#adjustment#value)
 
   method set_iconsize (x:string) =
-    x => (float_of_iconsize || w#vscale_DOT_TUNING_ICONSIZE#adjustment#set_value)
+    x |> (float_of_iconsize ||> w#vscale_DOT_TUNING_ICONSIZE#adjustment#set_value)
 
   (** nodesep tuning *)
 
   (* Non-linear (quadratic) adjustment in the range [0,2] inches *)
   method get_nodesep : float =
    let formule = fun x -> (((x /. 20.) ** 2.) *. 2.) in
-   w#vscale_DOT_TUNING_NODESEP#adjustment#value => formule
+   w#vscale_DOT_TUNING_NODESEP#adjustment#value |> formule
 
   method set_nodesep (y:float) =
     let inverse = fun y -> 20. *. sqrt (y /. 2.) in
-    y => (inverse || w#vscale_DOT_TUNING_NODESEP#adjustment#set_value)
+    y |> (inverse ||> w#vscale_DOT_TUNING_NODESEP#adjustment#set_value)
 
   (** labeldistance tuning *)
 
   (* Non-linear (quadratic) adjustment in the range [0,2] inches *)
   method get_labeldistance : float =
     let formule = fun x -> (((x /. 20.) ** 2.) *. 2.) in
-    w#vscale_DOT_TUNING_LABELDISTANCE#adjustment#value => formule
+    w#vscale_DOT_TUNING_LABELDISTANCE#adjustment#value |> formule
 
   method set_labeldistance (y:float) =
     let inverse = fun y -> 20. *. sqrt (y /. 2.) in
-    y => (inverse || w#vscale_DOT_TUNING_LABELDISTANCE#adjustment#set_value)
+    y |> (inverse ||> w#vscale_DOT_TUNING_LABELDISTANCE#adjustment#set_value)
 
   (** extrasize tuning *)
 
@@ -172,7 +172,7 @@ let iconsize_react () = if opt#gui_callbacks_disable then () else
 let shuffle_react () =
   begin
    Cortex.set (opt#shuffler) (ListExtra.shuffleIndexes (net#get_node_list));
-   let namelist = net#get_node_names => ( (ListExtra.permute opt#shuffler_as_function) || fold_lines ) in
+   let namelist = net#get_node_names |> ((ListExtra.permute opt#shuffler_as_function) ||> fold_lines) in
    st#flash ~delay:4000 ((s_ "Icons randomly arranged: ")^namelist);
   end
 
@@ -180,7 +180,7 @@ let shuffle_react () =
 let unshuffle_react () =
   begin
    opt#shuffler_reset;
-   let namelist = (net#get_node_names => fold_lines) in
+   let namelist = (net#get_node_names |> fold_lines) in
    st#flash ~delay:4000 ((s_ "Default icon arrangement: ")^namelist);
   end
 
@@ -230,7 +230,7 @@ let reverse_edge_callback x () =
 (** Reaction for the spline's (straight/curved) tuning *)
 let curved_lines_react () = if opt#gui_callbacks_disable then () else
   begin
-   let msg = 
+   let msg =
      match (st#dotoptions#curved_lines_commute) with
      | true  -> (s_ "Switched to curved lines")
      | false -> (s_ "Switched to straight lines")

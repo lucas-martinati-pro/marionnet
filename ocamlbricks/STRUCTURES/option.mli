@@ -36,6 +36,8 @@ val map2   : ('a -> 'b -> 'c) -> 'a option -> 'b option -> 'c option
 val bind2  : 'a option -> 'b option -> ('a -> 'b -> 'c option) -> 'c option
 val join   : 'a option option -> 'a option
 
+val map_binop  : ('a -> 'a -> 'a) -> 'a option -> 'a option -> 'a option
+
 val iter  : ('a -> unit) -> 'a option -> unit
 val iter2 : ('a -> 'b -> unit) -> 'a option -> 'b option -> unit
 

@@ -18,7 +18,8 @@
 (** *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
 let marshallable_classes_version = "0.1" ;;
@@ -92,9 +93,9 @@ let hash32 s =
     let length = 8 in
     let offset = portion * length in
     let sub = Bytes.create (2+length) in
-    let () = String.blit "0x" 0 sub 0 2 in
-    let () = String.blit s offset sub 2 length in
-    let i = Int64.of_string sub in (* 0..(16^8)-1 = 0..(2^32)-1 *)
+    let () = Bytes.blit (Bytes.of_string "0x") 0 sub 0 2 in
+    let () = Bytes.blit (Bytes.of_string s) offset sub 2 length in
+    let i = Int64.of_string (Bytes.to_string sub) in (* 0..(16^8)-1 = 0..(2^32)-1 *)
     (Int64.rem i max_int32_succ)   (* 0..max_int32 *)
   in
   let result =

@@ -509,7 +509,9 @@ let get ?guard t = fst (eval ?guard (fun s () -> s, (fun s -> s)) () t)
 let set ?guard t s1 = ignore (eval ?guard (fun s0 s1 -> s1, (fun s2 -> s2)) s1 t)
 let propose ?guard t s1 = eval ?guard (fun s0 s1 -> s1, (fun s2 -> s2)) s1 t
 let move ?guard t f = eval ?guard (fun s0 () -> (f s0), (fun s2 -> s2)) () t
-let apply ?guard t f = fst (eval ?guard (fun s () -> s, (fun s -> f s)) () t)
+(* Reading: *)
+let apply  ?guard t f   = fst (eval ?guard (fun s () -> s, (fun s -> f s)) () t)
+let apply2 ?guard t f x = fst (eval ?guard (fun s () -> s, (fun s -> f s x)) () t)
 
 let on_proposal_append (mutexes, u) thunk =
   Mutex_group.with_mutex mutexes
@@ -2123,7 +2125,7 @@ on_proposal_append y
 
 on_proposal_append z
   (fun (x0,y0) (x1,y1) -> Printf.kfprintf flush stderr "proposed to change z from (%d,%d) to (%d,%d)\n" x0 y0 x1 y1;
-    Thread.delay 0.5; (x1,y1)) ;; 
+    Thread.delay 0.5; (x1,y1)) ;;
 
 let even x = (x mod 2 = 0) ;;
 

@@ -16,8 +16,7 @@
 
 (** Basic shortcuts and syntactic sugar. *)
 
-val ( || ) : ('a -> 'b) -> ('b -> 'c) -> 'a -> 'c
-val ( => ) : 'a -> ('a -> 'b) -> 'b
+val ( ||> ) : ('a -> 'b) -> ('b -> 'c) -> 'a -> 'c
 val identity : 'a -> 'a
 val id : 'a -> 'a
 val ( @@ ) : ('a -> 'b) -> ('c -> 'd) -> 'a * 'c -> 'b * 'd

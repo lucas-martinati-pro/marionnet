@@ -181,8 +181,8 @@ let duo_f0_f1 ?sharing () =
   match sharing with
   | None    -> fun f -> (f, f)
   | Some opt_id ->
-      let adhere = Extreme_sharing.adhere ?id:(opt_id) in
-      fun f -> (f, adhere f)
+      let co_attach = Extreme_sharing.co_attach ?id:(opt_id) in
+      fun f -> (f, co_attach f)
 
 let memoize ?trace_faults ?trace_success ?size ?sharing ?skip ?ht =
   let (mill, _ht) = make ?trace_faults ?trace_success ?size ?skip ?ht () in

@@ -15,7 +15,8 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 IFNDEF OCAML4_02_OR_LATER THEN
-module Bytes = struct  let create = String.create  let set = String.set  end
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ENDIF
 
 (* --------------------------- *)
@@ -474,7 +475,7 @@ class stream_channel ?max_input_size fd =
     try
       let n = Unix.recv fd input_buffer 0 max_input_size [] in
       (if n=0 then failwith "received 0 bytes (peer terminated?)");
-      return (String.sub input_buffer 0 n)
+      return (Bytes.sub input_buffer 0 n |> Bytes.to_string)
     with e ->
       Log.print_exn ~prefix:"Network.stream_channel#receive: " e;
       let _ = return "" in
@@ -486,7 +487,7 @@ class stream_channel ?max_input_size fd =
       let n = Unix.recv fd input_buffer 0 max_input_size [Unix.MSG_PEEK] in
       Unix.clear_nonblock fd;
       if n>=at_least
-       then Some (String.sub input_buffer 0 n)
+       then Some (Bytes.sub input_buffer 0 n |> Bytes.to_string)
        else
          let () = if at_least>0 then Log.printf2 "Network.stream_channel#peek: received %d bytes (expected at least %d)\n" n at_least in
          None
@@ -504,7 +505,7 @@ class stream_channel ?max_input_size fd =
       ()
     in
     try
-      send_stream_loop x 0 (String.length x)
+      send_stream_loop (Bytes.of_string x) 0 (String.length x)
     with e ->
       Log.print_exn ~prefix:"Network.stream_channel#send: " e;
       raise (Sending e)
@@ -555,7 +556,7 @@ class seqpacket_channel ?max_input_size fd =
     try
       let n = Unix.recv fd input_buffer 0 max_input_size [] in
       (if n=0 then failwith "received 0 bytes (peer terminated?)");
-      String.sub input_buffer 0 n
+      (Bytes.sub input_buffer 0 n) |> Bytes.to_string
     with e ->
       Log.print_exn ~prefix:"Network.seqpacket_channel#receive: " e;
       raise (Receiving e)
@@ -565,7 +566,7 @@ class seqpacket_channel ?max_input_size fd =
       Unix.set_nonblock fd;
       let n = Unix.recv fd input_buffer 0 max_input_size [Unix.MSG_PEEK] in
       Unix.clear_nonblock fd;
-      if n>0 then Some (String.sub input_buffer 0 n) else None
+      if n>0 then Some (Bytes.sub input_buffer 0 n |> Bytes.to_string) else None
     with e ->
       Unix.clear_nonblock fd;
       Log.print_exn ~prefix:"Network.seqpacket_channel#peek: result is None because of exception: " e;
@@ -574,7 +575,7 @@ class seqpacket_channel ?max_input_size fd =
   method send (x:string) : unit =
     try
       let len = String.length x in
-      let n = Unix.send fd x 0 len [] in
+      let n = Unix.send fd (Bytes.of_string x) 0 len [] in
       if n<len then
 	failwith (Printf.sprintf "failed sending a seqpacket: no more than %d bytes sent!" n)
       else ()
@@ -599,7 +600,7 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
     try
       let (n, sockaddr) = Unix.recvfrom fd0 input_buffer 0 max_input_size [] in
       (if sockaddr <> sockaddr1 then raise (Unexpected_sender (string_of_sockaddr sockaddr)));
-      String.sub input_buffer 0 n
+      (Bytes.sub input_buffer 0 n |> Bytes.to_string)
     with e ->
       Log.print_exn ~prefix:"Network.dgram_channel#receive: " e;
       raise (Receiving e)
@@ -610,7 +611,7 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
       let (n, sockaddr) = Unix.recvfrom fd0 input_buffer 0 max_input_size [Unix.MSG_PEEK] in
       Unix.clear_nonblock fd0;
       (if sockaddr <> sockaddr1 then raise (Unexpected_sender (string_of_sockaddr sockaddr)));
-      if n>0 then Some (String.sub input_buffer 0 n) else None
+      if n>0 then Some (Bytes.sub input_buffer 0 n  |> Bytes.to_string) else None
     with e ->
       Unix.clear_nonblock fd0;
       Log.print_exn ~prefix:"Network.dgram_channel#peek: result is None because of exception: " e;
@@ -620,7 +621,7 @@ class dgram_channel ?(max_input_size=1514) ~fd0 ~sockaddr1 () =
     try
       let len = String.length x in
       (* fd0 represents where I want to receive the answer: *)
-      let n = Unix.sendto fd0 x 0 len [] sockaddr1 in
+      let n = Unix.sendto fd0 (Bytes.of_string x) 0 len [] sockaddr1 in
       if n<len then failwith (Printf.sprintf "no more than %d bytes sent (instead of %d)" n len) else
       ()
     with e ->

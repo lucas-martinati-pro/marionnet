@@ -15,6 +15,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
+ENDIF
+
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
@@ -1003,16 +1008,19 @@ end (* Obj signature *)
     in
     let (n, jxs) = loop 0 [] in
     (* --- *)
-    match jxs with
-    | []    -> ""
-    | x::xs ->
-        let a = Bytes.make n x in
-        (* --- *)
-        let rec loop i = function
-        | []    -> a
-        | x::xs -> (Bytes.set a i x;  loop (i-1) xs)
-        in
-        loop (n-2) xs
+    let result =
+      match jxs with
+      | []    -> (Bytes.of_string "")
+      | x::xs ->
+          let a = Bytes.make n x in
+          (* --- *)
+          let rec loop i = function
+          | []    -> a
+          | x::xs -> (Bytes.set a i x;  loop (i-1) xs)
+          in
+          loop (n-2) xs
+    in
+    Bytes.to_string result
 
   let to_stringi (range : ('i * char) obj) : string =
     (* Make the reversed list of items counting then number of elements and ignoring indexes (snd): *)
@@ -1024,16 +1032,19 @@ end (* Obj signature *)
     in
     let (n, xs) = loop 0 [] in
     (* --- *)
-    match xs with
-    | []    -> ""
-    | x::xs ->
-        let a = Bytes.make n x in
-        (* --- *)
-        let rec loop i = function
-        | []    -> a
-        | x::xs -> (Bytes.set a i x;  loop (i-1) xs)
-        in
-        loop (n-2) xs
+    let result =
+      match xs with
+      | []    -> (Bytes.of_string "")
+      | x::xs ->
+          let a = Bytes.make n x in
+          (* --- *)
+          let rec loop i = function
+          | []    -> a
+          | x::xs -> (Bytes.set a i x;  loop (i-1) xs)
+          in
+          loop (n-2) xs
+    in
+    Bytes.to_string result
 
   let to_string_with_lengthi (n:int) (range : ('i * char) obj) : string =
     try

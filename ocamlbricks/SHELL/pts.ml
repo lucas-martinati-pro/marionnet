@@ -16,7 +16,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 
-(* Support for Linux's pseudo-terminals. *)
+(** Support for Linux's pseudo-terminals. *)
+
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
+ENDIF
 
 type filename = string (* Ex: "/dev/pts/10" *)
 type pid = int
@@ -143,7 +148,7 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
       (* let n = Unix.read fd input_buffer 0 max_input_size in *)
       let n = ThreadExtra.read_with_exit_door ~exit_door:(exit_door0) fd input_buffer 0 max_input_size in
       (if n=0 then failwith "received 0 bytes (peer terminated?)");
-      return (String.sub input_buffer 0 n)
+      return (Bytes.sub input_buffer 0 n |> Bytes.to_string)
     with e ->
       Log.print_exn ~prefix:"Pts.stream_channel#receive: " e;
       let _ = return "" in
@@ -155,7 +160,7 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
       Unix.set_nonblock fd;
       let n = Unix.read fd input_buffer 0 max_input_size in
       Unix.clear_nonblock fd;
-      let received = (String.sub input_buffer 0 n) in
+      let received = (Bytes.sub input_buffer 0 n) |> Bytes.to_string in
       if n>=at_least
        then
          Either.Right (received)
@@ -179,7 +184,7 @@ class stream_channel ?(max_input_size=1514) ?(file_perm=0o666) (ptsname) = (* "/
       ()
     in
     try
-      send_stream_loop x 0 (String.length x)
+      send_stream_loop (Bytes.of_string x) 0 (String.length x)
     with e ->
       Log.print_exn ~prefix:"Pts.stream_channel#send: " e;
       raise (Sending e)

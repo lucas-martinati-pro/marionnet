@@ -453,7 +453,7 @@ let connection_server_thread (client, socket) =
       Log.printf "Beginning of the iteration.\n";
       (* We want the message to be initially invalid, at every iteration, to
          avoid the risk of not seeing a receive error. Just to play it extra safe: *)
-      let buffer = String.make (Language.message_length) 'x' in
+      let buffer = Bytes.make (Language.message_length) 'x' in
       (* We don't want to block indefinitely on read() because the socket could
          be closed by another thread; so we simply select() with a timeout: *)
       let (ready_for_read, _, failed) =
@@ -471,7 +471,8 @@ let connection_server_thread (client, socket) =
         failwith "select() reported failure with the socket"
       else if (List.length ready_for_read) > 0 then begin
         let received_byte_no =
-          Unix.read socket buffer 0 Language.message_length in
+          Unix.read socket buffer 0 Language.message_length
+        in
         if received_byte_no < Language.message_length then
           failwith "recv() failed, or the message is ill-formed"
         else begin
@@ -481,7 +482,8 @@ let connection_server_thread (client, socket) =
               ~ownership:(ownership client)
               ~uid_consistency:(uid_consistency client)
               ~accepted_address_prefix:"172.23."   (* tap adresses are in this range *)
-              ~accepted_tap_prefixes buffer        (* defined above: ["tap"; "wbtap"] *)
+              ~accepted_tap_prefixes               (* defined above: ["tap"; "wbtap"] *)
+              (Bytes.to_string buffer)
           in
           keep_alive_client client;
           (* --- *)
@@ -500,7 +502,7 @@ let connection_server_thread (client, socket) =
           in
           (* --- *)
           Log.printf1 "My response is\n  %s\n" (Language.string_of_daemon_response response);
-          let sent_byte_no = Unix.send socket (Language.print_response response) 0 Language.message_length [] in
+          let sent_byte_no = Unix.send (socket) ((Language.print_response response) |> Bytes.of_string) (0) (Language.message_length) [] in
           (if not (sent_byte_no == sent_byte_no) then failwith "send() failed");
           (* --- *)
         end; (* inner else *)

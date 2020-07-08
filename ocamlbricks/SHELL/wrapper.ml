@@ -125,7 +125,7 @@ let make
     let args  = perform_treat at args  in
     let input = perform_treat it input in
 
-    (cmd^" "^opt^" "^args^"\n") => ((UnixExtra.shell ~trace:false ~input) || ot )
+    (cmd^" "^opt^" "^args^"\n") |> ((UnixExtra.shell ~trace:false ~input) ||> ot )
 ;;
 
 (** {3 Text filters} *)
@@ -167,7 +167,8 @@ module Treat = struct
  (* {b Output treatments} *)
 
  (** Make your boolean scripts with this output treatment *)
- let is_true = (StringExtra.chop || ((=) "true")) ;;
+ let is_true =
+   (StringExtra.chop ||> ((=) "true")) ;;
 
 end;; (* module Treat *)
 

@@ -18,6 +18,8 @@
 
 IFNDEF OCAML4_02_OR_LATER THEN
 let lazy_is_val = Lazy.lazy_is_val
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
 ELSE
 let lazy_is_val = Lazy.is_val
 ENDIF

@@ -35,12 +35,12 @@ let scaleTo (width,height) pixbuf =
   end
 ;;
 
-(** Make a zoom of the given image with the given factor (>1 => zoom IN, <1 => zoom OUT).
+(** Make a zoom of the given image with the given factor (>1 |> zoom IN, <1 |> zoom OUT).
     @return a new image *)
 let zoom (factor:float) pixbuf =
-  let formule = (fun x -> (float_of_int  x)  *. factor +. 0.5 ) || int_of_float in
-  let width  = pixbuf => (GdkPixbuf.get_width  || formule) in
-  let height = pixbuf => (GdkPixbuf.get_height || formule) in
+  let formule = (fun x -> (float_of_int  x)  *. factor +. 0.5 ) ||> int_of_float in
+  let width  = pixbuf |> (GdkPixbuf.get_width  ||> formule) in
+  let height = pixbuf |> (GdkPixbuf.get_height ||> formule) in
   prerr_endline ("Old width="^(string_of_int (GdkPixbuf.get_width pixbuf)));
   prerr_endline ("Old height="^(string_of_int (GdkPixbuf.get_height pixbuf))^"\n");
   scaleTo (width,height) pixbuf
@@ -603,33 +603,33 @@ class textview = fun ?(view:GText.view = GText.view ()) () ->
   method private create_tags () =
    begin
    let stipple = Gdk.Bitmap.create_from_data 2 2 "\002\001" in
-   buffer#create_tag ~name:"heading"             [`WEIGHT `BOLD; `SIZE (15*Pango.scale)] => ignore ;
-   buffer#create_tag ~name:"italic"              [`STYLE `ITALIC]                        => ignore ;
-   buffer#create_tag ~name:"bold"                [`WEIGHT `BOLD]                         => ignore ;
-   buffer#create_tag ~name:"big"                 [`SIZE 20]                              => ignore ;
-   buffer#create_tag ~name:"xx-small"            [`SCALE `XX_SMALL]                      => ignore ;
-   buffer#create_tag ~name:"x-large"             [`SCALE `X_LARGE]                       => ignore ;
-   buffer#create_tag ~name:"monospace"           [`FAMILY "monospace"]                   => ignore ;
-   buffer#create_tag ~name:"blue_foreground"     [`FOREGROUND "blue"]                    => ignore ;
-   buffer#create_tag ~name:"red_background"      [`BACKGROUND "red"]                     => ignore ;
-   buffer#create_tag ~name:"background_stipple"  [`BACKGROUND_STIPPLE stipple]           => ignore ;
-   buffer#create_tag ~name:"foreground_stipple"  [`FOREGROUND_STIPPLE stipple]           => ignore ;
-   buffer#create_tag ~name:"big_gap_before_line" [`PIXELS_ABOVE_LINES 30]                => ignore ;
-   buffer#create_tag ~name:"big_gap_after_line"  [`PIXELS_BELOW_LINES 30]                => ignore ;
-   buffer#create_tag ~name:"double_spaced_line"  [`PIXELS_INSIDE_WRAP 10]                => ignore ;
-   buffer#create_tag ~name:"not_editable"        [`EDITABLE false]                       => ignore ;
-   buffer#create_tag ~name:"word_wrap"           [`WRAP_MODE `WORD]                      => ignore ;
-   buffer#create_tag ~name:"char_wrap"           [`WRAP_MODE `CHAR]                      => ignore ;
-   buffer#create_tag ~name:"no_wrap"             [`WRAP_MODE `NONE]                      => ignore ;
-   buffer#create_tag ~name:"center"              [`JUSTIFICATION `CENTER]                => ignore ;
-   buffer#create_tag ~name:"right_justify"       [`JUSTIFICATION `RIGHT]                 => ignore ;
-   buffer#create_tag ~name:"wide_margins"        [`LEFT_MARGIN  50; `RIGHT_MARGIN 50]    => ignore ;
-   buffer#create_tag ~name:"strikethrough"       [`STRIKETHROUGH true]                   => ignore ;
-   buffer#create_tag ~name:"underline"           [`UNDERLINE `SINGLE]                    => ignore ;
-   buffer#create_tag ~name:"double_underline"    [`UNDERLINE `DOUBLE]                    => ignore ;
-   buffer#create_tag ~name:"superscript"         [`RISE (10*Pango.scale); `SIZE (8*Pango.scale)]  => ignore ;
-   buffer#create_tag ~name:"subscript"           [`RISE (-10*Pango.scale); `SIZE (8*Pango.scale)] => ignore ;
-   buffer#create_tag ~name:"rtl_quote"[`WRAP_MODE `WORD; `DIRECTION `RTL; `INDENT 30; `LEFT_MARGIN 20; `RIGHT_MARGIN 20] => ignore ;
+   buffer#create_tag ~name:"heading"             [`WEIGHT `BOLD; `SIZE (15*Pango.scale)] |> ignore ;
+   buffer#create_tag ~name:"italic"              [`STYLE `ITALIC]                        |> ignore ;
+   buffer#create_tag ~name:"bold"                [`WEIGHT `BOLD]                         |> ignore ;
+   buffer#create_tag ~name:"big"                 [`SIZE 20]                              |> ignore ;
+   buffer#create_tag ~name:"xx-small"            [`SCALE `XX_SMALL]                      |> ignore ;
+   buffer#create_tag ~name:"x-large"             [`SCALE `X_LARGE]                       |> ignore ;
+   buffer#create_tag ~name:"monospace"           [`FAMILY "monospace"]                   |> ignore ;
+   buffer#create_tag ~name:"blue_foreground"     [`FOREGROUND "blue"]                    |> ignore ;
+   buffer#create_tag ~name:"red_background"      [`BACKGROUND "red"]                     |> ignore ;
+   buffer#create_tag ~name:"background_stipple"  [`BACKGROUND_STIPPLE stipple]           |> ignore ;
+   buffer#create_tag ~name:"foreground_stipple"  [`FOREGROUND_STIPPLE stipple]           |> ignore ;
+   buffer#create_tag ~name:"big_gap_before_line" [`PIXELS_ABOVE_LINES 30]                |> ignore ;
+   buffer#create_tag ~name:"big_gap_after_line"  [`PIXELS_BELOW_LINES 30]                |> ignore ;
+   buffer#create_tag ~name:"double_spaced_line"  [`PIXELS_INSIDE_WRAP 10]                |> ignore ;
+   buffer#create_tag ~name:"not_editable"        [`EDITABLE false]                       |> ignore ;
+   buffer#create_tag ~name:"word_wrap"           [`WRAP_MODE `WORD]                      |> ignore ;
+   buffer#create_tag ~name:"char_wrap"           [`WRAP_MODE `CHAR]                      |> ignore ;
+   buffer#create_tag ~name:"no_wrap"             [`WRAP_MODE `NONE]                      |> ignore ;
+   buffer#create_tag ~name:"center"              [`JUSTIFICATION `CENTER]                |> ignore ;
+   buffer#create_tag ~name:"right_justify"       [`JUSTIFICATION `RIGHT]                 |> ignore ;
+   buffer#create_tag ~name:"wide_margins"        [`LEFT_MARGIN  50; `RIGHT_MARGIN 50]    |> ignore ;
+   buffer#create_tag ~name:"strikethrough"       [`STRIKETHROUGH true]                   |> ignore ;
+   buffer#create_tag ~name:"underline"           [`UNDERLINE `SINGLE]                    |> ignore ;
+   buffer#create_tag ~name:"double_underline"    [`UNDERLINE `DOUBLE]                    |> ignore ;
+   buffer#create_tag ~name:"superscript"         [`RISE (10*Pango.scale); `SIZE (8*Pango.scale)]  |> ignore ;
+   buffer#create_tag ~name:"subscript"           [`RISE (-10*Pango.scale); `SIZE (8*Pango.scale)] |> ignore ;
+   buffer#create_tag ~name:"rtl_quote"[`WRAP_MODE `WORD; `DIRECTION `RTL; `INDENT 30; `LEFT_MARGIN 20; `RIGHT_MARGIN 20] |> ignore ;
    ()
    end
 

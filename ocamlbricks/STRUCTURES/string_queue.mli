@@ -18,7 +18,11 @@
 
 type t
 
-val create       : ?block_size:int -> unit            -> t
+IFNDEF OCAML4_02_OR_LATER THEN
+type bytes = string
+ENDIF
+
+val create : ?block_size:int -> unit -> t
 
 (** {2 Writers' tools} *)
 
@@ -33,8 +37,8 @@ val from_channel : ?release:bool -> ?block_size:int -> in_channel      -> t
 
 (** {2 Readers' tools} *)
 
-type blit_function = string -> int -> string -> int -> int -> unit
-val  concat : ?blit:blit_function -> t -> string
+type blit_function = bytes -> int -> bytes -> int -> int -> unit
+val concat : ?blit:blit_function -> t -> string
 
 (** {2 Thread_unsafe versions} *)
 

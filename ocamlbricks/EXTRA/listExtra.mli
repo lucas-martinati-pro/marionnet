@@ -69,8 +69,26 @@ val product6 : 'a list -> 'b list -> 'c list -> 'd list -> 'e list -> 'f list ->
 val product7 : 'a list -> 'b list -> 'c list -> 'd list -> 'e list -> 'f list -> 'g list -> ('a * 'b * 'c * 'd * 'e * 'f * 'g) list
 val product8 : 'a list -> 'b list -> 'c list -> 'd list -> 'e list -> 'f list -> 'g list -> 'h list -> ('a * 'b * 'c * 'd * 'e * 'f * 'g * 'h) list
 
-type 'a tuple = 'a list
-val product : 'a list tuple -> 'a tuple list
+module Homegeneous_cartesian_products : sig
+
+  type 'a n_tuple = 'a list (* a n-tuple i.e. a list (of homogeneous elements) of length 3 *)
+  type 'a choices = 'a list
+  (* --- *)
+  val product     : ('a choices) n_tuple -> ('a n_tuple) choices  (* generated tuples have the length equals to the number of arguments *)
+  val product_map : ('a choices) n_tuple -> ('a n_tuple -> 'b) -> 'b choices (* List.map∘product but slightly more memory-saving *)
+
+  val product0 : ('a n_tuple) choices (* = [[]] : ('a 0-tuple) list *)
+  val product1 : 'a choices -> ('a n_tuple) choices (* 1-tuples (singletons) *)
+  val product2 : 'a choices -> 'a choices -> ('a n_tuple) choices (* 2-tuples *)
+  val product3 : 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 3-tuples *)
+  val product4 : 'a choices -> 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 4-tuples *)
+  val product5 : 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 5-tuples  *)
+  val product6 : 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 6-tuples  *)
+  val product7 : 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 7-tuples  *)
+  val product8 : 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> 'a choices -> ('a n_tuple) choices (* 8-tuples  *)
+
+end
+
 
 val map_folding  : ?acc:'b list ->        ('s -> 'a -> 'b * 's) -> 's -> 'a list -> 'b list
 val mapi_folding : ?acc:'b list -> (int -> 's -> 'a -> 'b * 's) -> 's -> 'a list -> 'b list
@@ -85,6 +103,12 @@ val return : 'a -> 'a list
 val bind   : 'a list -> ('a -> 'b list) -> 'b list
 (* --- *)
 val prefixes : 'a list -> 'a list list
+(* --- *)
+val group_by   : ('a -> 'b) -> 'a list -> ('b * 'a list) list
+val partition  : ('a -> 'b) -> 'a list -> ('a list) list
+val is_prefix  : ?equality:('a -> 'a -> bool) (*(=)*) -> 'a list -> 'a list -> bool
+val absorption : ?equality:('a -> 'a -> bool) (*(=)*) -> ('a list) list -> ('a list) list
+(* --- *)
 
 val flatten : ?acc:'a list -> 'a list list -> 'a list
 val foreach      : 'a list -> ('a -> unit) -> unit
@@ -217,3 +241,36 @@ module Assq :
     val set        : ('a * 'b) list -> 'a -> 'b ->  ('a * 'b) list (* add with flipped arguments *)
     val find_first : 'a list -> ('a * 'b) list -> 'b
   end
+
+(* Tools for "chains", aka sorted, totally ordered lists without duplicates. *)
+module Chain :
+  sig
+    type 'a t = 'a list
+    val is_subset : ?compare:('a -> 'a -> int) -> 'a t -> 'a t -> bool
+  end
+
+(* Calculate on demand (lazyness) and store results of working on the provided immutable list. *)
+module Memo :
+  sig
+
+    class ['a] t : 'a list ->
+      object
+        method self   : 'a list
+        method length : int
+        method hd     : 'a
+        method tl     : 'a list
+        (* --- *)
+        method rev : 'a list
+        (* --- *)
+        method sort   : 'a list
+        method sort_uniq : 'a list
+        method sort_uniq_reverse : 'a list
+        (* --- *)
+        method max : 'a
+        method min : 'a
+      end
+
+    (* --- *)
+    val make : 'a list -> 'a t
+
+  end (* Memo *)

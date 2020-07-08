@@ -19,14 +19,15 @@
 
 (** Lazy values with a lifetime. When the delay is expired, the value is recalculated. *)
 
-type 'a t = ('a Thunk.t) * (('a status) ref)
+type 'a t = ('a thunk) * (('a status) ref)
  and 'a status = ('a * date) option         (* None => not calculated, Some (y, d) => y calculated at the date d *)
  and date = float
  (* --- *)
- and lifetime = seconds 
+ and lifetime = seconds
  and seconds = float
+ and 'a thunk = unit -> 'a (* 'a Thunk.t *)
 
-let create (thunk) (lifetime) = 
+let create (thunk) (lifetime) =
   let already_called = ref None in
   let thunk =
     fun () ->
@@ -41,8 +42,8 @@ let create (thunk) (lifetime) =
           end
   in
   (thunk, already_called)
-  
+
 let force (t, _) = t ()
 
-let set_expired (t, s) = 
+let set_expired (t, s) =
   (s := None)

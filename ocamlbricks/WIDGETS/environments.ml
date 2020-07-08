@@ -17,6 +17,11 @@
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
+IFNDEF OCAML4_02_OR_LATER THEN
+module Bytes = struct  include String  let to_string x = x  let of_string x = x  end
+type bytes = string
+ENDIF
+
 (* **************************************** *
               Class Env
  * **************************************** *)
@@ -85,9 +90,10 @@ aaa    = 1
        let ys =
          List.map
            (fun (k,v) ->
-              let k' = String.make max_length ' ' in
-              String.blit k 0 k' 0 (String.length k);
-              (Printf.sprintf "%s = %s\n" k' (string_of_alpha v)))
+              let k = Bytes.of_string k in
+              let k' = Bytes.make max_length ' ' in
+              Bytes.blit k 0 k' 0 (Bytes.length k);
+              (Printf.sprintf "%s = %s\n" (Bytes.to_string k') (string_of_alpha v)))
            xs
        in
        List.fold_left (^) (List.hd ys) (List.tl ys)

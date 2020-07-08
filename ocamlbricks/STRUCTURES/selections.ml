@@ -141,7 +141,7 @@ let count ?unordered ?repetitions =
 
 (* val shared_singleton : index -> index list *)
 let shared_singleton =
-  let shared : index list -> index list = Extreme_sharing.id () in
+  let shared : index list -> index list = Extreme_sharing.make_id () in
   let max_shared_index = 255 in
   fun i -> if i <= max_shared_index then shared [i] else [i]
 
