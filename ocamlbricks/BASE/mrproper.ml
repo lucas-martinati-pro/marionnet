@@ -26,4 +26,4 @@ let as_stack ()    = global_object#as_stack
 
 let exit (code) =
   let () = apply () in
-  (Pervasives.exit code)
+  (*Pervasives.*)exit code

@@ -19,7 +19,7 @@ module Mtx = MutexExtra.Just_give_me_an_apply_with_mutex (struct end)
 let apply_with_mutex = Mtx.apply_with_mutex
 
 module Process_set =
-  SetExtra.Destructive.Make (struct  type t = int * int64  let compare = Pervasives.compare end)
+  SetExtra.Destructive.Make (struct  type t = int * int64  let compare = (*Pervasives.*)compare end)
 
 let start_monitor_and_get_kill_method ?(pid=Unix.getpid ()) ?(wake_up_interval=4.) ?(garbage_collection_frequence=5) () =
   let pset = Process_set.create () in

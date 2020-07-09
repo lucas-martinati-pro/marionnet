@@ -20,6 +20,10 @@
 (** Perform some structural transformations on an array. These operations
     can be reversed or applied again to the same array or to another. *)
 
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
+
 type  'a t      = 'a array (* alias *)
  and  'a tt     = 'a t t   (* alias *)
  and  index     = int

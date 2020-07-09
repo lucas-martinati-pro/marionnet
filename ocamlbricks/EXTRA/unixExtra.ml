@@ -22,6 +22,9 @@ module Bytes = struct  include String  let to_string x = x  let of_string x = x 
 type bytes = string
 ENDIF
 
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
 
 module Log = Ocamlbricks_log
 

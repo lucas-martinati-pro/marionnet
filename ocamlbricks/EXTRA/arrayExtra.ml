@@ -161,12 +161,12 @@ let product3 xs ys zs =
 
 
 
-let sorted_copy ?(compare=Pervasives.compare) xs =
+let sorted_copy ?(compare=(*Pervasives.*)compare) xs =
   let ys = (Array.copy xs) in
   (Array.sort compare ys);
   ys
 
-let fast_sorted_copy ?(compare=Pervasives.compare) xs =
+let fast_sorted_copy ?(compare=(*Pervasives.*)compare) xs =
   let ys = (Array.copy xs) in
   (Array.fast_sort compare ys);
   ys
@@ -175,12 +175,12 @@ let fast_sorted_copy ?(compare=Pervasives.compare) xs =
 {[ ArrayExtra.sort_saving_positions [| 6.28; 3.14; 1.41; 2.71 |] ;;
   : (int * float) array = [|(2, 1.41); (3, 2.71); (1, 3.14); (0, 6.28)|]
 ]} *)
-let sort_saving_positions ?(compare=Pervasives.compare) (xs:'a array) : (int * 'a) array =
+let sort_saving_positions ?(compare=(*Pervasives.*)compare) (xs:'a array) : (int * 'a) array =
   let ys = Array.mapi (fun i x -> (x,i)) xs in
   let () = Array.sort (fun (x,_) (y,_) ->  compare x y) ys in
   Array.map (fun (p,i) -> (i,p)) ys
 
-let sort_saving_permutation ?(compare=Pervasives.compare) (xs:'a array) : (int array) * ('a array) =
+let sort_saving_permutation ?(compare=(*Pervasives.*)compare) (xs:'a array) : (int array) * ('a array) =
   let ys = Array.mapi (fun i x -> (x,i)) xs in
   let () = Array.sort (fun (x,_) (y,_) ->  compare x y) ys in
   let xs, js = split ys in
@@ -205,7 +205,7 @@ let undo_permutation js xs =
   let () = Array.iteri (fun i j -> ys.(j) <- xs.(i)) js in
   ys
 
-let is_sorted ?(compare=Pervasives.compare) s : bool =
+let is_sorted ?(compare=(*Pervasives.*)compare) s : bool =
  let l = Array.length s in
  if l = 0 then true else (* continue: *)
  let rec loop pred i =
@@ -425,7 +425,7 @@ module Dichotomic = struct
    dichotomic_leftmost_ge 100 [| 0;2;4;4;4;4;4;6;8;10 |];;
    : (bool * index) option = None
 ]} *)
-let dichotomic_leftmost_ge ?(compare=Pervasives.compare) ?(a=0) ?b x v = (* precedentemente dichotomic_search *)
+let dichotomic_leftmost_ge ?(compare=(*Pervasives.*)compare) ?(a=0) ?b x v = (* precedentemente dichotomic_search *)
  let eq x y = (compare x y) = 0 in
  let lt x y = (compare x y) = (-1) in
  let le x y = let r = (compare x y) in r = (-1) || r = 0 in
@@ -462,7 +462,7 @@ let dichotomic_leftmost_ge ?(compare=Pervasives.compare) ?(a=0) ?b x v = (* prec
    dichotomic_rightmost_le 5 [| 0;2;4;4;4;4;4;6;8;10 |];;
    : (bool * index) option = Some (false, 6)
 ]} *)
- let dichotomic_rightmost_le ?(compare=Pervasives.compare) ?(a=0) ?b x v =
+ let dichotomic_rightmost_le ?(compare=(*Pervasives.*)compare) ?(a=0) ?b x v =
  let eq x y = (compare x y) = 0 in
  let lt x y = (compare x y) = (-1) in
  let le x y = let r = (compare x y) in r = (-1) || r = 0 in
@@ -529,7 +529,7 @@ let dichotomic_frame ?compare ?a ?b ?unicity x v =
       | Some (true,i)  -> Some (i,i)
       )
 
-let dichotomic_leftmost_gt ?(compare=Pervasives.compare) ?(a=0) ?b ?unicity x v =
+let dichotomic_leftmost_gt ?(compare=(*Pervasives.*)compare) ?(a=0) ?b ?unicity x v =
  if compare v.(a) x = 1 then Some a else
  match dichotomic_frame ~compare ~a ?b ?unicity x v with
  | None -> None
@@ -540,7 +540,7 @@ let dichotomic_leftmost_gt ?(compare=Pervasives.compare) ?(a=0) ?b ?unicity x v 
     else
       Some j
 
-let dichotomic_rightmost_lt ?(compare=Pervasives.compare) ?a ?b ?unicity x v =
+let dichotomic_rightmost_lt ?(compare=(*Pervasives.*)compare) ?a ?b ?unicity x v =
  let b = match b with None -> (Array.length v)-1 | Some b -> b in
  if compare x v.(b) = 1 then Some b else
  match dichotomic_frame ~compare ?a ~b ?unicity x v with

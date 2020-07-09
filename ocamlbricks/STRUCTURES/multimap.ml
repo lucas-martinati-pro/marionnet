@@ -19,10 +19,13 @@
 
 (** Multi-maps, i.e. maps x->y where x may be associated to zero or several y. They are simply implemented as maps of sets, with the condition that a multimap with a value x associated to the empty set, is equivalent to a multimap where x is unbound. *)
 
-
 #load "include_type_definitions_p4.cmo";;
 INCLUDE DEFINITIONS "../STRUCTURES/multimap.mli"
 ;;
+
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
 
 module Make (Ord_key : Map.OrderedType) (Ord_elt : Map.OrderedType) = struct
 

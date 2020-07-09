@@ -15,6 +15,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+IFNDEF OCAML4_03_OR_LATER THEN
+type ('a, 'b) result = Ok of 'a | Error of 'b
+ENDIF
+
 (* --- *)
 (* A review is more than the boolean result of the indicator function of a set.
    It express, of course, the boolean case "accepted"/"rejected", but, when the

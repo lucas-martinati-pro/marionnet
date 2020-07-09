@@ -26,7 +26,7 @@ LIBRARIES_TO_LINK = str unix threads inotify lablgtk
 
 # Version of ocamlbricks project corresponding
 # to the content of our local copy ocamlbricks/
-OCAMLBRICKS_ORIGINAL_REVNO=504
+OCAMLBRICKS_ORIGINAL_REVNO=560
 
 # Uncomment the test you want to compile:
 # NATIVE_PROGRAMS += mutexExtra_test.native
@@ -65,7 +65,6 @@ OCAML4_07_OR_LATER=$(shell if grep -q "^\([5-9]\)\|^\(4[.]\([1-9]\|0[7-9]\)\)" <
 # Transmit the information about the compiler version in order to
 # activate conditional compilation:
 PP_OPTION = camlp4of $(OCAML4_OR_LATER) $(OCAML4_02_OR_LATER) $(OCAML4_03_OR_LATER) $(OCAML4_04_OR_LATER) $(OCAML4_07_OR_LATER)
-
 
 GETTEXT=GETTEXT
 C_OBJECTS_TO_LINK = gettext-c-wrapper does-process-exist-c-wrapper waitpid-c-wrapper
@@ -150,10 +149,17 @@ _build/gettext_extract_pot_p4.cmi: $(GETTEXT)/gettext_extract_pot_p4.mli
 _build/gettext_extract_pot_p4.cmo: $(GETTEXT)/gettext_extract_pot_p4.ml
 	ocamlc -c -I +camlp4 -I _build/ -pp camlp4of camlp4lib.cma -o $@ $<
 
+# Compile gettext-c-wrapper.c according to the OCaml version:
+ifeq ($(OCAML4_07_OR_LATER), -DOCAML4_07_OR_LATER)
+ccopt_OCAML4_07_OR_LATER := -verbose -ccopt $(OCAML4_07_OR_LATER)
+else
+ccopt_OCAML4_07_OR_LATER := -verbose
+endif
+
 _build/libocamlbricks_stubs.a: $(GETTEXT)/gettext-c-wrapper.c  EXTRA/does-process-exist-c-wrapper.c  EXTRA/waitpid-c-wrapper.c
 	@(mkdir _build &> /dev/null || true); \
 	cd _build; \
-	ocamlc -c -verbose $(GETTEXT)/gettext-c-wrapper.c; \
+	ocamlc -c $(ccopt_OCAML4_07_OR_LATER) $(GETTEXT)/gettext-c-wrapper.c; \
 	ocamlc -c -verbose EXTRA/does-process-exist-c-wrapper.c; \
 	ocamlc -c -verbose EXTRA/waitpid-c-wrapper.c; \
 	ocamlmklib -verbose -oc ocamlbricks_stubs gettext-c-wrapper.o does-process-exist-c-wrapper.o waitpid-c-wrapper.o

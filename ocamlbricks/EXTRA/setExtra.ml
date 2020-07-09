@@ -21,6 +21,9 @@
 INCLUDE DEFINITIONS "../EXTRA/setExtra.mli"
 ;;
 
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
 
 module Extend = functor (S:Set.S) -> struct
   include S

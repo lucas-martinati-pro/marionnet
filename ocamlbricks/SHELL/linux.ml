@@ -165,7 +165,7 @@ module Process = struct
   zs
 
  (* Make a multimap: ppid -> children *)
- module Int_key = struct type t = int let compare = Pervasives.compare end
+ module Int_key = struct type t = int let compare = (*Pervasives.*)compare end
  module Int_elt = Int_key
  module Parent_children_multimap
   : Multimap.S with

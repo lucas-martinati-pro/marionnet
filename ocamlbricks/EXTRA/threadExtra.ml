@@ -24,6 +24,10 @@ ELSE
 let lazy_is_val = Lazy.is_val
 ENDIF
 
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
+
 module Log = Ocamlbricks_log
 module ULog = Ocamlbricks_log.Unprotected (* for critical sections *)
 

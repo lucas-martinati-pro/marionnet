@@ -21,6 +21,10 @@
 INCLUDE DEFINITIONS "../EXTRA/mapExtra.mli"
 ;;
 
+IFDEF OCAML4_07_OR_LATER THEN
+module Pervasives = Stdlib
+ENDIF
+
 
 module Extend = functor (M:Map.S) -> struct
   include M

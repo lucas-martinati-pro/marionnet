@@ -397,7 +397,7 @@ let () =
   let kill_orphan_descendants =
     Descendants_monitor.start_monitor_and_get_kill_method ()
   in
-  Pervasives.at_exit
+  (*Pervasives.*)at_exit
     (fun () ->
        begin
          Log.printf "at_exit: killing all current descendants before exiting...\n";

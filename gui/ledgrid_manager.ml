@@ -291,9 +291,8 @@ object (self)
           (* ==== End of the unreasonable version ==== *)
           with _ ->
             try
-              let _ =
-                Scanf.sscanf message "please-die" (fun x -> x)
-              in
+              let () = assert (Scanf.sscanf message "please-die" true) in
+              (* --- *)
               Log.printf ("ledgrid_manager: Exiting the LEDgrid manager blinker thread\n");
               Unix.close socket;
               let _ = try Unix.unlink blinker_thread_socket_file_name with _ -> () in

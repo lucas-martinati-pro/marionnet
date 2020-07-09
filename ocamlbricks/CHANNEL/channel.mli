@@ -17,6 +17,9 @@
 
 (** Compositional channels. *)
 
+IFNDEF OCAML4_03_OR_LATER THEN
+type ('a, 'b) result = Ok of 'a | Error of 'b
+ENDIF
 
 module Club = Lock_clubs.RWM_levels
 type waiting_room = Lock_clubs.waiting_room
