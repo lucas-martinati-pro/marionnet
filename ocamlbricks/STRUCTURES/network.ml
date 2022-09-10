@@ -243,7 +243,7 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
           (* The father here creates a process-tutor thread per child: *)
           begin
             Unix.close service_socket;
-            ignore (tutor child_pid)
+            ignore (tutor ~pid:child_pid)
           end
     done
   in

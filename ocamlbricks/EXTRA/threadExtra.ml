@@ -145,7 +145,7 @@ end
 module Available_signals = struct
 
   (* We will use signals from SIGRTMIN (34) to SIGRTMAX (64) included: *)
-  module Sem = Semaphore.Array_or (struct let dim = 64 - 34 + 1 end)
+  module Sem = ThreadExtraSem.Array_or (struct let dim = 64 - 34 + 1 end)
 
   (* For managing both the thread -> signal mapping and the thread -> thunk one: *)
   module Map = MapExtra.Destructive.Int_map
@@ -156,7 +156,7 @@ module Available_signals = struct
   (* The main structure of this module is an array of semaphores (with the "or" semantics).
      Each forked process must recreate its own fresh structure. *)
   module T = Stateful_modules.Process_private_thread_shared_variable (struct
-    type t = (Semaphore.t array) * (int Map.t)
+    type t = (ThreadExtraSem.t array) * (int Map.t)
     let name = None
     let init () =
       let semaphores = Sem.create ~init:(Array.make Sem.dim 1) () in

@@ -25,9 +25,9 @@
 OCAMLBUILD_OPTIONS= -quiet -Xs uml,ocamlbricks
 OCAMLBRICKS_STUBS=ocamlbricks_stubs
 COMPILE_OPTIONS += -g -w x -I $(OCAMLBRICKS) -cclib -l$(OCAMLBRICKS_STUBS)
-DIRECTORIES_TO_INCLUDE = camlp4 threads inotify lablgtk2 lablglade lablgtksourceview2
+DIRECTORIES_TO_INCLUDE = camlp4 threads inotify lablgtk3 lablglade lablgtk3-sourceview3
 # ocamlbricks
-LIBRARIES_TO_LINK = unix threads str inotify lablgtk lablglade lablgtksourceview2 ocamlbricks
+LIBRARIES_TO_LINK = unix threads str inotify lablgtk lablglade lablgtksourceview3 ocamlbricks
 #C_OBJECTS_TO_LINK +=
 EXCLUDE_FROM_SOURCE_FINDING=uml
 
@@ -128,8 +128,8 @@ share/gui.glade.patched: gui/gui.xml
 GLADE2ML = lablgladecc2
 
 # gui.ml is automatically generated from the patched Glade file:
-gui.ml: share/gui.glade.patched
-	@(cd share; $(GLADE2ML) gui.glade.patched > ../$@)
+# gui.ml: share/gui.glade.patched
+# 	@(cd share; $(GLADE2ML) gui.glade.patched > ../$@)
 
 gui-help: gui.ml
 	ocamlc -i -I +lablgtk2 lablgtk.cma gui.ml | grep -v "val" | grep -v "[0-9]"

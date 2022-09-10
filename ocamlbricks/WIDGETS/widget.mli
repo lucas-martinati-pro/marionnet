@@ -30,7 +30,8 @@ module DynamicSubmenu :
     val make :
       ?set_active:(string -> bool) ->
       submenu:GMenu.menu ->
-      menu:GMenu.image_menu_item ->
+(*       menu:GMenu.image_menu_item -> *)
+      menu:GMenu.menu_item ->
       dynList:(unit -> string list) ->
       action:(string -> unit -> unit) ->
       unit -> unit
@@ -157,7 +158,7 @@ class textview :
   object
     method append : ?tags:string list -> string -> unit
     method append_image : ?scale:(int * int) option -> string -> unit
-    method private create_tags : unit -> unit
+    (* method private create_tags : unit -> unit *)
     method delete : unit -> unit
     method refresh : unit -> unit
     method rewrite : ?tags:string list -> string -> unit

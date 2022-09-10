@@ -826,6 +826,7 @@ myocamlbuild.ml:
 	echo "Just for debugging: PP_OPTION is \"$(PP_OPTION)\""; \
 	echo "Just for debugging: OCAML_LIBRARYPREFIX is \"$(OCAML_LIBRARYPREFIX)\""; \
 	echo "Just for debugging: LIBRARYPREFIX is \"$(LIBRARYPREFIX)\""; \
+	echo "Just for debugging: DIRECTORIES_TO_INCLUDE is \"$(DIRECTORIES_TO_INCLUDE)\""; \
 	for x in $(PP_OPTION); do \
 		echo -en "A \"$$x\"; " >> $@; \
 	done; \

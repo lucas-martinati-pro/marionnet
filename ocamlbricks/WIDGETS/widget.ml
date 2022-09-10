@@ -71,7 +71,7 @@ Exemple:
 let make
    ?(set_active:(string->bool)=(fun x->false))
    ~(submenu: GMenu.menu)
-   ~(menu:    GMenu.image_menu_item)
+   ~(menu:    GMenu.menu_item)
    ~(dynList: unit->(string list))
    ~(action:  string->unit->unit) () =
 
@@ -272,11 +272,12 @@ class comboTextTree = fun
      de faire appel à un second callback (cbackfun), de type string->unit, sur la chaine
      selectionnée dans le widget. *)
   method changedAndGetActive (cbfun:string->unit) =
-    let _ = self#box#connect#changed
-        (fun () -> match self#box#active_iter with
+    let _ = self#box#connect#changed ~callback:(
+        fun () -> match self#box#active_iter with
                 | None -> ()
-                | Some row -> let data = (self#box#model#get ~row ~column:self#col) in cbfun data
-         ) in ()
+                | Some row -> let data = (self#box#model#get ~row ~column:self#col) in cbfun data)
+    in
+    ()
 
 
   (* The packing initialization (only for bootstrap). *)
@@ -600,7 +601,7 @@ class textview = fun ?(view:GText.view = GText.view ()) () ->
   method rewrite ?(tags=[]) x = self#delete () ; self#append ~tags x
 
   (** Call by initializer *)
-  method private create_tags () =
+(*  method private create_tags () =
    begin
    let stipple = Gdk.Bitmap.create_from_data 2 2 "\002\001" in
    buffer#create_tag ~name:"heading"             [`WEIGHT `BOLD; `SIZE (15*Pango.scale)] |> ignore ;
@@ -633,7 +634,7 @@ class textview = fun ?(view:GText.view = GText.view ()) () ->
    ()
    end
 
- initializer self#create_tags ()
+ initializer self#create_tags ()*)
 
 end;; (* class textview *)
 

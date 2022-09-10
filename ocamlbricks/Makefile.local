@@ -18,11 +18,13 @@
 
 # Set this variable to "-verbose 0" for more details
 OCAMLBUILD_OPTIONS=-quiet
+# OCAMLBUILD_OPTIONS=-verbose 0
 
 # BYTE_COMPILE_OPTIONS += -custom -ccopt -L./ -cclib -L./
 COMPILE_OPTIONS += -g -thread
-DIRECTORIES_TO_INCLUDE = threads inotify lablgtk2 camlp4
-LIBRARIES_TO_LINK = str unix threads inotify lablgtk
+# DIRECTORIES_TO_INCLUDE = threads inotify lablgtk2 camlp4
+DIRECTORIES_TO_INCLUDE = threads inotify lablgtk3 camlp4
+LIBRARIES_TO_LINK = str unix threads inotify lablgtk3
 
 # Version of ocamlbricks project corresponding
 # to the content of our local copy ocamlbricks/

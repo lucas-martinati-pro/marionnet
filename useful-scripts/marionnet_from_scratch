@@ -840,17 +840,17 @@ function echo_required_debian_packages {
    }
  fi
 
- # x86_64 => libc6-i386
- if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6-i386; then
-   LIST+="libc6-i386 "
- fi 1>&2
-
  # In Ubuntu >= 18, x86_64 => libc6:i386
  # Note here ":" instead of "-". The package libc6-i386 appears to have been split into two distinct
  # packages: libc6-i386 to compile for an i386 target, and libc6:i386 to execute i386 code in a x86_64 system.
  if are_we_in_ubuntu_version_or_greater "18"; then
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6:i386; then
     LIST+="libc6:i386 "
+  fi 1>&2
+ else
+  # Not in Ubuntu >= 18, x86_64 => libc6-i386
+  if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6-i386; then
+    LIST+="libc6-i386 "
   fi 1>&2
  fi
 

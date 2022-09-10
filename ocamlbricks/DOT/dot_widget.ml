@@ -51,11 +51,11 @@ let filter_of_string ext =
 
 let make_all_working_filters_assoc () =
   let xyzw_list = Dot.working_output_formats ~no_file_inspection:() () in
-  List.map (fun (x,y,z,w) -> (x, make_dot_filter_by_format_and_description y z)) xyzw_list
+  List.map (fun (x,y,z,w) -> (x, make_dot_filter_by_format_and_description ~output_format_as_string:y ~description:z)) xyzw_list
 
 let make_all_working_filters () =
   let xyzw_list = Dot.working_output_formats ~no_file_inspection:() () in
-  List.map (fun (x,y,z,w) -> make_dot_filter_by_format_and_description y z) xyzw_list
+  List.map (fun (x,y,z,w) -> make_dot_filter_by_format_and_description ~output_format_as_string:y ~description:z) xyzw_list
 
 let combo_of_working_output_formats
   ?(active:Dot.output_format option)

@@ -65,12 +65,12 @@ ocaml_libraryprefix=$(ocamlc -where || exit -1)
 #ocaml_libraryprefix=/mystrangepath
 
 # Installation prefix for OCaml libraries built by the project.
-# By default they will be installed into the same directory of the `lablgtk2' 
+# By default they will be installed into the same directory of the `lablgtk3'
 # library or into ${ocaml_libraryprefix}, but you  can change it if you really 
 # want to install into a different, custom prefix.
 # *No* trailing slash should be included.
-libraryprefix=$(which 1>/dev/null ocamlfind && ocamlfind query lablgtk2)
-libraryprefix=${libraryprefix%/lablgtk2}
+libraryprefix=$(which 1>/dev/null ocamlfind && ocamlfind query lablgtk3)
+libraryprefix=${libraryprefix%/lablgtk3}
 libraryprefix=${libraryprefix:-$ocaml_libraryprefix}
 #
 # This definition may be appropriate for debian packaging:
