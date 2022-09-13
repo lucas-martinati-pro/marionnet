@@ -135,7 +135,7 @@ let init n f =
  in loop 0
 
 (** As standard [List.flatten] but with the possibility to provide an accumulator (which will be appended to the result). *)
-let rec flatten ?acc =
+let flatten ?acc =
  let acc = match acc with None -> [] | Some l -> l in
  let rec loop = function
  | [] -> acc

@@ -751,7 +751,7 @@ end (* Obj signature *)
 
   (* As skip but cuts the rest of sequence: *)
   let cut (p : 'a -> bool) (range : 'a obj) : 'a obj =
-    let rec loop () =
+    let loop () =
       let y = range () in
       if p y then raise Out_of_range else (* continue: *)
       y
@@ -760,7 +760,7 @@ end (* Obj signature *)
 
   (* As skip but cuts the rest of sequence: *)
   let cuti (p : 'i -> 'a -> bool) (range : ('i * 'a) obj) : ('i * 'a) obj =
-    let rec loop () =
+    let loop () =
       let (i,y) as result = range () in
       if p i y then raise Out_of_range else (* continue: *)
       result
@@ -770,7 +770,7 @@ end (* Obj signature *)
   (* As cut but the last element is taken: *)
   let break (p : 'a -> bool) (range : 'a obj) : 'a obj =
     let broken = ref false in
-    let rec loop () =
+    let loop () =
       if !broken then raise Out_of_range else (* continue: *)
       let y = range () in
       if p y then (broken:=true; y) else y
@@ -780,7 +780,7 @@ end (* Obj signature *)
   (* As cuti but the last element is taken: *)
   let breaki (p : 'i -> 'a -> bool) (range : ('i * 'a) obj) : ('i * 'a) obj =
     let broken = ref false in
-    let rec loop () =
+    let loop () =
       if !broken then raise Out_of_range else (* continue: *)
       let (i,y) as result = range () in
       if p i y then (broken:=true; result) else result

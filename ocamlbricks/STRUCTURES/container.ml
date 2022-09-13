@@ -15,7 +15,8 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../STRUCTURES/container.mli"
+INCLUDE DEFINITIONS "../../../../lib/STRUCTURES/container.mli"
+;;
 
 (* Fresh is morally an optional argument of the functor: *)
 module Add_identifiers

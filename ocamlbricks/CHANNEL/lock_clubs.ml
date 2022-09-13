@@ -429,7 +429,7 @@ module ADD_DISCIPLINE (Guarded: GUARDED) : DISCIPLINED_METHODS with type t := Gu
 
   (* val with_lock : ?level:int -> ?guards:('a Guard.gs) -> ?broadcast_levels:int list -> (t * 'a) -> ('a -> 'b) -> (exn, 'b) Either.t *)
   (* The broadcast is performed <=> the function succeed: *)
-  let with_lock ?level ?guards ?broadcast_levels (t,x) f =
+  let with_lock ?level ?guards ?broadcast_levels ((t:t),x) f =
     let guards = Option.map (fun gs -> Guard.thunkify gs x) guards in
     let () = Guarded.lock ?level ?guards t in
     (* --- *)

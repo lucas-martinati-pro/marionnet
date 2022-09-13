@@ -17,7 +17,6 @@
 (** Object-oriented marshalling support.
     This module contains two distinct marshalling facilities. *)
 
-open Marshal;;
 
 (** Marshalling flags: we want to support sharing but no closures. *)
 let flags = [ (* sharing is on by default *) ];;
@@ -30,6 +29,7 @@ let flags = [ (* sharing is on by default *) ];;
 
 (** The virtual marshallable class, which should be the base class of all
     classes intended for marshalling with this technique. *)
+(* ---
 class virtual marshallable = object(self)
   (** Marshal [self] into a string, and return the string *)
   method to_string = Marshal.to_string self flags
@@ -43,6 +43,7 @@ class virtual marshallable = object(self)
     Marshal.to_channel channel self flags;
     close_out channel
 end;;
+--- *)
 
 (** Unmarshal (what we hope to be) a [marshallable] object from the given
     string, and return the object with an {e unconstrained polymorphic

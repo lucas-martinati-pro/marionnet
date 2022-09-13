@@ -1387,7 +1387,7 @@ let aim_human ?level ?enter ?notify ?leave t f =
 (* val aim_option : 'a t -> ('a update) -> 'a option *)
 let aim_option ?level ?enter ?notify ?leave t f =
   aim ?level ?enter ?notify ?leave t f |> (fun (v2, details) ->
-    let open Res.Review in
+    (* let open Res.Review in *)
     match details.review with Error _ -> None (* v0 *) | _ -> Some v2
     )
 

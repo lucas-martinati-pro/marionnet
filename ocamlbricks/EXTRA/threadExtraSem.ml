@@ -148,8 +148,8 @@ let with_semaphore ?(n=Array.make dim 1) t thunk =
     raise e;
   end
 
-type a = t array
-type t = a
+(* type a = t array *)
+(* type t = a *)
 
 end (* Array_and *)
 
@@ -231,7 +231,7 @@ let with_semaphore ?(n=Array.make dim 1) t f =
     raise e;
   end
 
-type a = t array
-type t = a
+(* type a = t array *)
+(* type t = a *)
 
 end (* Array_or *)

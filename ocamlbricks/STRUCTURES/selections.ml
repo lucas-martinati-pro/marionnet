@@ -205,7 +205,7 @@ ENDIF
 
   (* Recursive scheme of previous function (next step will be the memoization of this scheme).
      The induction basis here is k=1 *)
-  let rec make_scheme self (n,k) : (index list) array =
+  let make_scheme self (n,k) : (index list) array =
     if (k=1) then Array.init n (shared_singleton) (* fun i -> [i] *) else (* continue with k≥2: *)
     let xss =
       let r = self (n, (k-1)) in (* self should be memoized *)
@@ -267,7 +267,7 @@ ENDIF
 
   (* Recursive scheme of previous function (next step will be the memoization of this scheme).
      The induction basis here is k=1 *)
-  let rec make_scheme self (n,k) : (index list) array =
+  let make_scheme self (n,k) : (index list) array =
     if (n=0) then [||] (* optimization, not necessary *) else (* continue with n≥1 *)
     if (k=1) then Array.init n (shared_singleton) (* fun i -> [i] *) else (* continue with k≥2: *)
     let shift i js = i::(List.map (fun j -> j+i) js) in
@@ -333,7 +333,7 @@ ENDIF
 
   (* Recursive scheme of previous function (next step will be the memoization of this scheme).
      The induction basis here is k=1 *)
-  let rec make_scheme self (n,k) : (index list) array =
+  let make_scheme self (n,k) : (index list) array =
     if (k=1) then Array.init n (shared_singleton) (* fun i -> [i] *) else (* continue with k≥2: *)
     let shift i js = i::(List.map (fun j -> if j<i then j else j+1) js) in
     let xss =

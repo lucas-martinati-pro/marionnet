@@ -24,7 +24,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../BASE/log_builder.mli"
+INCLUDE DEFINITIONS "../../../../lib/BASE/log_builder.mli"
 ;;
 
 (* We will use an extended version of Mutex: *)
@@ -228,7 +228,7 @@ type command = string
 
 (** Run Unix.system with the given argument, and raise exception in case of failure;
     return unit on success. *)
-let (*UnixExtra.*)system_or_fail ?(hide_output=false) ?(hide_errors=false) command =
+let (*UnixExtra.*)system_or_fail ?(hide_output=false) ?(hide_errors=false) (command:command) =
   let suffix1 = if hide_output then " 1>/dev/null" else "" in
   let suffix2 = if hide_errors then " 2>/dev/null" else "" in
   let command = Printf.sprintf "%s%s%s" command suffix1 suffix2 in

@@ -18,7 +18,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../STRUCTURES/ipv4.mli"
+INCLUDE DEFINITIONS "../../../../lib/STRUCTURES/ipv4.mli"
 ;;
 
 (** Example: [23 -> (255,255,254,0)] *)

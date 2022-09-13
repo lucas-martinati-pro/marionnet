@@ -445,7 +445,7 @@ module Permutation = struct
       let i = ref 0 in
       for r = 0 to (rows-1) do
           let b = ref b0 in
-          for c = 0 to (cols-1) do
+          for _c = 0 to (cols-1) do
             js.(!i) <- r + !b;
             incr i;
             b := !b - rows;

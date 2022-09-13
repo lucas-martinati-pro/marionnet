@@ -282,7 +282,7 @@ let printable_string_of_forest
 
  (* Support for indentation *)
  let indent = function level ->
-   for i = 1 to level do print_string "  "; done;
+   for _i = 1 to level do print_string "  "; done;
    if level = 0 then print_string "* " else print_string "`-"
  in
  let rec loop ~level = function
@@ -301,7 +301,7 @@ let printable_string_of_forest
 ;;
 
 (** A printer for forests: *)
-let rec print_forest ?level ?string_of_node ~channel forest =
+let print_forest ?level ?string_of_node ~channel forest =
   let s = printable_string_of_forest ?level ?string_of_node forest in
   Printf.kfprintf flush channel "%s" s
 ;;

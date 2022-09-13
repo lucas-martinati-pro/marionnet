@@ -69,7 +69,7 @@ let make (l:('a*'b) list) = let e=(new env ()) in (e#add_list l); e;;
 exception Undefined_identifier of string
 class ['b] string_env () = object (self)
   inherit [string,'b] env () as super
-  method get id = try (super#get id) with Not_found -> raise (Undefined_identifier id)
+  method! get id = try (super#get id) with Not_found -> raise (Undefined_identifier id)
 
   (** {b Example}:
 {[# let e = Environment.make_string_env [("aaa", 1); ("bbbbbb",2); ("c",3) ] ;;

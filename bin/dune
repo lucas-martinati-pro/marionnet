@@ -1,0 +1,12 @@
+(executable
+  (public_name marionnet)
+  (name main)
+  (preprocess (action (run camlp4of -I ../../../../_build/ %{read-lines:../lib/camlp4of-flags.cfg} %{input-file})))
+  (link_flags -I ../ -cclib -locamlbricks_stubs)
+;;(ocamlopt_flags -I ../ -cclib -locamlbricks_stubs)
+;;(ocamlc_flags   -I ../ -cclib -locamlbricks_stubs)
+  (libraries str unix threads inotify lablgtk3 ocamlbricks)
+  )
+
+;;OCAMLBRICKS_STUBS=ocamlbricks_stubs
+;;COMPILE_OPTIONS += -g -w x -I $(OCAMLBRICKS) -cclib -l$(OCAMLBRICKS_STUBS)

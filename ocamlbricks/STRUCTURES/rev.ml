@@ -37,7 +37,7 @@ let create (v:'a) : 'a t =
  { previous = [];
    current  = v }
 
-type 'a register = ('a stack) stack
+(* type 'a register = ('a stack) stack *)
 
 (* A first parenthesis is implicitely opened. I use Obj.magic for efficiency reasons (thunks need to be applied). *)
 let the_register =

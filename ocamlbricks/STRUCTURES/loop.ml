@@ -62,7 +62,7 @@ type int_range   = ( start *  stop *  step)
              Checking ranges
     --------------------------------------- *)
 
-let rec check_int_range (a,b,s) : ('s, index, int) break =
+let check_int_range (a,b,s) : ('s, index, int) break =
   let forward_break  = fun s j x -> (x >= b) in
   let backward_break = fun s j x -> (x <= b) in
   (* --- *)
@@ -74,7 +74,7 @@ let rec check_int_range (a,b,s) : ('s, index, int) break =
   let result = (if (s<0) then backward_break else forward_break) in
   result
 
-let rec check_float_range (a,b,s) : ('s, index, float) break =
+let check_float_range (a,b,s) : ('s, index, float) break =
   let raise_error () =
     invalid_arg (Printf.sprintf "Loop: Ill-defined range (%F,%F,%F): the step cannot be zero. Use for_thunk() to create infinite loops" a b s)
   in

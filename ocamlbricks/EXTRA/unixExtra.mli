@@ -106,7 +106,7 @@ val file_kind_of_char : char -> Unix.file_kind option
 
 (** {2 Directories} *)
 
-val iter_dir : (string -> 'a) -> string -> unit
+val iter_dir : (string -> unit) -> string -> unit
 
 val find :
   ?follow:unit ->

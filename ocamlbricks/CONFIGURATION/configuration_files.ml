@@ -100,7 +100,7 @@ let variables_of_matrix matrix =
     variable value (as a list of strings) is passed to the given function to
     obtain the value which is bound in the returned environment. Variables for
     which the given function fails are simply ignored: *)
-let alist_of_matrix row_to_element matrix =
+let alist_of_matrix row_to_element matrix : 'a alist =
   let result = ref [] in
   List.iter
     (fun row ->

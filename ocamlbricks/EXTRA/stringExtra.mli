@@ -74,9 +74,9 @@ val chop      : string -> string
 (** {2 Considering as a char array} *)
 
 val init         : int -> (int -> char) -> string
-val iteri        : (int -> char -> 'a) -> string -> unit
-val iter2        : (char -> char -> 'a) -> string -> string -> unit
-val iteri2       : (int -> char -> char -> 'a) -> string -> string -> unit
+val iteri        : (int -> char -> unit) -> string -> unit
+val iter2        : (char -> char -> unit) -> string -> string -> unit
+val iteri2       : (int -> char -> char -> unit) -> string -> string -> unit
 val map          : (char -> char) -> string -> string
 val mapi         : (int -> char -> char) -> string -> string
 val map2         : (char -> char -> char) -> string -> string -> string

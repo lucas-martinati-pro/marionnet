@@ -467,7 +467,7 @@ class stream_channel ?max_input_size fd =
   inherit stream_or_seqpacket_bidirectional_channel ?max_input_size fd as super
 
   (* Redefined: *)
-  method shutdown ?receive ?send () = begin
+  method! shutdown ?receive ?send () = begin
     super#shutdown ?receive ?send ();
     protect close_in   in_channel;
     protect close_out out_channel;

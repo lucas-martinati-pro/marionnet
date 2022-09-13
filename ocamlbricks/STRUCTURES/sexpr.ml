@@ -479,7 +479,7 @@ module GENEALOGY_OF_TYPE (V:sig  type t  val zip: t * t -> t  end)
 (* --- *)
 type _ t = Atom : V.t -> V.t t | Cons : (V.t) * ('a t * 'b t) -> ('a * 'b) t
 
-let atom : type a. V.t -> V.t t = fun x -> Atom(x)
+let atom : V.t -> V.t t = fun x -> Atom(x)
 let cons : type a b. V.t -> a t -> b t -> (a*b) t = fun xy -> fun x -> fun y -> Cons(xy, (x, y))
 
 let car : type a b. (a*b) t -> a t = function Cons(xy, (x,y)) -> x | Atom xy -> assert false

@@ -324,7 +324,7 @@ The function returns the name of the created directory.
 # temp_dir ~suffix:".txt" ();;
   : string = "/tmp/625724514.txt"
 ]}*)
-let rec temp_dir ?(perm=0o755) ?(parent="/tmp") ?(prefix="") ?(suffix="") () =
+let temp_dir ?(perm=0o755) ?(parent="/tmp") ?(prefix="") ?(suffix="") () =
   Templib.temp_name ~dir:true ~parent ~perm ~prefix ~suffix ()
 ;;
 
@@ -333,7 +333,7 @@ let rec temp_dir ?(perm=0o755) ?(parent="/tmp") ?(prefix="") ?(suffix="") () =
     to put it in the created file. By default the [content] is the empty string.
     The function returns the name of the created directory.
 *)
-let rec temp_file ?(perm=0o644) ?(parent="/tmp") ?(prefix="") ?(suffix="") ?(content:string="") () =
+let temp_file ?(perm=0o644) ?(parent="/tmp") ?(prefix="") ?(suffix="") ?(content:string="") () =
   let fname = (Templib.temp_name ~dir:false ~perm ~parent ~prefix ~suffix ()) in
   (if content<>"" then (rewrite fname content));
   fname
@@ -345,7 +345,7 @@ module TMPDIR = struct
 
 let default_prefix = (Filename.basename Sys.executable_name)^".";;
 
-let rec open_temp
+let open_temp
   ?(perm=0o644)
   ?(prefix=default_prefix)
   ?(suffix="") () =
@@ -696,9 +696,9 @@ let rec wait_child child_pid events =
 
  match events with
   | { process_status   = Some (Unix.WEXITED code); forwarded_signal = None;  waitpid_exn = false } -> code
-  | { process_status   = Some (Unix.WEXITED code); forwarded_signal = Some s } when s=Sys.sigcont  -> code
-  | { forwarded_signal = Some s ; waitpid_exn = true } -> (raise (Signal_forward s))
-  | { waitpid_exn      = true  }                       -> (raise Waitpid)
+  | { process_status   = Some (Unix.WEXITED code); forwarded_signal = Some s; _ } when s=Sys.sigcont  -> code
+  | { forwarded_signal = Some s ; waitpid_exn = true; _ } -> (raise (Signal_forward s))
+  | { waitpid_exn      = true; _ }                       -> (raise Waitpid)
   | _ -> (assert false)
  ;;
 
@@ -790,7 +790,7 @@ let shell ?shell ?(trace:bool=false) ?(input:string="") ?stderr cmd =
 
 (** A Unix future is a future containing the exit code and the two strings outcoming from stdout and stderr.
     The negative exit code (-1) means that the process didn't well exited. *)
-type future = (int * string * string) Future.t ;;
+type _future = (int * string * string) Future.t ;;
 
 (** Similar to {!val:UnixExtra.future}, but with a continuation executed {b within} the thread.
     The default for [forward] here is the empty list [[]]. *)

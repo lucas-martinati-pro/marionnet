@@ -18,7 +18,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../EXTRA/mapExtra.mli"
+INCLUDE DEFINITIONS "../../../../lib/EXTRA/mapExtra.mli"
 ;;
 
 IFDEF OCAML4_07_OR_LATER THEN

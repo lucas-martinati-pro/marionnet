@@ -25,7 +25,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../EXTRA/mutexExtra.mli"
+INCLUDE DEFINITIONS "../../../../lib/EXTRA/mutexExtra.mli"
 
 (** Make the extra definitions for a module with a `Basic_signature': *)
 module Extend (Mutex : Basic_signature) = struct

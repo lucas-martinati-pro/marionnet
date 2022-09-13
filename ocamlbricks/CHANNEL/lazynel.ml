@@ -78,7 +78,7 @@ module Core = struct
  let set_value (y: (exn, 'a) Either.t) (t: 'a t) : 'a t =
     { t with target = Forced y }
 
-  let ownership (t: 'a t) : bool =
+  let ownership (t: 'a t) : ownership (*bool*) =
     match t.target with
     | Work_in_progress (thread_id, _hublet) -> (thread_id = get_thread_id ())
     | _ -> false

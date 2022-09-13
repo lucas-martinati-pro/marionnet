@@ -39,7 +39,7 @@ let blitting ~(perform:char->int->unit) : blit_function =
   then invalid_arg "Bytes.blitting" else
   let ofs1=ref ofs1 in
   let ofs2=ref ofs2 in
-  for i=1 to len do
+  for _j=1 to len do
     let c = Bytes.get s1 (!ofs1) in
     let i = !ofs2 in
     (perform c i);
@@ -551,7 +551,7 @@ let map_concat ?(sep=" ") f l = String.concat sep (List.map f l)
 {[# merge_fields "/" [2;4] ["aaa";"bbb";"ccc";"ddd";"eee"] ;;
   : string = "ccc/eee"
 ]}*)
-let rec merge_fields sep (fieldlist:int list) (l:string list) =
+let merge_fields sep (fieldlist:int list) (l:string list) =
  let l'=(ListExtra.select l fieldlist) in (String.concat sep l')
 
 (** Convert a string in a [line] just adding a newline {b if needed}.

@@ -17,10 +17,8 @@
 (* Do not remove the following comment: it's an ocamldoc workaround. *)
 (** *)
 
-#load "include_type_definitions_p4.cmo"
-;;
-
-INCLUDE DEFINITIONS "../DOT/dot.mli"
+#load "include_type_definitions_p4.cmo";;
+INCLUDE DEFINITIONS "../../../../lib/DOT/dot.mli"
 ;;
 
 type graph = {
@@ -38,7 +36,7 @@ type graph = {
    | Node of node_ident * (node_option list)                  (* id [name=val,...] *)
    | Edge of node_ident * node_ident * (edge_option list)     (* id -> id [name=val,...] *)
    | Subgraph of name * (statement list)                      (* subgraph name { statements } *)
-   | Statement_list of statement list
+(*    | Statement_list of statement list *)
 
  and name = string
  and graph_option = string
@@ -55,7 +53,7 @@ let rec cotokens_of_statement tab edge_operator = function
 | Edge_defaults  edge_option_list     ->  [Printf.sprintf "%sedge [%s]" tab  (commacat edge_option_list)]
 | Node (node_ident, node_option_list) ->  [Printf.sprintf "%s%s [%s]" tab  node_ident (commacat node_option_list)]
 | Edge (n1, n2, edge_option_list)     ->  [Printf.sprintf "%s%s %s %s [%s]" tab n1 edge_operator n2 (commacat edge_option_list)]
-| Statement_list statement_list       ->  List.flatten (List.map (cotokens_of_statement tab edge_operator) statement_list)
+(* | Statement_list statement_list       ->  List.flatten (List.map (cotokens_of_statement tab edge_operator) statement_list) *)
 | Subgraph (name, statement_list)     ->
     let tab' = (tab^"  ") in
     let first = Printf.sprintf "%ssubgraph %s {" tab name in

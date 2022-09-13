@@ -211,10 +211,10 @@ module Reviewer = struct
     | (Ok (Some v2)) as result -> (v2, result)      (* v1 revised and turned into v2 *)
 
  (* Redefined to render the reviewer argument optional: *)
- let compose_update_reviewer ?reviewer =
+ let compose_update_reviewer ?reviewer ~update ~v0 () =
  match reviewer with
- | None          -> apply_update
- | Some reviewer -> compose_update_reviewer (reviewer)
+ | None          -> apply_update ~update ~v0
+ | Some reviewer -> compose_update_reviewer (reviewer) ~update ~v0
 
  (* Extend a reviewer to deal with optional values. The reviewer is activated only when both values (old and new)
     are defined (Some). Otherwise, the default review is returned:
@@ -303,7 +303,7 @@ module Exposed = struct
 
         method aim (update) : 'a * ('a review * status) =
           let v0 = contents in
-          let v2, review = compose_update_reviewer ~update ~v0 (* self#get *) in
+          let v2, review = compose_update_reviewer ~update ~v0 (* self#get *) () in
           let status = match review with Error _ -> no_change | _ -> (contents <- v2; (v2==v0, lazy (v2=v0))) (* self#set v2 *) in
           v2, (review, status)
 
@@ -356,7 +356,7 @@ module Exposed = struct
         (* --- *)
         method aim (update) : 'a * ('a review * status) =
           let v0, _ = self#commit in
-          let v2, review = compose_update_reviewer ~update ~v0 in
+          let v2, review = compose_update_reviewer ~update ~v0 () in
           let status = match review with Error _ -> no_change | _ -> (x#set v2; (v2==v0, lazy (v2=v0))) in
           v2, (review, status)
 
@@ -364,7 +364,7 @@ module Exposed = struct
         method commit : 'a * control =
           let cn = (let cn = commits_no in commits_no <- cn + 1; cn) in
           let v0 = x#get in
-          let v1, review = compose_update_reviewer ~update:(fun v0->v0) ~v0 in
+          let v1, review = compose_update_reviewer ~update:(fun v0->v0) ~v0 () in
           let status = (v1==v0, lazy (v1=v0)) in
           let control = (cn, status) in
           match review with
@@ -423,7 +423,7 @@ module Exposed = struct
         (* --- *)
         method aim (update) : ('a * 'b) * (('a * 'b) review * status) =
           let v0 = if commit_required then fst self#commit else self#get in
-          let v2, review = compose_update_reviewer ~update ~v0 in
+          let v2, review = compose_update_reviewer ~update ~v0 () in
           let status = match review with Error _ -> no_change | _ -> (self#set v2; (v2==v0, lazy (v2=v0))) in
           v2, (review, status)
 
@@ -433,7 +433,7 @@ module Exposed = struct
           let a0 = x_commit_or_get () in
           let b0 = y_commit_or_get () in
           let v0 = (a0, b0) in
-          let (a1,b1) as v1, review = compose_update_reviewer ~update:(fun v0->v0) ~v0 in
+          let (a1,b1) as v1, review = compose_update_reviewer ~update:(fun v0->v0) ~v0 () in
           let status = ((a1==a0 && b1==b0), lazy (a1=a0 && b1=b0)) in
           let control = (cn, status) in
           match review with
@@ -516,7 +516,7 @@ module Exposed = struct
 
         method aim (update) : 'a * ('a review * status) =
           let v0 = if commit_required then fst self#commit else self#get in
-          let v2, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update ~v0 in
+          let v2, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update ~v0 () in
           let status = match review with Error _ -> no_change | _ -> (self#set v2; (v2==v0, lazy (v2=v0))) in
           v2, (review, status)
 
@@ -525,7 +525,7 @@ module Exposed = struct
           let cn = (let cn = commits_no in commits_no <- cn + 1; cn) in
           let (a0, _b0) as v0 = xy_commit_or_get () in (* xy is now committed, so the reviewer is able to call xy#get *)
           if (self_commit_not_required) then (a0, (cn, no_change)) else (* continue: *)
-          let a1, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update:(fun v0->v0) ~v0:(a0) in
+          let a1, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update:(fun v0->v0) ~v0:(a0) () in
           let status = (a1==a0, lazy (a1=a0)) in
           let control = (cn, status) in
           match review with
@@ -606,7 +606,7 @@ module Exposed = struct
         (* --- *)
         method aim (update) : 'b * ('b review * status) =
           let v0 = if commit_required then fst self#commit else self#get in
-          let v2, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update ~v0 in
+          let v2, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update ~v0 () in
           let status = match review with Error _ -> no_change | _ -> (self#set v2; (v2==v0, lazy (v2=v0))) in
           v2, (review, status)
 
@@ -615,7 +615,7 @@ module Exposed = struct
           let cn = (let cn = commits_no in commits_no <- cn + 1; cn) in
           let (_a0, b0) as v0 = xy_commit_or_get () in (* xy is now committed, so the reviewer is able to call xy#get *)
           if (self_commit_not_required) then (b0, (cn, no_change)) else (* continue: *)
-          let b1, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update:(fun v0->v0) ~v0:(b0) in
+          let b1, review = Reviewer.compose_update_reviewer ?reviewer:(self#reviewer) ~update:(fun v0->v0) ~v0:(b0) () in
           let status = (b1==b0, lazy (b1=b0)) in
           let control = (cn, status) in
           match review with

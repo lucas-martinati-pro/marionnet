@@ -18,7 +18,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../STRUCTURES/ipv6.mli"
+INCLUDE DEFINITIONS "../../../../lib/STRUCTURES/ipv6.mli"
 ;;
 
 (** Convert a string into the ipv6 addresses internal representation.

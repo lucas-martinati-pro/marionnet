@@ -364,7 +364,7 @@ let rec get_descendants_by_ps ?(pid=Unix.getpid ()) () =
  List.concat (List.map (fun pid -> pid::(get_descendants_by_ps ~pid ())) children)
 ;;
 
-let rec kill_children_by_ps ?(pid=Unix.getpid ()) () =
+let kill_children_by_ps ?(pid=Unix.getpid ()) () =
  let get_children () = get_children_by_ps ~pid () in
  (* --- Step 1: send SIGTERM (15) to children: *)
  let children = get_children () in

@@ -18,7 +18,7 @@
 (** *)
 
 #load "include_type_definitions_p4.cmo";;
-INCLUDE DEFINITIONS "../EXTRA/setExtra.mli"
+INCLUDE DEFINITIONS "../../../../lib/EXTRA/setExtra.mli"
 ;;
 
 IFDEF OCAML4_07_OR_LATER THEN

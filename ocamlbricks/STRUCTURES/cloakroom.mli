@@ -22,6 +22,7 @@
 
 type 'a t
 type id = int
+type revision = int
 
 val create : ?size:int -> unit -> 'a t
 
@@ -46,6 +47,7 @@ end
 module Hetero : sig
  type t
  type id = int
+ type revision = int
  val create : ?size:int -> unit -> t
  val add    : t -> 'a -> id
  val find   : t -> id -> 'a
