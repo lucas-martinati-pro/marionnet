@@ -16,7 +16,15 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module StackExtra = Ocamlbricks.StackExtra
+module Dot = Ocamlbricks.Dot
+module Dot_widget = Ocamlbricks.Dot_widget
+module Environments = Ocamlbricks.Environments
+module UnixExtra = Ocamlbricks.UnixExtra
+(* --- *)
 open Gettext;;
 
 (** Gui completion for the menubar_MARIONNET widget defined with glade. *)
@@ -27,7 +35,7 @@ module Msg = Talking.Msg
 let mkenv = Environments.make_string_env
 
 open GdkKeysyms
-open GtkStock
+(*open GtkStock*)
 
 module Make (State:sig val st:State.globalState end) = struct
 
@@ -212,10 +220,10 @@ module Created_entry_project_close = Menu_factory.Make_entry
 
    let reaction r = begin
     st#shutdown_everything ();
-    let () = 
+    let () =
       if (st#active_project) && ((r#get "answer") = "yes")
         then st#save_project
-        else () 
+        else ()
     in
     st#close_project;
     end
@@ -332,7 +340,7 @@ module Created_entry_options_cwd = Menu_factory.Make_entry
     Talking.EDialog.ask_for_existing_writable_folder_pathname_supporting_sparse_files
        ~title:(s_ "Choose the temporary working directory")
        ~help:(Some Msg.help_repertoire_de_travail) ()
-   let reaction r = 
+   let reaction r =
      let pathname = (r#get "foldername") in
      let realpath = Option.extract (UnixExtra.realpath pathname) in
      st#project_paths#set_temporary_directory (realpath)

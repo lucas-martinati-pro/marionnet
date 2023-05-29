@@ -52,8 +52,8 @@ module Created_menubar_MARIONNET = Gui_menubar_MARIONNET.Make (State)
 
 (* Tool -> ocamlbricks widget.ml ? *)
 let get_tab_labels_of notebook =
- let mill widget = (GMisc.label_cast (notebook#get_tab_label widget))
- in List.map mill notebook#children
+  let mill widget = (GMisc.label_cast (notebook#get_tab_label widget)) in
+  List.map mill notebook#children
 
 let tuple2_of_list = function [l1;l2]       -> (l1,l2)       | _ -> assert false
 let tuple4_of_list = function [l1;l2;l3;l4] -> (l1,l2,l3,l4) | _ -> assert false
@@ -103,15 +103,15 @@ let button_BASE_STARTUP_EVERYTHING =
     ~label_position:`BOTTOM ~stock_size:`DND ~packing:w#hbox_BASE#add ()
 
 let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOMETHING) =
-  let renewer = 
-    let get_label_active_callback_list () = 
-      let name_kind_suspended_list : (string * [`Node|`Cable] * bool) list = 
-        st#network#get_component_names_that_can_suspend_or_resume () 
+  let renewer =
+    let get_label_active_callback_list () =
+      let name_kind_suspended_list : (string * [`Node|`Cable] * bool) list =
+        st#network#get_component_names_that_can_suspend_or_resume ()
       in
-      List.map 
+      List.map
         (fun (name, kind, suspended) ->
-           let callback b = 
-             if b = suspended then () else 
+           let callback b =
+             if b = suspended then () else
              match suspended with
              | true  -> (st#network#get_component_by_name ~kind name)#resume
              | false -> (st#network#get_component_by_name ~kind name)#suspend
@@ -119,7 +119,7 @@ let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOME
            (name, suspended, callback)
         )
         name_kind_suspended_list
-    in        
+    in
     Gui_bricks.make_check_items_renewer_v1 ~get_label_active_callback_list ()
     (* end of renewer () *)
   in
@@ -140,7 +140,7 @@ let button_BASE_POWEROFF_EVERYTHING =
     ~label_position:`BOTTOM ~packing:w#hbox_BASE#add ()
 
 (* Just a thunk, the button is not really built. We leave this code
-   in order to not remove the gettext key associated to this `tooltip' 
+   in order to not remove the gettext key associated to this `tooltip'
    and this `label': *)
 let button_BASE_BROADCAST () =
   Gui_bricks.button_image ~label:(s_ "Broadcast")

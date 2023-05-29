@@ -16,6 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+
 open Gettext;;
 
 (** Convert ocaml (ISO-8859-1) string in UTF-8 format *)
@@ -82,21 +85,10 @@ let confirm_dialog
   let cont   = ref true in
   while (!cont = true) do
     begin match dialog#toplevel#run () with
-    | `YES  -> begin
-        cont := false;
-        result := Some true;
-      end
-    | `NO   -> begin
-        cont := false;
-        result := Some false
-      end
-    | `CANCEL ->
-        cont := false;
-        result := None
-    |  _ ->
-        (* The user tried to close the dialog. No, we refuse: let him/her try again *)
-        (*assert false*)
-        ()
+    | `YES    -> (cont := false; result := Some true)
+    | `NO     -> (cont := false; result := Some false)
+    | `CANCEL -> (cont := false; result := None)
+    |  _ -> () (* the user tried to close the dialog. No, we refuse: let him/her try again *)
     end
   done;
   dialog#toplevel#destroy ();

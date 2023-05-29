@@ -18,6 +18,13 @@
 
 (** "world gateway" component implementation. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+module Ipv4 = Ocamlbricks.Ipv4
+(* --- *)
 open Gettext;;
 
 (* Switch related constants: *)
@@ -409,7 +416,7 @@ class world_gateway =
     Ipv4.to_string self#gw_ipv4_address
 
   (** Redefined:*)
-  method label_for_dot =
+  method! label_for_dot =
     let ip_gw = Ipv4.string_of_config (self#gw_ipv4_address, 24) in
     match self#get_label with
     | "" -> ip_gw
@@ -425,7 +432,7 @@ class world_gateway =
       ])
 
   (** A world_bridge has just attributes (no children) in this version. *)
-  method eval_forest_attribute =
+  method! eval_forest_attribute =
     function
       | ("name"  , x ) -> self#set_name x
       | ("label" , x ) -> self#set_label x
@@ -479,9 +486,9 @@ class ['parent] world_gateway =
     ~last_user_visible_port_index
     ~working_directory
     ~unexpected_death_callback
-    () as super
+    () (* as self_as_switch *)
 
-  method device_type = "world_gateway"
+  method! device_type = "world_gateway"
 
   initializer
 

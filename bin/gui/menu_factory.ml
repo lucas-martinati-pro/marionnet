@@ -20,7 +20,12 @@
 
 #load "include_type_definitions_p4.cmo"
 ;;
-INCLUDE DEFINITIONS "gui/menu_factory.mli"
+INCLUDE DEFINITIONS "../../../../bin/gui/menu_factory.mli"
+
+(* --- *)
+module Log = Marionnet_log
+module Widget = Ocamlbricks.Widget
+module Environments = Ocamlbricks.Environments
 
 let fresh_path =
  let x = ref 0 in
@@ -89,19 +94,82 @@ module Make (M: Parents) = struct
    let () = match submenu with None -> () | Some submenu -> (result#set_submenu submenu)
    in result
 
- let add_stock_item ?(menu = get_current_menu ()) ?submenu ?(key=0) label ~stock ?(callback=(monitor label)) () =
-   let result = menu#add_image_item ~image:(GMisc.image ~stock ())#coerce ~key ~callback ~label () in
+ (* https://docs.gtk.org/gtk3/class.ImageMenuItem.html *)
+ module Image_menu_item = struct
+  (* --- *)
+  (* NON SO COME SPECIFICARE LA DIMENSIONE (GTK_ICON_SIZE_MENU):
+      GtkWidget *icon = gtk_image_new_from_icon_name ("folder-music-symbolic", GTK_ICON_SIZE_MENU); *)
+  let make ?file ?stock ~text () : GMenu.menu_item =
+    if file=None && stock=None then invalid_arg "Menu_factory.Make.Image_menu_item.make" else (* continue: *)
+    (* val box : Gtk.Tags.orientation -> ?homogeneous:bool -> ?spacing:int -> ?border_width:int -> ?width:int -> ?height:int -> ?packing:(..) -> ?show:bool -> unit -> box *)
+    let box = GPack.box `HORIZONTAL ~homogeneous:false ~spacing:0 ~show:true () in
+    let image = GMisc.image ?file ?stock ~packing:(box#add) ~show:true () in
+    let label = GMisc.label ~text  ~packing:(box#add) ~show:true () in
+    (* type align = [ `FILL | `START | `END | `CENTER | `BASELINE ] *)
+    let () = image#set_halign `START in
+    let () = label#set_halign `CENTER in
+    (* val menu_item : ?use_mnemonic:bool -> ?label:string -> ?packing:(menu_item -> unit) -> ?show:bool -> unit -> menu_item *)
+    let menu_item = GMenu.menu_item ~show:true () in
+    let () = box#set_child_packing ~padding:0 (image#coerce) in
+    let () = box#set_child_packing ~padding:0 (label#coerce) in
+    (*let () = box#coerce#set_margin_start 0 in*)
+    (*let () = image#coerce#set_margin_start 0 in*)
+    (* --- *)
+    let () = menu_item#add (box#coerce) in
+    let () = menu_item#coerce#set_margin_start 0 in
+    (* let () = menu_item# set_child_packing ~padding:30 (box#coerce) in *)
+    menu_item
+  (* --- *)
+ end (* Image_menu_item *)
+
+ (* val add_stock_item :
+      ?menu:GMenu.menu GMenu.factory -> ?submenu:GMenu.menu -> ?key:Gdk.keysym -> string -> stock:GtkStock.id -> ?callback:(unit -> unit) -> unit -> GMenu.menu_item *)
+ let add_stock_item_v0 ?(menu = get_current_menu ()) ?submenu ?(key=0) label ~stock ?(callback=(monitor label)) () =
+   let () = Log.printf "Warning: Menu_factory.Make.add_stock_item implemented ignoring the image (~stock ignored)\n" in
+   (* let result = menu#add_image_item ~image:(GMisc.image ~stock ())#coerce ~key ~callback ~label () in *)
+   let result = menu#add_item ~key ~callback label in
    let () = match submenu with None -> () | Some submenu -> (result#set_submenu submenu)
    in result
 
- let add_imagefile_item ?(menu = get_current_menu ()) ?submenu ?(key=0) ?(label="") file ?(callback=(monitor file)) () =
-   let result = menu#add_image_item ~label ~image:(GMisc.image ~file ())#coerce ~key ~callback () in
+ (* --- *)
+ (* 20230528: Tutto bene tranne il fatto che
+    (1) non si vedono le lettere per la scorciatoia CONTROL-tasto
+    (2) risulta molto spazio vuoto a sinistra, prima dell'immagine stock/file *)
+ let add_stock_or_file_item(*_v1*) ?(menu = get_current_menu ()) ?submenu ?(key=0) label ?file ?stock ?(callback=(monitor label)) () =
+   let () = if key>0 then Log.printf2 "Warning: Menu_factory.Make.add_stock_item: about to add a stock or file item with text='%s' and key=%d\n" (label) (key) in
+   let result = Image_menu_item.make ?file ?stock ~text:(label) () in
+   (* --- *)
+   let () = menu#menu#add (result) in
+   let accel_group = menu#accel_group in
+   (* --- *)
+   let () = if key>0 then result#add_accelerator ~group:(accel_group) ~modi:[`CONTROL] (key) in
+   (* Necessario? *)
+   let _ = result#connect#activate ~callback in
+   (* --- *)
+   let () = match submenu with None -> () | Some submenu -> (result#set_submenu submenu)
+   in result
+
+ (* --- *)
+ let add_stock_item(*_v1*) ?menu ?submenu ?key label ~stock ?callback () =
+   add_stock_or_file_item ?menu ?submenu ?key label ~stock ?file:None ?callback ()
+
+
+ (* val add_imagefile_item :
+      ?menu:GMenu.menu GMenu.factory -> ?submenu:GMenu.menu -> ?key:Gdk.keysym -> ?label:string -> string -> ?callback:(unit -> unit) -> unit -> GMenu.menu_item *)
+ let add_imagefile_item_v0 ?(menu = get_current_menu ()) ?submenu ?(key=0) ?(label="") file ?(callback=(monitor file)) () =
+   let () = Log.printf "Warning: Menu_factory.Make.add_imagefile_item implemented ignoring the image (file ignored)\n" in
+   (* let result = menu#add_image_item ~label ~image:(GMisc.image ~file ())#coerce ~key ~callback () in *)
+   let result = menu#add_item ~key ~callback label in
    let () = match submenu with None -> () | Some submenu -> (result#set_submenu submenu) in
    result
 
+ (* --- *)
+ let add_imagefile_item(*_v1*) ?menu ?submenu ?key ?(label="") file ?callback () =
+   add_stock_or_file_item ?menu ?submenu ?key label ~file ?stock:None ?callback ()
+
+ (* --- *)
  let add_check_item ?(menu = get_current_menu ()) ?(active=false) ?(key=0) label ?(callback=(monitor label)) () =
    menu#add_check_item label ~key ~active ~callback
-
 
  let add_separator ?(menu = get_current_menu ()) () = ignore (menu#add_separator ())
 

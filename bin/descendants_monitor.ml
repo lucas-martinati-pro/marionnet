@@ -15,7 +15,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-module Mtx = MutexExtra.Just_give_me_an_apply_with_mutex (struct end)
+(* --- *)
+module Log = Marionnet_log
+module UnixExtra = Ocamlbricks.UnixExtra
+module SetExtra  = Ocamlbricks.SetExtra
+module Linux = Ocamlbricks.Linux
+(* --- *)
+
+module Mtx = Ocamlbricks.MutexExtra.Just_give_me_an_apply_with_mutex (struct end)
 let apply_with_mutex = Mtx.apply_with_mutex
 
 module Process_set =

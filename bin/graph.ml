@@ -29,8 +29,11 @@
     So I have to get all bindings, filter them out, remove all bindings from the
     table, and reinsert the surviving ones. *)
 
+(* --- *)
+module Log = Marionnet_log
+
 type id = int;;
-let fresh_id = Counter.make_int_generator ()
+let fresh_id = Ocamlbricks.Counter.make_int_generator ()
 
 type 'a graph =
     (* Nodes: *)

@@ -1,8 +1,13 @@
+(* --- *)
+module Log = Marionnet_log
+module Forest = Ocamlbricks.Forest
+module Oomarshal = Ocamlbricks.Oomarshal
+
 (* The old type definition: *)
 type 'a forest  = Empty | NonEmpty of 'a *  ('a forest) *  ('a forest)
 
 (* From old to new format: *)
-let rec forest_conversion : 'a forest -> 'a Forest.t = 
+let rec forest_conversion : 'a forest -> 'a Forest.t =
   function
   | Empty -> Forest.empty
   | NonEmpty (x,y,z) -> Forest.concat (Forest.of_tree (x,(forest_conversion y))) (forest_conversion z)

@@ -16,7 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-module Recursive_mutex = MutexExtra.Recursive ;;
+module Recursive_mutex  = Ocamlbricks.MutexExtra.Recursive ;;
+module Stateful_modules = Ocamlbricks.Stateful_modules ;;
 
 let mutex = Recursive_mutex.create ();;
 
@@ -67,8 +68,8 @@ let make_understandable_source_of_world_bridge_configuration () =
   | None | Some (_, `Environment) -> "marionnet.conf"
   | Some (_, `Filename fname)     ->  fname
 ;;
-  
-let check_bridge_existence_and_warning () : unit = 
+
+let check_bridge_existence_and_warning () : unit =
   let bridge_name = ethernet_world_bridge_name in
   let cmd = Printf.sprintf "brctl showmacs %s 1>/dev/null 2>/dev/null" (bridge_name) in
   if (Unix.system cmd) <> (Unix.WEXITED 0) then (* warning: *)
@@ -81,7 +82,7 @@ let check_bridge_existence_and_warning () : unit =
     in
     Simple_dialogs.warning ~modal:true title message ()
 ;;
-  
+
 (** Keyboard layout in Xnest sessions; `None' means `don't set anything' *)
 let keyboard_layout = Configuration.get_string_variable "MARIONNET_KEYBOARD_LAYOUT" ;;
 
@@ -90,6 +91,5 @@ module Keep_all_snapshots_when_saving =
     type t = bool
     let name = Some "keep_all_snapshots_when_saving"
   end);;
-let () = Keep_all_snapshots_when_saving.set Initialization.keep_all_snapshots_when_saving 
+let () = Keep_all_snapshots_when_saving.set Initialization.keep_all_snapshots_when_saving
 ;;
-

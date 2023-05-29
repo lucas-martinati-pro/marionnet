@@ -22,8 +22,17 @@
      calls, and some other minor changes
  *)
 
-open Gettext;;
-module Row_item = Treeview.Row_item ;;
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module UnixExtra = Ocamlbricks.UnixExtra
+module StringExtra = Ocamlbricks.StringExtra
+module FilenameExtra = Ocamlbricks.FilenameExtra
+module Stateful_modules = Ocamlbricks.Stateful_modules
+(* --- *)
+
+open Gettext
+module Row_item = Treeview.Row_item
 
 (* --- *)
 (* Ex: Some "Jean-Vincent Loddo" *)
@@ -37,19 +46,19 @@ let get_full_user_name () : string option =
 
 class t =
 fun ~packing
-    ~method_directory 
+    ~method_directory
     ~method_filename
     ~after_user_edit_callback
     () ->
 object(self)
   inherit
     Treeview.t
-      ~packing 
+      ~packing
       ~method_directory
       ~method_filename
       ~hide_reserved_fields:true
       ()
-  as super
+  (* as super *)
 
   val icon_header = "Icon"
   method get_row_icon = self#get_Icon_field (icon_header)
@@ -99,7 +108,7 @@ object(self)
         ~icon:Icon.icon_pixbuf
         ~action:`OPEN
         ~title:((*utf8*)(s_ "Choose the document to import"))
-        ~modal:true () 
+        ~modal:true ()
     in
     dialog#add_button_stock `CANCEL `CANCEL;
     dialog#add_button_stock `OK `OK;
@@ -130,29 +139,29 @@ object(self)
         None)
 
   method private file_to_format pathname =
-    if Filename.check_suffix pathname ".html" || 
-      Filename.check_suffix pathname ".htm" || 
-      Filename.check_suffix pathname ".HTML" || 
+    if Filename.check_suffix pathname ".html" ||
+      Filename.check_suffix pathname ".htm" ||
+      Filename.check_suffix pathname ".HTML" ||
       Filename.check_suffix pathname ".HTM" then
       "html"
-    else if Filename.check_suffix pathname ".text" || 
-      Filename.check_suffix pathname ".txt" || 
-      Filename.check_suffix pathname "readme" || 
-      Filename.check_suffix pathname "lisezmoi" || 
-      Filename.check_suffix pathname ".TEXT" || 
-      Filename.check_suffix pathname ".TXT" || 
-      Filename.check_suffix pathname "README" || 
+    else if Filename.check_suffix pathname ".text" ||
+      Filename.check_suffix pathname ".txt" ||
+      Filename.check_suffix pathname "readme" ||
+      Filename.check_suffix pathname "lisezmoi" ||
+      Filename.check_suffix pathname ".TEXT" ||
+      Filename.check_suffix pathname ".TXT" ||
+      Filename.check_suffix pathname "README" ||
       Filename.check_suffix pathname "LISEZMOI" then
       "text"
-    else if Filename.check_suffix pathname ".ps" || 
-      Filename.check_suffix pathname ".eps" || 
-      Filename.check_suffix pathname ".PS" || 
+    else if Filename.check_suffix pathname ".ps" ||
+      Filename.check_suffix pathname ".eps" ||
+      Filename.check_suffix pathname ".PS" ||
       Filename.check_suffix pathname ".EPS" then
       "ps"
-    else if Filename.check_suffix pathname ".dvi" || 
+    else if Filename.check_suffix pathname ".dvi" ||
       Filename.check_suffix pathname ".DVI" then
       "dvi"
-    else if Filename.check_suffix pathname ".pdf" || 
+    else if Filename.check_suffix pathname ".pdf" ||
       Filename.check_suffix pathname ".PDF" then
       "pdf"
     else
@@ -224,7 +233,7 @@ object(self)
     let row_id =
       self#add_row
         [ filename_header, Row_item.String internal_file_name;
-          format_header,   Row_item.String format ] 
+          format_header,   Row_item.String format ]
     in
     let title = Filename.chop_extension (Filename.basename user_path_name) in
     let otype = FilenameExtra.get_extension user_path_name in
@@ -328,9 +337,10 @@ let extract = The_unique_treeview.extract
 
 (* Add the button "Import" at right side of the treeview. *)
 let add_import_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GButton.toolbar) (treeview:t) : unit =
-  let packing = toolbar#add in
-  (* --- *)  
-  let b = Gui_bricks.button_image ~window ~packing ~stock:`ADD ~stock_size:`SMALL_TOOLBAR ~tooltip:(s_ "Import a document") () in
+  (*let packing = toolbar#add in*)
+  let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in
+  (* --- *)
+  let b = Gui_bricks.button_image (*~window*) ~packing ~stock:`ADD ~stock_size:`SMALL_TOOLBAR ~tooltip:(s_ "Import a document") () in
   (* --- *)
   (* Behaviour on click: *)
   let callback () = ignore (Option.map treeview#import_document treeview#ask_file) in

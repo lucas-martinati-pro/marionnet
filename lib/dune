@@ -1,0 +1,49 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2023  Jean-Vincent Loddo
+;; Copyright (C) 2023  Université Sorbonne Paris Nord (USPN)
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+(library
+  (name ocamlbricks)
+  (preprocess (action (run camlp4of -I ../../../../_build/ %{read-lines:camlp4of-flags.cfg} %{input-file})))
+  (libraries str unix threads inotify lablgtk3)
+  ;;(library_flags -linkall -cclib -locamlbricks_stubs)
+
+  ;; ---
+  ;; --- Do not compile preprocessor with dune:
+  ;; ---
+
+  (modules (:standard
+     \ common_tools_for_preprocessors
+       include_as_string_p4
+       include_type_definitions_p4
+       option_extract_p4
+       log_module_loading_p4
+       raise_p4 where_p4
+       gettext_extract_pot_p4
+       ))
+
+) ;library
+
+(include_subdirs unqualified)
+(dirs :standard)
+
+(env
+  (dev     (flags (:standard -w +42 -w -27 -w -67 -w -3 -w -6 -w -16 -w -32)))
+  (release (ocamlopt_flags (:standard -O3)))
+  )
+
+
+

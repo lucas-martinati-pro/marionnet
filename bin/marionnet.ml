@@ -24,13 +24,21 @@
 (* Force OCAMLRUNPARAM=-b *)
 Printexc.record_backtrace true;
 
-open StdLabels
-open Gui
+(* --- *)
+module Log = Marionnet_log
+module Lazy_perishable = Ocamlbricks.Lazy_perishable
+module FilenameExtra = Ocamlbricks.FilenameExtra
+module Linux = Ocamlbricks.Linux
+module Option = Ocamlbricks.Option
+module UnixExtra = Ocamlbricks.UnixExtra
+module SysExtra = Ocamlbricks.SysExtra
+module StackExtra = Ocamlbricks.StackExtra
+(* --- *)
+(* open StdLabels *)
+(* open Gui *)
 open Gettext
-open State
-open Talking
-
-module G = Gui_source_editing
+(* --- *)
+let () = Log.printf1 "Loading module bin/marionnet.ml: cwd: %s\n" (Sys.getcwd ())
 
 (* Enter the right directory: *)
 let _enter_the_right_directory =
@@ -39,7 +47,7 @@ let _enter_the_right_directory =
 
 (** The global state containing the main window (st#mainwin) and all relevant dynamic
     attributes of the application *)
-let st = new globalState ()
+let st = new State.globalState ()
 
 (** Add a global thunk allowing to invoke the sketch refresh method,
     visible from many modules: *)
@@ -48,15 +56,21 @@ let () = Sketch.Refresh_sketch_thunk.set (fun () -> st#refresh_sketch)
 module State = struct let st = st end
 
 (* Complete the main menu *)
-module Created_window_MARIONNET   = Gui_window_MARIONNET.   Make (State)
-module Created_toolbar_COMPONENTS = Gui_toolbar_COMPONENTS. Make (State)
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Gui_window_MARIONNET.Make\n"
+module Created_window_MARIONNET = Gui_window_MARIONNET.Make (State)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Gui_toolbar_COMPONENTS.Make\n"
+module Created_toolbar_COMPONENTS = Gui_toolbar_COMPONENTS.Make (State)
 
 (* ***************************************** *
             Make the treeview widgets
  * ***************************************** *)
 
+(* --- *)
 let window = st#mainwin#window_MARIONNET
 
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Treeview_history.make\n" ;;
+(* --- *)
 (** Make the states interface: *)
 let filesystem_history_interface =
   Treeview_history.make
@@ -122,7 +136,10 @@ let after_user_edit_callback x =
     shutdown_or_restart_relevant_device x
   end
 
+(* --- *)
 (** Make the ifconfig treeview: *)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Treeview_ifconfig.make\n"
 let treeview_ifconfig =
   Treeview_ifconfig.make
     ~window
@@ -132,7 +149,10 @@ let treeview_ifconfig =
     ~method_filename: (fun () -> Option.extract st#project_paths#treeview_ifconfig_file)
     ()
 
+(* --- *)
 (** Make the defects interface: *)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Treeview_defects.make\n"
 let treeview_defects =
   Treeview_defects.make
     ~window
@@ -142,7 +162,10 @@ let treeview_defects =
     ~method_filename: (fun () -> Option.extract st#project_paths#treeview_defects_file)
     ()
 
+(* --- *)
 (** Make the texts interface: *)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to call Treeview_documents.make\n"
 let treeview_documents =
   Treeview_documents.make
     ~window
@@ -168,34 +191,35 @@ end (* Just_for_testing *)
 (** Timeout for refresh the state_coherence *)
 (* let id = GMain.Timeout.add ~ms:1000 ~callback:(fun () -> st#state_coherence ();true) ;; *)
 
-let () = Log.printf "Starting the application\n"
-
-(* GMain.Main.main ();; *)
-
-(* let () = ignore (GtkMain.Main.init ());; *)
-(* let guiThread = GtkThread.start () in (\* start GUI thread *\)  *)
-(* Thread.join guiThread;; *)
-let () =
-(try
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to establish connection with daemon\n"
+let () = (try
+  (* --- *)
   Daemon_client.initialize_daemon_client ();
   Daemon_client.start_thread_sending_keepalives ();
-with e -> begin
-  Daemon_client.disable_daemon_support ();
-  Simple_dialogs.warning
-    (s_ "Could not connect to the daemon")
-    (Printf.sprintf
-       (f_ "Connecting to the Marionnet daemon failed (%s); Marionnet will work, but some features (graphics on virtual machines and host sockets) won't be available.")
-       (Printexc.to_string e))
-    ();
-end)
+  (* --- *)
+  with e -> begin
+    Daemon_client.disable_daemon_support ();
+    Simple_dialogs.warning
+      (s_ "Could not connect to the daemon")
+      (Printf.sprintf
+        (f_ "Connecting to the Marionnet daemon failed (%s); Marionnet will work, but some features (graphics on virtual machines and host sockets) won't be available.")
+        (Printexc.to_string e))
+      ();
+  end)
 
+(* --- *)
 (** Show the splash (only when there is no project to open): *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to show the splash screen\n"
 let () =
  if !Initialization.optional_file_to_open = None
    then Splash.show_splash (* ~timeout:15000 *) ()
    else ()
 
+(* --- *)
 (** Choose a reasonable temporary working directory: *)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to choose a reasonable temporary working directory\n"
 let () =
  let suitable_tmp pathname =
    (UnixExtra.dir_rwx_or_link_to pathname) &&
@@ -250,22 +274,25 @@ let () =
 (* Check that we're *not* running as root. Yes, this has been reversed
    since the last version: *)
 let () = begin
-Log.printf "Checking whether Marionnet is running as root...\n";
-if (Unix.getuid ()) = 0 then begin
-  Log.printf "
+  Log.printf "Loading module bin/marionnet.ml: checking whether Marionnet is running as root...\n";
+  if (Unix.getuid ()) = 0 then begin
+    Log.printf "
 **********************************************
 * Marionnet should *not* be run as root, for *
 * security reasons.                          *
 * Continuing anyway...                       *
 **********************************************\n\n";
-  Simple_dialogs.warning
-    (s_ "You should not be root!")
-    (s_ "Marionnet is running with UID 0; this is bad from a security point of view... Continuing anyway.")
-    ();
-end
+    Simple_dialogs.warning
+      (s_ "You should not be root!")
+      (s_ "Marionnet is running with UID 0; this is bad from a security point of view... Continuing anyway.")
+      ();
+  end
 end
 
+(* --- *)
 (** Make sure that the user installed all the needed software: *)
+(* --- *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to check dependencies\n"
 let check_call ~action ~arg ~error_message =
   try
     ignore (action arg)
@@ -416,8 +443,9 @@ let () =
        end)
 in
 
-(* st#mainwin#notebook_CENTRAL#coerce#misc#set_sensitive false; *)
+(* --- *)
 (** Enter the GTK+ main loop: *)
+(* --- *)
 let rec main_loop () =
   try
     GtkThread.main ()
@@ -428,7 +456,9 @@ let rec main_loop () =
     Thread.delay 1.;
     if st#quit_async_called then (raise e) else main_loop ()
     end
-
-in main_loop ()
+in
+let () = Log.printf "Loading module bin/marionnet.ml: about to starting the application\n" in
+(* --- *)
+main_loop ()
 
 end

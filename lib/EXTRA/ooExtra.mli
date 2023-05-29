@@ -18,7 +18,7 @@ class virtual destroy_methods :
   unit ->
   object
     method add_destroy_callback : unit Lazy.t -> unit
-    method private destroy : unit
+    method (*private*) destroy : unit
     method mrproper : Thunk.lifo_unit_protected_container
   end
 

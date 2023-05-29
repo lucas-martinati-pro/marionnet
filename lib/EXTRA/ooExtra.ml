@@ -27,7 +27,7 @@ class virtual destroy_methods () =
   method add_destroy_callback f = ignore (mrproper#register_lazy f)
 
   (* Initially private, but may became public: *)
-  method private destroy = mrproper#apply ()
+  method (*private*) destroy = mrproper#apply ()
 
  end (* destroy_methods *)
 

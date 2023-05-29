@@ -16,6 +16,8 @@
 
 (** Ledgrid widgets. *)
 
+module Log = Marionnet_log
+
 (** {2 Constants}
     Some global constant definitions, for fine-tuning. *)
 
@@ -44,8 +46,13 @@ exception Non_existing_port of int
 (** {2 Utility stuff} *)
 
 (** Make a pixmap data structure (not a widget) from the given file: *)
-let make_pixmap_from_xpm_file ~file_name =
-  GDraw.pixmap_from_xpm ~file:file_name ()
+(* let make_pixmap_from_xpm_file ~file_name =
+     GDraw.pixmap_from_xpm ~file:file_name ()*)
+
+(** Make a pixbuf data structure (not a widget) from the given file: *)
+let make_pixbuf_from_xpm_file ~file_name : GdkPixbuf.pixbuf =
+    (* GdkPixbuf.from_file : string -> pixbuf *)
+    GdkPixbuf.from_file (file_name)
 
 (** {2 A single LED light}
     Gtk+ simulation of just {e one} LED light. Particularly useful when arranged in a
@@ -70,7 +77,7 @@ let make_pixmap_from_xpm_file ~file_name =
     Note that already initialized Gtk+ pixmap objects of type GDraw.pixmap (and
     *not* widgets) must be explicitly supplied at construction time. Pixmaps can
     and should be shared among differnet LED lights. *)
-class led_light ?default:(default=false) ?x:(x= -1) ?y:(y= -1) ~off_pixmap ~on_pixmap ~packing () =
+class led_light ?default:(default=false) ?x:(x= -1) ?y:(y= -1) ~off_pixbuf ~on_pixbuf ~packing () =
 object(self)
   (** A notebook with hidden tabs and border is the main widget: it contains two pages with
       the 'on' and 'off' pixmaps, and can easily change state by 'going' to a different
@@ -78,16 +85,16 @@ object(self)
   val notebook =
     let notebook = GPack.notebook ~tab_pos:`TOP ~packing ~show_border:false ~show_tabs:false () in
     let _ = (* "on" pixmap widget *)
-      GMisc.pixmap
-        off_pixmap
-        ~packing:(fun widget -> ignore (notebook#insert_page ~pos:0 widget))
-        () in
+      let packing = (fun widget -> ignore (notebook#insert_page ~pos:0 widget)) in
+      (* GMisc.pixmap (off_pixbuf) ~packing () in *)
+      GMisc.image ~pixbuf:(off_pixbuf) ~packing ~show:true ()
+    in
     let _ = (* "on" pixmap widget *)
-      GMisc.pixmap
-        on_pixmap
-        ~packing:(fun widget -> ignore (notebook#insert_page ~pos:1 widget))
-        () in
-      notebook
+      let packing = (fun widget -> ignore (notebook#insert_page ~pos:1 widget)) in
+      (* GMisc.pixmap (on_pixbuf) ~packing () in *)
+      GMisc.image ~pixbuf:(on_pixbuf) ~packing ~show:true ()
+    in
+    notebook
 
   (** Default state and current state; see above: *)
   val default = ref(default)
@@ -156,8 +163,7 @@ end
 (** These variables are just used as parameters to Array.make so that types can be
     correctly inferred. useless_label's widget is never displayed: *)
 let useless_array_of_led_light_options = Array.make 0 None
-let useless_label = GMisc.label ()
-
+let useless_label = lazy (GMisc.label ())
 
 (** {2 LED grid}
     Gtk+ simulation of a {e grid} of LED lights. *)
@@ -179,18 +185,18 @@ class led_grid ?default:(default=false)
                ?no_leds_at:(no_leds_at=[]) () = object(self)
   (** The pixmap objects made from user-supplied files. Notice how the same three
       pixmaps are shared among all the lights (and 'holes'): *)
-  val off_pixmap = make_pixmap_from_xpm_file ~file_name:off_xpm_file_name
-  val on_pixmap = make_pixmap_from_xpm_file ~file_name:on_xpm_file_name
-  val nothing_pixmap = make_pixmap_from_xpm_file ~file_name:nothing_xpm_file_name
+  val off_pixbuf     = make_pixbuf_from_xpm_file ~file_name:(off_xpm_file_name)
+  val on_pixbuf      = make_pixbuf_from_xpm_file ~file_name:(on_xpm_file_name)
+  val nothing_pixbuf = make_pixbuf_from_xpm_file ~file_name:(nothing_xpm_file_name)
 
   (** A two-dimensional matrix of led_light option: *)
   val led_lights_matrix = Array.make columns useless_array_of_led_light_options
 
   (** Arrays holding the label widgets decorating each end of rows and columns: *)
-  val left_labels = Array.make rows useless_label
-  val right_labels = Array.make rows useless_label
-  val top_labels = Array.make columns useless_label
-  val bottom_labels = Array.make columns useless_label
+  val left_labels = Array.make rows (Lazy.force useless_label)
+  val right_labels = Array.make rows (Lazy.force useless_label)
+  val top_labels = Array.make columns (Lazy.force useless_label)
+  val bottom_labels = Array.make columns (Lazy.force useless_label)
 
   (** The Gtk+ widget holding the whole grid: *)
   val table_widget = GPack.table ~columns:(columns + 2) ~rows:(rows + 2) ~row_spacings:0 ~col_spacings:0
@@ -209,15 +215,16 @@ class led_grid ?default:(default=false)
     Array.set led_lights_matrix x (Array.make rows None);
     for y = 0 to rows - 1 do
       if Hashtbl.mem no_leds_at (x, y) then begin
-        let _ = GMisc.pixmap
-                  nothing_pixmap
-                  ~packing:(table_widget#attach ~left:(x + 1) ~top:(y + 1) ~expand:`BOTH)
-                  () in
+        let _ =
+          let packing = (table_widget#attach ~left:(x + 1) ~top:(y + 1) ~expand:`BOTH) in
+          (* GMisc.pixmap (nothing_pixbuf) ~packing () *)
+          GMisc.image ~pixbuf:(nothing_pixbuf) ~packing ~show:true ()
+        in
         Array.set (Array.get led_lights_matrix x) y None
       end else
         let new_led_light =
           new led_light ~packing:(table_widget#attach ~left:(x + 1) ~top:(y + 1) ~expand:`BOTH)
-                      ~off_pixmap ~on_pixmap ~default ~x ~y ()
+                      ~off_pixbuf ~on_pixbuf ~default ~x ~y ()
         in
           Array.set (Array.get led_lights_matrix x) y (Some new_led_light)
     done;

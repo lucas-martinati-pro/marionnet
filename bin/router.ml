@@ -15,6 +15,19 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module Either = Ocamlbricks.Either
+module ListExtra = Ocamlbricks.ListExtra
+module ArrayExtra = Ocamlbricks.ArrayExtra
+module Lazy_perishable = Ocamlbricks.Lazy_perishable
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+module Ipv4 = Ocamlbricks.Ipv4
+module Ipv6 = Ocamlbricks.Ipv6
+
+(* --- *)
 open Gettext;;
 
 IFNDEF OCAML4_04_OR_LATER THEN
@@ -518,6 +531,7 @@ module Make_menus (Params : sig
          show_quagga_terminal = show_quagga_terminal;
          rc_config_quagga = rc_config_quagga;
          old_name = old_name;
+         _
          }
       =
       let d = (st#network#get_node_by_name old_name) in
@@ -835,7 +849,7 @@ let make
       in
       let tbs : GButton.toggle_button array =
         Gui_bricks.make_notebook_of_assoc_array_with_check_buttons
-          ~homogeneous_tabs:true
+          (*~homogeneous_tabs:true*)
           ~packing:vbox#add
           (assoc_array)
       in
@@ -1149,7 +1163,7 @@ class router
     (device :> User_level.node_with_ports_card Simulation_level.device)
 
   (** Here we also have to manage cow files... *)
-  method private gracefully_shutdown_right_now =
+  method! private gracefully_shutdown_right_now =
     self_as_node_with_ledgrid_and_defects#gracefully_shutdown_right_now;
     (* We have to manage the hostfs stuff (when in exam mode) and
        destroy the simulated device, so that we can use a new cow file the next time: *)
@@ -1172,7 +1186,7 @@ class router
 
 
   (** Here we also have to manage LED grids and, for routers, cow files: *)
-  method private poweroff_right_now =
+  method! private poweroff_right_now =
     self_as_node_with_ledgrid_and_defects#poweroff_right_now;
     (* Destroy, so that the next time we have to re-create a simulated device,
        and we start with a new cow: *)
@@ -1195,7 +1209,7 @@ class router
       ])
 
  (** A machine has just attributes (no children) in this version. *)
- method eval_forest_attribute = function
+ method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("distrib"  , x ) -> self#set_epithet x
@@ -1341,7 +1355,7 @@ class ['parent] router =
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+     (* as self_as_machine_or_router_with_accessory_processes *)
 
     method device_type = "router"
 

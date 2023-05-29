@@ -16,6 +16,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module StringExtra = Ocamlbricks.StringExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module Network = Ocamlbricks.Network
+(* --- *)
+
 type display_number = int
 
 (* For desperate cases: *)
@@ -177,12 +185,12 @@ let () =
     host host_addr
     display
     screen
-    (Option.extract_or cookie "None")
+    (Ocamlbricks.Option.extract_or cookie "None")
     port
     is_X_server_listening_TCP_connections
 
-exception No_problem
-exception No_listening_server
+(* exception No_problem *)
+(* exception No_listening_server *)
 
 let ignore_but_notify ?do_not_fail (thunk) () =
  try ignore (thunk ())

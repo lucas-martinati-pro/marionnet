@@ -16,6 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+
 open Graph;;
 open Message_passing;;
 
@@ -52,8 +55,7 @@ type thunk =
 type task = thunk;;
 
 (** A graph of tasks combines tasks with their dependency relation: *)
-type task_graph =
-    thunk graph;;
+(* type task_graph = thunk graph;; *)
 
 (** This is only used internally. *)
 exception Kill_task_runner;;

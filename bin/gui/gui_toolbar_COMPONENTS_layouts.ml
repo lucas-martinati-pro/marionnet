@@ -15,25 +15,38 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-
-open Gettext;;
+(* --- *)
+module StackExtra = Ocamlbricks.StackExtra
+(* --- *)
+open Gettext
 
 (** Layouts for component-related menus. See the file gui_machine.ml for an example of application. *)
 
 (** Function which appends entries to a toolbar *)
 module Toolbar = struct
 
- (* Note that ~label:"" is very important in the call of GMenu.image_menu_item. Actually, it is a workaround
-    of something that resemble to a bug in lablgtk: if not present, another external function is internally
-    called by this function and the result is a menu entry with an horizontal line in background... *)
- let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
+  (* Note that ~label:"" is very important in the call of GMenu.image_menu_item. Actually, it is a workaround
+      of something that resemble to a bug in lablgtk: if not present, another external function is internally
+      called by this function and the result is a menu entry with an horizontal line in background... *)
+(*  let append_image_menu_OLD_TO_BE_REMOVED (toolbar:GButton.toolbar) filename tooltip =
+    let slot    = GButton.tool_item ~packing:toolbar#insert () in
+    let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(slot#add) () in
+    let image   = GMisc.image ~xalign:0.5 ~yalign:0.5 ~xpad:0 ~ypad:0 ~file:(Initialization.Path.images^filename) () in
+    let result  = GMenu.image_menu_item ~label:"" ~image ~packing:menubar#add () in
+    let set_tooltip w text = (GData.tooltips ())#set_tip w ~text in
+    result#image#misc#show ();
+    set_tooltip slot#coerce tooltip;
+    result*)
+
+(* NEW version, lablgtk3 compatible: *)
+let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
   let slot    = GButton.tool_item ~packing:toolbar#insert () in
-  let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(slot#add) () in
-  let image   = GMisc.image ~xalign:0.5 ~yalign:0.5 ~xpad:0 ~ypad:0 ~file:(Initialization.Path.images^filename) () in
-  let result  = GMenu.image_menu_item ~label:"" ~image ~packing:menubar#add () in
-  let set_tooltip w text = (GData.tooltips ())#set_tip w ~text in
-  result#image#misc#show ();
-  set_tooltip slot#coerce tooltip;
+  let box     = GPack.hbox ~border_width:2 ~packing:(slot#add) ~show:true () in
+  let image   = GMisc.image ~xalign:0.5 ~yalign:0.5 ~xpad:0 ~ypad:0 ~file:(Filename.concat Initialization.Path.images filename) ~packing:(box#pack) () in
+  let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(box#pack) () in
+  let result  = GMenu.menu_item ~label:"+" ~packing:menubar#add () in
+  let () = image#misc#show () in
+  let () = GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip in
   result
 
 end (* module Toolbar *)
@@ -58,9 +71,8 @@ module Layout_for_network_component
   let menu_parent =
     match Toolbar_entry.packing with
     | `toolbar toolbar ->
-         let image_menu_item =
-           Toolbar.append_image_menu toolbar Toolbar_entry.imagefile Toolbar_entry.tooltip
-         in Menu_factory.Menuitem (image_menu_item :> GMenu.menu_item_skel)
+         let image_menu_item = Toolbar.append_image_menu (toolbar) (Toolbar_entry.imagefile) (Toolbar_entry.tooltip) in
+         Menu_factory.Menuitem (image_menu_item :> GMenu.menu_item_skel)
     | `menu_parent p -> p
 
   module F = Menu_factory.Make (struct

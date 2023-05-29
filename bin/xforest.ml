@@ -22,6 +22,9 @@
     tag and the second is the list of attributes, i.e. bindings in the
     form (key,value) where both key and value are strings. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Forest = Ocamlbricks.Forest
 type tag = string ;;
 
 type attribute  = (string * string) ;;
@@ -80,7 +83,7 @@ end;; (* class interpreter *)
 
 
 (** print_forest specialization for xforest *)
-let rec print_xforest ?level ~channel forest =
+let print_xforest ?level ~channel forest =
  let string_of_attr (name,value) = (name^"="^"\""^value^"\"") in
  let fold_strings = function
   | []   -> ""

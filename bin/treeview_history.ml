@@ -16,7 +16,22 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-(* To do: rename 'state' into 'row' *)
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module StringExtra = Ocamlbricks.StringExtra
+module ListExtra = Ocamlbricks.ListExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module StrExtra = Ocamlbricks.StrExtra
+module Stateful_modules = Ocamlbricks.Stateful_modules
+module Forest = Ocamlbricks.Forest
+module Lazy_perishable = Ocamlbricks.Lazy_perishable
+(* --- *)
+let  pr fmt = Printf.kfprintf flush stderr fmt
+let spr fmt = Printf.sprintf fmt
+(* --- *)
+
+(* TODO: rename 'state' into 'row' *)
 
 open Gettext;;
 module Row_item = Treeview.Row_item ;;
@@ -33,7 +48,7 @@ end)
 (** Principal exported treeview type: *)
 class t =
 fun ~packing
-    ~method_directory 
+    ~method_directory
     ~method_filename
     ~after_user_edit_callback
     () ->
@@ -67,10 +82,10 @@ object(self)
   method set_row_highlight : row_id -> bool -> unit   = self#set_CheckBox_field (highlight_header)
 
   (* The date is simply the first word of the (unique line of the) timestamp: *)
-  method get_row_date (row_id) = 
+  method get_row_date (row_id) =
     let ts = self#get_row_timestamp (row_id) in
     List.hd (List.hd (StringExtra.Text.Matrix.of_string ts))
-  
+
   val prefixed_filesystem_header = "Prefixed filesystem"
   method get_row_prefixed_filesystem = self#get_String_field (prefixed_filesystem_header)
   method set_row_prefixed_filesystem = self#set_String_field (prefixed_filesystem_header)
@@ -280,7 +295,7 @@ object(self)
 
   (* Method redefinition. In this class we need to define a specific forest treatment
      that consists in saving only the most recent states: *)
-  method save ?with_forest_treatment () =
+  method! save ?with_forest_treatment () =
     let relevant_forest_of forest =
       if Global_options.Keep_all_snapshots_when_saving.extract () = true then forest else
       let excluded_row_ids = self#get_all_row_ids_except_root_and_the_most_recent_ones in
@@ -387,7 +402,7 @@ object(self)
         variant_dir
         cow_fullname
         cow_fullname
-        new_variant_pathname 
+        new_variant_pathname
     in
     try
       Log.system_or_fail command_line;
@@ -573,21 +588,26 @@ module The_unique_treeview = Stateful_modules.Variable (struct
   end)
 let extract = The_unique_treeview.extract
 
-
+(* --- *)
 (* Add the button "Snapshot" at right side of the treeview. *)
 let add_snapshot_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GButton.toolbar) (treeview:t) : unit =
-  let packing = toolbar#add in
-  let b = Gui_bricks.button_image ~window ~packing ~file:"ico.snapshot.42x42.png" () in
+  (* let packing = toolbar#add in *)
+  let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in
+  (*let () = pr "Treeview_history: about to packing in a toolbar: BEGIN\n" in*)
+  let b = Gui_bricks.button_image (*~window*) ~packing ~file:"ico.snapshot.42x42.png" () in
+  (*let () = pr "Treeview_history: about to packing in a toolbar: END\n" in*)
   let () =
-    let set_tip = (GData.tooltips ())#set_tip in
-    set_tip b#coerce ~text:(s_ "Export the selected snapshot as a variant");
+    (* !!!VERIFY TRANSITION (lablgtk2->lablgtk3): *)
+    (* (* (* let set_tip = (GData.tooltips ())#set_tip in *) *) *)
+    let set_tip widget ~text = GtkBase.Widget.Tooltip.set_text widget text in
+    set_tip b#as_widget ~text:(s_ "Export the selected snapshot as a variant");
   in
   (* Sensitiveness: *)
-  let () = 
+  let () =
     let () = b#misc#set_sensitive false in
     (* --- *)
     treeview#append_on_selection_changed_callback
-      (fun () -> 
+      (fun () ->
         let sensitive =
           match treeview#selected_row_id with
           | None -> false
@@ -600,8 +620,8 @@ let add_snapshot_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GBu
         b#misc#set_sensitive sensitive)
   in
   (* Behaviour on click: *)
-  let callback () = 
-    Option.iter 
+  let callback () =
+    Option.iter
       (fun row_id -> treeview#export_as_machine_or_router_variant row_id)
       (treeview#selected_row_id)
   in
@@ -610,7 +630,9 @@ let add_snapshot_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GBu
 
 let make ~(window:GWindow.window) ~(hbox:GPack.box) ~after_user_edit_callback ~method_directory ~method_filename () =
   let result = new t ~packing:(hbox#add) ~after_user_edit_callback ~method_directory ~method_filename () in
+  (*let () = pr "Treeview_history: about to create the toolbar: BEGIN\n" in*)
   let toolbar = Treeview.add_expand_and_collapse_button ~window ~hbox (result:>Treeview.t) in
+  (*let () = pr "Treeview_history: about to create the toolbar: END\n" in*)
   let _snapshots = add_snapshot_button ~window ~hbox ~toolbar (result) in
   The_unique_treeview.set result;
   result

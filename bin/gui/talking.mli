@@ -25,20 +25,23 @@ module Msg :
     val help_nom_pour_le_projet : unit -> unit
   end
 
-val check_filename_validity_and_add_extension_if_needed : 
+val check_filename_validity_and_add_extension_if_needed :
   ?identifier:unit  ->  (* Force to use only identifiers i.e. letters, numbers, underscores and dashes *)
   ?extension:string ->  (* By default "mar" *)
   string -> string
 
+(* Alias: *)
+type 'a env = 'a Ocamlbricks.Environments.string_env
+
 module EDialog :
   sig
-    type edialog = unit -> string Environments.string_env option
+    type edialog = unit -> string env option
     exception BadDialog of string * string
-    exception StrangeDialog of string * string * string Environments.string_env
+    exception StrangeDialog of string * string * string env
     exception IncompleteDialog
 
-    val compose  : edialog list -> unit -> string Environments.string_env option
-    val sequence : edialog list -> unit -> string Environments.string_env option
+    val compose  : edialog list -> unit -> string env option
+    val sequence : edialog list -> unit -> string env option
 
     val image_filter  : unit -> GFile.filter
     val all_files     : unit -> GFile.filter
@@ -48,14 +51,14 @@ module EDialog :
     val jpeg_filter   : unit -> GFile.filter
     val png_filter    : unit -> GFile.filter
 
-    type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `CONF | `RC | `TXT | `XML ]
+    type filter_name = [ `ALL | `DOT of Ocamlbricks.Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `CONF | `RC | `TXT | `XML ]
     val allfilters : filter_name list
 
     val get_filter_by_name : filter_name -> GFile.filter
 
     val ask_for_file :
       ?parent: GWindow.window_skel ->
-      ?enrich:string Environments.string_env ->
+      ?enrich:string env ->
       ?title:string ->
       ?valid:(string -> bool) ->
       ?filter_names:filter_name list ->
@@ -64,46 +67,46 @@ module EDialog :
       ?action:GtkEnums.file_chooser_action ->
       ?gen_id:string ->
       ?help:(unit -> unit) option ->
-      unit -> string Environments.string_env option
+      unit -> string env option
 
     val ask_for_existing_writable_folder_pathname_supporting_sparse_files :
       ?parent: GWindow.window_skel ->
-      ?enrich:Shell.filexpr Environments.string_env ->
+      ?enrich:Ocamlbricks.Shell.filexpr env ->
       ?help:(unit -> unit) option ->
-      title:string -> unit -> Shell.filexpr Environments.string_env option
+      title:string -> unit -> Ocamlbricks.Shell.filexpr env option
 
     val ask_for_fresh_writable_filename :
       ?parent: GWindow.window_skel ->
-      ?enrich:string Environments.string_env ->
+      ?enrich:string env ->
       title:string ->
       ?filters:GFile.filter list ->
       ?filter_names:filter_name list ->
       ?extra_widget:GObj.widget * (unit -> string) ->
       ?help:(unit -> unit) option ->
-      unit -> string Environments.string_env option
+      unit -> string env option
 
     val ask_for_existing_rw_filename :
       ?parent: GWindow.window_skel ->
-      ?enrich:Shell.filexpr Environments.string_env ->
+      ?enrich:Ocamlbricks.Shell.filexpr env ->
       title:string ->
       ?filter_names:filter_name list ->
       ?help:(unit -> unit) option ->
-      unit -> string Environments.string_env option
+      unit -> string env option
 
     val ask_for_existing_importable_text_filename :
       ?parent: GWindow.window_skel ->
-      ?enrich:Shell.filexpr Environments.string_env ->
+      ?enrich:Ocamlbricks.Shell.filexpr env ->
       ?max_size_kb:int -> (* 1024 (i.e. 1 Mb)*)
       title:string ->
       ?filter_names:filter_name list ->
       ?help:(unit -> unit) option ->
-      unit -> string Environments.string_env option
+      unit -> string env option
 
     val ask_question :
-      ?enrich:string Environments.string_env ->
+      ?enrich:string env ->
       ?title:string ->
       ?gen_id:string ->
       ?help:(unit -> unit) option ->
       ?cancel:bool ->
-      question:string -> unit -> string Environments.string_env option
+      question:string -> unit -> string env option
   end

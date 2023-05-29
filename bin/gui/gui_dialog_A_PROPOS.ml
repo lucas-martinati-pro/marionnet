@@ -17,22 +17,29 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 
-open Gettext;;
-
 (** Gui completion for the dialog_A_PROPOS widget defined with glade. *)
+
+(* --- *)
+module Environments = Ocamlbricks.Environments
+(* --- *)
+open Gettext;;
 
 (* Shortcuts *)
 let mkenv = Environments.make_string_env
 
 module Make (State:sig val st:State.globalState end) = struct
 
-  open State
+  (* open State *)
 
   (* User handler for dialog completion. *)
   let dialog () =
 
-   let d = new Gui.dialog_A_PROPOS () in
+   let d = new Gui.dialog_A_PROPOS (*~width:800 ~height:600*) () in
    d#toplevel#set_title (s_ "About");
+(*    d#toplevel#resize ~width:600 ~height:400; *)
+(*    d#toplevel#resize ~width:1024 ~height:400; *)
+    (*d#scrolledwindow11#resize ~width:600 ~height:400;*)
+
 
    (* Labels *)
    let () = begin
@@ -59,16 +66,16 @@ module Make (State:sig val st:State.globalState end) = struct
 Jean-Vincent Loddo <tt><u><span color=\"blue\">&lt;loddo@lipn.univ-paris13.fr&gt;</span></u></tt>
 Département R&amp;T - IUT de Villetaneuse
 Laboratoire d'Informatique de Paris Nord (LIPN)
-Université Paris 13\n
+Université Sorbonne Paris Nord (USPN) 2007-2023\n
 Luca Saiu <tt><u><span color=\"blue\">&lt;saiu@lipn.univ-paris13.fr&gt;</span></u></tt>
 Laboratoire d'Informatique de Paris Nord (LIPN)
-Université Paris 13\n\n";
+Université Sorbonne Paris Nord (USPN) 2007-2012\n\n";
 
    set d#label_dialog_A_PROPOS_license (s_ "License");
    set d#label_dialog_A_PROPOS_license_content "
-Copyright (C) 2007, 2008, 2009, 2010  Jean-Vincent Loddo
-Copyright (C) 2007, 2008, 2009, 2010  Luca Saiu
-Copyright (C) 2007, 2008, 2009, 2010  Université Paris 13\n
+Copyright (C) 2007-2023  Jean-Vincent Loddo
+Copyright (C) 2007-2012  Luca Saiu
+Copyright (C) 2007-2023  Université Sorbonne Paris Nord (USPN)\n
 <i>Marionnet is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 2 of the License, or (at your option) any later version.</i>\n
 This program is distributed in the hope that it will be useful, but <b>WITHOUT ANY WARRANTY</b>; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.\n
 You should have received a copy of the GNU General Public License along with this program.  If not, see

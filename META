@@ -1,0 +1,4 @@
+name="marionnet"
+description="A virtual network laboratory"
+version="trunk"
+requires="threads str unix lablgtk3 lablglade ocamlbricks"

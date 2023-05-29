@@ -21,6 +21,9 @@
  * - Jean-Vincent Loddo: make_progress_bar_dialog generalization and re-styling
  *)
 
+(* --- *)
+module Log = Marionnet_log
+
 open Gettext;;
 
 type kind = Pulse | Fill of (unit -> float)

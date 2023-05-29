@@ -1,5 +1,5 @@
 # This -*- makefile -*- is part of our build system for OCaml projects
-# Copyright (C) 2022  Jean-Vincent Loddo
+# Copyright (C) 2022 2023  Jean-Vincent Loddo
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,13 +14,52 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
+# ---
 # Makefiles (this one as those in other parts) use extensively the bash shell
 SHELL=/bin/bash
 
-##############
-#    main    #
-##############
+# Default entry:
+main: rebuild
+
+# =============================================================
+#                     dependencies
+# =============================================================
+
+REQUIRED_PACKAGES = bzr glade libgtksourceview-3.0-dev opam
+OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify conf-glade lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
+# ---
+# Target version of OCaml:
+OPAM_SWITCH_TO = 4.13.1
+
+# Should be called "apt-opam-dependencies":
+dependencies:
+	@echo "Required packages: $(REQUIRED_PACKAGES)"
+	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
+	@echo "About to verify or install \`apt' dependencies..."
+	@dpkg 1>/dev/null -l $(REQUIRED_PACKAGES) || sudo apt install -y $(REQUIRED_PACKAGES);
+	@echo "About to update & upgrade opam..."
+	@opam update -y && opam upgrade -y || exit 2;
+	@echo "About to create or switch to the compatible OCaml compiler version $(OPAM_SWITCH_TO)"
+	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y || exit 3;
+	@echo "About to verify or install \`opam' dependencies..."
+	@opam install -y $(OPAM_PACKAGES) || exit 4;
+	@echo '[WARNING] You should run: eval $$(opam env) to synchronize the environment with the current switch.'
+	@echo "Success."
+
+# Just switch with opam to the correct version of OCaml:
+switch:
+	@echo "About to create or switch to the compatible OCaml compiler version $(OPAM_SWITCH_TO)"
+	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y || exit 3;
+	@echo "About to verify or install \`opam' dependencies..."
+	@opam install -y $(OPAM_PACKAGES) || exit 4;
+	@echo '[WARNING] You should run: eval $$(opam env) to synchronize the environment with the current switch.'
+	@echo "Success."
+
+
+# =============================================================
+#                           main
+# =============================================================
+# PP_OPTION = camlp4of $(OCAML4_02_OR_LATER) $(OCAML4_04_OR_LATER) -I $(OCAMLBRICKS) gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo
 
 main-no-build:
 	make -C lib main-no-build
@@ -28,30 +67,62 @@ main-no-build:
 	find ./lib/_build/ -maxdepth 1 -type f -exec cp -lf {} _build/ \;
 	@(echo "Success.")
 
-all: main-no-build
+all: meta main-no-build
 	dune build --always-show-command-line
 
 rebuild:
-	make -C lib/ clean && make all
+	make -C lib/ clean && make clean && make all
 
-# The main target. Its implementation is entirely project-dependant:
-main: manually_pre_actions c-modules
-	dune build --release
-	@(echo "Success.")
+# # The main target. Its implementation is entirely project-dependant:
+# main: manually_pre_actions c-modules
+# 	dune build --release
+# 	@(echo "Success.")
+#
+# # The main target. Its implementation is entirely project-dependant:
+# main-dev: manually_pre_actions c-modules
+# 	dune build
+# 	@(echo "Success.")
 
-# The main target. Its implementation is entirely project-dependant:
-main-dev: manually_pre_actions c-modules
-	dune build
-	@(echo "Success.")
+meta: bin/version.ml bin/meta.ml
 
-#main-no-build: manually_pre_actions c-modules
-#	@(echo "Success.")
+# For testing:
+run:
+	_build/default/bin/marionnet.exe -d
 
-##############
-#    edit    #
-##############
+# =============================================================
+#                         install
+# =============================================================
 
-EXCLUDE_FROM_EDITING=-o -name "meta.ml" -o -name "version.ml" -o -name "gui.ml"
+INSTALL_PREFIX=/usr/local
+install-final:
+	ln -sf "CONFIGME" "CONFIGME.choice"
+	make rebuild
+	dune install --prefix $(INSTALL_PREFIX)
+
+# ---
+# Rebuild and install the project in the opam directory for testing/debugging:
+install-for-testing:
+	test $$(readlink "CONFIGME.choice") = "CONFIGME.testing.sh" || make rebuild-for-testing
+	dune install
+	@echo "---"
+	which marionnet
+	@echo "Success."
+
+# ---
+rebuild-for-testing:
+	ln -sf "CONFIGME.testing.sh" "CONFIGME.choice"
+	make rebuild
+
+# ---
+uninstall-for-testing:
+	dune uninstall
+	@echo "Success."
+
+# =============================================================
+#                           edit
+# =============================================================
+
+EXCLUDE_FROM_EDITING=-o -name "meta.ml" -o -name "version.ml"
 INCLUDE_FOR_EDITING=-o -name "dune-project" -o -name "Makefile" -o -name "dune"
 
 # Edit all ml/mli files and other interesting source files with your $EDITOR
@@ -60,21 +131,32 @@ edit:
 	eval $$EDITOR $$(find . \( -name "_build*" $(EXCLUDE_FROM_EDITING) \) -prune -o -type f -a \( -name "*.ml" -o -name "*.mli" $(INCLUDE_FOR_EDITING) \) -print) &
 
 
-##############
-#   help     #
-##############
+edit-gui:
+	glade bin/gui/gui_glade3.xml
+
+
+# =============================================================
+#                           help
+# =============================================================
 
 ocamlc-warn-help:
 	ocamlc -warn-help
 
-##############
-#   clean    #
-##############
+
+# =============================================================
+#                           clean
+# =============================================================
 
 clean:
-	@(dune clean && rm -rf _build/; \
-	echo "Success.")
+	rm -f bin/version.ml bin/meta.ml
+	dune clean
+	@echo "Success."
 
+
+
+# =============================================================
+#                Manual setting and compilation
+# =============================================================
 
 # Transmit the information about the compiler version in order to
 # activate conditional compilation:
@@ -201,7 +283,7 @@ _build/libocamlbricks_stubs.a: $(GETTEXT)/gettext-c-wrapper.c  EXTRA/does-proces
 	ocamlmklib -verbose -oc ocamlbricks_stubs gettext-c-wrapper.o does-process-exist-c-wrapper.o waitpid-c-wrapper.o
 
 # ---
-manually_pre_actions:
+manually_pre_actions: bin/version.ml bin/meta.ml
 	$(call PERFORM_MANUALLY_PRE_ACTIONS, $(MANUALLY_PRE_COPY_IN_build),$(MANUALLY_PRE_MAKE_IN_build))
 
 # Detect if "make clean" is required or copy and build manually targets
@@ -223,3 +305,17 @@ PERFORM_MANUALLY_PRE_ACTIONS = \
 	for x in $(1); do echo "Manually pre-copying \"$$x\"...";  cp --parent -f $$x _build/; done; \
 	for y in $(2); do echo "Manually pre-building \"$$y\"..."; make _build/$$y || exit 1; done; \
 	)
+
+#####################
+#  META and VERSION #
+#####################
+
+# version.ml is automatically generated:
+bin/version.ml:
+	chmod +x "./bin/version.ml.maker.sh"
+	$@.maker.sh ./META $@
+
+# meta.ml is automatically generated (according to the choice of final/testing installation):
+bin/meta.ml:
+	chmod +x "./bin/meta.ml.maker.sh"
+	$@.maker.sh ./META ./CONFIGME.choice $@

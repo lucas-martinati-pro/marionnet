@@ -16,17 +16,25 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-open Gettext;;
+(* --- *)
+#load "include_type_definitions_p4.cmo" ;;
+INCLUDE DEFINITIONS "../../../../bin/simulation_level.mli";;
 
-#load "include_type_definitions_p4.cmo"
-;;
-INCLUDE DEFINITIONS "simulation_level.mli" ;;
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module ListExtra = Ocamlbricks.ListExtra
+module StrExtra = Ocamlbricks.StrExtra
+module MutexExtra = Ocamlbricks.MutexExtra
+module Counter = Ocamlbricks.Counter
+module Shell = Ocamlbricks.Shell
+module Ipv6 = Ocamlbricks.Ipv6
+module Linux = Ocamlbricks.Linux
+module Recursive_mutex = MutexExtra.Recursive
+(* --- *)
 
-open Treeview_defects;;
 open Daemon_language;;
-open X;; (* Not really needed: this works around a problem with OCamlBuild 3.10.0 *)
-
-module Recursive_mutex = MutexExtra.Recursive ;;
+open Gettext;;
 
 (** Fork a process which just sleeps forever without doing any output. Its stdout is
     perfect to be used as stdin for processes created with create_process which wait
@@ -253,7 +261,7 @@ object(self)
       ~stderr:dev_null_out
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 
   method display_string_as_client =
     Printf.sprintf "%s:%s.%s" host_name_as_client display_as_client screen_as_client
@@ -333,7 +341,7 @@ class virtual process_which_creates_a_socket_at_spawning_time =
 
   (** vde_switch_processes need to be up before we connect cables or UMLs to
       them, so they have to be spawned in a *synchronous* way: *)
-  method spawn =
+  method! spawn =
     Log.printf1 "process_w_c_a_socket_at_s_time#spawn: spawning the process which will create the socket %s\n" (Shell.escaped_filename self#get_socket_name);
     super#spawn;
     (* We also check that the process is alive: if spawning it failed than the death
@@ -352,7 +360,7 @@ class virtual process_which_creates_a_socket_at_spawning_time =
 
   (** We want to be absolutely sure to remove the socket, so we also send a SIGKILL to the
       process and explicitly delete the file: *)
-  method terminate =
+  method! terminate =
     super#terminate;
     (* super#kill_with_signal Sys.sigkill;*)
     listening_socket#unlink;
@@ -441,7 +449,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 end;;
 
 (** A Hub process is, well, a Switch or Hub process and also a hub *)
@@ -461,7 +469,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 end;;
 
 (** A Hublet process is just a Hub process with exactly two ports *)
@@ -481,7 +489,7 @@ class hublet_process =
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 end;;
 
 
@@ -560,7 +568,7 @@ class unixterm_process =
       ~stdout:dev_null_out
       ~stderr:dev_null_out
       ~unexpected_death_callback
-      () as super
+      () (* as super *)
 
 end;; (* class unixterm_process *)
 
@@ -592,7 +600,7 @@ class telnet_process =
       ~stdout:dev_null_out
       ~stderr:dev_null_out
       ~unexpected_death_callback
-      () as super
+      () (* as super *)
 
 end;; (* class telnet_process *)
 
@@ -676,7 +684,7 @@ object(self)
       ~stderr:dev_null_out
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 
 end;;
 
@@ -1044,7 +1052,7 @@ class uml_process =
   (** There is a specific and better way to terminate a UML processes, using
       mconsole. Note that `#terminate' (not overridden here) remains useful as a
       more drastic solution *)
-  method gracefully_terminate =
+  method! gracefully_terminate =
    match !pid with
    | None -> raise (ProcessIsntInTheRightState "gracefully_terminate")
    | Some current_pid ->
@@ -1113,7 +1121,7 @@ class uml_process =
 
   (** UML processes are not always very willing to die, and sometimes react to signals by
       going into infinite loops keeping a CPU 100% busy. But this should always work: *)
-  method terminate =
+  method! terminate =
    match !pid with
    | None -> raise (ProcessIsntInTheRightState "terminate")
    | Some current_pid ->
@@ -1250,7 +1258,7 @@ class uml_process =
 
   (** When spawning the UML machine we automatically grant it access to the host X
       server and make the swap file for it: *)
-  method spawn =
+  method! spawn =
     self#copy_cow_file_if_needed;
     self#grant_host_x_server_access;
     self#create_swap_file;
@@ -1431,7 +1439,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 
   val mutable main_process = None
   method private get_main_process =
@@ -1552,29 +1560,27 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
 
   inherit accessory_processes_stuff ()
 
-  (* Redefined: *)
-  method destroy =
+  method! destroy =
    self#terminate_accessory_processes;
    super#destroy
 
-  (* Redefined: *)
-  method gracefully_shutdown =
+  method! gracefully_shutdown =
    self#terminate_accessory_processes;
    super#gracefully_shutdown
 
-  method spawn_processes =
+  method! spawn_processes =
     super#spawn_processes;
     self#spawn_accessory_processes;
 
-  method terminate_processes =
+  method! terminate_processes =
     self#terminate_accessory_processes;
     super#terminate_processes;
 
-  method stop_processes =
+  method! stop_processes =
     self#stop_accessory_processes;
     super#stop_processes;
 
-  method continue_processes =
+  method! continue_processes =
     super#continue_processes;
     self#continue_accessory_processes;
 
@@ -1603,7 +1609,7 @@ class virtual ['parent] hub_or_switch =
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 
   initializer
     main_process <-
@@ -1666,7 +1672,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
 
   (* Inner hublets interface the UML process with the outer hublets; the cables in
      between simulate port defects in the user-level network: *)
@@ -1726,7 +1732,7 @@ object(self)
 
   method ip_address_eth42 = self#get_uml_process#ip_address_eth42
   method terminate_processes = self#terminate_processes_private ~gracefully:false ()
-  method gracefully_terminate_processes = self#terminate_processes_private ~gracefully:true ()
+  method! gracefully_terminate_processes = self#terminate_processes_private ~gracefully:true ()
   method stop_processes = self#get_uml_process#stop
   method continue_processes = self#get_uml_process#continue
 
@@ -1828,29 +1834,27 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
 
   inherit accessory_processes_stuff ()
 
-  (* Redefined: *)
-  method destroy =
+  method! destroy =
    self#terminate_accessory_processes;
    super#destroy
 
-  (* Redefined: *)
-  method gracefully_shutdown =
+  method! gracefully_shutdown =
    self#terminate_accessory_processes;
    super#gracefully_shutdown
 
-  method spawn_processes =
+  method! spawn_processes =
     super#spawn_processes;
     self#spawn_accessory_processes;
 
-  method terminate_processes =
+  method! terminate_processes =
     self#terminate_accessory_processes;
     super#terminate_processes;
 
-  method stop_processes =
+  method! stop_processes =
     self#stop_accessory_processes;
     super#stop_processes;
 
-  method continue_processes =
+  method! continue_processes =
     super#continue_processes;
     self#continue_accessory_processes;
 

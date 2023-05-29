@@ -20,7 +20,21 @@
    exploiting the toplevel printer, with something like:
    let f = Forest.to_treelist (Marionnet.treeview_ifconfig#get_forest) ;;
 *)
-   
+
+(* --- *)
+module Log = Marionnet_log
+module Either = Ocamlbricks.Either
+module PervasivesExtra = Ocamlbricks.PervasivesExtra
+module ListExtra = Ocamlbricks.ListExtra
+module StringExtra = Ocamlbricks.StringExtra
+module StrExtra = Ocamlbricks.StrExtra
+module Stateful_modules = Ocamlbricks.Stateful_modules
+module Oomarshal = Ocamlbricks.Oomarshal
+module Forest = Ocamlbricks.Forest
+module Ipv4 = Ocamlbricks.Ipv4
+module Ipv6 = Ocamlbricks.Ipv6
+
+(* --- *)
 open Gettext;;
 module Row_item = Treeview.Row_item ;;
 module Row = Treeview.Row ;;
@@ -29,7 +43,7 @@ type port_row_completions = (string * (string * Row_item.t) list) list
 
 class t =
 fun ~packing
-    ~method_directory 
+    ~method_directory
     ~method_filename
     ~after_user_edit_callback
     () ->
@@ -173,7 +187,7 @@ object(self)
       | "machine" | "world_bridge" -> "machine-port"
       | "gateway" (* retro-compatibility *) -> "machine-port"
       | "router"             -> "router-port"
-      | _                    -> "other-device-port" 
+      | _                    -> "other-device-port"
     in
     let port_prefix =
       match self#get_row_type (device_row_id) with
@@ -284,14 +298,14 @@ object(self)
     self#set_port_attribute_by_index ~device_name ~port_index ~field (Row_item.String value)
 
   (** Clear the interface and set the full internal state back to its initial value: *)
-  method clear =
+  method! clear =
     super#clear;
     next_ipv4_address_as_int := 1;
     next_ipv6_address_as_int := Int64.one
 
   val counters_marshaler = new Oomarshal.marshaller
 
-  method save ?with_forest_treatment () =
+  method! save ?with_forest_treatment () =
     (* Save the forest, as usual: *)
     super#save ?with_forest_treatment ();
     (* ...but also save the counters used for generating fresh addresses: *)
@@ -302,10 +316,10 @@ object(self)
       (_OBSOLETE_mac_address_as_int, !next_ipv4_address_as_int, !next_ipv6_address_as_int)
       counters_file_name;
 
-  (* The treeview `ifconfig' may be used to derive the informations about the project version. This may 
-     be done inspecting the existence and the content of its related files. 
-     This method is useful in the class`state' to correctly load the set of all treeviews. *)  
-  method try_to_understand_in_which_project_version_we_are : [ `v0 | `v1 | `v2 ] option =   
+  (* The treeview `ifconfig' may be used to derive the informations about the project version. This may
+     be done inspecting the existence and the content of its related files.
+     This method is useful in the class`state' to correctly load the set of all treeviews. *)
+  method try_to_understand_in_which_project_version_we_are : [ `v0 | `v1 | `v2 ] option =
     (* --- *)
     let new_file_name = (self#filename) in  (* states/ifconfig *)
     let () = Log.printf1 "treeview_ifconfig#try_to_understand_in_which_project_version_we_are: new_file_name: %s\n" new_file_name in
@@ -321,31 +335,31 @@ object(self)
     if StrExtra.First.matchingp (Str.regexp regexp_v0) x then Some `v0 else (* continue:*)
     if StrExtra.First.matchingp (Str.regexp regexp_v1) x then Some `v1 else (* continue:*)
     None
-    
+
   method private load_counters ?(base_name = self#filename) () =
     try
       let counters_file_name = (base_name)^"-counters" in
       (* _OBSOLETE_mac_address_as_int read for backward compatibility: *)
       let _OBSOLETE_mac_address_as_int, the_next_ipv4_address_as_int, the_next_ipv6_address_as_int =
-	counters_marshaler#from_file counters_file_name 
+	counters_marshaler#from_file counters_file_name
       in
       next_ipv4_address_as_int := the_next_ipv4_address_as_int;
       next_ipv6_address_as_int := the_next_ipv6_address_as_int
     with _ -> ()
-    
-  (* Method redefinition, because we have also to load the counters. 
-     And we have also to understand which is precisely the file to load (according to the project version). 
-     This treeview was previously saved into states/ports and now is saved into states/ifconfig. 
+
+  (* Method redefinition, because we have also to load the counters.
+     And we have also to understand which is precisely the file to load (according to the project version).
+     This treeview was previously saved into states/ports and now is saved into states/ifconfig.
      This choice prevents old binaries from seg-faults reading projects in the new format. *)
-  method load ?file_name ~project_version () =
-    let file_name, apply_changes_automatically_once_loaded = 
+  method! load ?file_name ~project_version () =
+    let file_name, apply_changes_automatically_once_loaded =
       let do_nothing = lazy () in
       match file_name with
-      | Some x -> x, (do_nothing) 
-      | None -> 
+      | Some x -> x, (do_nothing)
+      | None ->
          let new_file_name = self#filename in
          let old_file_name = Filename.concat (Filename.dirname new_file_name) "ports" in
-         let file_name = 
+         let file_name =
            match project_version with
            | `v0 | `v1 -> old_file_name (* but the format is different: v1 and v2 files are similar *)
            | `v2       -> new_file_name
@@ -353,7 +367,7 @@ object(self)
          let action = if (file_name = old_file_name) then lazy (Unix.unlink old_file_name) else do_nothing in
          (file_name, action)
     in
-    if not (Sys.file_exists file_name) then 
+    if not (Sys.file_exists file_name) then
       failwith (Printf.sprintf "treeview_ifconfig#load: file %s not found" file_name)
     else (* continue: *)
     (* Load the forest, as usual: *)
@@ -459,12 +473,12 @@ object(self)
       ~name:(s_ "you should choose a port to define this parameter")
       (fun row ->
 	let uneditable = Row.CheckBox_field.get ~field:uneditable_header row in
-	(not uneditable) || 
+	(not uneditable) ||
 	(List.for_all (fun (name, value) ->
-			name = name_header || 
-			name = type_header || 
-			name = uneditable_header || 
-			self#is_column_reserved name || 
+			name = name_header ||
+			name = type_header ||
+			name = uneditable_header ||
+			self#is_column_reserved name ||
 			value = Row_item.String "")
 		      row));
 
@@ -474,8 +488,8 @@ object(self)
 	let port_name = (Row.get_name row) in
 	let port_type = (Row.Icon_field.get ~field:type_header row) in
 	let address   = (Row.String_field.get ~field:ipv4_address_header row) in
-	(port_name <> "port0") || 
-	(port_type <> "router-port") || 
+	(port_name <> "port0") ||
+	(port_type <> "router-port") ||
 	((self#is_a_valid_ipv4_address_for_router address)));
 
     (* In this treeview the involved device is the parent: *)

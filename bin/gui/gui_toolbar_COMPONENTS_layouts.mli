@@ -17,7 +17,7 @@
 
 
 module Toolbar : sig
- val append_image_menu : GButton.toolbar -> string -> string -> GMenu.image_menu_item
+ val append_image_menu : GButton.toolbar -> string -> string -> GMenu.menu_item (*GMenu.image_menu_item*)
 end
 
 module type Toolbar_entry =
@@ -69,7 +69,7 @@ module Layout_for_network_edge :
      module F:Menu_factory.Factory
      module Created_Add : (* Useful handler for cable sensitiveness. *)
       sig
-        val item     : GMenu.image_menu_item
+        val item     : GMenu.menu_item (*GMenu.image_menu_item*)
         val callback : unit -> unit
       end
     end

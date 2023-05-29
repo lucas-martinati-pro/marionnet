@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-%str_item escape_raise_filter
-;;
+
+open Ocamlbricks;;
 
 (* Initialized later, by Global_options, in order to break the cyclic dependency: *)
 module Self = Log_builder.Make (struct

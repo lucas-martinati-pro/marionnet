@@ -18,6 +18,18 @@
 
 (** Provide the class modelling the global state of the application. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Cortex = Ocamlbricks.Cortex
+module Option = Ocamlbricks.Option
+module PervasivesExtra = Ocamlbricks.PervasivesExtra
+module ListExtra = Ocamlbricks.ListExtra
+module StringExtra = Ocamlbricks.StringExtra
+module StrExtra = Ocamlbricks.StrExtra
+module StackExtra = Ocamlbricks.StackExtra
+module SysExtra = Ocamlbricks.SysExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+(* --- *)
 open Gettext;;
 
 let commit_suicide signal =

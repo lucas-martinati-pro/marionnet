@@ -15,6 +15,16 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module Cortex = Ocamlbricks.Cortex
+module ListExtra = Ocamlbricks.ListExtra
+module StrExtra = Ocamlbricks.StrExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module Egg = Ocamlbricks.Egg
+module Widget = Ocamlbricks.Widget
+
 open Gettext
 
 type form = < (* object *)
@@ -33,10 +43,13 @@ tooltips label#coerce "hello";
 tooltips entry#coerce "salut";
 \]\}
 *)
-let make_tooltips_for_container w =
+(*(*(*let make_tooltips_for_container w =
   let result = (GData.tooltips ()) in
   let _ = w#connect#destroy ~callback:(fun _ -> result#destroy ()) in
-  fun (widget:GObj.widget) text -> result#set_tip widget ~text
+  fun (widget:GObj.widget) text -> result#set_tip widget ~text*)*)*)
+(* --- *)
+let make_tooltips_for_container w =
+  fun (widget:GObj.widget) text -> GtkBase.Widget.Tooltip.set_text (widget#as_widget) (text)
 
 (** Make a classic rectangular input form with field labels at the left side
     and input widgets at the right side of each line.
@@ -826,17 +839,16 @@ module Reactive_widget = struct
 
 end (* Reactive_widget *)
 
-
-let make_image_with_either_stock_or_file ?window ?stock_size ?stock ?file () =
+(* --- *)
+let make_image_with_either_stock_or_file (*?window*) ?stock_size ?stock ?file () =
   let make_with_file file =
     (* Complete the filename if necessary: *)
-    let file =
-      if (Filename.is_implicit file)
-	then Filename.concat (Initialization.Path.images) file
-	else file
-    in
-    let pixmap = GDraw.pixmap_from_xpm ?window ~file () in
+    let file = if (Filename.is_implicit file) then Filename.concat (Initialization.Path.images) file else file in
+    (* let pixmap = GDraw.pixmap_from_xpm ?window ~file () in
     let image  = GMisc.pixmap pixmap () in
+    let () = if window <> None then Log.printf "make_image_with_either_stock_or_file: WARNING: actual ~window ignored\n" in *)
+    let pixbuf : GdkPixbuf.pixbuf = GdkPixbuf.from_file (file) in
+    let image  = GMisc.image ~pixbuf () in
     image
   in
   let make_with_stock stock =
@@ -854,15 +866,16 @@ let make_image_with_either_stock_or_file ?window ?stock_size ?stock ?file () =
 let opposite_position = function
  `BOTTOM -> `TOP | `LEFT -> `RIGHT | `RIGHT -> `LEFT | `TOP -> `BOTTOM
 
-let button_image ?window ?callback ?label ?label_position ?tooltip ~packing ?stock ?stock_size ?file () =
-  let image = make_image_with_either_stock_or_file ?window ?stock_size ?stock ?file () in
+let button_image (*?window*) ?callback ?label ?label_position ?tooltip ~packing ?stock ?stock_size ?file () =
+  let image = make_image_with_either_stock_or_file (*?window*) ?stock_size ?stock ?file () in
   let button = GButton.button ~packing () in
   let () = button#set_image image#coerce in
   let () = match callback with
   | None -> ()
   | Some callback -> ignore (button#connect#clicked ~callback)
   in
-  let set_tooltip text = (GData.tooltips ())#set_tip button#coerce ~text in
+  (*let set_tooltip text = (GData.tooltips ())#set_tip button#coerce ~text in*)
+  let set_tooltip text = GtkBase.Widget.Tooltip.set_text button#as_widget text in
   let () =
     Option.iter (button#set_label) label;
     Option.iter (fun p -> button#set_image_position (opposite_position p)) label_position;
@@ -873,7 +886,7 @@ let button_image ?window ?callback ?label ?label_position ?tooltip ~packing ?sto
 (** The ~renewer parameter allows us to generate dynamic menus
     (see the function `make_check_items_renewer_v1' below) *)
 let button_image_popuping_a_menu
-  ?window
+  (*?window*)
   ?renewer
   ?label ?label_position ?tooltip
   ~packing ?stock ?stock_size ?file () : (GMenu.menu * GButton.button * GPack.box)
@@ -881,7 +894,7 @@ let button_image_popuping_a_menu
   let hbox = GPack.vbox ~homogeneous:false ~packing () in
   let button =
     button_image
-      ?window ?label ?label_position ?tooltip
+      (*?window*) ?label ?label_position ?tooltip
       ~packing:(hbox#add)
       ?stock ?stock_size ?file ()
   in
@@ -948,7 +961,8 @@ let make_check_items_renewer_v2
    ()
 *)
 let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCRIPT; `TXT; `ALL]) ~parent ~packing ~active ~content ~device_name ~language () =
-  let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
+  (* let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in *)
+  let set_tooltip widget text = GtkBase.Widget.Tooltip.set_text widget#as_widget text in
   let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
   (* --- *)
   let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
@@ -1049,8 +1063,8 @@ let make_check_button_with_related_alternatives ~packing ~active ?(active_altern
   end
 
 (* --- *)
-let make_notebook_of_assoc_list ?homogeneous_tabs ~packing (tws: (string * GObj.widget) list) =
-  let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
+let make_notebook_of_assoc_list (*?homogeneous_tabs*) ~packing (tws: (string * GObj.widget) list) =
+  let notebook = GPack.notebook (*?homogeneous_tabs*) ~packing () in
   let () =
     List.iter
       (fun (text, widget) ->
@@ -1063,12 +1077,14 @@ let make_notebook_of_assoc_list ?homogeneous_tabs ~packing (tws: (string * GObj.
 
 let make_notebook_of_assoc_array_with_check_buttons
   ?(tooltip=(s_ "Check to activate"))
-  ?homogeneous_tabs
+  (*?homogeneous_tabs*)
   ~packing
   (tbws: (string * bool * GObj.widget) array)
   =
-  let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in
-  let notebook = GPack.notebook ?homogeneous_tabs ~packing () in
+  (* let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in *)
+  let set_tooltip widget text = GtkBase.Widget.Tooltip.set_text widget#as_widget text in
+  (* --- *)
+  let notebook = GPack.notebook (*?homogeneous_tabs*) ~packing () in
   Array.map
     (fun (text, active, widget) ->
         let hbox = GPack.hbox ~homogeneous:false(*true*) () in
@@ -1081,4 +1097,22 @@ let make_notebook_of_assoc_array_with_check_buttons
         activate)
     tbws
 
+
+(* ---
+Replace:
+  let packing = toolbar#add in ...
+with:
+  let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in ...
+*)
+let make_toolbar_packing_function ?homogeneous ?expand ?show (toolbar : GButton.toolbar) =
+  let packing = function (widget: GObj.widget) ->
+    (* val tool_item : ?homogeneous:bool -> ?expand:bool -> ?packing:(tool_item_o -> unit) -> ?show:bool -> unit -> tool_item *)
+    let item = GButton.tool_item ?homogeneous ?expand ?show () in
+    let () = item#add (widget) in
+    (* method insert : ?pos:int (* -1 => append *) -> tool_item_o -> unit *)
+    toolbar#insert (item)
+  in
+  packing
+
+(* --- *)
 let test () = Dialog.yes_or_cancel_question ~markup:"test <b>bold</b>" ~context:'a' ()

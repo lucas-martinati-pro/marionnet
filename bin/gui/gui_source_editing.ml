@@ -1,3 +1,24 @@
+(* This file is part of Marionnet, a virtual network laboratory
+   Copyright (C) 2010-2023  Jean-Vincent Loddo
+   Copyright (C) 2010-2023  Université Paris 13
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 2 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
+
+(* --- *)
+module Option = Ocamlbricks.Option
+module Egg = Ocamlbricks.Egg
+module Thunk = Ocamlbricks.Thunk
 
 (* Ex: `id "sh" our `mime "text/x-ocaml" *)
 type language_identification = [ `id of string | `mime_type of string ] ;;
@@ -5,7 +26,7 @@ type language_identification = [ `id of string | `mime_type of string ] ;;
 (* Our `language_manager' is an object encapsulating a `GSourceView2.source_language_manager'
    with a convenient interface: *)
 let language_manager () =
-  let m = GSourceView2.source_language_manager ~default:false in
+  let m = GSourceView3.source_language_manager ~default:false in
   object (self)
 
     (* For debugging: *)
@@ -58,7 +79,7 @@ let window
   ?(content="")
   ?modal
   ?(height=500)
-  ?(width=650)
+  ?(width=660)
   ?(draw_spaces=[`SPACE; `NEWLINE])
   ?close_means_cancel
   (* not as window (in order to be drawn on top of another dialog). This information carry out the window_skel parent: *)
@@ -69,28 +90,68 @@ let window
   ()
   =
   let modal = Option.to_bool modal in
-  let (win, vbox, win_connect_destroy) = 
+  let (win, vbox, win_connect_destroy) =
     match create_as_dialog with
     | None ->
-        let win = GWindow.window ~modal ~title ~position () in
+        let win = GWindow.window ~modal ~title ~position ~height ~width () in
         let () = win#set_destroy_with_parent true in
         ((win :> GWindow.window_skel), GPack.vbox ~packing:win#add (), win#connect#destroy)
     | Some parent ->
-        let win = GWindow.dialog ~parent ~destroy_with_parent:true ~modal ~title ~position () in
+        let win = GWindow.dialog ~parent ~destroy_with_parent:true ~modal ~title ~position ~height ~width () in
         ((win :> GWindow.window_skel), win#vbox, win#connect#destroy)
   in
+  (* --- *)
   let scrolled_win = GBin.scrolled_window
       ~hpolicy:`AUTOMATIC ~vpolicy:`AUTOMATIC
-      ~packing:vbox#add
+      ~packing:vbox#add (* ~height ~width *)
       ()
   in
+  (* --- *)
+  let set_expand x = begin
+    x#coerce#set_expand  true;
+    x#coerce#set_hexpand true;
+    x#coerce#set_vexpand true;
+    end
+  in
+  let () = set_expand (vbox) in
+  let () = set_expand (scrolled_win) in
+  (* --- *)
+  (*  val GSourceView3.source_view :
+        ?source_buffer:source_buffer ->
+        ?draw_spaces:SourceView3Enums.source_draw_spaces_flags list ->
+        ?auto_indent:bool ->
+        ?highlight_current_line:bool ->
+        ?indent_on_tab:bool ->
+        ?indent_width:int ->
+        ?insert_spaces_instead_of_tabs:bool ->
+        ?right_margin_position:int ->
+        ?show_line_marks:bool ->
+        ?show_line_numbers:bool ->
+        ?show_right_margin:bool ->
+        ?smart_home_end:SourceView3Enums.source_smart_home_end_type ->
+        ?tab_width:int ->
+        ?editable:bool ->
+        ?cursor_visible:bool ->
+        ?justification:GtkEnums.justification ->
+        ?wrap_mode:GtkEnums.wrap_mode ->
+        ?accepts_tab:bool ->
+        ?border_width:int ->
+        ?width:int ->
+        ?height:int ->
+        ?packing:(GObj.widget -> unit) ->
+        ?show:bool ->
+        unit -> source_view *)
   let source_view =
-    GSourceView2.source_view
+    GSourceView3.source_view
       ~auto_indent:(Option.to_bool auto_indent)
-      ~insert_spaces_instead_of_tabs:true ~tab_width:2
+      ~insert_spaces_instead_of_tabs:true
+      ~tab_width:2
       ~show_line_numbers:true
-      ~right_margin_position ~show_right_margin:true
-      ~packing:scrolled_win#add ~height ~width
+      ~right_margin_position
+      ~show_right_margin:true
+      ~packing:(scrolled_win#add)
+      ~highlight_current_line:true
+      (* ~height ~width *)
       ()
   in
   let hbox = GPack.hbox ~packing:vbox#add ~homogeneous:true () in
@@ -101,7 +162,11 @@ let window
   let language_manager = Lazy.force language_manager in
   let lang = Option.bind language (language_manager#get_language) in
   (* let () = Option.iter (fun l -> Printf.kfprintf flush stderr "gui_source_editing: lang=%s\n" l#name) lang in *)
-  win#set_allow_shrink true;
+  (* --- *)
+  (* lablgtk3 doesn't accept this:
+       win#set_allow_shrink true;
+     *)
+  (* --- *)
   source_view#misc#modify_font_by_name font_name;
   source_view#source_buffer#set_highlight_matching_brackets true;
   source_view#source_buffer#set_language lang;

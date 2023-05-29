@@ -16,7 +16,23 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Ocamlbricks_log = Ocamlbricks.Ocamlbricks_log
+module Argv = Ocamlbricks.Argv
+module Option = Ocamlbricks.Option
+module PervasivesExtra = Ocamlbricks.PervasivesExtra
+module StrExtra = Ocamlbricks.StrExtra
+module StringExtra = Ocamlbricks.StringExtra
+module FilenameExtra = Ocamlbricks.FilenameExtra
+module Thunk = Ocamlbricks.Thunk
+module Ipv4 = Ocamlbricks.Ipv4
+module Ipv6 = Ocamlbricks.Ipv6
+(* --- *)
+let () = Printf.kfprintf flush stderr "HERE0\n" ;;
+
 open Gettext
+let () = Log.printf "HERE0\n" ;;
 
 (* ***************************************** *
              Get basic infos
@@ -83,12 +99,11 @@ let do_not_print_splash_message =
 
 (* else continue: *)
 let () = if do_not_print_splash_message = false then
-Log.printf7 ~v:0 ~banner:false
+Log.printf6 ~v:0 ~banner:false
   "=======================================================
  Welcome to %s
  Version              : %s
  Source revision      : %s
- Ocamlbricks revision : %s
  Ocaml version        : %s
 
  Built in date %s on system:
@@ -106,7 +121,6 @@ Log.printf7 ~v:0 ~banner:false
   Meta.name
   Meta.version
   (Printf.sprintf "%s - %s" Meta.revision Meta.source_date)
-  Meta_ocamlbricks.revision (* Meta_ocamlbricks.source_date *)
   Meta.ocaml_version
   Meta.build_date
   (StringExtra.fmt ~tab:8 ~width:40 Meta.uname)
@@ -160,7 +174,7 @@ let () =
   Ocamlbricks_log.Tuning.Set.debug_level Debug_level.get
 ;;
 
-Log.printf2
+let () = Log.printf2
   "MARIONNET_DEBUG is %b (debug level %d)\n"
   (Debug_level.are_we_debugging ()) (* is true iff you read the message *)
   (Debug_level.get ())
@@ -214,6 +228,9 @@ module Path = struct
    let default = (marionnet_home^"kernels/") in
    Configuration.extract_string_variable_or ~k:append_slash ~default "MARIONNET_KERNELS_PATH"
 
+ (* --- *)
+ let marionnet_home_gui = marionnet_home^"gui/"
+ (* --- *)
  let images = marionnet_home^"images/"
  let leds   = marionnet_home^"images/leds/"
 

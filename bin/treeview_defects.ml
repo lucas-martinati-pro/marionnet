@@ -16,6 +16,11 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Forest = Ocamlbricks.Forest
+module Stateful_modules = Ocamlbricks.Stateful_modules
+
 open Gettext;;
 module Row_item = Treeview.Row_item ;;
 module Row = Treeview.Row ;;
@@ -44,7 +49,7 @@ let string_of_cable_direction d =
 
 class t =
 fun ~packing
-    ~method_directory 
+    ~method_directory
     ~method_filename
     ~after_user_edit_callback
     () ->
@@ -55,7 +60,7 @@ object(self)
       ~highlight_color:"Light Coral"
       ~hide_reserved_fields:true
       ()
-  as super
+  (* as super *)
 
   val loss_header = "Loss %"
   method get_row_loss = self#get_String_field (loss_header)
@@ -439,12 +444,12 @@ object(self)
     ~name:(s_ "you should choose a direction to define this parameter")
     (fun row ->
       let uneditable = Row.CheckBox_field.get ~field:uneditable_header row in
-      (not uneditable) || 
+      (not uneditable) ||
       (List.for_all (fun (name, value) ->
-                       name = name_header || 
-                       name = type_header || 
-                       name = uneditable_header || 
-                       self#is_column_reserved name || 
+                       name = name_header ||
+                       name = type_header ||
+                       name = uneditable_header ||
+                       self#is_column_reserved name ||
                        value = Row_item.String "")
                     row));
 

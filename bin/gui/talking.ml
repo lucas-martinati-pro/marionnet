@@ -23,6 +23,20 @@
 #load "include_as_string_p4.cmo"
 ;;
 
+(* --- *)
+module Log = Marionnet_log
+module StrExtra = Ocamlbricks.StrExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module Environments = Ocamlbricks.Environments
+module StringExtra = Ocamlbricks.StringExtra
+module Dot = Ocamlbricks.Dot
+module Dot_widget = Ocamlbricks.Dot_widget
+module Option = Ocamlbricks.Option
+module Shell = Ocamlbricks.Shell
+
+(* Alias: *)
+type 'a env = 'a Ocamlbricks.Environments.string_env
+
 (** Return the given pathname as it is, if it doesn't contain funny characters
     we don't want to bother supporting, like ' ', otherwise raise an exception.
     No check is performed on the pathname actual existence or permissions: *)
@@ -43,7 +57,7 @@ let does_directory_support_sparse_files pathname =
   if are_there_shell_special_chars (pathname) then false else (* continue: *)
   (* All the intelligence of this method lies in the external script, loaded
      at preprocessing time: *)
-  let content = INCLUDE_AS_STRING "scripts/can-directory-host-sparse-files.sh" in
+  let content = INCLUDE_AS_STRING "../../../../bin/scripts/can-directory-host-sparse-files.sh" in
   try
     match UnixExtra.script content [pathname] with
     | (0,_,_) -> true
@@ -215,7 +229,7 @@ let png_filter    () = GFile.filter ~name:"PNG files (*.png)" ~patterns:[ "*.png
 type filter_name = [ `ALL | `DOT of Dot.output_format | `IMG | `JPEG | `MAR | `PNG | `SCRIPT | `BASH | `CONF | `RC | `TXT | `XML ];;
 
 (** The kit of all defined filters *)
-let allfilters : filter_name list = 
+let allfilters : filter_name list =
   [ `ALL ; `MAR ; `IMG ; `SCRIPT ; `BASH; `CONF; `RC; `TXT; `XML ; `JPEG ]
 ;;
 
@@ -311,24 +325,24 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
  () =
   let valid = fun pathname ->
     (* --- *)
-    if (not (Sys.file_exists pathname)) then 
+    if (not (Sys.file_exists pathname)) then
       begin
 	let () =
 	  Simple_dialogs.error
 	    (s_ "Invalid directory")
 	    (s_ "The directory doesn't exists!\nYou must choose an exiting directory name.")
-	    () 
+	    ()
 	in
-	false 
+	false
       end
     else (* continue: *)
     (* --- *)
     (* Resolve symlinks which are problematic for starting components: *)
-    let pathname = Option.extract (UnixExtra.realpath pathname) in 
+    let pathname = Option.extract (UnixExtra.realpath pathname) in
     (* --- *)
-    if (are_there_shell_special_chars pathname) then 
-      begin 
-	let () = 
+    if (are_there_shell_special_chars pathname) then
+      begin
+	let () =
 	  Simple_dialogs.error
 	    (s_ "Invalid directory name")
             (* (Printf.sprintf (f_ "The name \"%s\" is not a valid directory.\n\nDirectory names must contain only letters, numbers, dots, dashes ('-') and underscores ('_').") pathname) *)
@@ -336,7 +350,7 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
 	    ()
 	in
 	false
-      end 
+      end
     else (* continue: *)
     (* --- *)
     if (not (UnixExtra.dir_rwx_or_link_to pathname)) ||
@@ -346,14 +360,14 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
 	    Simple_dialogs.error
 	      (s_ "Invalid directory")
 	      (s_ "Choose a directory which is existing, modifiable and hosted on a filesystem supporting sparse files (ext2, ext3, ext4, reiserfs, NTFS, ...)")
-	      () 
+	      ()
 	  in
           false
         end
     else true
-  in 
+  in
   ask_for_file ?parent ~enrich ~title ~valid ~filter_names:[] ~action:`SELECT_FOLDER ~gen_id:"foldername" ~help ()
-  
+
 
 (** The edialog asking for a fresh and writable filename. *)
 let ask_for_fresh_writable_filename
@@ -363,7 +377,7 @@ let ask_for_fresh_writable_filename
   ?(filters:(GFile.filter list) option)
   ?filter_names
   ?(extra_widget:(GObj.widget * (unit -> string)) option)
-  ?(help=None) 
+  ?(help=None)
   =
   let valid x =
     if (Sys.file_exists x)
@@ -392,7 +406,7 @@ let dialog_error_choosed_file_is_too_big_to_be_imported (limit:string) =
     (Printf.sprintf (f_ "The file is too big to be imported\nYou must choose a file smaller than %s.") limit)
     ()
 
-let file_size_kb (filename) = 
+let file_size_kb (filename) =
   let s = Unix.stat (filename) in
   (s.Unix.st_size + 1024) / 1024
 

@@ -21,8 +21,18 @@
 #load "where_p4.cmo"
 ;;
 
-open Gettext
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module Forest = Ocamlbricks.Forest
+module ListExtra = Ocamlbricks.ListExtra
+module OoExtra = Ocamlbricks.OoExtra
+module StringExtra = Ocamlbricks.StringExtra
+module Cortex = Ocamlbricks.Cortex
+module MutexExtra = Ocamlbricks.MutexExtra
 module Recursive_mutex = MutexExtra.Recursive
+(* --- *)
+open Gettext
 
 (* The type of data exchanged with the dialog: *)
 module Data = struct
@@ -399,17 +409,26 @@ module User_level_cable = struct
 class virtual cable_dot_zone ?(reversed=false) () =
  object (self)
 
-   method virtual crossover : bool
+   (* --- *)
+   method virtual crossover    : bool
+   method virtual get_left     : < .. >
+   method virtual get_right    : < .. >
+   method virtual get_name     : string
+   method virtual get_label    : string
+   method virtual is_connected : bool
 
+   (* --- *)
    val reversed = Cortex.return ~on_commit:(fun _ _ -> Sketch.refresh_sketch ()) (reversed)
    method reversed       = reversed
    method is_reversed    = Cortex.get reversed
    method set_reversed b = Cortex.set reversed b
 
+   (* --- *)
    method dot_color = match self#crossover with
    | false -> "#949494"
    | true  -> "#6d8dc0"
 
+   (* --- *)
    method dot_traduction ~(curved_lines:bool) ~labeldistance =
     let edgeoptions="" in
     let labeldistance_base = labeldistance in
@@ -620,14 +639,14 @@ and cable =
     network#add_cable (self :> User_level.cable);
     self#add_destroy_callback (lazy (network#del_cable_by_name self#get_name));
 
-  inherit cable_defects_zone ~network:network_alias () as cable_defects_zone
+  inherit cable_defects_zone ~network:network_alias () (* as cable_defects_zone *)
   inherit cable_dot_zone ()
   inherit ledgrid_management_zone ~network:network_alias ()
 
   method crossover = crossover
 
   (* Redefinition: *)
-  method is_correct =
+  method! is_correct =
     let polarity0 = self#get_left#node#polarity  in
     let polarity1 = self#get_right#node#polarity in
     let module M = User_level in
@@ -679,7 +698,7 @@ and cable =
 
   (** A cable has just attributes (no children) in this version. The attribute "kind" cannot be set,
       must be considered as a constant field of the class. *)
-  method eval_forest_attribute =
+  method! eval_forest_attribute =
     function
       | ("name"            , x) -> self#set_name  x
       | ("label"           , x) -> self#set_label x
@@ -744,11 +763,11 @@ and cable =
           Sketch.refresh_sketch ());
 
    (** 'Suspending means disconnecting for cables *)
-   method suspend_right_now =
+   method! suspend_right_now =
      self#disconnect_right_now
 
    (** 'Resuming' means connecting for cables *)
-   method resume_right_now =
+   method! resume_right_now =
      self#connect_right_now
 
    (** An always up-to-date 'reference counter' storing the number of alive
@@ -834,7 +853,7 @@ and cable =
 
    (** This has to be overridden for cables, because we can't 'poweroff' as easily as the
        other devices: *)
-   method private destroy_because_of_unexpected_death () =
+   method! private destroy_because_of_unexpected_death () =
      Recursive_mutex.with_mutex mutex
        (fun () ->
          (* Refresh the process in some (ugly) way: *)
@@ -847,21 +866,21 @@ and cable =
            self_as_simulated_device#destroy_because_of_unexpected_death ();
            connected := true;
            alive_endpoint_no := 0;
-           for i = 1 to current_alive_endpoint_no do
+           for _i = 1 to current_alive_endpoint_no do
              self#increment_alive_endpoint_no;
            done
          end)
 
    (** To do: remove this ugly kludge, and make cables stoppable *)
-   method can_startup = true (* To do: try reverting this *)
-   method can_gracefully_shutdown = true (* To do: try reverting this *)
-   method can_poweroff = true (* To do: try reverting this *)
+   method! can_startup = true (* To do: try reverting this *)
+   method! can_gracefully_shutdown = true (* To do: try reverting this *)
+   method! can_poweroff = true (* To do: try reverting this *)
    (** Only connected cables can be 'suspended' *)
-   method can_suspend =
+   method! can_suspend =
      Recursive_mutex.with_mutex mutex
        (fun () -> !connected)
    (** Only non-connected cables with refcount exactly equal to 2 can be 'resumed' *)
-   method can_resume =
+   method! can_resume =
      Recursive_mutex.with_mutex mutex
        (fun () -> not !connected)
 
@@ -902,7 +921,9 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as super *)
+
+  (* --- *)
   val ethernet_cable_process = ref None
   method private get_ethernet_cable_process =
     match !ethernet_cable_process with
@@ -922,12 +943,17 @@ object(self)
              ~rightward_defects
              ~unexpected_death_callback:self#execute_the_unexpected_death_callback
              ())
+  (* --- *)
   method device_type = "Ethernet cable"
 
+  (* --- *)
   method spawn_processes = self#get_ethernet_cable_process#spawn
+  (* --- *)
   method terminate_processes =
     (try self#get_ethernet_cable_process#terminate with _ -> ())
+  (* --- *)
   method stop_processes = self#get_ethernet_cable_process#stop
+  (* --- *)
   method continue_processes = self#get_ethernet_cable_process#continue
 end (* class ethernet_cable *)
 

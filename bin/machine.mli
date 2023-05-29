@@ -191,10 +191,10 @@ module User_level_machine : sig
       method to_tree                         : Xforest.tree
       method to_forest                       : Xforest.forest
       (* --- *)
-      method failwith                        : ('a, unit, string, string) format4 -> 'b
+      method logged_failwith                 : 'a 'b. ('a -> string, unit, string, string, string, string) format6 -> 'a -> 'b
       method sprintf                         : ('a, unit, string, string) format4 -> 'a
       method show                            : string
-      method mrproper                        : Thunk.lifo_unit_protected_container
+      method mrproper                        : Ocamlbricks.Thunk.lifo_unit_protected_container
       (* --- *)
       method is_correct                      : bool
       method is_xnest_enabled                : bool

@@ -21,6 +21,12 @@
 #load "where_p4.cmo"
 ;;
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+(* --- *)
 open Gettext
 
 (* World bridge related constants: *)
@@ -69,7 +75,7 @@ module Make_menus (Params : sig
       let name = st#network#suggestedName "B" in
       Dialog_add_or_update.make ~title:(s_ "Add world bridge") ~name ~ok_callback ()
 
-    let reaction { name = name; label = label } =
+    let reaction { name = name; label = label; _ } =
       let action () = ignore (
         new User_level_world_bridge.world_bridge
           ~network:st#network
@@ -314,7 +320,7 @@ class world_bridge =
      ("label"    ,  self#get_label);
      ])
 
-  method eval_forest_attribute = function
+  method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | _ -> () (* Forward-comp. *)
@@ -347,7 +353,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as self_as_vde_switch_process *)
 end
 
 class ['parent] world_bridge =
@@ -364,7 +370,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as self_as_device *)
 
   method device_type = "world_bridge"
 

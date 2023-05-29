@@ -21,6 +21,13 @@
     are passed as strings over sockets, which are printed from [parsed to]
     very simple abstract syntax terms. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Ipv4 = Ocamlbricks.Ipv4
+module UnixExtra = Ocamlbricks.UnixExtra
+module StringExtra = Ocamlbricks.StringExtra
+(* --- *)
+
 (** Tap names and bridge names are just strings: *)
 type tap_name    = string
  and bridge_name = string
@@ -51,9 +58,9 @@ type resource =
 (* Checked daemon request: *)
 type secure_daemon_request = (daemon_request, error_string) Either.t
  and error_string = string
- 
+
 (** Printer: this is useful for debugging. *)
-let rec string_of_daemon_resource resource =
+let string_of_daemon_resource resource =
   match resource with
   | Tap tap_name ->
       Printf.sprintf "(tap %s)" tap_name
@@ -165,20 +172,20 @@ let split_message message =
   let parameter = remove_trailing_spaces rest in
   opcode, parameter;;
 
-(* The function is the identity function if the argument is correct. 
+(* The function is the identity function if the argument is correct.
    Otherwise it raises an exception. *)
 let checked_address ?accepted_address_prefix x =
   let () = Log.printf1 "Checking string IPv4 address '%s'\n" x in
-  let validated_prefix = 
+  let validated_prefix =
     match accepted_address_prefix with
     | None -> true
-    | Some p -> 
+    | Some p ->
         let lp = (String.length p) in
         let lx = (String.length x) in
         (lp <= lx) && ((String.sub x 0 lp) = p)  (* is p a prefix of x? *)
   in
-  if validated_prefix && (Ipv4.String.is_valid_ipv4 x) 
-    then x 
+  if validated_prefix && (Ipv4.String.is_valid_ipv4 x)
+    then x
     else failwith ("Invalid IPv4 address: "^x)
 
 (* The function is the identity function if the bridge name appears as word in the
@@ -187,38 +194,38 @@ let existing_bridge_name x =
   let () = Log.printf1 "Checking bridge name '%s'\n" x in
   let (code, s, _) = UnixExtra.create_process_and_wait_then_get_result "brctl" ["show"] in
   if code <> 0 then failwith ("The command `brctl show' failed") else (* continue: *)
-  let s = StringExtra.map (function '\n' -> ' ' | '\t' -> ' ' | c -> c) s in 
+  let s = StringExtra.map (function '\n' -> ' ' | '\t' -> ' ' | c -> c) s in
   let xs = StringExtra.split s in  (* ["bridge"; "name\tbridge"; "id\t\tSTP"; "enabled\tinterfaces\n"; ... ] *)
   if List.exists ((=)x) xs then x else failwith ("Unknown bridge name: "^x)
 
-(* The function is the identity function if the argument is correct. 
+(* The function is the identity function if the argument is correct.
    Otherwise it raises an exception. *)
 let checked_tap_name (accepted_tap_prefixes) (tap_name) =
-  let is_prefix_and_rest_is_int x = 
-    try 
+  let is_prefix_and_rest_is_int x =
+    try
       let lx = (String.length x) in
       let lt = (String.length tap_name) in
          (lt > lx)
       && ((String.sub tap_name 0 lx) = x)                       (* is x a prefix of tap_name? *)
       && (int_of_string (String.sub tap_name lx (lt-lx)) >= 0)  (* is the rest a positive integer? *)
-    with _ -> false 
+    with _ -> false
   in
-  if List.exists (is_prefix_and_rest_is_int) accepted_tap_prefixes 
+  if List.exists (is_prefix_and_rest_is_int) accepted_tap_prefixes
     then (tap_name)
     else failwith ("Invalid tap name: "^tap_name)
 
-(* Either.t injections renamed for code documentation: *) 
+(* Either.t injections renamed for code documentation: *)
 let checked = Either.left
 let error   = Either.right
 
 (* Called by server (marionnet-daemon). *)
-let parse_request 
-  ?accepted_address_prefix 
-  ?(accepted_tap_prefixes=[]) 
-  ~(ownership: resource -> bool) 
+let parse_request
+  ?accepted_address_prefix
+  ?(accepted_tap_prefixes=[])
+  ~(ownership: resource -> bool)
   ~(uid_consistency: uid -> bool)
-  (request) 
-  : secure_daemon_request 
+  (request)
+  : secure_daemon_request
   =
   let (opcode, parameter) = split_message request in
   try begin
@@ -226,20 +233,20 @@ let parse_request
     | 'i' -> checked IAmAlive
     (* --- *)
     | 'c' ->
-        Scanf.sscanf parameter "%i %s" 
-          (fun uid ip_address -> 
+        Scanf.sscanf parameter "%i %s"
+          (fun uid ip_address ->
             let ip_address = checked_address ?accepted_address_prefix (ip_address) in
             checked (Make (AnyTap(uid, ip_address))))
     (* --- *)
     | 'g' ->
-        Scanf.sscanf parameter "%i %s" 
-          (fun uid bridge_name -> 
+        Scanf.sscanf parameter "%i %s"
+          (fun uid bridge_name ->
             let bridge_name = existing_bridge_name (bridge_name) in
             checked (Make (AnySocketTap(uid, bridge_name))))
     (* --- *)
-    | 'd' -> 
+    | 'd' ->
         let resource = (Tap parameter) in
-        if ownership resource 
+        if ownership resource
           then checked (Destroy resource)
           else error ("You are not the owner of "^parameter)
     (* --- *)
@@ -263,11 +270,11 @@ let parse_request
     | _ ->
         failwith ("Could not parse the request \"" ^ request ^ "\"")
   end (* try *)
-  with 
+  with
     | Failure msg -> error msg
     | e           -> error (Printexc.to_string e)
 
-(* Called by client (marionnet): *) 
+(* Called by client (marionnet): *)
 let parse_response response  =
   let (opcode, parameter) = split_message response in
   match opcode with

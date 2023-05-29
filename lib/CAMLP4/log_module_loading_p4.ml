@@ -47,20 +47,21 @@ module Log_module_loading_p4 : Unit = struct
          let loc = Ast.loc_of_str_item s in
          let file_name = Loc.file_name loc in
          (* Avoid circular recursion for Log and Meta modules: *)
-         if List.mem file_name ["log.ml"; "meta.ml"] then
+         if List.mem (Filename.basename file_name) [(*"gui.ml";*) "meta.ml"; "marionnet_log.ml"; "ocamlbricks_log.ml"; "version.ml"; ] then
            begin
             (* Printf.kfprintf flush stderr "camlp4: Skipping to apply filter log_module_loading_p4 to %s\n" file_name; *)
              s
            end
          else begin
            (* Printf.kfprintf flush stderr "camlp4: Applying filter log_module_loading_p4 to %s\n" file_name; *)
-	   let preambule = <:str_item@loc<
-	      let () = Log.printf1 "Loading module %s\n" $str:file_name$
-	      >>
-	   in
-	   StSem (loc, preambule, s)
-	   end
-
+           (* let () = Log.printf1 "Loading module %s\n" $str:file_name$ *)
+           let preambule = <:str_item@loc<
+               let () = Marionnet_log.printf1 "Loading module %s\n" $str:file_name$
+               >>
+           in
+           StSem (loc, preambule, s)
+           end
+     (* --- *)
      | s -> s )
     )#str_item
    ;;

@@ -21,6 +21,11 @@
 #load "where_p4.cmo"
 ;;
 
+(* --- *)
+module Log = Marionnet_log
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+(* --- *)
 open Gettext
 
 (* Hub related constants: *)
@@ -67,7 +72,7 @@ module Make_menus (Params : sig
       let name = st#network#suggestedName "H" in
       Dialog_add_or_update.make ~title:(s_ "Add hub") ~name ~ok_callback ()
 
-    let reaction { name = name; label = label; port_no = port_no } =
+    let reaction { name = name; label = label; port_no = port_no; _ } =
       let action () = ignore (new User_level_hub.hub ~network:st#network ~name ~label ~port_no ()) in
       st#network_change action ();
 
@@ -304,12 +309,15 @@ class hub =
       ~user_port_offset:1 (* in order to have a perfect mapping with VDE *)
       ~port_prefix:"port"
       ()
-    as self_as_node_with_ledgrid_and_defects
+    (* as self_as_node_with_ledgrid_and_defects *)
+
+  (* --- *)
   method ledgrid_label = "Hub"
   method defects_device_type = "hub"
   method polarity = User_level.MDI_X
   method string_of_devkind = "hub"
 
+  (* --- *)
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.hub."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
@@ -325,6 +333,7 @@ class hub =
         ~unexpected_death_callback
         ()) :> User_level.node Simulation_level.device)
 
+  (* --- *)
   method to_tree =
    Forest.tree_of_leaf ("hub", [
      ("name"     ,  self#get_name );
@@ -332,7 +341,7 @@ class hub =
      ("port_no"  ,  (string_of_int self#get_port_no))  ;
      ])
 
-  method eval_forest_attribute = function
+  method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("port_no"  , x ) -> self#set_port_no (int_of_string x)
@@ -365,7 +374,8 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as self_as_hub_or_switch *)
+
   method device_type = "hub"
 end;;
 

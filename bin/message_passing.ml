@@ -16,8 +16,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+
 (** A general-purpose message-passing facility, with transparent
     thread synchronization *)
+
+(* --- *)
+module Log = Marionnet_log
+
+(* --- *)
 class ['a] queue = object(self)
   val elements = ref []
   val mutex = Mutex.create ()

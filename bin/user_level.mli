@@ -11,8 +11,8 @@ type simulated_device_automaton_state = NoDevice | DeviceOff | DeviceOn | Device
 exception ForbiddenTransition
 val raise_forbidden_transition : string -> 'a
 
-module Recursive_mutex : MutexExtra.Extended_signature
-  with type t = MutexExtra.Recursive.t
+module Recursive_mutex : Ocamlbricks.MutexExtra.Extended_signature
+  with type t = Ocamlbricks.MutexExtra.Recursive.t
 
 class virtual ['a] simulated_device :
   unit ->
@@ -21,7 +21,7 @@ class virtual ['a] simulated_device :
     constraint 'a = < get_name : string; .. >
     method virtual get_name : string
     method virtual make_simulated_device : 'a Simulation_level.device
-    method private virtual add_destroy_callback : unit lazy_t -> unit
+    method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     (* --- *)
     val mutex : Recursive_mutex.t
     method private destroy_because_of_unexpected_death : unit -> unit
@@ -130,18 +130,20 @@ type polarity = MDI | MDI_X | MDI_Auto
 
 class virtual node_with_ports_card :
   network:(< (*defects : Treeview_defects.t;*)
-	     defects : < get_port_attribute_of :  device_name:string ->
-						  port_prefix:string ->
-						  port_index:int ->
-						  user_port_offset:int ->
-						  port_direction:Treeview_defects.port_direction ->
-						  column_header:string ->
-						  unit -> float; .. >;
+	     defects : < get_port_attribute_of :
+                            device_name:string ->
+                            port_prefix:string ->
+                            port_index:int ->
+                            user_port_offset:int ->
+                            port_direction:Treeview_defects.port_direction ->
+                            column_header:string ->
+                            unit -> float;
+                         .. >;
              get_cables_involved_by_node_name : string ->
-                                                (< decrement_alive_endpoint_no : 'd;
-                                                   increment_alive_endpoint_no : 'e;
-                                                   show : string -> string;
-                                                   .. > as 'c) list;
+                                                 (< decrement_alive_endpoint_no : unit;
+                                                    increment_alive_endpoint_no : unit;
+                                                    show : string -> string;
+                                                    .. > as 'c) list;
              .. >
            as 'b) ->
   name:string ->
@@ -164,7 +166,7 @@ class virtual node_with_ports_card :
     val next_automaton_state : simulated_device_automaton_state option ref
     val mutable ports_card : 'a ports_card option
     val simulated_device : node_with_ports_card Simulation_level.device option ref
-    method private virtual add_destroy_callback : unit lazy_t -> unit
+    method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method automaton_state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
@@ -246,11 +248,12 @@ class virtual node_with_defects_zone :
   end
 
 class virtual node_with_defects :
-  network:(< add_node : node -> 'c; defects : Treeview_defects.t;
+  network:(< add_node : node -> unit;
+             defects : Treeview_defects.t;
              del_node_by_name : string -> unit;
              get_cables_involved_by_node_name :
-               string ->  (< decrement_alive_endpoint_no : 'd;
-                             increment_alive_endpoint_no : 'e;
+               string ->  (< decrement_alive_endpoint_no : unit;
+                             increment_alive_endpoint_no : unit;
                              show : string -> string; .. >) list;
              .. >
            as 'b) ->
@@ -345,13 +348,13 @@ class virtual node_with_defects :
   end
 
 class virtual node_with_ledgrid_and_defects :
-  network:(< add_node : node -> 'c;
+  network:(< add_node : node -> unit;
              busy_port_indexes_of_node : node_with_ports_card -> int list;
              defects : Treeview_defects.t;
              del_node_by_name : string -> unit;
              get_cables_involved_by_node_name : string ->
-                                              < decrement_alive_endpoint_no : 'd;
-                                                increment_alive_endpoint_no : 'e;
+                                              < decrement_alive_endpoint_no : unit;
+                                                increment_alive_endpoint_no : unit;
                                                 show : string -> string; .. >
                                               list;
              ledgrid_manager : Ledgrid_manager.ledgrid_manager; .. >
@@ -467,7 +470,7 @@ class virtual virtual_machine_with_history_and_ifconfig :
     val mutable kernel : [ `kernel ] Disk.epithet
     val mutable terminal : string
     val mutable variant : [ `variant ] Disk.epithet option
-    method private virtual add_destroy_callback : unit lazy_t -> unit
+    method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method add_my_history : unit
     method add_my_ifconfig : ?port_row_completions:Treeview_ifconfig.port_row_completions -> int -> unit
     method private banner : string
@@ -478,15 +481,16 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method create_cow_file_name_and_thunk_to_get_the_source : string * (unit -> Disk.realpath option)
     method destroy_my_history : unit
     method destroy_my_ifconfig : unit
-    method failwith : ('a, unit, string, string) format4 -> 'b
+(*     method logged_failwith : (string -> string, unit, string) format -> string -> string *)
+    method logged_failwith : 'a 'b. ('a -> string, unit, string, string, string, string) format6 -> 'a -> 'b
     method get_epithet : [ `distrib ] Disk.epithet
     method get_filesystem_file_name : Disk.realpath
     method get_filesystem_relay_script : Disk.filename option
     method get_kernel : [ `kernel ] Disk.epithet
     method get_kernel_console_arguments : string option
     method get_kernel_file_name : Disk.realpath
-    method private virtual get_name : string
-    method private virtual get_port_no : int
+    method virtual get_name : string
+    method virtual get_port_no : int
     (* --- *)
     method get_states_directory : string
     method get_hostfs_directory : ?name:string (* self#get_name *) -> unit -> string
@@ -528,7 +532,7 @@ class type virtual cable =
     val network : < .. >
     val next_automaton_state : simulated_device_automaton_state option ref
     val simulated_device : component Simulation_level.device option ref
-    method private virtual add_destroy_callback : unit lazy_t -> unit
+    method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method automaton_state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
@@ -601,8 +605,8 @@ class network :
     method ledgrid_manager   : Ledgrid_manager.ledgrid_manager
     method dotoptions        : Sketch.tuning
     (* --- *)
-    method nodes  : node  Queue.t Cortex.t
-    method cables : cable Queue.t Cortex.t
+    method nodes  : node  Queue.t Ocamlbricks.Cortex.t
+    method cables : cable Queue.t Ocamlbricks.Cortex.t
     (* --- *)
     method add_node  : node  -> unit
     method add_cable : cable -> unit
@@ -672,7 +676,7 @@ class network :
 
 module Xml :
   sig
-    val network_marshaller : Xforest.t Oomarshal.marshaller
+    val network_marshaller : Xforest.t Ocamlbricks.Oomarshal.marshaller
     val load_network       : project_version:[ `v0 | `v1 | `v2 ] -> network -> string -> unit
     val save_network       : network -> string -> unit
   end

@@ -15,6 +15,21 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module Either = Ocamlbricks.Either
+module ListExtra = Ocamlbricks.ListExtra
+module SetExtra = Ocamlbricks.SetExtra
+module StrExtra = Ocamlbricks.StrExtra
+module SysExtra = Ocamlbricks.SysExtra
+module MapExtra = Ocamlbricks.MapExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module Configuration_files = Ocamlbricks.Configuration_files
+module Lazy_perishable = Ocamlbricks.Lazy_perishable
+
+(* --- *)
+
 open Gettext
 
 (* `epithet' is almost a phantom type (almost because it is not abstract): *)
@@ -387,7 +402,7 @@ class virtual_machine_installations
 		  ~dont_read_environment:()
 		  ~file_names:[config_file]
 		  ~variables:[ "MD5SUM"; "AUTHOR"; "DATE"; "MTIME"; "SUPPORTED_KERNELS"; "X11_SUPPORT";
-		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT"; 
+		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT";
 		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; ]
 		  ()
 	      in
@@ -509,8 +524,8 @@ class virtual_machine_installations
     let x = Configuration_files.get_bool_variable "MULTIPLE_CONSOLES_SUPPORT" (Option.extract config) in
     (x = Some true)
 
-  (* The relevant configuration variable here is RC_RELAY_SUPPORT. However, if the .conf file doesn't 
-     contain a binding for such variable, we consider the binding MULTIPLE_CONSOLES_SUPPORT=true 
+  (* The relevant configuration variable here is RC_RELAY_SUPPORT. However, if the .conf file doesn't
+     contain a binding for such variable, we consider the binding MULTIPLE_CONSOLES_SUPPORT=true
      as an equivalent condition. *)
   method marionnet_relay_supported_by (epithet) =
     let config = String_map.find (epithet) (filesystem_config_mapping) in
@@ -566,7 +581,7 @@ let find_router_installations
   ?(filesystem_default_epithet=Initialization.router_filesystem_default_epithet)
   ?(lifetime=60.) (* seconds *)
   () =
-     Lazy_perishable.create 
+     Lazy_perishable.create
        (fun () -> new virtual_machine_installations
          ~prefix:"router-"
          ~kernel_default_epithet
@@ -575,7 +590,7 @@ let find_router_installations
        lifetime
 
 let get_router_installations = find_router_installations ()
-       
+
 let find_machine_installations
   ?(user_filesystem_searching_list = user_filesystem_searching_list)
   ?(root_filesystem_searching_list = root_filesystem_searching_list)
@@ -585,7 +600,7 @@ let find_machine_installations
   ?(filesystem_default_epithet=Initialization.machine_filesystem_default_epithet)
   ?(lifetime=60.) (* seconds *)
   () =
-     Lazy_perishable.create 
+     Lazy_perishable.create
        (fun () -> new virtual_machine_installations
 	 ~prefix:"machine-"
 	 ~kernel_default_epithet
@@ -594,7 +609,7 @@ let find_machine_installations
        lifetime
 
 let get_machine_installations = find_machine_installations ()
-       
+
 let vm_installations_and_epithet_of_prefixed_filesystem prefixed_filesystem =
  try
   let p = String.index prefixed_filesystem '-' in

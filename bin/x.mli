@@ -17,6 +17,8 @@
 
 (** Parts of the environment variable DISPLAY. *)
 
+open Ocamlbricks
+
 (* The syntax of $DISPLAY is: [host]:display[.screen] *)
 
 val host    : string        (* "localhost" by default *)

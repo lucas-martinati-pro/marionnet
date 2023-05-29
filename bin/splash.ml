@@ -16,6 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+
 open Gettext;;
 
 (* span foreground="red" *)
@@ -32,9 +35,9 @@ let text_subtitle = match Initialization.released with
 ;;
 
 let text =
-"<small>Copyright (C) 2007-2020 Jean-Vincent Loddo
-Copyright (C) 2007-2020 Luca Saiu
-Copyright (C) 2007-2020 Université Paris 13
+"<small>Copyright (C) 2007-2023 Jean-Vincent Loddo
+Copyright (C) 2007-2012 Luca Saiu
+Copyright (C) 2007-2023 Université Sorbonne Paris Nord
 
 <i>Marionnet comes with <b>absolutely no warranty</b>.
 This is free software, covered by the GNU GPL.
@@ -47,10 +50,14 @@ let handle_click window _ =
   window#destroy ();
   true;;
 
-let splash_image =
+(*let splash_image =
   GDraw.pixmap_from_xpm
     ~file:(Initialization.Path.images^"splash.300x348.xpm")
-    ();;
+    ();;*)
+
+(* GdkPixbuf.from_file : string -> pixbuf *)
+let splash_pixbuf : GdkPixbuf.pixbuf =
+    GdkPixbuf.from_file (Initialization.Path.images^"splash.300x348.xpm");;
 
 let splash =
   GWindow.window
@@ -59,14 +66,16 @@ let splash =
     ~position:`CENTER
     ~type_hint:`DIALOG
     ~modal:true
-    ~wm_name:"Marionnet splash screen"
+(*   ~wm_name:"Marionnet splash screen" *)
     ~icon:Icon.icon_pixbuf
     ();;
 
 splash#set_title (s_ "Welcome to Marionnet");;
 let event_box = GBin.event_box ~packing:splash#add () in
 let box = GPack.vbox ~spacing:5 ~border_width:2 ~packing:event_box#add () in
-let _image = GMisc.pixmap splash_image ~packing:(box#pack ~padding:3) () in
+(*let _image = GMisc.pixmap splash_image ~packing:(box#pack ~padding:3) () in*)
+let _image = GMisc.image ~pixbuf:(splash_pixbuf) ~packing:(box#pack ~padding:3) ~show:true () in
+(* --- *)
 let _title =
   let align = GBin.alignment ~xalign:1. ~packing:box#add () in
   let table = GPack.table ~rows:2 ~columns:1 ~row_spacings:0 ~homogeneous:false ~packing:(align#add) () in

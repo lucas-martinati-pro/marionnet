@@ -23,14 +23,14 @@ type form = < (* object *)
   coerce           : GObj.widget;
   table            : GPack.table;
   >
-   
+
 val make_form_with_labels :
   ?section_no:int ->
   ?row_spacings:int ->
   ?col_spacings:int ->
   ?packing:(GObj.widget -> unit) ->
   string list -> form
-  
+
 val wrap_with_label :
   ?tooltip:string ->
   ?packing:(GObj.widget -> unit) ->
@@ -153,7 +153,7 @@ val make_combo_boxes_of_vm_installations:
   packing:(packing_function * packing_function * packing_function) ->
   Disk.virtual_machine_installations
   ->
-  Widget.ComboTextTree.comboTextTree
+  Ocamlbricks.Widget.ComboTextTree.comboTextTree
 
 
 module Dialog_add_or_update : sig
@@ -176,14 +176,14 @@ end
 
 module Reactive_widget :
   sig
-    
+
     type abstract_combo_box_text = (item list) * (active_index option)
      and item = string
      and active_index = int (* 0..(n-1) *)
      and node = item
      and port = item
 
-    class combo_box_text :                                                                                                                                                                             
+    class combo_box_text :
       strings:string list ->
       ?active:int ->
       ?width:int ->
@@ -191,14 +191,14 @@ module Reactive_widget :
       ?packing:(GObj.widget -> unit) ->
       unit ->
       object
-        method cortex  : (abstract_combo_box_text) Cortex.t
+        method cortex  : (abstract_combo_box_text) Ocamlbricks.Cortex.t
         method activate_first : unit
         method get     : string option
         method destroy : unit -> unit
       end
 
     type 'a power4 = 'a * 'a * 'a * 'a
-   
+
     class cable_input_widget :
       ?n0:string -> ?p0:string -> ?n1:string -> ?p1:string ->
       ?width:int ->
@@ -213,7 +213,7 @@ module Reactive_widget :
         method destroy : unit
         method get_widget_data : (string option * string option) * (string option * string option)
         (* Just for debugging: *)
-        method get_cortex_group : (abstract_combo_box_text) power4 Cortex.t
+        method get_cortex_group : (abstract_combo_box_text) power4 Ocamlbricks.Cortex.t
         method get_combo_boxes  : (combo_box_text) power4
       end
 
@@ -221,11 +221,11 @@ module Reactive_widget :
       ?n0:string -> ?p0:string -> ?n1:string -> ?p1:string ->
       (node * port) list ->
       (node option * port option) * (node option * port option)
-      
+
 end (* Reactive_widget *)
 
 val button_image :
-  ?window:GWindow.window ->
+  (*?window:GWindow.window ->*)
   ?callback:(unit->unit) ->
   ?label:string ->
   ?label_position:[ `BOTTOM | `LEFT | `RIGHT | `TOP ] ->
@@ -238,13 +238,13 @@ val button_image :
 
 
 val button_image_popuping_a_menu :
-  ?window:GWindow.window ->
+  (*?window:GWindow.window ->*)
   ?renewer:(GMenu.menu -> unit) ->
   ?label:string ->
   ?label_position:[ `BOTTOM | `LEFT | `RIGHT | `TOP ] ->
   ?tooltip:string ->
   packing:(GObj.widget -> unit) ->
-  ?stock:GtkStock.id -> 
+  ?stock:GtkStock.id ->
   ?stock_size:[ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] ->
   ?file:string ->
   unit -> (GMenu.menu * GButton.button * GPack.box)
@@ -260,8 +260,8 @@ val make_check_items_renewer_v2 :
   unit -> (GMenu.menu -> unit)
 
 (* Example of usage:
- make_rc_config_widget 
-   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" )) 
+ make_rc_config_widget
+   ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
    ~active:(fst rc_config)
    ~content:(snd rc_config)
    ~device_name:(old_name)
@@ -279,30 +279,40 @@ val make_rc_config_widget :
   device_name:string ->
   language:string ->
   unit -> (* object *) < active:bool; content:string;  set_sensitive:bool->unit > (* end *)
-  
-val make_check_button_with_related_alternatives : 
+
+val make_check_button_with_related_alternatives :
   packing:(GObj.widget -> unit) ->
   active: bool ->
   ?active_alternative:int -> (* 0 *)
   ?use_markup:bool -> (* false *)
-  alternatives:string list -> 
+  alternatives:string list ->
   unit -> (* object *) < active:bool; selected_alternative:string option;  set_sensitive:bool->unit > (* end *)
-  
+
 (* Example of usage::
-let notebook = 
+let notebook =
   let b1 = GButton.button ~label:"b1" () in
   let b2 = GButton.button ~label:"b2" () in
   make_notebook_of_assoc_list ~packing [("aaa", b1#coerce); ("bbb", b2#coerce)] ;;
 *)
-val make_notebook_of_assoc_list : 
-  ?homogeneous_tabs:bool ->
-  packing:(GObj.widget -> unit) -> 
+val make_notebook_of_assoc_list :
+  (*?homogeneous_tabs:bool ->*)
+  packing:(GObj.widget -> unit) ->
   (string * GObj.widget) list -> GPack.notebook
 
-val make_notebook_of_assoc_array_with_check_buttons :                                                                                                                         
+val make_notebook_of_assoc_array_with_check_buttons :
   ?tooltip:string -> (* s_ "Check to activate" *)
-  ?homogeneous_tabs:bool ->
+  (*?homogeneous_tabs:bool ->*)
   packing:(GObj.widget -> unit) ->
   (string * bool * GObj.widget) array -> GButton.toggle_button array
 
+
+(* ---
+Replace:
+  let packing = toolbar#add in ...
+with:
+  let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in ...
+*)
+val make_toolbar_packing_function : ?homogeneous:bool -> ?expand:bool -> ?show:bool -> GButton.toolbar -> packing_function
+
+(* --- *)
 val test : unit -> char option

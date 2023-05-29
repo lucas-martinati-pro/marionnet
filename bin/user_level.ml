@@ -19,8 +19,24 @@
 
 (** Some modules for managing the virtual network *)
 
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module ListExtra = Ocamlbricks.ListExtra
+module StringExtra = Ocamlbricks.StringExtra
+module StrExtra = Ocamlbricks.StrExtra
+module QueueExtra = Ocamlbricks.QueueExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module MutexExtra = Ocamlbricks.MutexExtra
+module Recursive_mutex = MutexExtra.Recursive
+module Oomarshal = Ocamlbricks.Oomarshal
+module Cortex = Ocamlbricks.Cortex
+module Counter = Ocamlbricks.Counter
+module Forest = Ocamlbricks.Forest
+(* --- *)
 open Gettext;;
-module Recursive_mutex = MutexExtra.Recursive ;;
+let spr fmt = Printf.sprintf fmt
+(* --- *)
 
 type devkind = [ `Machine | `Hub | `Switch | `Router | `World_gateway | `World_bridge | `Cloud ] ;;
 
@@ -64,6 +80,8 @@ let raise_forbidden_transition msg =
     user tries to invoke any forbidden state transition an exception is
     raised. *)
 class virtual ['parent] simulated_device () = object(self)
+
+  method virtual add_destroy_callback : unit Lazy.t -> unit
 
   initializer
     self#add_destroy_callback (lazy self#destroy_my_simulated_device);
@@ -210,7 +228,7 @@ class virtual ['parent] simulated_device () = object(self)
 	      ignore (List.map
 			(fun cable ->
 			   Log.printf1 "Working on cable %s\n" (cable#show "");
-			   cable#increment_alive_endpoint_no)
+			   let () = cable#increment_alive_endpoint_no in ())
 			(self#get_involved_cables)))
 
         | _ -> raise_forbidden_transition "create_right_now")
@@ -254,7 +272,7 @@ class virtual ['parent] simulated_device () = object(self)
              List.iter
                (fun cable ->
                  Log.printf1 "Unpinning the cable %s " (cable#show "");
-                 cable#decrement_alive_endpoint_no;
+                 let () = cable#decrement_alive_endpoint_no in
                  Log.printf1 ("The cable %s was unpinned with success\n") (cable#show "");
                  )
                self#get_involved_cables;
@@ -672,7 +690,7 @@ class virtual node_with_ports_card = fun
 
    (* TODO: move it in the network class
      Return the list of cables of which a port of self is an endpoint: *)
-   method private get_involved_cables =
+   method! private get_involved_cables =
      network#get_cables_involved_by_node_name (self#get_name)
 (*      List.filter (fun c->c#is_node_involved self#get_name) network#get_cable_list *)
 
@@ -759,7 +777,7 @@ class virtual node_with_defects
 
   initializer
     (* TODO: the following line must be moved the a node initializer: *)
-    network#add_node (self :> node);
+    let () = network#add_node (self :> node) in
     self#add_destroy_callback (lazy (network#del_node_by_name self#get_name));
 
   inherit node_with_defects_zone ~network:network_alias () as node_with_defects_zone
@@ -768,17 +786,17 @@ class virtual node_with_defects
 
   (** Returns the label to use for cable representation.
       For devices, the port X is represented by the string "[X]". *)
-  method dotLabelForEdges (receptname:string) =
+  method! dotLabelForEdges (receptname:string) =
     let user_index = self#ports_card#user_port_index_of_user_port_name receptname in
     ("["^string_of_int user_index^"]")
 
   (** Return the string representing the port in cable representation. *
       Ignore the receptname and returns the empty string. *)
-  method dotPortForEdges (receptname:string) = ""
+  method! dotPortForEdges (receptname:string) = ""
 
   (* REDEFINED: *)
   (* TODO: duplicated code *)
-  method set_name new_name =
+  method! set_name new_name =
     let old_name = self#get_name in
     if old_name <> new_name then begin
       network#defects#rename old_name new_name;
@@ -787,7 +805,7 @@ class virtual node_with_defects
 
   (* REDEFINED: *)
   (* TODO: duplicated code *)
-  method set_port_no new_port_no =
+  method! set_port_no new_port_no =
     let old_port_no = self#get_port_no in
     if new_port_no <> old_port_no then begin
       node_with_defects_zone#defects_update_port_no new_port_no;
@@ -840,7 +858,7 @@ class virtual node_with_ledgrid_and_defects
 
   initializer
     (* TODO: the following line must be moved the a node initializer: *)
-    network#add_node (self :> node);
+    let () = network#add_node (self :> node) in
     self#add_destroy_callback (lazy (network#del_node_by_name self#get_name));
     (* this is correct here: *)
     self#add_my_ledgrid;
@@ -855,23 +873,23 @@ class virtual node_with_ledgrid_and_defects
 
   (** Returns the label to use for cable representation.
       For nodes, the port X is represented by the string "[X]". *)
-  method dotLabelForEdges (receptname:string) =
+  method! dotLabelForEdges (receptname:string) =
     let user_index = self#ports_card#user_port_index_of_user_port_name receptname in
     ("["^string_of_int user_index^"]")
 
   (** Return the string representing the port in cable representation. *
       Ignore the receptname and returns the empty string. *)
-  method dotPortForEdges (receptname:string) = ""
+  method! dotPortForEdges (receptname:string) = ""
 
   (** Here we also have to manage LED grids: *)
-  method private startup_right_now =
+  method! private startup_right_now =
     (* Do as usual... *)
     self_as_node_with_ports_card#startup_right_now;
     (* ...and also show the LED grid: *)
     network#ledgrid_manager#show_device_ledgrid ~id:(self#id) ()
 
 
-  method private gracefully_shutdown_right_now =
+  method! private gracefully_shutdown_right_now =
     (* Do as usual... *)
     self_as_node_with_ports_card#gracefully_shutdown_right_now;
     (* ...and also hide the LED grid... *)
@@ -879,7 +897,7 @@ class virtual node_with_ledgrid_and_defects
 
 
   (** Here we also have to manage LED grids: *)
-  method private poweroff_right_now =
+  method! private poweroff_right_now =
     (* Do as usual... *)
     self_as_node_with_ports_card#poweroff_right_now;
     (* ...and also hide the LED grid... *)
@@ -923,7 +941,7 @@ class virtual node_with_ledgrid_and_defects
       ()
 
   (* REDEFINED: *)
-  method set_name new_name =
+  method! set_name new_name =
     let old_name = self#get_name in
     if old_name <> new_name then begin
       network#defects#rename old_name new_name;
@@ -931,7 +949,7 @@ class virtual node_with_ledgrid_and_defects
     end;
 
   (* REDEFINED: *)
-  method set_port_no new_port_no =
+  method! set_port_no new_port_no =
     let old_port_no = self#get_port_no in
     if new_port_no <> old_port_no then begin
       node_with_defects_zone#defects_update_port_no new_port_no;
@@ -991,6 +1009,10 @@ class virtual virtual_machine_with_history_and_ifconfig
 
   object (self)
 
+  method virtual get_name : string
+  method virtual get_port_no : int
+  method virtual add_destroy_callback : unit Lazy.t -> unit
+
   (* -------------- *)
   initializer begin
     self#add_my_ifconfig ?port_row_completions:ifconfig_port_row_completions self#get_port_no;
@@ -1000,7 +1022,7 @@ class virtual virtual_machine_with_history_and_ifconfig
     end
   (* -------------- *)
 
-  (* Paramters *)
+  (* Parameters *)
   method history_icon = history_icon
   method ifconfig_device_type = ifconfig_device_type
 
@@ -1010,22 +1032,21 @@ class virtual virtual_machine_with_history_and_ifconfig
   method sprintf : 'a. ('a, unit, string, string) format4 -> 'a =
     Printf.ksprintf (fun x->self#banner^x)
 
-  method failwith : 'a 'b. ('a, unit, string, string) format4 -> 'b =
-    Obj.magic
-      (Printf.ksprintf
-        (fun x-> let msg = self#banner^x in
-                 let () = Log.printf1 "%s\n" msg in
-                 failwith msg))
+  method logged_failwith : 'a 'b. ('a -> string, unit, string, string, string, string) format6 -> 'a -> 'b =
+    fun fmt x ->
+      let msg = Printf.sprintf ("%s" ^^ fmt) (self#banner) x in
+      let () = Log.printf1 "%s\n" msg in
+      failwith msg
 
   (** A machine has a Linux filesystem *)
   val mutable epithet : string = epithet
   initializer ignore (self#check_epithet epithet)
   method get_epithet = epithet
-  method set_epithet x = epithet <- self#check_epithet x
+  method set_epithet x = (epithet <- self#check_epithet x)
   method private check_epithet x =
     match (vm_installations#filesystems#epithet_exists x) with
     | true  -> x
-    | false -> self#failwith "unknown filesystem %s" x
+    | false -> self#logged_failwith "unknown filesystem %s" x
 
   (** A machine may have an associated initial variant: *)
   val mutable variant : string option = variant
@@ -1037,7 +1058,7 @@ class virtual virtual_machine_with_history_and_ifconfig
    let v = vm_installations#variants_of epithet in
    match v#epithet_exists x with
    | true -> x
-   | false -> self#failwith "the variant \"%s\" is not available" x
+   | false -> self#logged_failwith "the variant \"%s\" is not available" x
 
  method get_variant_realpath : string option =
    Option.map (vm_installations#variants_of self#get_epithet)#realpath_of_epithet self#get_variant
@@ -1050,7 +1071,7 @@ class virtual virtual_machine_with_history_and_ifconfig
   method private check_kernel x =
     match (vm_installations#kernels#epithet_exists kernel) with
     | true -> x
-    | false -> self#failwith "unknown kernel \"%s\"" x
+    | false -> self#logged_failwith "unknown kernel \"%s\"" x
 
   (** A machine can be used accessed in a specific terminal mode. *)
   val mutable terminal : string = terminal
@@ -1060,7 +1081,7 @@ class virtual virtual_machine_with_history_and_ifconfig
   method private check_terminal x =
     match (vm_installations#terminal_manager_of epithet)#is_valid_choice x with
     | true  -> x
-    | false -> self#failwith "invalid terminal choice \"%s\"" x
+    | false -> self#logged_failwith "invalid terminal choice \"%s\"" x
 
   method get_filesystem_file_name =
       vm_installations#filesystems#realpath_of_epithet (self#get_epithet)
@@ -1375,7 +1396,7 @@ class network
    let children = Forest.of_treelist l in
    (root, children)
 
- method to_forest =
+ method! to_forest =
    Forest.of_tree self#to_tree
 
  val try_to_add_procedure_list= ref []
@@ -1384,7 +1405,7 @@ class network
 
  (** We redefine just the interpretation of a children.
      We ignore (in this version) network attributes. *)
- method eval_forest_child (f:Xforest.tree) : unit =
+ method! eval_forest_child (f:Xforest.tree) : unit =
   let xs = List.rev !try_to_add_procedure_list in
   let result = List.exists (fun p -> p self f) xs in
   match result with

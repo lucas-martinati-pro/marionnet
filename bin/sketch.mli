@@ -1,4 +1,6 @@
-module Recursive_mutex : MutexExtra.Extended_signature 
+open Ocamlbricks
+
+module Recursive_mutex : MutexExtra.Extended_signature
   with type t = MutexExtra.Recursive.t
 
 module Refresh_sketch_thunk : sig  type t = unit -> unit  val set : t -> unit  end
@@ -34,7 +36,7 @@ class tuning :
   ?extrasize: float ->
   ?curved_lines: bool ->
   network: < reversed_cable_set: bool -> string -> unit; reversed_cables: string list; to_forest: Xforest.forest; .. > ->
-  unit ->           
+  unit ->
   object
     val mutable gui_callbacks_disable : bool
     method crossover_cable_color      : string

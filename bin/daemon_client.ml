@@ -19,13 +19,16 @@
 
 (** This is the client side of the Marionnet-daemon support: *)
 
+(* --- *)
+module Log = Marionnet_log
+
 (* open Daemon_language;; *)
 open Gettext;;
 
 (* Convenient aliases: *)
 module Parameters      = Daemon_parameters
 module Language        = Daemon_language
-module Recursive_mutex = MutexExtra.Recursive
+module Recursive_mutex = Ocamlbricks.MutexExtra.Recursive
 (* --- *)
 
 let socket_name = Parameters.socket_name;;

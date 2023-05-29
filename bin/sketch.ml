@@ -17,8 +17,16 @@
 
 (** Sketch related modules and classes *)
 
-open Gettext;;
-module Recursive_mutex = MutexExtra.Recursive ;;
+(* open Gettext *)
+
+(* Dependencies: *)
+module Recursive_mutex = Ocamlbricks.MutexExtra.Recursive
+module Stateful_modules = Ocamlbricks.Stateful_modules
+module Oomarshal = Ocamlbricks.Oomarshal
+module Cortex = Ocamlbricks.Cortex
+module Forest = Ocamlbricks.Forest
+module ListExtra = Ocamlbricks.ListExtra
+module Widget = Ocamlbricks.Widget
 
 (** A thunk allowing to invoke the sketch refresh method, accessible from many
     modules: *)
@@ -53,15 +61,15 @@ end (* class toolbar_driver *)
 (** Dot options for the network sketch: *)
 let network_marshaller = new Oomarshal.marshaller;;
 
-class tuning 
-  ?(iconsize="large") 
-  ?(shuffler=[]) 
-  ?(rankdir="TB") 
-  ?(nodesep=0.5) 
-  ?(labeldistance=1.6) 
-  ?(extrasize=0.) 
+class tuning
+  ?(iconsize="large")
+  ?(shuffler=[])
+  ?(rankdir="TB")
+  ?(nodesep=0.5)
+  ?(labeldistance=1.6)
+  ?(extrasize=0.)
   ?(curved_lines=false)
-  ~(network: < reversed_cables:(string list); reversed_cable_set:(bool->string->unit); .. >)  (* The handler for the real network *) 
+  ~(network: < reversed_cables:(string list); reversed_cable_set:(bool->string->unit); .. >)  (* The handler for the real network *)
   ()
   =
   let iconsize_default      = iconsize in
@@ -73,7 +81,7 @@ class tuning
   let extrasize_default     = extrasize in
   object (self)
   inherit Xforest.interpreter ()
-   
+
   method direct_cable_color    = "#949494"
   method crossover_cable_color = "#6d8dc0"
 
@@ -126,7 +134,7 @@ class tuning
       Cortex.set (rankdir)       (rankdir_default);
       Cortex.set (curved_lines)  (curved_lines_default);
       Cortex.set (nodesep)       (nodesep_default);
-      Cortex.set (labeldistance) (labeldistance_default); 
+      Cortex.set (labeldistance) (labeldistance_default);
       ListExtra.foreach (network#reversed_cables) (network#reversed_cable_set false) ;
       self#extrasize_reset;
       self#set_toolbar_widgets ()
@@ -135,7 +143,7 @@ class tuning
   method ratio : string =
    let extrasize = Cortex.get (extrasize) in
    if (extrasize = 0.) then "ratio=compress;" else
-   begin (* BUG HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!! when starting marionnet and loading a project with an extrasize >0 defined, 
+   begin (* BUG HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!! when starting marionnet and loading a project with an extrasize >0 defined,
             we go to this branche and because there isn't an "original" image, we have an ugly exception!!!! *)
     let x = Widget.Image.inch_of_pixels self#toolbar_driver#get_image_original_width in
     let y = Widget.Image.inch_of_pixels self#toolbar_driver#get_image_original_height in
@@ -187,7 +195,7 @@ class tuning
 
   (** Undump the state of [self] from the given file. *)
   method load_from_file ~(project_version: [`v0|`v1|`v2]) (fname : string) =
-    let (forest:Xforest.t) = 
+    let (forest:Xforest.t) =
       match project_version with
       | `v2 | `v1 -> network_marshaller#from_file (fname)
       | `v0       -> Forest_backward_compatibility.load_from_old_file (fname)
@@ -197,7 +205,7 @@ class tuning
    match Forest.to_tree forest with
    | (("dotoptions", attrs), children) -> self#from_tree ("dotoptions", attrs) children
    | _ -> assert false
-   
+
  (** Dot_tuning to forest encoding. *)
   method to_tree : (string * (string * string) list) Forest.tree =
    Forest.tree_of_leaf ("dotoptions", [
@@ -215,7 +223,7 @@ class tuning
  (** A Dotoption.network has just attributes (no children) in this version.
      The Dotoption.network must be undumped AFTER the Netmodel.network in
      order to have significant cable names (reversed_cables). *)
- method eval_forest_attribute = function
+ method! eval_forest_attribute = function
   | ("iconsize"             , x ) -> (Cortex.set self#iconsize x)
   | ("shuffler"             , x ) -> (Cortex.set self#shuffler (Xforest.decode x))
   | ("rankdir"              , x ) -> (Cortex.set self#rankdir x)

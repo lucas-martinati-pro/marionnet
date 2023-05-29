@@ -16,6 +16,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module UnixExtra = Ocamlbricks.UnixExtra
+module Hashmap = Ocamlbricks.Hashmap
+(* --- *)
+
 IFNDEF OCAML4_02_OR_LATER THEN
 module Bytes = struct  let create = String.create  let set = String.set  end
 ENDIF

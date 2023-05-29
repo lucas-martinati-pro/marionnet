@@ -14,6 +14,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+(* --- *)
+
 (* Create a fresh filename, without making the file
    (empty cow files are not allowed) *)
 let rec make_temporary_cow_file_name ~states_directory () =

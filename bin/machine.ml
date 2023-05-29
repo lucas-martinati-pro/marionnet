@@ -18,15 +18,33 @@
 
 (** User-level component "machine" implementation. *)
 
-open Gettext;;
-
-type filename = string;;
-type pid = int;;
-
 (* The module containing the add/update dialog is defined later,
    using the syntax extension "where" *)
 #load "where_p4.cmo"
 ;;
+
+(* --- *)
+module Log = Marionnet_log
+module Option = Ocamlbricks.Option
+module Either = Ocamlbricks.Either
+module Misc = Ocamlbricks.Misc
+module Flip = Ocamlbricks.Flip
+module PervasivesExtra = Ocamlbricks.PervasivesExtra
+module ListExtra = Ocamlbricks.ListExtra
+module StrExtra = Ocamlbricks.StrExtra
+module Lazy_perishable = Ocamlbricks.Lazy_perishable
+module OoExtra = Ocamlbricks.OoExtra
+module Future = Ocamlbricks.Future
+module Forest = Ocamlbricks.Forest
+module Linux = Ocamlbricks.Linux
+module Network = Ocamlbricks.Network
+module Widget = Ocamlbricks.Widget
+(* --- *)
+open Gettext
+let spr fmt = Printf.sprintf fmt
+
+type filename = string
+(* type pid = int *)
 
 (* Machine component related constants: *)
 (* TODO: make it configurable! *)
@@ -578,7 +596,7 @@ class machine
   method string_of_devkind = "machine"
 
   (* Redefinition: *)
-  method dot_fontsize_statement = ""
+  method! dot_fontsize_statement = ""
 
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
@@ -589,7 +607,7 @@ class machine
     match (x>=Const.memory_min) && (x<=Const.memory_max) with
     | true  -> x
     | false ->
-        self#failwith "value %d not in the memory range [%d,%d]" x Const.memory_min Const.memory_max
+        self#logged_failwith "%s" (Printf.sprintf "value %d not in the memory range [%d,%d]" x Const.memory_min Const.memory_max)
 
   val mutable rc_config : bool * string  = rc_config
   method get_rc_config = rc_config
@@ -603,7 +621,7 @@ class machine
     match (x>=1) && (x<=8) with
     | true  -> x
     | false ->
-        self#failwith "value %d not in the console no. range [%d,%d]" x 1 8
+        self#logged_failwith "%s" (spr "value %d not in the console no. range [%d,%d]" x 1 8)
 
   (** Show for debugging *)
   method show = name
@@ -629,7 +647,7 @@ class machine
       ])
 
  (** A machine has just attributes (no children) in this version. *)
- method eval_forest_attribute = function
+ method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("memory"   , x ) -> self#set_memory (int_of_string x)
@@ -691,7 +709,7 @@ class machine
     (device :> User_level.node_with_ports_card Simulation_level.device)
 
  (** Here we also have to manage cow files... *)
- method private gracefully_shutdown_right_now =
+ method! private gracefully_shutdown_right_now =
     Log.printf1 "Calling hostfs_directory on %s...\n" self#name;
     let hostfs_directory = self#get_hostfs_directory () in
     Log.printf "Ok, we're still alive\n";
@@ -718,7 +736,7 @@ class machine
     self#destroy_right_now
 
  (** Here we also have to manage cow files... *)
- method private poweroff_right_now =
+ method! private poweroff_right_now =
     (* Do as usual... *)
     self_as_node_with_defects#poweroff_right_now;
     (* ...And destroy, so that the next time we have to re-create the process command line
@@ -971,7 +989,7 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as self_as_machine_or_router *)
   method device_type = "computer"
 end;;
 

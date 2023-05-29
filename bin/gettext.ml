@@ -15,6 +15,11 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module UnixExtra = Ocamlbricks.UnixExtra
+module Gettext_builder = Ocamlbricks.Gettext_builder
+(* --- *)
 let text_domain = "marionnet"
 let file_dot_mo = (text_domain ^ ".mo")
 

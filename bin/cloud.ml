@@ -21,6 +21,11 @@
 #load "where_p4.cmo"
 ;;
 
+(* --- *)
+module Log = Marionnet_log
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+(* --- *)
 open Gettext
 
 (* Cloud related constants: *)
@@ -66,7 +71,7 @@ module Make_menus (Params : sig
       let name = st#network#suggestedName "N" in
       Dialog_add_or_update.make ~title:(s_ "Add cloud") ~name ~ok_callback ()
 
-    let reaction { name = name; label = label } =
+    let reaction { name = name; label = label; _ } =
       let action () = ignore (
         new User_level_cloud.cloud
           ~network:st#network
@@ -290,7 +295,7 @@ class cloud =
      ("label"    ,  self#get_label);
      ])
 
-  method eval_forest_attribute = function
+  method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | _ -> () (* Forward-comp. *)
@@ -305,8 +310,6 @@ end (* module User_level_cloud *)
 
 module Simulation_level_cloud = struct
 
-open Daemon_language
-
 class ['parent] cloud =
   fun (* ~id *)
       ~(parent:'parent)
@@ -320,7 +323,8 @@ object(self)
       ~working_directory
       ~unexpected_death_callback
       ()
-      as super
+      (* as self_as_device *)
+
   method device_type = "cloud"
 
   val internal_cable_process = ref None

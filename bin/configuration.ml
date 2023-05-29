@@ -14,7 +14,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-
+(* --- *)
+module Log = Marionnet_log
+module Configuration_files = Ocamlbricks.Configuration_files
+(* --- *)
 (** Read configuration files: *)
 let configuration =
   (* Lowest priority first: *)
@@ -69,8 +72,8 @@ let get_string_variable ?k ?unsuitable_value varname =
   Configuration_files.Logging.get_string_variable ?k ?unsuitable_value varname (configuration)
 
 type source = [ `Filename of string | `Environment ] (* Configuration_files.source *)
-  
+
 let get_string_variable_with_source ?k ?unsuitable_value varname =
   Configuration_files.With_source.get_string_variable ?k ?unsuitable_value varname (configuration)
 
-  
+

@@ -1,12 +1,77 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2023  Jean-Vincent Loddo
+;; Copyright (C) 2023  Université Sorbonne Paris Nord (USPN)
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; ---
+(env
+  (dev     (flags (:standard -w +42 -w -27 -w -67 -w -3 -w -6 -w -16 -w -32)))
+  (release (ocamlopt_flags (:standard -O3)))
+  )
+;; ---
+(include_subdirs unqualified)
+;; ---
+;;(dirs :standard )
+
+
+;; ---
+;; --- EXECUTABLE marionnet
+;; ---
 (executable
+  ;; ---
   (public_name marionnet)
-  (name main)
-  (preprocess (action (run camlp4of -I ../../../../_build/ %{read-lines:../lib/camlp4of-flags.cfg} %{input-file})))
+  ;; ---
+  (name marionnet)
+  ;; ---
+  (preprocess (action (run camlp4of
+      -I ../../../../lib/_build/
+      %{read-lines:../lib/camlp4of-flags.cfg}
+      gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      )))
+  ;; ---
   (link_flags -I ../ -cclib -locamlbricks_stubs)
-;;(ocamlopt_flags -I ../ -cclib -locamlbricks_stubs)
-;;(ocamlc_flags   -I ../ -cclib -locamlbricks_stubs)
-  (libraries str unix threads inotify lablgtk3 ocamlbricks)
+  ;; ---
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks)
+  ;; ---
+  (modules :standard)
+  ;; (modules_without_implementation version)
   )
 
-;;OCAMLBRICKS_STUBS=ocamlbricks_stubs
-;;COMPILE_OPTIONS += -g -w x -I $(OCAMLBRICKS) -cclib -l$(OCAMLBRICKS_STUBS)
+;;; ---
+(install
+  (files
+     ;; ---
+     (glob_files "gui/gui_glade3.xml*")
+     ;; ---
+     (glob_files "share/*")
+     (glob_files "filesystems/*")
+     (glob_files "kernels/*")
+     ;; ---
+     (glob_files "images/*")
+     (glob_files "images/launcher-icons/*")
+     (glob_files "images/treeview-icons/*")
+     ;; ---
+     (glob_files "images/leds/*")
+     (glob_files "images/leds/hub/*")
+     (glob_files "images/leds/router/*")
+     (glob_files "images/leds/switch/*")
+     (glob_files "images/leds/world_gateway/*")
+     ;; ---
+     )
+  (section share)
+  (package marionnet) ;;; optional
+ )
+
+

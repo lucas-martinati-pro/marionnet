@@ -21,6 +21,15 @@
 #load "where_p4.cmo"
 ;;
 
+(* --- *)
+module Log = Marionnet_log
+module StringExtra = Ocamlbricks.StringExtra
+module Option = Ocamlbricks.Option
+module Either = Ocamlbricks.Either
+module OoExtra = Ocamlbricks.OoExtra
+module Forest = Ocamlbricks.Forest
+module Network = Ocamlbricks.Network
+(* --- *)
 open Gettext
 
 (* Switch related constants: *)
@@ -89,7 +98,7 @@ module Make_menus (Params : sig
     let reaction
        { name = name; label = label; port_no = port_no;
          show_vde_terminal = show_vde_terminal; activate_fstp = activate_fstp;
-         rc_config = rc_config; }
+         rc_config = rc_config; _ }
       =
       let action () =
         ignore
@@ -445,7 +454,7 @@ class switch =
       ("rc_config"         , Marshal.to_string self#get_rc_config []);
       ])
 
-  method eval_forest_attribute = function
+  method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("port_no"  , x ) -> self#set_port_no (int_of_string x)
@@ -574,7 +583,7 @@ object(self)
       as super
   method device_type = "switch"
 
-  method spawn_internal_cables =
+  method! spawn_internal_cables =
     match show_vde_terminal || (rcfile_content <> None) with
     | false -> super#spawn_internal_cables
     | true ->

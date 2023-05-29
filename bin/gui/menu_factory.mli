@@ -47,7 +47,7 @@ module type Factory =
         string ->
         stock:GtkStock.id ->
         ?callback:(unit -> unit) ->
-        unit -> GMenu.image_menu_item
+        unit -> GMenu.menu_item
 
       val add_imagefile_item :
         ?menu:GMenu.menu GMenu.factory ->
@@ -56,7 +56,7 @@ module type Factory =
         ?label:string ->
         string ->
         ?callback:(unit -> unit) ->
-        unit -> GMenu.image_menu_item
+        unit -> GMenu.menu_item
 
       val add_check_item :
         ?menu:GMenu.menu GMenu.factory ->
@@ -79,10 +79,12 @@ module type Parents = sig  val parent: menu_parent  val window : GWindow.window 
 
 module Make : functor (M : Parents) -> Factory
 
-type env  = string Environments.string_env
 type name = string
 
-val mkenv     : (string * 'a) list -> 'a Environments.string_env
+(* Alias: *)
+type 'a env = 'a Ocamlbricks.Environments.string_env
+
+val mkenv     : (string * 'a) list -> 'a env
 
 val no_dialog_but_simply_return_name : string -> unit -> string option
 
@@ -130,7 +132,7 @@ module Make_entry :
   functor (E : Entry_definition) ->
     functor (F : Factory) ->
       sig
-        val item     : GMenu.image_menu_item
+        val item     : GMenu.menu_item
         val callback : unit -> unit
       end
 
@@ -138,7 +140,7 @@ module Make_entry_with_children :
   functor (E : Entry_with_children_definition) ->
     functor (F : Factory) ->
       sig
-        val item     : GMenu.image_menu_item
+        val item     : GMenu.menu_item
         val submenu  : GMenu.menu
         val callback : name -> unit -> unit
       end

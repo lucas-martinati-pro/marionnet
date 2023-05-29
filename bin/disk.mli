@@ -17,6 +17,8 @@
 
 (** Manage files and informations installed on disk(s). *)
 
+open Ocamlbricks
+
 val machine_prefix : string
 val router_prefix : string
 val kernel_prefix : string
@@ -137,7 +139,7 @@ val find_machine_installations :
   ?lifetime:float -> (* 60. seconds *)
   unit -> virtual_machine_installations Lazy_perishable.t
 
-(** Instance of find_machine_installations (any optional argument provided): *)  
+(** Instance of find_machine_installations (any optional argument provided): *)
 val get_machine_installations : virtual_machine_installations Lazy_perishable.t
 
 val find_router_installations :
@@ -150,9 +152,9 @@ val find_router_installations :
   ?lifetime:float -> (* 60. seconds *)
   unit -> virtual_machine_installations Lazy_perishable.t
 
-(** Instance of find_router_installations (any optional argument provided): *)  
+(** Instance of find_router_installations (any optional argument provided): *)
 val get_router_installations : virtual_machine_installations Lazy_perishable.t
-  
+
 val vm_installations_and_epithet_of_prefixed_filesystem :
   string -> virtual_machine_installations * [`distrib] epithet
 
