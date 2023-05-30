@@ -16,7 +16,7 @@
 
 # ---
 # Makefiles (this one as those in other parts) use extensively the bash shell
-SHELL=/bin/bash
+SHELL=/bin/bash -O extglob -c
 
 # Default entry:
 main: rebuild
@@ -73,16 +73,6 @@ all: meta main-no-build
 rebuild:
 	make -C lib/ clean && make clean && make all
 
-# # The main target. Its implementation is entirely project-dependant:
-# main: manually_pre_actions c-modules
-# 	dune build --release
-# 	@(echo "Success.")
-#
-# # The main target. Its implementation is entirely project-dependant:
-# main-dev: manually_pre_actions c-modules
-# 	dune build
-# 	@(echo "Success.")
-
 meta: bin/version.ml bin/meta.ml
 
 # For testing:
@@ -101,9 +91,17 @@ install-final:
 
 # ---
 # Rebuild and install the project in the opam directory for testing/debugging:
+INSTALL_PREFIX_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
+INSTALLED_FILESYSTEMS=$(INSTALL_PREFIX)/share/marionnet/filesystems
+INSTALLED_KERNELS=$(INSTALL_PREFIX)/share/marionnet/kernels
+# ---
 install-for-testing:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME.testing.sh" || make rebuild-for-testing
 	dune install
+	@echo "---"
+	@echo mkdir -p $(INSTALL_PREFIX_FOR_TESTING)/filesystems $(INSTALL_PREFIX_FOR_TESTING)/kernels
+	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(INSTALL_PREFIX_FOR_TESTING)/filesystems/; done
+	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(INSTALL_PREFIX_FOR_TESTING)/kernels/; done
 	@echo "---"
 	which marionnet
 	@echo "Success."
