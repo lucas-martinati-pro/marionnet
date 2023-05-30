@@ -114,7 +114,11 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      row_index <- row_index+2; (* additional line for vertical spacing *)
      table#attach ~left:0 ~top label#coerce;
      (match no_line with
-     | None -> table#attach ~left:1 ~top (GMisc.separator `HORIZONTAL ())#coerce
+     | None ->
+         (* No, lablgtk draws a strange big line, so in any case we do nothing: *)
+         (* let sep = GMisc.separator `HORIZONTAL ~show:true () in
+         table#attach ~left:1 ~top sep#coerce *)
+         ()
      | _    -> ());
 
    method add_with_tooltip ?just_for_label text =

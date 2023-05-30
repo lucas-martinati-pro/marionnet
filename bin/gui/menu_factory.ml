@@ -34,6 +34,36 @@ let fresh_path =
   let () = incr x in
   result
 
+(* https://docs.gtk.org/gtk3/class.ImageMenuItem.html *)
+module Image_menu_item = struct
+  (* --- *)
+  (* I don't know how to specify the size (i.e. GTK_ICON_SIZE_MENU):
+      GtkWidget *icon = gtk_image_new_from_icon_name ("folder-music-symbolic", GTK_ICON_SIZE_MENU); *)
+  (* --- *)
+  let make ?file ?stock ~text () : GMenu.menu_item =
+    if file=None && stock=None then invalid_arg "Menu_factory.Image_menu_item.make" else (* continue: *)
+    (* val box : Gtk.Tags.orientation ->
+        ?homogeneous:bool -> ?spacing:int -> ?border_width:int -> ?width:int -> ?height:int -> ?packing:(..) -> ?show:bool -> unit -> box *)
+    let box = GPack.box `HORIZONTAL ~homogeneous:false ~spacing:0 ~show:true () in
+    let image = GMisc.image ?file ?stock ~packing:(box#add) ~show:true () in
+    let label = GMisc.label ~text  ~packing:(box#add) ~show:true () in
+    (* type align = [ `FILL | `START | `END | `CENTER | `BASELINE ] *)
+    let () = image#set_halign `START in
+    let () = label#set_halign `CENTER in
+    (* val menu_item : ?use_mnemonic:bool -> ?label:string -> ?packing:(menu_item -> unit) -> ?show:bool -> unit -> menu_item *)
+    let menu_item = GMenu.menu_item ~show:true () in
+    let () = box#set_child_packing ~padding:0 (image#coerce) in
+    let () = box#set_child_packing ~padding:0 (label#coerce) in
+    (*let () = box#coerce#set_margin_start 0 in*)
+    (*let () = image#coerce#set_margin_start 0 in*)
+    (* --- *)
+    let () = menu_item#add (box#coerce) in
+    let () = menu_item#coerce#set_margin_start 0 in
+    (* let () = menu_item# set_child_packing ~padding:30 (box#coerce) in *)
+    menu_item
+  (* --- *)
+end (* Image_menu_item *)
+
 (** Make a module with tools for adding and managing items to a given parent (menubar or menuitem).
    If a menubar not provided, a fresh one is created just for the factory definition.
    In this case, the connection with the menu_item_skel parent will be fixed after the
@@ -93,34 +123,6 @@ module Make (M: Parents) = struct
    let result = menu#add_item label ~key ~callback in
    let () = match submenu with None -> () | Some submenu -> (result#set_submenu submenu)
    in result
-
- (* https://docs.gtk.org/gtk3/class.ImageMenuItem.html *)
- module Image_menu_item = struct
-  (* --- *)
-  (* NON SO COME SPECIFICARE LA DIMENSIONE (GTK_ICON_SIZE_MENU):
-      GtkWidget *icon = gtk_image_new_from_icon_name ("folder-music-symbolic", GTK_ICON_SIZE_MENU); *)
-  let make ?file ?stock ~text () : GMenu.menu_item =
-    if file=None && stock=None then invalid_arg "Menu_factory.Make.Image_menu_item.make" else (* continue: *)
-    (* val box : Gtk.Tags.orientation -> ?homogeneous:bool -> ?spacing:int -> ?border_width:int -> ?width:int -> ?height:int -> ?packing:(..) -> ?show:bool -> unit -> box *)
-    let box = GPack.box `HORIZONTAL ~homogeneous:false ~spacing:0 ~show:true () in
-    let image = GMisc.image ?file ?stock ~packing:(box#add) ~show:true () in
-    let label = GMisc.label ~text  ~packing:(box#add) ~show:true () in
-    (* type align = [ `FILL | `START | `END | `CENTER | `BASELINE ] *)
-    let () = image#set_halign `START in
-    let () = label#set_halign `CENTER in
-    (* val menu_item : ?use_mnemonic:bool -> ?label:string -> ?packing:(menu_item -> unit) -> ?show:bool -> unit -> menu_item *)
-    let menu_item = GMenu.menu_item ~show:true () in
-    let () = box#set_child_packing ~padding:0 (image#coerce) in
-    let () = box#set_child_packing ~padding:0 (label#coerce) in
-    (*let () = box#coerce#set_margin_start 0 in*)
-    (*let () = image#coerce#set_margin_start 0 in*)
-    (* --- *)
-    let () = menu_item#add (box#coerce) in
-    let () = menu_item#coerce#set_margin_start 0 in
-    (* let () = menu_item# set_child_packing ~padding:30 (box#coerce) in *)
-    menu_item
-  (* --- *)
- end (* Image_menu_item *)
 
  (* val add_stock_item :
       ?menu:GMenu.menu GMenu.factory -> ?submenu:GMenu.menu -> ?key:Gdk.keysym -> string -> stock:GtkStock.id -> ?callback:(unit -> unit) -> unit -> GMenu.menu_item *)

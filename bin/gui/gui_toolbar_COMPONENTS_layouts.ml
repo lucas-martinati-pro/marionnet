@@ -38,14 +38,24 @@ module Toolbar = struct
     set_tooltip slot#coerce tooltip;
     result*)
 
-(* NEW version, lablgtk3 compatible: *)
-let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
+(* NEW version (v0, unused), lablgtk3 compatible: *)
+let append_image_menu_v0 (toolbar:GButton.toolbar) filename tooltip =
   let slot    = GButton.tool_item ~packing:toolbar#insert () in
   let box     = GPack.hbox ~border_width:2 ~packing:(slot#add) ~show:true () in
   let image   = GMisc.image ~xalign:0.5 ~yalign:0.5 ~xpad:0 ~ypad:0 ~file:(Filename.concat Initialization.Path.images filename) ~packing:(box#pack) () in
   let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(box#pack) () in
   let result  = GMenu.menu_item ~label:"+" ~packing:menubar#add () in
   let () = image#misc#show () in
+  let () = GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip in
+  result
+
+(* NEW version, lablgtk3 compatible: *)
+let append_image_menu(*_v1*) (toolbar:GButton.toolbar) filename tooltip =
+  let slot    = GButton.tool_item ~packing:toolbar#insert () in
+  let box     = GPack.hbox ~border_width:2 ~packing:(slot#add) ~show:true () in
+  let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(box#pack) () in
+  let result  : GMenu.menu_item = Menu_factory.Image_menu_item.make ~file:(Filename.concat Initialization.Path.images filename) ~text:" 🢒" () in
+  let () = menubar#add (result) in
   let () = GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip in
   result
 

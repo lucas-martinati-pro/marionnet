@@ -29,10 +29,8 @@ module Thunk = Ocamlbricks.Thunk
 module Ipv4 = Ocamlbricks.Ipv4
 module Ipv6 = Ocamlbricks.Ipv6
 (* --- *)
-let () = Printf.kfprintf flush stderr "HERE0\n" ;;
 
 open Gettext
-let () = Log.printf "HERE0\n" ;;
 
 (* ***************************************** *
              Get basic infos

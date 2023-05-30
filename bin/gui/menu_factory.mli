@@ -22,6 +22,11 @@ type menu_parent =
   | Menuitem of GMenu.menu_item_skel
   | Menu     of GMenu.menu
 
+(* --- *)
+module Image_menu_item : sig
+  val make : ?file:string -> ?stock:GtkStock.id ->  text:string -> unit -> GMenu.menu_item
+end
+
 module type Factory =
     sig
       val factory : GMenu.menu_shell GMenu.factory

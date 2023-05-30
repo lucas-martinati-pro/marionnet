@@ -107,14 +107,19 @@ object (self)
         ~title
         ~border_width:0
         ~resizable:false
-        () in
+        ()
+    in
+    (* 230 pixels seems a minimum with a 2-letters title: *)
+    let () = window#set_width_request 230 in
+    (* --- *)
     let frame = GBin.frame ~label (* ~shadow_type:`ETCHED_OUT *) ~packing:window#add () in
-(*     let box = GPack.box `HORIZONTAL ~packing:frame#add () in  *)
+    (* let box = GPack.box `HORIZONTAL ~packing:frame#add () in  *)
     let vbox = GPack.box `VERTICAL ~packing:frame#add () in
     let box = GPack.box `HORIZONTAL ~packing:vbox#add () in
     let always_on_top_box = GPack.box `HORIZONTAL ~packing:vbox#add () in
     let check_button =
-      GButton.check_button (*~stock:`CUT*) ~label:"Always on top" ~packing:always_on_top_box#add () in
+      GButton.check_button (*~stock:`CUT*) ~label:"Always on top" ~packing:always_on_top_box#add ()
+    in
     ignore (check_button#connect#clicked
               ~callback:(fun () ->
                 let state = check_button#active in
