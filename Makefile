@@ -85,9 +85,22 @@ run:
 
 INSTALL_PREFIX=/usr/local
 install-final:
-	ln -sf "CONFIGME" "CONFIGME.choice"
-	make rebuild
+	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
 	dune install --prefix $(INSTALL_PREFIX)
+
+TMPSCRIPT=_build/make_install_as_root.sh
+install-final-as-root:
+	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
+	echo '#!/bin/bash' > $(TMPSCRIPT)
+	echo $$(opam env) >> $(TMPSCRIPT)
+	echo "dune install --prefix $(INSTALL_PREFIX)" >> $(TMPSCRIPT)
+	chmod +x $(TMPSCRIPT)
+	sudo $(TMPSCRIPT)
+	rm -f $(TMPSCRIPT)
+	@echo "Success."
+
+# Alias:
+install: install-final-as-root
 
 # ---
 # Rebuild and install the project in the opam directory for testing/debugging:
@@ -107,14 +120,25 @@ install-for-testing:
 	@echo "Success."
 
 # ---
-rebuild-for-testing:
-	ln -sf "CONFIGME.testing.sh" "CONFIGME.choice"
+rebuild-for-testing: configure-for-testing
 	make rebuild
+# ---
+rebuild-for-final: configure-for-final
+	make rebuild
+# ---
+configure-for-testing:
+	ln -sf "CONFIGME.testing.sh" "CONFIGME.choice"
+# ---
+configure-for-final:
+	ln -sf "CONFIGME" "CONFIGME.choice"
+# ---
+configure: configure-for-final
 
 # ---
 uninstall-for-testing:
 	dune uninstall
 	@echo "Success."
+
 
 # =============================================================
 #                           edit

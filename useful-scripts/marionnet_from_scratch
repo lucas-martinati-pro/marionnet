@@ -308,16 +308,18 @@ fi
 if [[ -n ${option_b} ]]; then
  OCAMLBRICKS_VERSION="${option_b_arg}"
 elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- OCAMLBRICKS_VERSION="trunk"
+ OCAMLBRICKS_VERSION="none"
 fi
 
 # Option -o, --ocaml-version
 if [[ -n ${option_o} ]]; then
  OCAML_VERSION="${option_o_arg}"
-elif [[ $MARIONNET_VERSION = "trunk" || $MARIONNET_SERIES = "0.94.x" ]]; then
+elif [[ $MARIONNET_SERIES = "0.94.x" ]]; then
  # This value must be updated each time the trunk
  # will require a new OCaml version:
  OCAML_VERSION="3[.]12[.]1"
+elif [[ $MARIONNET_VERSION = "trunk" ]]; then
+ OCAML_VERSION="none" # opam
 else
  # Fixed for marionnet 0.90.6:
  OCAML_VERSION="3[.]11[.]2"
@@ -326,6 +328,9 @@ fi
 # Option -l, --lablgtk-version
 if [[ -n ${option_l} ]]; then
  LABLGTK_VERSION="${option_l_arg}"
+elif [[ $MARIONNET_VERSION = "trunk" ]]; then
+ # Fixed for marionnet 0.90.6:
+ LABLGTK_VERSION="none" # opam
 else
  # Fixed for marionnet 0.90.6:
  LABLGTK_VERSION="2[.]14[.]2"
@@ -342,7 +347,7 @@ if [[ -n ${option_d} ]]; then
 fi
 
 # Option -N, --no-native, --bytecode
-if [[ -n ${option_N} ]]; then
+if [[ -n ${option_N} && $MARIONNET_VERSION != "trunk" ]]; then
  GENERATE_BYTECODE=yes
 else
  GENERATE_BYTECODE=no
@@ -817,6 +822,8 @@ function echo_required_debian_packages {
  LIST+=$(echo_debian_package_for_binary_if_really_needed dot graphviz)
  LIST+=$(echo_debian_package_for_binary_if_really_needed uml_switch uml-utilities)
 
+ if [[ $MARIONNET_VERSION != "trunk" ]]; then
+ # ---
  for i in \
    libgtk2.0-dev libglade2-dev liblablgtksourceview2-ocaml-dev \
    libtool bridge-utils coreutils debianutils diffutils \
@@ -828,6 +835,24 @@ function echo_required_debian_packages {
      LIST+="$i "
    fi
  done
+ # ---
+ else
+ # ---
+ # [[ $MARIONNET_VERSION = "trunk" ]]
+ for i in \
+   bzr glade libgtksourceview-3.0-dev opam \
+   libtool bridge-utils coreutils debianutils diffutils \
+   net-tools uml-utilities util-linux x11-xserver-utils \
+   coreutils findutils login procps gettext \
+   rlfe; # alternatives are rlwrap and ledit
+   do
+   if ! is_package_installed $i; then
+     LIST+="$i "
+   fi
+ done
+ # ---
+ fi
+
 
  # vde2 only if is not already installed and the available version is >= 2.2.1
  if type 1>&2 aptitude; then
@@ -1037,7 +1062,7 @@ if are_we_in_debian_or_derived; then
 fi # are_we_in_debian_or_derived
 
 launch_and_log "Downloading marionnet" download_latest_marionnet 22400
-launch_and_log "Downloading ocamlbricks" download_latest_ocamlbricks 7500
+[[ OCAMLBRICKS_VERSION != "none" ]] && launch_and_log "Downloading ocamlbricks" download_latest_ocamlbricks 7500
 
 # =============================================================
 #                       OCAML & LABLGTK
@@ -1091,6 +1116,8 @@ cd lablgtk
 cd ..
 }
 
+# --- the trunk is now based on opam, so:
+if [[ $MARIONNET_VERSION != "trunk" ]]; then
 # Tuning:
 export OCAML_PREFIX=$PWD/local
 export PATH=$OCAML_PREFIX/bin:$PATH
@@ -1100,11 +1127,14 @@ launch_and_log "Downloading ocaml" download_latest_ocaml 83000
 launch_and_log "Downloading lablgtk" download_latest_lablgtk 17800
 launch_and_log "Compiling ocaml" compile_ocaml 382000
 launch_and_log "Compiling lablgtk" compile_lablgtk 56000
+fi
 
 # =============================================================
 #                       OCAMLBRICKS
 # =============================================================
 
+# --- the trunk contains now a local version of ocamlbricks, so:
+if [[ $MARIONNET_VERSION != "trunk" ]]; then
 cd ocamlbricks
 cat >CONFIGME <<EOF
 ocaml_libraryprefix=$LIB_OCAML
@@ -1120,14 +1150,20 @@ EOF
 
 launch_and_log "Compiling ocamlbricks" 'make clean && make && make install' 4002673
 cd ..
+fi
 
 # =============================================================
 #                        MARIONNET
 # =============================================================
 
+# ---
 cd marionnet
-cp ../ocamlbricks/CONFIGME .
+# ---
 
+# --- the trunk is now based on opam, so:
+if [[ $MARIONNET_VERSION != "trunk" ]]; then
+# ---
+cp ../ocamlbricks/CONFIGME .
 # make
 case $GENERATE_BYTECODE in
  yes)
@@ -1142,7 +1178,15 @@ case $GENERATE_BYTECODE in
   # ---
   ;;
 esac
+else
+# ---
+# $MARIONNET_VERSION = "trunk"
+# ---
+  MARIONNET_MAKE_COMMAND='make configure switch rebuild'
+  WEIGHT=27803
+fi
 
+# ---
 launch_and_log \
   "Compiling marionnet" \
   "$MARIONNET_MAKE_COMMAND" \
