@@ -26,7 +26,6 @@ main: rebuild
 # =============================================================
 
 REQUIRED_PACKAGES = bzr liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev opam
-# OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify conf-glade lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
 OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
 # ---
 # Target version of OCaml:

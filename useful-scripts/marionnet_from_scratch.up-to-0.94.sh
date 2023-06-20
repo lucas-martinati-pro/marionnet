@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Script version: 0.98.1
-# 2023.06.20
+# Script version: 0.94.2
+# 2020.02.09
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
@@ -82,7 +82,7 @@ COMMAND_LINE="$(realpath $COMMAND_LINE) "$@""
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hp:s:m:b:o:t:kl:d:v:y:VDKFTAOc:"
+OPTSTRING="hp:s:m:b:o:t:kl:d:v:y:NVDKFTAOc:"
 
 function parse_cmdline {
 local i j flag
@@ -105,6 +105,9 @@ for i in "$@"; do
      ;;
     --ocaml-version|--ocaml)
      ARGS+=("-o");
+     ;;
+    --no-native|--bytecode)
+     ARGS+=("-N");
      ;;
     --lablgtk-version|--lablgtk)
      ARGS+=("-l");
@@ -231,6 +234,7 @@ Options:
   -v, --vde VERSION             Set vde2's version
   -d, --dot VERSION 		Set dot's (graphviz) version
   -y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
+  -N, --bytecode		Generate bytecode executables (no native code)
   -V, --no-vde			Do nothing about vde
   -D, --no-dot			Do nothing about dot (graphviz)
   -K, --no-kernels 		Don't download kernels
@@ -285,7 +289,7 @@ fi
 if [[ -n ${option_s} ]]; then
  MARIONNET_SERIES="${option_s_arg}"
 else
- MARIONNET_SERIES="0.98.x"  # default
+ MARIONNET_SERIES="0.94.x"  # default
 fi
 
 # Option -m, --marionnet-version
@@ -304,18 +308,16 @@ fi
 if [[ -n ${option_b} ]]; then
  OCAMLBRICKS_VERSION="${option_b_arg}"
 elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- OCAMLBRICKS_VERSION="none"
+ OCAMLBRICKS_VERSION="trunk"
 fi
 
 # Option -o, --ocaml-version
 if [[ -n ${option_o} ]]; then
  OCAML_VERSION="${option_o_arg}"
-elif [[ $MARIONNET_SERIES = "0.94.x" ]]; then
+elif [[ $MARIONNET_VERSION = "trunk" || $MARIONNET_SERIES = "0.94.x" ]]; then
  # This value must be updated each time the trunk
  # will require a new OCaml version:
  OCAML_VERSION="3[.]12[.]1"
-elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- OCAML_VERSION="none" # opam
 else
  # Fixed for marionnet 0.90.6:
  OCAML_VERSION="3[.]11[.]2"
@@ -324,9 +326,6 @@ fi
 # Option -l, --lablgtk-version
 if [[ -n ${option_l} ]]; then
  LABLGTK_VERSION="${option_l_arg}"
-elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- # Fixed for marionnet 0.90.6:
- LABLGTK_VERSION="none" # opam
 else
  # Fixed for marionnet 0.90.6:
  LABLGTK_VERSION="2[.]14[.]2"
@@ -343,7 +342,7 @@ if [[ -n ${option_d} ]]; then
 fi
 
 # Option -N, --no-native, --bytecode
-if [[ -n ${option_N} && $MARIONNET_VERSION != "trunk" ]]; then
+if [[ -n ${option_N} ]]; then
  GENERATE_BYTECODE=yes
 else
  GENERATE_BYTECODE=no
@@ -726,10 +725,6 @@ function download_latest_marionnet {
     $OUR_MIRROR
 }
 
-function download_marionnet_trunk {
- bzr branch lp:marionnet
-}
-
 function download_latest_ocamlbricks  {
   local VERSION=${OCAMLBRICKS_VERSION:-latest}
   download_latest_tar_gz -v "$VERSION" ocamlbricks \
@@ -801,8 +796,8 @@ function echo_debian_package_for_binary_if_really_needed {
  fi
 }
 
-function is_apt_installed  {
- type 1>&2 apt
+function is_aptitude_installed  {
+ type 1>&2 aptitude
 }
 
 
@@ -814,35 +809,33 @@ function is_package_installed {
 function echo_required_debian_packages {
  local LIST i VDE2_VERSION
 
- # Then continue with apt
- for i in gcc g++ make flex bison grep tar xterm wget mktemp realpath sed gawk apt; do
+ # Then continue with aptitude
+ for i in gcc g++ make flex bison grep tar xterm wget mktemp realpath sed gawk aptitude; do
    LIST+=$(echo_debian_package_for_binary_if_really_needed $i $i)
  done
 
  LIST+=$(echo_debian_package_for_binary_if_really_needed dot graphviz)
  LIST+=$(echo_debian_package_for_binary_if_really_needed uml_switch uml-utilities)
 
- # ---
  for i in \
-   bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
+   libgtk2.0-dev libglade2-dev liblablgtksourceview2-ocaml-dev \
    libtool bridge-utils coreutils debianutils diffutils \
-   net-tools util-linux x11-xserver-utils \
+   net-tools uml-utilities util-linux x11-xserver-utils \
    coreutils findutils login procps gettext \
    rlfe; # alternatives are rlwrap and ledit
    do
    if ! is_package_installed $i; then
-     LIST+="$i ";
+     LIST+="$i "
    fi
  done
- # ---
 
  # vde2 only if is not already installed and the available version is >= 2.2.1
- if type 1>&2 apt; then
+ if type 1>&2 aptitude; then
    type 1>&2 vde_switch || {
-       VDE2_VERSION=$(apt show "vde2" 2>/dev/null | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
+       VDE2_VERSION=$(aptitude show vde2 | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
        VDE2_VERSION=$(echo $VDE2_VERSION | awk -F '.' '(($2 * 100 + $3 * 10 + $4) >= 221) {print}')
        if [[ -n "$VDE2_VERSION" ]]; then
-	   if ! is_package_installed $i; then LIST+="vde2 "; fi
+	   LIST+="vde2 "
        fi
    }
  fi
@@ -852,18 +845,18 @@ function echo_required_debian_packages {
  # packages: libc6-i386 to compile for an i386 target, and libc6:i386 to execute i386 code in a x86_64 system.
  if are_we_in_ubuntu_version_or_greater "18"; then
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6:i386; then
-    if ! is_package_installed $i; then LIST+="libc6:i386 "; fi
+    LIST+="libc6:i386 "
   fi 1>&2
  else
   # Not in Ubuntu >= 18, x86_64 => libc6-i386
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6-i386; then
-    if ! is_package_installed $i; then LIST+="libc6-i386 "; fi
+    LIST+="libc6-i386 "
   fi 1>&2
  fi
 
  # In Ubuntu >= 16, add overlay-scrollbar-gtk2
  if are_we_in_ubuntu_version_or_greater "16"; then
-    if ! is_package_installed $i; then LIST+="overlay-scrollbar "; fi
+  LIST+="overlay-scrollbar-gtk2 "
  fi
 
  # Return the list:
@@ -1013,42 +1006,106 @@ if are_we_in_debian_or_derived; then
   echo "DEBIAN_PACKAGE_LIST=$DEBIAN_PACKAGE_LIST" 1>&2 # debugging
   if [[ -n ${DEBIAN_PACKAGE_LIST%% } ]]; then
     echo "  Required packages: $DEBIAN_PACKAGE_LIST"
-    echo -n "  Shall I install required package(s) with apt ([y]/n)? "
+    echo -n "  Shall I install required package(s) with aptitude ([y]/n)? "
     read z
     if [[ $z != n && $z != N ]]; then
-      MSG="Installing required packages with apt"
+      echo -n "  Shall I use the aptitude option --allow-untrusted ([y]/n)? "; read z
+      if [[ $z != n && $z != N ]]; then
+	APTITUDE_OPTIONS+="--allow-untrusted "
+      fi
+      MSG="Installing required packages with aptitude"
       ensure_sudo_or_continue_as_root "* $MSG"
-      # First install apt if needed:
-      if ! type 1>&2 apt; then
-	launch_and_log --sudo "Installing apt" "apt-get -y install apt"
-	APT_INSTALLED_NOW=yes
+      # First install aptitude if needed:
+      if ! type 1>&2 aptitude; then
+	launch_and_log --sudo "Installing aptitude" "apt-get -y install aptitude"
+	APTITUDE_INSTALLED_NOW=yes
       fi
       # vde2 only if is not already installed and the available version is >= 2.2.1
-      if [[ $APT_INSTALLED_NOW = yes ]] && ! type 1>&2 vde_switch; then
-	VDE2_VERSION=$(apt show "vde2" 2>/dev/null | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
+      if [[ $APTITUDE_INSTALLED_NOW = yes ]] && ! type 1>&2 vde_switch; then
+	VDE2_VERSION=$(aptitude $APTITUDE_OPTIONS show vde2 | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
 	VDE2_VERSION=$(echo $VDE2_VERSION | awk -F '.' '(($2 * 100 + $3 * 10 + $4) >= 221) {print}')
 	if [[ -n "$VDE2_VERSION" ]]; then
 	  DEBIAN_PACKAGE_LIST+="vde2 "
-	  echo "  Note: I will also install vde2 with apt"
+	  echo "  Note: I will also install vde2 with aptitude"
 	fi
       fi
-      # We set the option `--do-not-register-as-done' because sometimes a single call to apt is not sufficient to install all things...
-      launch_and_log --do-not-register-as-done --sudo "$MSG" "apt -y install $DEBIAN_PACKAGE_LIST"
+      # We set the option `--do-not-register-as-done' because sometimes a single call to aptitude is not sufficient to install all things...
+      launch_and_log --do-not-register-as-done --sudo "$MSG" "aptitude $APTITUDE_OPTIONS -q -y install $DEBIAN_PACKAGE_LIST"
       DISABLE_libc6_i386_WARNING=yes
     fi # answered yes
   fi # package list not empty
 fi # are_we_in_debian_or_derived
 
-# ---
-launch_and_log "Downloading marionnet" download_marionnet_trunk 2240
+launch_and_log "Downloading marionnet" download_latest_marionnet 22400
+launch_and_log "Downloading ocamlbricks" download_latest_ocamlbricks 7500
 
 # =============================================================
-#              MARIONNET (with OCAMLBRICKS)
+#                       OCAML & LABLGTK
 # =============================================================
 
-# ---
-cd marionnet
-# ---
+function compile_ocaml {
+cd ocaml
+# Download and apply the patch bugfix-5237.diff for ocaml 3.11 on a 64 bits architecture
+if type uname 1>&2 && [[ $(uname -m) = "x86_64" ]]; then
+  local BUGFIX_FILE="bugfix-5237.diff"
+  echo "Downloading the ocaml 3.11 patch ($BUGFIX_FILE) for x86_64"
+  wget -O $BUGFIX_FILE "$OUR_MIRROR/$BUGFIX_FILE" || \
+    wget -O $BUGFIX_FILE 'http://caml.inria.fr/mantis/file_download.php?file_id=415&type=bug' || \
+      return 1
+  echo "Applying the ocaml 3.11 patch ($BUGFIX_FILE) for x86_64"
+  patch -p1 < $BUGFIX_FILE
+# Download and apply the patch 0007-Fix-ocamlopt-w.r.t.-binutils-2.2[1-9].patch
+# for ocaml 3.11 on a 32 bits architecture with binutils version=2.2[1-9].x
+elif type ld 1>&2 && ld -v | \grep -q '[ ]2[.]2[1-9]'; then
+  local BUGFIX_FILE="bugfix-5237-i386.diff"
+  echo "Downloading the ocaml 3.11 patch ($BUGFIX_FILE) for i386"
+  wget -O $BUGFIX_FILE "$OUR_MIRROR/$BUGFIX_FILE" || \
+    wget -O $BUGFIX_FILE 'http://caml.inria.fr/mantis/file_download.php?file_id=418&type=bug' || \
+      return 1
+  echo "Applying the ocaml 3.11 patch ($BUGFIX_FILE) for i386"
+  patch -p1 < $BUGFIX_FILE
+fi
+# Compile now:
+{ ./configure -prefix $OCAML_PREFIX -no-curses -no-tk &&
+  make world.opt &&
+  make install &&
+  make -C tools/ objinfo &&
+  if [[ ! -e $OCAML_PREFIX/bin/ocamlobjinfo ]]; then
+    cp tools/objinfo $OCAML_PREFIX/bin/ &&
+    [[ -e $OCAML_PREFIX/bin/ocamlobjinfo ]] || ln -s objinfo $OCAML_PREFIX/bin/ocamlobjinfo
+  fi
+  } || return 1
+cd ..
+}
+
+function compile_lablgtk {
+cd lablgtk
+{ ./configure --prefix $OCAML_PREFIX \
+  --with-glade --without-gl --without-rsvg --without-gnomecanvas --without-gnomeui \
+  --without-panel --without-gtkspell --without-gtksourceview --with-gtksourceview2 \
+  --without-quartz &&
+  make &&
+  make opt &&
+  make install
+  } || return 1
+cd ..
+}
+
+# Tuning:
+export OCAML_PREFIX=$PWD/local
+export PATH=$OCAML_PREFIX/bin:$PATH
+LIB_OCAML=$OCAML_PREFIX/lib/ocaml/
+export CAML_LD_LIBRARY_PATH=${LIB_OCAML}/stublibs
+launch_and_log "Downloading ocaml" download_latest_ocaml 83000
+launch_and_log "Downloading lablgtk" download_latest_lablgtk 17800
+launch_and_log "Compiling ocaml" compile_ocaml 382000
+launch_and_log "Compiling lablgtk" compile_lablgtk 56000
+
+# =============================================================
+#                       OCAMLBRICKS
+# =============================================================
+
+cd ocamlbricks
 cat >CONFIGME <<EOF
 ocaml_libraryprefix=$LIB_OCAML
 libraryprefix=$LIB_OCAML
@@ -1060,12 +1117,32 @@ localeprefix=\$prefix/share/locale
 ocaml_sources=$LIB_OCAML/caml
 ocaml_version=$(ocamlc -version || echo ${OCAML_VERSION//[\[\]]/})
 EOF
-# ---
-MARIONNET_MAKE_COMMAND='opam init -y && eval $(opam env) && make configure switch rebuild'
-WEIGHT=27803
 
+launch_and_log "Compiling ocamlbricks" 'make clean && make && make install' 4002673
+cd ..
 
-# ---
+# =============================================================
+#                        MARIONNET
+# =============================================================
+
+cd marionnet
+cp ../ocamlbricks/CONFIGME .
+
+# make
+case $GENERATE_BYTECODE in
+ yes)
+  MARIONNET_MAKE_COMMAND='make clean byte'
+  WEIGHT=2460914
+  ;;
+ no)
+  MARIONNET_MAKE_COMMAND='make clean native'
+  WEIGHT=2780316
+  # Patch the Makefile in order to prevent any bytecode generation:
+  sed -i Makefile.local -e '/^BYTE_PROGRAMS/d' -e '/^ROOT_BYTE_PROGRAMS/d'
+  # ---
+  ;;
+esac
+
 launch_and_log \
   "Compiling marionnet" \
   "$MARIONNET_MAKE_COMMAND" \
@@ -1187,14 +1264,12 @@ download_marionnet_kernels_and_filesystems
 # =============================================================
 
 if [[ -f $PREFIX/share/marionnet/marionnet.conf ]]; then
-  MARIONNET_DOT_CONF=$PREFIX/share/marionnet/marionnet.conf
+ MARIONNET_DOT_CONF=$PREFIX/share/marionnet/marionnet.conf
 elif [[ -f $PREFIX/etc/marionnet/marionnet.conf ]]; then
-  MARIONNET_DOT_CONF=$PREFIX/etc/marionnet/marionnet.conf
-elif [[ -f $PREFIX/share/marionnet/share/marionnet.conf ]]; then
-  MARIONNET_DOT_CONF=$PREFIX/share/marionnet/share/marionnet.conf
+ MARIONNET_DOT_CONF=$PREFIX/etc/marionnet/marionnet.conf
 else
-  echo "File \`marionnet.conf' not found. Exiting.";
-  exit 3
+ echo "File \`marionnet.conf' not found. Exiting.";
+ exit 3
 fi
 
 function first_installed_binary_of_list {
@@ -1582,8 +1657,8 @@ fi
 
 function is_the_packaged_vde2_version_lt_2_3_0 {
  local VDE2_VERSION
- if type 1>&2 apt && type 1>&2 vde_switch; then
-   VDE2_VERSION=$(apt show "vde2" 2>/dev/null | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
+ if type 1>&2 aptitude && type 1>&2 vde_switch; then
+   VDE2_VERSION=$(aptitude show vde2 | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
    VDE2_VERSION=$(echo $VDE2_VERSION | awk -F '.' '(($2 * 100 + $3 * 10 + $4) <= 230) {print}')
    [[ -n "$VDE2_VERSION" ]]
  else
@@ -1598,7 +1673,7 @@ if are_we_in_ubuntu_12_04 && is_the_packaged_vde2_version_lt_2_3_0; then
   echo -n "     Shall I install the vde2 backport ([y]/n)? "
   read z
   if [[ $z != n && $z != N ]]; then
-    launch_and_log --sudo "Installing vde2 backport for Ubuntu 12.04" "add-apt-repository -y ppa:pdffs/precise-virt && { apt update; apt install -y vde2; }"
+    launch_and_log --sudo "Installing vde2 backport for Ubuntu 12.04" "add-apt-repository -y ppa:pdffs/precise-virt && { aptitude update; aptitude install -y vde2; }"
   fi
 fi
 
