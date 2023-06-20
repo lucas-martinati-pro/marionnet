@@ -27,13 +27,14 @@
 
 
 ;; ---
-;; --- EXECUTABLE marionnet
+;; --- EXECUTABLES:
+;; ---   marionnet & marionnet_daemon
 ;; ---
-(executable
+(executables
   ;; ---
-  (public_name marionnet)
+  (public_names  marionnet.native  marionnet-daemon.native)
   ;; ---
-  (name marionnet)
+  (names  marionnet  marionnet_daemon)
   ;; ---
   (preprocess (action (run camlp4of
       -I ../../../../lib/_build/
@@ -49,11 +50,36 @@
   ;; (modules_without_implementation version)
   )
 
+;; ---
+;; --- EXECUTABLE marionnet-daemon
+;; ---
+;; (executable
+;;   ;; ---
+;;   (public_name marionnet-daemon.native)
+;;   ;; ---
+;;   (name marionnet_daemon)
+;;   ;; ---
+;;   (preprocess (action (run camlp4of
+;;       -I ../../../../lib/_build/
+;;       %{read-lines:../lib/camlp4of-flags.cfg}
+;;       gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+;;       )))
+;;   ;; ---
+;;   (link_flags -I ../ -cclib -locamlbricks_stubs)
+;;   ;; ---
+;;   (libraries str unix threads inotify ocamlbricks)
+;;   ;; ---
+;;   (modules :standard)
+;;   ;; (modules_without_implementation version)
+;;   )
+
 ;;; ---
 (install
   (files
      ;; ---
      (glob_files "gui/gui_glade3.xml*")
+     ;; ---
+     (glob_files "scripts/marionnet_telnet.sh")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

@@ -66,7 +66,7 @@ let get_host_display_screen_from_string =
   let display = StringExtra.strip display in
   (host, display, screen)
 
-
+(* --- *)
 let get_host_display_screen () =
   try
     let x = Sys.getenv "DISPLAY" in
@@ -93,7 +93,7 @@ let get_host_display_screen () =
 let host, display, screen =
   get_host_display_screen ()
 
-
+(* --- *)
 let get_cookie_by_xauth ?(display="0") ?(screen="0") () : string option =
   let command = Printf.sprintf "xauth list :%s.%s" display screen in
   let result, code = UnixExtra.run (command) in
@@ -133,6 +133,7 @@ let get_unused_local_display =
     Mutex.unlock mutex;
     Printf.sprintf ":%i" !i
 
+(* --- *)
 let get_unused_local_display_number ?(starting_from=0) () : display_number =
   let rec loop i =
     if Sys.file_exists (socket_file_of_index i) then loop (i+1) else i

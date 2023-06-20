@@ -27,6 +27,7 @@ module Cortex = Ocamlbricks.Cortex
 module Forest = Ocamlbricks.Forest
 module ListExtra = Ocamlbricks.ListExtra
 module Widget = Ocamlbricks.Widget
+module Xforest = Ocamlbricks.Xforest
 
 (** A thunk allowing to invoke the sketch refresh method, accessible from many
     modules: *)

@@ -33,6 +33,7 @@ module Oomarshal = Ocamlbricks.Oomarshal
 module Cortex = Ocamlbricks.Cortex
 module Counter = Ocamlbricks.Counter
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 (* --- *)
 open Gettext;;
 let spr fmt = Printf.sprintf fmt

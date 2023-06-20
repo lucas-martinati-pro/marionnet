@@ -23,8 +23,9 @@
     form (key,value) where both key and value are strings. *)
 
 (* --- *)
-module Log = Marionnet_log
-module Forest = Ocamlbricks.Forest
+(* module Log = Marionnet_log *)
+module Log = Ocamlbricks_log
+(* module Forest = Ocamlbricks.Forest *)
 type tag = string ;;
 
 type attribute  = (string * string) ;;

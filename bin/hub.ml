@@ -25,6 +25,7 @@
 module Log = Marionnet_log
 module OoExtra = Ocamlbricks.OoExtra
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 (* --- *)
 open Gettext
 

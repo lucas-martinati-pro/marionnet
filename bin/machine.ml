@@ -39,6 +39,7 @@ module Forest = Ocamlbricks.Forest
 module Linux = Ocamlbricks.Linux
 module Network = Ocamlbricks.Network
 module Widget = Ocamlbricks.Widget
+module Xforest = Ocamlbricks.Xforest
 (* --- *)
 open Gettext
 let spr fmt = Printf.sprintf fmt

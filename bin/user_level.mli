@@ -14,6 +14,9 @@ val raise_forbidden_transition : string -> 'a
 module Recursive_mutex : Ocamlbricks.MutexExtra.Extended_signature
   with type t = Ocamlbricks.MutexExtra.Recursive.t
 
+(* --- *)
+open Ocamlbricks
+
 class virtual ['a] simulated_device :
   unit ->
   object

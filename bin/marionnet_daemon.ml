@@ -25,9 +25,13 @@ let () = Log.Tuning.Set.debug_level (fun () -> 1)
 (* Convenient aliases: *)
 module Parameters      = Daemon_parameters
 module Language        = Daemon_language
+(* --- *)
+module MutexExtra      = Ocamlbricks.MutexExtra
+module Hashmap         = Ocamlbricks.Hashmap
+module Hashmmap        = Ocamlbricks.Hashmmap
+(* --- *)
 module Recursive_mutex = MutexExtra.Recursive
 (* --- *)
-
 let socket_name      = Parameters.socket_name
 let timeout_interval = Parameters.timeout_interval
 let debug_interval   = Parameters.debug_interval
@@ -544,10 +548,11 @@ let signal_handler signal = begin
 
 (** Strangely, without calling this the program is uninterruptable from the
     console: *)
-Sys.catch_break false;;
-Sys.set_signal Sys.sigint (Sys.Signal_handle signal_handler);;
-Sys.set_signal Sys.sigterm (Sys.Signal_handle signal_handler);;
+let () = Sys.catch_break false;;
+let () = Sys.set_signal Sys.sigint (Sys.Signal_handle signal_handler);;
+let () = Sys.set_signal Sys.sigterm (Sys.Signal_handle signal_handler);;
 
+(* --- *)
 let check_that_we_are_root () =
   if (Unix.getuid ()) != 0 then begin
     Log.printf "\n*********************************************\n";
@@ -557,6 +562,7 @@ let check_that_we_are_root () =
     raise Exit;
   end
 
+(* --- *)
 let the_server_main_thread = begin
   check_that_we_are_root ();
   ignore (Thread.create timeout_thread_thunk ());

@@ -23,6 +23,7 @@ module Log = Marionnet_log
 module Option = Ocamlbricks.Option
 module OoExtra = Ocamlbricks.OoExtra
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 module Ipv4 = Ocamlbricks.Ipv4
 (* --- *)
 open Gettext;;

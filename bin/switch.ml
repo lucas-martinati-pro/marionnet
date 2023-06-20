@@ -28,6 +28,7 @@ module Option = Ocamlbricks.Option
 module Either = Ocamlbricks.Either
 module OoExtra = Ocamlbricks.OoExtra
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 module Network = Ocamlbricks.Network
 (* --- *)
 open Gettext

@@ -25,6 +25,7 @@
 module Log = Marionnet_log
 module Option = Ocamlbricks.Option
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 module ListExtra = Ocamlbricks.ListExtra
 module OoExtra = Ocamlbricks.OoExtra
 module StringExtra = Ocamlbricks.StringExtra

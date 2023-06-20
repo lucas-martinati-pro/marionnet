@@ -237,7 +237,9 @@ let extrasize_react () = if opt#gui_callbacks_disable then () else
    st#flash (Printf.sprintf (f_ "The canvas size is fixed to %s%% of the minimun value to contain the graph (default=0%%)") (string_of_int (int_of_float y)) );
   end
 
-(** Reaction for a rotate tuning *)
+(** Reaction for a rotate tuning.
+    NOTE: in the GUI specification (gui_glade3.xml) we use the Unicode character "🗘" (https://www.compart.com/en/unicode/U+1F5D8)
+          Hence, the GNU/Linux package containing this unicode char should be installed with Marionnet *)
 let reverse_edge_callback x () =
   begin
    let c = (st#network#get_cable_by_name x) in

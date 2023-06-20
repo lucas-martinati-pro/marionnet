@@ -25,8 +25,9 @@ main: rebuild
 #                     dependencies
 # =============================================================
 
-REQUIRED_PACKAGES = bzr glade libgtksourceview-3.0-dev opam
-OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify conf-glade lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
+REQUIRED_PACKAGES = bzr liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev opam
+# OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify conf-glade lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
+OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
 # ---
 # Target version of OCaml:
 OPAM_SWITCH_TO = 4.13.1
@@ -75,7 +76,7 @@ rebuild:
 
 meta: bin/version.ml bin/meta.ml
 
-# For testing:
+# For quickly testing (without installation):
 run:
 	_build/default/bin/marionnet.exe -d
 
@@ -83,20 +84,31 @@ run:
 #                         install
 # =============================================================
 
+# ---
+EXECUTABLES = marionnet.native  marionnet-daemon.native  marionnet_telnet.sh
+
+# ---
 INSTALL_PREFIX=/usr/local
+SHARE_DIR=$(INSTALL_PREFIX)/share/marionnet
 install-final:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
 	dune install --prefix $(INSTALL_PREFIX)
 
+# ---
 TMPSCRIPT=_build/make_install_as_root.sh
 install-final-as-root:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
 	echo '#!/bin/bash' > $(TMPSCRIPT)
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(INSTALL_PREFIX)" >> $(TMPSCRIPT)
-	chmod +x $(TMPSCRIPT)
+	for i in $(wildcard $(SHARE_DIR)/scripts/*); do echo "chmod +x $$i && cp -lf $$i $(INSTALL_PREFIX)/bin/"; done >> $(TMPSCRIPT)
+	@chmod +x $(TMPSCRIPT)
+	@echo "---"
+	@echo "About to execute $(TMPSCRIPT) as superuser (root)"
 	sudo $(TMPSCRIPT)
-	rm -f $(TMPSCRIPT)
+	@echo "---"
+	sudo which $(EXECUTABLES)
+	@echo "---"
 	@echo "Success."
 
 # Alias:
@@ -104,7 +116,8 @@ install: install-final-as-root
 
 # ---
 # Rebuild and install the project in the opam directory for testing/debugging:
-INSTALL_PREFIX_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
+SHARE_DIR_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
+# ---
 INSTALLED_FILESYSTEMS=$(INSTALL_PREFIX)/share/marionnet/filesystems
 INSTALLED_KERNELS=$(INSTALL_PREFIX)/share/marionnet/kernels
 # ---
@@ -112,11 +125,12 @@ install-for-testing:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME.testing.sh" || make rebuild-for-testing
 	dune install
 	@echo "---"
-	@echo mkdir -p $(INSTALL_PREFIX_FOR_TESTING)/filesystems $(INSTALL_PREFIX_FOR_TESTING)/kernels
-	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(INSTALL_PREFIX_FOR_TESTING)/filesystems/; done
-	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(INSTALL_PREFIX_FOR_TESTING)/kernels/; done
+	@echo mkdir -p $(SHARE_DIR_FOR_TESTING)/filesystems $(SHARE_DIR_FOR_TESTING)/kernels
+	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/filesystems/; done
+	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/kernels/; done
+	@for i in $(wildcard $(SHARE_DIR_FOR_TESTING)/scripts/*); do chmod +x $$i && ln -sf $$i $(shell echo $$OPAM_SWITCH_PREFIX)/bin/; done
 	@echo "---"
-	which marionnet
+	which $(EXECUTABLES)
 	@echo "Success."
 
 # ---

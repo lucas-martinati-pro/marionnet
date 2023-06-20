@@ -24,6 +24,7 @@ module ArrayExtra = Ocamlbricks.ArrayExtra
 module Lazy_perishable = Ocamlbricks.Lazy_perishable
 module OoExtra = Ocamlbricks.OoExtra
 module Forest = Ocamlbricks.Forest
+module Xforest = Ocamlbricks.Xforest
 module Ipv4 = Ocamlbricks.Ipv4
 module Ipv6 = Ocamlbricks.Ipv6
 
