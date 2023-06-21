@@ -65,6 +65,9 @@ module Make (S : sig val st:State.globalState end) = struct
     (x#coerce#set_opacity 0.5);
     end
   (* --- *)
+  let conditional_sensitive_with_opacity (cond) =
+    if cond then set_sensitive_with_opacity else unset_sensitive_with_opacity
+  (* --- *)
 
   (* Note: why the GC doesn't free this structure (and the related trigger)? *)
   let update_project_state_sensitiveness =
@@ -116,7 +119,8 @@ module Make (S : sig val st:State.globalState end) = struct
            (StackExtra.length S.st#sensitive_cable_menu_entries)
          in
          let condition = S.st#network#are_there_almost_2_free_endpoints in
-         (StackExtra.iter (fun x->x#misc#set_sensitive condition) S.st#sensitive_cable_menu_entries)
+         (*(StackExtra.iter (fun x->x#misc#set_sensitive condition) S.st#sensitive_cable_menu_entries)*)
+         (StackExtra.iter (fun x->conditional_sensitive_with_opacity condition x) S.st#sensitive_cable_menu_entries)
     in
     let _ = Cortex.on_commit_append (S.st#network#nodes)  (reaction) in
     let _ = Cortex.on_commit_append (S.st#network#cables) (reaction) in

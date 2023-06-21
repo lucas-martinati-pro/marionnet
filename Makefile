@@ -87,11 +87,17 @@ run:
 EXECUTABLES = marionnet.native  marionnet-daemon.native  marionnet_telnet.sh
 
 # ---
-INSTALL_PREFIX=/usr/local
-SHARE_DIR=$(INSTALL_PREFIX)/share/marionnet
+# In marionnet_from_scratch we can override the installation prefix editing
+# the file "./CONFIGME" with `sed' in this way:
+#   sed -i -e "s@^prefix=.*@prefix=$PREFIX@" ./CONFIGME
+# ---
+PREFIX_INSTALL_DEFAULT=/usr/local
+PREFIX_INSTALL=$(shell source ./CONFIGME && echo $${prefix_install:-$(PREFIX_INSTALL_DEFAULT)})
+# ---
+SHARE_DIR=$(PREFIX_INSTALL)/share/marionnet
 install-final:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
-	dune install --prefix $(INSTALL_PREFIX)
+	dune install --prefix $(PREFIX_INSTALL)
 
 # ---
 TMPSCRIPT=_build/make_install_as_root.sh
@@ -99,8 +105,8 @@ install-final-as-root:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
 	echo '#!/bin/bash' > $(TMPSCRIPT)
 	echo $$(opam env) >> $(TMPSCRIPT)
-	echo "dune install --prefix $(INSTALL_PREFIX)" >> $(TMPSCRIPT)
-	for i in $(wildcard $(SHARE_DIR)/scripts/*); do echo "chmod +x $$i && cp -lf $$i $(INSTALL_PREFIX)/bin/"; done >> $(TMPSCRIPT)
+	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
+	for i in $(wildcard $(SHARE_DIR)/scripts/*); do echo "chmod +x $$i && cp -lf $$i $(PREFIX_INSTALL)/bin/"; done >> $(TMPSCRIPT)
 	@chmod +x $(TMPSCRIPT)
 	@echo "---"
 	@echo "About to execute $(TMPSCRIPT) as superuser (root)"
@@ -117,8 +123,8 @@ install: install-final-as-root
 # Rebuild and install the project in the opam directory for testing/debugging:
 SHARE_DIR_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
 # ---
-INSTALLED_FILESYSTEMS=$(INSTALL_PREFIX)/share/marionnet/filesystems
-INSTALLED_KERNELS=$(INSTALL_PREFIX)/share/marionnet/kernels
+INSTALLED_FILESYSTEMS=$(PREFIX_INSTALL)/share/marionnet/filesystems
+INSTALLED_KERNELS=$(PREFIX_INSTALL)/share/marionnet/kernels
 # ---
 install-for-testing:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME.testing.sh" || make rebuild-for-testing

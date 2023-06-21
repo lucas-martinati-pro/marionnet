@@ -82,7 +82,7 @@ COMMAND_LINE="$(realpath $COMMAND_LINE) "$@""
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hp:s:m:b:o:t:kl:d:v:y:VDKFTAOc:"
+OPTSTRING="hp:s:m:t:kd:v:y:VDKFTAOc:"
 
 function parse_cmdline {
 local i j flag
@@ -99,15 +99,6 @@ for i in "$@"; do
      ;;
     --marionnet-version|--marionnet)
      ARGS+=("-m");
-     ;;
-    --ocamlbricks-version|--ocamlbricks)
-     ARGS+=("-b");
-     ;;
-    --ocaml-version|--ocaml)
-     ARGS+=("-o");
-     ;;
-    --lablgtk-version|--lablgtk)
-     ARGS+=("-l");
      ;;
     --vde-version|--vde)
      ARGS+=("-v");
@@ -225,9 +216,6 @@ Options:
   -h				Print this message and exit
   -s, --series VERSION		Set marionnet's series (may be '0.90.x', '0.94.x' or 'trunk')
   -m, --marionnet VERSION	Set marionnet's version
-  -b, --ocamlbricks VERSION	Set ocamlbricks' version
-  -o, --ocaml VERSION		Set ocaml's version
-  -l, --lablgtk VERSION         Set lablgtk's version
   -v, --vde VERSION             Set vde2's version
   -d, --dot VERSION 		Set dot's (graphviz) version
   -y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
@@ -244,14 +232,10 @@ Defaults:
   - continue execution: ${CONTINUE:-none}
   - marionnet's series is ${MARIONNET_SERIES:-latest}
   - marionnet's version is ${MARIONNET_VERSION:-latest}
-  - ocamlbricks' version is ${OCAMLBRICKS_VERSION:-latest}
-  - ocaml's version is ${OCAML_VERSION:-latest}
-  - lablgtk's version is ${LABLGTK_VERSION:-latest}
   - vde's version is ${VDE2_VERSION:-latest}
   - dot's (graphviz') version is ${GRAPHVIZ_VERSION:-latest}
   - keep debris: $KEEP_DEBRIS
   - http proxy: $http_proxy
-  - generate bytecode: $GENERATE_BYTECODE
   - ignore vde: $IGNORE_VDE
   - ignore dot: $IGNORE_DOT
   - ignore kernels: $IGNORE_KERNELS
@@ -300,38 +284,6 @@ if [[ $MARIONNET_VERSION = "trunk" ]]; then
  MARIONNET_SERIES="trunk"
 fi
 
-# Option -b, --ocamlbricks-version
-if [[ -n ${option_b} ]]; then
- OCAMLBRICKS_VERSION="${option_b_arg}"
-elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- OCAMLBRICKS_VERSION="none"
-fi
-
-# Option -o, --ocaml-version
-if [[ -n ${option_o} ]]; then
- OCAML_VERSION="${option_o_arg}"
-elif [[ $MARIONNET_SERIES = "0.94.x" ]]; then
- # This value must be updated each time the trunk
- # will require a new OCaml version:
- OCAML_VERSION="3[.]12[.]1"
-elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- OCAML_VERSION="none" # opam
-else
- # Fixed for marionnet 0.90.6:
- OCAML_VERSION="3[.]11[.]2"
-fi
-
-# Option -l, --lablgtk-version
-if [[ -n ${option_l} ]]; then
- LABLGTK_VERSION="${option_l_arg}"
-elif [[ $MARIONNET_VERSION = "trunk" ]]; then
- # Fixed for marionnet 0.90.6:
- LABLGTK_VERSION="none" # opam
-else
- # Fixed for marionnet 0.90.6:
- LABLGTK_VERSION="2[.]14[.]2"
-fi
-
 # Option -v, --vde-version
 if [[ -n ${option_v} ]]; then
  VDE2_VERSION="${option_v_arg}"
@@ -340,13 +292,6 @@ fi
 # Option -d, --dot-version
 if [[ -n ${option_d} ]]; then
  GRAPHVIZ_VERSION="${option_d_arg}"
-fi
-
-# Option -N, --no-native, --bytecode
-if [[ -n ${option_N} && $MARIONNET_VERSION != "trunk" ]]; then
- GENERATE_BYTECODE=yes
-else
- GENERATE_BYTECODE=no
 fi
 
 # Option -k, --keep-debris
@@ -694,24 +639,6 @@ return 1
 #                        DOWNLOADS
 # =============================================================
 
-# Marionnet 0.90.2 has a problem with 3.12.0 (camlp4)
-function download_latest_ocaml {
-  local VERSION="${OCAML_VERSION:-[0-9][.][0-9][0-9][.][0-9]*}"
-  download_latest_tar_gz -v "$VERSION" ocaml \
-    "http://caml.inria.fr/pub/distrib/ocaml-3.11/" \
-    $OUR_MIRROR \
-    "http://caml.inria.fr/download.html"
-}
-
-
-# Obsolete url: "ftp://ftp.kurims.kyoto-u.ac.jp/pub/lang/olabl/"
-function download_latest_lablgtk {
-  local VERSION="${LABLGTK_VERSION:-[0-9][.][0-9][0-9]*[.][0-9][0-9]*}"
-  download_latest_tar_gz -v "$VERSION" lablgtk \
-    "http://wwwfun.kurims.kyoto-u.ac.jp/soft/lsl/lablgtk.html" \
-    $OUR_MIRROR
-}
-
 function download_latest_vde {
   local VERSION=${VDE2_VERSION:-2.3.2}
   local URL="http://sourceforge.net/projects/vde/files/vde2/2.3.2/vde2-2.3.2.tar.gz"
@@ -728,13 +655,6 @@ function download_latest_marionnet {
 
 function download_marionnet_trunk {
  bzr branch lp:marionnet
-}
-
-function download_latest_ocamlbricks  {
-  local VERSION=${OCAMLBRICKS_VERSION:-latest}
-  download_latest_tar_gz -v "$VERSION" ocamlbricks \
-    "https://launchpad.net/ocamlbricks" \
-    $OUR_MIRROR
 }
 
 function download_latest_graphviz {
@@ -805,7 +725,6 @@ function is_apt_installed  {
  type 1>&2 apt
 }
 
-
 function is_package_installed {
  local L=en_US.UTF-8
  LANG=$L LC_ALL=$L LC_MESSAGES=$L LANGUAGE=$L dpkg -s $1 2>/dev/null | \grep -q 'Status: install ok installed';
@@ -837,12 +756,12 @@ function echo_required_debian_packages {
  # ---
 
  # vde2 only if is not already installed and the available version is >= 2.2.1
- if type 1>&2 apt; then
+ if is_apt_installed; then
    type 1>&2 vde_switch || {
        VDE2_VERSION=$(apt show "vde2" 2>/dev/null | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
        VDE2_VERSION=$(echo $VDE2_VERSION | awk -F '.' '(($2 * 100 + $3 * 10 + $4) >= 221) {print}')
        if [[ -n "$VDE2_VERSION" ]]; then
-	   if ! is_package_installed $i; then LIST+="vde2 "; fi
+	   if ! is_package_installed "vde2"; then LIST+="vde2 "; fi
        fi
    }
  fi
@@ -852,18 +771,18 @@ function echo_required_debian_packages {
  # packages: libc6-i386 to compile for an i386 target, and libc6:i386 to execute i386 code in a x86_64 system.
  if are_we_in_ubuntu_version_or_greater "18"; then
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6:i386; then
-    if ! is_package_installed $i; then LIST+="libc6:i386 "; fi
+    if ! is_package_installed "libc6:i386"; then LIST+="libc6:i386 "; fi
   fi 1>&2
  else
   # Not in Ubuntu >= 18, x86_64 => libc6-i386
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6-i386; then
-    if ! is_package_installed $i; then LIST+="libc6-i386 "; fi
+    if ! is_package_installed "libc6-i386"; then LIST+="libc6-i386 "; fi
   fi 1>&2
  fi
 
  # In Ubuntu >= 16, add overlay-scrollbar-gtk2
  if are_we_in_ubuntu_version_or_greater "16"; then
-    if ! is_package_installed $i; then LIST+="overlay-scrollbar "; fi
+    if ! is_package_installed "overlay-scrollbar "; then LIST+="overlay-scrollbar "; fi
  fi
 
  # Return the list:
@@ -1019,7 +938,7 @@ if are_we_in_debian_or_derived; then
       MSG="Installing required packages with apt"
       ensure_sudo_or_continue_as_root "* $MSG"
       # First install apt if needed:
-      if ! type 1>&2 apt; then
+      if ! is_apt_installed; then
 	launch_and_log --sudo "Installing apt" "apt-get -y install apt"
 	APT_INSTALLED_NOW=yes
       fi
@@ -1040,7 +959,7 @@ if are_we_in_debian_or_derived; then
 fi # are_we_in_debian_or_derived
 
 # ---
-launch_and_log "Downloading marionnet" download_marionnet_trunk 2240
+launch_and_log "Downloading marionnet" download_marionnet_trunk 22400
 
 # =============================================================
 #              MARIONNET (with OCAMLBRICKS)
@@ -1049,22 +968,33 @@ launch_and_log "Downloading marionnet" download_marionnet_trunk 2240
 # ---
 cd marionnet
 # ---
-cat >CONFIGME <<EOF
-ocaml_libraryprefix=$LIB_OCAML
-libraryprefix=$LIB_OCAML
-prefix=$PREFIX
-prefix_install=$PREFIX
-configurationprefix=\$prefix/etc
-documentationprefix=\$prefix/share/doc
-localeprefix=\$prefix/share/locale
-ocaml_sources=$LIB_OCAML/caml
-ocaml_version=$(ocamlc -version || echo ${OCAML_VERSION//[\[\]]/})
-EOF
+sed -i -e "s@^prefix=.*@prefix=$PREFIX@" ./CONFIGME
+# cat >CONFIGME <<EOF
+# ocaml_libraryprefix=$LIB_OCAML
+# libraryprefix=$LIB_OCAML
+# prefix=$PREFIX
+# prefix_install=$PREFIX
+# configurationprefix=\$prefix/etc
+# documentationprefix=\$prefix/share/doc
+# localeprefix=\$prefix/share/locale
+# ocaml_sources=$LIB_OCAML/caml
+# ocaml_version=$(ocamlc -version || echo ${OCAML_VERSION//[\[\]]/})
+# EOF
+
 # ---
-MARIONNET_MAKE_COMMAND='opam init -y && eval $(opam env) && make configure switch rebuild'
-WEIGHT=27803
+OPAM_INIT_COMMAND='opam init -y && eval $(opam env)'
+WEIGHT=2780
+# ---
+launch_and_log \
+  "Compiling Ocaml with opam" \
+  "$OPAM_INIT_COMMAND" \
+  $WEIGHT
+# ---
+eval $(opam env)
 
-
+# ---
+MARIONNET_MAKE_COMMAND='make configure switch rebuild'
+WEIGHT=2780
 # ---
 launch_and_log \
   "Compiling marionnet" \
@@ -1582,7 +1512,7 @@ fi
 
 function is_the_packaged_vde2_version_lt_2_3_0 {
  local VDE2_VERSION
- if type 1>&2 apt && type 1>&2 vde_switch; then
+ if is_apt_installed && type 1>&2 vde_switch; then
    VDE2_VERSION=$(apt show "vde2" 2>/dev/null | awk '/^Version.*[2-9][.][0-9][.][0-9].*/ {print $2}' | awk -F '-' '{print $1}')
    VDE2_VERSION=$(echo $VDE2_VERSION | awk -F '.' '(($2 * 100 + $3 * 10 + $4) <= 230) {print}')
    [[ -n "$VDE2_VERSION" ]]
