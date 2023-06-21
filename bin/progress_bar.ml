@@ -1,6 +1,6 @@
 (* This file is part of Marionnet, a virtual network laboratory
    Copyright (C) 2007, 2008, 2009  Luca Saiu
-   Copyright (C) 2009, 2010  Jean-Vincent Loddo
+   Copyright (C) 2009, 2010, 2023  Jean-Vincent Loddo
    Copyright (C) 2007, 2008, 2009, 2010  Université Paris 13
 
    This program is free software: you can redistribute it and/or modify
@@ -23,23 +23,30 @@
 
 (* --- *)
 module Log = Marionnet_log
-
-open Gettext;;
+module Capsule = Ocamlbricks.Channel
+open Gettext
 
 type kind = Pulse | Fill of (unit -> float)
 
-let progress_bars : (GWindow.window * GRange.progress_bar * kind) list ref =
- ref []
+(* let progress_bars : (GWindow.window * GRange.progress_bar * kind) list ref = ref [] *)
+let progress_bars : ((GWindow.window * GRange.progress_bar * kind) list) Capsule.t = Capsule.create []
 
+(* --- *)
 let update_interval = 200;; (* in milliseconds *)
 
-let destroy_progress_bar_dialog window = begin
+(* --- *)
+let destroy_and_remove_progress_bar_dialog window = begin
   Log.printf "A progress bar dialog window was destroyed.\n";
   window#destroy ();
-  progress_bars := List.filter (fun (w,_,_)->w!=window) !progress_bars
+  (* progress_bars := List.filter (fun (w,_,_)->w!=window) !progress_bars *)
+  (* val Capsule.aim : ?level:int (* 1 *)  -> ?enter:('a -> bool) -> ?notify:int list -> ?leave:('a -> bool) -> 'a t -> ('a -> 'a) -> 'a * ('a details) *)
+  Capsule.aim (progress_bars) (List.filter (fun (w,_,_)->w!=window)) |> ignore;
   end
 
-(** Make a dialog with the following layout:
+(* Alias: *)
+let destroy_progress_bar_dialog = (destroy_and_remove_progress_bar_dialog)
+
+(* Make a dialog with the following layout:
 
 +----------------------------------------------+
 |                  title                       |
@@ -83,20 +90,29 @@ let make_progress_bar_dialog
   let progress_bar = GRange.progress_bar ~pulse_step:0.1 () ~packing:(attach (2,3)) in
   progress_bar#set_text text_on_bar;
 
-  let destroy_callback : unit -> unit = fun () -> destroy_progress_bar_dialog window in
+  let destroy_callback : unit -> unit = fun () -> destroy_and_remove_progress_bar_dialog (window) in
   ignore (window#connect#destroy ~callback:destroy_callback);
-
+  (* --- *)
+  (* For protection, no more than 10 seconds for any progress_bar: *)
+  let () = Thread.create (fun () -> Thread.delay 10.; destroy_and_remove_progress_bar_dialog (window)) () |> ignore in
+  (* --- *)
   window#show ();
-  progress_bars := (window, progress_bar, kind) :: !progress_bars;
+  (* --- *)
+  (* progress_bars := (window, progress_bar, kind) :: !progress_bars; *)
+  Capsule.aim (progress_bars) (fun bs -> (window, progress_bar, kind) :: bs) |> ignore;
+  (* --- *)
   window
 ;;
 
-
+(* A GTK thread looking for something to do about all current progress bars: *)
 let _ =
   let action (_, progress_bar, kind) =
     match kind with
     | Pulse  -> progress_bar#pulse ()
     | Fill f -> progress_bar#set_fraction (f ())
   in
-  GMain.Timeout.add ~ms:update_interval ~callback:(fun () -> (List.iter action !progress_bars); true)
+  (* GMain.Timeout.add ~ms:(update_interval) ~callback:(fun () -> (List.iter action !progress_bars); true) *)
+  GMain.Timeout.add ~ms:(update_interval) ~callback:(fun () ->
+    let () = Capsule.access_ro (progress_bars) (List.iter action) |> ignore in
+    true)
 ;; (* call this again at the next interval *)
