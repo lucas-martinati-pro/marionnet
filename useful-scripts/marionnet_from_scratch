@@ -742,11 +742,13 @@ function echo_required_debian_packages {
  LIST+=$(echo_debian_package_for_binary_if_really_needed uml_switch uml-utilities)
 
  # ---
+ # NOTE: `fonts-noto' provides some unicode characters used in the Marionnet GUI
  for i in \
    bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
    coreutils findutils login procps gettext \
+   fonts-noto \
    rlfe; # alternatives are rlwrap and ledit
    do
    if ! is_package_installed $i; then
