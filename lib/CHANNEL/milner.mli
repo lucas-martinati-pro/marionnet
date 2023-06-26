@@ -29,7 +29,7 @@
     ---
     Milner's theoretical models were initially synchronous in order to have a basic definition of program
     equivalence (bisimilarity), but were later extended (by Milner and others) to cover the asynchronous
-    case.
+    case which appears as more interesting in practice.
     *)
 
 (* The core is simply of type ('a option): *)
