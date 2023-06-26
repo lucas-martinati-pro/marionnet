@@ -123,14 +123,14 @@ install: install-final-as-root
 # Rebuild and install the project in the opam directory for testing/debugging:
 SHARE_DIR_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
 # ---
-INSTALLED_FILESYSTEMS=$(PREFIX_INSTALL)/share/marionnet/filesystems
-INSTALLED_KERNELS=$(PREFIX_INSTALL)/share/marionnet/kernels
+INSTALLED_FILESYSTEMS=$(PREFIX_INSTALL_DEFAULT)/share/marionnet/filesystems
+INSTALLED_KERNELS=$(PREFIX_INSTALL_DEFAULT)/share/marionnet/kernels
 # ---
 install-for-testing:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME.testing.sh" || make rebuild-for-testing
 	dune install
 	@echo "---"
-	@echo mkdir -p $(SHARE_DIR_FOR_TESTING)/filesystems $(SHARE_DIR_FOR_TESTING)/kernels
+	@mkdir -p $(SHARE_DIR_FOR_TESTING)/filesystems -p $(SHARE_DIR_FOR_TESTING)/kernels
 	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/filesystems/; done
 	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/kernels/; done
 	@for i in $(wildcard $(SHARE_DIR_FOR_TESTING)/scripts/*); do chmod +x $$i && ln -sf $$i $(shell echo $$OPAM_SWITCH_PREFIX)/bin/; done

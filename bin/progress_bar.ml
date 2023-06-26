@@ -18,33 +18,26 @@
 
 (* Authors:
  * - Luca Saiu: initial version
- * - Jean-Vincent Loddo: make_progress_bar_dialog generalization and re-styling
+ * - Jean-Vincent Loddo: make_progress_bar_dialog generalization, re-styling
+     (and refactoring in 2023)
  *)
 
 (* --- *)
 module Log = Marionnet_log
 module Capsule = Ocamlbricks.Channel
+(* module Either = Ocamlbricks.Either *)
+module Option = Ocamlbricks.Option
 open Gettext
 
 type kind = Pulse | Fill of (unit -> float)
-
-(* let progress_bars : (GWindow.window * GRange.progress_bar * kind) list ref = ref [] *)
-let progress_bars : ((GWindow.window * GRange.progress_bar * kind) list) Capsule.t = Capsule.create []
 
 (* --- *)
 let update_interval = 200;; (* in milliseconds *)
 
 (* --- *)
-let destroy_and_remove_progress_bar_dialog window = begin
-  Log.printf "A progress bar dialog window was destroyed.\n";
-  window#destroy ();
-  (* progress_bars := List.filter (fun (w,_,_)->w!=window) !progress_bars *)
-  (* val Capsule.aim : ?level:int (* 1 *)  -> ?enter:('a -> bool) -> ?notify:int list -> ?leave:('a -> bool) -> 'a t -> ('a -> 'a) -> 'a * ('a details) *)
-  Capsule.aim (progress_bars) (List.filter (fun (w,_,_)->w!=window)) |> ignore;
-  end
-
-(* Alias: *)
-let destroy_progress_bar_dialog = (destroy_and_remove_progress_bar_dialog)
+let destroy_progress_bar_dialog (window) = 
+  let () = window#destroy () in
+  ()
 
 (* Make a dialog with the following layout:
 
@@ -57,62 +50,58 @@ let destroy_progress_bar_dialog = (destroy_and_remove_progress_bar_dialog)
 +----------------------------------------------+
 *)
 let make_progress_bar_dialog
-    ?title:(title=(s_ "A slow operation is in progress"))
+    ?(title=(s_ "A slow operation is in progress"))
     ?(text_on_label=(s_ "A slow operation is in progress"))
     ?(text_on_sub_label="")
     ?text_on_bar:(text_on_bar=(s_ "Please wait..."))
-    ?kind:(kind=Pulse)
+    ?(kind=Pulse)
     ?(modal=false)
     ?(position=(if modal then `CENTER else `NONE))
-    () =
+    (* Max life-time in seconds; this is a limit, if the window is not destroyed before: *)
+    ?(max_lifetime=10.) 
+    () 
+  = 
+  (* --- *)
   let window = GWindow.window ~title ~modal ~position ~border_width:10 ~resizable:false () in
-  if modal then ignore (window#event#connect#delete ~callback:(fun _ -> true)) else ();
-  window#set_icon (Some Icon.icon_pixbuf);
-
+  let () = if modal then ignore (window#event#connect#delete ~callback:(fun _ -> true)) in
+  let () = window#set_icon (Some Icon.icon_pixbuf) in
+  (* --- *)
   (* Table 2x3 *)
   let table = GPack.table ~columns:2 ~rows:3 ~row_spacings:10 ~col_spacings:10 ~packing:window#add () in
   let attach (x,y) = table#attach ~left:x ~top:y ~expand:`X ~fill:`BOTH in
-
+  (* --- *)
   (* Icon *)
   let _icon = GMisc.image ~file:(Initialization.Path.images^"ico.info.orig.png") ~xalign:0. ~packing:(attach (1,1)) () in
-
+  (* --- *)
   (* Label *)
   let label = (GMisc.label ~xalign:0. ~packing:(attach (2,1)) ()) in
   let () = (label#set_use_markup true); (label#set_label text_on_label) in
-
-  (* Sub label *)
-  if text_on_sub_label <> "" then
-   let sub_label = (GMisc.label ~xalign:0. ~packing:(attach (2,2)) ()) in
-   (sub_label#set_use_markup true); (sub_label#set_label text_on_sub_label)
-  else ();
-
-  (* Progress bar *)
-  let progress_bar = GRange.progress_bar ~pulse_step:0.1 () ~packing:(attach (2,3)) in
-  progress_bar#set_text text_on_bar;
-
-  let destroy_callback : unit -> unit = fun () -> destroy_and_remove_progress_bar_dialog (window) in
-  ignore (window#connect#destroy ~callback:destroy_callback);
   (* --- *)
-  (* For protection, no more than 10 seconds for any progress_bar: *)
-  let () = Thread.create (fun () -> Thread.delay 10.; destroy_and_remove_progress_bar_dialog (window)) () |> ignore in
+  (* Sub label *)
+  let () = if text_on_sub_label <> "" then
+    let sub_label = (GMisc.label ~xalign:0. ~packing:(attach (2,2)) ()) in
+    ((sub_label#set_use_markup true); (sub_label#set_label text_on_sub_label))
+  in
+  (* --- *)
+  (* Progress bar *)
+  let progress_bar = GRange.progress_bar ~pulse_step:0.2 () ~packing:(attach (2,3)) in
+  progress_bar#set_text text_on_bar;
+  (* --- *)
+  (* No more than 10 seconds (?max_lifetime) for any progress_bar: *)
+  let action () = match kind with Pulse  -> progress_bar#pulse () | Fill f -> progress_bar#set_fraction (f ()) in
+  let delay = max_lifetime /. 20. in (* max_lifetime=10. => delay=0.5 *)
+  let () = Thread.create (fun () ->
+    for _ = 1 to 20 do
+      Thread.delay (delay);
+      GMain_actor.delegate action ()
+    done;
+    Log.printf  "Progress_bar.make: created thread: delegating the GTK main thread for window#destroy (if not already done)\n";
+    GMain_actor.delegate window#destroy ()
+    ) () |> ignore
+  in
   (* --- *)
   window#show ();
-  (* --- *)
-  (* progress_bars := (window, progress_bar, kind) :: !progress_bars; *)
-  Capsule.aim (progress_bars) (fun bs -> (window, progress_bar, kind) :: bs) |> ignore;
   (* --- *)
   window
 ;;
 
-(* A GTK thread looking for something to do about all current progress bars: *)
-let _ =
-  let action (_, progress_bar, kind) =
-    match kind with
-    | Pulse  -> progress_bar#pulse ()
-    | Fill f -> progress_bar#set_fraction (f ())
-  in
-  (* GMain.Timeout.add ~ms:(update_interval) ~callback:(fun () -> (List.iter action !progress_bars); true) *)
-  GMain.Timeout.add ~ms:(update_interval) ~callback:(fun () ->
-    let () = Capsule.access_ro (progress_bars) (List.iter action) |> ignore in
-    true)
-;; (* call this again at the next interval *)

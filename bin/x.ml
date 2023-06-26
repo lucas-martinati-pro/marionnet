@@ -23,6 +23,8 @@ module StringExtra = Ocamlbricks.StringExtra
 module UnixExtra = Ocamlbricks.UnixExtra
 module Network = Ocamlbricks.Network
 (* --- *)
+let pr = Ocamlbricks.Misc.pr
+(* --- *)
 
 type display_number = int
 
@@ -175,11 +177,14 @@ let get_unused_local_AF_INET_port_number ?(starting_from=6000) () : port_number 
 (* Global variables: *)
 let host_addr = Unix.string_of_inet_addr ((Unix.gethostbyname host).Unix.h_addr_list.(0))
 and port = 6000 + (try (int_of_string display) with _ -> 0)
-
+(* --- *)
+(* TODO: after several crashes debugging marionnet.native, a new call stucks here: *)
+let () = Log.printf2 "x.ml: trying to connect to connect to host %s on port %d ...\n" host_addr port
+(* --- *)
 (* Global variable: *)
 let is_X_server_listening_TCP_connections =
   is_local_AF_INET_service_open ~host_addr ~port ()
-
+(* --- *)
 let () =
   Log.printf7
     "---\nHost X data from $DISPLAY:\nHost: %s\nHost address: %s\nDisplay: %s\nScreen: %s\nCookie: %s\nListening on port %d: %b\n---\n"
