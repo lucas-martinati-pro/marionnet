@@ -39,7 +39,8 @@
   (preprocess (action (run camlp4of
       -I ../../../../lib/_build/
       %{read-lines:../lib/camlp4of-flags.cfg}
-      gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      ;; gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
   ;; ---
   (link_flags -I ../ -cclib -locamlbricks_stubs)

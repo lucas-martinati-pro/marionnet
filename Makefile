@@ -95,18 +95,21 @@ PREFIX_INSTALL_DEFAULT=/usr/local
 PREFIX_INSTALL=$(shell source ./CONFIGME && echo $${prefix_install:-$(PREFIX_INSTALL_DEFAULT)})
 # ---
 SHARE_DIR=$(PREFIX_INSTALL)/share/marionnet
-install-final:
-	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
-	dune install --prefix $(PREFIX_INSTALL)
+# install-final:
+# 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
+# 	dune install --prefix $(PREFIX_INSTALL)
 
 # ---
 TMPSCRIPT=_build/make_install_as_root.sh
 install-final-as-root:
 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
+	# ---
 	echo '#!/bin/bash' > $(TMPSCRIPT)
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
 	for i in $(wildcard $(SHARE_DIR)/scripts/*); do echo "chmod +x $$i && cp -lf $$i $(PREFIX_INSTALL)/bin/"; done >> $(TMPSCRIPT)
+	echo "make gettext-install-mo" >> $(TMPSCRIPT)
+	# ---
 	@chmod +x $(TMPSCRIPT)
 	@echo "---"
 	@echo "About to execute $(TMPSCRIPT) as superuser (root)"
@@ -360,3 +363,91 @@ bin/version.ml:
 bin/meta.ml:
 	chmod +x "./bin/meta.ml.maker.sh"
 	$@.maker.sh ./META ./CONFIGME.choice $@
+
+
+#####################
+#      GETTEXT      #
+#####################
+
+# install-data-local: copy-failsafe-marionnet.conf
+# install-local: install-mo
+# uninstall-local: uninstall-mo
+
+copy-failsafe-marionnet.conf:
+	cp etc/marionnet.conf share/
+
+# ---
+PO_DIR = ./bin/po
+# ---
+POTGEN_TMPDIR=_build/pot/pot/default
+POTGEN_MOVE_BACK=../../../..
+gettext-all-ml-pot-files:
+	@(mkdir -p $(POTGEN_TMPDIR)/bin; cd $(POTGEN_TMPDIR)/bin; \
+	  for i in $(shell find _build/default/bin/ -name "*.ml" -o -name "*.mli" | grep -v "[.]pp[.]ml"); do \
+	    cp -l ../$(POTGEN_MOVE_BACK)/$$i ./; \
+	  done;\
+	  cd ..; \
+	  for i in $$(find bin/ -type f -name "*.ml"); do \
+	    (camlp4of -I $(POTGEN_MOVE_BACK)/lib/_build/ gettext_extract_pot_p4.cmo  $$i >/dev/null) && echo "Generated $(POTGEN_TMPDIR)/$$i.pot"; \
+	  done;)
+
+# ---
+_build/marionnet.pot: gettext-all-ml-pot-files
+	@msgcat -s --use-first $(shell find $(POTGEN_TMPDIR) -name "*.ml.pot") > $@
+	cp $@ $(PO_DIR)/messages.pot
+
+# ---
+gettext-messages-pot: _build/marionnet.pot
+	cp $< $(PO_DIR)/messages.pot
+
+# main-local: gettext-messages-pot
+MANUALLY_POST_MAKE_IN_build = marionnet.pot
+
+# ---
+# Useful to discover widgets containing translatable strings
+# gui.po: bin/gui/gui_glade3.xml
+# 	xml2po $< > /tmp/$@
+# 	@echo "Generated file: /tmp/$@"
+
+# ---
+# We can take the list of supported languages from $(PO_DIR)/LINGUAS.
+LANGUAGES = $(shell grep -v "^\#" $(PO_DIR)/LINGUAS)# camlp4of _build/gettext_extract_pot_p4.cmo ./_build/default/bin/state.ml > /dev/null
+
+gettext-show-languages:
+	@echo $(LANGUAGES)
+
+# Dependency: gettext: /usr/bin/msgfmt
+gettext-compile-mo:
+	@(cd $(PO_DIR); \
+	for i in $(LANGUAGES); do \
+	  (msgfmt $$i.po -o $$i.mo || exit -1) && echo "Compiled "$$i.mo; \
+	done;)
+
+# Dependency: gettext: /usr/bin/msgmerge
+# Launch this target with caution (see bin/po/LISEZMOI.mise_a_jour_des_langues):
+gettext-update-po: gettext-messages-pot
+	@(cd $(PO_DIR); \
+	for i in $(LANGUAGES); do \
+	  (msgmerge --no-fuzzy-matching -s --update $$i.po messages.pot || exit -1) && echo "Updated "$$i.po; \
+	done;)
+
+# ---
+LOCALE_PREFIX=$(shell source ./CONFIGME.choice && echo $${localeprefix:-$$prefix/share/locale})
+# ---
+gettext-install-mo: gettext-compile-mo
+	@(cd $(PO_DIR); \
+	for i in $(LANGUAGES); do \
+	  ((mkdir -p $(LOCALE_PREFIX)/$$i/LC_MESSAGES && cp $$i.mo $(LOCALE_PREFIX)/$$i/LC_MESSAGES/marionnet.mo) || exit -1) && echo "Installed "$$i; \
+	done;)
+
+# ---
+gettext-clean-mo:
+	@(cd $(PO_DIR); \
+	rm -rf *.mo *~ ;)
+
+# ---
+gettext-uninstall-mo: CONFIGME
+	@(for i in $(LANGUAGES); \
+	do rm -f $(LOCALE_PREFIX)/$$i/LC_MESSAGES/marionnet.mo; \
+	echo "Uninstalled "$$i; \
+	done;)

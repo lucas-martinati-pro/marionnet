@@ -31,13 +31,15 @@ module Tool = struct
  INCLUDE "CAMLP4/common_tools_for_preprocessors.ml"
 end
 
+(* --- *)
 let header =
- (* let file = "gettext_extract_pot_p4.conf" in *)
- let file = "../../../../etc/gettext_extract_pot_p4.conf" in (* UGLY with dune! *)
- let project_id_version = Tool.Conf.conf file ~default:"project_id_version???" "project_id_version" in
- let report_bugs_to     = Tool.Conf.conf file ~default:"report_bugs_to???" "report_bugs_to" in
- let charset            = Tool.Conf.conf file ~default:"utf-8" "charset" in
- Printf.sprintf
+  (* let file = "gettext_extract_pot_p4.conf" in *)
+  let file   = "../../../../etc/gettext_extract_pot_p4.conf" in (* UGLY with dune! *)
+(*   let file   = "./gettext_extract_pot_p4.conf" in *)
+  let project_id_version = Tool.Conf.conf file ~default:"project_id_version???" "project_id_version" in
+  let report_bugs_to     = Tool.Conf.conf file ~default:"report_bugs_to???" "report_bugs_to" in
+  let charset            = Tool.Conf.conf file ~default:"utf-8" "charset" in
+  Printf.sprintf
 "# Copyright (C) OWNER
 # AUTHOR, YEAR.
 #
@@ -48,7 +50,7 @@ msgstr \"\"
 \"Content-Type: text/plain; charset=%s\\n\"
 " project_id_version report_bugs_to charset
 
-
+(* --- *)
 module Make (Syntax : Sig.Camlp4Syntax) = struct
   open Sig
   include Syntax
