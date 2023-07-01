@@ -1279,6 +1279,7 @@ object(self)
       file_name;
 
   method load ?(file_name=self#filename) ~(project_version : [ `v0 | `v1 | `v2 ]) () =
+    let () = Log.printf1 "Treeview.treeview#load: about to load the treeview from file %s\n" file_name in
     self#detach_view_in
       (fun () ->
         let () = Log.printf1 "Treeview.treeview#load: Preparing to load a treeview content from file %s\n" file_name in
@@ -1573,7 +1574,8 @@ object(self)
   (** Temporarily detach the view while executing the thunk, so that updates don't show up in
       the GUI. Using this improves performance when adding/removing a lot of rows. Any exception
       raised by the thunk is correctly propagated after re-attaching the view. *)
-  method detach_view_in (thunk : unit -> unit) =
+  method private private_detach_view_in (thunk : unit -> unit) =
+    let () = Log.printf "Treeview.treeview#detach_view_in: about to detach the view\n" in
     let model : GTree.model = self#store#coerce in
     view#set_model None;
     (try
@@ -1582,10 +1584,15 @@ object(self)
       is_view_detached := false;
       view#set_model (Some model);
     with e -> begin
+      let () = Log.printf "Treeview.treeview#detach_view_in: something goes wrong\n" in
       is_view_detached := false;
       view#set_model (Some model);
       raise e;
-    end)
+      end)
+
+  (* Public interface: *)
+  method detach_view_in (thunk : unit -> unit) =
+    GMain_actor.delegate (fun () -> self#private_detach_view_in thunk) ()
 
   initializer
     (* Add hidden reserved columns: *)

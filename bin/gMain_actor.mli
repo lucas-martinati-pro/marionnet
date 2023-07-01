@@ -34,11 +34,17 @@
 val apply   : ?prio:int -> ('a -> 'b) -> 'a -> (exn, 'b) Either.t
 val apply2  : ?prio:int -> ('a -> 'b -> 'c) -> 'a -> 'b -> (exn, 'c) Either.t
 val apply3  : ?prio:int -> ('a -> 'b -> 'c -> 'd) -> 'a -> 'b -> 'c -> (exn, 'd) Either.t
+(* --- *)
+val apply_extract  : ?prio:int -> ('a -> 'b) -> 'a -> 'b
+val apply2_extract : ?prio:int -> ('a -> 'b -> 'c) -> 'a -> 'b -> 'c
+val apply3_extract : ?prio:int -> ('a -> 'b -> 'c -> 'd) -> 'a -> 'b -> 'c -> 'd
 
-(* Asynchronous call ignoring the result. With the option ~sync the call became synchronous: *)
-val delegate  : ?sync:unit -> ?prio:int -> ('a -> unit) -> 'a -> unit
-val delegate2 : ?sync:unit -> ?prio:int -> ('a -> 'b -> unit) -> 'a -> 'b -> unit
-val delegate3 : ?sync:unit -> ?prio:int -> ('a -> 'b -> 'c -> unit) -> 'a -> 'b -> 'c -> unit
+(* These procedures may be asynchronous setting ~async:(). In this case
+   the caller doesn't wait for the result; it just gives the "order" of
+   applying the function to `gtk_main' then returns immediately to its own activity: *)
+val delegate  : ?async:unit -> ?prio:int -> ('a -> unit) -> 'a -> unit
+val delegate2 : ?async:unit -> ?prio:int -> ('a -> 'b -> unit) -> 'a -> 'b -> unit
+val delegate3 : ?async:unit -> ?prio:int -> ('a -> 'b -> 'c -> unit) -> 'a -> 'b -> 'c -> unit
 
 (* Asynchronous call with retreivable result: *)
 val future  : ?prio:int -> ('a -> 'b) -> 'a -> ((exn, 'b) Either.t) Ocamlbricks.Future.t

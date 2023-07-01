@@ -297,7 +297,7 @@ class globalState = fun () ->
 
   (** New project which will be saved into the given filename.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
-  method new_project ~filename  =
+  method private private_new_project ~filename  =
     (* First reset the old network, waiting for all devices to terminate: *)
     let () = self#network#ledgrid_manager#reset in
     let () = self#network#reset () in
@@ -318,9 +318,13 @@ class globalState = fun () ->
     let () = self#refresh_sketch in
     ()
 
+  (* Interface: *)
+  method new_project ~filename =
+    GMain_actor.delegate (fun () -> self#private_new_project ~filename) ()
+
   (** Close the current project. The project is lost if the user hasn't saved it.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
-  method close_project = begin
+  method private private_close_project = begin
     Log.printf "state#close_project: BEGIN\n";
     (* Destroy whatever the LEDgrid manager is managing: *)
     self#network#ledgrid_manager#reset;
@@ -342,6 +346,10 @@ class globalState = fun () ->
     self#clear_treeviews;
     Log.printf "state#close_project: END\n";
     end (* close_project *)
+
+  (* Interface: *)
+  method close_project =
+    GMain_actor.delegate (fun () -> self#private_close_project) ()
 
  (** Read the pseudo-XML file containing the network definition. *)
  method import_network
@@ -376,7 +384,6 @@ class globalState = fun () ->
     self#refresh_sketch;
    end
 
-
   (** Close the current project and extract the given filename in a fresh project working directory. *)
   method open_project_async ~filename =
     begin
@@ -386,14 +393,16 @@ class globalState = fun () ->
     let pwd = self#project_paths#set_filename_and_create_the_project_working_directory (filename) in
     (* --- *)
     let opening_project_progress_bar =
-      Progress_bar.make_progress_bar_dialog
-       ~modal:true
-       ~title:(s_ "Work in progress")
-       ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "Opening"))
-       ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
-       ()
+      GMain_actor.apply_extract (fun () ->
+        Progress_bar.make_progress_bar_dialog
+          ~modal:true
+          ~title:(s_ "Work in progress")
+          ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "Opening"))
+          ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
+          ())
+        ()
     in
-    opening_project_progress_bar#show ();
+    let _ = GMain_actor.delegate (opening_project_progress_bar#show) () in
     (* --- *)
     (* Extract the mar file into the pwdir *)
     let command_line =
@@ -468,17 +477,21 @@ class globalState = fun () ->
       (* --- *)
       Log.printf ("state#open_project_sync: calling import_network\n");
       (* Second, read the xml file containing the network definition.
-	If something goes wrong, close the project. *)
-      (try
-	self#import_network
-	  ~emergency:(fun () -> self#close_project)
-	  ~dotAction
-	  ~project_version
-	  self#project_paths#networkFile
-      with e ->
-	self#clear_treeviews;
-	Log.printf1 "state#open_project_sync: Failed with exception %s\n" (Printexc.to_string e);
-      );
+	 If something goes wrong, close the project. *)
+      let import () = begin
+        try
+          self#import_network
+            ~emergency:(fun () -> self#close_project)
+            ~dotAction
+            ~project_version
+            self#project_paths#networkFile
+        with e ->
+          self#clear_treeviews;
+          Log.printf1 "state#open_project_sync: Failed with exception %s\n" (Printexc.to_string e);
+        end
+      in
+      let () = GMain_actor.delegate import () in
+      (* --- *)
       self#register_state_after_save_or_open;
       (* --- *)
       let () =
@@ -495,7 +508,7 @@ class globalState = fun () ->
     let _ =
       Task_runner.the_task_runner#schedule
         ~name:"state#open_project.synchronous_loading"
-        (fun () ->
+        (GMain_actor.delegate (fun () ->
 	    try
 	      synchronous_loading ()
 	    with e ->
@@ -508,7 +521,7 @@ class globalState = fun () ->
 		in
 		Simple_dialogs.error (s_ "Failed loading the project") error_msg ();
 		raise e;
-	      end)
+	      end))
     in
     (* Remove now the progress_bar: *)
     let _ =
@@ -592,7 +605,7 @@ class globalState = fun () ->
 
   (** Rewrite the compressed archive prj_filename with the content of the project working directory (pwdir). *)
   method save_project =
-    if self#active_project then begin
+    if self#active_project then GMain_actor.delegate (fun () -> begin
     Log.printf "state#save_project BEGIN\n";
     (* --- *)
     let filename = Option.extract (self#project_paths#get_filename) in
@@ -679,11 +692,13 @@ class globalState = fun () ->
     let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
     self#register_state_after_save_or_open;
     Log.printf "state#save_project END\n";
-  end
+    (* --- *)
+  end) ()
 
 
   (** Update the project filename to the given string, and save: *)
   method save_project_as ?root_basename ~filename () =
+    GMain_actor.delegate (fun () -> begin
     if self#active_project then
       try
         (* Set the project filename, name and root_basename: *)
@@ -691,11 +706,13 @@ class globalState = fun () ->
         (* Save the project *)
         self#save_project;
       with e -> (raise e)
+    end) ()
 
   (** Save the project into the given file, but without changing its name in the
       copy we're editing. Implemented by temporarily updating the name, saving
       then switch back to the old name. *)
   method copy_project_into ?root_basename ~filename () =
+    GMain_actor.delegate (fun () -> begin
     if self#active_project then
       try
         let filename0      = Option.extract (self#project_paths#get_filename) in
@@ -708,8 +725,10 @@ class globalState = fun () ->
         let () = self#project_paths#change_filename_and_root_basename ~root_basename:(root_basename0) ~filename:(filename0) () in
         ()
       with e -> (raise e)
+    end) ()
 
   method private really_refresh_sketch =
+    GMain_actor.delegate (fun () -> begin
     let fs = self#project_paths#dotSketchFile in
     let ft = self#project_paths#pngSketchFile in
     try begin
@@ -740,6 +759,7 @@ class globalState = fun () ->
         (Log.printf1
            "Warning: exception raised in really_refresh_sketch:\n%s\nIgnoring.\n"
            (Printexc.to_string e))
+    end) ()
 
   (* The structure (counter) for the reactive sketch refreshing: *)
   val refresh_sketch_counter = Cortex.return 0
@@ -752,12 +772,13 @@ class globalState = fun () ->
   (* --- *)
   method network_change : 'a. ('a -> unit) -> 'a -> unit =
   fun action obj ->
+   GMain_actor.delegate (fun () ->
    begin
     action obj;
     self#dotoptions#shuffler_reset;
     self#dotoptions#extrasize_reset;
     self#refresh_sketch;
-   end
+   end) ()
 
  (* Begin of methods moved from talking.ml *)
  method make_names_and_thunks ?(node_list=self#network#get_node_list) (verb) (what_to_do_with_a_node) =
@@ -766,9 +787,12 @@ class globalState = fun () ->
       (verb ^ " " ^ node#get_name),
       (fun () ->
 	let progress_bar =
-	  Simple_dialogs.make_progress_bar_dialog
-	    ~title:(verb ^ " " ^ node#get_name)
-	    ~text_on_bar:(s_ "Wait please...") ()
+          GMain_actor.apply_extract (fun () -> begin
+            Simple_dialogs.make_progress_bar_dialog
+              ~title:(verb ^ " " ^ node#get_name)
+              ~text_on_bar:(s_ "Wait please...")
+              ()
+	    end) ()
 	in
 	begin try
 	  what_to_do_with_a_node node;
@@ -779,7 +803,9 @@ class globalState = fun () ->
 	    (Printexc.to_string e);
 	  Log.print_backtrace ();
 	end;
-	Simple_dialogs.destroy_progress_bar_dialog progress_bar))
+	let () = GMain_actor.delegate Simple_dialogs.destroy_progress_bar_dialog progress_bar in
+	()
+	))
     )
     node_list
 
@@ -844,7 +870,7 @@ class globalState = fun () ->
    in
    begin
    quit_async_called <- true;
-   Task_runner.the_task_runner#schedule ~name:"quit" quit;
+   Task_runner.the_task_runner#schedule ~name:"quit" (GMain_actor.delegate quit);
    Log.printf "Main thread: quit has been scheduled.\n";
    end
 

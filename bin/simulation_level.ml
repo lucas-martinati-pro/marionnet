@@ -95,14 +95,9 @@ fun program
             (List.length arguments)
             (StringExtra.fmt ~tab:2 ~width:60 cmdline)
         in
-        let new_pid =
-          Unix.create_process
-            program
-            (Array.of_list (program :: arguments))
-            stdin
-            stdout
-            stderr
-        in
+        (* --- *)
+        let new_pid = Unix.create_process (program) (Array.of_list (program :: arguments)) (stdin) (stdout) (stderr) in
+        (* --- *)
         pid := (Some new_pid);
         self#start_thread_waiting ~current_pid:new_pid;
         Death_monitor.start_monitoring new_pid program unexpected_death_callback;

@@ -66,10 +66,8 @@ let make_progress_bar_dialog =
 let destroy_progress_bar_dialog dialog =
   Progress_bar.destroy_progress_bar_dialog dialog;;
 
-let confirm_dialog
-    ~question
-    ?(cancel = false)
-    () =
+(* --- *)
+let confirm_dialog ~question ?(cancel = false) () =
   let dialog = new Gui.dialog_QUESTION () in
   dialog#toplevel#set_icon (Some Icon.icon_pixbuf);
   dialog#toplevel#set_title (utf8 "Confirmation");

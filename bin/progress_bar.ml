@@ -35,8 +35,8 @@ type kind = Pulse | Fill of (unit -> float)
 let update_interval = 200;; (* in milliseconds *)
 
 (* --- *)
-let destroy_progress_bar_dialog (window) = 
-  let () = window#destroy () in
+let destroy_progress_bar_dialog (window) =
+  let () = GMain_actor.delegate window#destroy () in
   ()
 
 (* Make a dialog with the following layout:
@@ -58,9 +58,9 @@ let make_progress_bar_dialog
     ?(modal=false)
     ?(position=(if modal then `CENTER else `NONE))
     (* Max life-time in seconds; this is a limit, if the window is not destroyed before: *)
-    ?(max_lifetime=10.) 
-    () 
-  = 
+    ?(max_lifetime=10.)
+    ()
+  =
   (* --- *)
   let window = GWindow.window ~title ~modal ~position ~border_width:10 ~resizable:false () in
   let () = if modal then ignore (window#event#connect#delete ~callback:(fun _ -> true)) in

@@ -19,6 +19,7 @@
 module Log = Marionnet_log
 module Milner = Ocamlbricks.Milner
 module Future = Ocamlbricks.Future
+module Option = Ocamlbricks.Option
 
 (* --- *)
 module At_loading_time = struct
@@ -49,10 +50,19 @@ let am_I_the_GTK_main_thread () =
       (my_id = At_loading_time.thread_id)
 
 (* --- *)
+(*let am_I_the_GTK_main_thread () =
+  let answer1 = am_I_the_GTK_main_thread () in
+  let answer2 = GtkThread.gui_safe () in
+  let () = assert (answer1 = answer2) in
+  answer1*)
+
+(* --- *)
 module EitherExtra = struct
   let protect f x = try Either.Right (f x) with e -> Either.Left e
   let protect2 f x y = try Either.Right (f x y) with e -> Either.Left e
   let protect3 f x y z = try Either.Right (f x y z) with e -> Either.Left e
+  (**)
+  let extract_or_raise = function Either.Right y -> y | Either.Left e  -> raise e
 end
 
 (* --- *)
@@ -98,13 +108,22 @@ let apply2 ?prio f x1 x2 : (exn, 'b) Either.t =
 let apply3 ?prio f x1 x2 x3 : (exn, 'b) Either.t =
   apply ?prio (f x1 x2) x3
 
+(* val apply_extract  : ?prio:int -> ('a -> 'b) -> 'a -> 'b *)
+let apply_extract ?prio f x = apply ?prio f x |> EitherExtra.extract_or_raise
 (* --- *)
-(* Asynchronous call where the caller doesn't wait for the result;
-   it just gives the order of applying the function to `gtk_main'
-   than returns immediately to its own activity: *)
-let delegate ?sync ?prio (f:'a -> unit) (x:'a) : unit =
+(* val apply2_extract : ?prio:int -> ('a -> 'b -> 'c) -> 'a -> 'b -> 'c *)
+let apply2_extract ?prio f x y = apply2 ?prio f x y |> EitherExtra.extract_or_raise
+(* --- *)
+(* val apply3_extract : ?prio:int -> ('a -> 'b -> 'c -> 'd) -> 'a -> 'b -> 'c -> 'd *)
+let apply3_extract ?prio f x y z = apply3 ?prio f x y z |> EitherExtra.extract_or_raise
+
+(* --- *)
+(* This procedure may be asynchronous setting ~async:(). In this case
+   the caller doesn't wait for the result; it just gives the "order" of
+   applying the function to `gtk_main' then returns immediately to its own activity: *)
+let delegate ?async ?prio (f:'a -> unit) (x:'a) : unit =
   (* --- *)
-  if sync = Some () then apply f x |> ignore else (* continue: *)
+  if async = None then apply f x |> ignore else (* continue: *)
   (* --- *)
   (* This code will be executed by the GTK main thread (gtk_main), acting as an "actor": *)
   let f' () : bool =
@@ -117,11 +136,11 @@ let delegate ?sync ?prio (f:'a -> unit) (x:'a) : unit =
   ()
 
 (* --- *)
-let delegate2 ?sync ?prio f x1 x2 : unit =
-  delegate ?sync ?prio (f x1) x2
+let delegate2 ?async ?prio f x1 x2 : unit =
+  delegate ?async ?prio (f x1) x2
 
-let delegate3 ?sync ?prio f x1 x2 x3: unit =
-  delegate ?sync ?prio (f x1 x2) x3
+let delegate3 ?async ?prio f x1 x2 x3: unit =
+  delegate ?async ?prio (f x1 x2) x3
 
 (* --- *)
 (* Asynchronous call where the caller may be interested later for the result: *)
