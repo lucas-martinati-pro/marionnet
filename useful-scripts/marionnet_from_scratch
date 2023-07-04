@@ -744,7 +744,7 @@ function echo_required_debian_packages {
  # ---
  # NOTE: `fonts-noto' provides some unicode characters used in the Marionnet GUI
  for i in \
-   bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
+   bzr opam liblablgtk3-ocaml-dev camlp4-extra glade libgtksourceview-3.0-dev \
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
    coreutils findutils login procps gettext \

@@ -85,7 +85,7 @@ class project_paths
   object (self)
 
     (** The project filename, ex: Some "/home/donald/foo.mar" *)
-    val filename    : filename option Cortex.t = Cortex.return (project_filename)
+    val filename    : (filename option) Cortex.t = Cortex.return (project_filename)
     method filename = filename
     method get_filename   = Cortex.get filename
     method set_filename x = Cortex.set filename x
@@ -329,6 +329,9 @@ class globalState = fun () ->
     begin
       (* --- *)
       Log.printf "state#close_project: BEGIN\n";
+      (* --- *)
+      (* Anticipate: the user cannot do anything else during this procedure: *)
+      let   () = self#project_paths#unset_filename in
       (* Destroy whatever the LEDgrid manager is managing: *)
       let () = self#network#ledgrid_manager#reset in
       let () = self#network#reset (*~scheduled:true*) () in
