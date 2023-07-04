@@ -297,7 +297,7 @@ class globalState = fun () ->
 
   (** New project which will be saved into the given filename.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
-  method private private_new_project ~filename  =
+  method private private_new_project ~filename () =
     (* First reset the old network, waiting for all devices to terminate: *)
     let () = self#network#ledgrid_manager#reset in
     let () = self#network#reset () in
@@ -320,36 +320,36 @@ class globalState = fun () ->
 
   (* Interface: *)
   method new_project ~filename =
-    GMain_actor.delegate (fun () -> self#private_new_project ~filename) ()
+    GMain_actor.delegate (self#private_new_project ~filename) ()
 
   (** Close the current project. The project is lost if the user hasn't saved it.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
-  method private private_close_project = begin
-    Log.printf "state#close_project: BEGIN\n";
-    (* Destroy whatever the LEDgrid manager is managing: *)
-    self#network#ledgrid_manager#reset;
-    (match self#active_project with
-      | false -> Log.printf "state#close_project: no project opened.\n"
-      | true ->
-      begin
-        let () = self#network#reset ~scheduled:true () in
-        (* Update the network sketch (now empty): *)
-        let () = self#mainwin#sketch#set_file "" in
-        (* --- *)
-        let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
-        (* --- *)
-        let () = self#project_paths#reset_and_remove_the_project_working_directory in
-        ()
-      end (* there was an active project *)
-      );
-    (* Clear all treeviews, just in case. *)
-    self#clear_treeviews;
-    Log.printf "state#close_project: END\n";
+  method private private_close_project () =
+    if (not self#active_project) then Log.printf "state#close_project: no project opened.\n" else (* continue: *)
+    begin
+      (* --- *)
+      Log.printf "state#close_project: BEGIN\n";
+      (* Destroy whatever the LEDgrid manager is managing: *)
+      let () = self#network#ledgrid_manager#reset in
+      let () = self#network#reset (*~scheduled:true*) () in
+      (* Update the network sketch (now empty): *)
+      let () = self#mainwin#sketch#set_file "" in
+      (* --- *)
+      (*(*(*(*let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in*)*)*)*)
+      (* --- *)
+      let () = self#project_paths#reset_and_remove_the_project_working_directory in
+      (* Clear all treeviews, just in case. *)
+      let () = self#clear_treeviews in
+      (* --- *)
+      Log.printf "state#close_project: END. Success.\n";
+      (* --- *)
     end (* close_project *)
 
   (* Interface: *)
   method close_project =
-    GMain_actor.delegate (fun () -> self#private_close_project) ()
+    if GMain_actor.am_I_the_GTK_main_thread ()
+    then Thread.create (self#private_close_project) () |> ignore
+    else (self#private_close_project ())
 
  (** Read the pseudo-XML file containing the network definition. *)
  method import_network
@@ -385,9 +385,14 @@ class globalState = fun () ->
    end
 
   (** Close the current project and extract the given filename in a fresh project working directory. *)
-  method open_project_async ~filename =
+  method private private_open_project_async ~filename () =
+    let () = assert (not (GMain_actor.am_I_the_GTK_main_thread ())) in
+    (* --- *)
     begin
     (* First close the current project, if necessary: *)
+    let () = Log.printf2 "state#private_open_project_async:  self#project_paths#get_filename=%s  self#active_project=%b\n"
+      (Option.to_string ~a:(fun x->x) (self#project_paths#get_filename)) (self#active_project)
+    in
     let () = if self#active_project then self#close_project else () in
     (* Set the project filename and create the working directory: *)
     let pwd = self#project_paths#set_filename_and_create_the_project_working_directory (filename) in
@@ -404,16 +409,18 @@ class globalState = fun () ->
     in
     let _ = GMain_actor.delegate (opening_project_progress_bar#show) () in
     (* --- *)
-    (* Extract the mar file into the pwdir *)
-    let command_line =
-      Printf.sprintf "tar -xSvzf '%s' -C '%s'"
-        (Option.extract (self#project_paths#get_filename))
-        pwd
-    in
-    (* --- *)
     let synchronous_loading () = begin
       (* --- *)
-      Log.system_or_fail command_line;
+      (* Extract the mar file into the pwdir *)
+      let () =
+        let command_line =
+          Printf.sprintf "tar -xSvzf '%s' -C '%s'"
+            (Option.extract (self#project_paths#get_filename))
+            pwd
+        in
+        (* --- *)
+        Log.system_or_fail command_line
+      in
       (* --- *)
       (* Look for the name of the root directory of the mar file. Some checks here. *)
       let tarball_root =
@@ -422,9 +429,9 @@ class globalState = fun () ->
 	  | [x] ->
               let skel = (SysExtra.readdir_as_list (Filename.concat pwd x)) in
               if ListExtra.subset skel (self#project_paths#subdirs_and_version) then x else (* continue: *)
-              failwith "state#open_project_sync: no expected content in the project root directory."
+              failwith "state#open_project_async: no expected content in the project root directory."
 	  |  _  ->
-	      failwith "state#open_project_sync: no rootname found in the project directory."
+	      failwith "state#open_project_async: no rootname found in the project directory."
 	  )
 	with e -> begin
 	  self#close_project;
@@ -442,10 +449,10 @@ class globalState = fun () ->
       let project_version : [ `v0 | `v1 | `v2 ] =
         match self#opening_project_version with
         | Some v -> v
-        | None   -> failwith "state#open_project_sync: project version cannot be identified"
+        | None   -> failwith "state#open_project_async: project version cannot be identified"
       in
       let project_version_as_string = self#string_of_project_version project_version in
-      Log.printf1 "state#open_project_sync: project version is %s\n" (project_version_as_string);
+      Log.printf1 "state#open_project_async: project version is %s\n" (project_version_as_string);
       let () =
         if project_version <> self#closing_project_version then
         Simple_dialogs.warning
@@ -460,22 +467,22 @@ class globalState = fun () ->
         let () =
 	  try
 	    let () = self#dotoptions#load_from_file ~project_version (self#project_paths#dotoptionsFile) in
-	    Log.printf ("state#open_project_sync: dotoptions recovered\n")
+	    Log.printf ("state#open_project_async: dotoptions recovered\n")
 	  with e ->
 	    begin
-	      Log.printf ("state#open_project_sync: cannot read the dotoptions file => resetting defaults\n");
+	      Log.printf ("state#open_project_async: cannot read the dotoptions file => resetting defaults\n");
 	      self#dotoptions#reset_defaults ()
 	    end
 	in
 	self#dotoptions#set_toolbar_widgets ()
       in
       (* --- *)
-      Log.printf ("state#open_project_sync: calling load_treeviews\n");
+      Log.printf ("state#open_project_async: calling load_treeviews\n");
       (* Undump treeview's data. Doing this action now we allow components
 	 to modify the treeviews according to the marionnet version: *)
       self#load_treeviews ~project_version ();
       (* --- *)
-      Log.printf ("state#open_project_sync: calling import_network\n");
+      Log.printf ("state#open_project_async: calling import_network\n");
       (* Second, read the xml file containing the network definition.
 	 If something goes wrong, close the project. *)
       let import () = begin
@@ -487,7 +494,7 @@ class globalState = fun () ->
             self#project_paths#networkFile
         with e ->
           self#clear_treeviews;
-          Log.printf1 "state#open_project_sync: Failed with exception %s\n" (Printexc.to_string e);
+          Log.printf1 "state#open_project_async: Failed with exception %s\n" (Printexc.to_string e);
         end
       in
       let () = GMain_actor.delegate import () in
@@ -506,8 +513,8 @@ class globalState = fun () ->
     in
     (* --- *)
     let _ =
-      Task_runner.the_task_runner#schedule
-        ~name:"state#open_project.synchronous_loading"
+(*      Task_runner.the_task_runner#schedule
+        ~name:"state#open_project.synchronous_loading"*)
         (GMain_actor.delegate (fun () ->
 	    try
 	      synchronous_loading ()
@@ -521,16 +528,23 @@ class globalState = fun () ->
 		in
 		Simple_dialogs.error (s_ "Failed loading the project") error_msg ();
 		raise e;
-	      end))
+	      end)) ()
     in
     (* Remove now the progress_bar: *)
     let _ =
-      Task_runner.the_task_runner#schedule
-        ~name:"destroy opening project progress bar"
-        (fun () -> Progress_bar.destroy_progress_bar_dialog (opening_project_progress_bar))
+(*      Task_runner.the_task_runner#schedule
+        ~name:"destroy opening project progress bar"*)
+        (fun () -> Progress_bar.destroy_progress_bar_dialog (opening_project_progress_bar)) ()
     in
     ()
     end
+
+  (* Interface: *)
+  method open_project_async ~filename =
+    if GMain_actor.am_I_the_GTK_main_thread ()
+    then Thread.create (self#private_open_project_async ~filename) () |> ignore
+    else (self#private_open_project_async ~filename ())
+
 
   (*** BEGIN: this part of code tries to understand if the project must be really saved before exiting. *)
 
@@ -560,20 +574,24 @@ class globalState = fun () ->
    end
 
   method private load_treeviews ~project_version () =
-    List.iter
-      (fun (treeview : Treeview.t) -> treeview#load ~project_version ())
-      self#get_treeview_list
+    GMain_actor.delegate
+      (List.iter (fun (treeview : Treeview.t) -> treeview#load ~project_version ()))
+      (self#get_treeview_list)
 
   method private save_treeviews =
-    List.iter (fun (treeview : Treeview.t) -> treeview#save ()) self#get_treeview_list
+    GMain_actor.delegate
+      (List.iter (fun (treeview : Treeview.t) -> treeview#save ()))
+      (self#get_treeview_list)
 
   method private clear_treeviews =
-    List.iter (fun (treeview : Treeview.t) -> treeview#clear) self#get_treeview_list
+    GMain_actor.delegate
+      (List.iter (fun (treeview : Treeview.t) -> treeview#clear))
+      (self#get_treeview_list)
 
   method private get_treeview_complete_forest_list =
-    List.map
-      (fun (treeview : Treeview.t) -> treeview#get_complete_forest)
-       self#get_treeview_list
+    GMain_actor.apply_extract
+      (List.map (fun (treeview : Treeview.t) -> treeview#get_complete_forest))
+      (self#get_treeview_list)
 
   val mutable treeview_forest_list_after_save = None
   method private register_state_after_save_or_open =
@@ -604,8 +622,10 @@ class globalState = fun () ->
   (*** END: this part of code try to understand if the project must be really saved before exiting. *)
 
   (** Rewrite the compressed archive prj_filename with the content of the project working directory (pwdir). *)
-  method save_project =
-    if self#active_project then GMain_actor.delegate (fun () -> begin
+  method private private_save_project () =
+    let () = assert (not (GMain_actor.am_I_the_GTK_main_thread ())) in
+    (* --- *)
+    if self#active_project then begin
     Log.printf "state#save_project BEGIN\n";
     (* --- *)
     let filename = Option.extract (self#project_paths#get_filename) in
@@ -631,25 +651,29 @@ class globalState = fun () ->
       | None -> fun () -> 0.5
     in
     (* --- *)
-    let window =
+    let progress_bar =
+      GMain_actor.apply_extract (fun () -> begin
+      (* --- *)
       let text_about_saved_snapshots =
         match Global_options.Keep_all_snapshots_when_saving.extract () with
         | true  -> s_ "Project with all snapshots"
         | false -> s_ "Project with the most recent snapshots"
       in
+      (* --- *)
       let saving_word = (s_ "Saving") in
       let text_on_label =
-        Printf.sprintf "<big><b>%s</b></big>\n<small>%s</small>"
-          saving_word
-          text_about_saved_snapshots
+        Printf.sprintf "<big><b>%s</b></big>\n<small>%s</small>" (saving_word) (text_about_saved_snapshots)
       in
+      (* --- *)
       Progress_bar.make_progress_bar_dialog
-       ~modal:true
-       ~title:(s_ "Work in progress")
-       ~kind:(Progress_bar.Fill fill)
-       ~text_on_label
-       ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
-       ()
+        ~modal:true
+        ~title:(s_ "Work in progress")
+        ~kind:(Progress_bar.Fill fill)
+        ~text_on_label
+        ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
+        ()
+      (* --- *)
+      end) ()
     in
     (* --- *)
     (* Write the network xml file *)
@@ -679,41 +703,48 @@ class globalState = fun () ->
         exclude_command_section
         project_root_basename
     in
-    let _ =
-      Task_runner.the_task_runner#schedule
-        ~name:"tar"
-        (fun () -> Log.system_or_ignore cmd)
-    in
-    let _ =
-      Task_runner.the_task_runner#schedule
-        ~name:"destroy saving progress bar"
-        (fun () -> Progress_bar.destroy_progress_bar_dialog window)
-    in
-    let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
-    self#register_state_after_save_or_open;
-    Log.printf "state#save_project END\n";
     (* --- *)
-  end) ()
+    let _ =
+      (*Task_runner.the_task_runner#schedule
+        ~name:"tar"*)
+        ((*fun () ->*) Log.system_or_ignore cmd)
+    in
+    (* --- *)
+    let _ =
+      (*Task_runner.the_task_runner#schedule
+        ~name:"destroy saving progress bar"*)
+        ((*fun () -> *)Progress_bar.destroy_progress_bar_dialog (progress_bar))
+    in
+    (* --- *)
+(*     let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in (*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*) *)
+    self#register_state_after_save_or_open;
+    Log.printf "state#save_project END. Success.\n";
+    (* --- *)
+  end
+
+  (* Interface: *)
+  method save_project =
+    if GMain_actor.am_I_the_GTK_main_thread ()
+    then Thread.create (self#private_save_project) () |> ignore
+    else (self#private_save_project ())
 
 
   (** Update the project filename to the given string, and save: *)
   method save_project_as ?root_basename ~filename () =
-    GMain_actor.delegate (fun () -> begin
-    if self#active_project then
+    if self#active_project then begin
       try
         (* Set the project filename, name and root_basename: *)
         self#project_paths#change_filename_and_root_basename ?root_basename ~filename ();
         (* Save the project *)
         self#save_project;
       with e -> (raise e)
-    end) ()
+    end
 
   (** Save the project into the given file, but without changing its name in the
       copy we're editing. Implemented by temporarily updating the name, saving
       then switch back to the old name. *)
   method copy_project_into ?root_basename ~filename () =
-    GMain_actor.delegate (fun () -> begin
-    if self#active_project then
+    if self#active_project then begin
       try
         let filename0      = Option.extract (self#project_paths#get_filename) in
         let root_basename0 = Option.extract (self#project_paths#get_root_basename) in
@@ -725,10 +756,11 @@ class globalState = fun () ->
         let () = self#project_paths#change_filename_and_root_basename ~root_basename:(root_basename0) ~filename:(filename0) () in
         ()
       with e -> (raise e)
-    end) ()
+    end
 
   method private really_refresh_sketch =
     GMain_actor.delegate (fun () -> begin
+    let () = Log.printf "About to refresh the sketch\n" in
     let fs = self#project_paths#dotSketchFile in
     let ft = self#project_paths#pngSketchFile in
     try begin
@@ -797,13 +829,10 @@ class globalState = fun () ->
 	begin try
 	  what_to_do_with_a_node node;
 	  with e ->
-	  Log.printf3 "Warning (q): \"%s %s\" raised an exception (%s)\n"
-	    verb
-	    node#name
-	    (Printexc.to_string e);
-	  Log.print_backtrace ();
+	    let () = Log.printf3 "Warning (q): \"%s %s\" raised an exception (%s)\n" verb node#name (Printexc.to_string e) in
+	    Log.print_backtrace ()
 	end;
-	let () = GMain_actor.delegate Simple_dialogs.destroy_progress_bar_dialog progress_bar in
+	let () = GMain_actor.delegate (Simple_dialogs.destroy_progress_bar_dialog) (progress_bar) in
 	()
 	))
     )

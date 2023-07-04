@@ -51,3 +51,6 @@ val future  : ?prio:int -> ('a -> 'b) -> 'a -> ((exn, 'b) Either.t) Ocamlbricks.
 val future2 : ?prio:int -> ('a -> 'b -> 'c) -> 'a -> 'b -> ((exn, 'c) Either.t) Ocamlbricks.Future.t
 val future3 : ?prio:int -> ('a -> 'b -> 'c -> 'd) -> 'a -> 'b -> 'c -> ((exn, 'd) Either.t) Ocamlbricks.Future.t
 
+(* --- Low-level control: *)
+val am_I_the_GTK_main_thread : unit -> bool
+

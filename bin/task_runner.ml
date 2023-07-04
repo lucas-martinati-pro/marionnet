@@ -110,13 +110,17 @@ class task_runner = object(self)
   (** Wait that all tasks which are currently scheduled terminate, synchronously.
       In the mean time more tasks can be scheduled as usual. *)
   method wait_for_all_currently_scheduled_tasks =
-    self#schedule
-      ~name:"wait until all scheduled tasks terminate"
-      (fun () -> dummy_queue#enqueue ());
+    let () = if GMain_actor.am_I_the_GTK_main_thread () then
+      Log.printf "task_runner#wait_for_all_currently_scheduled_tasks: WARNING: the waiting thread should not be the GTK main thread\n"
+    in
+    (* --- *)
+    let () = self#schedule ~name:"wait until all scheduled tasks terminate" (fun () -> dummy_queue#enqueue ()) in
+    (* --- *)
     Log.printf "Waiting for all currently enqueued tasks to terminate...\n";
     let () = dummy_queue#dequeue in
     Log.printf "...all right, we have been signaled: tasks did terminate.\n";
 
+  (* --- *)
   method schedule_parallel (names_and_thunks : (string * thunk) list) =
     let parallel_task_name =
       List.fold_left

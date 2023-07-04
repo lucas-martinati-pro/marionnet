@@ -20,7 +20,7 @@
 (* open Gettext *)
 
 (* Dependencies: *)
-module Recursive_mutex = Ocamlbricks.MutexExtra.Recursive
+(* module Recursive_mutex = Ocamlbricks.MutexExtra.Recursive *)
 module Stateful_modules = Ocamlbricks.Stateful_modules
 module Oomarshal = Ocamlbricks.Oomarshal
 module Cortex = Ocamlbricks.Cortex

@@ -70,8 +70,7 @@ end
 type env  = string Environments.string_env
 let env_to_string (t:env) = t#to_string (fun s->s)
 
-module Created_entry_project_new = Menu_factory.Make_entry
- (struct
+module Created_entry_project_new = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
    let text  = (s_ "New" )
@@ -87,28 +86,31 @@ module Created_entry_project_new = Menu_factory.Make_entry
      in
      (EDialog.sequence [Common_dialogs.save_current; filename])
 
-   let reaction r = begin
-     st#shutdown_everything ();
-     let filename = Talking.check_filename_validity_and_add_extension_if_needed (r#get "filename") in
-     let actions () =
-       begin
-       st#close_project;
-       st#new_project filename;
-       end in
-     if (st#active_project) && ((r#get "save_current") = "yes")
-      then
-       (st#save_project;
-        Task_runner.the_task_runner#schedule ~name:"new project" actions)
-      else
-       (actions ())
+   let reaction r =
+     begin
+      let must_be_saved  = ((r#get "save_current")="yes") in
+      let filename = Talking.check_filename_validity_and_add_extension_if_needed (r#get "filename") in
+      (* --- *)
+      let actions () =
+         let () = Log.printf "About to react to Gui_menubar_MARIONNET.new_project\n" in
+         let active_project = st#active_project in
+         let () = if (active_project) then st#shutdown_everything () in
+         let () = if (active_project) && (must_be_saved) then st#save_project in
+         let () = if (active_project) then st#close_project in
+         st#new_project filename
+      in
+      (* --- *)
+      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.new_project" actions *)
+      let _ = Thread.create (actions) () in
+      ()
+      (* --- *)
      end
 
   end) (F)
 let project_new = Created_entry_project_new.item
 
 
-module Created_entry_project_open = Menu_factory.Make_entry
- (struct
+module Created_entry_project_open = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
    let text  = (s_ "Open" )
@@ -126,26 +128,31 @@ module Created_entry_project_open = Menu_factory.Make_entry
 
    let reaction r =
      begin
-      st#shutdown_everything ();
-      let filename = (r#get "filename") in
-      let actions () = begin
-         st#close_project;
-         try
-          st#open_project_async filename;
+      let must_be_saved = ((r#get "save_current")="yes") in
+      let filename      = (r#get "filename") in
+      (* --- *)
+      let actions () =
+         let () = Log.printf "About to react to Gui_menubar_MARIONNET.open_project\n" in
+         let active_project = st#active_project in
+         let () = if (active_project) then st#shutdown_everything () in
+         let () = if (active_project) && (must_be_saved) then st#save_project in
+         let () = if (active_project) then st#close_project in
+         (* --- *)
+         try st#open_project_async filename
          with e -> ((Simple_dialogs.error (s_ "Open a project") ((s_ "Failed to open the file ")^filename) ()); raise e)
-        end in
-      if (st#active_project) && ((r#get "save_current")="yes")
-      then
-        (st#save_project;
-         Task_runner.the_task_runner#schedule ~name:"open_project" actions)
-      else
-       (actions ())
+      in
+      (* --- *)
+      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.open_project" actions *)
+      let _ = Thread.create (actions) () in
+      ()
+      (* --- *)
      end
 
   end) (F)
+(* --- *)
 let project_open = Created_entry_project_open.item
 
-
+(* --- *)
 let project_save =
   add_stock_item (s_ "Save" )
     ~stock:`SAVE
@@ -155,56 +162,88 @@ let project_save =
         else st#save_project)
     ()
 
-module Created_entry_project_save_as = Menu_factory.Make_entry
- (struct
+(* --- *)
+module Created_entry_project_save_as = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
    let text  = (s_ "Save as" )
    let stock = `SAVE_AS
    let key   = None
 
+   (* --- *)
    let dialog () =
      EDialog.ask_for_fresh_writable_filename
        ~title:(s_ "Save as" )
        ~filter_names:[`MAR; `ALL]
        ~help:(Some Msg.help_nom_pour_le_projet) ()
 
+   (* --- *)
    let reaction r =
-     if st#is_there_something_on_or_sleeping () then Msg.error_saving_while_something_up () else
-     let filename = Talking.check_filename_validity_and_add_extension_if_needed ~extension:"mar" (r#get "filename") in
-     try
-      let () = st#save_project_as ~filename () in ()
-     with _ -> (Simple_dialogs.error (s_ "Save project as") ((s_ "Failed to save the project into the file ")^filename) ())
+     let active_project = st#active_project in
+     if not active_project then () else (* continue: *)
+     begin
+       (* --- *)
+       if st#is_there_something_on_or_sleeping () then Msg.error_saving_while_something_up () else (* continue: *)
+       (* --- *)
+       let filename = Talking.check_filename_validity_and_add_extension_if_needed ~extension:"mar" (r#get "filename") in
+       (* --- *)
+       let actions () =
+         let () = Log.printf "About to react to Gui_menubar_MARIONNET.save_as_project\n" in
+         try st#save_project_as ~filename ()
+         with _ -> (Simple_dialogs.error (s_ "Save project as") ((s_ "Failed to save the project into the file ")^filename) ())
+       in
+       (* --- *)
+       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.save_as_project" actions *)
+       let _ = Thread.create (actions) () in
+       ()
+       (* --- *)
+     end
 
   end) (F)
+(* --- *)
 let project_save_as = Created_entry_project_save_as.item
 
-
-module Created_entry_project_copy_to = Menu_factory.Make_entry
- (struct
+(* --- *)
+module Created_entry_project_copy_to = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
    let text  = (s_ "Copy to" )
    let stock = `SAVE_AS
    let key   = None
 
+   (* --- *)
    let dialog () =
      EDialog.ask_for_fresh_writable_filename
        ~title:(s_ "Copy to" )
        ~filter_names:[`MAR; `ALL]
        ~help:(Some Msg.help_nom_pour_le_projet) ()
 
+   (* --- *)
    let reaction r =
-     if st#is_there_something_on_or_sleeping () then Msg.error_saving_while_something_up () else
-     let filename = Talking.check_filename_validity_and_add_extension_if_needed ~extension:"mar" (r#get "filename") in
-     try
-       let () = st#copy_project_into ~filename () in ()
-     with _ -> (Simple_dialogs.error (s_ "Project copy to" ) ((s_ "Failed to copy the project into the file ")^filename) ())
+     let active_project = st#active_project in
+     if not active_project then () else (* continue: *)
+     begin
+       (* --- *)
+       if st#is_there_something_on_or_sleeping () then Msg.error_saving_while_something_up () else (* continue: *)
+       (* --- *)
+       let filename = Talking.check_filename_validity_and_add_extension_if_needed ~extension:"mar" (r#get "filename") in
+       let actions () =
+         let () = Log.printf "About to react to Gui_menubar_MARIONNET.copy_to_project\n" in
+         try st#copy_project_into ~filename ()
+         with _ -> (Simple_dialogs.error (s_ "Project copy to" ) ((s_ "Failed to copy the project into the file ")^filename) ())
+       in
+       (* --- *)
+       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.copy_to_project" actions *)
+       let _ = Thread.create (actions) () in
+       ()
+       (* --- *)
+     end
 
   end) (F)
+(* --- *)
 let project_copy_to = Created_entry_project_copy_to.item
 
-
+(* --- *)
 module Created_entry_project_close = Menu_factory.Make_entry
  (struct
    type t = env
@@ -213,27 +252,37 @@ module Created_entry_project_close = Menu_factory.Make_entry
    let stock = `CLOSE
    let key   = (Some _W)
 
+   (* --- *)
    let dialog () =
      EDialog.ask_question ~help:None ~cancel:true
        ~title:(s_ "Close" )
        ~question:(s_ "Do you want to save the current project?") ()
 
-   let reaction r = begin
-    st#shutdown_everything ();
-    let () =
-      if (st#active_project) && ((r#get "answer") = "yes")
-        then st#save_project
-        else ()
-    in
-    st#close_project;
-    end
+   (* --- *)
+   let reaction r =
+     begin
+      let must_be_saved  = ((r#get "answer")="yes") in
+      (* --- *)
+      let actions () =
+         let () = Log.printf "About to react to Gui_menubar_MARIONNET.close_project\n" in
+         let active_project = st#active_project in
+         let () = if (active_project) then st#shutdown_everything () in
+         let () = if (active_project) && (must_be_saved) then st#save_project in
+         st#close_project
+      in
+      (* --- *)
+      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.close_project" actions *)
+      let _ = Thread.create (actions) () in
+      ()
+      (* --- *)
+     end
 
   end) (F)
 let project_close = Created_entry_project_close.item
 
-
+(* --- *)
 let separator       = project#add_separator ()
-
+(* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (*  *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *)
 module Created_entry_project_export = Menu_factory.Make_entry
  (struct
    type t = env

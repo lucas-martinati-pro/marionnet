@@ -1,7 +1,7 @@
 open Ocamlbricks
 
-module Recursive_mutex : MutexExtra.Extended_signature
-  with type t = MutexExtra.Recursive.t
+(*module Recursive_mutex : MutexExtra.Extended_signature
+  with type t = MutexExtra.Recursive.t*)
 
 module Refresh_sketch_thunk : sig  type t = unit -> unit  val set : t -> unit  end
 val refresh_sketch : unit -> unit

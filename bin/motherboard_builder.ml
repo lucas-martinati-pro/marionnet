@@ -74,6 +74,7 @@ module Make (S : sig val st:State.globalState end) = struct
     (* --- *)
     Cortex.group_pair
       ~on_commit:(fun (_,_) (filename, nodes) -> (* previous and commited state *)
+        GMain_actor.delegate (fun () -> begin
         (* Convenient aliases: *)
         let wa = (S.st#sensitive_when_Active) in
         let wr = (S.st#sensitive_when_Runnable) in
@@ -82,7 +83,7 @@ module Make (S : sig val st:State.globalState end) = struct
         let active   = (filename <> None) in
         let runnable = active && (not (Queue.is_empty nodes)) in
         let () =
-          Log.printf2 "update_project_state_sensitiveness: state project is: active=%b runnable=%b\n"
+          Log.printf2 "Motherboard_builder: update_project_state_sensitiveness: state project is: active=%b runnable=%b\n"
             (active) (runnable)
         in
         match active, runnable with
@@ -100,11 +101,12 @@ module Make (S : sig val st:State.globalState end) = struct
             StackExtra.iter (set_sensitive_with_opacity)   (wa);
             StackExtra.iter (set_sensitive_with_opacity)   (wr);
             StackExtra.iter (unset_sensitive_with_opacity) (wn);
+        (* --- *)
+        end) ()
         ) (* end of ~on_commit *)
       (* --- *)
       (S.st#project_paths#filename)  (*  first member of the group *)
       (S.st#network#nodes)           (* second member of the group *)
-
 
 
   (* Reactive setting: S.st#network#nodes -> cable's menu sensitiveness.
@@ -115,12 +117,14 @@ module Make (S : sig val st:State.globalState end) = struct
        This kind of code (on_commit) is outside a critical section,
        so we can comfortably re-call S.st#network methods: *)
     let reaction _ _ =
-         let () = Log.printf1 "update_cable_menu_entries_sensitiveness: updating %d widgets\n"
+      GMain_actor.delegate (fun () -> begin
+         let () = Log.printf1 "Motherboard_builder: update_cable_menu_entries_sensitiveness: updating %d widgets\n"
            (StackExtra.length S.st#sensitive_cable_menu_entries)
          in
          let condition = S.st#network#are_there_almost_2_free_endpoints in
          (*(StackExtra.iter (fun x->x#misc#set_sensitive condition) S.st#sensitive_cable_menu_entries)*)
          (StackExtra.iter (fun x->conditional_sensitive_with_opacity condition x) S.st#sensitive_cable_menu_entries)
+         end) ()
     in
     let _ = Cortex.on_commit_append (S.st#network#nodes)  (reaction) in
     let _ = Cortex.on_commit_append (S.st#network#cables) (reaction) in
@@ -128,12 +132,14 @@ module Make (S : sig val st:State.globalState end) = struct
 
   (* Called in marionnet.ml before entering the main loop: *)
   let sensitive_widgets_initializer () =
-    let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Active)   in
-    let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Runnable) in
-    let () = StackExtra.iter (set_sensitive_with_opacity)   (S.st#sensitive_when_NoActive) in
-    (* --- *)
-    let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_cable_menu_entries) in
-    ()
+    GMain_actor.delegate (fun () -> begin
+      let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Active)   in
+      let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Runnable) in
+      let () = StackExtra.iter (set_sensitive_with_opacity)   (S.st#sensitive_when_NoActive) in
+      (* --- *)
+      let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_cable_menu_entries) in
+      ()
+    end) ()
 
   (* ----------------------------------------
                Reactive sketch

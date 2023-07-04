@@ -1351,23 +1351,30 @@ class network
  method reset ?(scheduled=false) () =
   begin
    Log.printf "---\n";
-   Log.printf "network#reset: begin\n\tDestroying all cables...\n";
+   Log.printf "network#reset: BEGIN\n";
+   Log.printf "network#reset: Destroying all cables...\n";
    (List.iter
       (fun cable -> try cable#destroy with _ -> ())
       self#get_cable_list);
-   Log.printf "\tDestroying all nodes (machines, switchs, hubs, routers, etc)...\n";
+   Log.printf "network#reset: Destroying all nodes (machines, switchs, hubs, routers, etc)...\n";
    (List.iter
       (fun node -> try node#destroy with _ -> ())
       (self#get_node_list));
-   Log.printf "\tSynchronously wait that everything terminates...\n";
-   (if not scheduled then Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks);
-   Log.printf "\tMaking the network graph empty...\n";
+   Log.printf "network#reset: Synchronously wait that everything terminates...\n";
+   (* --- *)
+   let () =
+     if (not scheduled) && (not (GMain_actor.am_I_the_GTK_main_thread ())) then
+       Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks
+   in
+   (* --- *)
+   Log.printf "network#reset: Making the network graph empty...\n";
    (self#set_node_list  []);
    (self#set_cable_list []);
-   Log.printf "\tWait for all devices to terminate...\n";
+   Log.printf "network#reset: Wait for all devices to terminate...\n";
    (** Make sure that all devices have actually been terminated before going
        on: we don't want them to lose filesystem access: *)
-   Log.printf "\tAll devices did terminate.\nnetwork#reset: end (success)\n---\n";
+   Log.printf "network#reset: All devices did terminate.\n";
+   Log.printf "network#reset: END. Success.\n---\n";
   end
 
  method destroy_process_before_quitting () =
