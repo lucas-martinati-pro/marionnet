@@ -748,7 +748,7 @@ function echo_required_debian_packages {
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
    coreutils findutils login procps gettext \
-   fonts-noto \
+   fonts-noto elementary-xfce-icon-theme \
    rlfe; # alternatives are rlwrap and ledit
    do
    if ! is_package_installed $i; then

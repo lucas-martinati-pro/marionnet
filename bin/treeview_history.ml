@@ -135,6 +135,7 @@ object(self)
 	() in
     self#highlight_row row_id
 
+  (* 2023/07/04: Added some logging messages after observing a rare deadlock (may be already fixed): *)
   method remove_device_tree (device_name) = begin
     let () = Log.printf1 "Treeview_history.t#remove_device_tree(\"%s\"): HERE0" (device_name) in
     let states_directory = (self#directory) in

@@ -109,7 +109,7 @@ class task_runner = object(self)
 
   (** Wait that all tasks which are currently scheduled terminate, synchronously.
       In the mean time more tasks can be scheduled as usual. *)
-  method wait_for_all_currently_scheduled_tasks =
+  method wait_for_all_currently_scheduled_tasks = begin
     let () = if GMain_actor.am_I_the_GTK_main_thread () then
       Log.printf "task_runner#wait_for_all_currently_scheduled_tasks: WARNING: the waiting thread should not be the GTK main thread\n"
     in
@@ -119,6 +119,7 @@ class task_runner = object(self)
     Log.printf "Waiting for all currently enqueued tasks to terminate...\n";
     let () = dummy_queue#dequeue in
     Log.printf "...all right, we have been signaled: tasks did terminate.\n";
+    end
 
   (* --- *)
   method schedule_parallel (names_and_thunks : (string * thunk) list) =
@@ -126,26 +127,26 @@ class task_runner = object(self)
       List.fold_left
         (fun s name -> s ^ name ^ " || ")
         "In parallel: "
-        (List.map (fun (name, _) -> name) names_and_thunks) in
+        (List.map (fun (name, _) -> name) names_and_thunks)
+    in
     let parallel_task_thunk =
       fun () ->
         let threads =
           List.map
             (fun (name, thunk) -> name, Thread.create thunk ())
-            names_and_thunks in
-        List.iter
-          (fun (name, thread) ->
-            Log.printf1 "Joining \"%s\"...\n" name;
-            (try
+            names_and_thunks
+        in
+        threads |> List.iter (fun (name, thread) ->
+           Log.printf1 "Joining \"%s\"...\n" name;
+           (try
               Thread.join thread;
             with e -> begin
-              Log.printf1
-                "!!!!!!!!!!!!!!! This should not happen: join failed (%s)\n"
-                (Printexc.to_string e);
+              Log.printf1 "!!!!!!!!!!!!!!! This should not happen: join failed (%s)\n" (Printexc.to_string e);
             end);
-            Log.printf1 "I have joined \"%s\" with success\n" name;)
-          threads in
-(*     self#schedule ~name:parallel_task_name parallel_task_thunk *)
+           Log.printf1 "I have joined \"%s\" with success\n" name;
+           )
+    in
+    (*  self#schedule ~name:parallel_task_name parallel_task_thunk *)
     self#prepend ~name:parallel_task_name parallel_task_thunk
 
   (** A user-friendly way to schedule a set of tasks with a dependency graph.

@@ -338,7 +338,7 @@ class globalState = fun () ->
       (* Update the network sketch (now empty): *)
       let () = self#mainwin#sketch#set_file "" in
       (* --- *)
-      (*(*(*(*let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in*)*)*)*)
+      let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
       (* --- *)
       let () = self#project_paths#reset_and_remove_the_project_working_directory in
       (* Clear all treeviews, just in case. *)
