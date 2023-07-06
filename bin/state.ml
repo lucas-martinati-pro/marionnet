@@ -543,10 +543,15 @@ class globalState = fun () ->
     end
 
   (* Interface: *)
-  method open_project_async ~filename =
+  (* NOTE: if the thread is not the gtk_main we don't create another thread: *)
+  method open_project_async ~filename : Thread.t =
     if GMain_actor.am_I_the_GTK_main_thread ()
-    then Thread.create (self#private_open_project_async ~filename) () |> ignore
-    else (self#private_open_project_async ~filename ())
+    then Thread.create (self#private_open_project_async ~filename) ()
+    else (let () = self#private_open_project_async ~filename () in Thread.self ())
+
+  (* Second version: create a new thread anyway: *)
+  method open_project_async_anyway ~filename : Thread.t =
+    Thread.create (self#private_open_project_async ~filename) ()
 
 
   (*** BEGIN: this part of code tries to understand if the project must be really saved before exiting. *)

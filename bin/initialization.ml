@@ -62,6 +62,7 @@ let option_debug  = Argv.register_unit_option "d" ~aliases:["-debug"]   ~doc:"ac
 let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash message and exit" () ;;
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
 let option_paths  = Argv.register_unit_option "-paths"  ~doc:"print paths (filesystems, kernels, ..) and exit" () ;;
+let option_r      = Argv.register_unit_option "r" ~aliases:["-run"] ~doc:"immediately run the specified project (if any)" () ;;
 let () = Argv.register_h_option_as_help () ;;
 
 (* Registering arguments: *)

@@ -53,6 +53,8 @@ let st = new State.globalState ()
     visible from many modules: *)
 let () = Sketch.Refresh_sketch_thunk.set (fun () -> st#refresh_sketch)
 
+(* State is not anymore state.ml but a simple module containing the reference the global state object.
+   This module will be used as argument of some functors below in this source file: *)
 module State = struct let st = st end
 
 (* Complete the main menu *)
@@ -376,7 +378,13 @@ let () =
 	    filename
 	in
 	try
-	  st#open_project_async ~filename
+	  let _t : Thread.t = st#open_project_async ~filename in
+	  (* --- *)
+	  if !Initialization.option_r = None then () else (* continue: *) begin
+  	    let _ = GMain.Timeout.add ~ms:1000 (* 1 second *) ~callback:(fun () ->
+	      if st#active_project then (Thread.delay 0.1; st#startup_everything (); false) else true)
+	    in ()
+	    end
 	with
 	  _ ->
 	  begin

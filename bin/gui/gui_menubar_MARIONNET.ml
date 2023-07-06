@@ -281,8 +281,9 @@ module Created_entry_project_close = Menu_factory.Make_entry
 let project_close = Created_entry_project_close.item
 
 (* --- *)
-let separator       = project#add_separator ()
-(* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (* (*  *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *) *)
+let separator = project#add_separator ()
+
+(* --- *)
 module Created_entry_project_export = Menu_factory.Make_entry
  (struct
    type t = env
@@ -332,7 +333,7 @@ module Created_entry_project_export = Menu_factory.Make_entry
   end) (F)
 let project_export = Created_entry_project_export.item
 
-
+(* --- *)
 module Created_entry_project_quit = Menu_factory.Make_entry
  (struct
    type t = env
@@ -349,24 +350,33 @@ module Created_entry_project_quit = Menu_factory.Make_entry
            ~question:(s_ "Do you want to save\nthe current project before quitting?")
            ()
 
+   (* --- *)
    let reaction r =
     (* At this point the user really wants to quit the application. *)
-    let save = (st#active_project) && ((r#get "answer") = "yes") in
-    (match st#is_there_something_on_or_sleeping (), save with
-     | true, true  ->
-         st#shutdown_everything ();
-         st#save_project;
-     | true, false ->
-         st#poweroff_everything ();
-     | false, true ->
-         st#save_project;
-     | false, false -> ()
-     );
-    Log.printf "Killing the death monitor thread...\n";
-    Death_monitor.stop_polling_loop ();
-    st#network#destroy_process_before_quitting ();
-    st#close_project;
-    st#quit_async ()
+    let must_be_saved = (st#active_project) && ((r#get "answer") = "yes") in
+    (* --- *)
+    let () =
+      match st#is_there_something_on_or_sleeping (), must_be_saved with
+      | true, true  -> begin
+          st#shutdown_everything ();
+          st#save_project;
+          end
+      | true, false -> begin
+          st#poweroff_everything ();
+          end
+      | false, true -> begin
+          st#save_project;
+          end
+      | false, false -> ()
+    in
+    (* --- *)
+    begin
+      Log.printf "Killing the death monitor thread...\n";
+      Death_monitor.stop_polling_loop ();
+      st#network#destroy_process_before_quitting ();
+      st#close_project;
+      st#quit_async ();
+    end
 
   end) (F)
 let project_quit = Created_entry_project_quit.item
@@ -376,8 +386,10 @@ let project_quit = Created_entry_project_quit.item
                 Menu "Options"
  * **************************************** *)
 
+(* --- *)
 let options = add_menu (s_ "_Options")
 
+(* --- *)
 module Created_entry_options_cwd = Menu_factory.Make_entry
  (struct
    type t = env
@@ -394,8 +406,11 @@ module Created_entry_options_cwd = Menu_factory.Make_entry
      let realpath = Option.extract (UnixExtra.realpath pathname) in
      st#project_paths#set_temporary_directory (realpath)
   end) (F)
+(* --- *)
 let options_cwd = Created_entry_options_cwd.item
 
+(* --- *)
+(* Hidden to user in this version. *)
 let options_autogenerate_ip_addresses =
  add_check_item (s_ "Auto-generation of IP address" )
   ~active:Global_options.autogenerate_ip_addresses_default
@@ -403,7 +418,10 @@ let options_autogenerate_ip_addresses =
          Log.printf "You toggled the option (IP)\n";
          Global_options.set_autogenerate_ip_addresses active)
    ()
+(* --- *)
+let () = options_autogenerate_ip_addresses#coerce#misc#hide ()
 
+(* --- *)
 let options_debug_mode =
  add_check_item (s_ "Debug mode")
   ~active:(Global_options.Debug_level.are_we_debugging ())
@@ -413,6 +431,7 @@ let options_debug_mode =
          Global_options.Debug_level.set level)
  ()
 
+(* --- *)
 let options_keep_all_snapshots_when_saving =
  add_check_item (s_ "Keep all snapshots when saving (not only the most recent ones)")
   ~active:(Global_options.Keep_all_snapshots_when_saving.extract ())
@@ -421,7 +440,8 @@ let options_keep_all_snapshots_when_saving =
          Global_options.Keep_all_snapshots_when_saving.set active)
  ()
 
-(** Hidden to user in this version. *)
+(* --- *)
+(* Hidden to user in this version. *)
 let workaround_wirefilter_problem =
  add_check_item "Workaround wirefilter problem"
   ~active:Global_options.workaround_wirefilter_problem_default
@@ -429,7 +449,7 @@ let workaround_wirefilter_problem =
          Log.printf "You toggled the option (wirefilter)\n";
          Global_options.set_workaround_wirefilter_problem active)
  ()
-
+(* --- *)
 let () = workaround_wirefilter_problem#coerce#misc#hide ()
 
 (* **************************************** *
