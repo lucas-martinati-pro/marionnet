@@ -744,7 +744,7 @@ function echo_required_debian_packages {
  # ---
  # NOTE: `fonts-noto' provides some unicode characters used in the Marionnet GUI
  for i in \
-   bzr opam liblablgtk3-ocaml-dev camlp4-extra glade libgtksourceview-3.0-dev \
+   bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
    coreutils findutils login procps gettext \
@@ -784,7 +784,11 @@ function echo_required_debian_packages {
 
  # In Ubuntu >= 16, add overlay-scrollbar-gtk2
  if are_we_in_ubuntu_version_or_greater "16"; then
-    if ! is_package_installed "overlay-scrollbar "; then LIST+="overlay-scrollbar "; fi
+    if ! is_package_installed "overlay-scrollbar"; then LIST+="overlay-scrollbar "; fi
+    if ! is_package_installed "camlp4";            then LIST+="camlp4 "; fi
+ else
+    # `camlp4' corresponds to `camlp4-extra' in Debian 11:
+    if ! is_package_installed "camlp4-extra";     then LIST+="camlp4-extra "; fi
  fi
 
  # Return the list:
@@ -961,7 +965,12 @@ if are_we_in_debian_or_derived; then
 fi # are_we_in_debian_or_derived
 
 # ---
-launch_and_log "Downloading marionnet" download_marionnet_trunk 22400
+if [[ $MARIONNET_SERIES = "trunk" ]]; then
+  launch_and_log "Downloading marionnet" download_marionnet_trunk 22400
+else
+  launch_and_log "Downloading marionnet" download_latest_marionnet 22400
+fi
+
 
 # =============================================================
 #              MARIONNET (with OCAMLBRICKS)
@@ -984,7 +993,7 @@ sed -i -e "s@^prefix=.*@prefix=$PREFIX@" ./CONFIGME
 # EOF
 
 # ---
-OPAM_INIT_COMMAND='opam init -y && eval $(opam env)'
+OPAM_INIT_COMMAND='opam init -y'
 WEIGHT=2780
 # ---
 launch_and_log \
@@ -995,7 +1004,7 @@ launch_and_log \
 eval $(opam env)
 
 # ---
-MARIONNET_MAKE_COMMAND='make configure switch rebuild'
+MARIONNET_MAKE_COMMAND='eval $(opam env) && make configure switch rebuild'
 WEIGHT=2780
 # ---
 launch_and_log \
