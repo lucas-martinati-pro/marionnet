@@ -17,10 +17,18 @@
 
 (library
   (name ocamlbricks)
+  ;; (public_name ocamlbricks)
   (preprocess (action (run camlp4of -I ../../../../_build/ %{read-lines:camlp4of-flags.cfg} %{input-file})))
   (libraries str unix threads inotify lablgtk3)
   ;;(library_flags -linkall -cclib -locamlbricks_stubs)
-
+  ;; ---
+  (foreign_stubs
+    (language c)
+    (names gettext-c-wrapper waitpid-c-wrapper does-process-exist-c-wrapper)
+    ;;(flags -I/blah/include)
+    )
+  ;;(c_library_flags (-lblah))
+  ;; ---
   ;; ---
   ;; --- Do not compile preprocessor with dune:
   ;; ---

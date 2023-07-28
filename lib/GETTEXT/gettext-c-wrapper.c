@@ -62,8 +62,8 @@ CAMLprim value initialize_gettext_primitive(value text_domain, value locales_dir
   char *text_domain_as_a_c_string = Bytes_val(text_domain);
   char *locales_directory_as_a_c_string = Bytes_val(locales_directory);
 #else
-  char *text_domain_as_a_c_string = String_val(text_domain);
-  char *locales_directory_as_a_c_string = String_val(locales_directory);
+  const char *text_domain_as_a_c_string = String_val(text_domain);
+  const char *locales_directory_as_a_c_string = String_val(locales_directory);
 #endif
 
   /* Do the actual work: */
@@ -93,8 +93,8 @@ CAMLprim value dgettext_primitive(value text_domain_as_an_ocaml_string,
   char *text_domain_as_a_c_string = Bytes_val(text_domain_as_an_ocaml_string);
   char *english_text_as_a_c_string = Bytes_val(english_text_as_an_ocaml_string);
 #else
-  char *text_domain_as_a_c_string = String_val(text_domain_as_an_ocaml_string);
-  char *english_text_as_a_c_string = String_val(english_text_as_an_ocaml_string);
+  const char *text_domain_as_a_c_string = String_val(text_domain_as_an_ocaml_string);
+  const char *english_text_as_a_c_string = String_val(english_text_as_an_ocaml_string);
 #endif
 
   /* Do the actual work, obtaining a C string (which may be overwritten by the next

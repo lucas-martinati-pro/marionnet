@@ -107,12 +107,12 @@ install-final-as-root:
 	echo '#!/bin/bash' > $(TMPSCRIPT)
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
-	echo "for i in $(wildcard $(SHARE_DIR)/scripts/*); do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
+	echo "for i in $(SHARE_DIR)/scripts/*; do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
 	echo "make gettext-install-mo" >> $(TMPSCRIPT)
 	# ---
 	@chmod +x $(TMPSCRIPT)
 	@echo "---"
-	@echo "About to execute $(TMPSCRIPT) as superuser (root)"
+	@echo "About to execute $(TMPSCRIPT) as superuser (sudo)"
 	sudo $(TMPSCRIPT)
 	@echo "---"
 	sudo which $(EXECUTABLES)
