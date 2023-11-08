@@ -49,7 +49,7 @@ dependencies:
 # Just switch with opam to the correct version of OCaml:
 switch:
 	@echo "About to create or switch to the compatible OCaml compiler version $(OPAM_SWITCH_TO)"
-	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y || exit 3;
+	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y --verbose || exit 3;
 	@echo "About to verify or install \`opam' dependencies..."
 	@opam install -y $(OPAM_PACKAGES) || exit 4;
 	@echo '[WARNING] You should run: eval $$(opam env) to synchronize the environment with the current switch.'

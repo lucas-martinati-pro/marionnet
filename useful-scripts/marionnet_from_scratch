@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Script version: 0.98.2
-# 2023.07.06
+# Script version: 0.98.3
+# 2023.07.30
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
@@ -993,8 +993,8 @@ sed -i -e "s@^prefix=.*@prefix=$PREFIX@" ./CONFIGME
 # EOF
 
 # ---
-OPAM_INIT_COMMAND='opam init -y'
-WEIGHT=2780
+OPAM_INIT_COMMAND='opam init -y && eval $(opam env) && make configure switch'
+WEIGHT=27800
 # ---
 launch_and_log \
   "Compiling Ocaml with opam" \
@@ -1004,7 +1004,7 @@ launch_and_log \
 eval $(opam env)
 
 # ---
-MARIONNET_MAKE_COMMAND='eval $(opam env) && make configure switch rebuild'
+MARIONNET_MAKE_COMMAND='eval $(opam env) && make rebuild'
 WEIGHT=2780
 # ---
 launch_and_log \
@@ -1520,6 +1520,15 @@ if are_we_in_ubuntu_version_or_greater "11"; then
     append_line_if_needed "alias marionnet='UBUNTU_MENUPROXY=0 marionnet'" $DEST
   fi
 fi
+
+ # In Ubuntu >= 20, force Gtk to display images packed in buttons (as required by marionnet):
+ # Thanks to: https://askubuntu.com/users/906933/kanehekili
+ # Source: https://askubuntu.com/questions/1318002/why-are-all-button-and-menu-icons-gone
+ if are_we_in_ubuntu_version_or_greater "20"; then
+   if type -t gsettings 1>&2; then
+     gsettings set org.gnome.settings-daemon.plugins.xsettings overrides "{'Gtk/ButtonImages': <1>, 'Gtk/MenuImages': <1>}"
+   fi
+ fi
 
 function is_the_packaged_vde2_version_lt_2_3_0 {
  local VDE2_VERSION

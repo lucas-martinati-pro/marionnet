@@ -100,7 +100,7 @@ let () = begin
 let button_BASE_STARTUP_EVERYTHING =
   Gui_bricks.button_image ~label:(s_ "Start all") ~stock:`MEDIA_PLAY
     ~tooltip:(s_ "Start the virtual network (machines, switch, hub, etc) locally on this machine")
-    ~label_position:`BOTTOM ~stock_size:`DND ~packing:w#hbox_BASE#add ()
+    ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOMETHING) =
   let renewer =
@@ -126,12 +126,12 @@ let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOME
   Gui_bricks.button_image_popuping_a_menu ~label:(s_ "Suspend") ~stock:`MEDIA_PAUSE
     ~renewer
     ~tooltip:(s_ "Suspend the activity of a network component")
-    ~label_position:`BOTTOM ~stock_size:`DND ~packing:w#hbox_BASE#add ()
+    ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 let button_BASE_SHUTDOWN_EVERYTHING =
   Gui_bricks.button_image ~label:(s_ "Shutdown all") ~stock:`MEDIA_STOP
     ~tooltip:(s_ "Gracefully stop every element of the network")
-    ~label_position:`BOTTOM ~stock_size:`DND ~packing:w#hbox_BASE#add ()
+    ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 let button_BASE_POWEROFF_EVERYTHING =
   Gui_bricks.button_image ~label:(s_ "Power-off all")
