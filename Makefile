@@ -166,7 +166,7 @@ uninstall-for-testing:
 #                           edit
 # =============================================================
 
-EXCLUDE_FROM_EDITING=-o -name "meta.ml" -o -name "version.ml"
+EXCLUDE_FROM_EDITING=-o -name "meta.ml" -o -name "version.ml" -o -name "uml"
 INCLUDE_FOR_EDITING=-o -name "dune-project" -o -name "Makefile" -o -name "dune"
 
 # Edit all ml/mli files and other interesting source files with your $EDITOR

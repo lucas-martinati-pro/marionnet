@@ -57,7 +57,7 @@ module Const = struct
 
  let port_0_ipv4_config_default : Ipv4.config        = Initialization.router_port0_default_ipv4_config
  let port_0_ipv6_config_default : Ipv6.config option = Initialization.router_port0_default_ipv6_config
- let memory_default = 48
+ let memory_default = 128
 
  (* Unix-related configuration (not Quagga-related!) *)
  let initial_content_for_rcfiles_UNIX =
@@ -70,7 +70,7 @@ module Const = struct
 # Examples: (some values depend on your settings)
 # ---
 # hostname='R1'
-# mem='48M'
+# mem='128M'
 # virtualfs_kind='router'
 # virtualfs_name='router-guignol-45228'
 # mac_address_eth0='02:04:06:15:ad:0a'
