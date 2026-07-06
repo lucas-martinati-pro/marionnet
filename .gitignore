@@ -1,0 +1,60 @@
+# .gitignore — transposition de l'état « unknown » du dépôt bzr au moment de la
+# conversion bzr → git (2026-07-06). Retirer une ligne (ou ajouter un `!motif`)
+# suffit à rendre un fichier de nouveau visible pour `git add`.
+
+# --- Artefacts bzr (transition ; à retirer quand .bzr sera archivé/supprimé) ---
+# Motifs non ancrés : valent à tout niveau (couvrent aussi lib/.bzrignore*).
+.bzr/
+.bzrignore
+.bzrignore_backup
+
+# --- Sauvegardes : tout ce qui finit en .backup (fichier ou répertoire) ou .orig ---
+*.backup
+*.orig
+
+# ---
+**/NOTES
+**/NOTES-*
+**/NOTES*.md
+**/NOTES*.pdf
+**/NOTES*.html
+**/NOTES*.ts
+**/NOTES*.sql
+**/NOTES.*
+**/REPORT.*
+*.README
+
+# ---
+/limbo
+**/limbo.*
+**/BACKUP/
+**/ok.*.md
+
+# --- Fichiers générés (compilation des catalogues gettext) ---
+bin/po/*.mo
+
+# --- Gros artefacts locaux (VM, sources noyau téléchargées) ---
+uml/pupisto.kernel/_build.downloads/
+uml/pupisto.kernel/linux-3.2.64/
+
+# --- Notes, essais et scripts de travail locaux (jamais versionnés sous bzr) ---
+/.where_in_ml
+/marionnet.opam
+/push
+/push.git
+/status.sh
+bin/gui/icons_forge/
+lib/history.sh
+lib/modules.lst
+
+# --- useful-scripts/ : approche inverse — tout est ignoré SAUF les 7 fichiers
+#     versionnés listés ci-dessous. Attention : tout NOUVEAU fichier à versionner
+#     ici devra être ajouté en `!useful-scripts/...`.
+useful-scripts/*
+!useful-scripts/etc_init.d_marionnet-daemon
+!useful-scripts/make_marionnet_bytecode_revno
+!useful-scripts/marionnet_from_scratch
+!useful-scripts/marionnet_from_scratch.up-to-0.94.sh
+!useful-scripts/marionnet_from_scratch_weights_of_log
+!useful-scripts/prepare_bridge.sh
+!useful-scripts/which_ocamlbricks
