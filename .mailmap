@@ -1,0 +1,23 @@
+# .mailmap — normalisation d'affichage des identités héritées de l'historique bzr
+# (conversion bzr → git, 2026-07-06). N'altère PAS l'historique : git l'applique
+# à l'affichage (log, shortlog, blame). Format : Nom Canonique <email-canonique> <email-historique>
+
+# Jean-Vincent Loddo — adresses de machines locales et alias historiques
+Jean-Vincent Loddo <loddo@lipn.univ-paris13.fr> <jean@optimum>
+Jean-Vincent Loddo <loddo@lipn.univ-paris13.fr> <jean@factotum>
+Jean-Vincent Loddo <loddo@lipn.univ-paris13.fr> <jean@laptop>
+Jean-Vincent Loddo <loddo@lipn.univ-paris13.fr> <jean@loggia>
+Jean-Vincent Loddo <loddo@lipn.univ-paris13.fr> <jean-vincent.loddo@match773.org>
+
+# Luca Saiu — unifier sur l'adresse GNU (stable)
+Luca Saiu <positron@gnu.org> <saiu@lipn.univ-paris13.fr>
+
+# Contributeurs identifiés par email seul (noms d'après AUTHORS/THANKS, ou confirmés par Jean)
+Jonathan Roudiere <roudiere@lipn.univ-paris13.fr> <roudiere@lipn.univ-paris13.fr>
+Franck Butelle <franck.butelle@lipn.univ-paris13.fr> <franck.butelle@lipn.univ-paris13.fr>
+Marco Stronati <youfind.marco@gmail.com> <youfind.marco@gmail.com>
+# Lucas Nussbaum (DPL 2013-2015) : le champ email hérité de bzr était invalide (« Lucas Nussbaum »)
+Lucas Nussbaum <lucas@debian.org> <Lucas Nussbaum>
+
+# Identité restante, laissée telle quelle :
+#   Launchpad Code Hosting <codehost@crowberry> (3 commits) — fusions automatiques Launchpad
