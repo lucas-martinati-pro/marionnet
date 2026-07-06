@@ -37,11 +37,15 @@ bin/po/*.mo
 uml/pupisto.kernel/_build.downloads/
 uml/pupisto.kernel/linux-3.2.64/
 
+# --- Outillage Claude Code : journal de dérive des index (généré par hook) ---
+.claude/stale.log
+.claude/settings.local.json
+
 # --- Notes, essais et scripts de travail locaux (jamais versionnés sous bzr) ---
 /.where_in_ml
 /marionnet.opam
 /push
-/push.git
+/push-git.sh
 /status.sh
 bin/gui/icons_forge/
 lib/history.sh
