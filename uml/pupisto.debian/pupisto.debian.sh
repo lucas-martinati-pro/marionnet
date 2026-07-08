@@ -212,7 +212,7 @@ $ ${0##*/} -k ${DEFAULT_KERNEL_VERSION} --custom -t ${DEFAULT_FSTYPE} -r ${DEFAU
 
 # Defaults:
 
-DEFAULT_RELEASE="stretch"
+DEFAULT_RELEASE="trixie"
 DEFAULT_ARCH="amd64" # previously i386
 DEFAULT_SERVER="http://ftp.debian.org/debian/"
 
@@ -282,8 +282,8 @@ if [[ -n ${option_c} ]]; then
 fi
 
 # TODO:
-if [[ ! $RELEASE = "wheezy" && ! $RELEASE = "stretch" ]]; then
-  echo "Sorry, currently only \`wheezy' and \`stretch' are supported by this script. Exiting."
+if [[ ! $RELEASE = "wheezy" && ! $RELEASE = "stretch" && ! $RELEASE = "trixie" ]]; then
+  echo "Sorry, currently only \`wheezy', \`stretch' and \`trixie' are supported by this script. Exiting."
   exit 1
 fi
 
@@ -377,7 +377,10 @@ function launch_debootstrap_and_then_apt_get_install {
  # global DEBIAN_FRONTEND RELEASE DEBIANROOT HTTP_SERVER INSTALL_LOCALES (input)
  # global INCLUDED_PACKAGES (output)
  local ROOT=${1:-$DEBIANROOT}
- local MANDATORY_PACKAGES="makedev realpath tcpdump openssh-server traceroute"
+ # Note: `makedev' (removed after buster) and `realpath' (absorbed by `coreutils'
+ # since jessie) no longer exist as packages in modern Debian; including them would
+ # break apt-get on trixie.
+ local MANDATORY_PACKAGES="tcpdump openssh-server traceroute"
  local SELECTION=$PUPISTO_FILES/package_catalog/package_catalog.$RELEASE.selection
  # ---
  if [[ $INSTALL_LINUXLOGO = y ]]; then
@@ -403,7 +406,7 @@ function launch_debootstrap_and_then_apt_get_install {
  sudo -v -p "[sudo] password for %u (required for chroot/mount actions): "
 
  # --- Launch debootstrap:
- if once --register-anyway sudo debootstrap --no-check-gpg --arch=${ARCH} --include="aptitude" $EXCLUDE $RELEASE ${ROOT} ${HTTP_SERVER}; then
+ if once --register-anyway sudo debootstrap --arch=${ARCH} --include="aptitude" $EXCLUDE $RELEASE ${ROOT} ${HTTP_SERVER}; then
    echo "Ok, \`debootstrap' managed the installation of the basic set of packages"
  else
    echo "Error: something goes wrong installing the basic set of packages with \`debootstrap'"
@@ -444,7 +447,16 @@ function fix_apt_sources_update_and_upgrade {
  # global DEBIANROOT HTTP_SERVER RELEASE
  local ROOT=${1:-$DEBIANROOT}
  local TARGET=$ROOT/etc/apt/sources.list
- sudo_fprintf $TARGET "%s\n%s\n" "deb $HTTP_SERVER $RELEASE main" "deb http://security.debian.org/ $RELEASE/updates main"
+ # Security suite: modern releases (bullseye+) use `<release>-security' on the
+ # debian-security host; legacy releases used `<release>/updates'.
+ local SECURITY_LINE
+ case $RELEASE in
+   trixie|bookworm|bullseye)
+     SECURITY_LINE="deb http://security.debian.org/debian-security $RELEASE-security main";;
+   *)
+     SECURITY_LINE="deb http://security.debian.org/ $RELEASE/updates main";;
+ esac
+ sudo_fprintf $TARGET "%s\n%s\n" "deb $HTTP_SERVER $RELEASE main" "$SECURITY_LINE"
  # Update:
  # sudo_careful_chroot ${ROOT} aptitude update
  sudo_careful_chroot ${ROOT} apt-get update

@@ -72,7 +72,8 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 Reprise : appliquer le skill `chantier-long`.
 - **finitions du port dune** : `docs/finitions-port-dune.md` ; mémoire `marionnet-finitions-dune` ;
   `git log --grep="marionnet-finitions-dune"`.
-- **noyaux + rootfs** (intégration Dave Appadoo, touche `uml/`) : `docs/kernel-rootfs-refresh.md` ;
+- **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
+  via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
