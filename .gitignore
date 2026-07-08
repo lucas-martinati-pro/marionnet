@@ -34,8 +34,8 @@
 bin/po/*.mo
 
 # --- Gros artefacts locaux (VM, sources noyau téléchargées) ---
-uml/pupisto.kernel/_build.downloads/
-uml/pupisto.kernel/linux-3.2.64/
+uml/pupisto.kernel/_build.*/
+uml/pupisto.kernel/linux-*/
 
 # --- Outillage Claude Code : journal de dérive des index (généré par hook) ---
 .claude/stale.log

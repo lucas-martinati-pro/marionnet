@@ -37,8 +37,16 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   ghost différée / systemd natif). Lecture de `pupisto.debian.sh` et `pupisto.kernel.sh`.
   Découverte que le passage systemd impose un **dispatch de boot OCaml** (compat SysV/systemd) —
   scope élargi hors `uml/`. Aucun code touché.
-
-## Journal d'avancement
-
-- **2026-07-08** — épisode 0 : chantier officialisé (fiche `marionnet-kernel-rootfs`, cette doc,
-  pointeur CLAUDE.md). Analyse de la livraison Dave archivée. Aucun code touché.
+- **2026-07-08** — épisode 1 (`58e4313`, `pupisto.debian.sh`) : plumbing Trixie
+  (DEFAULT_RELEASE, garde release, security suite `-security`, nettoyage MANDATORY_PACKAGES).
+  Reste : `package_catalog.trixie.selection`.
+- **2026-07-08** — épisode 2 (`pupisto.kernel.sh`, `uml/kernel/`) : **noyau UML 6.12.95 compile**.
+  Approche centrée sur le travail de Dave : sa `.config` (6.5.13, amd64, modulaire, systemd-ready)
+  versionnée en `uml/kernel/CONFIG-modern-base`, migrée vers 6.12 par `make olddefconfig ARCH=um`
+  via une nouvelle fonction `create_modern_kernel_config` (pas de fusion 2.6.18, pas de `=m→=y` :
+  modularité préservée, dont `mac80211_hwsim=m` pour vwifi). Corrigés en passant : `KERNEL_SUBDIR`
+  généralisé (`v6.x`), build amd64 parallèle (`make ARCH=um -j`, plus de `SUBARCH=i386`), et un
+  **bug préexistant** exposé par le renommage du dépôt — `get_our_marionnet_slash_uml_directory_path`
+  cherchait le littéral `/marionnet/uml/` dans `$PWD` (→ `/kernel`), désormais dérivé de
+  `${BASH_SOURCE[0]}`. Config compilant figé en `uml/kernel/CONFIG-6.12.95`. `.gitignore` :
+  globs `_build.*/` + `linux-*/`. **Boot NON encore validé** (test hôte, côté Jean).

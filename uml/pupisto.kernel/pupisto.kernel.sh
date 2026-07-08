@@ -243,19 +243,44 @@ function create_kernel_config_from {
 }
 
 
+# Usage: create_modern_kernel_config <BASE-CONFIG-FILE>
+#
+# Modern counterpart of create_kernel_config_from, for recent kernels (>= 5.x).
+# Seeds .config from a known-good recent UML config (BASE-CONFIG-FILE, typically
+# CONFIG-modern-base = Dave Appadoo's 6.5.13 amd64 modular config) and migrates it
+# to the current kernel tree with `olddefconfig' (non-interactive: new symbols take
+# their default, obsolete symbols are dropped, existing choices are kept).
+#
+# On purpose it does NOT merge the ancient 2.6.18 config and does NOT force every
+# =m into =y: the modular design is preserved (mac80211_hwsim=m for vwifi, systemd
+# loading modules on demand). Target is amd64, so no SUBARCH here.
+function create_modern_kernel_config {
+ local BASE_CONFIG_FILE=$1
+ [[ -f $BASE_CONFIG_FILE ]] || return 1
+ make mrproper
+ make mrproper ARCH=um
+ cp "$BASE_CONFIG_FILE" .config
+ # Migrate to the current tree, new options at their default, non-interactively:
+ make olddefconfig ARCH=um
+ echo "Ok, modern .config seeded from \`$BASE_CONFIG_FILE' and migrated with olddefconfig"
+}
+
+
 # ----------------
 # Compilig kernels
 # ----------------
 
-# For instance, if we call this function when we are (PWD) in
-# "/home/myrepos/marionnet/uml/pupisto/pupisto.sh.files/"
-# the result will be "/home/myrepos/marionnet/uml/"
-# This is useful to get files which location is known with
-# respect to this path (for instance kernel patches).
+# Return the marionnet .../uml/ directory, derived from THIS script's own
+# location (<repo>/uml/pupisto.kernel/pupisto.kernel.sh), i.e. two levels up.
+# This is robust to the name of the repository directory: historically
+# `marionnet', now e.g. `MARIONNET-dune-project' for the dune port. The former
+# PWD-based heuristic matched the literal string `/marionnet/uml/' and silently
+# returned an empty path (→ OUR_KERNEL_DIR=/kernel) after the rename.
 function get_our_marionnet_slash_uml_directory_path {
- # Global PWD
- local TRAILER=${PWD##*/marionnet/uml/}
- echo ${PWD%$TRAILER}
+ local script_dir
+ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ # script_dir = <repo>/uml/pupisto.kernel ; strip the last component → <repo>/uml
+ echo "${script_dir%/*}"
 }
 
 
@@ -285,10 +310,13 @@ local OUR_KERNEL_DIR=$(get_our_marionnet_slash_uml_directory_path)/kernel
 pushd "$TWDIR"
 
 # Download, uncompress and untar the kernel:
-local KERNEL_SUBDIR=${VERSION%.*}
-# Fix the kernel location:
-KERNEL_SUBDIR=${KERNEL_SUBDIR//3.*/3.x}
-KERNEL_SUBDIR=${KERNEL_SUBDIR//4.*/4.x}
+# The kernel.org tarball lives in a per-series subdir: v2.6/ for 2.6.x, and
+# v<major>.x/ for the >= 3 series (v3.x, v4.x, v5.x, v6.x…).
+local KERNEL_SUBDIR
+case $VERSION in
+  2.6.*) KERNEL_SUBDIR="2.6" ;;
+  *)     KERNEL_SUBDIR="${VERSION%%.*}.x" ;;
+esac
 
 # To save the tarball:
 mkdir -p $DOWNLOADS_DIRECTORY
@@ -326,10 +354,16 @@ if [[ -z $FOUND ]]; then
 fi
 
 # Copy or generate .config from our repository
+# Priority: (1) a frozen exact CONFIG-$VERSION (reproducible), (2) for modern
+# kernels (>= 5.x) the modern base seed migrated with olddefconfig, (3) the
+# historical 2.6.18 merge for the legacy 3.x series.
 FOUND=$OUR_KERNEL_DIR/CONFIG-$VERSION
 if [[ -f $FOUND ]]; then
   echo "Using pre-built config file found at $FOUND"
   cp $FOUND .config
+elif (( ${VERSION%%.*} >= 5 )) && [[ -f $OUR_KERNEL_DIR/CONFIG-modern-base ]]; then
+  echo "Config for $VERSION not frozen yet: seeding from CONFIG-modern-base and migrating with olddefconfig"
+  create_modern_kernel_config $OUR_KERNEL_DIR/CONFIG-modern-base
 elif [[ -f $OUR_KERNEL_DIR/older-versions/CONFIG-2.6.18 ]]; then
   echo "Config file for version $VERSION not found. We generate it from our older CONFIG-2.6.18"
   create_kernel_config_from $OUR_KERNEL_DIR/older-versions/CONFIG-2.6.18
@@ -359,11 +393,14 @@ fi
 # Exploit processors:
 local PROCESSOR_NO=$(\grep "^processor.*:" /proc/cpuinfo | sort | uniq | wc -l)
 
-# Launch the compilation process with the virtual `um' architecture (ARCH),
-# and with `i386' target host architecture (SUBARCH)
-# make -j $PROCESSOR_NO ARCH=um SUBARCH=i386
-make ARCH=um SUBARCH=i386
-# make ARCH=um # 64 bits!
+# Launch the compilation with the virtual `um' architecture (ARCH). Modern
+# kernels (>= 5.x) build 64-bit UML (amd64): ARCH=um with NO SUBARCH, in parallel.
+# The legacy 3.x series keeps the 32-bit `i386' host sub-architecture (SUBARCH).
+if (( ${VERSION%%.*} >= 5 )); then
+  make ARCH=um -j$PROCESSOR_NO
+else
+  make ARCH=um SUBARCH=i386
+fi
 
 cp -a linux linux-${VERSION}${GHOST_SUFFIX}-unstripped
 strip linux
