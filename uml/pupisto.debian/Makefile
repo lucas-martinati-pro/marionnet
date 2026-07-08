@@ -59,6 +59,28 @@ stretch-custom: dependencies
 stretch-edit:
 	$(EDITOR) pupisto.debian.sh.files/package_catalog/package_catalog.stretch.selection
 
+
+# =============================================================
+#                     Building `trixie'
+# =============================================================
+
+TRIXIE_KERNEL_VERSION=6.12.95
+TRIXIE_ARCH=amd64
+TRIXIE_FSTYPE=ext4
+
+trixie: dependencies
+	./pupisto.debian.sh --kernel $(TRIXIE_KERNEL_VERSION) -t $(TRIXIE_FSTYPE) -a $(TRIXIE_ARCH) -r trixie
+
+trixie-no-kernel: dependencies
+	./pupisto.debian.sh --kernel $(TRIXIE_KERNEL_VERSION) -t $(TRIXIE_FSTYPE) -a $(TRIXIE_ARCH) --no-kernel -r trixie
+
+trixie-custom: dependencies
+	@echo "./pupisto.debian.sh --kernel $(TRIXIE_KERNEL_VERSION) -t $(TRIXIE_FSTYPE) -a $(TRIXIE_ARCH) -r trixie --custom"
+	@echo "NOT IMPLEMENTED YET"
+
+trixie-edit:
+	$(EDITOR) pupisto.debian.sh.files/package_catalog/package_catalog.trixie.selection
+
 # =============================================================
 #                     Dependencies
 # =============================================================
@@ -89,7 +111,8 @@ clean:
 	sudo rm -rf _build.*
 
 help:
-	@echo "Usage: make stretch"
+	@echo "Usage: make trixie"
+	@echo "   or: make stretch"
 	@echo "   or: make wheezy"
 	@echo "   or: make dependencies"
 	@echo "   or: make clean"

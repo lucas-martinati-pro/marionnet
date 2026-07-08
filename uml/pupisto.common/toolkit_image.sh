@@ -62,6 +62,7 @@ function rename_with_sum_and_make_image_dot_conf {
      -e "s/^X11_SUPPORT=.*/X11_SUPPORT=\"$X11_SUPPORT\"/"  \
      -e "s/^MEMORY_MIN_SIZE=.*/MEMORY_MIN_SIZE=$MEMORY_MIN_SIZE/"        \
      -e "s/^MEMORY_SUGGESTED_SIZE=.*/MEMORY_SUGGESTED_SIZE=$MEMORY_SUGGESTED_SIZE/"        \
+     -e "s/^INIT_SYSTEM=.*/INIT_SYSTEM=${INIT_SYSTEM:-sysv}/"        \
      -i ${FS_LOC}.conf
 
  # Using `user_config_set' for replacements involving variables

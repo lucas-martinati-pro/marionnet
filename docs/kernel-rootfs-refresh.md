@@ -50,3 +50,16 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   cherchait le littéral `/marionnet/uml/` dans `$PWD` (→ `/kernel`), désormais dérivé de
   `${BASH_SOURCE[0]}`. Config compilant figé en `uml/kernel/CONFIG-6.12.95`. `.gitignore` :
   globs `_build.*/` + `linux-*/`. **Boot NON encore validé** (test hôte, côté Jean).
+- **2026-07-08** — épisode 3 (`pupisto.debian.sh`, `toolkit_image.sh`, `machine-template.conf`,
+  `pupisto.debian/Makefile`) : câblage 6.12 + **socle systemd**. Cible make `trixie` (amd64/ext4/6.12.95,
+  + `trixie-no-kernel`/`-custom`/`-edit`, `help`). `DEFAULT_KERNEL_VERSION` → 6.12.95 (make_or_link_the_kernel lie
+  `_build.linux-6.12.95*`). Marqueur `INIT_SYSTEM` (`sysv`/`systemd`) : champ du template `.conf`,
+  écrit par `toolkit_image.sh`, dérivé de la release (`case` : wheezy→sysv, sinon systemd) —
+  côté Marionnet, défaut `sysv` si absent (rétro-compat). `marionnet-relay` : **unité systemd
+  native** (`.service` oneshot `After=network.target`, wants-symlink offline) vs `update-rc.d`
+  (dispatch sur `INIT_SYSTEM`). Fonctions SysV rendues conditionnelles sous systemd :
+  `fix_etc_inittab` (getty géré par systemd via `console=`), `fix_reboot` (workaround 3.2.x
+  obsolète, casserait `systemctl`), `prevent_non_vital_services` (SysV `update-rc.d` — refonte
+  `systemctl disable` **TODO**). Vérif : `bash -n` OK + substitution marqueur testée. **Build/boot
+  NON testés** (debootstrap/sudo/réseau → côté Jean). RESTE : volet OCaml (disk.ml lit
+  `INIT_SYSTEM`, simulation_level dispatche) ; ethghost/ghostification ; `package_catalog.trixie`.
