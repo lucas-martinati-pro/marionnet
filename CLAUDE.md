@@ -23,7 +23,8 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 |---|---|---|
 | `bin/` | cœur applicatif (44 .ml) : modèle réseau à 2 niveaux + composants + daemon | `bin/CLAUDE.md` |
 | `bin/gui/` | complétion GTK (foncteurs `Make(State)`), glade | `bin/gui/CLAUDE.md` |
-| `lib/` | **ocamlbricks vendored** (bibliothèque support, 12 sous-dossiers) | `lib/CLAUDE.md` |
+| `lib/` | **ocamlbricks vendored** (bibliothèque support OCaml, 12 sous-dossiers) | `lib/CLAUDE.md` |
+| `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
 | `useful-scripts/` | scripts d'exploitation/release (7 versionnés, le reste ignoré) | — |
