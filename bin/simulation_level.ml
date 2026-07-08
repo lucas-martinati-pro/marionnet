@@ -821,6 +821,7 @@ let predict_ipv6_link_local_address_of (tap) : string =
 class uml_process =
   fun ~(kernel_file_name)
       ?(kernel_console_arguments:string option)
+      ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
       ~(filesystem_file_name)
       ?(filesystem_relay_script:string option)
       ?(rcfile_content:string option)
@@ -949,6 +950,21 @@ class uml_process =
             let () = Log.printf1 "Simulation_level: uml_process: creating %s: using default console arguments for new pairs filesystem/kernels\n" umid in
             (*[ "con0="^console; ]*)
             [ "ssl=pts"; "con="^console;]
+  in
+  (* Under SysV, /etc/inittab explicitly starts a getty on tty0 (see
+     fix_etc_inittab), independently of the kernel's `console=' argument.
+     Under systemd there is no inittab: systemd-getty-generator only starts a
+     getty on the consoles it finds active in /proc/consoles (populated from
+     `console='), so tty0 (backed here by con=/con0=) needs to be advertised
+     explicitly, or no login prompt appears on the Marionnet console. This is
+     a design deduction from systemd's documented generator behaviour, not yet
+     confirmed by an actual boot (see chantier marionnet-kernel-rootfs).
+     Never overrides an already-specified `console=' (e.g. from SUPPORTED_KERNELS). *)
+  let console_related_arguments =
+    if init_system = "systemd"
+       && not (List.exists (StrExtra.First.matchingp (Str.regexp "^console=")) console_related_arguments)
+    then console_related_arguments @ [ "console=tty0" ]
+    else console_related_arguments
   in
   let command_line_arguments =
     command_line_arguments @ console_related_arguments
@@ -1642,6 +1658,7 @@ class virtual ['parent] machine_or_router =
       ~(router:bool)
       ~(kernel_file_name)
       ?(kernel_console_arguments)
+      ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
@@ -1708,6 +1725,7 @@ object(self)
       Some (new uml_process
               ~kernel_file_name
               ?kernel_console_arguments
+              ~init_system
               ?filesystem_relay_script
               ?rcfile_content
               ~filesystem_file_name
@@ -1798,6 +1816,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~(router:bool)
       ~(kernel_file_name)
       ?(kernel_console_arguments)
+      ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
@@ -1821,6 +1840,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
   inherit ['parent] machine_or_router
       ~parent ~router
       ~kernel_file_name ?kernel_console_arguments
+      ~init_system
       ?filesystem_relay_script ?rcfile_content
       ~filesystem_file_name
       ~get_the_cow_file_name_source

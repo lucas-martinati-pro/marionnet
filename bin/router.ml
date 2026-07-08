@@ -1143,6 +1143,7 @@ class router
         ~parent:self
         ~kernel_file_name:self#get_kernel_file_name
         ?kernel_console_arguments:self#get_kernel_console_arguments
+        ~init_system:self#get_init_system
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ~filesystem_file_name:self#get_filesystem_file_name
         ~get_the_cow_file_name_source
@@ -1294,6 +1295,7 @@ class ['parent] router =
       ~hostfs_directory
       ~(kernel_file_name)
       ?(kernel_console_arguments)
+      ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
       ?(filesystem_relay_script)
       ~(filesystem_file_name)
       ~(ethernet_interface_no)
@@ -1338,6 +1340,7 @@ class ['parent] router =
       ~filesystem_file_name(* :"/usr/marionnet/filesystems/router.debian.lenny.sid.fs" *)
       ~kernel_file_name
       ?kernel_console_arguments
+      ~init_system
       ?filesystem_relay_script
       ?rcfile_content
       ~get_the_cow_file_name_source

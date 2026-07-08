@@ -1096,6 +1096,11 @@ class virtual virtual_machine_with_history_and_ifconfig
   method get_filesystem_relay_script : string option =
       vm_installations#relay_script_of (self#get_epithet)
 
+  (* "sysv" or "systemd", read from the filesystem's .conf (INIT_SYSTEM),
+     default "sysv" for filesystems without the marker: *)
+  method get_init_system : string =
+      vm_installations#init_system_of (self#get_epithet)
+
   method is_xnest_enabled =
       (vm_installations#terminal_manager_of self#get_epithet)#is_xnest (self#get_terminal)
 

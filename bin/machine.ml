@@ -690,6 +690,7 @@ class machine
         ~parent:self
         ~kernel_file_name:self#get_kernel_file_name
         ?kernel_console_arguments:self#get_kernel_console_arguments
+        ~init_system:self#get_init_system
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ?rcfile_content
         ~filesystem_file_name:self#get_filesystem_file_name
@@ -950,6 +951,7 @@ class ['parent] machine =
       ~(filesystem_file_name)
       ~(kernel_file_name)
       ?(kernel_console_arguments)
+      ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
       ?(filesystem_relay_script)
       (* ?(rcfile_content) *)
       ?(rcfile_content="# Nothing to do this time\n")
@@ -978,6 +980,7 @@ object(self)
       ~hostfs_directory
       ~kernel_file_name
       ?kernel_console_arguments
+      ~init_system
       ?filesystem_relay_script
       ~rcfile_content
       ~ethernet_interface_no

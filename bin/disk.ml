@@ -403,7 +403,7 @@ class virtual_machine_installations
 		  ~file_names:[config_file]
 		  ~variables:[ "MD5SUM"; "AUTHOR"; "DATE"; "MTIME"; "SUPPORTED_KERNELS"; "X11_SUPPORT";
 		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT";
-		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; ]
+		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; "INIT_SYSTEM"; ]
 		  ()
 	      in
 	      Some (config)
@@ -537,6 +537,16 @@ class virtual_machine_installations
         (* If there's not a binding for RC_RELAY_SUPPORT, we look at MULTIPLE_CONSOLES_SUPPORT: *)
         let x = Configuration_files.get_bool_variable "MULTIPLE_CONSOLES_SUPPORT" config in
         (x = Some true)
+
+  (* Init system of the filesystem's guest ("sysv" or "systemd"), read from the
+     INIT_SYSTEM binding written by pupisto.debian.sh into the filesystem's .conf.
+     Filesystems built before this marker existed (or any .conf without the
+     binding) default to "sysv": zero regression for pre-existing filesystems. *)
+  method init_system_of epithet : string =
+    let config = String_map.find (epithet) (filesystem_config_mapping) in
+    match Option.bind config (Configuration_files.get_string_variable "INIT_SYSTEM") with
+    | Some "systemd" -> "systemd"
+    | Some _ | None   -> "sysv"
 
   method memory_min_size_of epithet =
     let config = String_map.find (epithet) (filesystem_config_mapping) in

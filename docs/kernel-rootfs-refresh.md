@@ -61,5 +61,17 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   `fix_etc_inittab` (getty géré par systemd via `console=`), `fix_reboot` (workaround 3.2.x
   obsolète, casserait `systemctl`), `prevent_non_vital_services` (SysV `update-rc.d` — refonte
   `systemctl disable` **TODO**). Vérif : `bash -n` OK + substitution marqueur testée. **Build/boot
-  NON testés** (debootstrap/sudo/réseau → côté Jean). RESTE : volet OCaml (disk.ml lit
-  `INIT_SYSTEM`, simulation_level dispatche) ; ethghost/ghostification ; `package_catalog.trixie`.
+  NON testés** (debootstrap/sudo/réseau → côté Jean). RESTE : ethghost/ghostification ;
+  `package_catalog.trixie`.
+- **2026-07-08** — épisode 4 (`disk.ml`, `user_level.ml`, `simulation_level.ml`, `machine.ml`,
+  `router.ml` ; NON committé) : **volet OCaml du dispatch de boot**. `disk.ml` lit `INIT_SYSTEM`
+  du `.conf` (méthode `init_system_of`, défaut `"sysv"` si absent — rétro-compat). Threading
+  bout-en-bout `user_level.get_init_system` → `machine.ml`/`router.ml` → `machine_or_router`
+  (+ `_with_accessory_processes`) → `uml_process`. Dans `uml_process`, si `init_system="systemd"`
+  et qu'aucun `console=` explicite n'est déjà présent, ajout de `console=tty0` aux arguments
+  noyau (déduction du comportement documenté de `systemd-getty-generator`, **hypothèse non
+  confirmée par un boot réel** — SysV n'a pas besoin de ce paramètre car `/etc/inittab` démarre
+  déjà un getty explicite sur tty0). **Non compilé** : la toolchain OCaml 4.13.1 gelée
+  (camlp4) n'est plus disponible sur la machine de dev (cf. mémoire
+  `marionnet-build-toolchain-cassee`, chantier séparé) — vérification faite par relecture/grep
+  du threading uniquement. À recompiler et tester au boot dès la toolchain restaurée.
