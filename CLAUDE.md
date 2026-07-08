@@ -70,8 +70,12 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-Chantier en cours — **finitions du port dune** : `docs/finitions-port-dune.md` ;
-mémoire `marionnet-finitions-dune` ; `git log --grep="marionnet-finitions-dune"`.
+- **finitions du port dune** : `docs/finitions-port-dune.md` ; mémoire `marionnet-finitions-dune` ;
+  `git log --grep="marionnet-finitions-dune"`.
+- **noyaux + rootfs** (intégration Dave Appadoo, touche `uml/`) : `docs/kernel-rootfs-refresh.md` ;
+  mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
+- **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
+  `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 
 ## Où puiser
 
