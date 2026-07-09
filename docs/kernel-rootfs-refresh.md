@@ -62,7 +62,7 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   obsolète, casserait `systemctl`), `prevent_non_vital_services` (SysV `update-rc.d` — refonte
   `systemctl disable` **TODO**). Vérif : `bash -n` OK + substitution marqueur testée. **Build/boot
   NON testés** (debootstrap/sudo/réseau → côté Jean). RESTE : ethghost/ghostification ;
-  `package_catalog.trixie`.
+  `package_catalog.trixie` (voir épisode 5).
 - **2026-07-08** — épisode 4 (`disk.ml`, `user_level.ml`, `simulation_level.ml`, `machine.ml`,
   `router.ml` ; NON committé) : **volet OCaml du dispatch de boot**. `disk.ml` lit `INIT_SYSTEM`
   du `.conf` (méthode `init_system_of`, défaut `"sysv"` si absent — rétro-compat). Threading
@@ -75,3 +75,25 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   (camlp4) n'est plus disponible sur la machine de dev (cf. mémoire
   `marionnet-build-toolchain-cassee`, chantier séparé) — vérification faite par relecture/grep
   du threading uniquement. À recompiler et tester au boot dès la toolchain restaurée.
+- **2026-07-09** — épisode 5 (`pupisto.debian.sh.files/package_catalog/{Makefile,
+  make_package_catalog_from_binary_list.sh}`, `.gitignore`) : **outillage
+  `package_catalog.trixie` généralisé**, reliquat de l'épisode 1. Le Makefile dupliquait un
+  bloc de règles par release (`wheezy`, `squeeze`) ; remplacé par des règles génériques
+  (`package_catalog.%.GENERATED`, `.COMPLETE.COMMENTED`, `.COMPLETE.COMMENTED.selection`) +
+  `RELEASES=wheezy squeeze trixie`. `make_package_catalog_from_binary_list.sh` accepte
+  désormais `trixie` (`ARCH=amd64`, cohérent avec `DEFAULT_ARCH` de `pupisto.debian.sh`,
+  vs `i386` legacy pour wheezy/squeeze). Deux pièges GNU Make rencontrés et corrigés en
+  cours de route : (1) une pattern-rule sans recette est silencieusement ignorée
+  (contrairement à une règle explicite) — ajouté une recette de garde (`test -f`) ; (2)
+  les pattern-rules traitent les fichiers nouvellement créés en chaîne comme des
+  intermédiaires jetables et les `rm` en fin de build — `.PRECIOUS` ajouté pour préserver
+  `GENERATED`/`COMPLETE.COMMENTED` (coûteux : `GENERATED` = un vrai `debootstrap`+`apt-file
+  update` en chroot, ~1h, sudo+réseau). Vérifié en profondeur par `make -n` sur toutes les
+  cibles (wheezy/squeeze/trixie) et comparaison bit-à-bit avec le Makefile d'origine (non-
+  régression confirmée). **`package_catalog.trixie.selection` n'existe TOUJOURS PAS** : son
+  contenu ne peut être produit qu'en lançant réellement `make trixie` (sudo/réseau, ~1h) →
+  côté Jean, pas fabriqué de mémoire (risque d'halluciner des noms de paquets Debian trixie
+  inexistants). `trixie-edit` du Makefile racine restera cassé jusque-là (même état
+  préexistant que `stretch-edit`, jamais eu de catalogue stretch non plus). En passant :
+  `.gitignore` élargi à `uml/pupisto.debian/_build.*/` (symétrie avec `pupisto.kernel`) — un
+  `_build.debian-trixie-…23h54/` (debootstrap `make trixie` interrompu) traînait en non-suivi.

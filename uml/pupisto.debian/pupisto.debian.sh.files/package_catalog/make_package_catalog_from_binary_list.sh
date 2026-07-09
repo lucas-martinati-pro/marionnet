@@ -22,12 +22,12 @@
 
 set -e
 
-if [[ $1 = wheezy || $1 = squeeze ]]; then
+if [[ $1 = wheezy || $1 = squeeze || $1 = trixie ]]; then
  RELEASE="$1"
  echo "Release set to \`$RELEASE'"
 else
  echo "Usage: $(basename $0) RELEASE"
- echo "where RELEASE is \`wheezy' or \`squeeze'"
+ echo "where RELEASE is \`wheezy', \`squeeze' or \`trixie'"
  echo "---"
  echo "Generates the file \`package_catalog.\${RELEASE}.GENERATED' from \`binary_list.UNION'"
  echo "searching in the specified RELEASE for packages related to at least one of the listed"
@@ -36,7 +36,9 @@ else
 fi
 
 HTTP_SERVER=http://ftp.debian.org/debian/
-ARCH=i386
+# wheezy/squeeze are legacy 32-bit builds; trixie follows the amd64 target of the
+# marionnet-kernel-rootfs chantier (see DEFAULT_ARCH in pupisto.debian.sh):
+if [[ $RELEASE = trixie ]]; then ARCH=amd64; else ARCH=i386; fi
 
 function mkTMPFILE {
  mktemp /tmp/${1}.$(date +%H\h%M | tr -d " ").XXXXXX

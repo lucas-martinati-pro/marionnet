@@ -26,45 +26,38 @@ binary_list.UNION:
 	cat binary_list.*.* | sort -d | uniq > $@
 
 # ----------------------
-#   wheezy or squeeze
+#  wheezy, squeeze, trixie, ... (generic pattern, one recipe for every release)
 # ----------------------
+# `make trixie' runs a real sudo debootstrap + apt-file update in a chroot,
+# querying one package per listed binary (~1h, network required) -- see README.
 
-wheezy squeeze: binary_list.UNION
+RELEASES=wheezy squeeze trixie
+
+# Pattern rules treat freshly-created files as disposable intermediates and
+# `rm' them once a longer chain (e.g. .COMPLETE.COMMENTED.selection) is done
+# building. GENERATED/COMPLETE.COMMENTED are expensive (GENERATED costs a real
+# ~1h debootstrap run) and worth keeping around like wheezy/squeeze's already
+# do (pre-existing files are never auto-removed): mark them precious.
+.PRECIOUS: package_catalog.%.GENERATED package_catalog.%.COMPLETE.COMMENTED
+
+$(RELEASES): binary_list.UNION
 	chmod +x ./make_package_catalog_from_binary_list.sh
 	./make_package_catalog_from_binary_list.sh $@
 
-# ----------------------
-#       wheezy
-# ----------------------
+# GNU Make silently ignores pattern rules without a recipe (unlike explicit
+# rules), so this needs one: it just checks that the release recipe above did
+# leave the expected file behind (the script writes it as a side effect).
+package_catalog.%.GENERATED: %
+	@test -f $@ || { echo "Erreur : $@ n'a pas été produit par \`make $*'" >&2; exit 1; }
 
-package_catalog.wheezy.GENERATED: wheezy
+package_catalog.%.COMPLETE.COMMENTED: package_catalog.%.GENERATED
+	touch package_catalog.$*.additional
+	cat $< package_catalog.$*.additional | sort -k 1,1 -d | awk '{print "#"$$0}' > $@
 
-package_catalog.wheezy.COMPLETE.COMMENTED: package_catalog.wheezy.GENERATED
-	touch package_catalog.wheezy.additional
-	cat $< package_catalog.wheezy.additional | sort -k 1,1 -d | awk '{print "#"$$0}' > $@
-
-WHEEZY_SELECTION=package_catalog.wheezy.selection
-
-package_catalog.wheezy.COMPLETE.COMMENTED.selection: package_catalog.wheezy.COMPLETE.COMMENTED
+package_catalog.%.COMPLETE.COMMENTED.selection: package_catalog.%.COMPLETE.COMMENTED
 	cp -f $< $@;
-	if [[ -f $(WHEEZY_SELECTION) ]]; then for i in $$(\grep -v '^#' $(WHEEZY_SELECTION) | awk '{print $$1}'); do sed -i -e "s/^#$${i} /$${i} /" $@; done; else cp -f $< $(WHEEZY_SELECTION); fi
-
-
-# ----------------------
-#       squeeze
-# ----------------------
-
-package_catalog.squeeze.GENERATED: squeeze
-
-package_catalog.squeeze.COMPLETE.COMMENTED: package_catalog.squeeze.GENERATED
-	touch package_catalog.squeeze.additional
-	cat $< package_catalog.squeeze.additional | sort -k 1,1 -d | awk '{print "#"$$0}' > $@
-
-SQUEEZE_SELECTION=package_catalog.squeeze.selection
-
-package_catalog.squeeze.COMPLETE.COMMENTED.selection: package_catalog.squeeze.COMPLETE.COMMENTED
-	cp -f $< $@;
-	if [[ -f $(SQUEEZE_SELECTION) ]]; then for i in $$(\grep -v '^#' $(SQUEEZE_SELECTION) | awk '{print $$1}'); do sed -i -e "s/^#$${i} /$${i} /" $@; done; else cp -f $< $(SQUEEZE_SELECTION); fi
+	SELECTION=package_catalog.$*.selection; \
+	if [[ -f $$SELECTION ]]; then for i in $$(\grep -v '^#' $$SELECTION | awk '{print $$1}'); do sed -i -e "s/^#$${i} /$${i} /" $@; done; else cp -f $< $$SELECTION; fi
 
 # ----------------------
 #     Dependencies
@@ -92,6 +85,7 @@ clean:
 	sudo rm -rf _build.*;
 	rm -f *~
 	rm -f package_catalog.*.COMPLETE.COMMENTED  package_catalog.*.COMPLETE.COMMENTED.selection
-	@if test -f package_catalog.wheezy.GENERATED; then echo "Warning: file \`package_catalog.wheezy.GENERATED' not removed; please remove it manually if you really know what are you doing."; fi
-	@if test -f package_catalog.squeeze.GENERATED; then echo "Warning: file \`package_catalog.squeeze.GENERATED' not removed; please remove it manually if you really know what are you doing."; fi
+	@for r in $(RELEASES); do \
+	  if test -f package_catalog.$$r.GENERATED; then echo "Warning: file \`package_catalog.$$r.GENERATED' not removed; please remove it manually if you really know what are you doing."; fi; \
+	done
 
