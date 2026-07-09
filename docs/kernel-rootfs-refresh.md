@@ -120,3 +120,40 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   **1033 paquets** installés, `X11_SUPPORT=xhosted`, `INIT_SYSTEM=systemd`, kernel 6.12.95 lié.
   **Boot NON encore testé** (socle systemd + hypothèse `console=tty0` de l'ép. 4 à valider ; test
   intégral via Marionnet bloqué par la toolchain OCaml, chantier `marionnet-build-toolchain-cassee`).
+- **2026-07-09/10** — épisode 7 (`uml/pupisto.tester/pupisto.tester.sh` (nouveau),
+  `pupisto.debian.sh`, `package_catalog.trixie.selection`) : **boot-test du socle systemd + durcissement
+  du boot par une boucle de diagnostic** (verrou B levé pour le boot UML manuel). Nouveau script
+  `pupisto.tester.sh` : boot-test mono-machine dans un COW jetable (image intacte), modes `xterm`
+  (interactif) et `--headless` (console sur stdout sous `timeout`, scriptable pour une boucle
+  lancements/corrections sans sudo ni X11). Sans argument il retrouve la dernière image, en déduit le
+  kernel apparié et reproduit le dispatch de boot de Marionnet via une **table `BOOT_QUIRKS`**
+  (pseudo-module `Map` de bashbricks, clé `série:init` → args noyau ; `6.12:systemd → console=tty0`) —
+  contrepartie Bash de ce que `simulation_level.ml` portera. Décision Jean : les options UML dépendent
+  du **couple (kernel,image)** → table indexée plutôt que des `if` en dur (lève sa contrainte « pas de
+  bashbricks dans le tester » pour ce `Map`). La boucle de boot-test (headless, pilotée par Claude) a
+  débusqué et corrigé **6 bugs** du socle systemd, tous validés au boot réel : **(#1)** `/etc/fstab`
+  swap `nofail` **+ `x-systemd.device-timeout=1`** (release-aware : `nofail` seul insuffisant — le job
+  `dev-ubdb.device` gardait son timeout 90 s ; le device UML `/dev/ubdb` peut ne jamais apparaître) ;
+  **(#2)** `runit` retiré de la sélection (le `runsvdir` spammait la console — vestige wheezy) ;
+  **(#3)** `prevent_non_vital_services_from_starting` **réécrite en whitelist stricte 2-passes** :
+  décision pédagogique de Jean = machine **nue** (démarrer un service, réseau compris, est une décision
+  d'admin à coût → défaut OFF ; l'étudiant active en TP ; seuls restent `marionnet-relay` + `getty` +
+  cœur systemd + `linuxlogo`). PASS 1 (unités natives) : parcourt `multi-user.target.wants`, retire le
+  symlink de **tous** les `*.target.wants/` (car ex. `networking.service` est aussi
+  `WantedBy=network-online.target`). PASS 2 (SysV-only sans unité native, ex. `isc-dhcp-server`, tirés
+  par `/etc/rc*.d` via `systemd-sysv-generator`) : `update-rc.d remove`. Trois sous-bugs corrigés en
+  route : `systemctl --root disable` **no-op offline** (host refuse le chroot) → `rm` direct du symlink ;
+  guard `[[ -e ]]` **suivait le symlink absolu invité et le résolvait contre l'hôte** (faux pour tout
+  daemon absent de l'hôte : babeld/named/nmbd…) → `[[ -e || -L ]]` ; la 1ʳᵉ version ne nettoyait que
+  `multi-user.target.wants` (networking survivait) → balayage multi-target + SysV. **(#4)**
+  `fix_etc_inittab` **active `getty@tty0`** offline sous systemd : `console=tty0` (ép. 4) est
+  **nécessaire mais insuffisant** — systemd ne démarre `getty@tty0` que si l'unité est explicitement
+  activée. **(#A)** dans le tester, `kernel_series_of` corrigé (le `realpath` du kernel résolvait le
+  symlink `linux-6.12.95` → série perdue) : dérivation par regex `linux-[0-9]+\.[0-9]+`. Validation :
+  image finale **nue** (`multi-user.target.wants` = `marionnet-relay` seul ; 0 networking ; 0
+  isc-dhcp-server), boot atteint **`login:` sur con0** sans aucun contournement. **Signal à traiter
+  côté chantier NOYAU** (pas rootfs) : flake UML 6.12 non déterministe (~1 boot/3)
+  `systemd-executor: libcrypt.so.1: cannot apply additional memory protection after relocation: Error 38`
+  (ENOSYS mprotect RELRO) — même famille que `epoll_wait: Function not implemented` (libuv/named).
+  **Volet OCaml (verrou C) toujours en attente de la toolchain 4.13.1** : `console=tty0` de l'ép. 4 est
+  désormais confirmé au boot, mais `simulation_level.ml` non recompilé.

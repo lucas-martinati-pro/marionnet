@@ -537,11 +537,19 @@ function remove_package {
 function fix_etc_inittab {
  # global DEBIANROOT
  local ROOT=${1:-$DEBIANROOT}
- # systemd releases (jessie+) have no /etc/inittab: getty on the UML console is
- # provided by systemd's getty-generator from the `console=' kernel argument.
- # Nothing to fix here; skip silently to keep the build release-agnostic.
- if [[ ! -f $ROOT/etc/inittab ]]; then
-   echo "No /etc/inittab (systemd release): skipping fix_etc_inittab."
+ # systemd releases (jessie+) have no /etc/inittab. Contrary to a former (wrong)
+ # assumption, `console=tty0' alone does NOT provide a login on the UML console:
+ # systemd only starts getty@tty1 by default, and its getty-generator spawns a
+ # console getty for SERIAL consoles, not for the tty0 virtual console. So we must
+ # enable getty@tty0 explicitly -- the systemd equivalent of the old inittab
+ # `getty ... tty0' line -- so that a login prompt appears on con0, i.e. the
+ # console Marionnet shows. Offline enable (like `systemctl enable getty@tty0'),
+ # reliable in a chroot with no running daemon. Verified by boot-test (2026-07-09).
+ if [[ ${INIT_SYSTEM:-sysv} = systemd || ! -f $ROOT/etc/inittab ]]; then
+   echo "systemd release: enabling getty@tty0 (login on the UML console)."
+   sudo install -d -m 0755 $ROOT/etc/systemd/system/getty.target.wants
+   sudo ln -sf /lib/systemd/system/getty@.service \
+               $ROOT/etc/systemd/system/getty.target.wants/getty@tty0.service
    return 0
  fi
  local TMPFILE=$(mktemp)
@@ -554,13 +562,22 @@ function fix_etc_inittab {
 }
 
 function fix_etc_fstab {
- # global DEBIANROOT FSTYPE
+ # global DEBIANROOT FSTYPE INIT_SYSTEM
  local ROOT=${1:-$DEBIANROOT}
  local TYPE=${FSTYPE:-$DEFAULT_FSTYPE}
+ # ubdb swap options. Under systemd, `/dev/ubdb' may never appear (UML does not
+ # always expose it): `nofail' alone is NOT enough -- the generated dev-ubdb.device
+ # start job still holds the boot for its full 90s timeout (verified by boot-test).
+ # `x-systemd.device-timeout=1' bounds that wait to 1s, after which `nofail' lets
+ # the boot proceed; if the device does show up, swap is still activated. SysV
+ # swapon does not understand `x-systemd.*', so keep the legacy options there (zero
+ # regression for old releases).
+ local SWAP_OPTS="sw"
+ [[ ${INIT_SYSTEM:-sysv} = systemd ]] && SWAP_OPTS="sw,nofail,x-systemd.device-timeout=1"
  local TMPFILE=$(mktemp)
  cat 1>$TMPFILE <<EOF
 # Virtual disk partitions:
-/dev/ubdb none swap sw 0 0
+/dev/ubdb none swap $SWAP_OPTS 0 0
 /dev/ubda / $TYPE defaults 0 0
 
 # Pseudo filesystems:
@@ -871,12 +888,71 @@ function fix_locales {
 function prevent_non_vital_services_from_starting {
  # global DEBIANROOT INIT_SYSTEM
  local ROOT=${1:-$DEBIANROOT}
- # This logic is SysV-specific (it scans /etc/init.d and calls `update-rc.d remove'),
- # which does not govern systemd units. TODO(marionnet-kernel-rootfs): reimplement
- # for systemd with `systemctl disable' on a vetted list. Skip for now on systemd
- # releases to avoid inconsistent update-rc.d side effects.
+ # The SysV branch below scans /etc/init.d and calls `update-rc.d remove', keeping
+ # only a whitelist (REQUIRED_SERVICES). The systemd branch mirrors that philosophy,
+ # stricter: a lab machine must boot *bare*. Starting a service -- the network
+ # included -- is an administration decision with a cost (security, resources), so it
+ # is OFF by default; students enable what they need during the labs. We keep only
+ # the vital units and disable *every* other service enabled at multi-user level.
+ #
+ # Kept (vital): the systemd core (never symlinked under multi-user.target.wants on
+ # Debian -- pulled by static deps, so untouched by this loop), getty (handled by
+ # fix_etc_inittab, lives under getty.target.wants) and marionnet-relay (host<->guest
+ # bring-up). Consequence to keep in mind: networking.service is off too, so `lo' and
+ # the interfaces are down until the student brings them up.
+ #
+ # We remove the `Wants' symlink DIRECTLY rather than via `systemctl --root=...
+ # disable': the latter silently no-ops offline here (a host systemctl refuses to
+ # operate on the chroot -- verified by boot-test: every daemon was still enabled and
+ # nmbd stalled the boot ~90s "waiting for interface"). A plain `rm' of the symlink is
+ # exactly what `disable' would do and cannot no-op. The daemon stays installed and
+ # startable by hand. Socket-activated units (their .socket lives under
+ # sockets.target.wants) are left alone: they start on demand, not at boot.
+ #
+ # Two passes are needed, because a service can be enabled through two independent
+ # mechanisms: (1) NATIVE systemd units, symlinked under some `*.target.wants/'; and
+ # (2) SysV-only init scripts (no native unit) enabled via `/etc/rc*.d/', which
+ # systemd-sysv-generator turns into units at boot (e.g. isc-dhcp-server, dhcpd) --
+ # invisible to pass 1. Both must be disabled or the machine is not really bare.
  if [[ ${INIT_SYSTEM:-sysv} = systemd ]]; then
-   echo "systemd release: skipping prevent_non_vital_services_from_starting (SysV-only; systemd port TODO)."
+   local sysd="$ROOT/etc/systemd/system"
+   # Pass 1 -- native units. Discover the enabled non-vital services from
+   # multi-user.target.wants (where server daemons land), then unlink them from
+   # EVERY `*.target.wants/': a unit may be pulled by more than one target (e.g.
+   # networking.service is WantedBy both multi-user.target and network-online.target,
+   # so cleaning only multi-user would leave it running).
+   local KEEP_ENABLED="marionnet-relay"   # getty is under getty.target.wants, untouched
+   local unit base name
+   for unit in "$sysd"/multi-user.target.wants/*.service; do
+     # `-L' (symlink) not just `-e' (exists): these Wants links carry an ABSOLUTE
+     # path into the GUEST's /usr/lib/systemd/system, so `-e' -- which follows the
+     # link -- is FALSE on the host for any unit the host itself lacks (babeld,
+     # named, nmbd, kea...), silently skipping exactly the server daemons we must
+     # disable. `-L' catches dangling-on-host symlinks; both together still skip
+     # the literal `*.service' glob when the directory has no match.
+     [[ -e $unit || -L $unit ]] || continue
+     base=$(basename "$unit"); name=${base%.service}
+     # Defensive: never touch systemd's own units, should any be symlinked here.
+     case $name in systemd-*|dbus|user@*|user-runtime-dir@*) continue;; esac
+     case " $KEEP_ENABLED " in *" $name "*) continue;; esac
+     sudo rm -f "$sysd"/*.target.wants/"$base"
+     echo "  disabled: $name"
+   done
+   # Pass 2 -- SysV-only scripts still enabled via /etc/rc*.d (no native unit shadows
+   # them). Keep only what we want at boot: `linuxlogo' prints the Marionnet banner on
+   # the console. `update-rc.d remove' drops the rc?.d symlinks so the generator no
+   # longer pulls them in.
+   local KEEP_SYSV="marionnet-relay linuxlogo"
+   local s
+   for s in $(find "$ROOT/etc/init.d" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' 2>/dev/null); do
+     # a native systemd unit shadows the SysV script -> the script is inert, skip it
+     [[ -e $ROOT/lib/systemd/system/$s.service || -e $ROOT/usr/lib/systemd/system/$s.service ]] && continue
+     case " $KEEP_SYSV " in *" $s "*) continue;; esac
+     ls "$ROOT"/etc/rc[2-5].d/S*"$s" >/dev/null 2>&1 || continue   # only if actually enabled
+     sudo chroot "$ROOT" update-rc.d -f "$s" remove >/dev/null 2>&1 || true
+     echo "  disabled (SysV): $s"
+   done
+   echo "systemd release: only vital units kept (marionnet-relay + linuxlogo + getty + systemd core); network and all servers OFF."
    return 0
  fi
  # Note that `console-screen.sh' creates a second windows. So, we don't consider it as required.

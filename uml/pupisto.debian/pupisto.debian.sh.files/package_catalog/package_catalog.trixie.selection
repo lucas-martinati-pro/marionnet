@@ -290,7 +290,7 @@ rpcbind PROVIDES: rpcbind rpcinfo DESCRIPTION: converts RPC program numbers into
 rsync PROVIDES: rsync DESCRIPTION: fast, versatile, remote (and local) file-copying tool
 rsyslog PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #rtkit PROVIDES: rtkitctl DESCRIPTION: Realtime Policy and Watchdog Daemon
-runit PROVIDES: chpst runsv runsvdir sv svlogd DESCRIPTION: system-wide service supervision
+#runit PROVIDES: chpst runsv runsvdir sv svlogd DESCRIPTION: system-wide service supervision
 samba PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 samba-common-bin PROVIDES: net nmblookup smbpasswd testparm DESCRIPTION: Samba common files used by both the server and the client
 #sash PROVIDES: sash DESCRIPTION: Stand-alone statically linked shell
