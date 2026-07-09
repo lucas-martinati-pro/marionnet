@@ -25,7 +25,7 @@
 
 function rename_with_sum_and_make_image_dot_conf {
  # global FS_NAME (output)
- local $FS_LOC="$1"
+ local FS_LOC="$1"
  # Checking parameters and calling context:
  [[ -f "$FS_LOC" ]] || return 2
  # This image-dependent function must be provided independently:
@@ -33,7 +33,7 @@ function rename_with_sum_and_make_image_dot_conf {
  # The following global variables must be set:
  [[ -n $KERNEL_VERSION && -n $BINARY_LIST ]] || return 4
  # The following template must be available:
- [[ -f ../../share/filesystems/machine-template.conf ]] || return 5
+ [[ -f ../../bin/filesystems/machine-template.conf ]] || return 5
  # ---
  
  # MD5SUM and other simple fields
@@ -51,7 +51,7 @@ function rename_with_sum_and_make_image_dot_conf {
  [[ -n $X11_SUPPORT && -n $MEMORY_MIN_SIZE && -n $MEMORY_SUGGESTED_SIZE ]] || return 6
 
  # FILLING TEMPLATE
- cp ../../share/filesystems/machine-template.conf $FS_LOC.conf
+ cp ../../bin/filesystems/machine-template.conf $FS_LOC.conf
 
  # Using `sed' for simple replacements:
  sed -e "s/^MD5SUM=.*/MD5SUM=$MD5SUM/"  \

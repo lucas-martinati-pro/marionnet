@@ -379,6 +379,32 @@ PUPISTO_FILES=pupisto.debian.sh.files
 INSTALL_LINUXLOGO=y
 
 # =============================================================
+#                    HOST DEPENDENCIES
+# =============================================================
+
+# Host-side tools this script needs *outside* the guest chroot. For now just
+# `debootstrap' (used right below to bootstrap the base system); the list is
+# meant to grow as we discover other hard requirements of the build.
+REQUIRED_HOST_PACKAGES="debootstrap"
+
+# ensure_host_dependencies: make `./pupisto.debian.sh' self-sufficient when run
+# directly -- the Makefile `dependencies' target only guards `make'-driven runs.
+# Same logic as that target: if any required package is missing, apt-get installs it.
+function ensure_host_dependencies {
+ # global REQUIRED_HOST_PACKAGES
+ which dpkg 1>/dev/null || {
+   echo "Not a Debian system (oh my god!); please install: $REQUIRED_HOST_PACKAGES" 1>&2
+   exit 1
+   }
+ # `dpkg -l PKG...' exits non-zero as soon as one package is unknown/not installed:
+ if dpkg 1>/dev/null 2>/dev/null -l $REQUIRED_HOST_PACKAGES; then
+   return 0
+ fi
+ echo "Installing missing host dependencies ($REQUIRED_HOST_PACKAGES)..."
+ sudo apt-get install -q -q -q -y $REQUIRED_HOST_PACKAGES
+}
+
+# =============================================================
 #                      DEBOOTSTRAP
 # =============================================================
 
@@ -437,7 +463,16 @@ function launch_debootstrap_and_then_apt_get_install {
  # --- Launch apt-get install:
  trap "sudo umount $ROOT/{proc,sys}" EXIT
  echo "I try now to continue the installation with \`apt-get'..."
- once sudo_careful_chroot ${ROOT} apt-get -y --force-yes -f install $INCLUDED_PACKAGES
+ # Note: the legacy `--force-yes' was dropped in apt 1.1 (it would abort on trixie).
+ # It used to bypass package authentication, no longer needed since APT keys are
+ # honoured normally (the old `--no-check-gpg' was removed too). Add a granular
+ # `--allow-*' here only if a real need shows up at build time.
+ # NOT wrapped in `once': `once' swallows the exit code (it neutralises set -e),
+ # so a failed apt-get (e.g. a package conflict) would be silently skipped on a
+ # `-c' re-run, yielding an image MISSING its packages yet reported as "Success".
+ # apt-get install is idempotent, so re-running it under `-c' is cheap and simply
+ # completes the install; here a real failure must be fatal (set -e / ERR trap).
+ sudo_careful_chroot ${ROOT} apt-get -y -f install $INCLUDED_PACKAGES
  trap "echo Bye." EXIT
  # ---
 
@@ -1098,6 +1133,9 @@ function make_or_link_the_kernel {
 # =============================================================
 #                        ACTIONS
 # =============================================================
+
+# Make sure the host-side tools we need (debootstrap, ...) are installed:
+ensure_host_dependencies
 
 # The first step is to create the Debian directory with debootstrap:
 once launch_debootstrap_and_then_apt_get_install

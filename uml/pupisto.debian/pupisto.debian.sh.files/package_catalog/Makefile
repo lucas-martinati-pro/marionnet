@@ -40,7 +40,7 @@ RELEASES=wheezy squeeze trixie
 # do (pre-existing files are never auto-removed): mark them precious.
 .PRECIOUS: package_catalog.%.GENERATED package_catalog.%.COMPLETE.COMMENTED
 
-$(RELEASES): binary_list.UNION
+$(RELEASES): binary_list.UNION dependencies
 	chmod +x ./make_package_catalog_from_binary_list.sh
 	./make_package_catalog_from_binary_list.sh $@
 
@@ -68,13 +68,7 @@ dependencies:
 	@echo "Required packages: $(REQUIRED_PACKAGES)"
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
 	@dpkg 1>/dev/null -l $(REQUIRED_PACKAGES) || \
-		if which aptitude; then \
-		  sudo aptitude install -q -q -q -y $(REQUIRED_PACKAGES); \
-		elif which apt-get; then \
-		  sudo apt-get  install -q -q -q -y $(REQUIRED_PACKAGES); \
-		else \
-		  exit 1; \
-		fi
+		sudo apt-get install -q -q -q -y $(REQUIRED_PACKAGES)
 	@echo Ok.
 
 # ----------------------
@@ -83,7 +77,7 @@ dependencies:
 
 clean:
 	sudo rm -rf _build.*;
-	rm -f *~
+	rm -f *~ wget-log*
 	rm -f package_catalog.*.COMPLETE.COMMENTED  package_catalog.*.COMPLETE.COMMENTED.selection
 	@for r in $(RELEASES); do \
 	  if test -f package_catalog.$$r.GENERATED; then echo "Warning: file \`package_catalog.$$r.GENERATED' not removed; please remove it manually if you really know what are you doing."; fi; \

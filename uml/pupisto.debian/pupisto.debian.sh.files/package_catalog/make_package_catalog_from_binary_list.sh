@@ -40,6 +40,20 @@ HTTP_SERVER=http://ftp.debian.org/debian/
 # marionnet-kernel-rootfs chantier (see DEFAULT_ARCH in pupisto.debian.sh):
 if [[ $RELEASE = trixie ]]; then ARCH=amd64; else ARCH=i386; fi
 
+# Extra packages added on top of the debootstrap base system:
+#  - apt-file : always needed (Step 3 queries it inside the chroot);
+#  - realpath : a standalone package on wheezy/squeeze, but merged into coreutils
+#    since jessie -- absent from trixie, where requesting it makes debootstrap fail
+#    (the realpath *command* is still provided by coreutils in the chroot, so the
+#    `dpkg -S $(realpath ...)' of Step 2 keeps working);
+#  - aptitude : pulled in by default up to wheezy (priority important), no longer so
+#    since jessie -- add it explicitly on trixie for the `aptitude show' of Step 4.
+if [[ $RELEASE = trixie ]]; then
+  DEBOOTSTRAP_INCLUDE="--include=apt-file,aptitude"
+else
+  DEBOOTSTRAP_INCLUDE="--include=realpath,apt-file"
+fi
+
 function mkTMPFILE {
  mktemp /tmp/${1}.$(date +%H\h%M | tr -d " ").XXXXXX
 }
@@ -118,7 +132,7 @@ function make_package_catalog_from_binary_list {
    make -C $(dirname $REQUIRED_FILE) $(basename $REQUIRED_FILE)
    }
  local TWDIR=_build.temporary_basic_${RELEASE}.$(date +%Y-%m-%d.%H\h%M)
- local INCLUDE="--include=realpath,apt-file"
+ local INCLUDE="$DEBOOTSTRAP_INCLUDE"
  local EXCLUDE="--exclude=udev"
  mkdir -v -p $TWDIR
  # ---

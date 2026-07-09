@@ -48,13 +48,7 @@ dependencies:
 	@echo "Required packages: $(REQUIRED_PACKAGES)"
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
 	@dpkg 1>/dev/null -l $(REQUIRED_PACKAGES) || \
-		if which aptitude; then \
-		  sudo aptitude install -q -q -q -y $(REQUIRED_PACKAGES); \
-		elif which apt-get; then \
-		  sudo apt-get  install -q -q -q -y $(REQUIRED_PACKAGES); \
-		else \
-		  exit 1; \
-		fi
+		sudo apt-get install -q -q -q -y $(REQUIRED_PACKAGES)
 	@echo "---"
 	echo sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
 	echo sudo update-alternatives --set gcc /usr/bin/gcc-4.8

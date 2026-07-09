@@ -97,3 +97,26 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   préexistant que `stretch-edit`, jamais eu de catalogue stretch non plus). En passant :
   `.gitignore` élargi à `uml/pupisto.debian/_build.*/` (symétrie avec `pupisto.kernel`) — un
   `_build.debian-trixie-…23h54/` (debootstrap `make trixie` interrompu) traînait en non-suivi.
+- **2026-07-09** — épisode 6 : **`make trixie` produit une image Debian 13 complète**
+  (verrou A levé). Catalogue trixie généré (`.GENERATED` par debootstrap + `apt-file`, avec fixes
+  `--include` release-aware : `realpath` retiré — absent de trixie —, `aptitude` ajouté pour
+  `aptitude show`), puis `package_catalog.trixie.selection` de **148 paquets** dérivée à la main :
+  base = équivalents des anciennes VMs (`binary_list.UNION` ∩ trixie via apt-file), + **couche
+  pédagogique 2026** (scapy, sssd/libnss-ldapd/nslcd, nftables, frr, kea, chrony, iperf3, dovecot,
+  python3-pip/ipython3, neovim, tmux…). Décisions Jean : **X11 minimal (nested)** + **suite serveur
+  complète** (DNS/DHCP/LDAP/mail/web/SNMP/NFS/Samba/routage) + tout garder + `git`. `julia`/`vscode`
+  écartés (absents de trixie/main). Validation noms/tailles **sans chroot** via l'index
+  `dists/trixie/main/binary-amd64/Packages.xz`. Bugs bloquants trixie corrigés au fil des runs
+  réels : `--force-yes` retiré (supprimé d'apt 1.1) ; `ensure_host_dependencies` (auto-install
+  debootstrap, script autonome) ; **`apt-get install` dé-`once`-ifié** — le wrapper `once` avalait
+  le code d'échec (`"$@" || code=$?` neutralise `set -e`), donc un `-c` sur un build raté sautait
+  l'install et produisait une image **incomplète marquée « Success »** (piège corrigé : l'échec
+  apt est de nouveau fatal, et `apt-get` étant idempotent le `-c` le rejoue) ; `toolkit_image.sh`
+  `local $FS_LOC` (identifiant invalide) + template `share/filesystems` → `bin/filesystems`
+  (déplacé par le port dune ; idem `pupisto.buildroot.sh`) ; conflits de sélection `mtr`/`mtr-tiny`
+  et `vsftpd`/`inetutils-ftpd`. **Phase 4** (modernisation transverse `uml/`) : `aptitude` →
+  `apt-get` dans les 4 cibles `dependencies` (`pupisto.{kernel,debian,buildroot}` + catalogue) ;
+  `dependencies` ajouté en prérequis des cibles release du catalogue. Image finale : ext4 ~2,8 Go,
+  **1033 paquets** installés, `X11_SUPPORT=xhosted`, `INIT_SYSTEM=systemd`, kernel 6.12.95 lié.
+  **Boot NON encore testé** (socle systemd + hypothèse `console=tty0` de l'ép. 4 à valider ; test
+  intégral via Marionnet bloqué par la toolchain OCaml, chantier `marionnet-build-toolchain-cassee`).

@@ -1127,7 +1127,7 @@ popd
 #   FILLING TEMPLATE  #
 #######################
 
-cp ../../share/filesystems/machine-template.conf $FS_LOC.conf
+cp ../../bin/filesystems/machine-template.conf $FS_LOC.conf
 
 # Using `sed' for simple replacements:
 sed -e "s/^MD5SUM=.*/MD5SUM=$MD5SUM/"  \

@@ -37,6 +37,10 @@ bin/po/*.mo
 uml/pupisto.kernel/_build.*/
 uml/pupisto.kernel/linux-*/
 uml/pupisto.debian/_build.*/
+uml/pupisto.debian/pupisto.debian.sh.files/package_catalog/_build.*/
+# Intermédiaire régénérable du catalogue (non versionné, cf. wheezy/squeeze) + déchets wget du build
+package_catalog.*.COMPLETE.COMMENTED
+wget-log*
 
 # --- Outillage Claude Code : journal de dérive des index (généré par hook) ---
 .claude/stale.log
