@@ -42,10 +42,13 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 - Extensions camlp4 à la demande via `#load` en tête de fichier (`where_p4`,
   `include_type_definitions_p4`…) ; 3 `.mli` sont **injectés dans le .ml** par
   `INCLUDE DEFINITIONS "../../../../..."` (chemins relatifs au bac à sable dune — fragiles).
-- **Bash (obligatoire, neuf comme ancien)** : AVANT d'écrire ou de modifier tout code Bash de ce
-  dépôt (`.sh`, makers, fragments dans un `dune`/`Makefile`), charger le skill `use-bashbricks` et
+- **Bash, nouveau script uniquement** : AVANT d'écrire un **nouveau** script Bash de ce dépôt
+  (`.sh`, makers, fragments dans un `dune`/`Makefile`), charger le skill `use-bashbricks` et
   employer ses helpers (`Array_*`, `Map_*`, `Set_*`, `Json_*`, `String_*`…) plutôt que du shell ad
   hoc. La lib est vendored ici (`bashbricks/bashbricks.sh`) ; la sourcer par chemin relatif.
+  Pour modifier un script Bash **déjà existant** du dépôt, ne pas charger le skill
+  automatiquement — suivre le style déjà en place dans le fichier ; ne le charger que sur
+  demande explicite.
 - **Code neuf** : les préférences modernes s'appliquent (`Result`, bash robuste) ; en revanche
   `.mli` **sélectifs** comme l'existant (modules « bibliothèque » oui, composants/écrans non).
 - `Obj.magic` (25×, jointures user/simulation level) : dette tolérée, **à réduire à l'occasion**
