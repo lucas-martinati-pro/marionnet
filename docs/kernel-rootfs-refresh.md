@@ -168,3 +168,31 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   pass 1 (balaye `timers.target.wants/`, `rm` du symlink, offline-safe, whitelist vide). Vérifié :
   `bash -n` OK + dry-run capte exactement les 8 sur le rootfs de la dernière image. **Boot NON re-testé**
   (exige un rebuild image ~1h sudo/réseau, côté Jean).
+- **2026-07-10** — épisode 9 (`uml/pupisto.tester/pupisto.tester.sh`, `.gitignore`,
+  `docs/kernel-rootfs-refresh.details.md`) : **outillage de test autonome + PoC « architecture C »**
+  (déport X11 sur noyau vanilla, ghostification par network namespace).
+  **`-A/--auto-network-by-eth42`** : tap hôte↔invité sur eth42 + sshd, **unique par instance** (octet K
+  libre → `mnt-tapK`/`tester-K`/`172.23.K.{1,254}`, clé ed25519 auto gitignorée, règle sudoers NOPASSWD
+  scopée `mnt-tap*` auto-provisionnée) → **SSH sans mot de passe** dans la VM pour des tests sans
+  intervention humaine.
+  **`-X/--display`** entièrement **réécrit sur l'architecture C** (l'ancien transport X11 par port série
+  est abandonné : multiplexage impossible + transport hôte→invité bloqué). Principe : eth42 reste un lien
+  réseau de service mais est **ghostifié dans l'invité en le déplaçant dans un network namespace caché**
+  (`marionnet-mgmt`) — le `ip a` de l'étudiant ne le liste plus ; un `socat` (via `systemd-run`, survit au
+  service) y relaie le display `:0` (socket Unix *pathname*, visible cross-netns) vers le pont X hôte sur
+  eth42 ; côté hôte `socat TCP:172.23.K.254:6000 → socket X` + `xhost +local:`. **X11 multiplexe
+  nativement** — plus de mur série. **Idée directrice de Jean (« idée n°2 »)** : remplacer le patch noyau
+  de ghostification par un simple déplacement d'eth42 dans un namespace de l'invité — masquage
+  **pédagogique** (pas anti-root), atteint l'objectif « noyau vanilla » sans patch, plus léger et débogable.
+  Audits confirmant la voie : **C1** (eth42/ip42 ne servent qu'au X11 : `xhost`, tap, adresse de display) ;
+  **C2** (la ghostification patch — invisibilité ioctl/netlink/proc/netfilter même au root — est remplacée
+  par le netns, mêmes surfaces pour l'étudiant, patch noyau **et** outil C `ethghost` supprimés).
+  Détails, traces et décisions dans `docs/kernel-rootfs-refresh.details.md`.
+  **Validation** : mécanisme netns validé (eth42 déplaçable, invisible du netns racine, fonctionnel depuis
+  mgmt) ; volet invité rejoué en autonomie (relais `active`, socket créé) ; **`xeyes` s'affiche sur l'écran
+  hôte** ⇒ architecture C prouvée bout-en-bout. **`wireshark` crash** = bug **noyau UML 6.12.95**
+  (`BUG: Bad page map … file:PACKET mmap:sock_mmap`, ring `PACKET_MMAP`), **orthogonal à C**, non
+  reproductible via `dumpcap` CLI (5 configs) → **chantier NOYAU** (bloque la capture live, comme vwifi).
+  **Piste ouverte, non appliquée — « idée n°1 » de Jean** : faire tourner Marionnet dans une sandbox
+  **user-namespaces** pour le rendre **rootless** et **supprimer le rôle privilégié de `marionnet_daemon`**
+  (le réseau inter-équipements VDE est déjà userspace) — chantier séparé, découplé de X11.

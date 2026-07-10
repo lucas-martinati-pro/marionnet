@@ -43,6 +43,9 @@ package_catalog.*.COMPLETE.COMMENTED
 wget-log*
 # Journaux runtime du boot-test (xterm -l) de pupisto.tester
 uml/pupisto.tester/Xterm.log.*
+# Clé ssh propre au tester (--auto-network-by-eth42), générée à la volée
+uml/pupisto.tester/tester_key
+uml/pupisto.tester/tester_key.pub
 
 # --- Outillage Claude Code : journal de dérive des index (généré par hook) ---
 .claude/stale.log
