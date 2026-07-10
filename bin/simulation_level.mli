@@ -216,6 +216,7 @@ val random_mac_address : unit -> string
 class uml_process :
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
+  ?init_system:string ->
   filesystem_file_name:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
@@ -341,6 +342,7 @@ class virtual ['parent] machine_or_router :
   router:bool ->
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
+  ?init_system:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->
@@ -386,6 +388,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   router:bool ->
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
+  ?init_system:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->

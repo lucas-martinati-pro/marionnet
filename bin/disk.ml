@@ -546,7 +546,7 @@ class virtual_machine_installations
     let config = String_map.find (epithet) (filesystem_config_mapping) in
     match Option.bind config (Configuration_files.get_string_variable "INIT_SYSTEM") with
     | Some "systemd" -> "systemd"
-    | Some _ | None   -> "sysv"
+    | Some _ | None  -> "sysv"
 
   method memory_min_size_of epithet =
     let config = String_map.find (epithet) (filesystem_config_mapping) in

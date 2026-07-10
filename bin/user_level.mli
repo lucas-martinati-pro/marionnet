@@ -489,6 +489,7 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method get_epithet : [ `distrib ] Disk.epithet
     method get_filesystem_file_name : Disk.realpath
     method get_filesystem_relay_script : Disk.filename option
+    method get_init_system : string
     method get_kernel : [ `kernel ] Disk.epithet
     method get_kernel_console_arguments : string option
     method get_kernel_file_name : Disk.realpath
