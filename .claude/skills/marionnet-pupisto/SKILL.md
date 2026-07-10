@@ -31,6 +31,25 @@ description: Chantier systèmes invités de Marionnet (uml/) — construire noya
 - `uml/startup.old/` est un vestige apparent (supersédé par `guest/marionnet-relay`) :
   ne t'en inspire pas sans vérification.
 
+## Contenu de l'image (catalogue de paquets)
+
+- Sélection = `pupisto.debian/…/package_catalog/package_catalog.<release>.selection`. Une ligne
+  par paquet : **champ 1 = nom** ; `#` en tête = **dé-sélectionné**. Fichier **trié par nom**
+  (`#` ignoré, **locale par défaut** qui ignore les tirets : `dbus-*` avant `db-util`).
+- Catalogue généré (`.GENERATED`/`.COMPLETE.COMMENTED`) = anciennes VM ∩ release via
+  `debootstrap`+`apt-file` (~1h, sudo+réseau). Deux cas pour intégrer un paquet :
+  - présent au catalogue mais commenté → **dé-commenter** (retirer `#`) ;
+  - absent du catalogue → **ajouter une ligne** `<pkg> PROVIDES: - DESCRIPTION: (marionnet <release> 20XX addition)`
+    à sa **place alphabétique** (motif déjà utilisé).
+- **Valider chaque nom neuf contre l'index de la release AVANT de l'ajouter** — un nom inexistant
+  en `main` fait échouer l'`apt-get install`, désormais **fatal** (le build avorte) :
+  `curl -fsSL .../dists/<release>/main/binary-amd64/Packages.xz | xz -d | grep '^Package: <pkg>$'`.
+- Décisions de **contenu** (périmètre cyber, X11-minimal, « machine nue » = services OFF au boot,
+  poids) = **arbitrages de Jean**, pas à trancher seul. Recherche péda : `docs/recherche-paquets-pedagogiques-trixie.md`.
+- `make trixie` du **catalogue** (dossier `package_catalog/`) ≠ `make trixie` du **build image**
+  (`pupisto.debian/`). Après édition de la `.selection` : **rebuild image + boot-test** pour valider
+  que les paquets s'installent (l'édition seule ne prouve rien).
+
 ## Ghostification
 
 Les patches de `uml/kernel/` rendent les interfaces de service invisibles de l'invité ;
