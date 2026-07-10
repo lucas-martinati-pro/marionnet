@@ -3,6 +3,7 @@ acl PROVIDES: chacl getfacl setfacl DESCRIPTION: access control list - utilities
 #acpid PROVIDES: acpid acpi_listen DESCRIPTION: Advanced Configuration and Power Interface event daemon
 adjtimex PROVIDES: adjtimex DESCRIPTION: kernel time variables configuration utility
 #adns-tools PROVIDES: adnsheloex adnshost adnslogres adnsresfilter DESCRIPTION: Asynchronous-capable DNS client utilities
+aircrack-ng PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #amdgcn-tools PROVIDES: ar as ld nm ranlib DESCRIPTION: linker tools for the amdgcn architecture
 apache2 PROVIDES: a2dismod a2dissite a2enmod a2ensite apache2ctl apachectl DESCRIPTION: Apache HTTP Server
 #apache2-bin PROVIDES: apache2 DESCRIPTION: Apache HTTP Server (modules and other binary files)
@@ -26,6 +27,7 @@ bind9-dnsutils PROVIDES: dig nslookup nsupdate DESCRIPTION: Clients provided wit
 bind9-host PROVIDES: host DESCRIPTION: DNS Lookup Utility
 #bind9-utils PROVIDES: dnssec-dsfromkey dnssec-keyfromlabel dnssec-keygen dnssec-signzone named-checkconf named-checkzone named-compilezone rndc rndc-confgen DESCRIPTION: Utilities for BIND 9
 binutils PROVIDES: addr2line c++filt gprof objcopy objdump readelf size strip DESCRIPTION: GNU assembler, linker and binary utilities
+binwalk PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #bootlogd PROVIDES: bootlogd DESCRIPTION: daemon to log boot messages
 bridge-utils PROVIDES: brctl DESCRIPTION: Utilities for configuring the Linux Ethernet bridge
 #bsdextrautils PROVIDES: col colcrt colrm column hd hexdump ul DESCRIPTION: extra utilities from 4.4BSD-Lite
@@ -34,6 +36,7 @@ build-essential PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #busybox-syslogd PROVIDES: klogd logread syslogd DESCRIPTION: Provides syslogd and klogd using busybox
 bzip2 PROVIDES: bunzip2 bzcat bzcmp bzdiff bzegrep bzexe bzfgrep bzgrep bzip2 bzip2recover bzless bzmore DESCRIPTION: high-quality block-sorting file compressor - utilities
 #calendar PROVIDES: calendar DESCRIPTION: display upcoming dates and provide reminders
+cargo PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 chrony PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 cifs-utils PROVIDES: mount.cifs DESCRIPTION: Common Internet File System utilities
 #consolekit PROVIDES: ck-history ck-launch-session ck-list-sessions console-kit-daemon DESCRIPTION: framework for defining and tracking users, sessions and seats
@@ -78,8 +81,10 @@ dovecot-pop3d PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #e2fsck-static PROVIDES: e2fsck.static DESCRIPTION: statically-linked version of the ext2/ext3/ext4 filesystem checker
 ed PROVIDES: red DESCRIPTION: classic UNIX line editor
 #eject PROVIDES: eject DESCRIPTION: ejects CDs and operates CD-Changers under Linux
+emacs-nox PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 ethtool PROVIDES: ethtool DESCRIPTION: display or change Ethernet device settings
 #ettercap-graphical PROVIDES: ettercap etterfilter etterlog DESCRIPTION: Ettercap GUI-enabled executable
+ettercap-text-only PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #e-wrapper PROVIDES: e DESCRIPTION: invoke your editor, with optional file:lineno handling
 #exo-utils PROVIDES: exo-desktop-item-edit exo-open DESCRIPTION: Utility files for libexo
 #exuberant-ctags PROVIDES: ctags-exuberant DESCRIPTION: build tag file indexes of source code definitions
@@ -97,6 +102,7 @@ gawk PROVIDES: gawk DESCRIPTION: GNU awk, a pattern scanning and processing lang
 gcc PROVIDES: c89-gcc c99-gcc gcc gcov DESCRIPTION: GNU C compiler
 gdb PROVIDES: gcore gdb gdbtui DESCRIPTION: GNU Debugger
 #gdbserver PROVIDES: gdbserver DESCRIPTION: GNU Debugger (remote server)
+geany PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 gettext PROVIDES: gettextize msgattrib msgcat msgcmp msgcomm msgconv msgen msgexec msgfilter msgfmt msggrep msginit msgmerge msgunfmt msguniq recode-sr-latin xgettext DESCRIPTION: GNU Internationalization utilities
 gettext-base PROVIDES: envsubst gettext gettext.sh ngettext DESCRIPTION: GNU Internationalization utilities for the base system
 #ghostscript PROVIDES: dvipdf eps2eps gsbj gsdj gsdj500 gslj gslp gsnd pdf2dsc pdf2ps pf2afm pfbtopfa pphs printafm ps2ascii ps2epsi ps2pdf12 ps2pdf13 ps2pdf14 ps2pdfwr ps2ps ps2ps2 DESCRIPTION: interpreter for the PostScript language and for PDF
@@ -116,6 +122,7 @@ git PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #heimdal-dev PROVIDES: krb5-config DESCRIPTION: Heimdal Kerberos - development files
 html2text PROVIDES: html2text DESCRIPTION: advanced HTML to text converter
 htop PROVIDES: htop DESCRIPTION: interactive processes viewer
+hydra PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #icecc PROVIDES: cc DESCRIPTION: distributed compiler (client and server)
 ifmetric PROVIDES: ifmetric DESCRIPTION: Set routing metrics for a network interface
 #ifstat PROVIDES: ifstat DESCRIPTION: InterFace STATistics Monitoring
@@ -132,7 +139,7 @@ inetutils-tools PROVIDES: inetutils-ifconfig DESCRIPTION: base networking utilit
 ipcalc PROVIDES: ipcalc DESCRIPTION: parameter calculator for IPv4 addresses
 iperf3 PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 ipsvd PROVIDES: tcpsvd udpsvd DESCRIPTION: Internet protocol service daemons
-#iptables PROVIDES: iptables-xml DESCRIPTION: administration tools for packet filtering and NAT
+iptables PROVIDES: iptables-xml DESCRIPTION: administration tools for packet filtering and NAT
 iputils-clockdiff PROVIDES: clockdiff DESCRIPTION: Measure the time difference between networked computers
 iputils-tracepath PROVIDES: tracepath DESCRIPTION: Tools to trace the network path to a remote host
 ipython3 PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
@@ -216,6 +223,7 @@ mpack PROVIDES: mpack munpack DESCRIPTION: tools for encoding/decoding MIME mess
 #mtd-utils PROVIDES: nanddump nandwrite ubiattach ubidetach ubimkvol ubirmvol ubirsvol ubiupdatevol DESCRIPTION: Memory Technology Device Utilities
 mtools PROVIDES: amuFormat.sh mcheck mcomp mkmanifest mtools mxtar tgz uz DESCRIPTION: Tools for manipulating MSDOS files
 mtr PROVIDES: mtr DESCRIPTION: Full screen ncurses and X11 traceroute tool
+nano PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 nast PROVIDES: nast DESCRIPTION: packet sniffer and lan analyzer
 #nbd-client PROVIDES: nbd-client DESCRIPTION: Network Block Device protocol - client
 #ncal PROVIDES: ncal DESCRIPTION: display a calendar and the date of Easter
@@ -253,6 +261,7 @@ openresolv PROVIDES: resolvconf DESCRIPTION: management framework for resolv.con
 openssh-client PROVIDES: scp sftp ssh ssh-add ssh-agent ssh-argv0 ssh-copy-id ssh-keygen ssh-keyscan DESCRIPTION: secure shell (SSH) client, for secure access to remote machines
 openssh-server PROVIDES: sshd DESCRIPTION: secure shell (SSH) server, for secure access from remote machines
 openssl PROVIDES: c_rehash openssl DESCRIPTION: Secure Sockets Layer toolkit - cryptographic utility
+openvpn PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #pango1.0-tools PROVIDES: pango-view DESCRIPTION: Development utilities for Pango
 #papd PROVIDES: pap papd papstatus DESCRIPTION: AppleTalk Network Suite (PAP Print Server)
 patch PROVIDES: patch DESCRIPTION: Apply a diff file to an original
@@ -275,6 +284,7 @@ psmisc PROVIDES: fuser killall peekfd pstree pstree.x11 DESCRIPTION: utilities t
 python3 PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 python3-pip PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 python3-scapy PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
+python3-venv PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #python-is-python3 PROVIDES: pydoc python DESCRIPTION: symlinks /usr/bin/python to python3
 radvd PROVIDES: radvd DESCRIPTION: Router Advertisement Daemon
 #radvdump PROVIDES: radvdump DESCRIPTION: dumps Router Advertisements
@@ -291,6 +301,7 @@ rsync PROVIDES: rsync DESCRIPTION: fast, versatile, remote (and local) file-copy
 rsyslog PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #rtkit PROVIDES: rtkitctl DESCRIPTION: Realtime Policy and Watchdog Daemon
 #runit PROVIDES: chpst runsv runsvdir sv svlogd DESCRIPTION: system-wide service supervision
+rustc PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 samba PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 samba-common-bin PROVIDES: net nmblookup smbpasswd testparm DESCRIPTION: Samba common files used by both the server and the client
 #sash PROVIDES: sash DESCRIPTION: Stand-alone statically linked shell
@@ -302,6 +313,7 @@ setserial PROVIDES: setserial DESCRIPTION: controls configuration of serial port
 #shared-mime-info PROVIDES: update-mime-database DESCRIPTION: FreeDesktop.org shared MIME database and spec
 sharutils PROVIDES: shar unshar uudecode uuencode DESCRIPTION: shar, unshar, uuencode, uudecode
 slapd PROVIDES: slapacl slapadd slapauth slapcat slapd slapdn slapindex slappasswd slapschema slaptest DESCRIPTION: OpenLDAP server (slapd)
+sleuthkit PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 #smartlist PROVIDES: digest DESCRIPTION: Versatile and Intelligent List Processor
 #smemcap PROVIDES: smemcap DESCRIPTION: data collection tool for memory reporting
 #smistrip PROVIDES: smistrip DESCRIPTION: extract MIB from text files like RFC
@@ -313,6 +325,7 @@ socat PROVIDES: filan procan socat DESCRIPTION: multipurpose relay for bidirecti
 #spawn-fcgi PROVIDES: spawn-fcgi DESCRIPTION: FastCGI process spawner
 #sq PROVIDES: sq DESCRIPTION: OpenPGP command-line tool from Sequoia
 #sqlite3 PROVIDES: sqlite3 DESCRIPTION: Command line interface for SQLite 3
+sqlmap PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 sshfs PROVIDES: sshfs DESCRIPTION: filesystem client based on SSH File Transfer Protocol
 #ssl-cert PROVIDES: make-ssl-cert DESCRIPTION: simple debconf wrapper for OpenSSL
 sssd PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
@@ -353,7 +366,7 @@ vlan PROVIDES: vconfig DESCRIPTION: ifupdown legacy integration for vlan configu
 #vlock PROVIDES: vlock DESCRIPTION: Virtual Console locking program
 vsftpd PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 w3m PROVIDES: w3m w3mman DESCRIPTION: WWW browsable pager with excellent tables/frames support
-#wget PROVIDES: wget DESCRIPTION: retrieves files from the web
+wget PROVIDES: wget DESCRIPTION: retrieves files from the web
 whois PROVIDES: mkpasswd whois DESCRIPTION: intelligent WHOIS client
 wireshark PROVIDES: wireshark DESCRIPTION: network traffic analyzer - graphical interface
 wireshark-common PROVIDES: capinfos dumpcap editcap mergecap text2pcap DESCRIPTION: network traffic analyzer - common files

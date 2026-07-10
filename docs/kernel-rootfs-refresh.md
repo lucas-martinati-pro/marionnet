@@ -208,3 +208,17 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   Par ailleurs, **recherche approfondie des paquets pédagogiques** (TP univ/école d'ing., réseau > système >
   cybersécurité > programmation) archivée dans `docs/recherche-paquets-pedagogiques-trixie.md` : base pour
   affiner `package_catalog.trixie.selection` (volet « contenu de l'image », distinct).
+- **2026-07-10** — épisode 10 (`package_catalog.trixie.selection`) : **contenu de l'image affiné**
+  depuis la recherche pédagogique. Réconciliation recherche ↔ sélection validée contre l'index
+  `dists/trixie/main/binary-amd64/Packages.xz` (68 755 paquets) : le socle réseau/analyse était déjà
+  complet ; **`nikto` et `zaproxy` (OWASP ZAP) sont absents de trixie/main** (tranche par le négatif la
+  piste « alternative libre à Burp », cohérent avec l'écartement de Burp/Metasploit). **147 → 162
+  paquets** : dé-commentage de `iptables` (syntaxe des TP pare-feu) et `wget` ; ajout de 13 lignes au
+  motif « 2026 addition » — réseau `openvpn` ; couche cyber **complète** (arbitrage Jean) `hydra`,
+  `sqlmap`, `sleuthkit`, `binwalk`, `aircrack-ng` (offline seul, pas de mode monitor en UML),
+  `ettercap-text-only` (variante sans X11) ; prog `python3-venv`, `rustc`, `cargo`, `geany` (éditeur GUI
+  léger — seule entorse assumée à X11-minimal), éditeurs console `nano`, `emacs-nox`. `g++` écarté
+  (redondant via `build-essential`). Insertion à la place alphabétique (fichier trié par nom, `#`
+  ignoré, locale par défaut) ; diff = 15 ins/2 del sans réordonnancement parasite. **Build/boot NON
+  re-testés** (rebuild image ~1h sudo/réseau, côté Jean ; un nom inexistant en main serait fatal à
+  l'`apt-get install` — d'où la validation préalable contre l'index).
