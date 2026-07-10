@@ -952,7 +952,23 @@ function prevent_non_vital_services_from_starting {
      sudo chroot "$ROOT" update-rc.d -f "$s" remove >/dev/null 2>&1 || true
      echo "  disabled (SysV): $s"
    done
-   echo "systemd release: only vital units kept (marionnet-relay + linuxlogo + getty + systemd core); network and all servers OFF."
+   # Pass 3 -- systemd timers. Passes 1-2 disable *services*; periodic maintenance
+   # timers under timers.target.wants/ survive them. On an ephemeral lab VM they are
+   # all noise: each carries Persistent=true, so a missed run is caught up *at boot*
+   # (the guest clock starts behind), firing them in a burst right when the student
+   # begins. None is a teachable service (those are the daemons handled above) --
+   # apt-daily even locks dpkg mid-lab, man-db reindexes every boot, e2scrub_all is a
+   # no-op (no LVM), fstrim a no-op on ubd, lighttpd-maint an orphan (lighttpd off).
+   # Same offline-safe `rm' of the Wants symlink as pass 1. Whitelist empty.
+   # Rationale table: docs/kernel-rootfs-refresh.details.md (2026-07-10).
+   local tw="$sysd/timers.target.wants"
+   for unit in "$tw"/*.timer; do
+     [[ -e $unit || -L $unit ]] || continue
+     base=$(basename "$unit")
+     sudo rm -f "$tw/$base"
+     echo "  disabled (timer): ${base%.timer}"
+   done
+   echo "systemd release: only vital units kept (marionnet-relay + linuxlogo + getty + systemd core); network, all servers and maintenance timers OFF."
    return 0
  fi
  # Note that `console-screen.sh' creates a second windows. So, we don't consider it as required.

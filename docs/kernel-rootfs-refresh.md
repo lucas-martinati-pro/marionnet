@@ -157,3 +157,14 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   (ENOSYS mprotect RELRO) — même famille que `epoll_wait: Function not implemented` (libuv/named).
   **Volet OCaml (verrou C) toujours en attente de la toolchain 4.13.1** : `console=tty0` de l'ép. 4 est
   désormais confirmé au boot, mais `simulation_level.ml` non recompilé.
+- **2026-07-10** — épisode 8 (`pupisto.debian.sh` ; `docs/kernel-rootfs-refresh.details.md` nouveau) :
+  **timers systemd de maintenance désactivés** (suite du durcissement « machine nue »). Les passes 1-2
+  de `prevent_non_vital_services_from_starting` traitaient les *services* ; 8 *timers* survivaient sous
+  `timers.target.wants/` (apt-daily, apt-daily-upgrade, dpkg-db-backup, e2scrub_all, fstrim,
+  lighttpd-maint, logrotate, man-db). Tous ont `Persistent=true` → rattrapage **au boot** (horloge VM
+  en retard) : rafale de maintenance au démarrage. Analyse timer-par-timer et décision (les 8 ÉLIMINÉS,
+  y compris `logrotate` le seul discutable) archivées dans **`docs/kernel-rootfs-refresh.details.md`**
+  (fichier de traces, non chargé en contexte par défaut). Implémentation : **passe 3** symétrique au
+  pass 1 (balaye `timers.target.wants/`, `rm` du symlink, offline-safe, whitelist vide). Vérifié :
+  `bash -n` OK + dry-run capte exactement les 8 sur le rootfs de la dernière image. **Boot NON re-testé**
+  (exige un rebuild image ~1h sudo/réseau, côté Jean).
