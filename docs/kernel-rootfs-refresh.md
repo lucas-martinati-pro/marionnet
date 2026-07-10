@@ -196,3 +196,15 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   **Piste ouverte, non appliquée — « idée n°1 » de Jean** : faire tourner Marionnet dans une sandbox
   **user-namespaces** pour le rendre **rootless** et **supprimer le rôle privilégié de `marionnet_daemon`**
   (le réseau inter-équipements VDE est déjà userspace) — chantier séparé, découplé de X11.
+- **2026-07-10** — fix build (`7bca541`, `bin/{disk,machine,simulation_level,user_level}.mli` + `disk.ml`) :
+  **recompilation de l'épisode 4**. La toolchain OCaml 4.13.1 (camlp4) ayant été restaurée (switch opam
+  réinstallé), le build a révélé que `b245677` avait ajouté aux `.ml` la méthode `get_init_system` /
+  `init_system_of` et le paramètre optionnel `?init_system` **sans mettre à jour les `.mli`** → compilation
+  séparée cassée. Correctif : exposer ces membres dans `user_level.mli`, `machine.mli` et les 3 constructeurs
+  de classe de `simulation_level.mli` (`uml_process`, `machine_or_router`, `…_with_accessory_processes`).
+  **`dune build @all` → rc=0**, `marionnet.exe` se linke (`marionnet_daemon.exe` n'est pas une cible câblée
+  par le dune actuel — chantier « finitions », sans rapport). **Reste du volet OCaml** : porter la table
+  `BOOT_QUIRKS` et **aligner le mécanisme netns X11 (architecture C)** côté Marionnet.
+  Par ailleurs, **recherche approfondie des paquets pédagogiques** (TP univ/école d'ing., réseau > système >
+  cybersécurité > programmation) archivée dans `docs/recherche-paquets-pedagogiques-trixie.md` : base pour
+  affiner `package_catalog.trixie.selection` (volet « contenu de l'image », distinct).
