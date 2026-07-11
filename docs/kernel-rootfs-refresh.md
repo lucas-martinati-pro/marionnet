@@ -249,3 +249,27 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   **re-geler** le `.config` produit comme `CONFIG-6.12.95` et le committer ; le check ép.14 **valide**
   alors le résultat (et signale toute dépendance Kconfig oubliée). `bash -n` OK ; effet sur l'image
   **non** vérifié sans le rebuild.
+- **2026-07-11** — épisode 15 (`uml/kernel/CONFIG-modern-base`, `CONFIG-6.12.95` re-gelé,
+  `pupisto.debian.sh`) : **noyau reconstruit + pare-feu complet + IPv6, re-gel**. Rebuild
+  `./pupisto.kernel.sh 6.12.95` (seed + `olddefconfig`, rc=0, binaire `linux` 7,7 Mo UML). **IPv6**
+  ajouté au seed (`CONFIG_IPV6=y`) — TP dual-stack **et** dépendance qui débloque la famille `inet` de
+  nftables (`NF_TABLES_INET`, que `olddefconfig` droppait sans IPv6). Puis, **vérification par le script
+  `uml/kernel/check-inconsistencies.sh`** (comparaison de configs via bashbricks, Jean) : l'ép.14 ne
+  gardait que le **cadre** netfilter → les **expressions/matches/cibles pare-feu** (`reject`, `log`,
+  `masquerade`, `-m state/-m multiport`, `-j LOG`, iptables-legacy entier) étaient **OFF** → règles
+  inutilisables malgré le cadre. Périmètre **complet** retenu (arbitrage Jean) : expressions nft
+  (REJECT/REJECT_INET/LOG/MASQ/LIMIT/REDIR), matches/cibles xtables (STATE/CONNTRACK/MULTIPORT/LIMIT/MAC,
+  LOG/MASQUERADE, XT_NAT), **iptables-legacy IPv4+IPv6** (IP{,6}_NF_IPTABLES/FILTER/NAT/MANGLE +
+  TARGET_REJECT/MASQUERADE) — tous =y au seed **et** ajoutés au map `KERNEL_REQUIREMENTS` (le check les
+  garde). 3 symboles inexistants en 6.12 écartés après vérif du Kconfig de l'arbre : `NFT_COUNTER` (le
+  `counter` est intégré au core nf_tables), `NFT_FIB_INET` (familles fib hors périmètre), et le
+  fantomatique `NETFILTER_XT_TARGET_REJECT` (le reject vient de `IP{,6}_NF_TARGET_REJECT`/`NFT_REJECT`).
+  Extras `=m→=y` (capacités que l'image legacy — tout-`=y` — avait et que le seed modulaire avait
+  perdues, inutilisables faute de `/lib/modules` dans le rootfs) : `BLK_DEV_LOOP`, `DUMMY`, `ISO9660_FS`.
+  **Découverte structurelle** : pupisto ne fait **aucun `modules_install`** dans le rootfs, or le build
+  produit **22 `.ko` orphelins** (`CONFIG_MODULES=y`) → toute feature `=m` est de facto indisponible dans
+  l'invité, ce qui **justifie la politique =y** du check (question séparée : `CONFIG_MODULES=n` ou
+  installer les modules). `CONFIG-6.12.95` **re-gelé** depuis
+  `_build.linux-6.12.95.2026-07-11.19h04.19248/.config`, `.bak` supprimé. **Check ép.14 : 30/30
+  symboles =y, 0 violation.** **Preuve runtime** (`iptables -L`, `nft list ruleset` dans une VM) = à
+  faire au prochain rebuild image + boot-test.

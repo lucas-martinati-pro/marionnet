@@ -1267,8 +1267,12 @@ function make_or_link_the_kernel {
 # .selection. Symbols are space-separated. Membership is driven by the .selection
 # file (the curated image-content source of truth), not by a runtime variable.
 Map_make KERNEL_REQUIREMENTS
-Map_set KERNEL_REQUIREMENTS iptables     "CONFIG_NETFILTER CONFIG_NF_CONNTRACK CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_NFT_COMPAT"
-Map_set KERNEL_REQUIREMENTS nftables     "CONFIG_NF_TABLES CONFIG_NF_TABLES_INET"
+# iptables: framework + x_tables matches/targets (iptables-nft compat AND legacy)
+# + the iptables-legacy / ip6tables-legacy backends themselves.
+Map_set KERNEL_REQUIREMENTS iptables     "CONFIG_NETFILTER CONFIG_NF_CONNTRACK CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_NFT_COMPAT CONFIG_NETFILTER_XT_MATCH_STATE CONFIG_NETFILTER_XT_MATCH_CONNTRACK CONFIG_NETFILTER_XT_MATCH_MULTIPORT CONFIG_NETFILTER_XT_TARGET_LOG CONFIG_NETFILTER_XT_TARGET_MASQUERADE CONFIG_IP_NF_IPTABLES CONFIG_IP_NF_FILTER CONFIG_IP_NF_TARGET_REJECT CONFIG_IP_NF_NAT CONFIG_IP6_NF_IPTABLES CONFIG_IP6_NF_FILTER CONFIG_IP6_NF_TARGET_REJECT"
+# nftables: inet family + native expressions used by firewall labs (the `counter'
+# statement is built into the nf_tables core, so it has no separate symbol).
+Map_set KERNEL_REQUIREMENTS nftables     "CONFIG_NF_TABLES CONFIG_NF_TABLES_INET CONFIG_NFT_REJECT CONFIG_NFT_LOG CONFIG_NFT_MASQ CONFIG_NFT_LIMIT CONFIG_NFT_REDIR"
 Map_set KERNEL_REQUIREMENTS bridge-utils "CONFIG_BRIDGE"
 Map_set KERNEL_REQUIREMENTS vlan         "CONFIG_VLAN_8021Q"
 Map_set KERNEL_REQUIREMENTS iproute2     "CONFIG_NET_SCHED CONFIG_VETH CONFIG_NET_NS"

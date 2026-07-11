@@ -1940,6 +1940,9 @@ CONFIG_RUNTIME_TESTING_MENU=y
 # / `=m' lines above (same idiom as pupisto.kernel.sh's `echo ... >> .config').
 # `make olddefconfig' resolves the remaining sub-options and select'ed deps.
 #
+# IPv6 (dual-stack labs; also the dependency that lets nftables' `inet' family
+# and NF_TABLES_IPV6/INET below actually build — without it olddefconfig drops them):
+CONFIG_IPV6=y
 # Netfilter core + nftables (trixie's iptables is iptables-nft) + legacy compat:
 CONFIG_NETFILTER=y
 CONFIG_NETFILTER_ADVANCED=y
@@ -1953,6 +1956,39 @@ CONFIG_NF_TABLES_IPV6=y
 CONFIG_NFT_CT=y
 CONFIG_NFT_NAT=y
 CONFIG_NFT_COMPAT=y
+# nftables expressions used by firewall labs (reject/log/masquerade/limit/…) and
+# by the iptables-nft backend's -j/-m translation. Off by default → nft rules and
+# iptables verbs would fail despite the framework above being on:
+CONFIG_NFT_REJECT=y
+CONFIG_NFT_REJECT_INET=y
+CONFIG_NFT_LOG=y
+CONFIG_NFT_MASQ=y
+CONFIG_NFT_LIMIT=y
+CONFIG_NFT_REDIR=y
+# (nft `counter' is built into the nf_tables core; no separate symbol.)
+# x_tables matches/targets (iptables-nft compat layer AND iptables-legacy).
+# `reject' has no generic xt symbol: it comes from IP{,6}_NF_TARGET_REJECT below
+# (legacy) and NFT_REJECT above (nft backend).
+CONFIG_NETFILTER_XT_MATCH_STATE=y
+CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
+CONFIG_NETFILTER_XT_MATCH_MULTIPORT=y
+CONFIG_NETFILTER_XT_MATCH_LIMIT=y
+CONFIG_NETFILTER_XT_MATCH_MAC=y
+CONFIG_NETFILTER_XT_TARGET_LOG=y
+CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
+CONFIG_NETFILTER_XT_NAT=y
+# iptables-legacy (IPv4) and ip6tables-legacy backends + their classic verbs:
+CONFIG_IP_NF_IPTABLES=y
+CONFIG_IP_NF_FILTER=y
+CONFIG_IP_NF_TARGET_REJECT=y
+CONFIG_IP_NF_NAT=y
+CONFIG_IP_NF_TARGET_MASQUERADE=y
+CONFIG_IP_NF_MANGLE=y
+CONFIG_IP6_NF_IPTABLES=y
+CONFIG_IP6_NF_FILTER=y
+CONFIG_IP6_NF_TARGET_REJECT=y
+CONFIG_IP6_NF_NAT=y
+CONFIG_IP6_NF_MANGLE=y
 # Bridging, 802.1Q VLANs, traffic control (tc + netem/htb qdiscs), veth pairs:
 CONFIG_BRIDGE=y
 CONFIG_VLAN_8021Q=y
@@ -1963,3 +1999,10 @@ CONFIG_VETH=y
 # TUN/TAP (openvpn, generic tunnels) and PPP built-in (were =m above):
 CONFIG_TUN=y
 CONFIG_PPP=y
+# Capabilities the legacy (all-=y) image had and the modular seed lost as =m:
+# these are unusable in the guest (no /lib/modules installed → no module loading).
+# Not package-driven (so not guarded by the check), pedagogical arbitrage:
+#   loop devices (mount -o loop / losetup / image mounting), dummy netdev, ISO9660.
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_DUMMY=y
+CONFIG_ISO9660_FS=y
