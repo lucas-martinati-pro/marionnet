@@ -87,11 +87,14 @@ DEFAULT_IMAGES_DIR="$UML_DIR/pupisto.debian"
 DEFAULT_MEM="512M"      # the `.conf' suggests ~80M: far too little for trixie+systemd
 DEFAULT_UMID="tester"
 DEFAULT_TIMEOUT="120"   # headless: seconds before the guest is killed
-# --- auto-network (-A): host<->guest service tap on eth42 + sshd, like Marionnet ---
-# Each -A instance gets a FREE octet K (1..254) so several images can run at once:
-# it keys the tap name, the umid/mconsole, and a private 172.23.K.0/24 subnet.
+# --- auto-network (-A): host<->guest tap on a NORMAL lab interface eth0 + sshd ---
+# eth0 (not eth42): the Debian 13 native relay ghostifies eth42 into a hidden netns as
+# soon as ip42 is set, which would move the ssh channel out of the root namespace. eth0
+# is a plain lab interface, never ghostified. Each -A instance gets a FREE octet K
+# (1..254) so several images can run at once: it keys the tap name, the umid/mconsole,
+# and a private 172.23.K.0/24 subnet.
 NET_BASE="172.23"             # /16 space; each instance carves out a 172.23.K.0/24
-NET_PREFIX="24"               # host tap prefix (guest eth42 stays /16 -- marionnet-relay)
+NET_PREFIX="24"               # host tap prefix (guest eth0 stays /16 -- marionnet-relay)
 NET_TAP_PREFIX="mnt-tap"      # tap name prefix; must match the sudoers rule (mnt-tap*)
 NET_SSH_KEY="$SCRIPT_DIR/tester_key"   # tester's own ssh key (generated on first use, gitignored)
 NET_SUDOERS="/etc/sudoers.d/marionnet-tester"        # NOPASSWD rule for the tap commands
@@ -137,7 +140,7 @@ for i in "$@"; do
     --timeout)   ARGS+=("-t");;
     --extra)     ARGS+=("-x");;
     --display)   ARGS+=("-X");;
-    --auto-network-by-eth42) ARGS+=("-A");;
+    --auto-network-by-eth0)  ARGS+=("-A");;
     --)
       ARGS+=("--");
       double_dash_found=1;
@@ -218,8 +221,8 @@ Options:
                      network namespace (student's \`ip a' hides it), X11 relayed over it.
                      xterm mode; with --headless, only the guest mechanism is set up and
                      checked from the hostfs (no local X server needed).
-  -A/--auto-network-by-eth42
-                     boot with a host<->guest tap on eth42 + sshd, then print a ready
+  -A/--auto-network-by-eth0
+                     boot with a host<->guest tap on eth0 + sshd, then print a ready
                      ssh command (root@${NET_GUEST_IP}). Runs the guest attached (console
                      to stdout, no timeout); Ctrl-C / killing it tears the tap down.
                      First use provisions a NOPASSWD sudoers rule (asks for a password once).
@@ -322,13 +325,13 @@ function kernel_series_of {
 #              AUTO-NETWORK (-A): tap + sshd helpers
 # =============================================================
 
-# Reproduce Marionnet's service interface: a host<->guest `tap' carrying eth42.
-# The host end is 172.23.0.254/16, the guest eth42 is 172.23.0.1/16 (set by
-# marionnet-relay from ip42 in boot_parameters). We inject the tester's public key
-# and start sshd via marionnet-relay's extension mechanism (it sources every
-# /mnt/hostfs/marionnet-relay* at boot). Tap creation needs root: the first run
-# provisions a NOPASSWD sudoers rule scoped to the `mnt-tap*' tap commands, so
-# later runs are non-interactive (autonomous).
+# A host<->guest `tap' carrying eth0 (a plain lab interface, never ghostified -- unlike
+# eth42). The host end is 172.23.K.254/24, the guest eth0 is 172.23.K.1/16, configured
+# by marionnet-relay's standard per-interface loop from ethernet_interfaces_no and
+# ipv4_*_eth0 in boot_parameters. We inject the tester's public key and start sshd via
+# marionnet-relay's extension mechanism (it sources every /mnt/hostfs/marionnet-relay*
+# at boot). Tap creation needs root: the first run provisions a NOPASSWD sudoers rule
+# scoped to the `mnt-tap*' tap commands, so later runs are non-interactive (autonomous).
 
 # net_free_octet: echo the first octet K in 1..254 whose 172.23.K.0/24 is free (no
 # 172.23.K.254 address already assigned and no mnt-tapK interface). Lets several -A
@@ -347,7 +350,7 @@ function net_free_octet {
 function net_sudoers_content {
  local u ipbin; u=$(id -un); ipbin=$(command -v ip)
  cat <<EOF
-# Installed by pupisto.tester.sh (--auto-network-by-eth42). Scope: mnt-tap* only.
+# Installed by pupisto.tester.sh (--auto-network-by-eth0). Scope: mnt-tap* only.
 $u ALL=(root) NOPASSWD: $ipbin tuntap add dev mnt-tap* mode tap user $u
 $u ALL=(root) NOPASSWD: $ipbin tuntap del dev mnt-tap* mode tap
 $u ALL=(root) NOPASSWD: $ipbin addr add * dev mnt-tap*
@@ -394,13 +397,19 @@ function ensure_ssh_key {
 }
 
 # make_ssh_hostfs DIR: populate a hostfs dir with boot_parameters (=> marionnet-relay
-# configures eth42) and a sourced relay patch that authorizes our key and starts sshd.
+# configures eth0 -- NOT eth42, which the native relay would ghostify) and a sourced
+# relay patch that authorizes our key and starts sshd.
 function make_ssh_hostfs {
  local dir="$1" pub="${NET_SSH_KEY}.pub"
  [[ -r $pub ]] || { echo "Error: ssh public key '$pub' not found." 1>&2; return 1; }
- { echo "ip42='$NET_GUEST_IP'"
-   echo "hostname='$UMID'"
+ # No ip42 here: setting it would make the Debian 13 native relay ghostify eth42 into a
+ # hidden netns. We give the guest a plain eth0 instead, configured by the relay's
+ # standard per-interface loop (ethernet_interfaces_no + ipv4_*_eth0).
+ { echo "hostname='$UMID'"
    echo "virtual_disk='$IMAGE'"
+   echo "ethernet_interfaces_no=1"
+   echo "ipv4_address_eth0='$NET_GUEST_IP'"
+   echo "ipv4_netmask_eth0='255.255.0.0'"
  } > "$dir/boot_parameters"
  cp "$pub" "$dir/id_rsa_marionnet.pub"
  cat > "$dir/marionnet-relay-ssh" <<'EOF'
@@ -535,7 +544,7 @@ if [[ $DISPLAY_MODE = y ]]; then
   fi
 fi
 
-# Auto-network (-A): host<->guest tap on eth42 + sshd, for autonomous ssh tests.
+# Auto-network (-A): host<->guest tap on eth0 + sshd, for autonomous ssh tests.
 if [[ $AUTO_NET = y ]]; then
   [[ $HEADLESS = y ]]    && { echo "Error: -A is incompatible with --headless." 1>&2; exit 1; }
   [[ $DISPLAY_MODE = y ]] && { echo "Error: -A is incompatible with -X for now." 1>&2; exit 1; }
@@ -550,7 +559,7 @@ if [[ $AUTO_NET = y ]]; then
   net_tap_up || { echo "Error: could not set up the tap '$NET_TAP'." 1>&2; exit 5; }
   HOSTFS_DIR=$(mktemp -d /tmp/pupisto.tester.hostfs.XXXXXX)
   make_ssh_hostfs "$HOSTFS_DIR" || exit 5
-  KOPTS="$KOPTS eth42=tuntap,$NET_TAP hostfs=$HOSTFS_DIR"
+  KOPTS="$KOPTS eth0=tuntap,$NET_TAP hostfs=$HOSTFS_DIR"
 fi
 
 # Root filesystem: a throw-away COW layer keeps the image intact.
@@ -577,7 +586,7 @@ echo "   memory       : $MEM"
 echo "   console=tty0 : $([[ $KOPTS = *console=tty0* ]] && echo yes || echo no)"
 echo "   network      : $([[ -n $TAP ]] && echo "eth0=tuntap,$TAP" || echo none)"
 echo "   X11 display  : $([[ $DISPLAY_MODE = y ]] && echo "on -- eth42 ghostified in netns; guest :0 -> host ${HOST_X_SOCKET} via ${NET_HOST_IP}:6000" || echo off)"
-echo "   auto-network : $([[ $AUTO_NET = y ]] && echo "eth42=tuntap,$NET_TAP  host $NET_HOST_IP/$NET_PREFIX  guest $NET_GUEST_IP  (ssh root@$NET_GUEST_IP)" || echo off)"
+echo "   auto-network : $([[ $AUTO_NET = y ]] && echo "eth0=tuntap,$NET_TAP  host $NET_HOST_IP/$NET_PREFIX  guest $NET_GUEST_IP  (ssh root@$NET_GUEST_IP)" || echo off)"
 echo "   COW          : $([[ $USE_COW = y ]] && echo "yes (image kept intact)" || echo "NO -- writing into the image!")"
 [[ $HEADLESS = y ]] && echo "   timeout      : ${TIMEOUT}s"
 echo "=============================================================="
