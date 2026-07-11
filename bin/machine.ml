@@ -691,6 +691,7 @@ class machine
         ~kernel_file_name:self#get_kernel_file_name
         ?kernel_console_arguments:self#get_kernel_console_arguments
         ~init_system:self#get_init_system
+        ~ghostification:self#get_ghostification
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ?rcfile_content
         ~filesystem_file_name:self#get_filesystem_file_name
@@ -928,7 +929,9 @@ class machine
    (* [22983.0]: machine[m2]#start_hostfs_x11_directory_watching_thread: CONDITION=true EPITHET='guignol-18474' <= new machine OK *)
    (* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! *)
    let () = Log.printf3 "machine[%s]#start_hostfs_x11_directory_watching_thread: CONDITION=%b EPITHET='%s'\n" (self#name) (flag) (self#get_epithet) in
-   let () = if flag then ignore (self#start_hostfs_x11_directory_watching_thread ()) in
+   (* Architecture C (ghostification="netns"): the guest relay does the X11 forwarding
+      over eth42; the host-side serial/dummy-xserver relay must NOT run. *)
+   let () = if flag && self#get_ghostification <> "netns" then ignore (self#start_hostfs_x11_directory_watching_thread ()) in
    ()
    end
   (* -------------- *)
@@ -952,6 +955,7 @@ class ['parent] machine =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
+      ?(ghostification="ethghost") (* "ethghost" or "netns", from the .conf *)
       ?(filesystem_relay_script)
       (* ?(rcfile_content) *)
       ?(rcfile_content="# Nothing to do this time\n")
@@ -981,6 +985,7 @@ object(self)
       ~kernel_file_name
       ?kernel_console_arguments
       ~init_system
+      ~ghostification
       ?filesystem_relay_script
       ~rcfile_content
       ~ethernet_interface_no

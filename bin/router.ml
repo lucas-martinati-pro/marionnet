@@ -1144,6 +1144,7 @@ class router
         ~kernel_file_name:self#get_kernel_file_name
         ?kernel_console_arguments:self#get_kernel_console_arguments
         ~init_system:self#get_init_system
+        ~ghostification:self#get_ghostification
         ?filesystem_relay_script:self#get_filesystem_relay_script
         ~filesystem_file_name:self#get_filesystem_file_name
         ~get_the_cow_file_name_source
@@ -1296,6 +1297,7 @@ class ['parent] router =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
+      ?(ghostification="ethghost") (* "ethghost" or "netns", from the .conf *)
       ?(filesystem_relay_script)
       ~(filesystem_file_name)
       ~(ethernet_interface_no)
@@ -1341,6 +1343,7 @@ class ['parent] router =
       ~kernel_file_name
       ?kernel_console_arguments
       ~init_system
+      ~ghostification
       ?filesystem_relay_script
       ?rcfile_content
       ~get_the_cow_file_name_source

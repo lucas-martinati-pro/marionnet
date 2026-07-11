@@ -217,6 +217,7 @@ class uml_process :
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
   ?init_system:string ->
+  ?ghostification:string ->
   filesystem_file_name:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
@@ -343,6 +344,7 @@ class virtual ['parent] machine_or_router :
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
   ?init_system:string ->
+  ?ghostification:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->
@@ -389,6 +391,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
   ?init_system:string ->
+  ?ghostification:string ->
   ?filesystem_relay_script:string ->
   ?rcfile_content:string ->
   filesystem_file_name:string ->

@@ -1101,6 +1101,9 @@ class virtual virtual_machine_with_history_and_ifconfig
   method get_init_system : string =
       vm_installations#init_system_of (self#get_epithet)
 
+  method get_ghostification : string =
+      vm_installations#ghostification_of (self#get_epithet)
+
   method is_xnest_enabled =
       (vm_installations#terminal_manager_of self#get_epithet)#is_xnest (self#get_terminal)
 

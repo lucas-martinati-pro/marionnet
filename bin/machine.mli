@@ -101,6 +101,7 @@ module User_level_machine : sig
       method get_filesystem_file_name        : Disk.realpath
       method get_filesystem_relay_script     : Disk.filename option
       method get_init_system                 : string
+      method get_ghostification              : string
       (* --- *)
       method get_variant                     : [ `variant ] Disk.epithet option
       method set_variant                     : [ `variant ] Disk.epithet option -> unit
@@ -222,6 +223,7 @@ module (*Machine.*)Simulation_level : sig
     kernel_file_name          : string ->
     ?kernel_console_arguments : string ->
     ?init_system              : string ->
+    ?ghostification           : string ->
     ?filesystem_relay_script  : string ->
     ?rcfile_content           : string ->
     get_the_cow_file_name_source : (unit -> string option) ->

@@ -403,7 +403,7 @@ class virtual_machine_installations
 		  ~file_names:[config_file]
 		  ~variables:[ "MD5SUM"; "AUTHOR"; "DATE"; "MTIME"; "SUPPORTED_KERNELS"; "X11_SUPPORT";
 		               "MEMORY_MIN_SIZE"; "MEMORY_SUGGESTED_SIZE"; "MULTIPLE_CONSOLES_SUPPORT";
-		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; "INIT_SYSTEM"; ]
+		               "RC_RELAY_SUPPORT"; "BINARY_LIST"; "INIT_SYSTEM"; "GHOSTIFICATION"; ]
 		  ()
 	      in
 	      Some (config)
@@ -547,6 +547,16 @@ class virtual_machine_installations
     match Option.bind config (Configuration_files.get_string_variable "INIT_SYSTEM") with
     | Some "systemd" -> "systemd"
     | Some _ | None  -> "sysv"
+
+  (* Ghostification method of the service interface eth42 ("ethghost" legacy, or
+     "netns" for architecture C), read from the GHOSTIFICATION binding written by
+     pupisto into the filesystem's .conf. Absent binding => "ethghost" (zero
+     regression for pre-existing filesystems). *)
+  method ghostification_of epithet : string =
+    let config = String_map.find (epithet) (filesystem_config_mapping) in
+    match Option.bind config (Configuration_files.get_string_variable "GHOSTIFICATION") with
+    | Some "netns"  -> "netns"
+    | Some _ | None -> "ethghost"
 
   method memory_min_size_of epithet =
     let config = String_map.find (epithet) (filesystem_config_mapping) in

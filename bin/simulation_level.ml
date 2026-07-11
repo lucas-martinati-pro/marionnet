@@ -822,6 +822,7 @@ class uml_process =
   fun ~(kernel_file_name)
       ?(kernel_console_arguments:string option)
       ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
+      ?(ghostification="ethghost") (* "ethghost" or "netns", from the .conf *)
       ~(filesystem_file_name)
       ?(filesystem_relay_script:string option)
       ?(rcfile_content:string option)
@@ -960,10 +961,23 @@ class uml_process =
      a design deduction from systemd's documented generator behaviour, not yet
      confirmed by an actual boot (see chantier marionnet-kernel-rootfs).
      Never overrides an already-specified `console=' (e.g. from SUPPORTED_KERNELS). *)
+  (* Boot quirks: extra kernel arguments required only for a given (kernel-series,
+     init-system) couple -- the OCaml counterpart of pupisto.tester's BOOT_QUIRKS table
+     (keep the two in sync). A 6.12 systemd rootfs needs `console=tty0' so that
+     systemd-getty-generator spawns a getty on the Marionnet console. Never override an
+     already-specified `console=' (e.g. from SUPPORTED_KERNELS). *)
+  let boot_quirks = [ (("6.12", "systemd"), [ "console=tty0" ]) ] in
+  let kernel_series =
+    try
+      let _ = Str.search_forward (Str.regexp "linux-\\([0-9]+[.][0-9]+\\)") kernel_file_name 0 in
+      Str.matched_group 1 kernel_file_name
+    with Not_found -> ""
+  in
   let console_related_arguments =
-    if init_system = "systemd"
+    let extra = try List.assoc (kernel_series, init_system) boot_quirks with Not_found -> [] in
+    if extra <> []
        && not (List.exists (StrExtra.First.matchingp (Str.regexp "^console=")) console_related_arguments)
-    then console_related_arguments @ [ "console=tty0" ]
+    then console_related_arguments @ extra
     else console_related_arguments
   in
   let command_line_arguments =
@@ -1237,7 +1251,13 @@ class uml_process =
            ("host_ipv6_address_eth42", Option.extract_or (get_ipv6_address_of tap_name) (predict_ipv6_link_local_address_of tap_name));
            (* We use a non-standard binding to pass the virtual machine name to the guest: *)
            ("hostname", umid);
-          ]));
+          ])
+        (* Architecture C (ghostification="netns"): tell the guest relay the host X
+           endpoint it must forward eth42's X11 to (the tap host side, 172.23.0.254 --
+           cf. the eth42=tuntap argument). Absent for legacy images, which use the
+           serial X11 transport (marionnet-dummy-xserver). *)
+        @ (if ghostification = "netns" then [ ("host_display_ip", "172.23.0.254") ] else [])
+        );
     flush_all ();
     (try
       close_out out_channel;
@@ -1659,6 +1679,7 @@ class virtual ['parent] machine_or_router =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
+      ?(ghostification="ethghost") (* "ethghost" or "netns", from the .conf *)
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
@@ -1726,6 +1747,7 @@ object(self)
               ~kernel_file_name
               ?kernel_console_arguments
               ~init_system
+              ~ghostification
               ?filesystem_relay_script
               ?rcfile_content
               ~filesystem_file_name
@@ -1817,6 +1839,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~(kernel_file_name)
       ?(kernel_console_arguments)
       ?(init_system="sysv") (* "sysv" or "systemd", from the filesystem's .conf *)
+      ?(ghostification="ethghost") (* "ethghost" or "netns", from the .conf *)
       ?(filesystem_relay_script)
       ?(rcfile_content)
       ~(filesystem_file_name)
@@ -1841,6 +1864,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~parent ~router
       ~kernel_file_name ?kernel_console_arguments
       ~init_system
+      ~ghostification
       ?filesystem_relay_script ?rcfile_content
       ~filesystem_file_name
       ~get_the_cow_file_name_source
