@@ -222,3 +222,30 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   ignoré, locale par défaut) ; diff = 15 ins/2 del sans réordonnancement parasite. **Build/boot NON
   re-testés** (rebuild image ~1h sudo/réseau, côté Jean ; un nom inexistant en main serait fatal à
   l'`apt-get install` — d'où la validation préalable contre l'index).
+- **2026-07-11** — épisode 14 (`pupisto.debian.sh`, `uml/kernel/CONFIG-modern-base`) : **garde-fou
+  features noyau + fragment labo**. Diagnostic des deux défauts de la dernière image trixie :
+  **(1) iptables** échoue (`Failed to initialize nft: Protocol not supported`) car le `.config` gelé
+  a `# CONFIG_NETFILTER is not set` (donc pas de `NF_TABLES` pour le backend `iptables-nft` de trixie ;
+  le legacy manquerait aussi `x_tables`) — **défaut noyau, pas rootfs** ; **(2) wireshark** crashe la
+  VM (`BUG: Bad page map … PACKET mmap:sock_mmap`) : `CONFIG_PACKET=y` est **déjà** présent → c'est un
+  **bug mémoire UML sur le ring `PACKET_MMAP`**, **pas** un toggle de config (investigation séparée, cf.
+  bullet « Chantier NOYAU »). Le `.config` gelé s'avère aussi privé de `BRIDGE`, `VLAN_8021Q`,
+  `NET_SCHED`, `VETH`, et a `TUN`/`PPP` en `=m`. **Automatisation demandée** (« que tous les binaires
+  installés fassent des hypothèses correctes sur le noyau ») : une **Map bashbricks
+  `KERNEL_REQUIREMENTS`** dans `pupisto.debian.sh` (`paquet → CONFIG_* requis en =y`, **source de vérité
+  unique** qui documente aussi le fragment) + `check_kernel_features_for_selection`, lancé après
+  `make_or_link_the_kernel`, qui lit le `.config` apparié et **fait échouer le build (fatal**, override
+  `MARIONNET_KERNEL_CHECK=warn|off`**)** si un paquet **sélectionné** (pilotage par la `.selection`)
+  exige un symbole absent. **=y et non =m** : ces images UML ne chargent pas de modules au runtime.
+  Logique **validée** contre le `.config` courant (harnais) : **13 violations** exactes (iptables×5,
+  nftables×2, bridge-utils, vlan, iproute2×2 — `NET_NS` déjà =y —, openvpn, ppp), tcpdump/wireshark/tshark
+  OK (`PACKET=y`). **Fragment labo** (=y) appendu à `CONFIG-modern-base` (sémantique kconfig « dernière
+  occurrence gagne », idiome `echo >> .config` de `pupisto.kernel.sh`) : netfilter core + nftables
+  (`NF_TABLES`, `NF_TABLES_INET/IPV4/IPV6`, `NFT_CT/NAT/COMPAT`, `NETFILTER_XTABLES`, `NF_CONNTRACK`,
+  `NF_NAT`, `NETFILTER_ADVANCED`), `BRIDGE`, `VLAN_8021Q`, `NET_SCHED`+`NET_SCH_NETEM/HTB`, `VETH`,
+  `TUN=y`, `PPP=y`. Le gelé **`CONFIG-6.12.95` a été renommé `.bak`** dans cet épisode (le chemin de
+  priorité 1 est un match **exact**, pas un glob → le build retombe sur le seed + `olddefconfig`, dep-safe).
+  **RESTE (rebuild = Jean)** : régénérer le noyau (`pupisto.kernel` : `cp` seed → `make olddefconfig`),
+  **re-geler** le `.config` produit comme `CONFIG-6.12.95` et le committer ; le check ép.14 **valide**
+  alors le résultat (et signale toute dépendance Kconfig oubliée). `bash -n` OK ; effet sur l'image
+  **non** vérifié sans le rebuild.

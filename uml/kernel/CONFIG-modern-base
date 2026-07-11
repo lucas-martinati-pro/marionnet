@@ -1927,3 +1927,39 @@ CONFIG_RUNTIME_TESTING_MENU=y
 #
 # end of Rust hacking
 # end of Kernel hacking
+
+#
+# Marionnet pedagogical lab features (chantier marionnet-kernel-rootfs, 2026-07-11)
+#
+# Enabled built-in (=y) on purpose: these UML guest images do not load kernel
+# modules at runtime, so a feature compiled as a module (=m) would be unusable.
+# This block is the kernel counterpart of the KERNEL_REQUIREMENTS map in
+# pupisto.debian.sh; check_kernel_features_for_selection fails the image build if
+# any of these is missing from the paired .config. Appended at end on purpose:
+# kconfig keeps the LAST assignment, so these override the earlier `is not set'
+# / `=m' lines above (same idiom as pupisto.kernel.sh's `echo ... >> .config').
+# `make olddefconfig' resolves the remaining sub-options and select'ed deps.
+#
+# Netfilter core + nftables (trixie's iptables is iptables-nft) + legacy compat:
+CONFIG_NETFILTER=y
+CONFIG_NETFILTER_ADVANCED=y
+CONFIG_NF_CONNTRACK=y
+CONFIG_NF_NAT=y
+CONFIG_NETFILTER_XTABLES=y
+CONFIG_NF_TABLES=y
+CONFIG_NF_TABLES_INET=y
+CONFIG_NF_TABLES_IPV4=y
+CONFIG_NF_TABLES_IPV6=y
+CONFIG_NFT_CT=y
+CONFIG_NFT_NAT=y
+CONFIG_NFT_COMPAT=y
+# Bridging, 802.1Q VLANs, traffic control (tc + netem/htb qdiscs), veth pairs:
+CONFIG_BRIDGE=y
+CONFIG_VLAN_8021Q=y
+CONFIG_NET_SCHED=y
+CONFIG_NET_SCH_NETEM=y
+CONFIG_NET_SCH_HTB=y
+CONFIG_VETH=y
+# TUN/TAP (openvpn, generic tunnels) and PPP built-in (were =m above):
+CONFIG_TUN=y
+CONFIG_PPP=y

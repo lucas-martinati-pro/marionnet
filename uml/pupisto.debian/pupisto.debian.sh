@@ -361,6 +361,9 @@ source ../pupisto.common/toolkit_image.sh
 # Defined functions:
 # rename_with_sum_and_make_image_dot_conf
 
+# Vendored bashbricks (Map_*, Array_*, …): used by the kernel-feature check below.
+source ../../bashbricks/bashbricks.sh
+
 set -e
 set -E # the ERR trap is inherited by shell functions
 
@@ -1246,6 +1249,83 @@ function make_or_link_the_kernel {
 
 
 # =============================================================
+#            KERNEL-FEATURE CHECK (selection vs .config)
+# =============================================================
+#
+# Single source of truth: a curated map `selected package -> kernel CONFIG_*
+# symbols it needs BUILT-IN (=y)'. It serves two purposes:
+#   1. it documents/justifies which symbols the UML kernel config
+#      (uml/kernel/CONFIG-modern-base, frozen as CONFIG-$VERSION) must enable;
+#   2. check_kernel_features_for_selection reads the paired compiled `.config'
+#      and fails the build (fatal) if a selected package needs a feature that is
+#      not =y in that kernel (e.g. trixie's iptables-nft needs CONFIG_NF_TABLES).
+#
+# Only built-in (=y) counts, not =m: these UML images do not load kernel modules
+# at runtime, so a feature compiled as a module would be unusable.
+#
+# Extend the map when a new package with non-trivial kernel needs enters the
+# .selection. Symbols are space-separated. Membership is driven by the .selection
+# file (the curated image-content source of truth), not by a runtime variable.
+Map_make KERNEL_REQUIREMENTS
+Map_set KERNEL_REQUIREMENTS iptables     "CONFIG_NETFILTER CONFIG_NF_CONNTRACK CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_NFT_COMPAT"
+Map_set KERNEL_REQUIREMENTS nftables     "CONFIG_NF_TABLES CONFIG_NF_TABLES_INET"
+Map_set KERNEL_REQUIREMENTS bridge-utils "CONFIG_BRIDGE"
+Map_set KERNEL_REQUIREMENTS vlan         "CONFIG_VLAN_8021Q"
+Map_set KERNEL_REQUIREMENTS iproute2     "CONFIG_NET_SCHED CONFIG_VETH CONFIG_NET_NS"
+Map_set KERNEL_REQUIREMENTS openvpn      "CONFIG_TUN"
+Map_set KERNEL_REQUIREMENTS ppp          "CONFIG_PPP"
+Map_set KERNEL_REQUIREMENTS tcpdump      "CONFIG_PACKET"
+Map_set KERNEL_REQUIREMENTS wireshark    "CONFIG_PACKET"
+Map_set KERNEL_REQUIREMENTS tshark       "CONFIG_PACKET"
+
+# Locate the compiled .config of the kernel paired with this build (most recent match).
+function paired_kernel_config_file {
+  find ../pupisto.kernel/ -maxdepth 2 -type f -name .config -path "*_build.linux-${KERNEL_VERSION}*" \
+    | sort | tail -n 1
+}
+
+# True iff CONFIG symbol $1 is built-in (=y) in .config file $2.
+function kernel_symbol_is_builtin {
+  grep -qE "^$1=y\$" "$2"
+}
+
+# Fatal by default: every feature the SELECTED packages require must be =y in the
+# paired kernel. Override with MARIONNET_KERNEL_CHECK={strict|warn|off}.
+function check_kernel_features_for_selection {
+  local mode=${MARIONNET_KERNEL_CHECK:-strict}
+  [[ $mode = off ]] && { echo "Kernel feature check: disabled (MARIONNET_KERNEL_CHECK=off)"; return 0; }
+  local config; config=$(paired_kernel_config_file)
+  if [[ -z $config || ! -f $config ]]; then
+    echo 1>&2 "Kernel feature check: no compiled .config found for $KERNEL_VERSION (skipping; build without -K)"
+    return 0
+  fi
+  local SELECTION=$PUPISTO_FILES/package_catalog/package_catalog.$RELEASE.selection
+  local selected; selected=$(awk '$1 !~ /^#/ {print $1}' "$SELECTION")
+  local pkg sym
+  local -a keys=() violations=()
+  Map_to_key_array KERNEL_REQUIREMENTS keys
+  for pkg in "${keys[@]}"; do
+    grep -qxF "$pkg" <<<"$selected" || continue   # package not selected → nothing to check
+    for sym in $(Map_get KERNEL_REQUIREMENTS "$pkg"); do
+      kernel_symbol_is_builtin "$sym" "$config" || violations+=("$pkg -> $sym")
+    done
+  done
+  if ((${#violations[@]})); then
+    echo 1>&2 "=========================================================="
+    echo 1>&2 "KERNEL FEATURE CHECK FAILED ($(basename "$(dirname "$config")"))"
+    echo 1>&2 "Selected packages need kernel features NOT built-in (=y):"
+    printf 1>&2 '  - %s\n' "${violations[@]}"
+    echo 1>&2 "Fix: enable these =y in uml/kernel/CONFIG-modern-base, regenerate"
+    echo 1>&2 "CONFIG-${KERNEL_VERSION} and rebuild the kernel."
+    echo 1>&2 "=========================================================="
+    [[ $mode = warn ]] && { echo 1>&2 "(MARIONNET_KERNEL_CHECK=warn: continuing anyway)"; return 0; }
+    return 1
+  fi
+  echo "Kernel feature check: OK ($(basename "$(dirname "$config")"))"
+}
+
+
+# =============================================================
 #                        ACTIONS
 # =============================================================
 
@@ -1334,6 +1414,12 @@ once rename_with_sum_and_make_image_dot_conf "$FS_LOC"
 
 # Make now the kernel or just link it:
 once make_or_link_the_kernel $KERNEL_VERSION
+
+# Verify the paired kernel provides (=y) every feature the selected software needs.
+# Fatal by default (override with MARIONNET_KERNEL_CHECK=warn|off). NOT wrapped in
+# `once' (must run every build; `once' would also swallow the exit code — see the
+# note near launch_debootstrap about `once' neutralising set -e).
+check_kernel_features_for_selection
 
 # =============================================================
 #                         GREETINGS
