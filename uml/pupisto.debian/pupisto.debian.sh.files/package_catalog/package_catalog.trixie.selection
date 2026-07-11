@@ -138,6 +138,7 @@ inetutils-tools PROVIDES: inetutils-ifconfig DESCRIPTION: base networking utilit
 #install-info PROVIDES: ginstall-info install-info DESCRIPTION: Manage installed documentation in info format
 ipcalc PROVIDES: ipcalc DESCRIPTION: parameter calculator for IPv4 addresses
 iperf3 PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
+iproute2 PROVIDES: - DESCRIPTION: (marionnet trixie 2026 addition)
 ipsvd PROVIDES: tcpsvd udpsvd DESCRIPTION: Internet protocol service daemons
 iptables PROVIDES: iptables-xml DESCRIPTION: administration tools for packet filtering and NAT
 iputils-clockdiff PROVIDES: clockdiff DESCRIPTION: Measure the time difference between networked computers

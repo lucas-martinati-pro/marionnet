@@ -1,0 +1,520 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2007  Luca Saiu
+# Copyright (C) 2007-2020  Jean-Vincent Loddo
+# Copyright (C) 2007-2020  Université Paris 13
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+### BEGIN INIT INFO
+# Provides:          marionnet-relay
+# Required-Start:    $local_fs $network $syslog
+# Required-Stop:
+# Should-Start:
+# Should-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Execute actions according to the kernel command line
+# Description:       When Marionnet launches a kernel, it puts on the kernel
+#                    command line a set of bindings VARIABLE=VALUE which are
+#                    interpreted by this script to execute some actions in
+#                    order to make the virtual machine suitable for the user.
+### END INIT INFO
+
+
+###########################################
+#     Source-ing kernel command line      #
+###########################################
+
+# Read kernel command line variables into this shell's environment:
+# Expected variables: hostname hostfs guestkind ubd0s (or ubda) timezone numeric_TZ console_no debug_mode
+export $(tr </proc/cmdline ' ' '\n' | \grep "^[a-zA-Z][a-zA-Z0-9_]*[=]")
+
+# Do `set -x' if Marionnet is currently in the debug mode (MARIONNET_DEBUG=true)!
+if [[ -n "$debug_mode" ]]; then
+  set -x
+fi
+
+# Fix the PATH:
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+function not_found_error_notification {
+  echo "ERROR: command not found:  $1  (but we keep going)" 1>&2
+}
+
+# ======================================================== #
+#                        START ()                          #
+# ======================================================== #
+
+function start {
+
+ echo -n "Marionnet startup configuration... "
+
+ # ---
+ # Dependencies' errors:
+ for i in ifconfig ping ping6 hostname mount ip route xauth sed grep chmod chown socat; do
+   type -p $i &>/dev/null || not_found_error_notification $i;
+ done
+
+ function append_line_if_needed {
+  local LINE="$1"
+  local FILE="$2"
+  { test -f "$FILE" && grep -q "^${LINE}$" "$FILE"; } || echo "$LINE" >> "$FILE"
+ }
+
+ ###########################################
+ #               hostname                  #
+ ###########################################
+
+ # Set the hostname according to the kernel command line:
+ if [[ -n $hostname ]]; then
+  echo $hostname > /etc/hostname
+  # The script `/etc/init.d/hostname.sh' belonged to the package `initscripts'
+  # on old debian systems:
+  if [[ -x /etc/init.d/hostname.sh ]]; then
+    /etc/init.d/hostname.sh start
+  elif type hostname; then
+    hostname $hostname
+  fi &>/dev/null
+  # Make a correct entry in /etc/hosts:
+  append_line_if_needed "127.0.0.1 $hostname" /etc/hosts
+ else
+  echo "Warning: variable 'hostname' undefined" 1>&2
+ fi
+
+ ###########################################
+ #                hostfs                   #
+ ###########################################
+
+ # Mount the hostfs filesystem and add bindings from the hostfs file
+ # `boot_parameters' to this shell environment:
+ if [[ -n $hostfs ]]; then
+  mkdir -p /mnt/hostfs
+  mount none /mnt/hostfs -t hostfs && HOSTFS_MOUNTED=yes &&
+  # And also record it on the hostfs filesystem, so that we can
+  # easily tell which guest machine the directory belongs to
+  # *from the host*:
+  [[ -n $hostname ]] && echo $hostname > /mnt/hostfs/GUESTNAME &&
+  source /mnt/hostfs/boot_parameters
+ else
+  echo "Warning: variable 'hostfs' undefined" 1>&2
+ fi
+
+ ###########################################
+ #   eth42 -> netns marionnet-mgmt         #
+ #   ghostification + X11 relay (archi C)  #
+ ###########################################
+
+ # Architecture C (vanilla kernel: no ghostification patch, no `ethghost'): the
+ # service interface eth42 (a host<->guest tap carrying X11) is GHOSTIFIED by moving
+ # it into a hidden network namespace `marionnet-mgmt', so the student's `ip a' in the
+ # root namespace no longer lists it. Pedagogical masking, NOT anti-root: a root guest
+ # can still `ip netns exec' into it -- accepted (the goal is to declutter `ip a', not
+ # to resist an adversarial student). Requires iproute2 (`ip netns').
+ # A socat inside that namespace exposes the guest display :0 (a pathname Unix socket,
+ # visible across namespaces) and forwards each X connection over eth42 to the host X
+ # bridge on ${host_display_ip}:6000 (host_display_ip comes from the hostfs
+ # boot_parameters; see the DISPLAY section below).
+ if [[ -n $ip42 ]]; then
+   ip netns add marionnet-mgmt 2>/dev/null
+   ip link set eth42 netns marionnet-mgmt &&
+   ip -n marionnet-mgmt addr add "${ip42}/16" dev eth42 &&
+   ip -n marionnet-mgmt link set eth42 up
+   ip -n marionnet-mgmt link set lo up
+   mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+   # Start the X11 relay only when the host endpoint is known. Ghostification still
+   # happens without it; only the forwarding waits for Marionnet to provide
+   # host_display_ip (the OCaml side, or the tester's boot_parameters).
+   if [[ -n $host_display_ip ]]; then
+     x11_relay="socat UNIX-LISTEN:/tmp/.X11-unix/X0,fork,mode=0777 TCP:${host_display_ip}:6000"
+     if type -p systemd-run &>/dev/null; then
+       systemd-run --collect --unit=marionnet-x11-relay ip netns exec marionnet-mgmt $x11_relay
+     else
+       setsid ip netns exec marionnet-mgmt $x11_relay </dev/null &>/dev/null &
+     fi
+   else
+     echo "marionnet-relay: host_display_ip unset -- eth42 ghostified, X11 relay not started." 1>&2
+   fi
+ fi
+
+ ###########################################
+ #             xterm title                 #
+ ###########################################
+
+ # Show the hostname (and its filesystem) in the terminal window title bar
+ virtual_disk=${ubd0s:-$ubda}
+ if [[ -n $virtual_disk ]]; then
+   # Get the name of the virtual filesystem choosen by the user:
+   virtualfs_name="${virtual_disk##*/}"
+   virtualfs_kind=${virtualfs_name%%-*} # "machine" or "router"
+   virtualfs_name=${virtualfs_name#router-}
+   virtualfs_name=${virtualfs_name#machine-}
+   echo -e '\033]0;'"$hostname ($virtualfs_name)"'\007'
+ else
+   echo "Warning: variable '$virtual_disk' undefined" 1>&2
+fi
+
+
+ ###########################################
+ #        Network configurations           #
+ ###########################################
+
+ # Perform an indirect lookup of the variable $1'_eth'$2, i.e. return
+ # the value of the variable which is the value of the variable named
+ # $1'_eth'$2.
+ function lookup {
+  echo $(eval echo '$'$1'_eth'$2)
+ }
+
+ # Configure network interfaces:
+ if [[ -n $ethernet_interfaces_no ]]; then
+
+  for i in $(eval echo {0..$((ethernet_interfaces_no-1))}); do
+    mac_address=`lookup mac_address $i`
+    mtu=`lookup mtu $i`
+    ipv4_address=`lookup ipv4_address $i`
+    ipv4_gateway=`lookup ipv4_gateway $i`
+    ipv4_netmask=`lookup ipv4_netmask $i`
+    ipv6_address=`lookup ipv6_address $i`
+    ipv6_gateway=`lookup ipv6_gateway $i`
+    [[ -z $mac_address ]] || ifconfig eth$i hw ether $mac_address
+    [[ -z $mtu ]] || ifconfig eth$i mtu $mtu
+    # IPv4 configuration.
+    # The variable `ipv4_address' may be defined via the Marionnet GUI with the
+    # CIDR notation, i.e. in the form x.y.z.t/N. However, in order to be
+    # compatible with the busybox (buildroot) implementation of `ifconfig',
+    # Marionnet extracts the address into x.y.z.t and sets `ipv4_address',
+    # then it computes the corresponding netmask and sets `ipv4_netmask'.
+    # So, the command executed here may have a form like:
+    # ifconfig eth0 192.168.0.1
+    # or
+    # ifconfig eth0 192.168.0.1 netmask 255.255.255.0
+    if [[ -n $ipv4_address ]]; then
+      if [[ -n $ipv4_netmask ]]; then
+        ifconfig eth$i $ipv4_address netmask $ipv4_netmask
+      else
+        ifconfig eth$i $ipv4_address
+      fi
+    fi
+    if [[ -n $ipv4_gateway ]]; then
+      route add default gw $ipv4_gateway eth$i || \
+      route add default gw $ipv4_gateway || \
+      echo 1>&2 "The Ipv4 gateway address (device eth$i) cannot be set"
+    fi
+    # IPv6 configuration.
+    # The variable `ipv6_address' may be defined via the Marionnet GUI with the
+    # CIDR notation. So, the command executed here may have a form like:
+    # ifconfig eth0 inet6 add 2003:abd::1/32
+    if [[ -n $ipv6_address ]]; then
+      # Try several commands:
+      ifconfig eth$i add $ipv6_address up || \
+      ifconfig eth$i add $ipv6_address    || \
+      ifconfig eth$i inet6 add $ipv6_address up || \
+      ifconfig eth$i inet6 add $ipv6_address    || \
+      ip addr add $ipv6_address dev eth0 eth$i || \
+      ip -6 addr add $ipv6_address dev eth0 eth$i || \
+      echo 1>&2 "The Ipv6 address cannot be set, neither with \`ifconfig' nor with \`ip'"
+    fi
+    if [[ -n $ipv6_gateway ]]; then
+      # Try several commands:
+      route -A inet6 add default gw $ipv6_gateway eth$i || \
+      route -A inet6 add default gw $ipv6_gateway || \
+      ip -6 route add to default via $ipv6_gateway dev eth$i || \
+      ip -6 route add to default via $ipv6_gateway || \
+      echo 1>&2 "The Ipv6 gateway address (device eth$i) cannot be set, neither with \`route' nor with \`ip'"
+    fi
+  done
+
+ fi
+
+ ###########################################
+ #              eth42                      #
+ ###########################################
+
+ # eth42 was already ghostified into the netns `marionnet-mgmt' above (architecture
+ # C). Nothing to do here: no `ethghost' tool and no kernel ghostification patch on
+ # this vanilla-kernel image.
+
+ ###########################################
+ #             /etc/fstab                  #
+ ###########################################
+
+ # TODO: according to the kernel version!
+ SWAP_DEVICE=/dev/ubdb
+ if [[ -n ${ubd0s} ]]; then
+   ROOT_DEVICE=/dev/ubd0
+ else
+   ROOT_DEVICE=/dev/ubda
+ fi
+
+ # Add swap (the swap 'partition' was already created as a
+ # sparse file and initialized with mkswap from the host side):
+ append_line_if_needed \
+  "$SWAP_DEVICE none swap sw 0 0" \
+  /etc/fstab
+
+ ROOT_FS_TYPE=$(awk </proc/mounts '$1 == "/dev/root" && $2 == "/" {print $3; exit 0}')
+
+ append_line_if_needed \
+  "$ROOT_DEVICE / $ROOT_FS_TYPE defaults 0 0" \
+  /etc/fstab
+
+ [[ -e $SWAP_DEVICE ]] || mknod $SWAP_DEVICE b 98 16
+ swapon -a
+
+ # Not really need, but for consistence with /etc/fstab
+ [[ -e $ROOT_DEVICE ]] || mknod $ROOT_DEVICE b 98 0
+
+ ###########################################
+ #           KERNEL VERBOSITY              #
+ ###########################################
+
+ # Set verbosity level (first field) to 3 in a range from 1 to 7,
+ # in order to prevent annoying messages like:
+ # line_ioctl: tty0: unknown ioctl: 0x4b64
+ # just before the login prompt.
+ [[ -e /proc/sys/kernel/printk ]] && echo "3 4 1 7" > /proc/sys/kernel/printk
+
+ ###########################################
+ #                DISPLAY                  #
+ ###########################################
+
+ # Setting DISPLAY.
+ # Architecture C: the guest display is the LOCAL X server socket :0 (a pathname Unix
+ # socket under /tmp/.X11-unix). The socat relay started in the marionnet-mgmt netns
+ # (eth42 section above) forwards it over the ghostified eth42 to the host X bridge.
+ # So DISPLAY is simply ":0" -- no eth42 TCP endpoint, no serial dummy X server.
+ # (Generalising :0 to an arbitrary display number is part of the OCaml alignment.)
+ DISPLAY_VALUE=:0
+
+ # Support for `ssh' tunnelling:
+ if [[ -n "${mit_magic_cookie_1}" ]] && type -t xauth &>/dev/null; then
+   # We set XAUTHORITY in order to have a configuration
+   # suitable for all users, not just for `root':
+   mkdir -p /etc/X11
+   export XAUTHORITY="/etc/X11/Xauthority"
+   >$XAUTHORITY
+   chmod a+r $XAUTHORITY
+   xauth add $DISPLAY_VALUE . ${mit_magic_cookie_1}
+ fi
+
+ # Find a suitable shell configuration file and append the line setting the
+ # variable DISPLAY:
+ for i in /etc/profile /etc/bash.bashrc /root/.bash_profile /root/.bashrc; do
+  if [[ -f $i ]]; then
+    sed -i -e '/^export DISPLAY=/d' $i
+    append_line_if_needed "export DISPLAY=$DISPLAY_VALUE" $i
+    if [[ -n $XAUTHORITY ]]; then append_line_if_needed "export XAUTHORITY=$XAUTHORITY" $i; fi
+    break;
+  fi
+ done
+
+ ###########################################
+ #          export TERM=xterm              #
+ ###########################################
+
+ # Find a suitable shell configuration file and append the line setting the
+ # variable TERM:
+ for i in /etc/profile /etc/bash.bashrc /root/.bash_profile /root/.bashrc; do
+  if [[ -f $i ]]; then
+    append_line_if_needed "export TERM=xterm" $i
+    break;
+  fi
+ done
+
+ ###########################################
+ #   Additional consoles (tty1, tty2,..)   #
+ ###########################################
+
+ # Modify /etc/inittab then signal the `init' process
+ # in order to create new tty? consoles:
+  function start_consoles {
+  local LINE_PREFIX="tty"
+  if [[ $1 = "--empty-prefix" ]]; then
+    unset LINE_PREFIX
+    shift
+  fi
+  local REQUIRED_CONSOLE_NO="${1:-1}"
+  local ADDITIONAL_CONSOLES=$((REQUIRED_CONSOLE_NO-1))
+  local TARGET=/etc/inittab
+  local skip=0
+  local i
+
+  for ((i=1; i<=ADDITIONAL_CONSOLES; i=i+1)); do
+  if grep -q "^#${LINE_PREFIX}${i}:" $TARGET; then
+    sed -i -e "s/^#${LINE_PREFIX}${i}:/${LINE_PREFIX}${i}:/" $TARGET
+  elif ! grep -q "^${LINE_PREFIX}${i}:" $TARGET; then
+    local TTY0_LINE LINE
+    TTY0_LINE=$(grep "^${LINE_PREFIX}0:" $TARGET)
+    LINE=$(echo ${TTY0_LINE//${LINE_PREFIX}0/${LINE_PREFIX}$i})
+    [[ -z "$LINE" ]] || echo $LINE >> $TARGET
+  else
+    let skip=skip+1
+  fi
+  done
+
+  [[ $skip = $ADDITIONAL_CONSOLES ]] || kill -HUP 1
+
+  # Update inittab:
+  for ((i=ADDITIONAL_CONSOLES+1; i<=8; i=i+1)); do
+  if grep -q "^${LINE_PREFIX}${i}:" $TARGET; then
+    sed -i -e "s/^${LINE_PREFIX}${i}:/#${LINE_PREFIX}${i}:/" $TARGET
+  fi
+  done
+ }
+
+ # LINE_PREFIX may be empty (Debian) or "tty" (Buildroot):
+ local LINE_PREFIX=$(grep "^[^#].*/sbin/getty" /etc/inittab | cut -f1 -d: | head -n 1)
+ LINE_PREFIX=${LINE_PREFIX%?} # chop last char
+ case "$LINE_PREFIX" in
+   tty) start_consoles "$console_no" ;;
+    "") start_consoles --empty-prefix "$console_no" ;;
+ esac
+
+ ###########################################
+ #                quagga                   #
+ ###########################################
+
+ # Fix owner and modalities anyway (machine or router):
+ # ---
+ # Fix quagga ownership, if required, in order to enable
+ # the user to save his configurations (write memory):
+ TARGET=/var/quagga
+ mkdir -p $TARGET
+ chown quagga:quagga $TARGET
+ # ---
+ TARGET=/etc/quagga
+ { [[ -d $TARGET ]] && grep -q quagga /etc/group && ls -ld $TARGET |  awk '{print $4}' | grep -q root && chown -R quagga:quagga $TARGET; } || true
+ # ---
+
+ if [[ $virtualfs_kind = "router" || $guestkind = "router" ]]; then
+   # Activate IP (v4/v6) forwarding:
+   echo 1 > /proc/sys/net/ipv4/ip_forward
+   echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+   # The following lines should be unnecessary:
+   TARGET="/etc/init.d/S91quagga"
+   if [[ ! -e $TARGET ]]; then
+     ln -sf quagga $TARGET     # will be useful the next boot
+     /etc/init.d/quagga start  # useful now
+   fi
+   # ---
+ fi
+
+ ###########################################
+ #               timezone                  #
+ ###########################################
+
+ function echo_export_TZ {
+  # global numeric_TZ
+  local NTZ=${1:-$numeric_TZ}
+  local h
+  IFS=: read h _ <<<"$NTZ"
+  let h=-1*h
+  if [[ $h -gt 0 ]]; then
+    echo "export TZ=UTC+$h"
+  elif [[ $h -lt 0 ]]; then
+    echo "export TZ=UTC$h"
+  else
+    echo "export TZ=UTC"
+  fi
+ } # echo_export_TZ
+
+ # Example: timezone="Europe/Paris"
+ if [[ -n $timezone && -e /usr/share/zoneinfo/$timezone ]]; then
+   rm -f /etc/{timezone,localtime}
+   ln -s /usr/share/zoneinfo/$timezone /etc/timezone
+   ln -s /usr/share/zoneinfo/$timezone /etc/localtime
+ fi
+ if [[ -n $numeric_TZ ]]; then
+   local LINE
+   LINE=$(echo_export_TZ $numeric_TZ)
+   append_line_if_needed "$LINE" /etc/profile
+ fi
+
+ ######################################
+ #  Source `marionnet-relay' patches  #
+ ######################################
+
+ # 1) Source generic patches:
+ #    /mnt/hostfs/marionnet-relay*
+ #
+ # 2) Source machine-specific (or router-specific) patches:
+ #    /mnt/hostfs/${virtualfs_name}.relay*
+
+ if [[ $HOSTFS_MOUNTED = yes ]]; then
+   # Ex: machine-debian-wheezy-42007
+   virtualfs_name="${virtual_disk##*/}"
+   local i
+   for i in /mnt/hostfs/{$virtualfs_name.,marionnet-}relay*; do
+     echo "Source-ing $i ..."
+     source "$i";
+   done
+ fi
+
+ ###
+
+ echo "OK"
+ clear
+ # Instead of launching getty with option "-f /etc/issue.linuxlogo",
+ # we simply execute the command linuxlogo:
+ if type &>/dev/null linuxlogo && [[ -f /etc/issue.marionnet ]]; then
+   linuxlogo > /etc/issue
+   cat /etc/issue.marionnet >>/etc/issue
+ fi
+
+
+} ########################## END of function start()
+
+
+
+# ======================================================== #
+#                        STOP ()                          #
+# ======================================================== #
+
+function stop {
+
+echo -n "Marionnet shutdown tunings... "
+
+###########################################
+#     Mrproper take care of /etc/hosts    #
+###########################################
+
+function remove_line_if_needed {
+    local LINE="$1"
+    local FILE="$2"
+    local temporary_file
+
+    if test -f "$FILE" && grep -q "^${LINE}$" "$FILE"; then
+        temporary_file=$(mktemp /tmp/$(basename $0).XXXXXX) && \
+           grep -v "^${LINE}$" "$FILE" > $temporary_file && \
+           mv -f $temporary_file "$FILE"
+    fi
+}
+
+# Remove the host name from /etc/hosts: the user might change it
+# when the virtual machine is off:
+remove_line_if_needed "127.0.0.1 $hostname" /etc/hosts
+
+echo "OK"
+
+} ########################## END of function stop()
+
+
+case "$1" in
+  start) start ;;
+   stop) stop ;;
+      *) echo "Usage: $0 {start|stop}"
+	 exit 1 ;;
+esac

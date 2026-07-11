@@ -214,8 +214,10 @@ Options:
   -t/--timeout SEC   headless timeout before killing the guest (default ${DEFAULT_TIMEOUT})
   -x/--extra \"ARGS\"   extra kernel arguments appended to the command line
   -X/--display       show guest graphical apps (xeyes, wireshark) on the host X server:
-                     eth42 service tap, GHOSTIFIED in the guest via a network namespace
-                     (student's \`ip a' hides it), X11 relayed over it (xterm mode)
+                     eth42 service tap, GHOSTIFIED in the guest by its NATIVE relay via a
+                     network namespace (student's \`ip a' hides it), X11 relayed over it.
+                     xterm mode; with --headless, only the guest mechanism is set up and
+                     checked from the hostfs (no local X server needed).
   -A/--auto-network-by-eth42
                      boot with a host<->guest tap on eth42 + sshd, then print a ready
                      ssh command (root@${NET_GUEST_IP}). Runs the guest attached (console
@@ -412,14 +414,14 @@ systemctl start ssh 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
 EOF
 }
 
-# make_x11_hostfs DIR: populate a hostfs dir with boot_parameters (=> marionnet-relay
-# configures eth42) and a sourced relay patch that (1) GHOSTIFIES eth42 by moving it
-# into a hidden network namespace `marionnet-mgmt' -- so the student's `ip a' no longer
-# lists it -- and (2) starts, IN that namespace, a socat relaying the guest display :0
-# (a pathname Unix socket, visible across namespaces) to the host X bridge over eth42.
-# The socat is launched via `systemd-run' so it survives marionnet-relay's own exit
-# (it would otherwise die with the service cgroup). Diagnostics go to the hostfs, so
-# the host can check the ghostification without ssh (which eth42's move would cut).
+# make_x11_hostfs DIR: populate a hostfs dir so the guest's NATIVE marionnet-relay
+# (Debian 13, architecture C) performs the X11 setup itself. We provide only (1)
+# boot_parameters with host_display_ip -- so the relay ghostifies eth42 into the
+# `marionnet-mgmt' netns and starts the X11 socat relay towards the host bridge -- and
+# (2) a READ-ONLY diagnostic patch, sourced by the relay AFTER its ghostification (it
+# matches the /mnt/hostfs/marionnet-relay* glob), that logs the resulting state to the
+# hostfs so the host can check it without ssh (eth42's move into the netns would cut an
+# eth42 ssh anyway). We do NOT ghostify here: that now belongs to the guest relay.
 function make_x11_hostfs {
  local dir="$1"
  { echo "ip42='$NET_GUEST_IP'"
@@ -427,34 +429,17 @@ function make_x11_hostfs {
    echo "virtual_disk='$IMAGE'"
    echo "host_display_ip='$NET_HOST_IP'"
  } > "$dir/boot_parameters"
- cat > "$dir/marionnet-relay-x11" <<'EOF'
-# Sourced by marionnet-relay at boot (glob /mnt/hostfs/marionnet-relay*), in its bash
-# context, AFTER eth42 has been configured with ip42. $host_display_ip comes from
-# boot_parameters. Ghostify eth42 (netns) + relay guest X11 :0 to the host over it.
-{
-  ip netns add marionnet-mgmt
-  ip link set eth42 netns marionnet-mgmt
-  ip -n marionnet-mgmt addr add "${ip42}/16" dev eth42
-  ip -n marionnet-mgmt link set eth42 up
-  ip -n marionnet-mgmt link set lo up
-  mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
-  # X connections arrive on the guest display :0 (pathname socket, cross-netns) and are
-  # forwarded, from inside the hidden namespace, over eth42 to the host X bridge:6000.
-  x11_cmd="socat UNIX-LISTEN:/tmp/.X11-unix/X0,fork,mode=0777 TCP:${host_display_ip}:6000"
-  if command -v systemd-run >/dev/null 2>&1; then
-    systemd-run --collect --unit=marionnet-x11-relay \
-      ip netns exec marionnet-mgmt $x11_cmd
-  else
-    setsid ip netns exec marionnet-mgmt $x11_cmd </dev/null >/dev/null 2>&1 &
-  fi
-  # Diagnostics readable from the host via hostfs (no ssh needed once eth42 is hidden):
-  { echo "=== marionnet-x11 guest setup ==="
-    echo "-- root netns links (eth42 must be ABSENT, ghostified):"; ip -br link
-    echo "-- mgmt netns links (eth42 must be PRESENT):"; ip -n marionnet-mgmt -br link
-    echo "-- relay unit: $(systemctl is-active marionnet-x11-relay 2>/dev/null || echo n/a)"
-    echo "-- guest display socket:"; ls -l /tmp/.X11-unix/ 2>/dev/null
-  } > /mnt/hostfs/x11-setup.log 2>&1
-} 2>>/mnt/hostfs/x11-setup.log
+ cat > "$dir/marionnet-relay-x11check" <<'EOF'
+# Sourced by marionnet-relay at boot (glob /mnt/hostfs/marionnet-relay*), AFTER it has
+# ghostified eth42 and started the X11 relay: architecture C is NATIVE to this Debian
+# 13 relay, so here we only OBSERVE the result and log it to the hostfs.
+{ echo "=== marionnet-x11 guest state (native relay) ==="
+  echo "-- root netns links (eth42 must be ABSENT, ghostified):"; ip -br link
+  echo "-- mgmt netns links (eth42 must be PRESENT):"; ip -n marionnet-mgmt -br link 2>&1
+  echo "-- x11 relay unit: $(systemctl is-active marionnet-x11-relay 2>/dev/null || echo n/a)"
+  echo "-- guest display socket:"; ls -l /tmp/.X11-unix/ 2>/dev/null
+  echo "-- ethghost present? $(command -v ethghost || echo no)"
+} > /mnt/hostfs/x11-setup.log 2>&1
 EOF
 }
 
@@ -505,32 +490,21 @@ if Map_has_key BOOT_QUIRKS "$QUIRK_KEY"; then KOPTS=$(Map_get BOOT_QUIRKS "$QUIR
 [[ $ADD_TTY0 = n ]] && KOPTS=${KOPTS/console=tty0/}
 [[ -n $TAP ]] && KOPTS="$KOPTS eth0=tuntap,$TAP"
 
-# X11 forwarding to the host X server (architecture C). The guest keeps a service
-# interface eth42 (a host<->guest tap), but eth42 is GHOSTIFIED inside the guest by
-# moving it into a hidden network namespace -- so the student's `ip a' never lists it
-# (pedagogical masking, NOT anti-root; replaces the old kernel ghostification patch on
-# a vanilla 6.12 kernel). A socat in that namespace exposes the guest display :0 (a
-# pathname Unix socket in /tmp/.X11-unix, visible across namespaces) and forwards each
-# X connection over eth42 to the host. On the host we bridge TCP <NET_HOST_IP>:6000 to
-# the real X server's Unix socket (defeating `-nolisten tcp') and authorize local
-# clients. X11 multiplexes natively over the tap: `xeyes & wireshark' just works -- no
-# serial line, no multiplexing hack. Guest side is fully automatic (make_x11_hostfs).
+# X11 forwarding to the host X server (architecture C) -- driven by the guest's NATIVE
+# marionnet-relay (Debian 13): the relay ghostifies eth42 into a hidden network
+# namespace (the student's `ip a' never lists it) and relays the guest display :0 (a
+# pathname Unix socket, visible across namespaces) over eth42 to the host. This tester
+# only provides the HOST side: a service tap on eth42, boot_parameters telling the relay
+# the host endpoint (host_display_ip), and -- when a local X server is available -- a
+# bridge from TCP <NET_HOST_IP>:6000 to the real X server's Unix socket (defeating
+# `-nolisten tcp') plus local-client authorization. X11 multiplexes natively over the
+# tap: `xeyes & wireshark' just works. With --headless the guest mechanism is exercised
+# and checked from the hostfs (make_x11_hostfs) without needing a local X server.
 HOST_X_SOCKET=
 if [[ $DISPLAY_MODE = y ]]; then
-  [[ $HEADLESS = y ]] && { echo "Error: -X/--display is incompatible with --headless." 1>&2; exit 1; }
   [[ $AUTO_NET = y ]] && { echo "Error: -X is incompatible with -A." 1>&2; exit 1; }
-  # Resolve the host X server's Unix socket from $DISPLAY ("[host]:N[.S]"):
-  [[ -n $DISPLAY ]] || { echo "Error: -X requires DISPLAY to be set on the host." 1>&2; exit 4; }
-  X_HOST_PART=${DISPLAY%%:*}
-  if [[ -n $X_HOST_PART && $X_HOST_PART != localhost ]]; then
-    echo "Error: -X supports only a LOCAL X server; DISPLAY='$DISPLAY' looks remote." 1>&2; exit 4
-  fi
-  X_HOST_DNUM=${DISPLAY##*:}; X_HOST_DNUM=${X_HOST_DNUM%%.*}
-  HOST_X_SOCKET="/tmp/.X11-unix/X${X_HOST_DNUM}"
-  [[ -S $HOST_X_SOCKET ]] || { echo "Error: host X socket '$HOST_X_SOCKET' not found." 1>&2; exit 4; }
-  for c in socat xhost xterm; do
-    command -v "$c" >/dev/null || { echo "Error: '$c' not found on the host." 1>&2; exit 4; }
-  done
+  command -v socat >/dev/null || { echo "Error: 'socat' not found on the host." 1>&2; exit 4; }
+  [[ $HEADLESS = n ]] && { command -v xterm >/dev/null || { echo "Error: 'xterm' not found on the host." 1>&2; exit 4; }; }
   # Service tap on eth42 (same free-octet plumbing as -A):
   K=$(net_free_octet) || { echo "Error: no free ${NET_BASE}.K.0/24 subnet (1..254 all taken)." 1>&2; exit 5; }
   NET_TAP="${NET_TAP_PREFIX}${K}"; NET_HOST_IP="${NET_BASE}.${K}.254"; NET_GUEST_IP="${NET_BASE}.${K}.1"
@@ -539,10 +513,26 @@ if [[ $DISPLAY_MODE = y ]]; then
   HOSTFS_DIR=$(mktemp -d /tmp/pupisto.tester.hostfs.XXXXXX)
   make_x11_hostfs "$HOSTFS_DIR" || exit 5
   KOPTS="$KOPTS eth42=tuntap,$NET_TAP hostfs=$HOSTFS_DIR"
-  # Host-side X bridge (guest reaches <NET_HOST_IP>:6000 over eth42) + local auth:
-  socat TCP-LISTEN:6000,bind="$NET_HOST_IP",reuseaddr,fork UNIX-CONNECT:"$HOST_X_SOCKET" &
-  XSOCAT_PID=$!
-  xhost +local: >/dev/null 2>&1 && X_HOST_ADDED=y || true
+  # Host-side X bridge (guest reaches <NET_HOST_IP>:6000 over eth42) + local auth, when a
+  # local X server is reachable. In --headless with no DISPLAY we skip it and validate
+  # only the guest mechanism (ghostification + relay unit + display socket) via hostfs.
+  if [[ -n $DISPLAY ]]; then
+    X_HOST_PART=${DISPLAY%%:*}
+    if [[ -n $X_HOST_PART && $X_HOST_PART != localhost ]]; then
+      echo "Error: -X supports only a LOCAL X server; DISPLAY='$DISPLAY' looks remote." 1>&2; exit 4
+    fi
+    X_HOST_DNUM=${DISPLAY##*:}; X_HOST_DNUM=${X_HOST_DNUM%%.*}
+    HOST_X_SOCKET="/tmp/.X11-unix/X${X_HOST_DNUM}"
+  fi
+  if [[ -S $HOST_X_SOCKET ]] && command -v xhost >/dev/null; then
+    socat TCP-LISTEN:6000,bind="$NET_HOST_IP",reuseaddr,fork UNIX-CONNECT:"$HOST_X_SOCKET" &
+    XSOCAT_PID=$!
+    xhost +local: >/dev/null 2>&1 && X_HOST_ADDED=y || true
+  elif [[ $HEADLESS = n ]]; then
+    echo "Error: -X (xterm) needs a local X server (DISPLAY set, its socket, and xhost)." 1>&2; exit 4
+  else
+    echo "Note: no local X bridge (DISPLAY unset) -- validating the guest mechanism only." 1>&2
+  fi
 fi
 
 # Auto-network (-A): host<->guest tap on eth42 + sshd, for autonomous ssh tests.
@@ -592,8 +582,8 @@ echo "   COW          : $([[ $USE_COW = y ]] && echo "yes (image kept intact)" |
 [[ $HEADLESS = y ]] && echo "   timeout      : ${TIMEOUT}s"
 echo "=============================================================="
 
-if [[ $DISPLAY_MODE = y ]]; then
-  echo "X11 (architecture C) -- guest side is AUTOMATIC (eth42 ghostified + relay started)."
+if [[ $DISPLAY_MODE = y && $HEADLESS = n ]]; then
+  echo "X11 (architecture C) -- guest side done by the NATIVE relay (eth42 ghostified + relay started)."
   echo "  After login (root/root) in the xterm, just:"
   echo "    export DISPLAY=:0"
   echo "    xeyes                 # then: wireshark ; xeyes & wireshark (native multiplexing)"
@@ -632,6 +622,11 @@ elif [[ $HEADLESS = y ]]; then
   RC=$?
   set -e
   [[ $RC = 137 || $RC = 124 ]] && echo "(guest killed after ${TIMEOUT}s timeout -- expected)"
+  if [[ $DISPLAY_MODE = y && -f $HOSTFS_DIR/x11-setup.log ]]; then
+    echo "--- guest X11 state (architecture C, from hostfs) ---"
+    cat "$HOSTFS_DIR/x11-setup.log"
+    echo "-----------------------------------------------------"
+  fi
 else
   GDB=
   [[ $DEBUG = y ]] && GDB='gdb -ex "handle SIGSEGV nostop noprint" -ex "handle SIGUSR1 nopass stop print" -ex run --args '

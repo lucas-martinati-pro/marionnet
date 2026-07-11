@@ -252,6 +252,15 @@ case $RELEASE in
   squeeze|wheezy) INIT_SYSTEM="sysv" ;;
   *)              INIT_SYSTEM="systemd" ;;
 esac
+# Ghostification method of the service interface eth42 (the X11 transport). Legacy
+# images use the kernel ghostification patch driven by the `ethghost' C tool; Debian
+# 13 (vanilla 6.12 kernel) uses a hidden network namespace instead (architecture C):
+# no kernel patch, no ethghost, and a distro-specific relay (marionnet-relay.debian13)
+# that moves eth42 into the namespace and relays X11 over it.
+case $RELEASE in
+  trixie) GHOSTIFICATION="netns" ;;
+  *)      GHOSTIFICATION="ethghost" ;;
+esac
 # Option -a --arch
 if [[ -n ${option_a} ]]; then
  ARCH=$option_a_arg
@@ -634,8 +643,15 @@ function make_ethghost {
 # Compile ethghost into a 32-bits or 64-bits filesystem.
 # Here we suppose that the apt sources have been fixed:
 function compile_and_install_ethghost {
- # global DEBIANROOT
+ # global DEBIANROOT GHOSTIFICATION
  local ROOT=${1:-$DEBIANROOT}
+ # Architecture C images ghostify eth42 via a network namespace (in marionnet-relay),
+ # not via the kernel patch + `ethghost' C tool: nothing to build or install here.
+ # (On a vanilla kernel the tool's SIOCGIFGHOSTIFY ioctl does not even exist.)
+ if [[ ${GHOSTIFICATION:-ethghost} = netns ]]; then
+   echo "netns ghostification (architecture C): skipping ethghost build/install."
+   return 0
+ fi
  sudo cp -dR ../ethghost $ROOT/tmp/
  sudo chroot ${ROOT} apt-get install -y linux-libc-dev libc6-dev || true
  export -f make_ethghost
@@ -656,9 +672,11 @@ function make_symlink_etc_init_dhcpd {
 }
 
 function install_marionnet_relay_as_root {
- # global PUPISTO_FILES DEBIANROOT
+ # global RELAY_SRC DEBIANROOT
  local ROOT=${1:-$DEBIANROOT}
- cp -v $PUPISTO_FILES/marionnet-relay ${ROOT}/etc/init.d/
+ # Dest is named explicitly: $RELAY_SRC may be a distro-specific resource whose
+ # basename is not `marionnet-relay' (e.g. marionnet-relay.debian13).
+ cp -v $RELAY_SRC ${ROOT}/etc/init.d/marionnet-relay
  chmod +x ${ROOT}/etc/init.d/marionnet-relay
  chroot $ROOT update-rc.d marionnet-relay defaults
 }
@@ -669,9 +687,9 @@ function install_marionnet_relay_as_root {
 # systemd-sysv-generator. Enabled by creating the wants-symlink directly, which is
 # what `systemctl enable' does but works reliably in an offline chroot (no daemon).
 function install_marionnet_relay_systemd_as_root {
- # global PUPISTO_FILES DEBIANROOT
+ # global RELAY_SRC DEBIANROOT
  local ROOT=${1:-$DEBIANROOT}
- install -D -m 0755 $PUPISTO_FILES/marionnet-relay ${ROOT}/usr/local/sbin/marionnet-relay
+ install -D -m 0755 $RELAY_SRC ${ROOT}/usr/local/sbin/marionnet-relay
  cat > ${ROOT}/etc/systemd/system/marionnet-relay.service <<"EOF"
 [Unit]
 Description=Marionnet guest startup configuration (from the kernel command line)
@@ -698,8 +716,13 @@ EOF
 }
 
 function install_marionnet_relay {
- # global PUPISTO_FILES DEBIANROOT INIT_SYSTEM
- export PUPISTO_FILES DEBIANROOT
+ # global PUPISTO_FILES DEBIANROOT INIT_SYSTEM GHOSTIFICATION
+ # Pick the relay resource: the netns image (architecture C) ships a distro-specific
+ # relay (marionnet-relay.debian13: eth42->netns + X11 relay, no ethghost); every
+ # other image uses the shared generic relay (a symlink to ../../guest/marionnet-relay).
+ local RELAY_SRC=$PUPISTO_FILES/marionnet-relay
+ [[ ${GHOSTIFICATION:-ethghost} = netns ]] && RELAY_SRC=$PUPISTO_FILES/marionnet-relay.debian13
+ export PUPISTO_FILES DEBIANROOT RELAY_SRC
  if [[ ${INIT_SYSTEM:-sysv} = systemd ]]; then
    sudo_fcall install_marionnet_relay_systemd_as_root
  else
