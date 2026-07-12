@@ -273,3 +273,27 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   `_build.linux-6.12.95.2026-07-11.19h04.19248/.config`, `.bak` supprimé. **Check ép.14 : 30/30
   symboles =y, 0 violation.** **Preuve runtime** (`iptables -L`, `nft list ruleset` dans une VM) = à
   faire au prochain rebuild image + boot-test.
+- **2026-07-12** — épisode 16 (`uml/pupisto.debian/pupisto.debian.sh`) : **contournement du crash
+  wireshark (bug noyau UML `PACKET_MMAP`)**. Après rebuild ép.15, `xeyes` + `iptables` validés runtime,
+  mais **wireshark crashe la VM** (`BUG: Bad page map … file:PACKET mmap:sock_mmap` → `Bad rss-counter` →
+  panic à 512M, `dumpcap` aborté mais VM vivante à 2G). **Débogage systématique + pilotage autonome via
+  `pupisto.tester.sh -A`** (SSH par `tester_key`, cf. mémoire) : cause racine = corruption de la
+  comptabilité rmap (`folio_mapcount<0` au `zap`, mm/memory.c l.1521, inversion FILE↔ANON) des pages du
+  ring `PACKET_MMAP` sous UML — activateur structurel : **UML n'a pas `ARCH_HAS_PTE_SPECIAL`** (matrice
+  noyau : `um` = « TODO » ; absent du `.config` 6.12.95). **H1 (fallback `vzalloc`/fragmentation) et H2
+  (ordre du ring) réfutées** (2G, `-B 512 MiB`, 29 MiB libres, rings concurrents → jamais reproduit en
+  `-A` headless). **Isolé** : le **seul** déclencheur est le **poller d'interfaces de l'écran d'accueil**
+  de wireshark (`dumpcap -S`, qui ouvre un ring AF_PACKET sur **toutes** les interfaces d'un coup) ; le
+  ring de capture d'**une** interface est sain (validé `-X` : `wireshark -o capture.no_interface_load:TRUE
+  -k -i lo` → pas de crash), et le multi-interfaces aussi (validé `-X`, `-i lo -i wsdummy`). **Piste 1
+  « forcer non-mmap » écartée** (libpcap moderne = plus de repli `read()` ; fifo inutile car le crash est
+  à l'énumération, pas à la capture). **Fix retenu** : désactiver le poller via la préférence
+  **`capture.no_interface_load: TRUE`** + fournir soi-même les interfaces UP en `-k -i`. Packaging dans
+  `pupisto.debian.sh` : (1) `jq` ajouté à `MANDATORY_PACKAGES` ; (2) `install_wireshark_marionnet_wrapper`
+  pose la **préf système** `/usr/share/wireshark/preferences` (filet anti-`apt upgrade` : fichier non
+  possédé par le paquet, donc jamais écrasé), **fabrique** (heredoc) `/usr/bin/wireshark.marionnet.sh`
+  (no-arg → toutes interfaces UP via `jq` ; `IFACE` → cette interface ; fichier/option → délégué au vrai
+  binaire ; toujours `-o capture.no_interface_load:TRUE`), **déplace** `wireshark`→`wireshark.real` et
+  **symlink** `wireshark`→le wrapper. Idempotent (garde `[[ ! -L ]]`), `bash -n` OK, routing + idempotence
+  testés. **Contournement** (cause racine noyau intacte = piste 2, non nécessaire tant que ça suffit).
+  Rebuild image end-to-end en cours (Jean).

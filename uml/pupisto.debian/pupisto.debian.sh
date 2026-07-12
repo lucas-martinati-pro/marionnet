@@ -427,7 +427,9 @@ function launch_debootstrap_and_then_apt_get_install {
  # Note: `makedev' (removed after buster) and `realpath' (absorbed by `coreutils'
  # since jessie) no longer exist as packages in modern Debian; including them would
  # break apt-get on trixie.
- local MANDATORY_PACKAGES="tcpdump openssh-server traceroute"
+ # `jq' is required by the /usr/bin/wireshark wrapper (install_wireshark_marionnet_wrapper),
+ # which lists UP interfaces itself since Wireshark's own poller is disabled.
+ local MANDATORY_PACKAGES="tcpdump openssh-server traceroute jq"
  local SELECTION=$PUPISTO_FILES/package_catalog/package_catalog.$RELEASE.selection
  # ---
  if [[ $INSTALL_LINUXLOGO = y ]]; then
@@ -875,6 +877,81 @@ function fix_wireshark_init_lua {
  if [[ -f $TARGET ]]; then
    sudo sed -i -e 's/dofile(DATA_DIR.."console.lua")/--dofile(DATA_DIR.."console.lua")/' $TARGET
  fi
+}
+
+# Work around a UML-kernel crash triggered by Wireshark: its welcome-screen interface
+# poller opens AF_PACKET (PACKET_MMAP) rings on EVERY interface at once, and the teardown
+# corrupts UML kernel memory ("Bad page map" -> panic). Two lines of defence:
+#  (1) a system preference capture.no_interface_load:TRUE disables that poller for ANY
+#      invocation of the real binary. It survives an `apt upgrade' that restores the
+#      packaged /usr/bin/wireshark over our symlink, because the file is NOT shipped by
+#      the wireshark package (dpkg never overwrites a file it does not own);
+#  (2) /usr/bin/wireshark is replaced by a wrapper that also lists the UP interfaces
+#      itself (explicit `-k -i', via jq) so that live capture keeps working with the poller
+#      off. The real binary is kept as /usr/bin/wireshark.real.
+function install_wireshark_marionnet_wrapper {
+ # global DEBIANROOT
+ local ROOT=${1:-$DEBIANROOT}
+ # Nothing to do if wireshark is not part of the selection:
+ [[ -e $ROOT/usr/bin/wireshark ]] || return 0
+ # (1) System preference -- safety net, survives package upgrades:
+ sudo mkdir -p $ROOT/usr/share/wireshark
+ sudo tee $ROOT/usr/share/wireshark/preferences 1>/dev/null <<'WIRESHARK_PREF_EOF'
+# Marionnet: disable Wireshark's interface poller. Its AF_PACKET (PACKET_MMAP) rings crash
+# the UML kernel ("Bad page map" -> panic) on teardown. Live capture goes through the
+# `wireshark' wrapper (/usr/bin/wireshark.marionnet.sh), which lists interfaces itself.
+capture.no_interface_load: TRUE
+WIRESHARK_PREF_EOF
+ # (2) Fabricate the wrapper (HERE-document) next to the real binary:
+ sudo tee $ROOT/usr/bin/wireshark.marionnet.sh 1>/dev/null <<'WIRESHARK_WRAPPER_EOF'
+#!/bin/bash
+# wireshark.marionnet.sh -- installed as /usr/bin/wireshark (the real binary is
+# /usr/bin/wireshark.real). Works around a UML-kernel bug: Wireshark's welcome-screen
+# interface poller opens AF_PACKET (PACKET_MMAP) rings on ALL interfaces at once, whose
+# teardown corrupts UML kernel memory ("Bad page map" -> panic). capture.no_interface_load
+# disables that poller; since Wireshark then no longer enumerates interfaces, this wrapper
+# supplies the UP ones itself via explicit `-k -i <iface>'.
+#
+# Usage:
+#   wireshark                 # live capture on every UP interface
+#   wireshark IFACE           # live capture on IFACE
+#   wireshark file.pcap       # offline reading (delegated to the real Wireshark)
+#   wireshark -<option> ...   # options passed through to the real Wireshark
+
+REAL=/usr/bin/wireshark.real
+NO_POLL="-o capture.no_interface_load:TRUE"
+
+# UP interfaces (Wireshark's own enumeration being disabled). Needs jq.
+# Example:  $ echo $(ip_list_up_devices)  ->  lo eth0
+function ip_list_up_devices {
+  type ip jq 1>/dev/null 2>&1 || return 95   # Operation not supported
+  ip -j addr show | jq -r '.[] | select(.flags | index("UP")) | .ifname'
+}
+
+# An argument that is an option (-x) or an existing file => "normal" use (offline, options,
+# capture file): delegate as-is to the real Wireshark, poller still off to avoid the bug.
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    -*) exec "$REAL" $NO_POLL "$@" ;;
+    *)  [ -e "$1" ] && exec "$REAL" $NO_POLL "$@" ;;
+  esac
+fi
+
+# Otherwise: live capture. $1 = explicit interface if given, else every UP interface.
+IFACES="${1:-$(ip_list_up_devices)}"
+IFACES="${IFACES:-eth0}"
+
+OPTIONS_i=""
+for i in $IFACES; do OPTIONS_i="$OPTIONS_i -i $i"; done
+
+exec "$REAL" $NO_POLL -k $OPTIONS_i
+WIRESHARK_WRAPPER_EOF
+ sudo chmod +x $ROOT/usr/bin/wireshark.marionnet.sh
+ # Move the real binary aside and point `wireshark' at the wrapper (idempotent):
+ if [[ ! -L $ROOT/usr/bin/wireshark ]]; then
+   sudo mv $ROOT/usr/bin/wireshark $ROOT/usr/bin/wireshark.real
+ fi
+ sudo ln -sfn wireshark.marionnet.sh $ROOT/usr/bin/wireshark
 }
 
 function fix_locales_as_root {
@@ -1398,6 +1475,10 @@ once prevent_non_vital_services_from_starting
 # wireshark is called as root (that is usual with
 # Marionnet):
 once fix_wireshark_init_lua
+
+# Replace /usr/bin/wireshark by a wrapper avoiding a UML-kernel crash (Wireshark's
+# interface poller opens AF_PACKET rings whose teardown panics the guest kernel):
+once install_wireshark_marionnet_wrapper
 
 # Install this nice program, useful for labs about IPv6 compliance:
 # once install_ipv6_care || true
