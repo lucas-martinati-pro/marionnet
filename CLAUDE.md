@@ -38,6 +38,9 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 
 ## Conventions transverses
 
+- **Messages de commit : ANGLAIS obligatoire** pour tout le dépôt Marionnet (règle de scope
+  projet). Conventional Commits ; rédiger/traduire le message en anglais avant de committer, corps
+  compris. Trailer `Co-Authored-By` selon la règle utilisateur (seulement si j'ai produit le contenu).
 - En tête de chaque .ml : bloc d'alias `module X = Ocamlbricks.X` (pas d'`open`) + en-tête GPL.
 - Extensions camlp4 à la demande via `#load` en tête de fichier (`where_p4`,
   `include_type_definitions_p4`…) ; 3 `.mli` sont **injectés dans le .ml** par
