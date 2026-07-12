@@ -297,3 +297,24 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   **symlink** `wireshark`→le wrapper. Idempotent (garde `[[ ! -L ]]`), `bash -n` OK, routing + idempotence
   testés. **Contournement** (cause racine noyau intacte = piste 2, non nécessaire tant que ça suffit).
   Rebuild image end-to-end en cours (Jean).
+- **2026-07-12** — épisode 17 (`uml/pupisto.tester/pupisto.tester.sh`, `uml/pupisto.debian/pupisto.debian.sh`) :
+  **modes de boot du testeur orthogonalisés + fix racine de la corruption du login console**.
+  L'ancien `-A` monolithique (tap+eth0 **et** pilotage) mélangeait deux préoccupations et cassait le
+  login (`</dev/null &` ⇒ getty lit EOF). **Décomposition** : `-A/--auto-network-by-eth0` = **seulement**
+  le couple (tap hôte, eth0 invité), défait à la sortie ; nouveau `-S/--ssh-only` = pilotage headless
+  autonome (implique `-A` + sshd + clé `tester_key` + arrière-plan + `READY`) ; nouveau `-c/--console` =
+  console interactive sur le terminal courant sans xterm (stdin ouvert ⇒ vrai `login:`), sans timeout ;
+  `-H/--headless` reste scriptable/CI ; **`-X` implique désormais xterm** (bug corrigé : `-X -A` ne
+  lançait pas le xterm). Renommage `SSH_*`→`ETH0_*`/`X11_*` ; `-X` et `-A` prennent chacun un octet libre
+  et **coexistent**. **Cause racine du login corrompu** (`tester login: ^[[47;1R…` polluant le nom
+  d'utilisateur) enfin isolée après plusieurs fausses pistes (`/etc/issue`, `linuxlogo`, `agetty` — tous
+  **innocentés**, y compris via un quirk relais `tester-console` de diagnostic, retiré) : c'est **systemd
+  getty** qui, `TTYColumns`/`TTYRows` non définis, **sonde la taille** de la console UML sans dimension
+  (`con0`) par une séquence ANSI (`ESC[6n`) ; la réponse du terminal (`ESC[<row>;<col>R`) atterrit dans le
+  prompt (`systemd.exec(5)`). **Fix gravé dans `pupisto.debian.sh`** (`fix_etc_inittab`, à l'activation de
+  `getty@tty0`) : drop-in `getty@tty0.service.d/console-size.conf` = `TTYColumns=80`/`TTYRows=24` ⇒ plus de
+  sonde, **login propre (validé en direct par Jean)**. **Reste un décalage d'affichage** (le prompt
+  n'apparaît qu'après ENTER) = quirk du canal console `fd` d'UML (terminal sans dimension ni discipline de
+  ligne propre) — **accepté comme connu et documenté** (aide `-c` + commentaire de branche) ; `-X` (pty
+  xterm réel) reste fluide. `bash -n` OK sur les deux fichiers. **Le fix `TTYColumns` exige un rebuild**
+  de l'image pour prendre effet.

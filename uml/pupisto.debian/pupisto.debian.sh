@@ -564,6 +564,15 @@ function fix_etc_inittab {
    sudo install -d -m 0755 $ROOT/etc/systemd/system/getty.target.wants
    sudo ln -sf /lib/systemd/system/getty@.service \
                $ROOT/etc/systemd/system/getty.target.wants/getty@tty0.service
+   # Pin the console size for getty@tty0. Without TTYColumns/TTYRows, systemd (>=256)
+   # probes the size of the sizeless UML console (con0) with an ANSI sequence (ESC[6n);
+   # the terminal's reply (ESC[<row>;<col>R) then lands in the login prompt and corrupts
+   # the typed username on a shared serial/UML console (e.g. `pupisto.tester -c', or any
+   # real serial line). A fixed 80x24 suppresses the probe. Verified: the probe is gone
+   # and the login is clean (2026-07-12, boot-tester -c).
+   sudo install -d -m 0755 $ROOT/etc/systemd/system/getty@tty0.service.d
+   printf '[Service]\nTTYColumns=80\nTTYRows=24\n' | \
+     sudo tee $ROOT/etc/systemd/system/getty@tty0.service.d/console-size.conf >/dev/null
    return 0
  fi
  local TMPFILE=$(mktemp)

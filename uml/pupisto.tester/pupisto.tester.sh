@@ -98,8 +98,8 @@ NET_PREFIX="24"               # host tap prefix (guest eth0 stays /16 -- marionn
 NET_TAP_PREFIX="mnt-tap"      # tap name prefix; must match the sudoers rule (mnt-tap*)
 NET_SSH_KEY="$SCRIPT_DIR/tester_key"   # tester's own ssh key (generated on first use, gitignored)
 NET_SUDOERS="/etc/sudoers.d/marionnet-tester"        # NOPASSWD rule for the tap commands
-# Per-instance values, filled in from the free octet K when -A is used:
-NET_TAP= ; NET_HOST_IP= ; NET_GUEST_IP=
+# Per-instance values (X11_* for -X eth42, SSH_* for -A eth0) are filled in from a free
+# octet K just before the guest is booted -- see the "Network setup" section below.
 
 # =============================================================
 #                     BOOT-QUIRKS TABLE
@@ -118,7 +118,7 @@ Map_set  BOOT_QUIRKS "6.12:systemd" "console=tty0"
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hi:k:m:wn:dTNHt:x:XA"
+OPTSTRING="hi:k:m:wn:dTNHt:x:XASc"
 
 function parse_cmdline {
 local i j flag
@@ -141,6 +141,8 @@ for i in "$@"; do
     --extra)     ARGS+=("-x");;
     --display)   ARGS+=("-X");;
     --auto-network-by-eth0)  ARGS+=("-A");;
+    --ssh-only)  ARGS+=("-S");;
+    --console)   ARGS+=("-c");;
     --)
       ARGS+=("--");
       double_dash_found=1;
@@ -213,7 +215,13 @@ Options:
   -n/--net TAP       attach eth0=tuntap,TAP (default: no network -- base test)
   -T/--no-tty0       do NOT add console=tty0 (A/B test of the ep.4 hypothesis)
   -w/--writable      boot WITHOUT a COW layer (WARNING: writes into the image)
-  -H/--headless      no xterm: console on stdout, under a timeout (scriptable)
+  -H/--headless      no xterm: boot captured on stdout under a timeout, NON-interactive
+                     (stdin closed, so no login) -- for scripted/CI boot-tests
+  -c/--console       no xterm: interactive console on the CURRENT terminal (stdin open,
+                     so you can log in root/root), no timeout. Combinable with -A.
+                     Known quirk: the UML \`fd' console channel echoes with a one-line
+                     lag (the prompt shows only after you press ENTER); login still works.
+                     Use -X for a fully fluid console (xterm allocates a real pty).
   -t/--timeout SEC   headless timeout before killing the guest (default ${DEFAULT_TIMEOUT})
   -x/--extra \"ARGS\"   extra kernel arguments appended to the command line
   -X/--display       show guest graphical apps (xeyes, wireshark) on the host X server:
@@ -222,19 +230,28 @@ Options:
                      xterm mode; with --headless, only the guest mechanism is set up and
                      checked from the hostfs (no local X server needed).
   -A/--auto-network-by-eth0
-                     boot with a host<->guest tap on eth0 + sshd, then print a ready
-                     ssh command (root@${NET_GUEST_IP}). Runs the guest attached (console
-                     to stdout, no timeout); Ctrl-C / killing it tears the tap down.
-                     First use provisions a NOPASSWD sudoers rule (asks for a password once).
+                     just wire a host<->guest tap on eth0 (host 172.23.K.254, guest
+                     172.23.K.1), torn down on exit. Nothing else: the boot mode is
+                     unchanged (xterm by default), so you get a normal login console
+                     WITH a working eth0. Combinable with -X (eth42 stays the ghostified
+                     X11 link). First use provisions a NOPASSWD sudoers rule (one password).
+  -S/--ssh-only      autonomous headless driving: implies -A, then starts sshd in the
+                     guest, authorizes the tester key, boots the guest in the background
+                     (no console login) and prints a ready 'ssh root@172.23.K.1' command.
+                     For scripted tests without a screen. Incompatible with -X and -H.
   -d/--debug         run the kernel under gdb (xterm mode only)
   -N/--dry-run       resolve image/kernel/args and print them, but do NOT boot
   -h/--help          this help
 
 Examples:
   ${0##*/}                    # xterm, last image, systemd + console=tty0, COW
-  ${0##*/} --headless         # scriptable boot captured on stdout (fix/retry loop)
-  ${0##*/} --headless --no-tty0   # same, without console=tty0 (compare getty)
-  ${0##*/} -X                 # xterm + guest X11 on the host (eth42 ghostified via netns)"
+  ${0##*/} --headless         # scriptable boot captured on stdout (fix/retry loop, no login)
+  ${0##*/} --console          # interactive login console on the current terminal (no X)
+  ${0##*/} --headless --no-tty0   # same as headless, without console=tty0 (compare getty)
+  ${0##*/} -X                 # xterm + guest X11 on the host (eth42 ghostified via netns)
+  ${0##*/} -A                 # xterm with a working eth0 (host<->guest tap), login as usual
+  ${0##*/} -X -A              # xterm + guest X11 AND a working eth0
+  ${0##*/} -S                 # headless: boot in background, then ssh root@172.23.K.1"
  exit ${1:-0}
 }
 
@@ -253,11 +270,14 @@ TIMEOUT=${option_t_arg:-$DEFAULT_TIMEOUT}
 ADD_TTY0=y  ; [[ -n $option_T ]] && ADD_TTY0=n
 USE_COW=y   ; [[ -n $option_w ]] && USE_COW=n
 HEADLESS=n  ; [[ -n $option_H ]] && HEADLESS=y
+CONSOLE=n   ; [[ -n $option_c ]] && CONSOLE=y
 DRY_RUN=n   ; [[ -n $option_N ]] && DRY_RUN=y
 DEBUG=n     ; [[ -n $option_d ]] && DEBUG=y
 DISPLAY_MODE=n ; [[ -n $option_X ]] && DISPLAY_MODE=y
 AUTO_NET=n  ; [[ -n $option_A ]] && AUTO_NET=y
-UMID="$DEFAULT_UMID"   # overridden to tester-<K> in -A mode (unique mconsole per instance)
+SSH_ONLY=n  ; [[ -n $option_S ]] && SSH_ONLY=y
+[[ $SSH_ONLY = y ]] && AUTO_NET=y      # -S needs the eth0 wiring that -A sets up
+UMID="$DEFAULT_UMID"   # overridden to tester-<K> when a tap is set up (unique mconsole per instance)
 
 # Throw-away COW file (and X11 socat/pty, auto-network tap/hostfs, if any) to clean up on exit:
 COWFILE=
@@ -265,13 +285,13 @@ XSOCAT_PID=
 X_HOST_ADDED=n
 HOSTFS_DIR=
 UML_PID=
-AUTO_NET_ON=n
+CREATED_TAPS=()   # every tap we created (-X and/or -A); torn down on exit
 function cleanup {
   [[ -n $UML_PID ]] && kill "$UML_PID" 2>/dev/null
   rm -f "$COWFILE"
   [[ -n $XSOCAT_PID ]] && kill "$XSOCAT_PID" 2>/dev/null
   [[ $X_HOST_ADDED = y ]] && xhost -local: >/dev/null 2>&1
-  [[ $AUTO_NET_ON = y ]] && net_tap_down
+  net_taps_down
   [[ -n $HOSTFS_DIR ]] && rm -rf "$HOSTFS_DIR"
 }
 trap cleanup EXIT
@@ -371,22 +391,29 @@ function ensure_net_sudoers {
  echo "  Installed. Next runs won't ask for a password." 1>&2
 }
 
-# net_tap_down: best-effort removal of our tap (ignore errors, e.g. rule not yet there).
-function net_tap_down {
- local ipbin; ipbin=$(command -v ip)
- sudo -n "$ipbin" link del "$NET_TAP" 2>/dev/null || true
+# net_taps_down: best-effort removal of every tap we created (ignore errors, e.g. a rule
+# not yet present). Iterates CREATED_TAPS so -X and -A taps are both cleaned up.
+function net_taps_down {
+ local ipbin tap; ipbin=$(command -v ip)
+ for tap in "${CREATED_TAPS[@]}"; do
+   sudo -n "$ipbin" link del "$tap" 2>/dev/null || true
+ done
 }
 
-# net_tap_up: create the tap and bring it up (non-interactive; provisions on first fail).
+# net_tap_up TAP HOSTIP: create TAP, give it HOSTIP/NET_PREFIX and bring it up
+# (non-interactive; provisions the sudoers rule on first failure). Records TAP in
+# CREATED_TAPS so cleanup tears it down. Several taps can coexist (-X eth42 + -A eth0).
 function net_tap_up {
+ local tap="$1" hostip="$2"
  local ipbin u; ipbin=$(command -v ip); u=$(id -un)
- net_tap_down
- if ! sudo -n "$ipbin" tuntap add dev "$NET_TAP" mode tap user "$u" 2>/dev/null; then
+ sudo -n "$ipbin" link del "$tap" 2>/dev/null || true   # drop a stale tap of the same name
+ if ! sudo -n "$ipbin" tuntap add dev "$tap" mode tap user "$u" 2>/dev/null; then
    ensure_net_sudoers || return 1
-   sudo -n "$ipbin" tuntap add dev "$NET_TAP" mode tap user "$u" || return 1
+   sudo -n "$ipbin" tuntap add dev "$tap" mode tap user "$u" || return 1
  fi
- sudo -n "$ipbin" addr add "$NET_HOST_IP/$NET_PREFIX" dev "$NET_TAP" 2>/dev/null || true
- sudo -n "$ipbin" link set "$NET_TAP" up || return 1
+ CREATED_TAPS+=("$tap")
+ sudo -n "$ipbin" addr add "$hostip/$NET_PREFIX" dev "$tap" 2>/dev/null || true
+ sudo -n "$ipbin" link set "$tap" up || return 1
 }
 
 # ensure_ssh_key: generate the tester's own ssh key pair if missing (no passphrase).
@@ -396,23 +423,33 @@ function ensure_ssh_key {
  chmod 600 "$NET_SSH_KEY"
 }
 
-# make_ssh_hostfs DIR: populate a hostfs dir with boot_parameters (=> marionnet-relay
-# configures eth0 -- NOT eth42, which the native relay would ghostify) and a sourced
-# relay patch that authorizes our key and starts sshd.
-function make_ssh_hostfs {
- local dir="$1" pub="${NET_SSH_KEY}.pub"
- [[ -r $pub ]] || { echo "Error: ssh public key '$pub' not found." 1>&2; return 1; }
- # No ip42 here: setting it would make the Debian 13 native relay ghostify eth42 into a
- # hidden netns. We give the guest a plain eth0 instead, configured by the relay's
- # standard per-interface loop (ethernet_interfaces_no + ipv4_*_eth0).
+# hostfs_write DIR: write the guest hostfs -- boot_parameters plus the sourced
+# marionnet-relay* extension files -- for the requested mode(s). -X (eth42, ghostified,
+# X11), -A (eth0, root namespace) and -S (sshd on eth0) compose: eth42 and eth0 then
+# coexist on two separate taps/subnets. Values come from the X11_*/ETH0_* globals set
+# during setup.
+function hostfs_write {
+ local dir="$1"
  { echo "hostname='$UMID'"
    echo "virtual_disk='$IMAGE'"
-   echo "ethernet_interfaces_no=1"
-   echo "ipv4_address_eth0='$NET_GUEST_IP'"
-   echo "ipv4_netmask_eth0='255.255.0.0'"
+   if [[ $AUTO_NET = y ]]; then
+     # -A (also implied by -S): a plain lab interface eth0 (never ghostified), configured
+     # by the relay's standard per-interface loop (ethernet_interfaces_no + ipv4_*_eth0).
+     echo "ethernet_interfaces_no=1"
+     echo "ipv4_address_eth0='$ETH0_GUEST_IP'"
+     echo "ipv4_netmask_eth0='255.255.0.0'"
+   fi
+   if [[ $DISPLAY_MODE = y ]]; then
+     # -X: setting ip42 makes the Debian 13 native relay ghostify eth42 into the hidden
+     # `marionnet-mgmt' netns and start the X11 socat relay towards host_display_ip.
+     echo "ip42='$X11_GUEST_IP'"
+     echo "host_display_ip='$X11_HOST_IP'"
+   fi
  } > "$dir/boot_parameters"
- cp "$pub" "$dir/id_rsa_marionnet.pub"
- cat > "$dir/marionnet-relay-ssh" <<'EOF'
+ # -S: authorize the tester key and start sshd (sourced by the relay in its bash context).
+ if [[ $SSH_ONLY = y ]]; then
+   cp "${NET_SSH_KEY}.pub" "$dir/id_rsa_marionnet.pub"
+   cat > "$dir/marionnet-relay-ssh" <<'EOF'
 # Sourced by marionnet-relay at boot (glob /mnt/hostfs/marionnet-relay*), in its
 # bash context. Authorize the tester's key for root and start sshd on the bare guest.
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -421,24 +458,12 @@ chmod 600 /root/.ssh/authorized_keys
 [ -f /etc/ssh/ssh_host_ed25519_key ] || ssh-keygen -A >/dev/null 2>&1
 systemctl start ssh 2>/dev/null || /usr/sbin/sshd 2>/dev/null || true
 EOF
-}
-
-# make_x11_hostfs DIR: populate a hostfs dir so the guest's NATIVE marionnet-relay
-# (Debian 13, architecture C) performs the X11 setup itself. We provide only (1)
-# boot_parameters with host_display_ip -- so the relay ghostifies eth42 into the
-# `marionnet-mgmt' netns and starts the X11 socat relay towards the host bridge -- and
-# (2) a READ-ONLY diagnostic patch, sourced by the relay AFTER its ghostification (it
-# matches the /mnt/hostfs/marionnet-relay* glob), that logs the resulting state to the
-# hostfs so the host can check it without ssh (eth42's move into the netns would cut an
-# eth42 ssh anyway). We do NOT ghostify here: that now belongs to the guest relay.
-function make_x11_hostfs {
- local dir="$1"
- { echo "ip42='$NET_GUEST_IP'"
-   echo "hostname='$UMID'"
-   echo "virtual_disk='$IMAGE'"
-   echo "host_display_ip='$NET_HOST_IP'"
- } > "$dir/boot_parameters"
- cat > "$dir/marionnet-relay-x11check" <<'EOF'
+ fi
+ # -X: architecture C is NATIVE to the Debian 13 relay, so we only add a READ-ONLY
+ # diagnostic patch (sourced AFTER ghostification) that logs the resulting state to the
+ # hostfs, so the host can check it without ssh.
+ if [[ $DISPLAY_MODE = y ]]; then
+   cat > "$dir/marionnet-relay-x11check" <<'EOF'
 # Sourced by marionnet-relay at boot (glob /mnt/hostfs/marionnet-relay*), AFTER it has
 # ghostified eth42 and started the X11 relay: architecture C is NATIVE to this Debian
 # 13 relay, so here we only OBSERVE the result and log it to the hostfs.
@@ -450,6 +475,7 @@ function make_x11_hostfs {
   echo "-- ethghost present? $(command -v ethghost || echo no)"
 } > /mnt/hostfs/x11-setup.log 2>&1
 EOF
+ fi
 }
 
 # wait_for_guest_ssh: poll until the guest answers ssh (or give up after ~60s).
@@ -457,7 +483,7 @@ function wait_for_guest_ssh {
  local i
  for ((i=0; i<60; i++)); do
    ssh -i "$NET_SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-       -o ConnectTimeout=2 -o BatchMode=yes root@"$NET_GUEST_IP" true 2>/dev/null && return 0
+       -o ConnectTimeout=2 -o BatchMode=yes root@"$ETH0_GUEST_IP" true 2>/dev/null && return 0
    sleep 1
  done
  return 1
@@ -499,32 +525,66 @@ if Map_has_key BOOT_QUIRKS "$QUIRK_KEY"; then KOPTS=$(Map_get BOOT_QUIRKS "$QUIR
 [[ $ADD_TTY0 = n ]] && KOPTS=${KOPTS/console=tty0/}
 [[ -n $TAP ]] && KOPTS="$KOPTS eth0=tuntap,$TAP"
 
-# X11 forwarding to the host X server (architecture C) -- driven by the guest's NATIVE
-# marionnet-relay (Debian 13): the relay ghostifies eth42 into a hidden network
-# namespace (the student's `ip a' never lists it) and relays the guest display :0 (a
-# pathname Unix socket, visible across namespaces) over eth42 to the host. This tester
-# only provides the HOST side: a service tap on eth42, boot_parameters telling the relay
-# the host endpoint (host_display_ip), and -- when a local X server is available -- a
-# bridge from TCP <NET_HOST_IP>:6000 to the real X server's Unix socket (defeating
-# `-nolisten tcp') plus local-client authorization. X11 multiplexes natively over the
-# tap: `xeyes & wireshark' just works. With --headless the guest mechanism is exercised
-# and checked from the hostfs (make_x11_hostfs) without needing a local X server.
+# Network setup for -X (X11 over eth42) and/or -A (plain eth0; -S adds sshd on it). The
+# two links can COEXIST: eth42 is ghostified by the native relay into the hidden
+# `marionnet-mgmt' netns for X11, while eth0 stays in the root namespace -- two separate
+# taps on two 172.23.K.0/24 subnets, described in a single hostfs. X11 multiplexes
+# natively over eth42 (`xeyes & wireshark' just work on the host X server). Order matters:
+# each tap is created before the next free octet is picked (net_free_octet reads live
+# interfaces).
+X11_TAP= ; X11_HOST_IP= ; X11_GUEST_IP=
+ETH0_TAP= ; ETH0_HOST_IP= ; ETH0_GUEST_IP=
 HOST_X_SOCKET=
+
+# Preflight (host tools / option clashes), before creating anything:
 if [[ $DISPLAY_MODE = y ]]; then
-  [[ $AUTO_NET = y ]] && { echo "Error: -X is incompatible with -A." 1>&2; exit 1; }
   command -v socat >/dev/null || { echo "Error: 'socat' not found on the host." 1>&2; exit 4; }
   [[ $HEADLESS = n ]] && { command -v xterm >/dev/null || { echo "Error: 'xterm' not found on the host." 1>&2; exit 4; }; }
-  # Service tap on eth42 (same free-octet plumbing as -A):
+fi
+if [[ $SSH_ONLY = y ]]; then
+  [[ $HEADLESS = y ]]     && { echo "Error: -S is incompatible with --headless." 1>&2; exit 1; }
+  [[ $DISPLAY_MODE = y ]] && { echo "Error: -S is incompatible with -X." 1>&2; exit 1; }
+  ensure_ssh_key || { echo "Error: could not generate the tester ssh key." 1>&2; exit 5; }
+fi
+if [[ $CONSOLE = y ]]; then
+  # -c is one boot mode among {-X, -H, -S}: they drive the console differently.
+  [[ $DISPLAY_MODE = y ]] && { echo "Error: -c is incompatible with -X." 1>&2; exit 1; }
+  [[ $HEADLESS = y ]]     && { echo "Error: -c is incompatible with --headless." 1>&2; exit 1; }
+  [[ $SSH_ONLY = y ]]     && { echo "Error: -c is incompatible with -S." 1>&2; exit 1; }
+fi
+
+# -X: service tap on eth42 (ghostified guest-side). Create the tap first, so the eth0 octet
+# below is guaranteed distinct.
+if [[ $DISPLAY_MODE = y ]]; then
   K=$(net_free_octet) || { echo "Error: no free ${NET_BASE}.K.0/24 subnet (1..254 all taken)." 1>&2; exit 5; }
-  NET_TAP="${NET_TAP_PREFIX}${K}"; NET_HOST_IP="${NET_BASE}.${K}.254"; NET_GUEST_IP="${NET_BASE}.${K}.1"
-  UMID="tester-${K}"; AUTO_NET_ON=y
-  net_tap_up || { echo "Error: could not set up the tap '$NET_TAP'." 1>&2; exit 5; }
+  X11_TAP="${NET_TAP_PREFIX}${K}"; X11_HOST_IP="${NET_BASE}.${K}.254"; X11_GUEST_IP="${NET_BASE}.${K}.1"
+  UMID="tester-${K}"
+  net_tap_up "$X11_TAP" "$X11_HOST_IP" || { echo "Error: could not set up the tap '$X11_TAP'." 1>&2; exit 5; }
+  KOPTS="$KOPTS eth42=tuntap,$X11_TAP"
+fi
+
+# -A (also implied by -S): plain tap on eth0 (root namespace). Its octet also names the
+# guest (tester-K); -S later starts sshd on it.
+if [[ $AUTO_NET = y ]]; then
+  K=$(net_free_octet) || { echo "Error: no free ${NET_BASE}.K.0/24 subnet (1..254 all taken)." 1>&2; exit 5; }
+  ETH0_TAP="${NET_TAP_PREFIX}${K}"; ETH0_HOST_IP="${NET_BASE}.${K}.254"; ETH0_GUEST_IP="${NET_BASE}.${K}.1"
+  UMID="tester-${K}"
+  net_tap_up "$ETH0_TAP" "$ETH0_HOST_IP" || { echo "Error: could not set up the tap '$ETH0_TAP'." 1>&2; exit 5; }
+  KOPTS="$KOPTS eth0=tuntap,$ETH0_TAP"
+fi
+
+# One hostfs describing whichever interface(s) were set up:
+if [[ $DISPLAY_MODE = y || $AUTO_NET = y ]]; then
   HOSTFS_DIR=$(mktemp -d /tmp/pupisto.tester.hostfs.XXXXXX)
-  make_x11_hostfs "$HOSTFS_DIR" || exit 5
-  KOPTS="$KOPTS eth42=tuntap,$NET_TAP hostfs=$HOSTFS_DIR"
-  # Host-side X bridge (guest reaches <NET_HOST_IP>:6000 over eth42) + local auth, when a
-  # local X server is reachable. In --headless with no DISPLAY we skip it and validate
-  # only the guest mechanism (ghostification + relay unit + display socket) via hostfs.
+  hostfs_write "$HOSTFS_DIR" || exit 5
+  KOPTS="$KOPTS hostfs=$HOSTFS_DIR"
+fi
+
+# -X host-side X bridge: TCP <X11_HOST_IP>:6000 -> the real X server's Unix socket
+# (defeating `-nolisten tcp') + local-client authorization, when a local X server is
+# reachable. In --headless with no DISPLAY we skip it and validate only the guest
+# mechanism (ghostification + relay unit + display socket) via the hostfs.
+if [[ $DISPLAY_MODE = y ]]; then
   if [[ -n $DISPLAY ]]; then
     X_HOST_PART=${DISPLAY%%:*}
     if [[ -n $X_HOST_PART && $X_HOST_PART != localhost ]]; then
@@ -534,32 +594,14 @@ if [[ $DISPLAY_MODE = y ]]; then
     HOST_X_SOCKET="/tmp/.X11-unix/X${X_HOST_DNUM}"
   fi
   if [[ -S $HOST_X_SOCKET ]] && command -v xhost >/dev/null; then
-    socat TCP-LISTEN:6000,bind="$NET_HOST_IP",reuseaddr,fork UNIX-CONNECT:"$HOST_X_SOCKET" &
+    socat TCP-LISTEN:6000,bind="$X11_HOST_IP",reuseaddr,fork UNIX-CONNECT:"$HOST_X_SOCKET" &
     XSOCAT_PID=$!
     xhost +local: >/dev/null 2>&1 && X_HOST_ADDED=y || true
   elif [[ $HEADLESS = n ]]; then
-    echo "Error: -X (xterm) needs a local X server (DISPLAY set, its socket, and xhost)." 1>&2; exit 4
+    echo "Error: -X needs a local X server (DISPLAY set, its socket, and xhost)." 1>&2; exit 4
   else
     echo "Note: no local X bridge (DISPLAY unset) -- validating the guest mechanism only." 1>&2
   fi
-fi
-
-# Auto-network (-A): host<->guest tap on eth0 + sshd, for autonomous ssh tests.
-if [[ $AUTO_NET = y ]]; then
-  [[ $HEADLESS = y ]]    && { echo "Error: -A is incompatible with --headless." 1>&2; exit 1; }
-  [[ $DISPLAY_MODE = y ]] && { echo "Error: -A is incompatible with -X for now." 1>&2; exit 1; }
-  # Pick a free octet K => unique tap, umid/mconsole and 172.23.K.0/24 subnet.
-  K=$(net_free_octet) || { echo "Error: no free ${NET_BASE}.K.0/24 subnet (1..254 all taken)." 1>&2; exit 5; }
-  NET_TAP="${NET_TAP_PREFIX}${K}"
-  NET_HOST_IP="${NET_BASE}.${K}.254"
-  NET_GUEST_IP="${NET_BASE}.${K}.1"
-  UMID="tester-${K}"
-  AUTO_NET_ON=y
-  ensure_ssh_key || { echo "Error: could not generate the tester ssh key." 1>&2; exit 5; }
-  net_tap_up || { echo "Error: could not set up the tap '$NET_TAP'." 1>&2; exit 5; }
-  HOSTFS_DIR=$(mktemp -d /tmp/pupisto.tester.hostfs.XXXXXX)
-  make_ssh_hostfs "$HOSTFS_DIR" || exit 5
-  KOPTS="$KOPTS eth0=tuntap,$NET_TAP hostfs=$HOSTFS_DIR"
 fi
 
 # Root filesystem: a throw-away COW layer keeps the image intact.
@@ -576,7 +618,7 @@ CMDLINE="$KERNEL keyboard_layout=us ubda=$UBDA umid=$UMID mem=$MEM root=98:0 hos
 
 # Recap:
 echo "=============================================================="
-echo " pupisto.tester -- boot-test ($([[ $HEADLESS = y ]] && echo headless || echo xterm))"
+echo " pupisto.tester -- boot-test ($([[ $SSH_ONLY = y ]] && echo ssh-only || { [[ $CONSOLE = y ]] && echo console || { [[ $HEADLESS = y ]] && echo headless || echo xterm; }; }))"
 echo "   image        : $IMAGE"
 echo "   kernel       : $KERNEL"
 echo "   init system  : $INIT_SYSTEM  (from ${CONF##*/})"
@@ -585,8 +627,9 @@ echo "   boot quirks  : ${QUIRK_KEY} -> ${KOPTS:-<none>}"
 echo "   memory       : $MEM"
 echo "   console=tty0 : $([[ $KOPTS = *console=tty0* ]] && echo yes || echo no)"
 echo "   network      : $([[ -n $TAP ]] && echo "eth0=tuntap,$TAP" || echo none)"
-echo "   X11 display  : $([[ $DISPLAY_MODE = y ]] && echo "on -- eth42 ghostified in netns; guest :0 -> host ${HOST_X_SOCKET} via ${NET_HOST_IP}:6000" || echo off)"
-echo "   auto-network : $([[ $AUTO_NET = y ]] && echo "eth0=tuntap,$NET_TAP  host $NET_HOST_IP/$NET_PREFIX  guest $NET_GUEST_IP  (ssh root@$NET_GUEST_IP)" || echo off)"
+echo "   X11 display  : $([[ $DISPLAY_MODE = y ]] && echo "on -- eth42 ghostified in netns; guest :0 -> host ${HOST_X_SOCKET} via ${X11_HOST_IP}:6000" || echo off)"
+echo "   auto-network : $([[ $AUTO_NET = y ]] && echo "eth0=tuntap,$ETH0_TAP  host $ETH0_HOST_IP/$NET_PREFIX  guest $ETH0_GUEST_IP" || echo off)"
+echo "   ssh-only     : $([[ $SSH_ONLY = y ]] && echo "on  (background boot; ssh root@$ETH0_GUEST_IP once up)" || echo off)"
 echo "   COW          : $([[ $USE_COW = y ]] && echo "yes (image kept intact)" || echo "NO -- writing into the image!")"
 [[ $HEADLESS = y ]] && echo "   timeout      : ${TIMEOUT}s"
 echo "=============================================================="
@@ -604,23 +647,36 @@ fi
 
 if [[ $DRY_RUN = y ]]; then echo "(dry-run: not booting)"; exit 0; fi
 
-# Boot.
-if [[ $AUTO_NET = y ]]; then
-  # Attached run (no xterm, no timeout): guest console to stdout, guest kept alive so
-  # the caller can ssh into it; the tap/hostfs are torn down by `cleanup' on exit.
-  echo "+ (auto-network) $CMDLINE con=null con0=fd:0,fd:1"
+# Boot.  Three exclusive launch modes: -S (background, ssh only), --headless (timeout,
+# console on stdout), or the default xterm (interactive console; also covers -A and -X).
+if [[ $SSH_ONLY = y ]]; then
+  # Background run (no xterm, no timeout, stdin closed): the guest console goes to stdout
+  # only as a boot log -- it is NOT a login (getty on con0 reads EOF from /dev/null). The
+  # guest is driven by ssh; the tap/hostfs are torn down by `cleanup' on exit.
+  echo "+ (ssh-only) $CMDLINE con=null con0=fd:0,fd:1"
   $CMDLINE con=null con0=fd:0,fd:1 </dev/null &
   UML_PID=$!
-  echo "guest booting (pid $UML_PID); waiting for ssh on $NET_GUEST_IP ..."
+  echo "guest booting (pid $UML_PID); waiting for ssh on $ETH0_GUEST_IP ..."
   if wait_for_guest_ssh; then
     echo "=============================================================="
-    echo "READY: ssh -i $NET_SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$NET_GUEST_IP"
-    echo "  stop: Ctrl-C or kill $UML_PID  (tap $NET_TAP torn down on exit)"
+    echo "READY: ssh -i $NET_SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$ETH0_GUEST_IP"
+    echo "  stop: Ctrl-C or kill $UML_PID  (taps torn down on exit)"
     echo "=============================================================="
   else
     echo "WARNING: ssh not reachable after ~60s; guest still running (pid $UML_PID). See console above." 1>&2
   fi
   wait "$UML_PID"
+elif [[ $CONSOLE = y ]]; then
+  # Interactive console on the current terminal (no xterm, no timeout): stdin stays open
+  # so getty on con0 gives a real login prompt (root/root). Foreground: the script blocks
+  # until the guest halts, then `cleanup' tears down the COW/tap/hostfs.
+  # Known UML quirk: the `fd' console channel (con0=fd:0,fd:1) drives a sizeless terminal
+  # with no line discipline of its own, so the display lags one line behind (the prompt
+  # appears only after ENTER). Login is correct; the CPR/ESC[6n pollution is fixed upstream
+  # by TTYColumns/TTYRows on getty@tty0 (baked into pupisto.debian.sh). For a fluid
+  # interactive console use -X (xterm allocates a real pty with a proper winsize).
+  echo "+ (console) $CMDLINE con=null con0=fd:0,fd:1"
+  $CMDLINE con=null con0=fd:0,fd:1
 elif [[ $HEADLESS = y ]]; then
   # Console on stdout, all other consoles/serials to null; stdin closed; killed
   # after $TIMEOUT. `timeout' returns 124 on expiry -- expected, not an error here.
