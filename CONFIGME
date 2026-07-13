@@ -64,7 +64,7 @@ ocaml_libraryprefix=$(ocamlc -where || exit -1)
 # want to install into a different, custom prefix.
 # *No* trailing slash should be included.
 libraryprefix=$(which 1>/dev/null ocamlfind && ocamlfind query lablgtk3)
-libraryprefix=${libraryprefix%/lablgtk2}
+libraryprefix=${libraryprefix%/lablgtk3}
 libraryprefix=${libraryprefix:-$ocaml_libraryprefix}
 #
 # This definition may be appropriate for debian packaging:
