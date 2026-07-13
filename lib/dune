@@ -52,7 +52,8 @@
 ;; camlp4 syntax-extension preprocessors, built by dune (formerly by lib/Makefile,
 ;; targets MANUALLY_PRE_MAKE_IN_build). Uniform recipe: bytecode .cmi then .cmo via
 ;; camlp4of, in a single (progn) so the .cmi is available to the .cmo compilation.
-;; The -D flags mirror camlp4of-flags.cfg; harmless where IFDEF is unused.
+;; The -D flags are read from camlp4of-flags.cfg — the same single source of truth as the
+;; (preprocess) stanza above; harmless where IFDEF is unused.
 ;; Result: `dune build` alone produces the .cmo that bin/dune loads at preprocess time.
 ;; --------------------------------------------------------------------------
 (rule
@@ -60,70 +61,70 @@
   (deps CAMLP4/where_p4.mli CAMLP4/where_p4.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o where_p4.cmi CAMLP4/where_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o where_p4.cmo CAMLP4/where_p4.ml))))
 (rule
   (targets option_extract_p4.cmi option_extract_p4.cmo)
   (deps CAMLP4/option_extract_p4.mli CAMLP4/option_extract_p4.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o option_extract_p4.cmi CAMLP4/option_extract_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o option_extract_p4.cmo CAMLP4/option_extract_p4.ml))))
 (rule
   (targets raise_p4.cmi raise_p4.cmo)
   (deps CAMLP4/raise_p4.mli CAMLP4/raise_p4.ml CAMLP4/common_tools_for_preprocessors.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o raise_p4.cmi CAMLP4/raise_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o raise_p4.cmo CAMLP4/raise_p4.ml))))
 (rule
   (targets log_module_loading_p4.cmi log_module_loading_p4.cmo)
   (deps CAMLP4/log_module_loading_p4.mli CAMLP4/log_module_loading_p4.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o log_module_loading_p4.cmi CAMLP4/log_module_loading_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o log_module_loading_p4.cmo CAMLP4/log_module_loading_p4.ml))))
 (rule
   (targets include_type_definitions_p4.cmi include_type_definitions_p4.cmo)
   (deps CAMLP4/include_type_definitions_p4.mli CAMLP4/include_type_definitions_p4.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o include_type_definitions_p4.cmi CAMLP4/include_type_definitions_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o include_type_definitions_p4.cmo CAMLP4/include_type_definitions_p4.ml))))
 (rule
   (targets include_as_string_p4.cmi include_as_string_p4.cmo)
   (deps CAMLP4/include_as_string_p4.mli CAMLP4/include_as_string_p4.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o include_as_string_p4.cmi CAMLP4/include_as_string_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o include_as_string_p4.cmo CAMLP4/include_as_string_p4.ml))))
 (rule
   (targets gettext_extract_pot_p4.cmi gettext_extract_pot_p4.cmo)
   (deps GETTEXT/gettext_extract_pot_p4.mli GETTEXT/gettext_extract_pot_p4.ml CAMLP4/common_tools_for_preprocessors.ml)
   (action (progn
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o gettext_extract_pot_p4.cmi GETTEXT/gettext_extract_pot_p4.mli)
     (run ocamlfind ocamlc -package camlp4 -c -I +camlp4 -I .
-       -pp "camlp4of -DOCAML4_OR_LATER -DOCAML4_02_OR_LATER -DOCAML4_03_OR_LATER -DOCAML4_04_OR_LATER -DOCAML4_07_OR_LATER"
+       -pp "camlp4of %{read-lines:camlp4of-flags.cfg}"
        -o gettext_extract_pot_p4.cmo GETTEXT/gettext_extract_pot_p4.ml))))
 
 (include_subdirs unqualified)
