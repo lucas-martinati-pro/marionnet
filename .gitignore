@@ -12,6 +12,13 @@
 *.backup
 *.orig
 
+# --- Fichiers de travail temporaires (le préfixe indique la cible).
+# Par exemple, Makefile.TMP-WORKING-BUFFER indique que le contenu servira comme
+# base de travail pour modifier Makefile ; si le préfixe est un répertoire FOLDER,
+# le fichier FOLDER.TMP-WORKING-BUFFER indique des modifications sur plusieurs fichiers
+# de FOLDER :
+*.TMP-WORKING-BUFFER
+
 # ---
 **/NOTES
 **/NOTES-*

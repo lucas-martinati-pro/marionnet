@@ -318,3 +318,56 @@ Point d'incertitude unique = **auth X** (`xhost +local:` doit autoriser le clien
   tap d'une session `-X` VIVANTE de Jean (irréversible à chaud : UML garde un fd périmé). Règle : ne
   supprimer une tap qu'après avoir vérifié qu'aucun UML `linux` ne la référence (motif `pgrep` qui
   n'auto-matche pas la ligne de commande courante).
+
+## 2026-07-10 — Étendre la ghostification : cacher aussi le socat X11 et le service ssh ?
+
+Question de Jean, une fois l'archi C en place (eth42 caché dans le netns `marionnet-mgmt`) :
+peut-on **cacher (1) le processus** `socat UNIX-LISTEN:/tmp/.X11-unix/X0,fork,mode=0777
+TCP:172.23.K.254:6000` et **(2) le service `ssh.service`** (pour forcer les étudiants à le lancer) ?
+
+**Code vérifié** : le socat est lancé par `systemd-run --collect --unit=marionnet-x11-relay
+ip netns exec marionnet-mgmt socat …` (`pupisto.tester.sh` ~445) → il tourne dans le **netns mgmt**
+(pour joindre `172.23.K.254` via eth42) mais dans le **PID namespace racine**. `ssh.service` est une
+unité native (openssh-server) tirée par `multi-user.target.wants`.
+
+### (2) ssh — DÉJÀ obtenu par « machine nue », rien à coder
+
+`prevent_non_vital_services_from_starting` (`pupisto.debian.sh` ~888) applique une **whitelist stricte**
+`KEEP_ENABLED="marionnet-relay"`. `ssh.service` n'y est pas → **retiré par PASS 1** (balayage des
+`*.target.wants`). Conséquences :
+- **OFF au boot** ✓ ; **`systemctl start ssh` fonctionne** (le `start` est indépendant de l'activation
+  `wants`/`enable`). C'est exactement « forcer l'étudiant à le lancer ».
+- Ne PAS rendre l'unité *invisible* de `systemctl` : anti-pédagogique — l'étudiant doit pouvoir
+  `status`/`start`/`enable` l'unité pour **apprendre systemd**. « Désactivé au boot » ≠ « caché ».
+- **À vérifier au boot-test** : qu'aucun **`ssh.socket`** (activation à la connexion) ne subsiste dans
+  un `*.target.wants` — le balayage multi-target devrait aussi le retirer, à confirmer.
+- Le `-A` du tester relance sshd dans son **COW jetable** → n'affecte pas l'image livrée.
+
+### (1) socat — possible mais ASYMÉTRIQUE et coûteux : reco = accepter la visibilité
+
+Point dur : le masquage réseau par netns marche grâce à une **asymétrie de vue que les processus
+n'ont pas**.
+- `ip a` ne liste **que** les interfaces du netns courant ; l'étudiant est dans le netns racine qui ne
+  voit pas `mgmt` → masquage « gratuit ».
+- Les **PID namespaces sont l'inverse** : un PID ns enfant est **visible du parent**. L'étudiant est
+  root dans le PID ns racine → il voit tout processus, y compris ceux d'un PID ns enfant (avec un PID
+  racine). **Mettre le socat dans un PID ns ne le cache donc pas** ; le kernel l'expose toujours dans le
+  `/proc` racine.
+- Reproduire l'asymétrie exige de **confiner l'étudiant** (shell de login dans un PID+mount ns restreint,
+  `/proc` re-monté) et de lancer le socat **hors** de ce ns. C'est l'**inverse** de « cacher dans un ns
+  annexe » (= « enfermer l'étudiant »), un changement d'archi lourd + **friction pédagogique** (altère
+  `ps`/`top`/`/proc`/`mount`, donc les TP système). Rejoint l'**idée n°1 (rootless/user-ns)** de Jean,
+  appliquée dans la guest → **chantier séparé**.
+
+Options réalistes :
+
+| Option | Cache du root étudiant ? | Coût |
+|---|---|---|
+| **Accepter la visibilité** (reco) | non | nul ; gêne péda faible (un `socat` dans `ps` ≠ interface parasite d'un TP réseau) |
+| `hidepid=2` sur `/proc` | non si étudiant root (cas typique) | faible mais **inefficace** vs root |
+| Renommer/déguiser (`comm`) | cosmétique (args révèlent) | faible / trompeur |
+| Confiner l'étudiant (PID+mount ns) | **oui** | lourd + casse des TP système |
+
+**Décision** : le besoin du netns était de ne pas polluer `ip a` en **TP réseau** — ce qu'un processus
+socat ne fait pas. On **n'essaie pas** de cacher le socat du root ; le confinement de l'étudiant est un
+vrai chantier (idée n°1), à traiter séparément s'il devient un objectif.
