@@ -7,9 +7,12 @@ Ce dépôt est le **port dune** du projet historique (bzr/ocamlbuild → git/dun
 
 ## Build — piège n°1
 
-**`dune build` seul ÉCHOUE sur un clone frais.** Le build est orchestré par make :
-`make` = génère `bin/version.ml`+`bin/meta.ml` → précompile les préprocesseurs **camlp4**
-et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours passer par `make`.
+**Sur un clone frais, lancer `make` une fois d'abord** (il génère `bin/version.ml`+`bin/meta.ml`
+via les makers bash), **puis `dune build` seul suffit**. Depuis l'épisode 1 du chantier
+`finitions-port-dune` (commit `88e614b`, 2026-07-13), les préprocesseurs **camlp4** et les stubs C
+sont construits **par dune** (`(rule)` dans `lib/dune`, `foreign_stubs`), plus par `lib/Makefile` :
+il n'y a plus de pré-fabrication dans `lib/_build/` ni de hand-link. `make` reste requis seulement
+pour `version.ml`/`meta.ml`, i18n gettext, install et RPM.
 
 - Toolchain **gelée OCaml 4.13.1** (dernier compatible camlp4). Merlin/LSP/ocamlformat dégradés
   sur les fichiers préprocessés (7 extensions camlp4 : voir `docs/ARCHITECTURE.md` § Camlp4).
@@ -61,8 +64,9 @@ et stubs C dans `lib/_build/` (Makefile de lib/) → `dune build`. Toujours pass
 
 ## Pièges globaux
 
-1. Ordre de build make→dune (ci-dessus) ; garde-fou « make clean required! » si `lib/_build/`
-   désynchronisé.
+1. Build : sur clone frais `make` une fois (génère `version.ml`/`meta.ml`) puis `dune build` seul
+   (cf. « piège n°1 »). L'ancien ordre make→dune obligatoire et le garde-fou « make clean required! »
+   ont disparu avec l'épisode 1 de `finitions-port-dune` (`lib/_build/` n'est plus produit).
 2. `bin/main.ml` est un hello-world vestige, lié dans LES DEUX exécutables par
    `(modules :standard)` de `bin/dune` (le daemon embarque toute la GUI) — **à corriger**
    (chantier « finitions du port dune »), ne pas s'en inspirer.
