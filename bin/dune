@@ -36,14 +36,25 @@
   ;; ---
   (names  marionnet  marionnet_daemon)
   ;; ---
+  ;; camlp4 preprocessors are now built by dune (lib/dune (rule)s), not by lib/Makefile.
+  ;; -I points into dune's build dir; preprocessor_deps make dune build the .cmo first
+  ;; (the 3 loaded globally here + where_p4 / include_type_definitions_p4 loaded per-file
+  ;; via #load in the component sources).
+  (preprocessor_deps
+      (file ../lib/option_extract_p4.cmo)
+      (file ../lib/raise_p4.cmo)
+      (file ../lib/log_module_loading_p4.cmo)
+      (file ../lib/where_p4.cmo)
+      (file ../lib/include_type_definitions_p4.cmo)
+      (file ../lib/include_as_string_p4.cmo))
   (preprocess (action (run camlp4of
-      -I ../../../../lib/_build/
+      -I ../../../../_build/default/lib/
       %{read-lines:../lib/camlp4of-flags.cfg}
-      ;; gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
   ;; ---
-  (link_flags -I ../ -cclib -locamlbricks_stubs)
+  ;; No manual -cclib -locamlbricks_stubs: linking the ocamlbricks library (which declares
+  ;; (foreign_stubs ...)) pulls its C stub archive in automatically.
   ;; ---
   (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks)
   ;; ---
