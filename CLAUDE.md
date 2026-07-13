@@ -68,9 +68,12 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 1. Build : sur clone frais `dune build` seul suffit (cf. § « Build »). L'ancien ordre make→dune
    obligatoire et le garde-fou « make clean required! » ont disparu avec l'épisode 1 de
    `finitions-port-dune` ; la génération de `version.ml`/`meta.ml` est passée sous dune à l'épisode 2.
-2. `bin/main.ml` est un hello-world vestige, lié dans LES DEUX exécutables par
-   `(modules :standard)` de `bin/dune` (le daemon embarque toute la GUI) — **à corriger**
-   (chantier « finitions du port dune »), ne pas s'en inspirer.
+2. `bin/dune` sépare désormais les 2 exécutables (épisode 5 de `finitions-port-dune`) : les
+   modules communs GUI/daemon sans lablgtk (`marionnet_log`, `daemon_parameters`,
+   `daemon_language`, `configuration`, `meta`) vivent dans la bibliothèque `marionnet_common`
+   (`wrapped false`) que les deux linkent ; `marionnet-daemon.native` ne linke plus lablgtk
+   (vérifié `ldd`). Le vestige `bin/main.ml` (hello-world) a été supprimé. Ne plus s'attendre à
+   un `(modules :standard)` unique ni à `main.ml`.
 3. `.bzr/` coexiste avec `.git/` (conversion 2026-07) : ne pas y toucher ;
    `bin/meta.ml.maker.sh` extrait la révision via **git** (`rev-list --count`, `log`) depuis
    l'épisode 2, avec repli bzr tant que `.bzr` est présent.

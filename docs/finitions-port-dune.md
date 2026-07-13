@@ -5,20 +5,26 @@ checkpoint de l'audit du 2026-07-06 (`docs/audit-marionnet-20260706.md`, § I).
 
 ## Périmètre (4 points)
 
-1. **`bin/main.ml` + `(modules :standard)`** — supprimer le hello-world vestige et re-séparer
-   les exécutables : `marionnet-daemon.native` ne doit plus linker la GUI (lablgtk) ni subir
-   d'effets de bord au démarrage. Point de départ : le stanza `executable` séparé commenté
-   dans `bin/dune`. Critère d'acceptation : les deux binaires buildent par `make` et
-   démarrent sans print parasite ; le daemon ne dépend plus de lablgtk3 au link.
-2. **`dune-project` / opam** — remplacer les placeholders (`source`, licence SPDX vérifiée
-   contre COPYING), versionner `marionnet.opam` (retrait de la ligne du `.gitignore`).
+1. **`bin/main.ml` + `(modules :standard)` — FAIT (épisode 5, 2026-07-13, `474de94`)**.
+   Vestige hello-world supprimé ; exécutables re-séparés via la bibliothèque `marionnet_common`
+   (`wrapped false`) portant les 5 modules communs GUI/daemon sans lablgtk (`marionnet_log`,
+   `daemon_parameters`, `daemon_language`, `configuration`, `meta` — clôture tracée depuis
+   `marionnet_daemon`). Le daemon ne linke plus lablgtk (vérifié `ldd` : 0 dép GTK/GDK, 4,6 Mo
+   vs 16,5 Mo) et ne subit plus le print parasite (`strings` : 0×). Critère d'acceptation
+   atteint (build des 2 binaires par `dune build`, daemon sans lablgtk3 au link).
+2. **`dune-project` / opam — FAIT (épisode 4, 2026-07-13, `f31672f`)**. Placeholder
+   `(source (github username/reponame))` → `(source (uri "git+https://git.launchpad.net/marionnet"))`
+   (validé : alimente `dev-repo`) ; licence SPDX `GPL-2.0-or-later` (COPYING GPLv2 + en-têtes
+   « or any later version ») ; `marionnet.opam` versionné (retrait de sa ligne du `.gitignore`).
+   Corrigé au passage : `(tags (topics …))` mal formé → liste de mots-clés propre.
 3. **`bin/meta.ml.maker.sh` — FAIT (épisode 2, 2026-07-13)**. Révision/date extraites via git
    (`rev-list --count`, `log`), repli bzr conservé ; dépôt localisé par `git rev-parse
    --show-toplevel` (car dune exécute le maker depuis le build-dir). Élargi au-delà du point
    initial : la génération de `version.ml`/`meta.ml` est passée sous dune (`(rule)` dans
    `bin/dune`, `(universe)`), supprimant le dernier reliquat `make` pour ces modules.
-4. **`CONFIGME`** — corriger le strip `%/lablgtk2` → `%/lablgtk3` (aligné sur la variante
-   testing).
+4. **`CONFIGME` — FAIT (épisode 3, 2026-07-13, `09f1a30`)**. Strip `%/lablgtk2` → `%/lablgtk3`
+   (aligné sur la variante testing) : la ligne 66 requête déjà `lablgtk3`, donc l'ancien strip ne
+   matchait jamais et `libraryprefix` gardait à tort le composant `/lablgtk3`.
 
 Hors périmètre : **sortie** de camlp4 (Phase B, cf. point 5), i18n, vestiges non confirmés
 (gui.xml, templates, startup.old, Makefile.d) — décisions séparées.
@@ -70,3 +76,15 @@ Reliquat make légitime (hors dune), après l'épisode 2 : deps/switch, install,
   Interfaces `Meta`/`Version` inchangées → zéro consommateur modifié. Vérifs rc=0 : makers en
   standalone (revision git = 608), `dune build bin/version.ml bin/meta.ml`, `dune build` complet
   (2 exécutables reliés). Points 1, 2, 4 du périmètre toujours à faire.
+- **2026-07-13** — épisode 3 (`09f1a30`) : point 4 — `CONFIGME` strip `%/lablgtk2` → `%/lablgtk3`.
+  Vérif : simulation shell (`ocamlfind query lablgtk3` → strip donne le lib dir parent) + cohérence
+  avec `CONFIGME.testing.sh`.
+- **2026-07-13** — épisode 4 (`f31672f`) : point 2 — `dune-project` `(source (uri …launchpad…))` +
+  licence SPDX `GPL-2.0-or-later` + `tags` corrigés ; `marionnet.opam` versionné (retrait
+  `.gitignore`). Vérif : `dune build marionnet.opam` rc=0, opam régénéré (`dev-repo`/`license`/`tags`
+  corrects).
+- **2026-07-13** — épisode 5 (`474de94`) : point 1 — suppression `bin/main.ml` + re-séparation des
+  exécutables via la bibliothèque `marionnet_common` (`wrapped false`, 5 modules communs sans
+  lablgtk). Vérifs rc=0 : `dune build` (2 binaires), `ldd` daemon sans GTK/GDK, `strings` sans
+  « Hello, World ». **Périmètre initial (points 1-4) + Phase A : COMPLET.** Reste distinct :
+  **Phase B** (sortir de camlp4 → ppx, lever le gel OCaml 4.13.1) = chantier à part, non entamé.
