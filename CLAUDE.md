@@ -5,14 +5,15 @@ Simulateur de réseaux pédagogique basé sur User-Mode Linux (UML) : les équip
 par une GUI GTK. OCaml + lablgtk3, GPL. Auteur : Jean-Vincent Loddo (+ Luca Saiu).
 Ce dépôt est le **port dune** du projet historique (bzr/ocamlbuild → git/dune, converti 2026-07).
 
-## Build — piège n°1
+## Build — `dune build` seul suffit
 
-**Sur un clone frais, lancer `make` une fois d'abord** (il génère `bin/version.ml`+`bin/meta.ml`
-via les makers bash), **puis `dune build` seul suffit**. Depuis l'épisode 1 du chantier
-`finitions-port-dune` (commit `88e614b`, 2026-07-13), les préprocesseurs **camlp4** et les stubs C
-sont construits **par dune** (`(rule)` dans `lib/dune`, `foreign_stubs`), plus par `lib/Makefile` :
-il n'y a plus de pré-fabrication dans `lib/_build/` ni de hand-link. `make` reste requis seulement
-pour `version.ml`/`meta.ml`, i18n gettext, install et RPM.
+**Sur un clone frais, `dune build` seul suffit** — plus aucun `make` préalable requis. Depuis
+l'épisode 1 du chantier `finitions-port-dune` (commit `88e614b`, 2026-07-13), les préprocesseurs
+**camlp4** et les stubs C sont construits **par dune** (`(rule)` dans `lib/dune`, `foreign_stubs`),
+plus par `lib/Makefile` : il n'y a plus de pré-fabrication dans `lib/_build/` ni de hand-link.
+Depuis l'épisode 2 (2026-07-13), `bin/version.ml` et `bin/meta.ml` sont eux aussi générés **par
+dune** (`(rule)` dans `bin/dune` invoquant les makers bash), plus par le Makefile. `make` ne reste
+requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 
 - Toolchain **gelée OCaml 4.13.1** (dernier compatible camlp4). Merlin/LSP/ocamlformat dégradés
   sur les fichiers préprocessés (7 extensions camlp4 : voir `docs/ARCHITECTURE.md` § Camlp4).
@@ -64,14 +65,15 @@ pour `version.ml`/`meta.ml`, i18n gettext, install et RPM.
 
 ## Pièges globaux
 
-1. Build : sur clone frais `make` une fois (génère `version.ml`/`meta.ml`) puis `dune build` seul
-   (cf. « piège n°1 »). L'ancien ordre make→dune obligatoire et le garde-fou « make clean required! »
-   ont disparu avec l'épisode 1 de `finitions-port-dune` (`lib/_build/` n'est plus produit).
+1. Build : sur clone frais `dune build` seul suffit (cf. § « Build »). L'ancien ordre make→dune
+   obligatoire et le garde-fou « make clean required! » ont disparu avec l'épisode 1 de
+   `finitions-port-dune` ; la génération de `version.ml`/`meta.ml` est passée sous dune à l'épisode 2.
 2. `bin/main.ml` est un hello-world vestige, lié dans LES DEUX exécutables par
    `(modules :standard)` de `bin/dune` (le daemon embarque toute la GUI) — **à corriger**
    (chantier « finitions du port dune »), ne pas s'en inspirer.
 3. `.bzr/` coexiste avec `.git/` (conversion 2026-07) : ne pas y toucher ;
-   `bin/meta.ml.maker.sh` extrait encore la révision via bzr (variante git à prévoir).
+   `bin/meta.ml.maker.sh` extrait la révision via **git** (`rev-list --count`, `log`) depuis
+   l'épisode 2, avec repli bzr tant que `.bzr` est présent.
 4. Vestiges apparents (non confirmés par l'auteur) : `bin/gui/gui.xml` (glade-2),
    `bin/gui/*.ml-template`, `uml/startup.old/`, une partie de `Makefile.d/`,
    `bin/po/POTFILES.in` — ne pas les prendre comme référence sans vérifier.

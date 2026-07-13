@@ -12,8 +12,11 @@ checkpoint de l'audit du 2026-07-06 (`docs/audit-marionnet-20260706.md`, § I).
    démarrent sans print parasite ; le daemon ne dépend plus de lablgtk3 au link.
 2. **`dune-project` / opam** — remplacer les placeholders (`source`, licence SPDX vérifiée
    contre COPYING), versionner `marionnet.opam` (retrait de la ligne du `.gitignore`).
-3. **`bin/meta.ml.maker.sh`** — extraire révision/date via git (repli bzr tant que `.bzr`
-   est présent) ; tester dans les deux variantes `CONFIGME.choice`.
+3. **`bin/meta.ml.maker.sh` — FAIT (épisode 2, 2026-07-13)**. Révision/date extraites via git
+   (`rev-list --count`, `log`), repli bzr conservé ; dépôt localisé par `git rev-parse
+   --show-toplevel` (car dune exécute le maker depuis le build-dir). Élargi au-delà du point
+   initial : la génération de `version.ml`/`meta.ml` est passée sous dune (`(rule)` dans
+   `bin/dune`, `(universe)`), supprimant le dernier reliquat `make` pour ces modules.
 4. **`CONFIGME`** — corriger le strip `%/lablgtk2` → `%/lablgtk3` (aligné sur la variante
    testing).
 
@@ -50,8 +53,8 @@ avant `dune build`. Inspiré de `~/DEVEL/repos/circa` (ocamlbricks + dune « pro
 `make gettext-messages-pot`. Non testé (inchangé, sudo) : `install-final-as-root` (n'appelle que
 `dune install`). Gel OCaml 4.13.1 + camlp4 **conservés** (Phase A ne touche pas la sémantique des sources).
 
-Reliquat make légitime (hors dune) : `version.ml`/`meta.ml` (makers ; leur passage en `(rule)`
-dune est entremêlé avec le point 3 « maker git »), deps/switch, install, i18n gettext, RPM.
+Reliquat make légitime (hors dune), après l'épisode 2 : deps/switch, install, i18n gettext, RPM.
+(`version.ml`/`meta.ml` sont passés en `(rule)` dune à l'épisode 2, cf. point 3.)
 
 ## Journal d'avancement
 
@@ -60,3 +63,10 @@ dune est entremêlé avec le point 3 « maker git »), deps/switch, install, i18
 - **2026-07-13** — épisode 1 (`88e614b`) : Phase A — `dune build` sans pré-actions make
   (internalisation des préprocesseurs p4 en `(rule)` dune, rewiring `bin/dune`/`lib/dune`,
   dégraissage du Makefile). Points 1–4 du périmètre initial toujours à faire.
+- **2026-07-13** — épisode 2 (`d10a0fd`) : point 3 du périmètre — `bin/meta.ml.maker.sh` passe
+  de bzr à git (`rev-list --count`, `log`, repli bzr) ; génération de `version.ml`/`meta.ml`
+  internalisée en `(rule)` dune (`bin/dune`, `(universe)`) ; Makefile allégé (cible `meta` +
+  règles de génération supprimées). `dune build` seul suffit désormais aussi pour ces modules.
+  Interfaces `Meta`/`Version` inchangées → zéro consommateur modifié. Vérifs rc=0 : makers en
+  standalone (revision git = 608), `dune build bin/version.ml bin/meta.ml`, `dune build` complet
+  (2 exécutables reliés). Points 1, 2, 4 du périmètre toujours à faire.
