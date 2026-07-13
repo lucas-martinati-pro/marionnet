@@ -54,19 +54,26 @@
   (action (run bash meta.ml.maker.sh ../META ../CONFIGME.choice meta.ml)))
 
 ;; ---
-;; --- EXECUTABLES:
-;; ---   marionnet & marionnet_daemon
+;; --- The camlp4 preprocess recipe is identical for every stanza below (global
+;; --- option_extract_p4 / raise_p4 / log_module_loading_p4, plus the per-file
+;; --- #load-able where_p4 / include_type_definitions_p4 / include_as_string_p4
+;; --- staged as deps). preprocessor_deps build the .cmo (from lib/dune (rule)s)
+;; --- before camlp4of runs; -I points into dune's build dir. No manual -cclib
+;; --- -locamlbricks_stubs: linking ocamlbricks (which declares (foreign_stubs ...))
+;; --- pulls its C stub archive in automatically.
 ;; ---
-(executables
-  ;; ---
-  (public_names  marionnet.native  marionnet-daemon.native)
-  ;; ---
-  (names  marionnet  marionnet_daemon)
-  ;; ---
-  ;; camlp4 preprocessors are now built by dune (lib/dune (rule)s), not by lib/Makefile.
-  ;; -I points into dune's build dir; preprocessor_deps make dune build the .cmo first
-  ;; (the 3 loaded globally here + where_p4 / include_type_definitions_p4 loaded per-file
-  ;; via #load in the component sources).
+
+;; ---
+;; --- SHARED LIBRARY: modules common to the GUI and the daemon (no lablgtk).
+;; ---   marionnet_log / daemon_parameters / daemon_language are used by BOTH
+;; ---   executables; dune forbids a module in two stanzas of one directory, so
+;; ---   they live in a single library both link. (wrapped false) keeps the flat
+;; ---   module names the sources reference unqualified (Marionnet_log, ...).
+;; ---
+(library
+  (name marionnet_common)
+  (wrapped false)
+  (modules marionnet_log daemon_parameters daemon_language configuration meta)
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -79,38 +86,53 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  ;; ---
-  ;; No manual -cclib -locamlbricks_stubs: linking the ocamlbricks library (which declares
-  ;; (foreign_stubs ...)) pulls its C stub archive in automatically.
-  ;; ---
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks)
-  ;; ---
-  (modules :standard)
-  ;; (modules_without_implementation version)
-  )
+  (libraries str unix threads ocamlbricks))
 
 ;; ---
-;; --- EXECUTABLE marionnet-daemon
+;; --- EXECUTABLE: marionnet-daemon.native (root daemon, server side only).
+;; ---   Links neither lablgtk nor the GUI: its whole module closure is
+;; ---   marionnet_daemon + the shared library above.
 ;; ---
-;; (executable
-;;   ;; ---
-;;   (public_name marionnet-daemon.native)
-;;   ;; ---
-;;   (name marionnet_daemon)
-;;   ;; ---
-;;   (preprocess (action (run camlp4of
-;;       -I ../../../../lib/_build/
-;;       %{read-lines:../lib/camlp4of-flags.cfg}
-;;       gettext_extract_pot_p4.cmo option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
-;;       )))
-;;   ;; ---
-;;   (link_flags -I ../ -cclib -locamlbricks_stubs)
-;;   ;; ---
-;;   (libraries str unix threads inotify ocamlbricks)
-;;   ;; ---
-;;   (modules :standard)
-;;   ;; (modules_without_implementation version)
-;;   )
+(executable
+  (public_name marionnet-daemon.native)
+  (name marionnet_daemon)
+  (modules marionnet_daemon)
+  (preprocessor_deps
+      (file ../lib/option_extract_p4.cmo)
+      (file ../lib/raise_p4.cmo)
+      (file ../lib/log_module_loading_p4.cmo)
+      (file ../lib/where_p4.cmo)
+      (file ../lib/include_type_definitions_p4.cmo)
+      (file ../lib/include_as_string_p4.cmo))
+  (preprocess (action (run camlp4of
+      -I ../../../../_build/default/lib/
+      %{read-lines:../lib/camlp4of-flags.cfg}
+      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      )))
+  (libraries str unix threads inotify ocamlbricks marionnet_common))
+
+;; ---
+;; --- EXECUTABLE: marionnet.native (GTK GUI).
+;; ---   Everything else (bin/ + bin/gui/ + generated version.ml / meta.ml), minus
+;; ---   the modules claimed by the library and the daemon stanza above.
+;; ---
+(executable
+  (public_name marionnet.native)
+  (name marionnet)
+  (modules (:standard \ marionnet_log daemon_parameters daemon_language configuration meta marionnet_daemon))
+  (preprocessor_deps
+      (file ../lib/option_extract_p4.cmo)
+      (file ../lib/raise_p4.cmo)
+      (file ../lib/log_module_loading_p4.cmo)
+      (file ../lib/where_p4.cmo)
+      (file ../lib/include_type_definitions_p4.cmo)
+      (file ../lib/include_as_string_p4.cmo))
+  (preprocess (action (run camlp4of
+      -I ../../../../_build/default/lib/
+      %{read-lines:../lib/camlp4of-flags.cfg}
+      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      )))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common))
 
 ;;; ---
 (install
