@@ -26,8 +26,10 @@ checkpoint de l'audit du 2026-07-06 (`docs/audit-marionnet-20260706.md`, § I).
    (aligné sur la variante testing) : la ligne 66 requête déjà `lablgtk3`, donc l'ancien strip ne
    matchait jamais et `libraryprefix` gardait à tort le composant `/lablgtk3`.
 
-Hors périmètre : **sortie** de camlp4 (Phase B, cf. point 5), i18n, vestiges non confirmés
-(gui.xml, templates, startup.old, Makefile.d) — décisions séparées.
+Hors périmètre initial : **sortie** de camlp4 (Phase B, cf. point 5), i18n, vestiges non confirmés
+(gui.xml, templates, startup.old, Makefile.d) — décisions séparées. **i18n depuis traité** (épisode 6,
+2026-07-14 : couplage gettext↔dune via dune-site, cf. journal). **Phase B** essaimée en chantier
+propre (`docs/camlp4-to-ppx.md`).
 
 5. **Nettoyage du hybride make→dune (Phase A) — FAIT (épisode 1)**. Objectif ajouté le
    2026-07-13 (l'auteur a élargi le périmètre : ce point était initialement hors scope).
@@ -86,5 +88,21 @@ Reliquat make légitime (hors dune), après l'épisode 2 : deps/switch, install,
 - **2026-07-13** — épisode 5 (`474de94`) : point 1 — suppression `bin/main.ml` + re-séparation des
   exécutables via la bibliothèque `marionnet_common` (`wrapped false`, 5 modules communs sans
   lablgtk). Vérifs rc=0 : `dune build` (2 binaires), `ldd` daemon sans GTK/GDK, `strings` sans
-  « Hello, World ». **Périmètre initial (points 1-4) + Phase A : COMPLET.** Reste distinct :
-  **Phase B** (sortir de camlp4 → ppx, lever le gel OCaml 4.13.1) = chantier à part, non entamé.
+  « Hello, World ». **Périmètre initial (points 1-4) + Phase A : COMPLET.**
+- **2026-07-14** — épisode 6 : i18n — **couplage gettext ↔ dune via dune-site**. La compile
+  (`msgfmt` `.po`→`.mo`) et l'install des catalogues passent du Makefile à dune (`i18n/dune`, hors
+  `bin/` pour ne pas subir `include_subdirs`/camlp4) : `dune-project` déclare `(using dune_site 0.1)`
+  + `(sites (share locale))` ; 7 `(rule)` msgfmt (targets plats `<lang>.mo`, mis en page
+  `<lang>/LC_MESSAGES/marionnet.mo` à l'install via `as`) ; `(install (section (site (marionnet
+  locale))))`. `bin/gettext.ml` met `Marionnet_sites.Locations.Sites.locale` (module généré par
+  `(generate_sites_module)`, lib sans préprocesseur) **en tête** de `localeprefix_candidates`, devant
+  env `MARIONNET_LOCALEPREFIX` puis `Meta.localeprefix` puis inférence (**repli conservé**). Makefile :
+  retrait de `gettext-compile-mo`/`install-mo`/`uninstall-mo` + var `LOCALE_PREFIX` + ligne
+  `gettext-install-mo` dans `install-final-as-root` ; **conservés** : extraction POT
+  (`gettext_extract_pot_p4`, camlp4) et `gettext-update-po` (msgmerge). Vérifs rc=0 : `dune build`
+  (2 exécutables + 7 `.mo`) ; `dune install --prefix=/tmp/…` → 7 `marionnet.mo` au layout gettext +
+  2 binaires ; location dune-site embarquée dans le binaire installé (`…/share/marionnet` + suffixe
+  `locale`). L'extraction POT reste couplée camlp4.
+
+**Reste distinct : Phase B** (sortir de camlp4 → ppx, lever le gel OCaml 4.13.1) — devenue son propre
+chantier (`docs/camlp4-to-ppx.md`, mémoire `marionnet-camlp4-ppx`), non entamé.

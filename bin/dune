@@ -132,7 +132,7 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common marionnet_sites))
 
 ;;; ---
 (install

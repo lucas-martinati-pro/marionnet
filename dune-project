@@ -19,6 +19,8 @@
 
 (name "marionnet")
 
+(using dune_site 0.1)
+
 (generate_opam_files true)
 
 (source
@@ -41,7 +43,12 @@
   (name "marionnet")
   (synopsis "A virtual network laboratory")
   (description "A virtual network laboratory for learning TCP/IP networks")
-  (depends ocaml dune)
+  (depends ocaml dune dune-site)
+  ;; i18n: the gettext `.mo' catalogues are installed into this site (section
+  ;; `share' -> <prefix>/share/marionnet/locale/<lang>/LC_MESSAGES/marionnet.mo)
+  ;; and located at run-time via the generated Marionnet_sites.Sites.locale
+  ;; (relocatable), see i18n/dune and bin/gettext.ml.
+  (sites (share locale))
   (tags
     ("Internet" "TCP/IP" "network" "laboratory"
      "Ipv4" "Ipv6" "TCP" "UDP" "SCTP" "ICMP" "ARP" "Ethernet"))

@@ -93,15 +93,24 @@ Protocole : messages **taille fixe 128 octets**, AST requêtes/réponses dans
 où l'entrée n'est pas de confiance. La GUI se dégrade gracieusement sans daemon
 (`disable_daemon_support`) : world_bridge indisponible, le reste fonctionne.
 
-## 7. i18n (gettext, hors dune)
+## 7. i18n (gettext — extraction Makefile, compile+install dune)
 
-Circuit 100 % Makefile : extraction des chaînes par le préprocesseur camlp4
-`gettext_extract_pot_p4` sur copies des .ml (`make gettext-all-ml-pot-files` →
-`bin/po/messages.pot`), `gettext-update-po` (msgmerge), `gettext-compile-mo`/`install-mo`.
-Langues actives : `bin/po/LINGUAS` (fr it ar es pt ro zh). À l'exécution, `bin/gettext.ml`
-(wrapper de lib/GETTEXT + stub C) expose `s_` et `f_`. L'extraction a été retirée de la
-chaîne preprocess dune (commentée dans `bin/dune`) au profit des cibles make.
-`bin/po/POTFILES.in` référence des fichiers disparus (vestige).
+**Frontière (depuis l'épisode 6 de `finitions-port-dune`, dune-site)** :
+- **Extraction + merge = Makefile** (tâches développeur) : extraction des chaînes par le
+  préprocesseur camlp4 `gettext_extract_pot_p4` sur copies des .ml (`make
+  gettext-all-ml-pot-files` → `bin/po/messages.pot`), puis `gettext-update-po` (msgmerge).
+  L'extraction reste couplée camlp4 → traitée avec le chantier `camlp4 → ppx`.
+- **Compile + install = dune** (`i18n/dune`) : `msgfmt` sur `bin/po/*.po` → `.mo`, installés dans
+  la *site* dune-site `locale` (`dune-project` : `(sites (share locale))`), soit
+  `<prefix>/share/marionnet/locale/<lang>/LC_MESSAGES/marionnet.mo`. Plus de
+  `gettext-compile-mo`/`install-mo` ni de `LOCALE_PREFIX` issu de CONFIGME.
+
+Langues actives : `bin/po/LINGUAS` (fr it ar es pt ro zh) — à garder en phase avec les 7 `(rule)`
+de `i18n/dune`. À l'exécution, `bin/gettext.ml` (wrapper de lib/GETTEXT + stub C) expose `s_` et
+`f_` ; il choisit le `localeprefix` par cascade décroissante : **`Marionnet_sites.Locations.Sites.locale`**
+(dirs de la site dune-site, relocatable, généré par `(generate_sites_module)` dans `i18n/dune`),
+puis env `MARIONNET_LOCALEPREFIX`, puis `Meta.localeprefix` (figé par CONFIGME, repli conservé),
+puis inférence désespérée sous `/usr`. `bin/po/POTFILES.in` référence des fichiers disparus (vestige).
 
 ## 8. Systèmes invités (uml/) et frontière hôte/invité
 

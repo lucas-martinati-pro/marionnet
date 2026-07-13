@@ -100,7 +100,8 @@ install-final-as-root:
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
 	echo "for i in $(SHARE_DIR)/scripts/*; do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
-	echo "make gettext-install-mo" >> $(TMPSCRIPT)
+	# Note: the gettext .mo catalogues are compiled AND installed by `dune install'
+	# above (see i18n/dune, dune-site `locale' site). No `make gettext-install-mo'.
 	# ---
 	@chmod +x $(TMPSCRIPT)
 	@echo "---"
@@ -253,12 +254,10 @@ LANGUAGES = $(shell grep -v "^\#" $(PO_DIR)/LINGUAS)# camlp4of _build/gettext_ex
 gettext-show-languages:
 	@echo $(LANGUAGES)
 
-# Dependency: gettext: /usr/bin/msgfmt
-gettext-compile-mo:
-	@(cd $(PO_DIR); \
-	for i in $(LANGUAGES); do \
-	  (msgfmt $$i.po -o $$i.mo || exit -1) && echo "Compiled "$$i.mo; \
-	done;)
+# Note: compilation of .po -> .mo (msgfmt) has moved to dune (i18n/dune), which
+# also installs the catalogues via the dune-site `locale' site. Extraction
+# (gettext-messages-pot) and merge (gettext-update-po) stay here (developer
+# tasks; extraction is camlp4-coupled -> chantier camlp4->ppx).
 
 # Dependency: gettext: /usr/bin/msgmerge
 # Launch this target with caution (see bin/po/LISEZMOI.mise_a_jour_des_langues):
@@ -269,22 +268,11 @@ gettext-update-po: gettext-messages-pot
 	done;)
 
 # ---
-LOCALE_PREFIX=$(shell source ./CONFIGME.choice && echo $${localeprefix:-$$prefix/share/locale})
-# ---
-gettext-install-mo: gettext-compile-mo
-	@(cd $(PO_DIR); \
-	for i in $(LANGUAGES); do \
-	  ((mkdir -p $(LOCALE_PREFIX)/$$i/LC_MESSAGES && cp $$i.mo $(LOCALE_PREFIX)/$$i/LC_MESSAGES/marionnet.mo) || exit -1) && echo "Installed "$$i; \
-	done;)
-
+# Install / uninstall of the .mo catalogues is handled by `dune install' /
+# `dune uninstall' through the dune-site `locale' site (see i18n/dune). The
+# former gettext-install-mo / gettext-uninstall-mo targets (which baked
+# LOCALE_PREFIX from CONFIGME) are gone.
 # ---
 gettext-clean-mo:
 	@(cd $(PO_DIR); \
 	rm -rf *.mo *~ ;)
-
-# ---
-gettext-uninstall-mo: CONFIGME
-	@(for i in $(LANGUAGES); \
-	do rm -f $(LOCALE_PREFIX)/$$i/LC_MESSAGES/marionnet.mo; \
-	echo "Uninstalled "$$i; \
-	done;)

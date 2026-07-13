@@ -24,6 +24,7 @@ doc: "https://www.marionnet.org"
 depends: [
   "ocaml"
   "dune" {>= "3.7"}
+  "dune-site"
   "odoc" {with-doc}
 ]
 build: [
@@ -35,9 +36,11 @@ build: [
     name
     "-j"
     jobs
+    "--promote-install-files=false"
     "@install"
     "@runtest" {with-test}
     "@doc" {with-doc}
   ]
+  ["dune" "install" "-p" name "--create-install-files" name]
 ]
 dev-repo: "git+https://git.launchpad.net/marionnet"

@@ -1,0 +1,73 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2026  Jean-Vincent Loddo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; ---
+;; --- i18n: gettext catalogue compilation + install, coupled to dune (dune-site).
+;; ---
+;; The .po sources live in ../bin/po/ (versioned). Here dune compiles them to
+;; .mo with msgfmt and installs them into the `locale' site declared in
+;; dune-project ((sites (share locale))). At run-time bin/gettext.ml locates the
+;; catalogues via the generated Marionnet_sites.Sites.locale (relocatable), in
+;; head of its candidate cascade, ahead of MARIONNET_LOCALEPREFIX and the
+;; CONFIGME-baked Meta.localeprefix (fallback preserved).
+;;
+;; This directory is intentionally OUTSIDE bin/ : bin/dune sets
+;; (include_subdirs unqualified), which forbids a dune file in its subtree, and
+;; the generated Sites module must NOT go through bin/'s camlp4of preprocess.
+;;
+;; Extraction (POT harvesting via the camlp4 gettext_extract_pot_p4) and msgmerge
+;; stay in the Makefile (developer tasks, camlp4-coupled) -> chantier camlp4->ppx.
+;; ---
+
+;; --- Languages: keep in sync with ../bin/po/LINGUAS (fr it ar es pt ro zh).
+;; --- Build targets are flat (<lang>.mo); the gettext layout
+;; --- <lang>/LC_MESSAGES/marionnet.mo is produced at install time by `as'
+;; --- (dune 3.7 forbids a (target) in a sub-directory).
+(rule (target fr.mo) (deps ../bin/po/fr.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target it.mo) (deps ../bin/po/it.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target ar.mo) (deps ../bin/po/ar.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target es.mo) (deps ../bin/po/es.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target pt.mo) (deps ../bin/po/pt.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target ro.mo) (deps ../bin/po/ro.po) (action (run msgfmt %{deps} -o %{target})))
+(rule (target zh.mo) (deps ../bin/po/zh.po) (action (run msgfmt %{deps} -o %{target})))
+
+;; --- Install every .mo into the `locale' site, laid out as
+;; --- <lang>/LC_MESSAGES/marionnet.mo (needed by bindtextdomain).
+(install
+  (section (site (marionnet locale)))
+  (files
+    (fr.mo as fr/LC_MESSAGES/marionnet.mo)
+    (it.mo as it/LC_MESSAGES/marionnet.mo)
+    (ar.mo as ar/LC_MESSAGES/marionnet.mo)
+    (es.mo as es/LC_MESSAGES/marionnet.mo)
+    (pt.mo as pt/LC_MESSAGES/marionnet.mo)
+    (ro.mo as ro/LC_MESSAGES/marionnet.mo)
+    (zh.mo as zh/LC_MESSAGES/marionnet.mo)))
+
+;; --- Tiny library exposing the generated Sites module to bin/gettext.ml.
+;; --- No preprocess here (unlike bin/): the generated module is plain OCaml.
+(library
+  (name marionnet_sites)
+  (modules locations)
+  (libraries dune-site))
+
+;; Generates module `Locations' whose submodule `Sites' exposes one accessor per
+;; site: Marionnet_sites.Locations.Sites.locale : string list. The extra nesting
+;; (Locations.Sites) is intrinsic to generate_sites_module; the module is named
+;; `locations' (not `sites') to avoid a confusing Sites.Sites path.
+(generate_sites_module
+  (module locations)
+  (sites marionnet))
