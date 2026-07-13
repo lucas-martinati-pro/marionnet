@@ -87,6 +87,9 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 Reprise : appliquer le skill `chantier-long`.
 - **finitions du port dune** : `docs/finitions-port-dune.md` ; mémoire `marionnet-finitions-dune` ;
   `git log --grep="marionnet-finitions-dune"`.
+- **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 pour lever le
+  gel OCaml 4.13.1 et restaurer Merlin/LSP ; crux = `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire
+  `marionnet-camlp4-ppx` ; `git log --grep="marionnet-camlp4-ppx"`. **NON entamé.**
 - **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
   via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
