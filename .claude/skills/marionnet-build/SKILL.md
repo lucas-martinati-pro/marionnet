@@ -1,20 +1,22 @@
 ---
 name: marionnet-build
-description: Chantier build & release de Marionnet — orchestration make→dune, phase camlp4 préalable, fichiers générés, install final/testing, i18n gettext, RPM. Charger pour toute modification de Makefile*, dune, dune-project, CONFIGME*, META, makers, ou pour builder/installer/releaser.
+description: Chantier build & release de Marionnet — make (génère version.ml/meta.ml) puis dune build seul (camlp4 + stubs C construits par dune), fichiers générés, install final/testing, i18n gettext, RPM. Charger pour toute modification de Makefile*, dune, dune-project, CONFIGME*, META, makers, ou pour builder/installer/releaser.
 ---
 
 # Build & release Marionnet
 
-## Séquence de build (à respecter, jamais la contourner)
+## Séquence de build
 
-`make` = meta (génère `bin/version.ml`+`bin/meta.ml`) → `make -C lib main-no-build`
-(préprocesseurs camlp4 + stubs C compilés à la main dans `lib/_build/`) → hard links vers
-`_build/` racine → `dune build`. **`dune build` seul échoue sur un clone frais.**
+Sur un **clone frais** : `make` une fois (génère `bin/version.ml`+`bin/meta.ml` via les
+makers bash), **puis `dune build` seul suffit**. Depuis l'épisode 1 du chantier
+`finitions-port-dune` (`88e614b`, 2026-07-13), les préprocesseurs **camlp4** et les stubs C
+sont construits **par dune** (`(rule)` dans `lib/dune`, `foreign_stubs`), plus par
+`lib/Makefile` : plus de pré-fabrication dans `lib/_build/`, plus de hand-link vers
+`_build/` racine, plus de garde-fou « make clean required! ». `make all` = meta + `dune build`.
 
-- Si make dit « make clean required! » : `lib/_build/` est désynchronisé des sources des
-  préprocesseurs → `make clean` puis rebuild complet.
-- Les règles camlp4 existent EN DOUBLE (Makefile racine, sections « Manual setting », et
-  `lib/Makefile`) : toute modification doit être reportée dans les deux.
+- `make` reste requis seulement pour `version.ml`/`meta.ml` (et i18n gettext, install, RPM).
+- Source unique des règles camlp4 : `lib/dune` (l'ancienne duplication Makefile racine ↔
+  `lib/Makefile` a disparu avec l'épisode 1).
 - Toolchain gelée : OCaml **4.13.1** (camlp4). Ne monte pas de version sans plan de sortie
   de camlp4 (7 extensions à réécrire, cf. `docs/ARCHITECTURE.md` § 10).
 
@@ -39,8 +41,9 @@ description: Chantier build & release de Marionnet — orchestration make→dune
 
 ## Vérification
 
-Toute affirmation « le build passe » exige un `make` frais lu jusqu'au bout (code retour 0).
-Pour l'install testing : vérifier que `marionnet.native` démarre (`make run` ou binaire du
-switch) — pas seulement que dune a linké.
+Toute affirmation « le build passe » exige une commande de build fraîche lue jusqu'au bout
+(code retour 0) : `dune build` seul (clone déjà « maké »), ou `make all` (qui enchaîne meta +
+`dune build`). Pour l'install testing : vérifier que `marionnet.native` démarre (`make run`
+ou binaire du switch) — pas seulement que dune a linké.
 
 Référence : `docs/ARCHITECTURE.md` § 1, 7, 10.
