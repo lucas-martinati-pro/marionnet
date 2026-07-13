@@ -255,7 +255,7 @@ esac
 # Ghostification method of the service interface eth42 (the X11 transport). Legacy
 # images use the kernel ghostification patch driven by the `ethghost' C tool; Debian
 # 13 (vanilla 6.12 kernel) uses a hidden network namespace instead (architecture C):
-# no kernel patch, no ethghost, and a distro-specific relay (marionnet-relay.debian13)
+# no kernel patch, no ethghost, and a distro-specific relay (marionnet-relay.trixie)
 # that moves eth42 into the namespace and relays X11 over it.
 case $RELEASE in
   trixie) GHOSTIFICATION="netns" ;;
@@ -689,7 +689,7 @@ function install_marionnet_relay_as_root {
  # global RELAY_SRC DEBIANROOT
  local ROOT=${1:-$DEBIANROOT}
  # Dest is named explicitly: $RELAY_SRC may be a distro-specific resource whose
- # basename is not `marionnet-relay' (e.g. marionnet-relay.debian13).
+ # basename is not `marionnet-relay' (e.g. marionnet-relay.trixie).
  cp -v $RELAY_SRC ${ROOT}/etc/init.d/marionnet-relay
  chmod +x ${ROOT}/etc/init.d/marionnet-relay
  chroot $ROOT update-rc.d marionnet-relay defaults
@@ -732,10 +732,10 @@ EOF
 function install_marionnet_relay {
  # global PUPISTO_FILES DEBIANROOT INIT_SYSTEM GHOSTIFICATION
  # Pick the relay resource: the netns image (architecture C) ships a distro-specific
- # relay (marionnet-relay.debian13: eth42->netns + X11 relay, no ethghost); every
+ # relay (marionnet-relay.trixie: eth42->netns + X11 relay, no ethghost); every
  # other image uses the shared generic relay (a symlink to ../../guest/marionnet-relay).
  local RELAY_SRC=$PUPISTO_FILES/marionnet-relay
- [[ ${GHOSTIFICATION:-ethghost} = netns ]] && RELAY_SRC=$PUPISTO_FILES/marionnet-relay.debian13
+ [[ ${GHOSTIFICATION:-ethghost} = netns ]] && RELAY_SRC=$PUPISTO_FILES/marionnet-relay.trixie
  export PUPISTO_FILES DEBIANROOT RELAY_SRC
  if [[ ${INIT_SYSTEM:-sysv} = systemd ]]; then
    sudo_fcall install_marionnet_relay_systemd_as_root
