@@ -22,7 +22,7 @@
 (generate_opam_files true)
 
 (source
-  (github username/reponame))
+  (uri "git+https://git.launchpad.net/marionnet"))
 
 (version "trunk")
 
@@ -33,7 +33,7 @@
 (maintainers
   "Jean-Vincent Loddo")
 
-(license "GNU-GPL-v2")
+(license "GPL-2.0-or-later")
 
 (documentation https://www.marionnet.org)
 
@@ -43,6 +43,7 @@
   (description "A virtual network laboratory for learning TCP/IP networks")
   (depends ocaml dune)
   (tags
-    (topics "Internet TCP/IP network laboratory Ipv4 Ipv6 TCP UDP SCTP ICMP ARP Ethernet"))
+    ("Internet" "TCP/IP" "network" "laboratory"
+     "Ipv4" "Ipv6" "TCP" "UDP" "SCTP" "ICMP" "ARP" "Ethernet"))
   )
 
