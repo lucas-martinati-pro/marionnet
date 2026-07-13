@@ -51,13 +51,21 @@ if ! test -f $SOURCE2; then echo 1>&2 "Error: file $SOURCE2 not found => Exiting
 # ---
 source $SOURCE1 && source $SOURCE2 || exit 3
 # ---
-if [[ -d "$SRC_PROJECT_DIR/.bzr" ]]; then
+# Provenance from the VCS. Prefer git; keep bzr as a fallback (.bzr and .git
+# coexist since the 2026-07 conversion). Under dune's (rule) the CWD is the build
+# dir, so we locate the repo root via `git rev-parse` rather than a fixed path.
+REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [[ -n "$REPO_DIR" ]] && [[ -d "$REPO_DIR/.git" ]]; then
+  revision="$(git -C "$REPO_DIR" rev-list --count HEAD)"
+  source_date="$(TZ=UTC git -C "$REPO_DIR" log -1 --format='%cd' --date=iso-local)"
+  source_date_utc_yy_mm_dd="$(TZ=UTC git -C "$REPO_DIR" log -1 --format='%cd' --date=format-local:%Y-%m-%d)"
+elif [[ -d "$SRC_PROJECT_DIR/.bzr" ]]; then
   revision="$(bzr revno)"
   source_date="$(bzr info --verbose | /bin/grep 'latest revision' | cut -d: -f2- | cut -d' ' -f3-)"
   DATE="$(bzr log -r $revision --timezone utc | awk '/^timestamp/' | cut -f2- -d:)"
   source_date_utc_yy_mm_dd=$(date -d "$DATE" -u '+%Y-%m-%d')
 else
-  echo 1>&2 "Warning: directory $SRC_PROJECT_DIR/.bzr not found";
+  echo 1>&2 "Warning: neither git nor bzr metadata found (revision left empty)";
 fi
 # ---
 cat >$TARGET <<EOF

@@ -11,6 +11,7 @@
 # --- Sauvegardes : tout ce qui finit en .backup (fichier ou répertoire) ou .orig ---
 *.backup
 *.orig
+_build/
 
 # --- Fichiers de travail temporaires (le préfixe indique la cible).
 # Par exemple, Makefile.TMP-WORKING-BUFFER indique que le contenu servira comme
@@ -39,6 +40,11 @@
 
 # --- Fichiers générés (compilation des catalogues gettext) ---
 bin/po/*.mo
+
+# --- Méta-infos générées par dune (rule) dans _build/ ; toute copie dans
+# --- l'arbre source est un reliquat (cf. bin/{version,meta}.ml.maker.sh) ---
+bin/version.ml
+bin/meta.ml
 
 # --- Gros artefacts locaux (VM, sources noyau téléchargées) ---
 uml/pupisto.kernel/_build.*/
