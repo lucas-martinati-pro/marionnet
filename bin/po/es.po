@@ -405,7 +405,7 @@ msgid ""
 "some features (graphics on virtual machines and host sockets) won't be "
 "available."
 msgstr ""
-"Conexión con el demonio Marionnet fallado (% s); Marionnet funcionará, pero "
+"Conexión con el demonio Marionnet fallado (%s); Marionnet funcionará, pero "
 "algunas funciones (gráficos en máquinas virtuales y las tomas de acogida) no "
 "estará disponible."
 
