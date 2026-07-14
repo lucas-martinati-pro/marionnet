@@ -95,6 +95,10 @@ Reprise : appliquer le skill `chantier-long`.
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
+- **élimination du daemon** (supprimer le service root permanent `marionnet-daemon` ;
+  étape 1 = sudo scoped + iproute2, netns optionnel ensuite) : `docs/daemon-elimination-study.md` ;
+  mémoire `marionnet-daemon-elimination` ; `git log --grep="marionnet-daemon-elimination"`.
+  **Étude faite (ép. 0), code NON entamé.**
 
 ## Où puiser
 
