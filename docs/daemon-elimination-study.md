@@ -262,22 +262,30 @@ Officialisation : skill `chantier-long` — mémoire projet `marionnet-daemon-el
 tag de commits `marionnet-daemon-elimination`, ce document comme doc de chantier
 (y ajouter le journal horodaté).
 
-Épisodes proposés :
+Épisodes (découpage révisé à l'épisode 1 : la brique et la bascule, que l'étude
+fusionnait, sont séparées — la brique se prouve seule, la bascule exige une image
+invitée et un run GUI ; un épisode = un critère vérifiable) :
 
-1. **`tap_provider` + sudoers + bascule eth42** : créer `bin/tap_provider.ml`
-   (contrat § 5.2) ; règle sudoers modèle dans `etc/` + install ; basculer
-   `simulation_level.ml:874/:1141/:1199`. Critère : lancer une machine + une
-   vieille image, X11 invité OK, telnet quagga d'un routeur OK, taps détruits à
-   l'arrêt. Témoin : `pupisto.tester.sh -A -X` (contrat identique).
-2. **world_bridge** : basculer `world_bridge.ml:395-418` (création sudo) +
-   documenter la variante D (taps pré-provisionnés) dans la doc d'admin.
-   Critère : world_bridge fonctionnel sur un bridge de test.
-3. **Purge** : supprimer les 4 fichiers daemon, le stanza `bin/dune`, le script
+1. ✅ **`tap_provider` + sudoers + preuve** (fait, § 8) : `bin/tap_provider.ml(i)`
+   (contrat § 5.2), règle sudoers (`bin/scripts/marionnet-sudoers.sh`) + install,
+   driver de preuve `bin/tap_provider_test.ml`. Critère (atteint) : contrat réseau
+   prouvé contre le noyau, sans GUI ni image invitée.
+2. **Bascule eth42** : `simulation_level.ml:874/:1141/:1199` passent de
+   `Daemon_client.ask_the_server` à `Tap_provider` ; `purge_orphan_taps` au
+   démarrage ; mode dégradé raccroché à `is_usable` (dialogue + chemin
+   d'installation ergonomique de la règle : terminal ou pkexec, cf. § 8).
+   Critère : machine + vieille image, X11 invité OK, telnet quagga d'un routeur
+   OK, taps détruits à l'arrêt. Témoin : `pupisto.tester.sh -A -X`.
+3. **world_bridge** : basculer `world_bridge.ml:395-418` (création sudo) +
+   documenter la variante D (taps pré-provisionnés) et la variante groupe
+   `marionnet` (salle de TP, § 5.3) dans la doc d'admin. Critère : world_bridge
+   fonctionnel sur un bridge de test.
+4. **Purge** : supprimer les 4 fichiers daemon, le stanza `bin/dune`, le script
    SysV, `MARIONNET_SOCKET_NAME` (etc/marionnet.conf), les références docs
    (`ARCHITECTURE.md` § 6, CLAUDE.md ×2) ; vérifier le devenir de
    `marionnet_common`. Critère : `dune build` rc=0, grep `daemon` résiduel nul
    (hors historique), GUI complète OK sans daemon lancé.
-4. *(optionnel, plus tard)* **netns de session** : POC `pupisto.tester` UML-dans-netns,
+5. *(optionnel, plus tard)* **netns de session** : POC `pupisto.tester` UML-dans-netns,
    puis lanceur + profil AppArmor. Peut n'être ouvert que si le besoin « zéro
    sudo » (TP) se concrétise.
 
@@ -299,9 +307,52 @@ ne pas toucher `.bzr/` ; les 5 modules communs GUI/daemon de `marionnet_common`
 - Interne : `uml/pupisto.tester/pupisto.tester.sh` (`-A`/`-X`/`-S`, sudoers scoped
   + iproute2) ; `docs/ARCHITECTURE.md` § 6 ; audit `docs/audit-marionnet-20260706.md`.
 
+## 8. Épisode 1 — ce qui a été construit, et les écarts à l'étude
+
+Livré : `bin/tap_provider.ml(i)` (les primitives eth42), `bin/scripts/marionnet-sudoers.sh`
+(source **unique** du texte de la règle, partagée par `make install-final-as-root` et le
+runtime), `bin/tap_provider_test.ml` (driver de preuve), stanzas `bin/dune`.
+**Rien ne l'appelle encore** : le daemon reste en place et fonctionnel (bascule = ép. 2).
+
+Écarts assumés vs le § 5.2 / § 6 :
+
+| Étude | Réalisé | Pourquoi |
+|---|---|---|
+| tap nommé `mtapN` | `mtap<pid>-<seq>` | le pid embarqué rend le GC **exact** : `purge_orphan_taps` ne détruit que les taps d'un pid **mort**, donc jamais ceux d'une autre instance vivante. C'est le remplaçant du keep-alive/timeout du daemon |
+| règle sudoers dans `etc/` | script dans `bin/scripts/` | rejoint le mécanisme d'install déjà en place (`marionnet_telnet.sh` : glob dune → `share/` → hard-link dans `$PREFIX/bin/`), donc joignable par nom nu depuis l'OCaml |
+| motif sudoers de `pupisto.tester` (`ip addr add * dev …`) | adresse et réseau **littéraux** (`172.23.0.254/32`, `172.23.*`) | resserre le risque « injection par arguments » du § 5.4 ; seul `link set mtap* *` garde un `*` libre (requis par `up`, et par `promisc`/`master` à l'ép. 3) |
+| brique **et** bascule dans un épisode | séparées (ép. 1 / ép. 2) | la brique se prouve seule contre le noyau ; la bascule exige une image invitée + un run GUI |
+
+Deux pièges **établis expérimentalement** (2026-07-14), à ne pas re-découvrir :
+
+1. **`sudo -n -l <commande>` ne teste PAS ce qu'on croit.** Il répond « cette commande
+   est-elle autorisée par *une* règle », pas « puis-je l'exécuter *sans mot de passe* ».
+   Sur un poste ordinaire (`%sudo ALL=(ALL:ALL) ALL`) il répond **oui, règle absente ou
+   non**, et sortait exactement la même chose avant et après l'installation — faux positif
+   structurel. Le probe retenu : `sudo -n ip tuntap del dev mtapprobe mode tap`, qui est
+   un **no-op réussi** (rc=0, aucun device créé) quand la règle est là, et un refus sudo
+   sinon. C'est la vraie question, sans effet de bord ni dépendance à la locale.
+2. **Le fichier `/etc/sudoers.d/marionnet` est 0440 root:root** (comme tout fichier
+   sudoers) : l'utilisateur ne peut pas le lire. Toute vérification par lecture/`diff`
+   (la sous-commande `check` du script) est donc réservée à **root** ; le runtime, lui,
+   utilise le probe ci-dessus.
+
+Reste à traiter à l'ép. 2 : `ensure_sudoers_rule` hérite des canaux standard, donc `sudo`
+ne peut demander le mot de passe **que depuis un terminal** — la GUI devra passer par un
+terminal (`Initialization.marionnet_terminal`), `pkexec` ou un askpass, avec le dialogue
+explicatif du mode dégradé.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
   kernel/distro, cadrage utilisateur, verdict FAISABLE/recommandé) et officialisation du
   chantier `marionnet-daemon-elimination`. Aucun code touché ; prochain pas = épisode 1
   (`tap_provider` + sudoers + bascule eth42, § 6).
+- **2026-07-14 — épisode 1** : la brique de remplacement existe et est **prouvée**.
+  `Tap_provider` (sudo -n + iproute2) + règle sudoers scopée + driver de preuve ; découpage
+  révisé (§ 6, brique/bascule séparées) ; écarts et 2 pièges consignés (§ 8). Preuve contre
+  le noyau (`tap_provider_test --live`, règle installée sur le poste de l'auteur) : tap créé,
+  `172.23.0.254/32` porté, `ip route get 172.23.0.42` → `dev mtap<pid>-0 src 172.23.0.254`
+  (la route host-specific du daemon, à l'identique), destruction complète, orphelin d'un pid
+  mort collecté sans toucher au tap vivant, garde `172.23.` effective. `dune build` rc=0 ;
+  **aucun appelant** : daemon et GUI inchangés. Prochain pas = épisode 2 (bascule eth42).
