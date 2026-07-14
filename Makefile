@@ -100,6 +100,11 @@ install-final-as-root:
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
 	echo "for i in $(SHARE_DIR)/scripts/*; do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
+	# The scoped sudoers rule letting Tap_provider build the ghost taps with
+	# iproute2 (chantier marionnet-daemon-elimination). The script is the single
+	# place where the rule text lives, and it was just copied into bin/ above.
+	# Remove the rule with: marionnet-sudoers.sh uninstall
+	echo "$(PREFIX_INSTALL)/bin/marionnet-sudoers.sh install \"\$$SUDO_USER\"" >> $(TMPSCRIPT)
 	# Note: the gettext .mo catalogues are compiled AND installed by `dune install'
 	# above (see i18n/dune, dune-site `locale' site). No `make gettext-install-mo'.
 	# ---

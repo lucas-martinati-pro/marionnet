@@ -89,6 +89,59 @@
   (libraries str unix threads ocamlbricks))
 
 ;; ---
+;; --- LIBRARY: marionnet_tap — the sudo+iproute2 tap provider replacing the
+;; ---   root daemon (chantier marionnet-daemon-elimination). A stanza of its
+;; ---   own, NOT part of marionnet_common: the daemon has no use for it, and
+;; ---   marionnet_common is precisely "what the GUI and the daemon share".
+;; ---   Being a library (rather than a module of the GUI executable) is what
+;; ---   makes the (test) stanza below able to link it. (wrapped false) keeps
+;; ---   the flat name Tap_provider.
+;; ---
+(library
+  (name marionnet_tap)
+  (wrapped false)
+  (modules tap_provider)
+  (preprocessor_deps
+      (file ../lib/option_extract_p4.cmo)
+      (file ../lib/raise_p4.cmo)
+      (file ../lib/log_module_loading_p4.cmo)
+      (file ../lib/where_p4.cmo)
+      (file ../lib/include_type_definitions_p4.cmo)
+      (file ../lib/include_as_string_p4.cmo))
+  (preprocess (action (run camlp4of
+      -I ../../../../_build/default/lib/
+      %{read-lines:../lib/camlp4of-flags.cfg}
+      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      )))
+  (libraries str unix threads ocamlbricks marionnet_common))
+
+;; ---
+;; --- TEST: proves Tap_provider without the GUI nor a guest image.
+;; ---   `dune test' runs it read-only; the live proof (a real tap against the
+;; ---   kernel) needs the sudoers rule and is opt-in:
+;; ---     MARIONNET_SUDOERS_SCRIPT=bin/scripts/marionnet-sudoers.sh \
+;; ---       dune exec bin/tap_provider_test.exe -- --live
+;; ---
+(test
+  (name tap_provider_test)
+  (modules tap_provider_test)
+  ;; So that the driver can show the rule without the script being installed yet:
+  (deps scripts/marionnet-sudoers.sh)
+  (preprocessor_deps
+      (file ../lib/option_extract_p4.cmo)
+      (file ../lib/raise_p4.cmo)
+      (file ../lib/log_module_loading_p4.cmo)
+      (file ../lib/where_p4.cmo)
+      (file ../lib/include_type_definitions_p4.cmo)
+      (file ../lib/include_as_string_p4.cmo))
+  (preprocess (action (run camlp4of
+      -I ../../../../_build/default/lib/
+      %{read-lines:../lib/camlp4of-flags.cfg}
+      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
+      )))
+  (libraries str unix threads ocamlbricks marionnet_tap))
+
+;; ---
 ;; --- EXECUTABLE: marionnet-daemon.native (root daemon, server side only).
 ;; ---   Links neither lablgtk nor the GUI: its whole module closure is
 ;; ---   marionnet_daemon + the shared library above.
@@ -119,7 +172,7 @@
 (executable
   (public_name marionnet.native)
   (name marionnet)
-  (modules (:standard \ marionnet_log daemon_parameters daemon_language configuration meta marionnet_daemon))
+  (modules (:standard \ marionnet_log daemon_parameters daemon_language configuration meta marionnet_daemon tap_provider tap_provider_test))
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -132,7 +185,7 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common marionnet_sites))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common marionnet_tap marionnet_sites))
 
 ;;; ---
 (install
@@ -141,6 +194,8 @@
      (glob_files "gui/gui_glade3.xml*")
      ;; ---
      (glob_files "scripts/marionnet_telnet.sh")
+     ;; --- Tap_provider calls it by name (it lands in $PREFIX/bin/, see the Makefile):
+     (glob_files "scripts/marionnet-sudoers.sh")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")
