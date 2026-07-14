@@ -33,17 +33,20 @@
 ;; ---
 
 ;; --- Languages: keep in sync with ../bin/po/LINGUAS
-;; --- (ar de el eo es fr it pt pt_BR ro ru sk tr zh).
+;; --- (de el eo es fr it pt pt_BR ro ru sk tr).
+;; --- Only complete catalogues (358/358) are supported and shipped. ar.po and
+;; --- zh.po stay versioned in ../bin/po/ but are deliberately NOT listed here
+;; --- nor in LINGUAS: they are too incomplete (ar 31/358, zh 0/358) to be worth
+;; --- installing, and nobody in the project can proofread them. Re-adding a
+;; --- language means editing 3 places: LINGUAS, the (rule) below, the (install).
 ;; --- Build targets are flat (<lang>.mo); the gettext layout
 ;; --- <lang>/LC_MESSAGES/marionnet.mo is produced at install time by `as'
 ;; --- (dune 3.7 forbids a (target) in a sub-directory).
 (rule (target fr.mo) (deps ../bin/po/fr.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target it.mo) (deps ../bin/po/it.po) (action (run msgfmt %{deps} -o %{target})))
-(rule (target ar.mo) (deps ../bin/po/ar.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target es.mo) (deps ../bin/po/es.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target pt.mo) (deps ../bin/po/pt.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target ro.mo) (deps ../bin/po/ro.po) (action (run msgfmt %{deps} -o %{target})))
-(rule (target zh.mo) (deps ../bin/po/zh.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target de.mo) (deps ../bin/po/de.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target el.mo) (deps ../bin/po/el.po) (action (run msgfmt %{deps} -o %{target})))
 (rule (target eo.mo) (deps ../bin/po/eo.po) (action (run msgfmt %{deps} -o %{target})))
@@ -59,11 +62,9 @@
   (files
     (fr.mo as fr/LC_MESSAGES/marionnet.mo)
     (it.mo as it/LC_MESSAGES/marionnet.mo)
-    (ar.mo as ar/LC_MESSAGES/marionnet.mo)
     (es.mo as es/LC_MESSAGES/marionnet.mo)
     (pt.mo as pt/LC_MESSAGES/marionnet.mo)
     (ro.mo as ro/LC_MESSAGES/marionnet.mo)
-    (zh.mo as zh/LC_MESSAGES/marionnet.mo)
     (de.mo as de/LC_MESSAGES/marionnet.mo)
     (el.mo as el/LC_MESSAGES/marionnet.mo)
     (eo.mo as eo/LC_MESSAGES/marionnet.mo)
