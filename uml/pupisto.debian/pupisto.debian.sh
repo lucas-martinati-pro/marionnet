@@ -914,6 +914,7 @@ WIRESHARK_PREF_EOF
  # (2) Fabricate the wrapper (HERE-document) next to the real binary:
  sudo tee $ROOT/usr/bin/wireshark.marionnet.sh 1>/dev/null <<'WIRESHARK_WRAPPER_EOF'
 #!/bin/bash
+# ---
 # wireshark.marionnet.sh -- installed as /usr/bin/wireshark (the real binary is
 # /usr/bin/wireshark.real). Works around a UML-kernel bug: Wireshark's welcome-screen
 # interface poller opens AF_PACKET (PACKET_MMAP) rings on ALL interfaces at once, whose
@@ -926,17 +927,17 @@ WIRESHARK_PREF_EOF
 #   wireshark IFACE           # live capture on IFACE
 #   wireshark file.pcap       # offline reading (delegated to the real Wireshark)
 #   wireshark -<option> ...   # options passed through to the real Wireshark
-
+# ---
 REAL=/usr/bin/wireshark.real
 NO_POLL="-o capture.no_interface_load:TRUE"
-
+# ---
 # UP interfaces (Wireshark's own enumeration being disabled). Needs jq.
 # Example:  $ echo $(ip_list_up_devices)  ->  lo eth0
 function ip_list_up_devices {
   type ip jq 1>/dev/null 2>&1 || return 95   # Operation not supported
   ip -j addr show | jq -r '.[] | select(.flags | index("UP")) | .ifname'
 }
-
+# ---
 # An argument that is an option (-x) or an existing file => "normal" use (offline, options,
 # capture file): delegate as-is to the real Wireshark, poller still off to avoid the bug.
 if [ "$#" -gt 0 ]; then
@@ -945,15 +946,16 @@ if [ "$#" -gt 0 ]; then
     *)  [ -e "$1" ] && exec "$REAL" $NO_POLL "$@" ;;
   esac
 fi
-
+# ---
 # Otherwise: live capture. $1 = explicit interface if given, else every UP interface.
 IFACES="${1:-$(ip_list_up_devices)}"
 IFACES="${IFACES:-eth0}"
-
+# ---
 OPTIONS_i=""
 for i in $IFACES; do OPTIONS_i="$OPTIONS_i -i $i"; done
-
-exec "$REAL" $NO_POLL -k $OPTIONS_i
+# ---
+echo NOTICE: about to exec "$REAL" $NO_POLL -k $OPTIONS_i 1>&2
+exec "$REAL" $NO_POLL -k $OPTIONS_i 2>/dev/null
 WIRESHARK_WRAPPER_EOF
  sudo chmod +x $ROOT/usr/bin/wireshark.marionnet.sh
  # Move the real binary aside and point `wireshark' at the wrapper (idempotent):
