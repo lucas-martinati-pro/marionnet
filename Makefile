@@ -134,7 +134,9 @@ install-for-testing:
 	@mkdir -p $(SHARE_DIR_FOR_TESTING)/filesystems -p $(SHARE_DIR_FOR_TESTING)/kernels
 	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/filesystems/; done
 	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/kernels/; done
-	@for i in $(wildcard $(SHARE_DIR_FOR_TESTING)/scripts/*); do chmod +x $$i && ln -sf $$i $(shell echo $$OPAM_SWITCH_PREFIX)/bin/; done
+	@# Shell glob, NOT $(wildcard): make expands wildcard when parsing the recipe,
+	@# i.e. BEFORE `dune install' above has populated share/marionnet/scripts/.
+	@for i in $(SHARE_DIR_FOR_TESTING)/scripts/*; do test -e $$i || continue; chmod +x $$i && ln -sf $$i $$OPAM_SWITCH_PREFIX/bin/; done
 	@echo "---"
 	which $(EXECUTABLES)
 	@echo "Success."
