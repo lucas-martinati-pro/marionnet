@@ -444,13 +444,13 @@ pour d'autres raisons) :
 Validation (2026-07-16) : `dune build` et `dune test` rc=0 ; grep résiduel nul en références
 de code (`Daemon_*`, binaire, socket) — ne restent que commentaires historiques (contrat du
 daemon documenté dans `tap_provider.ml(i)`, mentions du chantier) et vestiges hors périmètre.
-Run GUI de l'auteur (`marionnet.native -d`, sans daemon lancé) : démarrage et fermeture
-propres, probe Tap_provider **silencieux = nominal** (le log de purge n'est émis que si
-n > 0 orphelin ; règle sudoers en place, 0 orphelin). Nota : run effectué avec le binaire
-installé du 2026-07-15 (état ép. 3, pré-purge — on y voit encore l'échec de connexion daemon
-rétrogradé en log) ; le binaire post-purge, qui ne diffère au runtime que par la disparition
-de ce bloc, reste couvert par build/test — réinstallation testing pour un run à jour, au
-prochain passage.
+Run GUI de l'auteur (`marionnet.native -d`, sans daemon lancé) : d'abord avec le binaire
+installé du 2026-07-15 (état ép. 3), puis — après réinstallation testing — avec le **binaire
+post-purge** (révision 642, built 2026-07-16) : démarrage et fermeture propres,
+`daemon_client` plus chargé, le bloc « establish connection with daemon » disparu (la
+séquence passe des treeviews directement au probe Tap_provider), probe **silencieux =
+nominal** (le log de purge n'est émis que si n > 0 orphelin ; règle sudoers en place,
+0 orphelin). Critère « GUI complète OK sans daemon » : **acté**.
 
 ## Journal d'avancement
 
