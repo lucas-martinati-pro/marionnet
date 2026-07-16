@@ -27,7 +27,14 @@
       marionnet-sudoers.sh install $(id -un)
     Usage in the source tree:
       MARIONNET_SUDOERS_SCRIPT=bin/scripts/marionnet-sudoers.sh \
-        dune exec bin/tap_provider_test.exe -- --live *)
+        dune exec bin/tap_provider_test.exe -- --live
+
+    With --live-bridge=NAME it proves the world_bridge contract the same way
+    (tap promisc, up, attached to the bridge NAME, destruction). NAME must be a
+    PREEXISTING bridge: creating it is the admin's business, outside the scoped
+    sudoers rule. A disposable one:
+      sudo ip link add name mnbrtest type bridge     # and afterwards:
+      sudo ip link del mnbrtest *)
 
 let printf = Printf.printf
 
@@ -119,6 +126,31 @@ let live_run () =
   (* --- *)
   printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
 
+let live_bridge_run (bridge : string) =
+  let uid = Unix.getuid () in
+  printf "== Tap_provider, live bridge run (uid=%d, bridge=%s)\n\n" uid bridge;
+  if not (succeeds (Printf.sprintf "ip link show dev %s" bridge)) then begin
+    incr failures;
+    printf "  [FAIL] the bridge %s does not exist; create it first (see the header of this file)\n" bridge
+  end else
+  match Tap_provider.make_bridge_tap ~uid ~bridge with
+  | Error e -> incr failures; printf "  [FAIL] bridge tap creation: %s\n" e
+  | Ok tap ->
+      let link = output_of (Printf.sprintf "ip -o link show dev %s" tap) in
+      check "the tap exists" (succeeds (Printf.sprintf "ip link show dev %s" tap));
+      check "it is promisc" (contains "PROMISC" link);
+      check "it is up" (contains "state UP" link || contains ",UP" link);
+      check (Printf.sprintf "it is attached to the bridge %s" bridge)
+        (contains (Printf.sprintf "master %s" bridge) link);
+      show "the tap" (Printf.sprintf "ip link show dev %s" tap);
+      (* --- *)
+      printf "\n-- Destruction:\n";
+      Tap_provider.destroy_tap tap;
+      check "the tap is gone" (not (succeeds (Printf.sprintf "ip link show dev %s" tap)));
+      check "the bridge is left intact" (succeeds (Printf.sprintf "ip link show dev %s" bridge));
+      (* --- *)
+      printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
+
 (* Installed Marionnet finds the script in $PATH; here dune has just copied it
    next to us (see the (deps ...) of the test stanza), so make it findable: *)
 let () =
@@ -128,5 +160,16 @@ let () =
 
 let () =
   let live = Array.exists (fun x -> x = "--live") Sys.argv in
-  if live then live_run () else dry_run ();
+  let live_bridge =
+    Array.fold_left
+      (fun acc x ->
+        if Ocamlbricks.StringExtra.is_prefix "--live-bridge=" x
+          then Some (String.sub x 14 (String.length x - 14))
+          else acc)
+      None Sys.argv
+  in
+  (match live, live_bridge with
+   | _, Some bridge -> (if live then live_run ()); live_bridge_run bridge
+   | true, None -> live_run ()
+   | false, None -> dry_run ());
   exit (if !failures = 0 then 0 else 1)

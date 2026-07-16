@@ -38,8 +38,8 @@
     the daemon's 0666 socket offered these same tap creations to every local
     account, with no admin opt-in.
 
-    Nothing calls this module yet: the switch of the eth42 client sites of
-    Simulation_level is a later episode of the chantier. *)
+    Client sites: Simulation_level (the eth42 taps, episode 2) and World_bridge
+    (the bridge taps, episode 3) — the daemon has no caller left. *)
 
 type tap_name = string
 
@@ -59,7 +59,15 @@ val tap_prefix : string
     built tap is removed) and the error message is meant to be shown to the user. *)
 val make_eth42_tap : uid:int -> ip42:string -> (tap_name, string) result
 
-(** Best-effort, idempotent destruction: the tap, its address and its route.
+(** [make_bridge_tap ~uid ~bridge] creates a fresh persistent tap owned by [uid],
+    promisc, up, attached to the (preexisting, admin-managed) [bridge] — the
+    world_bridge contract of the daemon's AnySocketTap. Returns the generated
+    name, to be handed to `vde_switch -tap'. On failure nothing is left behind
+    and the error message is meant to be shown to the user. *)
+val make_bridge_tap : uid:int -> bridge:string -> (tap_name, string) result
+
+(** Best-effort, idempotent destruction: the tap, its address and its route
+    (`ip link del' also detaches it from its bridge, if any).
     Only accepts names of taps created by this process. *)
 val destroy_tap : tap_name -> unit
 

@@ -377,6 +377,39 @@ l'auteur. Ce problème ouvre deux chantiers potentiels à étudier à part :
 moderne) et **lancement-kernels-images-modernes** (lancer les couples récents,
 dont la ligne de commande UML diffère) — recoupe le chantier kernel-rootfs.
 
+## 10. Épisode 3 — la bascule world_bridge
+
+Livré (2026-07-16) :
+
+- `bin/tap_provider.ml(i)` : nouvelle primitive `make_bridge_tap ~uid ~bridge`, calquée
+  sur `make_eth42_tap` — contrat du daemon (`AnySocketTap`) à l'identique en iproute2 :
+  `tuntap add` + `link set promisc on` + `up` + `link set … master <bridge>` (bridge
+  quoté : entrée de config). Rollback en cas d'échec ; le nommage `mtap<pid>-<seq>`
+  partagé fait que `destroy_tap` et `purge_orphan_taps` couvrent les bridge taps sans
+  code nouveau (`ip link del` détache du bridge implicitement). **Règle sudoers
+  inchangée** : le `*` libre de `link set mtap* *` couvrait `promisc`/`master` (prévu
+  à l'ép. 1).
+- `bin/world_bridge.ml` : `make_world_bridge_tap` → `Tap_provider.make_bridge_tap`
+  (échec sudo → log + `None`, repli identique au refus daemon) ; `destroy_world_bridge_tap`
+  → `Tap_provider.destroy_tap` (le `try/with` disparaît : destruction best-effort qui ne
+  lève pas) ; l'`open Daemon_language` supprimé. `marionnet.ml` intouché (l'init daemon
+  vestigial part à l'ép. 4). `bin/dune` : rien à changer.
+- `bin/tap_provider_test.ml` : mode `--live-bridge=NAME` (bridge **préexistant** exigé :
+  sa création est le geste de l'admin, hors règle scoped) — checks promisc/up/master,
+  destruction, bridge intact.
+- Doc admin **nouvelle** : `docs/admin-taps-and-bridge.md` (règle sudoers, création du
+  bridge `MARIONNET_BRIDGE`, règle de groupe pour salle de TP, variante D documentée
+  **non câblée** — décision grill : YAGNI, la GUI ne sait pas découvrir les taps
+  pré-provisionnés ; à câbler si le besoin TP se concrétise).
+
+Validation (2026-07-16) : `dune build` et `dune test` rc=0 ; `grep Daemon` sur
+`world_bridge.ml` vide ; preuve contre le noyau
+(`dune exec bin/tap_provider_test.exe -- --live-bridge=mnbrtest`, bridge de test jetable) :
+tap créé promisc/up/master, détruit proprement, bridge intact — 0 FAIL. Pas de run GUI
+(décision grill : driver seul, comme critère de l'épisode). **Le daemon n'a plus aucun
+client** : la GUI ne lui parle plus (il ne reste que la connexion vestigiale au démarrage,
+rétrogradée en log à l'ép. 2, à purger à l'ép. 4).
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -397,3 +430,10 @@ dont la ligne de commande UML diffère) — recoupe le chantier kernel-rootfs.
   rc=0, X11 invité OK, taps détruits OK ; telnet quagga non acté (test perturbé par
   l'incompatibilité vieux couples kernel/image ↔ hôte moderne, § 9 — deux chantiers
   potentiels consignés). i18n différée à l'ép. 4. Prochain pas = épisode 3 (world_bridge).
+- **2026-07-16 — épisode 3** : la bascule world_bridge est faite — **le daemon n'a plus
+  aucun client**. `Tap_provider.make_bridge_tap` (contrat `AnySocketTap` à l'identique,
+  règle sudoers inchangée), `world_bridge.ml` basculé, mode `--live-bridge` du driver,
+  doc admin `docs/admin-taps-and-bridge.md` (groupe TP ; variante D documentée non
+  câblée). Preuve contre le noyau : promisc/up/master + destruction, 0 FAIL (§ 10).
+  Prochain pas = épisode 4 (purge des 4 fichiers daemon + refresh gettext unique +
+  réévaluation de `marionnet_common`).

@@ -336,8 +336,6 @@ end (* module User_level_world_bridge *)
 
 module Simulation_level_world_bridge = struct
 
-open Daemon_language
-
 (** A World Bridge hub process is just a hub process with exactly two ports,
     of which the first one is connected to the given host tun/tap interface: *)
 class world_bridge_hub_process =
@@ -385,21 +383,17 @@ object(self)
   val mutable world_bridge_tap_name = None
   val mutable internal_cable_process = None
 
-  (** Create the tap via the daemon, and return its name.
-      Fail if a the tap already exists: *)
+  (** Create the tap with Tap_provider (sudo + iproute2), attached to the
+      admin-managed bridge, and return its name: *)
   method private make_world_bridge_tap : string option =
     match world_bridge_tap_name with
     | None ->
         let tap_name_option =
-          let server_response =
-            Daemon_client.ask_the_server
-              (Make (AnySocketTap((Unix.getuid ()), bridge_name)))
-          in
-          (match server_response with
-           | Created (SocketTap(tap_name, _, _)) ->
+          (match Tap_provider.make_bridge_tap ~uid:(Unix.getuid ()) ~bridge:bridge_name with
+           | Ok tap_name ->
                Some tap_name
-           | _ ->
-               let () = Log.printf "Marionnet daemon refused to create a TUN/TAP interface\n" in
+           | Error error_message ->
+               let () = Log.printf1 "Failed to create a tap on the world bridge: %s\n" error_message in
                None (* "non-existing-tap" *)
            )
         in
@@ -413,16 +407,8 @@ object(self)
   method private destroy_world_bridge_tap =
     Option.iter
       (fun tap_name ->
-          try
-            let cmd = Destroy (SocketTap(tap_name, (Unix.getuid ()), bridge_name)) in
-            let _ = Daemon_client.ask_the_server cmd in
-            (world_bridge_tap_name <- None)
-          (* --- *)
-          with e -> begin
-            Log.printf1
-              "WARNING: Failed in destroying a host tap for a world bridge: %s\n"
-              (Printexc.to_string e);
-          end)
+          let () = Tap_provider.destroy_tap tap_name in
+          (world_bridge_tap_name <- None))
       (world_bridge_tap_name)
 
   (* --- *)

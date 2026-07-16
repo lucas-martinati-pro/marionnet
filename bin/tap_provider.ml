@@ -150,6 +150,45 @@ let make_eth42_tap ~(uid : int) ~(ip42 : string) : (tap_name, string) result =
             Error e
       end
 
+let make_bridge_tap ~(uid : int) ~(bridge : string) : (tap_name, string) result =
+  match user_name_of_uid uid with
+  | Error e -> Error e
+  | Ok user ->
+      let tap = fresh_tap_name () in
+      if String.length tap > max_tap_name_length then
+        Error (Printf.sprintf "generated interface name `%s' is too long" tap)
+      else begin
+        (* The daemon's contract, verbatim, in iproute2 syntax
+           (marionnet_daemon.ml:136-146): promisc and up like its
+           `ifconfig 0.0.0.0 promisc up', then attached to the bridge like its
+           `brctl addif'. The bridge name comes from the configuration
+           (MARIONNET_BRIDGE), hence the quoting: *)
+        let steps = [
+          Printf.sprintf "tuntap add dev %s mode tap user %s" tap user;
+          Printf.sprintf "link set %s promisc on" tap;
+          Printf.sprintf "link set %s up" tap;
+          Printf.sprintf "link set %s master %s" tap (Filename.quote bridge);
+          ]
+        in
+        let rec perform = function
+          | [] -> Ok ()
+          | args :: rest ->
+              (match ip_command args with
+               | Ok _ -> perform rest
+               | Error e -> Error e)
+        in
+        match perform steps with
+        | Ok () ->
+            register_tap tap;
+            Log.printf2 "Tap_provider: the tap %s was created, attached to the bridge %s\n" tap bridge;
+            Ok tap
+        | Error e ->
+            (* Leave nothing half-built behind: *)
+            let _ = delete_link tap in
+            Log.printf2 "Tap_provider: failed to create a tap on the bridge %s: %s\n" bridge e;
+            Error e
+      end
+
 (* --- Destruction *)
 
 let destroy_tap (tap : tap_name) : unit =
