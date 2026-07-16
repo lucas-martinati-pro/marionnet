@@ -98,9 +98,10 @@ Reprise : appliquer le skill `chantier-long`.
 - **élimination du daemon** (supprimer le service root permanent `marionnet-daemon` ;
   étape 1 = sudo scoped + iproute2, netns optionnel ensuite) : `docs/daemon-elimination-study.md` ;
   mémoire `marionnet-daemon-elimination` ; `git log --grep="marionnet-daemon-elimination"`.
-  **ACTIF** : ép. 1 fait — `bin/tap_provider.ml(i)` (sudo -n + iproute2) et sa règle sudoers
-  (`bin/scripts/marionnet-sudoers.sh`) existent et sont prouvés, mais **rien ne les appelle
-  encore** : le daemon reste en place. Prochain pas = bascule eth42 de `simulation_level.ml`.
+  **ACTIF** : ép. 1-2 faits — `Tap_provider` (sudo -n + iproute2) prouvé **et branché** :
+  la GUI ne demande plus aucun tap au daemon (`simulation_level.ml` → `Tap_provider`,
+  purge/dialogue sudoers au démarrage) ; le daemon ne sert plus qu'au world_bridge.
+  Prochain pas = ép. 3 (bascule `world_bridge.ml`) ; refresh i18n différé à l'ép. 4.
 
 ## Où puiser
 

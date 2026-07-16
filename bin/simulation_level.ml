@@ -871,9 +871,12 @@ class uml_process =
   let ip42 = Printf.sprintf "172.23.%i.%i" octet2 octet3 in
   let _ = Log.printf2 "Simulation_level: uml_process: creating %s: eth42 has IP %s\n" umid ip42 in
   let tap_name =
-    match Daemon_client.ask_the_server (Make (AnyTap((Unix.getuid ()), ip42))) (* "172.23.0.254" *) with
-    | Created (Tap tap_name) -> tap_name
-    | _ ->  "wrong-tap-name"
+    (* Stdlib.Error: the surrounding `open Daemon_language' also defines an Error constructor. *)
+    match Tap_provider.make_eth42_tap ~uid:(Unix.getuid ()) ~ip42 with
+    | Stdlib.Ok tap_name -> tap_name
+    | Stdlib.Error msg ->
+        Log.printf1 "Simulation_level: uml_process: no eth42 tap: %s\n" msg;
+        "wrong-tap-name"
   in
   (* Basic parameters: *)
   let eth42_mac_address = random_mac_address () in
@@ -1137,8 +1140,8 @@ class uml_process =
        begin
 	Log.printf2 "Simulation_level: %s#gracefully_terminate: removing swap file allocated for %d\n" umid current_pid;
 	self#delete_swap_file;
-	Log.printf2 "Simulation_level: %s#gracefully_terminate: asking to remove tap allocated for %d\n" umid current_pid;
-	let _ = Daemon_client.ask_the_server (Destroy (Tap tap_name)) in
+	Log.printf2 "Simulation_level: %s#gracefully_terminate: removing tap allocated for %d\n" umid current_pid;
+	let () = Tap_provider.destroy_tap tap_name in
 	(* Remember that now there's no process any more: *)
 	pid := None;
 	Log.printf2 "Simulation_level: %s#gracefully_terminate: UML process with pid %d successfully terminated.\n" umid current_pid;
@@ -1195,8 +1198,8 @@ class uml_process =
        begin
 	Log.printf2 "Simulation_level: %s#terminate: removing swap file allocated for %d\n" umid current_pid;
 	self#delete_swap_file;
-	Log.printf2 "Simulation_level: %s#terminate: asking to remove tap allocated for %d\n" umid current_pid;
-	let _ = Daemon_client.ask_the_server (Destroy (Tap tap_name)) in
+	Log.printf2 "Simulation_level: %s#terminate: removing tap allocated for %d\n" umid current_pid;
+	let () = Tap_provider.destroy_tap tap_name in
 	(* Remember that now there's no process any more: *)
 	pid := None;
 	Log.printf2 "Simulation_level: %s#terminate: UML process with pid %d successfully terminated.\n" umid current_pid;

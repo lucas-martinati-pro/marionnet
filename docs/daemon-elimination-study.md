@@ -270,12 +270,12 @@ invitée et un run GUI ; un épisode = un critère vérifiable) :
    (contrat § 5.2), règle sudoers (`bin/scripts/marionnet-sudoers.sh`) + install,
    driver de preuve `bin/tap_provider_test.ml`. Critère (atteint) : contrat réseau
    prouvé contre le noyau, sans GUI ni image invitée.
-2. **Bascule eth42** : `simulation_level.ml:874/:1141/:1199` passent de
+2. ✅ **Bascule eth42** (fait, § 9) : `simulation_level.ml` passe de
    `Daemon_client.ask_the_server` à `Tap_provider` ; `purge_orphan_taps` au
-   démarrage ; mode dégradé raccroché à `is_usable` (dialogue + chemin
-   d'installation ergonomique de la règle : terminal ou pkexec, cf. § 8).
-   Critère : machine + vieille image, X11 invité OK, telnet quagga d'un routeur
-   OK, taps détruits à l'arrêt. Témoin : `pupisto.tester.sh -A -X`.
+   démarrage ; mode dégradé raccroché à `is_usable` (dialogue + commande à
+   copier dans un terminal). Critère (partiellement acté, § 9) : machine +
+   vieille image, X11 invité OK, taps détruits à l'arrêt ; telnet quagga non
+   acté (test perturbé, § 9).
 3. **world_bridge** : basculer `world_bridge.ml:395-418` (création sudo) +
    documenter la variante D (taps pré-provisionnés) et la variante groupe
    `marionnet` (salle de TP, § 5.3) dans la doc d'admin. Critère : world_bridge
@@ -342,6 +342,41 @@ ne peut demander le mot de passe **que depuis un terminal** — la GUI devra pas
 terminal (`Initialization.marionnet_terminal`), `pkexec` ou un askpass, avec le dialogue
 explicatif du mode dégradé.
 
+## 9. Épisode 2 — la bascule eth42, et l'état de sa validation
+
+Livré (décisions actées au grill du 2026-07-15) :
+
+- `bin/simulation_level.ml` : la création eth42 appelle
+  `Tap_provider.make_eth42_tap ~uid ~ip42` (échec → log + repli `"wrong-tap-name"` :
+  la VM démarre sans eth42, contrat dégradé actuel à l'identique) ; les deux
+  destructions (`gracefully_terminate`, `terminate`) appellent
+  `Tap_provider.destroy_tap`. Piège de code : l'`open Daemon_language` du fichier
+  définit son propre constructeur `Error` → les motifs `result` sont qualifiés
+  `Stdlib.Ok`/`Stdlib.Error` (sinon warning 42).
+- `bin/marionnet.ml` : l'échec de connexion au daemon est rétrogradé en log (plus
+  de dialogue au démarrage — le daemon ne sert plus qu'au world_bridge jusqu'à
+  l'ép. 3, et `ask_the_server` garde son propre dialogue d'erreur à l'usage) ;
+  nouveau bloc au démarrage : `Tap_provider.is_usable` → `purge_orphan_taps`
+  (compte loggé), sinon dialogue expliquant la commande
+  `marionnet-sudoers.sh install` à lancer dans un terminal (ni pkexec ni terminal
+  lancé par la GUI ; `ensure_sudoers_rule` reste sans appelant GUI — YAGNI).
+- i18n : les nouvelles chaînes passent par `s_`/`f_` mais le refresh POT/PO des
+  12 langues est **différé à l'ép. 4** (purge), qui supprimera de toute façon les
+  msgid du daemon — un seul refresh gettext pour tout le chantier.
+- `bin/dune` : rien à changer (`marionnet_tap` déjà linkée par `marionnet.native`).
+
+Validation (2026-07-15/16, règle sudoers du poste de l'auteur) : `dune build` et
+`dune test` rc=0 ; `grep Daemon_client bin/simulation_level.ml` vide ; run GUI —
+**X11 invité OK, taps `mtap<pid>-*` détruits à l'arrêt OK** ; telnet quagga **non
+acté** : le test a été perturbé par un problème orthogonal, le couple ancien
+`linux-3.2.64-ghost` + debian-wheezy ne boote plus sur un hôte moderne
+(6.8.0-134-generic) — `wait_stub_done : failed to wait for SIGTRAP` (logs :
+`uml/kernel/linux-3.2.64-ghost.with-debian-wheeze.*.log`). Jugé suffisant par
+l'auteur. Ce problème ouvre deux chantiers potentiels à étudier à part :
+**retro-compatibilite-kernels-images** (faire rebooter les vieux couples sur hôte
+moderne) et **lancement-kernels-images-modernes** (lancer les couples récents,
+dont la ligne de commande UML diffère) — recoupe le chantier kernel-rootfs.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -356,3 +391,9 @@ explicatif du mode dégradé.
   (la route host-specific du daemon, à l'identique), destruction complète, orphelin d'un pid
   mort collecté sans toucher au tap vivant, garde `172.23.` effective. `dune build` rc=0 ;
   **aucun appelant** : daemon et GUI inchangés. Prochain pas = épisode 2 (bascule eth42).
+- **2026-07-16 — épisode 2** : la bascule eth42 est faite — la GUI ne demande plus aucun
+  tap au daemon (`simulation_level.ml` → `Tap_provider`, purge + dialogue sudoers au
+  démarrage de `marionnet.ml`, échec daemon rétrogradé en log). Validation : build/test
+  rc=0, X11 invité OK, taps détruits OK ; telnet quagga non acté (test perturbé par
+  l'incompatibilité vieux couples kernel/image ↔ hôte moderne, § 9 — deux chantiers
+  potentiels consignés). i18n différée à l'ép. 4. Prochain pas = épisode 3 (world_bridge).
