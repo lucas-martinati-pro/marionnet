@@ -132,6 +132,9 @@ install-for-testing:
 	dune install
 	@echo "---"
 	@mkdir -p $(SHARE_DIR_FOR_TESTING)/filesystems -p $(SHARE_DIR_FOR_TESTING)/kernels
+	@# Purge the dangling symlinks left by a previous install whose targets have
+	@# been removed since (e.g. a replaced image); `ln -sf' below never removes them:
+	@for i in $(SHARE_DIR_FOR_TESTING)/filesystems/* $(SHARE_DIR_FOR_TESTING)/kernels/*; do { test -L $$i && test ! -e $$i && rm -v $$i; } || true; done
 	@for i in $(wildcard $(INSTALLED_FILESYSTEMS)/*); do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/filesystems/; done
 	@for i in $(wildcard $(INSTALLED_KERNELS)/*);     do ln -sf $$i $(SHARE_DIR_FOR_TESTING)/kernels/; done
 	@# Shell glob, NOT $(wildcard): make expands wildcard when parsing the recipe,

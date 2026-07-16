@@ -76,9 +76,14 @@ let readdir_as_list
       | None, Some () -> (fun x -> not (Sys.is_directory x))
       | Some (), Some () -> invalid_arg "SystExtra.readdir_as_list: ?only_directories and ?only_not_directories both set."
     in
+    (* Both filters must be safe PER ENTRY: first_filter stats the file, and a
+       single unstat-able entry (e.g. a dangling symlink) would otherwise reach
+       the enclosing catch-all and empty the WHOLE listing. Such an entry is
+       just excluded, the rest of the listing survives. *)
+    let safe_first_filter = (fun x -> (try first_filter x with _ -> false)) in
     let safe_name_filter = (fun name -> (try (name_filter name) with _ -> false)) in
     let selected_items =
-      List.filter (fun x -> (first_filter (dir^"/"^x)) && (safe_name_filter x)) filelist
+      List.filter (fun x -> (safe_first_filter (dir^"/"^x)) && (safe_name_filter x)) filelist
     in
     List.map name_converter selected_items
   end with
