@@ -452,6 +452,100 @@ séquence passe des treeviews directement au probe Tap_provider), probe **silenc
 nominal** (le log de purge n'est émis que si n > 0 orphelin ; règle sudoers en place,
 0 orphelin). Critère « GUI complète OK sans daemon » : **acté**.
 
+## 12. Épisode 5 — étude du netns de session (POC léger, 2026-07-16)
+
+L'épisode 5 (§ 6, optionnel) vise le « zéro sudo » : cloisonner le réseau IP de la session
+Marionnet dans un **network namespace** où les taps eth42 se créent sans aucun privilège et
+meurent avec le ns (GC parfait). Étude préalable + POC système léger (sans UML) demandés avant
+toute décision d'implémentation. **Aucun code touché** ; POC = namespaces jetables + un socket
+de test, aucun effet persistant.
+
+### 12.1 Résultats du POC (poste de l'auteur, Kubuntu 24.04, kernel 6.8.0-134)
+
+| # | Question | Commande | Résultat | Conséquence |
+|---|---|---|---|---|
+| 1 | Userns non privilégié utilisable ? | `unshare -Urn true` | **KO** : `write failed /proc/self/uid_map: Operation not permitted` (rc=1) ; idem `bwrap --unshare-user --unshare-net` | La restriction AppArmor Ubuntu (`kernel.apparmor_restrict_unprivileged_userns=1`, § 4.0) est **active** → **un profil AppArmor `userns,` est obligatoire** pour ce poste. Confirme la prévision de l'étude, expérimentalement. |
+| 2 | Socket Unix (chemin) traverse le netns ? | serveur `socat UNIX-LISTEN:/tmp/poc.sock` dans le ns racine, client `unshare -n socat UNIX-CONNECT` | **OK** (rc=0, `REACHED-FROM-NETNS`) | hublets vde, X11 local (`/tmp/.X11-unix/X?`), mconsole — tous à **socket-chemin** — **traversent** le cloisonnement réseau. Hypothèse centrale de l'architecture B **validée**. |
+| 2b | Socket **abstrait** traverse ? | idem en `ABSTRACT-LISTEN`/`ABSTRACT-CONNECT` | **KO** (`Connection refused`, rc=1) | Les sockets **abstraits** sont scopés au netns → **piège** : tout composant les utilisant casserait. Point de vigilance (les clients X Linux tentent d'abord le socket abstrait `@…/X0` ; le relais de `x.ml` vise le chemin, donc OK, mais à vérifier au câblage). |
+| 3 | Contrat `Tap_provider` reproductible **dans** le netns, sans privilège additionnel ? | dans `unshare -Urn` : `ip tuntap add … mode tap` + `ip addr add 172.23.0.254/32` + `ip route add 172.23.0.42 dev …` | **OK** : `ip route get 172.23.0.42` → `dev mtap-poc src 172.23.0.254` | Le contrat réseau du daemon (route host-specific comprise) se reproduit **à l'identique** dans le netns — comme la preuve `--live` de l'ép. 1, mais **sans sudo** (CAP_NET_ADMIN tenu par possession du ns). |
+
+Non testé (jugé non décisif, fait noyau déjà sourcé § 4.0) : `vde_switch -tap` en attache
+non privilégiée dans le netns, et le boot UML-dans-netns (relèverait du POC « UML complet »,
+option écartée au cadrage).
+
+### 12.2 Architecture recommandée : « GUI entière dans le netns »
+
+L'analyse du code tranche entre les deux architectures que l'étude § 4.1-B laissait ouvertes :
+
+- **Rejetée — « holder + nsenter ciblé »** : envelopper chaque `Unix.create_process` d'un
+  `nsenter --user --net`, plus le socat de `x.ml`. Intrusif, fragile.
+- **Recommandée — lanceur `unshare -Urn` autour de tout le processus GUI** : deux faits de code
+  la rendent quasi gratuite côté runtime :
+  1. `bin/simulation_level.ml:101` — **tous** les processus simulés (UML, `vde_switch`,
+     `slirpvde`, `telnet` quagga) passent par l'unique `Unix.create_process` de la classe
+     `process` : lancés depuis une GUI déjà dans le netns, ils **héritent du netns** sans un
+     seul `nsenter`.
+  2. `bin/x.ml` — le « socat » des cas 2-5 est un **serveur OCaml in-process**
+     (`Network.Socat.dual_inet_of_stream_server`) : dans le netns, il écoute
+     `0.0.0.0:600x` **du netns**, où les UML (mêmes netns) se connectent — inchangé.
+
+  Le runtime OCaml est alors **quasi intouché** : l'ép. 5 devient surtout un **lanceur**
+  (`unshare -Urn` + profil AppArmor) plus la neutralisation de `purge_orphan_taps`/dialogue
+  sudoers (rendus inutiles), et non une réécriture des sites de spawn.
+
+### 12.3 Points durs restants (non résolus par le POC)
+
+1. **world_bridge dans le ns racine.** `bin/world_bridge.ml` fait ouvrir le tap par un
+   `vde_switch -tap` (via la classe `process`, donc dans le netns), mais le bridge admin
+   `MARIONNET_BRIDGE` vit dans le **ns racine** : un tap créé dans le netns **ne peut pas** y
+   être raccordé. Options : (a) garder le **sudo scoped** pour ce seul composant (le « zéro
+   sudo » ne vaut alors que pour eth42) ; (b) **variante D** (taps pré-provisionnés par
+   l'admin, déjà documentée `docs/admin-taps-and-bridge.md`, non câblée) ; (c) lancer ce seul
+   `vde_switch -tap` avec un fd du ns racine conservé. → world_bridge reste **hors** du bénéfice
+   netns sauf effort supplémentaire.
+2. **X-en-TCP (cas 3/4 de `x.ml`, ssh -X / X distant).** La cible n'est plus un socket local
+   mais `host_addr:port` en TCP hors du netns : depuis un netns sans veth/NAT, injoignable.
+   Parade : relais dans le ns racine + socket-chemin intermédiaire, **ou** exclusion documentée
+   (le cas X-distant perd le graphique invité — dégradation acceptable ?). À trancher.
+3. **Profil AppArmor à livrer** (résultat POC #1) : `make install` déposerait
+   `/etc/apparmor.d/marionnet` avec `userns,` sur le lanceur, comme Chrome/Discord. Charge de
+   maintenance + interaction avec les politiques de sécurité de la salle de TP.
+
+### 12.4 Ce que l'ép. 5 rendrait caduc (bénéfice)
+
+- `purge_orphan_taps` au démarrage (mort du ns = GC parfait, § 5.1) ;
+- le dialogue sudoers de démarrage et le probe `Tap_provider.is_usable` (plus de sudo pour
+  eth42) ;
+- la moitié « eth42 » de la règle sudoers (resterait la partie world_bridge, cf. point dur 1).
+
+### 12.5 Périmètre, effort, critère d'épisode
+
+- **Périmètre** : un lanceur (`unshare -Urn`, wrapper autour de `marionnet.native`), un profil
+  AppArmor + son install (Makefile), le traitement de world_bridge (option a/b/c) et du cas
+  X-TCP, la neutralisation conditionnelle du chemin sudo eth42. Runtime OCaml **peu** touché.
+- **Effort** : moyen (lanceur + AppArmor + 2 points durs), dominé par l'intégration/install et
+  la validation UML-dans-netns (non faite ici), pas par le code applicatif.
+- **Critère vérifiable** (POC « UML complet » à faire au chantier) : une VM UML bootée **dans**
+  le netns, X11 invité OK, telnet quagga OK, **zéro** `mtap*` sur l'hôte après fermeture
+  (GC par mort du ns), **sans** règle sudoers eth42 installée.
+
+### 12.6 Recommandation : **DIFFÉRER** (chantier laissé ouvert)
+
+L'ép. 5 est **techniquement viable** — le POC valide ses trois hypothèses porteuses (contrat
+tap dans le netns, traversée des sockets-chemin, architecture « GUI dans le netns » quasi
+gratuite). Mais :
+
+- son unique **motivation** est le « zéro sudo » de la **salle de TP** — contexte **secondaire**
+  au cadrage (§ 3.1), **non concrétisé** à ce jour ;
+- il introduit une **charge permanente** (profil AppArmor à maintenir) et **deux points durs**
+  (world_bridge, X-TCP) qui, non traités, **dégradent** des fonctions que l'étape 1 assure déjà ;
+- l'étape 1 (livrée, ép. 1-4) **satisfait le contexte prioritaire** (poste personnel avec sudo)
+  avec une surface **plus étroite** que le daemon supprimé.
+
+→ **Ne pas ouvrir l'ép. 5 maintenant** ; le garder documenté et prêt (ce § 12) pour le jour où
+le besoin TP « zéro sudo » se matérialise. Le chantier reste **ouvert** sur cette seule option ;
+à défaut, il est mûr pour la **clôture** (MODE C) à la main de l'auteur.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -486,3 +580,13 @@ nominal** (le log de purge n'est émis que si n > 0 orphelin ; règle sudoers en
   356/356, 2 nouvelles msgid traduites ×12 par compendium) ; docs vivantes à jour
   (ARCHITECTURE § 6 + § 2, CLAUDE.md ×3). Build/test rc=0 ; grep code-résiduel nul (§ 11).
   Reste du chantier : run GUI de l'auteur à acter, puis ép. 5 optionnel (netns) ou clôture.
+- **2026-07-16 — épisode 5 (étude)** : étude netns + POC léger (sans UML), **aucun code touché**
+  (§ 12). POC sur le poste : (1) userns non privilégié **bloqué** par AppArmor
+  (`uid_map: EPERM`) → profil `userns,` obligatoire ; (2) socket Unix-**chemin** **traverse** le
+  netns (KO en abstrait) → hublets/X11/mconsole OK ; (3) contrat `Tap_provider` reproduit **dans**
+  le netns **sans sudo** (`ip route get` → `src 172.23.0.254`). Analyse code : architecture
+  **« GUI entière dans le netns »** recommandée (spawn unique `simulation_level.ml:101` + socat
+  in-process de `x.ml` → runtime quasi intouché) ; points durs = world_bridge (bridge en ns
+  racine), X-TCP (cas 3/4 `x.ml`), profil AppArmor. **Recommandation : DIFFÉRER** (motivation TP
+  « zéro sudo » non concrétisée ; l'étape 1 couvre le contexte prioritaire). Chantier laissé
+  ouvert sur cette seule option, sinon mûr pour clôture (MODE C).
