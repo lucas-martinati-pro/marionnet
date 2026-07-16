@@ -546,6 +546,37 @@ gratuite). Mais :
 le besoin TP « zéro sudo » se matérialise. Le chantier reste **ouvert** sur cette seule option ;
 à défaut, il est mûr pour la **clôture** (MODE C) à la main de l'auteur.
 
+## 13. Épisode 6 — régression : la tap eth42 détruite par un fork
+
+Bug rapporté (2026-07-16, run GUI de l'auteur) : dans une VM trixie, `xeyes` puis
+`xeyes & ; kill %2` → le premier `xeyes` gèle, tout le graphique de la VM est mort.
+Le log (`marionnet.native -d`) montre l'enfant relais de la connexion X fermée loggant
+« Protocol completed … Exiting. » puis « **Tap_provider: the tap mtap…-0 was destroyed** »,
+et le `gracefully_terminate` ultérieur échouant (« Cannot find device »).
+
+**Cause racine.** `bin/x.ml` (cas 2-5) sert le X11 invité via le serveur ocamlbricks
+`process_forking_loop` (`lib/STRUCTURES/network.ml:226`) : **un enfant forké par connexion**,
+terminé par `exit` — qui exécute les handlers `at_exit` **hérités du processus GUI**, dont le
+filet de l'ép. 1-2 (`tap_provider.ml`) : `at_exit (fun () -> List.iter destroy_tap …)`.
+L'enfant hérite de la table `my_taps` par le fork → `is_mine` passe → la tap de l'hôte est
+détruite alors que la VM vit encore. **Toute fermeture de connexion X** (fermer une appli
+graphique invitée) suffisait à déclencher le bug. Le daemon n'avait pas ce défaut : il ne
+détruisait que sur message explicite, jamais à l'exit d'un enfant de la GUI.
+
+**Correctif** (`bin/tap_provider.ml`) : pid propriétaire capturé au chargement du module
+(initialisé dans le processus principal, avant tout fork ; les taps sont créées par des
+threads de ce processus, jamais par des forks) ; le handler `at_exit` ne fait rien si
+`Unix.getpid () <> owner_pid`. Pas de garde dans `destroy_tap` (appelants explicites tous
+dans le processus principal ; une garde là loggerait un refus par tap à chaque exit d'enfant).
+
+**Preuve** (`bin/tap_provider_test.ml`, mode `--live`) : nouveau check « fork + exit d'un
+enfant → la tap survit ». Rouge sans le correctif (`[FAIL] the tap survives the exit of a
+forked child`, rc=1), vert avec (0 FAIL, 0 `mtap*` résiduel sur l'hôte).
+
+**Piège consigné** : dans ce dépôt, un `at_exit` s'exécute aussi dans les **enfants forkés**
+par les serveurs Network d'ocamlbricks (relais X11 de `x.ml`) — tout handler `at_exit` à effet
+sur des ressources partagées (hôte) doit être gardé par pid.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -590,3 +621,9 @@ le besoin TP « zéro sudo » se matérialise. Le chantier reste **ouvert** sur 
   racine), X-TCP (cas 3/4 `x.ml`), profil AppArmor. **Recommandation : DIFFÉRER** (motivation TP
   « zéro sudo » non concrétisée ; l'étape 1 couvre le contexte prioritaire). Chantier laissé
   ouvert sur cette seule option, sinon mûr pour clôture (MODE C).
+- **2026-07-16 — épisode 6** : régression corrigée — la tap eth42 était détruite par les
+  **enfants forkés** des relais X11 de `x.ml` (leur `exit` exécutait l'`at_exit` de
+  `tap_provider.ml` hérité du fork, table `my_taps` comprise) : fermer une connexion X
+  suffisait à tuer le graphique de la VM (§ 13). Correctif : garde `owner_pid` sur le handler
+  `at_exit`. Preuve : nouveau check fork-exit du driver `--live`, rouge sans le fix, vert avec
+  (0 FAIL) ; build/test rc=0. Reste inchangé : ép. 5 optionnel (netns) ou clôture.

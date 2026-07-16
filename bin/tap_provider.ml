@@ -204,8 +204,17 @@ let destroy_tap (tap : tap_name) : unit =
   end
 
 (* A crash of the GUI is caught by `purge_orphan_taps' at the next start-up; this
-   is just the cheap first line of defence for the ordinary exits: *)
-let () = at_exit (fun () -> List.iter destroy_tap (my_tap_list ()))
+   is just the cheap first line of defence for the ordinary exits.
+   --- The pid guard: at_exit also runs in the children forked by ocamlbricks'
+   Network servers (the per-connection X11 relays of x.ml, network.ml
+   `process_forking_loop'), which inherit my_taps by fork: without the guard,
+   closing any X11 connection destroyed the tap of the still-running VM. Only
+   the process that created the taps may destroy them. *)
+let owner_pid = Unix.getpid ()
+
+let () =
+  at_exit (fun () ->
+    if Unix.getpid () = owner_pid then List.iter destroy_tap (my_tap_list ()))
 
 (* --- Garbage collection of the taps of dead processes *)
 

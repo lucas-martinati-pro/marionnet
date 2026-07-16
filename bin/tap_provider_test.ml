@@ -108,6 +108,20 @@ let live_run () =
        check "the tap is gone" (not (succeeds (Printf.sprintf "ip link show dev %s" tap)));
        check "its route is gone" (not (contains tap (output_of (Printf.sprintf "ip route get %s" ip42)))));
   (* --- *)
+  printf "\n-- Exit of a forked child (as the per-connection X11 relays of x.ml):\n";
+  (match Tap_provider.make_eth42_tap ~uid ~ip42 with
+   | Error e -> incr failures; printf "  [FAIL] cannot create the witness tap: %s\n" e
+   | Ok tap ->
+       flush stdout;
+       (match Unix.fork () with
+        | 0 -> exit 0   (* runs the inherited at_exit handlers, as network.ml's children do *)
+        | child -> ignore (Unix.waitpid [] child));
+       check "the tap survives the exit of a forked child"
+         (succeeds (Printf.sprintf "ip link show dev %s" tap));
+       Tap_provider.destroy_tap tap;
+       check "the tap is gone after the normal destruction"
+         (not (succeeds (Printf.sprintf "ip link show dev %s" tap))));
+  (* --- *)
   printf "\n-- The orphan collector:\n";
   (match Tap_provider.make_eth42_tap ~uid ~ip42 with
    | Error e -> incr failures; printf "  [FAIL] cannot create the witness tap: %s\n" e
