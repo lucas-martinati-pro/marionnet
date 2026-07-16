@@ -24,7 +24,7 @@ help:
 	@echo "   or: make help"
 	@echo "Example: make 3.2.48"
 
-2.% 3.% 4.%: dependencies
+2.% 3.% 4.% 5.% 6.%: dependencies
 	./pupisto.kernel.sh $(OPTIONS) $@
 
 clean:

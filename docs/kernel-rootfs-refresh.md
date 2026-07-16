@@ -318,3 +318,18 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   ligne propre) — **accepté comme connu et documenté** (aide `-c` + commentaire de branche) ; `-X` (pty
   xterm réel) reste fluide. `bash -n` OK sur les deux fichiers. **Le fix `TTYColumns` exige un rebuild**
   de l'image pour prendre effet.
+- **2026-07-16** — épisode 18 (`uml/pupisto.kernel/pupisto.kernel.sh`, `uml/pupisto.kernel/Makefile`) :
+  **rejeu non-interactif des configs gelées**. Sur la nouvelle plateforme de dev/test (64 cœurs,
+  binutils avec support zstd), `./pupisto.kernel.sh 6.12.95` **bloquait sur un prompt kconfig**
+  (« Restart config… », `choice[1-3?]:`, sous le `tee` d'auto-journalisation) : la branche
+  « pre-built config » copiait `CONFIG-6.12.95` **sans réconciliation**, et le `make ARCH=um`
+  suivant redécouvrait `DEBUG_INFO_COMPRESSED_ZSTD (NEW)` — symbole dont la **visibilité dépend
+  de la toolchain hôte** (absent lors du gel ép. 15). Un `.config` gelé ne rejoue tel quel que
+  sur la toolchain qui l'a gelé. Fix : pour les noyaux ≥ 5, `make olddefconfig ARCH=um` après le
+  `cp` (choix gelés conservés, symboles nouveaux → défaut) + affichage **non fatal** du diff vs
+  le gelé (`scripts/diffconfig`) pour l'audit de reproductibilité ; série legacy 3.x inchangée.
+  En passant : doublon `…/kernel/kernel` corrigé dans le message « No patch found » ; règle
+  pattern du `Makefile` étendue à `5.% 6.%` (`make 6.12.95` matche désormais). **Preuve** : run
+  end-to-end `Success.` rc=0 en 31,7 s wall (`_build.linux-6.12.95.2026-07-16.12h48.13713`,
+  binaire 8,07 Mo) ; diff vs gelé = trace gcc 12.4→13.3 + `DEBUG_INFO_COMPRESSED_ZSTD n` seul →
+  **re-gel de `CONFIG-6.12.95` inutile** (aucune divergence fonctionnelle).

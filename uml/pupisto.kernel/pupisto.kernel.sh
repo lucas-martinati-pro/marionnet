@@ -348,7 +348,7 @@ for i in $OUR_KERNEL_DIR/linux-{$VERSION,${VERSION%.*}.%,${VERSION%.*.*}.%.%}[.-
   echo "---"
 done
 if [[ -z $FOUND ]]; then
-  echo "No patch found for this kernel version in $OUR_KERNEL_DIR/kernel"
+  echo "No patch found for this kernel version in $OUR_KERNEL_DIR"
   echo "At least the \"ghostification\" patch was expected at location $OUR_KERNEL_DIR/linux-${VERSION}-ghost.diff"
   echo "Continuing however without patches."
 fi
@@ -361,6 +361,25 @@ FOUND=$OUR_KERNEL_DIR/CONFIG-$VERSION
 if [[ -f $FOUND ]]; then
   echo "Using pre-built config file found at $FOUND"
   cp $FOUND .config
+  # A frozen .config replays as-is only on the toolchain that froze it: symbols
+  # whose visibility depends on the host toolchain (e.g. DEBUG_INFO_COMPRESSED_ZSTD,
+  # gated on binutils zstd support) show up as NEW on another host, and the plain
+  # `make ARCH=um' below would restart kconfig INTERACTIVELY (blocking under the
+  # auto-logging tee). Reconcile non-interactively: frozen choices are kept, NEW
+  # symbols take their default. Modern kernels only; the legacy 3.x pipeline is
+  # validated as-is with its matching trees.
+  if (( ${VERSION%%.*} >= 5 )); then
+    make olddefconfig ARCH=um
+    # Make any divergence from the frozen config visible (reproducibility audit):
+    if ! cmp -s .config $FOUND; then
+      echo "Note: .config migrated by olddefconfig differs from the frozen $FOUND:"
+      if [[ -x scripts/diffconfig ]]; then
+        scripts/diffconfig $FOUND .config || true
+      else
+        diff $FOUND .config || true
+      fi
+    fi
+  fi
 elif (( ${VERSION%%.*} >= 5 )) && [[ -f $OUR_KERNEL_DIR/CONFIG-modern-base ]]; then
   echo "Config for $VERSION not frozen yet: seeding from CONFIG-modern-base and migrating with olddefconfig"
   create_modern_kernel_config $OUR_KERNEL_DIR/CONFIG-modern-base
