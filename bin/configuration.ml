@@ -29,8 +29,7 @@ let configuration =
   in
   Configuration_files.make
     ~file_names
-    ~variables:["MARIONNET_SOCKET_NAME";
-                "MARIONNET_BRIDGE";(* This is temporary: more than one bridge will be usable... *)
+    ~variables:["MARIONNET_BRIDGE";(* This is temporary: more than one bridge will be usable... *)
                 "MARIONNET_KEYBOARD_LAYOUT";
                 "MARIONNET_DEBUG";
                 "MARIONNET_PDF_READER";

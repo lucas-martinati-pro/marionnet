@@ -25,7 +25,7 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 
 | Où | Quoi | Détail |
 |---|---|---|
-| `bin/` | cœur applicatif (44 .ml) : modèle réseau à 2 niveaux + composants + daemon | `bin/CLAUDE.md` |
+| `bin/` | cœur applicatif (40 .ml) : modèle réseau à 2 niveaux + composants + Tap_provider | `bin/CLAUDE.md` |
 | `bin/gui/` | complétion GTK (foncteurs `Make(State)`), glade | `bin/gui/CLAUDE.md` |
 | `lib/` | **ocamlbricks vendored** (bibliothèque support OCaml, 12 sous-dossiers) | `lib/CLAUDE.md` |
 | `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
@@ -68,12 +68,12 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 1. Build : sur clone frais `dune build` seul suffit (cf. § « Build »). L'ancien ordre make→dune
    obligatoire et le garde-fou « make clean required! » ont disparu avec l'épisode 1 de
    `finitions-port-dune` ; la génération de `version.ml`/`meta.ml` est passée sous dune à l'épisode 2.
-2. `bin/dune` sépare désormais les 2 exécutables (épisode 5 de `finitions-port-dune`) : les
-   modules communs GUI/daemon sans lablgtk (`marionnet_log`, `daemon_parameters`,
-   `daemon_language`, `configuration`, `meta`) vivent dans la bibliothèque `marionnet_common`
-   (`wrapped false`) que les deux linkent ; `marionnet-daemon.native` ne linke plus lablgtk
-   (vérifié `ldd`). Le vestige `bin/main.ml` (hello-world) a été supprimé. Ne plus s'attendre à
-   un `(modules :standard)` unique ni à `main.ml`.
+2. `bin/dune` ne produit plus qu'UN exécutable : `marionnet.native` — le démon
+   `marionnet-daemon.native` a été supprimé (ép. 4 de `marionnet-daemon-elimination`). Les
+   modules sans lablgtk partagés entre la bibliothèque `marionnet_tap` et la GUI
+   (`marionnet_log`, `configuration`, `meta`) vivent dans la bibliothèque `marionnet_base`
+   (`wrapped false`, ex-`marionnet_common`). Le vestige `bin/main.ml` (hello-world) a été
+   supprimé. Ne plus s'attendre à un `(modules :standard)` unique ni à `main.ml`.
 3. `.bzr/` coexiste avec `.git/` (conversion 2026-07) : ne pas y toucher ;
    `bin/meta.ml.maker.sh` extrait la révision via **git** (`rev-list --count`, `log`) depuis
    l'épisode 2, avec repli bzr tant que `.bzr` est présent.
@@ -98,15 +98,15 @@ Reprise : appliquer le skill `chantier-long`.
 - **élimination du daemon** (supprimer le service root permanent `marionnet-daemon` ;
   étape 1 = sudo scoped + iproute2, netns optionnel ensuite) : `docs/daemon-elimination-study.md` ;
   mémoire `marionnet-daemon-elimination` ; `git log --grep="marionnet-daemon-elimination"`.
-  **ACTIF** : ép. 1-3 faits — `Tap_provider` (sudo -n + iproute2) branché partout :
-  eth42 (`simulation_level.ml`) **et** world_bridge (`world_bridge.ml`) — **le daemon n'a
-  plus aucun client** (reste sa connexion vestigiale au démarrage, en log). Doc admin :
-  `docs/admin-taps-and-bridge.md`. Prochain pas = ép. 4 (purge des 4 fichiers daemon +
-  refresh gettext unique + réévaluation `marionnet_common`).
+  **ACTIF** : ép. 1-4 faits — `Tap_provider` (sudo -n + iproute2) branché partout (eth42
+  **et** world_bridge) et **le daemon est purgé du dépôt** (ép. 4 : 4 fichiers + stanza dune +
+  script SysV + `MARIONNET_SOCKET_NAME` supprimés ; gettext rafraîchi, 12×356/356 ;
+  `marionnet_common` → `marionnet_base`). Doc admin : `docs/admin-taps-and-bridge.md`.
+  Reste : ép. 5 optionnel (netns de session) ou clôture du chantier.
 
 ## Où puiser
 
-- **Récit d'architecture** (build hybride, 2 niveaux, GUI, état, daemon, i18n, uml, ocamlbricks) :
+- **Récit d'architecture** (build hybride, 2 niveaux, GUI, état, privilèges/taps, i18n, uml, ocamlbricks) :
   `docs/ARCHITECTURE.md` — lire la tranche pertinente, pas tout.
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,

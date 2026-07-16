@@ -81,8 +81,8 @@ val purge_orphan_taps : unit -> int
     Probed by deleting a tap that does not exist: a successful no-op when the rule
     is there, a `sudo -n' refusal otherwise. It never prompts and creates nothing.
     The result is cached until {!ensure_sudoers_rule} runs. A [false] here is the
-    hook for the existing degraded mode (Daemon_client.disable_daemon_support
-    today). *)
+    hook for the degraded mode (formerly Daemon_client.disable_daemon_support,
+    with the late daemon). *)
 val is_usable : unit -> bool
 
 (** The sudoers rule that {!is_usable} needs, as the script would install it.

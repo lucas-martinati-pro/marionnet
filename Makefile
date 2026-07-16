@@ -76,7 +76,7 @@ run:
 # =============================================================
 
 # ---
-EXECUTABLES = marionnet.native  marionnet-daemon.native  marionnet_telnet.sh
+EXECUTABLES = marionnet.native  marionnet_telnet.sh
 
 # ---
 # In marionnet_from_scratch we can override the installation prefix editing

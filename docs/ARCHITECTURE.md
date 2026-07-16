@@ -45,9 +45,10 @@ strip `lablgtk2` vs `lablgtk3` dans `CONFIGME`, `main.ml` + `(modules :standard)
 
 Le passage user→simulation se fait par méthodes de fabrique ; les casts remontants utilisent
 `Obj.magic` (25×, 10 fichiers) — dette à réduire à l'occasion quand on touche ces fichiers.
-Deux exécutables : `marionnet.native` (GUI) et `marionnet-daemon.native` ; actuellement
-`(modules :standard)` lie tout dans les deux (dont le vestige `main.ml` et ses effets de
-bord au démarrage) — à corriger, l'ancien stanza séparé du daemon est commenté dans `bin/dune`.
+Un seul exécutable : `marionnet.native` (GUI) — le second, `marionnet-daemon.native`, a été
+supprimé (chantier `marionnet-daemon-elimination`, épisode 4). Les modules partagés entre la
+bibliothèque `marionnet_tap` et la GUI (`marionnet_log`, `configuration`, `meta`) vivent dans
+la bibliothèque `marionnet_base` (`wrapped false`, ex-`marionnet_common`).
 
 ## 3. GUI (glade → gui.ml → foncteurs de complétion)
 
@@ -83,15 +84,18 @@ par `task_runner` (file de tâches nommées + worker, dépendances ordonnancées
 `death_monitor` (polling pid→callback) et `descendants_monitor` (tueur d'orphelins)
 surveillent les processus ; mutex récursifs (`MutexExtra`) partout ailleurs.
 
-## 6. Daemon & privilèges
+## 6. Privilèges (taps) — Tap_provider
 
-`marionnet-daemon` (root) crée taps/bridges pour les clients GUI non privilégiés :
-socket Unix, boucle select, ressources par client (multimap), destruction des ressources
-d'un client silencieux > 120 s (keepalives émis par `daemon_client`, thread dédié).
-Protocole : messages **taille fixe 128 octets**, AST requêtes/réponses dans
-`daemon_language.ml`, validation défensive en style result (`Either`) — seul endroit du code
-où l'entrée n'est pas de confiance. La GUI se dégrade gracieusement sans daemon
-(`disable_daemon_support`) : world_bridge indisponible, le reste fonctionne.
+Le service root permanent `marionnet-daemon` a été **supprimé** (chantier
+`marionnet-daemon-elimination`, épisodes 0-4 ; étude : `docs/daemon-elimination-study.md`).
+Les taps (eth42 par VM, raccord au bridge du world_bridge) sont créés/détruits par
+`bin/tap_provider.ml` via **`sudo -n` + iproute2**, sous une règle sudoers *scoped*
+(`/etc/sudoers.d/marionnet`, déposée par `bin/scripts/marionnet-sudoers.sh` — source unique
+du texte, partagée install ↔ runtime). Contrat réseau du daemon reproduit à l'identique
+(nom `mtap<pid>-<seq>`, `172.23.0.254/32`, route host-specific, promisc+master). GC des
+orphelins : `purge_orphan_taps` au démarrage (ne touche que les taps d'un pid **mort**).
+Sans la règle (probe `is_usable` négatif) : mode dégradé + dialogue expliquant
+`marionnet-sudoers.sh install`. Doc admin : `docs/admin-taps-and-bridge.md`.
 
 ## 7. i18n (gettext — extraction Makefile, compile+install dune)
 

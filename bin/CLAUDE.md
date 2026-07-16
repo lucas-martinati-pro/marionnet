@@ -1,12 +1,13 @@
 # bin/ — cœur applicatif Marionnet
 
-Deux exécutables (cf. `bin/dune`) : `marionnet.native` (GUI, module principal `marionnet.ml`) et
-`marionnet-daemon.native` (démon root, `marionnet_daemon.ml`). Depuis l'épisode 5 de
-`finitions-port-dune` ils sont **séparés** : les modules communs GUI/daemon sans lablgtk
-(`marionnet_log`, `daemon_parameters`, `daemon_language`, `configuration`, `meta`) sont dans la
-bibliothèque `marionnet_common` (`wrapped false`) ; le daemon ne linke plus lablgtk et la GUI
-prend le reste via `(:standard \ …)`. Toute modification touchant un de ces 5 modules communs (ou
-ajoutant un module au périmètre du daemon) doit respecter cette partition.
+Un seul exécutable (cf. `bin/dune`) : `marionnet.native` (GUI, module principal `marionnet.ml`) —
+le démon root `marionnet-daemon.native` a été supprimé (épisode 4 de
+`marionnet-daemon-elimination` ; remplaçant : `tap_provider.ml`, sudo -n + iproute2). Partition
+des stanzas : les modules sans lablgtk partagés entre la bibliothèque `marionnet_tap`
+(`tap_provider`, linkée aussi par le test `tap_provider_test`) et la GUI — `marionnet_log`,
+`configuration`, `meta` — vivent dans la bibliothèque `marionnet_base` (`wrapped false`,
+ex-`marionnet_common`) ; la GUI prend le reste via `(:standard \ …)`. Toute modification touchant
+ces modules partagés doit respecter cette partition (dune interdit un module dans deux stanzas).
 
 Architecture à deux niveaux : `user_level.ml` (modèle OO du réseau vu par l'utilisateur) /
 `simulation_level.ml` (processus Unix réels : UML, vde_switch, slirpvde). Chaque composant

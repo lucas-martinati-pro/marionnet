@@ -14,7 +14,7 @@
 
 ## État global & projet
 - `state.ml` — `project_paths` (arborescence projet .mar) + `globalState` : LA racine d'état (mainwin, network, treeviews, save/load, startup/shutdown everything).
-- `marionnet.ml` — module principal GUI : globalState, application des foncteurs GUI, treeviews, connexion daemon (dégradée si absent), splash, checks, signaux, boucle GTK relancée sur exception.
+- `marionnet.ml` — module principal GUI : globalState, application des foncteurs GUI, treeviews, probe Tap_provider (purge des taps orphelins ou dialogue sudoers), splash, checks, signaux, boucle GTK relancée sur exception.
 - `motherboard_builder.ml/.mli` — foncteur `Make(S)` : câblage réactif (Cortex) état ↔ sensibilité des widgets. `.mli` injecté par `INCLUDE DEFINITIONS`.
 - `icon.ml` — pixbuf d'icône de fenêtre (variante exam).
 - `splash.ml` — fenêtre splash + texte de bienvenue.
@@ -26,7 +26,7 @@
 - `switch.ml` — commutateur (vde_switch ; édition VLAN via gui_source_editing).
 - `cable.ml` — câbles droits/croisés (paires d'endpoints ; suspend/resume = déconnexion).
 - `cloud.ml` — segment de réseau inconnu (délais/défauts aléatoires).
-- `world_bridge.ml` — pont vers le réseau réel de l'hôte (nécessite le daemon).
+- `world_bridge.ml` — pont vers le réseau réel de l'hôte (tap sur bridge préexistant, via Tap_provider).
 - `world_gateway.ml` — passerelle NAT vers l'extérieur (slirpvde + dhcp).
 - `user_level.ml/.mli` — niveau utilisateur : classes `component`, `node_*`, `cable`, `network` ; sérialisation Xforest.
 - `simulation_level.ml/.mli` — niveau processus : classe `process` et descendants (UML, vde_switch, slirpvde, xterm, hublets) ; spawn/kill/suspend/resume. `.mli` injecté par `INCLUDE DEFINITIONS`.
@@ -52,11 +52,9 @@
 - `x.ml/.mli` — gestion de `$DISPLAY` : parsing, recherche d'un display libre, relais X pour les invités.
 - `sketch.ml/.mli` — état du dessin du réseau (image dot, tailles, `dotoptions`, refresh par thunk global).
 
-## Daemon & protocole
-- `marionnet_daemon.ml` — module principal du démon : boucle select, ressources par client, destruction après 120 s sans keepalive, création taps/bridges (root).
-- `daemon_language.ml` — protocole : AST requêtes/réponses, messages 128 octets, validation défensive (`Either`, seul endroit en style result).
-- `daemon_parameters.ml` — constantes du protocole (timeouts, keepalive).
-- `daemon_client.ml` — côté client : socket + mutex récursif, thread keepalives, mode dégradé sans daemon.
+## Privilèges (taps)
+- `tap_provider.ml/.mli` — création/destruction des taps (eth42, bridge) par `sudo -n` + iproute2, règle sudoers scoped, probe `is_usable`, GC `purge_orphan_taps` (remplace le daemon root, supprimé à l'épisode 4 de `marionnet-daemon-elimination`).
+- `tap_provider_test.ml` — driver de preuve (`dune test` = mode sec ; `--live`, `--live-bridge=NAME` = preuve contre le noyau).
 
 ## Divers
 - `compatibility/forest_backward_compatibility.ml` — relit les forêts marshallées ancien format (projets v0).

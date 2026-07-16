@@ -194,23 +194,6 @@ end (* Just_for_testing *)
 (* let id = GMain.Timeout.add ~ms:1000 ~callback:(fun () -> st#state_coherence ();true) ;; *)
 
 (* --- *)
-let () = Log.printf "Loading module bin/marionnet.ml: about to establish connection with daemon\n"
-(* Since the eth42 taps moved to Tap_provider (chantier marionnet-daemon-elimination,
-   episode 2), the daemon only serves the world_bridge component: a failure here is
-   no longer worth a dialog (ask_the_server still raises its own one at use time). *)
-let () = (try
-  (* --- *)
-  Daemon_client.initialize_daemon_client ();
-  Daemon_client.start_thread_sending_keepalives ();
-  (* --- *)
-  with e -> begin
-    Daemon_client.disable_daemon_support ();
-    Log.printf1
-      "Connecting to the Marionnet daemon failed (%s); world bridges won't be available.\n"
-      (Printexc.to_string e);
-  end)
-
-(* --- *)
 (** eth42 taps (guest X11, quagga terminals) now come from Tap_provider (sudo + iproute2).
     At start-up: collect the taps leaked by dead Marionnet processes, or explain how to
     install the sudoers rule when the probe fails: *)

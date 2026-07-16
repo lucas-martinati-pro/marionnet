@@ -64,16 +64,18 @@
 ;; ---
 
 ;; ---
-;; --- SHARED LIBRARY: modules common to the GUI and the daemon (no lablgtk).
-;; ---   marionnet_log / daemon_parameters / daemon_language are used by BOTH
-;; ---   executables; dune forbids a module in two stanzas of one directory, so
-;; ---   they live in a single library both link. (wrapped false) keeps the flat
-;; ---   module names the sources reference unqualified (Marionnet_log, ...).
+;; --- SHARED LIBRARY: modules shared by the marionnet_tap library and the GUI
+;; ---   executable (no lablgtk). Dune forbids a module in two stanzas of one
+;; ---   directory, so they live in a single library both link. (wrapped false)
+;; ---   keeps the flat module names the sources reference unqualified
+;; ---   (Marionnet_log, ...). Formerly named marionnet_common, "what the GUI
+;; ---   and the root daemon share" — the daemon is gone (chantier
+;; ---   marionnet-daemon-elimination, episode 4).
 ;; ---
 (library
-  (name marionnet_common)
+  (name marionnet_base)
   (wrapped false)
-  (modules marionnet_log daemon_parameters daemon_language configuration meta)
+  (modules marionnet_log configuration meta)
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -89,13 +91,11 @@
   (libraries str unix threads ocamlbricks))
 
 ;; ---
-;; --- LIBRARY: marionnet_tap — the sudo+iproute2 tap provider replacing the
-;; ---   root daemon (chantier marionnet-daemon-elimination). A stanza of its
-;; ---   own, NOT part of marionnet_common: the daemon has no use for it, and
-;; ---   marionnet_common is precisely "what the GUI and the daemon share".
-;; ---   Being a library (rather than a module of the GUI executable) is what
-;; ---   makes the (test) stanza below able to link it. (wrapped false) keeps
-;; ---   the flat name Tap_provider.
+;; --- LIBRARY: marionnet_tap — the sudo+iproute2 tap provider that replaced
+;; ---   the root daemon (chantier marionnet-daemon-elimination). Being a
+;; ---   library (rather than a module of the GUI executable) is what makes
+;; ---   the (test) stanza below able to link it. (wrapped false) keeps the
+;; ---   flat name Tap_provider.
 ;; ---
 (library
   (name marionnet_tap)
@@ -113,7 +113,7 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  (libraries str unix threads ocamlbricks marionnet_common))
+  (libraries str unix threads ocamlbricks marionnet_base))
 
 ;; ---
 ;; --- TEST: proves Tap_provider without the GUI nor a guest image.
@@ -142,37 +142,14 @@
   (libraries str unix threads ocamlbricks marionnet_tap))
 
 ;; ---
-;; --- EXECUTABLE: marionnet-daemon.native (root daemon, server side only).
-;; ---   Links neither lablgtk nor the GUI: its whole module closure is
-;; ---   marionnet_daemon + the shared library above.
-;; ---
-(executable
-  (public_name marionnet-daemon.native)
-  (name marionnet_daemon)
-  (modules marionnet_daemon)
-  (preprocessor_deps
-      (file ../lib/option_extract_p4.cmo)
-      (file ../lib/raise_p4.cmo)
-      (file ../lib/log_module_loading_p4.cmo)
-      (file ../lib/where_p4.cmo)
-      (file ../lib/include_type_definitions_p4.cmo)
-      (file ../lib/include_as_string_p4.cmo))
-  (preprocess (action (run camlp4of
-      -I ../../../../_build/default/lib/
-      %{read-lines:../lib/camlp4of-flags.cfg}
-      option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
-      )))
-  (libraries str unix threads inotify ocamlbricks marionnet_common))
-
-;; ---
 ;; --- EXECUTABLE: marionnet.native (GTK GUI).
 ;; ---   Everything else (bin/ + bin/gui/ + generated version.ml / meta.ml), minus
-;; ---   the modules claimed by the library and the daemon stanza above.
+;; ---   the modules claimed by the libraries and the test stanza above.
 ;; ---
 (executable
   (public_name marionnet.native)
   (name marionnet)
-  (modules (:standard \ marionnet_log daemon_parameters daemon_language configuration meta marionnet_daemon tap_provider tap_provider_test))
+  (modules (:standard \ marionnet_log configuration meta tap_provider tap_provider_test))
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -185,7 +162,7 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_common marionnet_tap marionnet_sites))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks marionnet_base marionnet_tap marionnet_sites))
 
 ;;; ---
 (install

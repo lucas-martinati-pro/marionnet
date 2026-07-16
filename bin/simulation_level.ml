@@ -24,7 +24,10 @@ INCLUDE DEFINITIONS "../../../../bin/simulation_level.mli";;
 module Log = Marionnet_log
 module Option = Ocamlbricks.Option
 module ListExtra = Ocamlbricks.ListExtra
+module StringExtra = Ocamlbricks.StringExtra
 module StrExtra = Ocamlbricks.StrExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+module Ipv4 = Ocamlbricks.Ipv4
 module MutexExtra = Ocamlbricks.MutexExtra
 module Counter = Ocamlbricks.Counter
 module Shell = Ocamlbricks.Shell
@@ -33,7 +36,6 @@ module Linux = Ocamlbricks.Linux
 module Recursive_mutex = MutexExtra.Recursive
 (* --- *)
 
-open Daemon_language;;
 open Gettext;;
 
 (** Fork a process which just sleeps forever without doing any output. Its stdout is
@@ -871,7 +873,6 @@ class uml_process =
   let ip42 = Printf.sprintf "172.23.%i.%i" octet2 octet3 in
   let _ = Log.printf2 "Simulation_level: uml_process: creating %s: eth42 has IP %s\n" umid ip42 in
   let tap_name =
-    (* Stdlib.Error: the surrounding `open Daemon_language' also defines an Error constructor. *)
     match Tap_provider.make_eth42_tap ~uid:(Unix.getuid ()) ~ip42 with
     | Stdlib.Ok tap_name -> tap_name
     | Stdlib.Error msg ->

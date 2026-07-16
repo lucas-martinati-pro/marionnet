@@ -473,7 +473,7 @@ object(self)
         [ (fun () -> Option.iter (fun obj -> obj#terminate) internal_cable_process);
           (fun () -> Option.iter (fun obj -> obj#terminate) world_bridge_hub_process); ]
     in
-    (* Destroy the tap, via the daemon: *)
+    (* Destroy the tap, via Tap_provider: *)
     self#destroy_world_bridge_tap;
     (* Unreference everything: *)
     internal_cable_process <- None;

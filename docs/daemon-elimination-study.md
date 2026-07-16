@@ -276,11 +276,11 @@ invitée et un run GUI ; un épisode = un critère vérifiable) :
    copier dans un terminal). Critère (partiellement acté, § 9) : machine +
    vieille image, X11 invité OK, taps détruits à l'arrêt ; telnet quagga non
    acté (test perturbé, § 9).
-3. **world_bridge** : basculer `world_bridge.ml:395-418` (création sudo) +
+3. ✅ **world_bridge** (fait, § 10) : basculer `world_bridge.ml:395-418` (création sudo) +
    documenter la variante D (taps pré-provisionnés) et la variante groupe
-   `marionnet` (salle de TP, § 5.3) dans la doc d'admin. Critère : world_bridge
+   `marionnet` (salle de TP, § 5.3) dans la doc d'admin. Critère (atteint) : world_bridge
    fonctionnel sur un bridge de test.
-4. **Purge** : supprimer les 4 fichiers daemon, le stanza `bin/dune`, le script
+4. ✅ **Purge** (fait, § 11) : supprimer les 4 fichiers daemon, le stanza `bin/dune`, le script
    SysV, `MARIONNET_SOCKET_NAME` (etc/marionnet.conf), les références docs
    (`ARCHITECTURE.md` § 6, CLAUDE.md ×2) ; vérifier le devenir de
    `marionnet_common`. Critère : `dune build` rc=0, grep `daemon` résiduel nul
@@ -410,6 +410,48 @@ tap créé promisc/up/master, détruit proprement, bridge intact — 0 FAIL. Pas
 client** : la GUI ne lui parle plus (il ne reste que la connexion vestigiale au démarrage,
 rétrogradée en log à l'ép. 2, à purger à l'ép. 4).
 
+## 11. Épisode 4 — la purge
+
+Livré (2026-07-16, décisions au grill : périmètre **runtime seul** — les vestiges
+`RPMS/marionnet-common.spec`, `doc-src/documentation.texi`,
+`useful-scripts/{marionnet_from_scratch,make_marionnet_bytecode_revno}` et
+`Makefile.d/{Makefile.local,marionnet.odocl}` ne sont pas touchés, ils sont déjà périmés
+pour d'autres raisons) :
+
+- **Supprimés** : `bin/{marionnet_daemon,daemon_language,daemon_client,daemon_parameters}.ml`
+  (~1200 lignes), `useful-scripts/etc_init.d_marionnet-daemon` (script SysV), le stanza
+  `marionnet-daemon.native` de `bin/dune`, le bloc d'init daemon de `marionnet.ml`,
+  `MARIONNET_SOCKET_NAME` (`etc/marionnet.conf` + `bin/share/marionnet.conf` + la liste de
+  `configuration.ml`), `marionnet-daemon.native` de `EXECUTABLES` (Makefile).
+- **`marionnet_common` → `marionnet_base`** (décision grill : renommage, « common » signifiait
+  « commun GUI/daemon ») : réduite à `marionnet_log configuration meta`, requise car
+  `tap_provider.ml` (lib `marionnet_tap`) utilise `Marionnet_log` et dune interdit un module
+  dans deux stanzas d'un dossier.
+- Piège découvert : l'`open Daemon_language` de `simulation_level.ml` fournissait aussi les
+  alias `StringExtra`/`UnixExtra`/`Ipv4` (définis en tête de `daemon_language.ml`) — ajoutés
+  au bloc d'alias de `simulation_level.ml` (convention du dépôt), qualification
+  `Stdlib.Ok/Error` conservée (toujours valide), commentaire devenu faux supprimé.
+- **Refresh gettext unique du chantier** (différé depuis l'ép. 2) : POT régénéré
+  (358 → **356** msgid : −4 daemon, +2 dialogue sudoers), `msgmerge` sur les 12 langues,
+  les 2 nouvelles msgid traduites ×12 par compendium (méthode du chantier i18n ; terminologie
+  calibrée sur les anciennes entrées daemon de chaque langue), obsolètes `#~` purgés.
+  Vérifs : `msgfmt -c` ×12 silencieux, 12×**356/356** traduits, aucun msgstr préexistant
+  modifié, 12 `.mo` reconstruits par dune.
+- Docs vivantes : `ARCHITECTURE.md` § 6 réécrit (Tap_provider) + § 2 corrigé (il décrivait
+  encore le pré-épisode-5 de finitions), CLAUDE.md racine (table, piège n° 2, chantier),
+  `bin/CLAUDE.md`, `bin/CLAUDE-file-overview.md` (section « Privilèges (taps) »).
+
+Validation (2026-07-16) : `dune build` et `dune test` rc=0 ; grep résiduel nul en références
+de code (`Daemon_*`, binaire, socket) — ne restent que commentaires historiques (contrat du
+daemon documenté dans `tap_provider.ml(i)`, mentions du chantier) et vestiges hors périmètre.
+Run GUI de l'auteur (`marionnet.native -d`, sans daemon lancé) : démarrage et fermeture
+propres, probe Tap_provider **silencieux = nominal** (le log de purge n'est émis que si
+n > 0 orphelin ; règle sudoers en place, 0 orphelin). Nota : run effectué avec le binaire
+installé du 2026-07-15 (état ép. 3, pré-purge — on y voit encore l'échec de connexion daemon
+rétrogradé en log) ; le binaire post-purge, qui ne diffère au runtime que par la disparition
+de ce bloc, reste couvert par build/test — réinstallation testing pour un run à jour, au
+prochain passage.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -437,3 +479,10 @@ rétrogradée en log à l'ép. 2, à purger à l'ép. 4).
   câblée). Preuve contre le noyau : promisc/up/master + destruction, 0 FAIL (§ 10).
   Prochain pas = épisode 4 (purge des 4 fichiers daemon + refresh gettext unique +
   réévaluation de `marionnet_common`).
+- **2026-07-16 — épisode 4** : la purge est faite — **le daemon n'existe plus dans le dépôt**
+  (périmètre grill : runtime seul, vestiges non touchés). 4 fichiers + stanza dune + script
+  SysV + `MARIONNET_SOCKET_NAME` supprimés ; `marionnet_common` → `marionnet_base` (réduite à
+  `marionnet_log configuration meta`) ; refresh gettext unique (POT 356 msgid, 12 langues à
+  356/356, 2 nouvelles msgid traduites ×12 par compendium) ; docs vivantes à jour
+  (ARCHITECTURE § 6 + § 2, CLAUDE.md ×3). Build/test rc=0 ; grep code-résiduel nul (§ 11).
+  Reste du chantier : run GUI de l'auteur à acter, puis ép. 5 optionnel (netns) ou clôture.
