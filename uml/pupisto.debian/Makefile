@@ -92,9 +92,22 @@ REQUIRED_PACKAGES=debootstrap
 dependencies:
 	@echo "Required packages: $(REQUIRED_PACKAGES)"
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
-	@dpkg 1>/dev/null -l $(REQUIRED_PACKAGES) || \
-		sudo apt-get install -q -q -q -y $(REQUIRED_PACKAGES)
+	@for i in $(REQUIRED_PACKAGES); do dpkg -l | grep -q $$i || sudo apt-get install -q -q -q -y $$i; done
 	@echo Ok.
+
+
+# =============================================================
+#          Install the last built (kernel, image) couple
+# =============================================================
+
+# Where Marionnet looks for kernels/ and filesystems/ at runtime.
+PREFIX ?= /usr/local
+
+install:
+	./Makefile.d/install.last-built-couple.sh --prefix $(PREFIX)
+
+install-dry-run:
+	./Makefile.d/install.last-built-couple.sh --prefix $(PREFIX) --dry-run
 
 
 # =============================================================
@@ -110,6 +123,8 @@ help:
 	@echo "Usage: make trixie"
 	@echo "   or: make stretch"
 	@echo "   or: make wheezy"
+	@echo "   or: make install         (last built kernel+image -> \$$PREFIX/share/marionnet)"
+	@echo "   or: make install-dry-run"
 	@echo "   or: make dependencies"
 	@echo "   or: make clean"
 	@echo "   or: make help-pupisto"

@@ -333,3 +333,20 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   end-to-end `Success.` rc=0 en 31,7 s wall (`_build.linux-6.12.95.2026-07-16.12h48.13713`,
   binaire 8,07 Mo) ; diff vs gelé = trace gcc 12.4→13.3 + `DEBUG_INFO_COMPRESSED_ZSTD n` seul →
   **re-gel de `CONFIG-6.12.95` inutile** (aucune divergence fonctionnelle).
+- **2026-07-16** — épisode 19 (`uml/pupisto.debian/Makefile`, `uml/pupisto.debian/Makefile.d/install.last-built-couple.sh`
+  nouveau) : **installer le dernier couple (noyau, image) construit** sur la plateforme de dev/test.
+  Nouvelle cible `make install` (+ `install-dry-run`, `PREFIX ?= /usr/local`) déléguant à un script
+  `Makefile.d/install.last-built-couple.sh` inspiré de la logique `download_marionnet_kernels_and_filesystems`
+  de `useful-scripts/marionnet_from_scratch` (mais **depuis le build local**, pas depuis marionnet.org).
+  Détection = plus récent `_build.*` **finalisé** (présence d'un `machine-*.conf` → ignore le build
+  avorté au debootstrap) ; résout l'image `machine-<distro>-<SUM>`(+`.conf`, +`_variants/` si présent)
+  et le noyau via le symlink `linux-<ver>` → binaire `linux`/`vmlinux` + `.config` de l'arbre
+  `pupisto.kernel/`. Installe sous `$PREFIX/share/marionnet/{kernels,filesystems}/` via `sudo` (comme
+  `marionnet_from_scratch`), noyau en `kernels/linux-<ver>`(+`.config`) — **sans `-ghost`** (trixie =
+  `GHOSTIFICATION=netns`, noyau non patché ; l'épithète `6.12.95` satisfait `SUPPORTED_KERNELS='/6.12.95/'`),
+  et **restaure le MTIME** de l'image lu dans son `.conf` (impératif de partage de projets documenté
+  dans le conf). Script **générique** (distro/version/SUM déduits des noms), tolère `--no-kernel`
+  (image seule), `--dry-run`, `BUILD_DIR` explicite. **Preuve** : `make install` réel — image
+  `machine-debian-trixie-36697` (5 379 194 880 o, MTIME `@1784200177` restauré exact) + noyau
+  `linux-6.12.95` (ELF x86-64, +x) + `.config` posés dans `/usr/local/share/marionnet/`, coexistant
+  avec le legacy `linux-3.2.64-ghost` ; build incomplet `12h56` correctement ignoré.
