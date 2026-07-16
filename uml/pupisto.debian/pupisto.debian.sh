@@ -573,6 +573,19 @@ function fix_etc_inittab {
    sudo install -d -m 0755 $ROOT/etc/systemd/system/getty@tty0.service.d
    printf '[Service]\nTTYColumns=80\nTTYRows=24\n' | \
      sudo tee $ROOT/etc/systemd/system/getty@tty0.service.d/console-size.conf >/dev/null
+   # Under `con=xterm', UML opens one xterm per console device that gets activated.
+   # logind's autovt mechanism (NAutoVTs=6, ReserveVT=6 by default) reserves
+   # tty1..tty6: systemd spawns a second getty on tty1 (a duplicate login next to
+   # the tty0 console enabled above) and UML surfaces the reserved tty6 as an empty
+   # xterm. Neither is wanted -- Marionnet drives the console count from its own
+   # `console_no' (see marionnet-relay, start_consoles). Disable autovt entirely;
+   # the relay then enables exactly the requested getty@tty0..N at boot. logind reads
+   # this at daemon start (early boot), so it must be baked here, not applied by the
+   # relay. Verified source of the stray consoles by boot-test (getty list + loginctl
+   # show-seat: NAutoVTs=6). (chantier marionnet-kernel-rootfs)
+   sudo install -d -m 0755 $ROOT/etc/systemd/logind.conf.d
+   printf '[Login]\nNAutoVTs=0\nReserveVT=0\n' | \
+     sudo tee $ROOT/etc/systemd/logind.conf.d/marionnet-no-autovt.conf >/dev/null
    return 0
  fi
  local TMPFILE=$(mktemp)

@@ -335,6 +335,22 @@ fi
  done
 
  ###########################################
+ #        Shutdown (Ctrl-Alt-Del)          #
+ ###########################################
+
+ # Marionnet terminates a machine cleanly by sending Ctrl-Alt-Del via
+ # `uml_mconsole <umid> cad' (see simulation_level.ml, gracefully_terminate).
+ # Under SysV this ran the inittab `ctrlaltdel' action, fixed to `/sbin/halt'.
+ # Under systemd, Ctrl-Alt-Del activates ctrl-alt-del.target, aliased to
+ # reboot.target by default -- so the machine would REBOOT instead of halting
+ # (the clean-shutdown button would restart it). Re-point it to poweroff, the
+ # systemd equivalent of `ctrlaltdel:/sbin/halt'. ctrl-alt-del.target is resolved
+ # by PID1 on demand, so applying it here at boot is sufficient.
+ if [[ -d /run/systemd/system ]]; then
+   ln -sf /lib/systemd/system/poweroff.target /etc/systemd/system/ctrl-alt-del.target
+ fi
+
+ ###########################################
  #   Additional consoles (tty1, tty2,..)   #
  ###########################################
 
@@ -375,13 +391,27 @@ fi
   done
  }
 
- # LINE_PREFIX may be empty (Debian) or "tty" (Buildroot):
- local LINE_PREFIX=$(grep "^[^#].*/sbin/getty" /etc/inittab | cut -f1 -d: | head -n 1)
- LINE_PREFIX=${LINE_PREFIX%?} # chop last char
- case "$LINE_PREFIX" in
-   tty) start_consoles "$console_no" ;;
-    "") start_consoles --empty-prefix "$console_no" ;;
- esac
+ local N=${console_no:-1}
+ if [[ -d /run/systemd/system ]]; then
+   # systemd (trixie): autovt is disabled at build (logind NAutoVTs=0), so only the
+   # statically-enabled getty@tty0 runs by default. Start the extra login consoles
+   # con1..con(N-1) explicitly, and stop any leftover getty beyond the requested N.
+   local i
+   for ((i=1; i<N; i=i+1)); do
+     systemctl start "getty@tty$i.service" 2>/dev/null
+   done
+   for ((i=N; i<=8; i=i+1)); do
+     systemctl stop "getty@tty$i.service" 2>/dev/null
+   done
+ else
+   # SysV (inittab-driven): LINE_PREFIX may be empty (Debian) or "tty" (Buildroot):
+   local LINE_PREFIX=$(grep "^[^#].*/sbin/getty" /etc/inittab | cut -f1 -d: | head -n 1)
+   LINE_PREFIX=${LINE_PREFIX%?} # chop last char
+   case "$LINE_PREFIX" in
+     tty) start_consoles "$console_no" ;;
+      "") start_consoles --empty-prefix "$console_no" ;;
+   esac
+ fi
 
  ###########################################
  #                quagga                   #

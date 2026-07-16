@@ -350,3 +350,34 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   `machine-debian-trixie-36697` (5 379 194 880 o, MTIME `@1784200177` restauré exact) + noyau
   `linux-6.12.95` (ELF x86-64, +x) + `.config` posés dans `/usr/local/share/marionnet/`, coexistant
   avec le legacy `linux-3.2.64-ghost` ; build incomplet `12h56` correctement ignoré.
+- **2026-07-16** — épisode 20 (`bin/simulation_level.ml`, `uml/pupisto.debian/pupisto.debian.sh`,
+  `uml/pupisto.debian/pupisto.debian.sh.files/marionnet-relay.trixie`) : **premier run GUI trixie
+  propre** — deux régressions systemd corrigées, observées au lancement d'une machine trixie par la
+  GUI. **(1) Consoles surnuméraires** : au lieu de la seule console demandée (`console_no=1`), trois
+  xterms s'ouvraient (#0 login, #1 login dupliqué, #6 vide). Racine : la coordination boot (nombre de
+  gettys) reposait encore sur des mécanismes **SysV** (`/etc/inittab`) qu'un invité systemd ignore.
+  Le #1 dupliqué et le #6 vide venaient de l'**autovt de logind** (`NAutoVTs=6`/`ReserveVT=6` par
+  défaut, confirmé par `loginctl show-seat` dans la VM) qui réserve tty1..tty6 ; par-dessus, `con=xterm`
+  fait ouvrir à UML **un xterm par console VT** dès que le noyau active tty1 en VT de premier plan
+  (`console=tty0`), indépendamment de tout getty — et l'invité ne peut pas rétracter une console UML
+  déjà ouverte. **Correctifs en trois couches cohérentes** : (a) *build* (`pupisto.debian.sh`,
+  `fix_etc_inittab`) — drop-in `logind.conf.d/marionnet-no-autovt.conf` = `NAutoVTs=0`/`ReserveVT=0`
+  (lu tôt par logind, avant le relay ⇒ doit être gravé au build) ; (b) *cmdline noyau*
+  (`simulation_level.ml`) — remplacement du `con=xterm` global par `con=none con0..con(N-1)=xterm`
+  **borné à `console_no`** (une console `conN=` spécifique l'emporte sur le `con=` général, HOWTO UML),
+  rendant `console_no` enfin **autoritaire au niveau UML** — c'est ce point qui supprime l'xterm vide de
+  tty1, que le relay ne pouvait pas fermer (concrétise le `con0=` laissé en commentaire mort par
+  l'auteur ; miroir du `con=none` éprouvé de wheezy) ; (c) *relay systemd*
+  (`marionnet-relay.trixie`) — pilotage explicite des gettys par `console_no` (`systemctl start
+  getty@tty1..N-1`, `stop` au-delà), la logique inittab SysV préservée dans le `else`. **(2) La
+  terminaison propre relançait la machine** : la GUI arrête proprement par `uml_mconsole <umid> cad`
+  (Ctrl-Alt-Del, `simulation_level.ml#gracefully_terminate`) ; sous SysV `ctrlaltdel` était mappé sur
+  `/sbin/halt`, mais sous systemd Ctrl-Alt-Del active `ctrl-alt-del.target`, **aliasé `reboot.target`**
+  par défaut ⇒ la VM redémarrait au lieu de s'arrêter (le bouton « débrancher »/SIGKILL, lui,
+  fonctionnait). Fix (relay) : `ln -sf poweroff.target /etc/systemd/system/ctrl-alt-del.target`
+  (équivalent systemd du `ctrlaltdel:/sbin/halt` de buildroot). **Preuve runtime (Jean, GUI, après
+  rebuild image + rebuild dune)** : `dune build` rc=0 ; run GUI trixie → **une seule console #0
+  (login)**, plus d'xterm parasite ; **bouton terminer → poweroff propre** (log : `cad` réussi puis
+  `waitpid … exited` immédiat, pas de boucle de reboot ni recours au SIGKILL de garde à 30 s).
+  `bash -n` OK sur les deux scripts. Note : la couche (b) n'exige qu'un rebuild dune ; (a) et (c)
+  exigent un rebuild d'image (déjà fait).

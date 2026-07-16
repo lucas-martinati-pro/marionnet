@@ -953,8 +953,18 @@ class uml_process =
             [ "con=none"; "ssl="^console; "console=ttyS0" ]
         | false ->
             let () = Log.printf1 "Simulation_level: uml_process: creating %s: using default console arguments for new pairs filesystem/kernels\n" umid in
-            (*[ "con0="^console; ]*)
-            [ "ssl=pts"; "con="^console;]
+            (* Open ONLY the `console_no' virtual consoles Marionnet asked for, and no
+               more. A blanket `con=xterm' applies to every UML console device, so UML
+               spawns an extra empty xterm for tty1 as soon as the kernel activates it
+               as the foreground VT (`console=tty0'), independently of any getty -- and
+               the guest cannot retract an already-opened UML console. Defaulting to
+               `con=none' and enabling con0..con(N-1) explicitly makes `console_no'
+               authoritative at the UML level (a specific `conN=' overrides the general
+               `con=', per the UML HOWTO). This mirrors the proven wheezy `con=none'.
+               Verified: with console_no=1 only con0 opens, the stray empty tty1 xterm
+               is gone (chantier marionnet-kernel-rootfs). *)
+            "ssl=pts" :: "con=none" ::
+              List.init (max 1 console_no) (fun i -> Printf.sprintf "con%d=%s" i console)
   in
   (* Under SysV, /etc/inittab explicitly starts a getty on tty0 (see
      fix_etc_inittab), independently of the kernel's `console=' argument.
