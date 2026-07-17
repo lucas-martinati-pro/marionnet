@@ -60,7 +60,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.world_bridge.palette.png"
-   let tooltip   = (s_ "World bridge")
+   let tooltip   = (s_ "World bridge (connect the virtual machines to the real host network, or link Marionnet instances across machines; for plain Internet access, prefer a world gateway)")
    let packing   = Params.packing
   end
 
@@ -192,7 +192,7 @@ let make
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "World bridge")
+      ~image_tooltip:(s_ "World bridge: bridge the virtual network to the real host network (requires a host-side Linux bridge; see the help button)")
       ~name
       ~name_tooltip:(s_ "World bridge name. This name must be unique in the virtual network. Suggested: B1, B2, ...")
       ?label
@@ -216,29 +216,27 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A WORLD BRIDGE") in
-   (* TODO: rename "ethernet socket" => "world bridge" in all translations!*)
    let msg   = (s_ "\
-In this dialog window you can define the name of an Ethernet socket \
-and set parameters for it. This component allows the user to connect the virtual \
-network to a Linux bridge whose name is defined by the user via the \
-configuration variable called MARIONNET_BRIDGE (in marionnet.conf or provide on \
-the command line).\n\n\
-If the bridge is correctly set on the host (before starting the network), virtual \
-machines will be able to access to the same network services (DHCP, DNS, NFS, \
-...) that the host can access on its local network; if the host is on the Internet \
-then also the virtual machines linked to the socket will be.\n \n \
-To create a bridge on your (real) host using the same network as eth0 (by \
-example) you need to : 1) create a bridge with the name define in marionnet.conf \
-by MARIONNET_BRIDGE, 2) put and configure eth0 (on your real host) in the \
-bridge and 3) put an IP address on the bridge (with dhclient or ifconfig/route).\n\n\
-In such a case, after having start the virtual network in marionnet you can \
-configure an ethernet card of a virtual machines which is connect to the \
-Ethernet socket (or on the same network) in order to give access to your \
-local network to it.\n\n \
-The socket also allows team-work in a network laboratory, by creating a \
-connection between Marionnet instances running on different machines. \
-For more information about bridge et Ethernet socket configuration, please \
-see the Marionnet Wiki on the marionnet.org website.")
+A world bridge connects your virtual network to a Linux bridge on the real \
+host. The virtual machines attached to it then reach the SAME physical network \
+as the host itself, and its services (DHCP, DNS, NFS, the gateway to the \
+Internet...). It also enables team-work across computers: two Marionnet \
+instances running on different real machines, each with a world bridge on a \
+shared network segment, form a single virtual network.\n\n\
+World bridge or world gateway? Use a WORLD GATEWAY when you simply want the \
+virtual machines to reach the Internet through a self-contained NAT router: it \
+needs no host configuration and works out of the box. Use a WORLD BRIDGE when \
+the virtual machines must appear directly on the real host network, or to link \
+Marionnet instances running on different machines.\n\n\
+Prerequisite, on the host side, before starting the network: a Linux bridge \
+whose name is given by the MARIONNET_BRIDGE variable (in marionnet.conf or on \
+the command line) must already exist on the host. To bridge the real network \
+of eth0, for example, an administrator has to: 1) create that bridge, 2) \
+enslave eth0 into it, and 3) move the host IP address onto the bridge (with \
+DHCP or 'ip addr'/'ip route'). Beware: steps 2 and 3 momentarily reconfigure \
+the host network card and may interrupt the host connectivity. See the \
+Marionnet administrator documentation and the Marionnet Wiki on the \
+marionnet.org website.")
    in Simple_dialogs.help title msg ;;
 
 end
