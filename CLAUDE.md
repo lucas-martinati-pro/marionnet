@@ -95,14 +95,6 @@ Reprise : appliquer le skill `chantier-long`.
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
-- **élimination du daemon** (supprimer le service root permanent `marionnet-daemon` ;
-  étape 1 = sudo scoped + iproute2, netns optionnel ensuite) : `docs/daemon-elimination-study.md` ;
-  mémoire `marionnet-daemon-elimination` ; `git log --grep="marionnet-daemon-elimination"`.
-  **ACTIF** : ép. 1-4 faits — `Tap_provider` (sudo -n + iproute2) branché partout (eth42
-  **et** world_bridge) et **le daemon est purgé du dépôt** (ép. 4 : 4 fichiers + stanza dune +
-  script SysV + `MARIONNET_SOCKET_NAME` supprimés ; gettext rafraîchi, 12×356/356 ;
-  `marionnet_common` → `marionnet_base`). Doc admin : `docs/admin-taps-and-bridge.md`.
-  Reste : ép. 5 optionnel (netns de session) ou clôture du chantier.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
   avec `linux-3.2.64-ghost` sur hôte ≥ 6.x ; solution démontrée = UML récent `SUBARCH=i386`) :
   `docs/retro-compatibilite-kernels-images.md` ; mémoire `marionnet-retro-compat-kernels-images` ;

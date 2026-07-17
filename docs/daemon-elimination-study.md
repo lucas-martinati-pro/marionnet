@@ -577,6 +577,24 @@ forked child`, rc=1), vert avec (0 FAIL, 0 `mtap*` résiduel sur l'hôte).
 par les serveurs Network d'ocamlbricks (relais X11 de `x.ml`) — tout handler `at_exit` à effet
 sur des ressources partagées (hôte) doit être gardé par pid.
 
+## 14. Clôture du chantier (2026-07-17)
+
+L'étape 1 (§ 5.2, épisodes 1-4) est livrée et prouvée : `marionnet-daemon` n'existe plus dans le
+dépôt, remplacé par `Tap_provider` (sudo scoped + iproute2) sur le contrat réseau identique. La
+régression fork/`at_exit` (épisode 6) est corrigée et testée. L'épisode 5 (netns de session,
+§ 12) reste une **option étudiée et documentée, non ouverte** — sa seule motivation (« zéro
+sudo » d'une salle de TP) n'est pas concrétisée ; elle est reprenable telle quelle si ce besoin
+se matérialise, sans repartir de zéro (POC, architecture recommandée et points durs déjà
+identifiés au § 12).
+
+Le chantier est donc **clos (MODE C)** : le contexte prioritaire du cadrage (§ 3.1, poste
+personnel) est entièrement couvert, avec une surface de privilège plus étroite que le daemon
+supprimé. Rapport dédié, pour un développeur découvrant le sujet, sur l'architecture
+avant/après assurant l'affichage X11 des invités via eth42 (diagrammes ASCII) :
+`docs/daemon-elimination-final-report-about-X11-guest-support.md`. Ce document-ci reste
+l'archive détaillée épisode par épisode ; la fiche mémoire du chantier est réduite à un pointeur
+(cf. skill `chantier-long`, MODE C) et son entrée retirée du `CLAUDE.md` racine.
+
 ## Journal d'avancement
 
 - **2026-07-14 — épisode 0** : étude de faisabilité (inventaire du daemon, vérifications
@@ -627,3 +645,8 @@ sur des ressources partagées (hôte) doit être gardé par pid.
   suffisait à tuer le graphique de la VM (§ 13). Correctif : garde `owner_pid` sur le handler
   `at_exit`. Preuve : nouveau check fork-exit du driver `--live`, rouge sans le fix, vert avec
   (0 FAIL) ; build/test rc=0. Reste inchangé : ép. 5 optionnel (netns) ou clôture.
+- **2026-07-17 — clôture (§ 14)** : chantier **clos (MODE C)**. Étape 1 livrée/prouvée, ép. 5
+  (netns) laissé comme option documentée non ouverte. Rapport dédié produit :
+  `docs/daemon-elimination-final-report-about-X11-guest-support.md` (architecture X11/eth42
+  avant/après, diagrammes ASCII, pour un développeur découvrant le sujet). Fiche mémoire réduite
+  à un pointeur, entrée retirée du `CLAUDE.md` racine.
