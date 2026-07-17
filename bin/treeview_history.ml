@@ -135,6 +135,28 @@ object(self)
 	() in
     self#highlight_row row_id
 
+  (* Redirect all history rows of the device [name] to a new prefixed filesystem, used
+     when an old project is remapped to an installed distribution at loading time (see
+     user_level.ml, redirect_history_rows_to_distrib). The (hidden, functional) prefixed
+     filesystem field is updated unconditionally; the user-editable Comment is refreshed
+     only when it still holds the auto-generated label derived from the previous prefixed
+     filesystem (add_device sets comment = prefixed_filesystem ^ variant-suffix), so a
+     user annotation or "[no comment]" is left untouched. Without this, the Comment column
+     would keep showing the stale pre-remap value (e.g. "machine-default"). *)
+  method redirect_device_to_prefixed_filesystem ~name ~(prefixed_filesystem:string) : unit =
+    List.iter
+      (fun row_id ->
+         let old_prefixed = self#get_row_prefixed_filesystem row_id in
+         let old_comment  = self#get_row_comment row_id in
+         self#set_row_prefixed_filesystem row_id prefixed_filesystem;
+         if old_prefixed <> "" && String.starts_with ~prefix:old_prefixed old_comment then
+           let suffix =
+             String.sub old_comment (String.length old_prefixed)
+               (String.length old_comment - String.length old_prefixed)
+           in
+           self#set_row_comment row_id (prefixed_filesystem ^ suffix))
+      (self#row_ids_of_name name)
+
   (* 2023/07/04: Added some logging messages after observing a rare deadlock (may be already fixed): *)
   method remove_device_tree (device_name) = begin
     let () = Log.printf1 "Treeview_history.t#remove_device_tree(\"%s\"): HERE0" (device_name) in

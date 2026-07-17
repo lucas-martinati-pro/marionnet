@@ -1134,9 +1134,7 @@ class virtual virtual_machine_with_history_and_ifconfig
   method private redirect_history_rows_to_distrib (e:string) : unit =
     let history = (network#history:Treeview_history.t) in
     let prefixed = (vm_installations#prefix ^ e) in
-    List.iter
-      (fun row_id -> history#set_row_prefixed_filesystem row_id prefixed)
-      (history#row_ids_of_name self#get_name)
+    history#redirect_device_to_prefixed_filesystem ~name:self#get_name ~prefixed_filesystem:prefixed
 
   (* If the given filesystem epithet is not installed, try to remap it to an installed
      build of the same family (e.g. "guignol-21852" -> "guignol-18474") or, failing that
