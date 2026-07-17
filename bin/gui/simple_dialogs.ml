@@ -58,6 +58,83 @@ let warning ?modal title msg () =
 let info ?modal title msg () =
   message ?modal (s_ "Information") title msg "ico.info.orig.png" ();;
 
+(** Recapitulative dialog for a list of adjustments applied while loading an old project.
+    Unlike the generic [message] dialog (a single label that grows without bound and no
+    scrollbar, whose CLOSE button ends up pushed off-screen when there are many lines),
+    this one keeps a fixed, always-visible action area and puts the — possibly long — list
+    of items inside a height-capped scrolled window. Each item shows a one-line summary
+    (always visible) and reveals its detail on demand through an expander; items flagged
+    [`Warning] (a lossy drop/removal) get a warning marker, [`Info] ones (a harmless
+    switch) none. *)
+let recapitulative ?(modal=false) ~title ~intro (items : (string * string * [`Info | `Warning]) list) () =
+  let window =
+    GWindow.window
+      ~title
+      ~modal
+      ~position:`CENTER
+      ~type_hint:`DIALOG
+      ~icon:Icon.icon_pixbuf
+      ~resizable:true
+      ~width:640
+      ()
+  in
+  let outer = GPack.vbox ~packing:window#add ~border_width:12 ~spacing:12 () in
+  (* Header: warning icon + intro summary. Packed non-expanding, so it stays put. *)
+  let header = GPack.hbox ~packing:(outer#pack ~expand:false) ~spacing:10 () in
+  let () =
+    let img = GMisc.image ~packing:(header#pack ~expand:false) () in
+    img#set_file (Initialization.Path.images ^ "ico.warning.orig.png")
+  in
+  let _ =
+    GMisc.label
+      ~markup:("<b>" ^ Glib.Markup.escape_text intro ^ "</b>")
+      ~xalign:0.0 ~line_wrap:true
+      ~packing:(header#pack ~expand:true ~fill:true) ()
+  in
+  (* Height-capped scrollable list: this is what keeps CLOSE reachable no matter how many
+     items there are. *)
+  let scrolled =
+    GBin.scrolled_window
+      ~hpolicy:`AUTOMATIC ~vpolicy:`AUTOMATIC
+      ~shadow_type:`IN
+      ~packing:(outer#pack ~expand:true ~fill:true) ()
+  in
+  scrolled#misc#set_size_request ~height:320 ();
+  let list_box = GPack.vbox ~spacing:6 ~border_width:6 () in
+  scrolled#add_with_viewport list_box#coerce;
+  List.iter
+    (fun (summary, detail, severity) ->
+       (* GBin.expander labels are plain text (no markup in this lablgtk3 binding), so the
+          summary is passed verbatim; the marker is a literal UTF-8 glyph. *)
+       let marker = match severity with `Warning -> "\xE2\x9A\xA0  " | `Info -> "" in
+       let expander =
+         GBin.expander
+           ~label:(marker ^ summary)
+           ~packing:(list_box#pack ~expand:false) ()
+       in
+       let _ =
+         GMisc.label
+           ~text:detail
+           ~xalign:0.0 ~xpad:18 ~line_wrap:true ~selectable:true
+           ~packing:expander#add ()
+       in
+       ())
+    items;
+  (* Fixed action area (outside the scrolled window): CLOSE is always visible. *)
+  let action = GPack.button_box `HORIZONTAL ~layout:`END ~packing:(outer#pack ~expand:false) () in
+  let close = GButton.button ~stock:`CLOSE ~packing:action#add () in
+  ignore (close#connect#clicked ~callback:window#destroy);
+  let _ = window#event#connect#key_press ~callback:begin fun ev ->
+    let k = GdkEvent.Key.keyval ev in
+    if k = GdkKeysyms._Escape || k = GdkKeysyms._Return
+    then (window#destroy (); true)
+    else false
+  end in
+  close#misc#set_can_default true;
+  close#misc#grab_default ();
+  window#show ()
+;;
+
 (** Show a new dialog displaying a progress bar *)
 let make_progress_bar_dialog =
   Progress_bar.make_progress_bar_dialog;;

@@ -501,16 +501,27 @@ class globalState = fun () ->
           (match self#network#get_and_reset_import_warnings with
           | [] -> ()
           | ws ->
-              Simple_dialogs.warning
-                (s_ "Project adapted at loading")
-                (String.concat "\n\n" ws)
+              let items =
+                List.map
+                  (fun w -> User_level.(w.iw_summary, w.iw_detail, w.iw_severity))
+                  ws
+              in
+              let intro =
+                Printf.sprintf
+                  (f_ "%d automatic adjustment(s) were applied to make this old project loadable on the current system. Click an item to see the details.")
+                  (List.length ws)
+              in
+              Simple_dialogs.recapitulative
+                ~title:(s_ "Project adapted at loading")
+                ~intro
+                items
                 ())
         with e ->
           self#clear_treeviews;
           Log.printf1 "state#open_project_async: Failed with exception %s\n" (Printexc.to_string e);
           (* Report the failure properly, including the import warnings that may
              explain it (e.g. an abandoned distribution with saved disk states): *)
-          let ws = self#network#get_and_reset_import_warnings in
+          let ws = List.map User_level.string_of_import_warning self#network#get_and_reset_import_warnings in
           Simple_dialogs.error
             (s_ "Failed loading the project")
             (String.concat "\n\n" (ws @ [Printexc.to_string e]))

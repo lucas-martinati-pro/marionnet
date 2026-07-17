@@ -53,6 +53,27 @@ let nolabel = "";;
 (** iconsize may be "small", "med", "large" or "xxl". *)
 type iconsize = string ;;
 
+(** A structured record for an adjustment automatically applied while deserializing an
+    old project (see the [remap_*_at_import] methods and [state#open_project_async]): a
+    short [summary] line, always shown, a longer [detail] revealed on demand, and a
+    [severity] telling a harmless switch (`Info) apart from a lossy drop/removal
+    (`Warning). *)
+type import_warning = {
+  iw_summary  : string;
+  iw_detail   : string;
+  iw_severity : [ `Info | `Warning ];
+}
+;;
+
+(** Flatten a structured import warning into a single human-readable line. Used on the
+    project-loading error path, where warnings are appended to the exception message,
+    and for logging. *)
+let string_of_import_warning (w:import_warning) : string =
+  match w.iw_detail with
+  | "" -> w.iw_summary
+  | d  -> Printf.sprintf "%s (%s)" w.iw_summary d
+;;
+
 (** {2 Classes} *)
 
 type simulated_device_automaton_state =
@@ -1082,9 +1103,10 @@ class virtual virtual_machine_with_history_and_ifconfig
      bootable, informing the user via network#add_import_warning (the warnings are
      displayed in a recapitulative dialog at the end of the project loading). *)
 
-  method private add_import_warning_and_log (msg:string) : unit =
-    let () = Log.printf1 "import remapping: %s\n" msg in
-    network#add_import_warning msg
+  method private add_import_warning_and_log ?(severity=`Warning) ~(summary:string) ~(detail:string) () : unit =
+    let w = { iw_summary = summary; iw_detail = detail; iw_severity = severity } in
+    let () = Log.printf1 "import remapping: %s\n" (string_of_import_warning w) in
+    network#add_import_warning w
 
   (* The build-number-less family of a filesystem epithet: "guignol-18474" -> "guignol-".
      Epithets without a dash-separated trailing build number ("default", "mandriva20100215")
@@ -1139,16 +1161,22 @@ class virtual virtual_machine_with_history_and_ifconfig
     in
     match candidate with
     | Some e when self#without_cow_states_in_project ->
-        let () = self#add_import_warning_and_log
-          (Printf.sprintf (f_ "%s \"%s\": the filesystem \"%s\" is not installed: switched to \"%s\" (the project carries no saved disk state for this component)")
+        let () = self#add_import_warning_and_log ~severity:`Info
+          ~summary:(Printf.sprintf (f_ "%s \"%s\": filesystem \"%s\" \xE2\x86\x92 \"%s\"")
              (self#ifconfig_device_type) (self#get_name) (x) (e))
+          ~detail:(Printf.sprintf (f_ "The filesystem \"%s\" is not installed; switched to \"%s\". This is safe because the project carries no saved disk state for this component.")
+             (x) (e))
+          ()
         in
         let () = self#redirect_history_rows_to_distrib e in
         e
     | Some e ->
-        let () = self#add_import_warning_and_log
-          (Printf.sprintf (f_ "%s \"%s\": the filesystem \"%s\" is not installed and cannot be switched to \"%s\" because the project carries saved disk states bound to it: the component is dropped from the loaded project (do not save this project on this system, or the component will be lost permanently)")
-             (self#ifconfig_device_type) (self#get_name) (x) (e))
+        let () = self#add_import_warning_and_log ~severity:`Warning
+          ~summary:(Printf.sprintf (f_ "%s \"%s\": filesystem \"%s\" not installed \xE2\x80\x94 component dropped")
+             (self#ifconfig_device_type) (self#get_name) (x))
+          ~detail:(Printf.sprintf (f_ "Cannot switch to \"%s\" because the project carries saved disk states bound to \"%s\". The component is dropped from the loaded project. Do not save this project on this system, or the component will be lost permanently.")
+             (e) (x))
+          ()
         in
         x
     | None -> x
@@ -1159,9 +1187,12 @@ class virtual virtual_machine_with_history_and_ifconfig
   method remap_absent_variant_at_import (x:string) : string option =
     let v = vm_installations#variants_of self#get_epithet in
     if v#epithet_exists x then Some x else
-    let () = self#add_import_warning_and_log
-      (Printf.sprintf (f_ "%s \"%s\": the variant \"%s\" is not available for the filesystem \"%s\": removed")
-         (self#ifconfig_device_type) (self#get_name) (x) (self#get_epithet))
+    let () = self#add_import_warning_and_log ~severity:`Info
+      ~summary:(Printf.sprintf (f_ "%s \"%s\": variant \"%s\" removed")
+         (self#ifconfig_device_type) (self#get_name) (x))
+      ~detail:(Printf.sprintf (f_ "The variant \"%s\" is not available for the filesystem \"%s\"; the component boots the pristine filesystem.")
+         (x) (self#get_epithet))
+      ()
     in
     None
 
@@ -1186,18 +1217,24 @@ class virtual virtual_machine_with_history_and_ifconfig
     in
     match candidate with
     | Some e when e <> k ->
-        let msg_fmt =
+        let detail_fmt =
           if is_broken_old_series
-          then (f_ "%s \"%s\": the kernel \"%s\" is unusable on this host: switched to \"%s\"")
-          else (f_ "%s \"%s\": the kernel \"%s\" is not installed: switched to \"%s\"")
+          then (f_ "The kernel \"%s\" is unusable on this host; switched to \"%s\".")
+          else (f_ "The kernel \"%s\" is not installed; switched to \"%s\".")
         in
-        let () = self#add_import_warning_and_log
-          (Printf.sprintf msg_fmt (self#ifconfig_device_type) (self#get_name) (k) (e))
+        let () = self#add_import_warning_and_log ~severity:`Info
+          ~summary:(Printf.sprintf (f_ "%s \"%s\": kernel \"%s\" \xE2\x86\x92 \"%s\"")
+             (self#ifconfig_device_type) (self#get_name) (k) (e))
+          ~detail:(Printf.sprintf detail_fmt (k) (e))
+          ()
         in e
     | _ ->
-        let () = self#add_import_warning_and_log
-          (Printf.sprintf (f_ "%s \"%s\": the kernel \"%s\" is unusable on this host or not installed, and no replacement is available for the filesystem \"%s\"")
-             (self#ifconfig_device_type) (self#get_name) (k) (self#get_epithet))
+        let () = self#add_import_warning_and_log ~severity:`Warning
+          ~summary:(Printf.sprintf (f_ "%s \"%s\": kernel \"%s\" kept \xE2\x80\x94 no replacement")
+             (self#ifconfig_device_type) (self#get_name) (k))
+          ~detail:(Printf.sprintf (f_ "The kernel \"%s\" is unusable on this host or not installed, and no replacement is available for the filesystem \"%s\". The component may fail to boot.")
+             (k) (self#get_epithet))
+          ()
         in k
 
   (** A machine can be used accessed in a specific terminal mode. *)
@@ -1429,9 +1466,9 @@ class network
  (* Warnings collected while deserializing a project (see the remap_*_at_import methods
     of virtual_machine_with_history_and_ifconfig); displayed by state#open_project_async
     in a recapitulative dialog, then reset: *)
- val mutable import_warnings : string list = []
- method add_import_warning (msg:string) : unit = import_warnings <- msg :: import_warnings
- method get_and_reset_import_warnings : string list =
+ val mutable import_warnings : import_warning list = []
+ method add_import_warning (w:import_warning) : unit = import_warnings <- w :: import_warnings
+ method get_and_reset_import_warnings : import_warning list =
    let xs = List.rev import_warnings in
    let () = import_warnings <- [] in
    xs

@@ -6,6 +6,16 @@ type name = string
 type label = string
 type iconsize = string
 
+(* A structured adjustment applied while deserializing an old project: a short summary
+   always shown, a detail revealed on demand, and a severity (`Info = harmless switch,
+   `Warning = lossy drop/removal). See state#open_project_async. *)
+type import_warning = {
+  iw_summary  : string;
+  iw_detail   : string;
+  iw_severity : [ `Info | `Warning ];
+}
+val string_of_import_warning : import_warning -> string
+
 type simulated_device_automaton_state = NoDevice | DeviceOff | DeviceOn | DeviceSleeping
 
 exception ForbiddenTransition
@@ -458,7 +468,7 @@ class virtual node_with_ledgrid_and_defects :
   end
 
 class virtual virtual_machine_with_history_and_ifconfig :
-  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : string -> unit; .. > ->
+  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : import_warning -> unit; .. > ->
   ?epithet:[ `distrib ] Disk.epithet ->
   ?variant:string ->
   ?kernel:[ `kernel ] Disk.epithet ->
@@ -509,7 +519,7 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method is_xnest_enabled : bool
     method private prefixed_epithet : string
     (* --- Automatic remapping at project loading (deserialization code only): *)
-    method private add_import_warning_and_log : string -> unit
+    method private add_import_warning_and_log : ?severity:[ `Info | `Warning ] -> summary:string -> detail:string -> unit -> unit
     method private family_of_epithet : [ `distrib ] Disk.epithet -> string option
     method private without_cow_states_in_project : bool
     method private redirect_history_rows_to_distrib : [ `distrib ] Disk.epithet -> unit
@@ -616,8 +626,8 @@ class network :
     method project_working_directory : string  (* Ex: "/tmp/marionnet-588078453.dir" *)
     method project_root_pathname     : string  (* Ex: "/tmp/marionnet-588078453.dir/foo" *)
     (* --- *)
-    method add_import_warning : string -> unit
-    method get_and_reset_import_warnings : string list
+    method add_import_warning : import_warning -> unit
+    method get_and_reset_import_warnings : import_warning list
     (* --- *)
     method ledgrid_manager   : Ledgrid_manager.ledgrid_manager
     method dotoptions        : Sketch.tuning
