@@ -159,25 +159,26 @@ object(self)
 
   (* 2023/07/04: Added some logging messages after observing a rare deadlock (may be already fixed): *)
   method remove_device_tree (device_name) = begin
-    let () = Log.printf1 "Treeview_history.t#remove_device_tree(\"%s\"): HERE0" (device_name) in
+    (* let () = Log.printf1 "Treeview_history.t#remove_device_tree(\"%s\"): HERE0" (device_name) in *)
     let states_directory = (self#directory) in
-    let () = Log.printf "HERE1" in
+    (* let () = Log.printf "HERE1" in *)
     let root_id = self#unique_root_row_id_of_name device_name in
-    let () = Log.printf "HERE2" in
+    (* let () = Log.printf "HERE2" in *)
     let rows_to_remove = self#rows_of_name device_name in
-    let () = Log.printf "HERE3" in
+    (* let () = Log.printf "HERE3" in *)
     (* Remove cow files: *)
     (List.iter
       (fun row ->
-        let () = Log.printf "HERE4" in
+        (* let () = Log.printf "HERE4" in *)
         let cow_filename = Row.String_field.get ~field:filename_header row in
         let cow_pathname = Filename.concat (states_directory) (cow_filename) in
         (try Unix.unlink cow_pathname with _ -> ()))
       rows_to_remove
     );
-    let () = Log.printf "HERE5" in
+    (* let () = Log.printf "HERE5" in *)
     self#remove_subtree root_id;
-    let () = Log.printf "HERE6\n" in ()
+    (* let () = Log.printf "HERE6\n" in  *)
+    ()
     end
 
   (* This method is useful to understand which source file has
