@@ -221,3 +221,57 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
     COW » (garde refusée, composant écarté, warning honnête). Bruit `Network.Accepting`
     en fin de run = séquence d'arrêt des threads accept (préexistant, bénin).
     Reste : validation visuelle du dialogue en GUI (run interactif).
+- **2026-07-17 — épisodes 5-6 (UI/UX du dialogue « Project adapted at loading » + fix du
+  comment d'historique périmé)** :
+  - **Dialogue dédié, scrollable, à divulgation progressive** (`d5759e6`, `264b18a`,
+    `18ba114`). Le récapitulatif réutilisait le `dialog_MESSAGE` générique de glade (un
+    unique label sans scroll → bouton CLOSE poussé hors écran dès qu'il y a beaucoup de
+    composants, phrases concaténées illisibles). Remplacé par
+    `Simple_dialogs.recapitulative`, construit **programmatiquement** (comme
+    `ask_text_dialog`, **sans toucher glade/`gui.ml`**) : en-tête fixe (icône + titre court
+    gras + préambule), **`GBin.scrolled_window` à hauteur plafonnée (320 px)** contenant
+    **un `GBin.expander` par point** (résumé visible, détail au clic), **action area fixe
+    hors du scroll** (CLOSE toujours atteignable). Marqueur ⚠ sur les points `Warning`.
+  - **Warnings d'import structurés** : `type import_warning = { iw_summary; iw_detail;
+    iw_severity : [ `Info | `Warning ] }` (+ `string_of_import_warning` pour le chemin
+    d'erreur et les logs) remplace la `string` plate ; les 5 messages de
+    `remap_*_at_import` sont scindés résumé court / détail (pourquoi + conséquences),
+    sévérité `Info (bascule inoffensive) vs `Warning (perte : composant écarté sous COW,
+    kernel sans remplacement). `user_level.mli` synchronisé.
+  - **Titre court + préambule** : `recapitulative` prend `~header` (gras, court, « N
+    automatic adjustment(s) were applied ») et `?preamble` (phrase d'introduction, avec un
+    `\n` dur avant « Click an item… » pour ne pas élargir la fenêtre).
+  - **Piège lablgtk3** : `GBin.expander` de ce binding **n'a pas** `~use_markup` — label
+    d'expander en texte brut (résumé passé verbatim, ⚠ en UTF-8 littéral).
+  - **Fix comment d'historique périmé** (`5c77aed`) : après un remap de distribution,
+    `redirect_history_rows_to_distrib` ne mettait à jour que le champ caché **Prefixed
+    filesystem**, laissant la colonne **Comment** de l'onglet Disques figée sur son libellé
+    auto-généré pré-remap (« machine-default »). **Bénin** (le Comment est cosmétique,
+    jamais lu pour reconstruire le filesystem — seul `prefixed_filesystem` l'est) mais
+    trompeur et resauvegardé. Nouvelle méthode
+    `Treeview_history.t#redirect_device_to_prefixed_filesystem` (là où vit la convention
+    `comment = prefixed_filesystem ^ suffixe-variant`) : met à jour le champ fonctionnel et
+    ne rafraîchit le Comment **que** s'il porte encore le libellé auto-généré (préserve une
+    annotation utilisateur ou « [no comment] », via `String.starts_with`).
+  - Preuve : `dune build` rc=0 ; dialogue validé en GUI par Jean. Colonne Comment à
+    reconfirmer visuellement (champ GUI non journalisé).
+- **2026-07-17 — épisode 7 (remap de distribution intelligent : histoire des images + RAM)** :
+  le fallback cross-distro de `remap_absent_distrib_at_import` (déclenché quand aucun build
+  same-family n'est installé — `default`, mandriva, lenny, pinocchio) ne renvoyait que
+  `get_default_epithet` (trixie). Nouveau `choose_cross_distro_target ?memory` (helpers
+  `epithet_contains`, `find_installed_filesystem_containing`) reflétant les deux catégories
+  historiques d'images — X11/wireshark (wheezy, trixie) vs terminal texte (guignol) :
+  - `{mandriva, lenny} → wheezy` (sinon trixie) ;
+  - `{pinocchio, router-default} → guignol` (sinon wheezy, sinon trixie) ;
+  - `machine-default` : RAM (`self#get_memory`) < 96 → wheezy (sinon trixie), ≥ 96 → trixie.
+  Pivot **96** = `MEMORY_SUGGESTED_SIZE` de wheezy (barème installé : guignol 24, pinocchio 32,
+  mandriva/lenny 48, wheezy 96, trixie 128). La RAM est disponible au remap car `"memory"`
+  précède `"distrib"` dans `machine.to_tree` (`set_memory` s'exécute avant), passée en `?memory`
+  depuis `machine.ml` ; les routers n'en ont pas besoin (`router-default → guignol` via le
+  préfixe `vm_installations#prefix`). `.mli` (user_level, machine) synchronisés. Same-family
+  (guignol-21852→18474, wheezy→wheezy) et garde COW **inchangés**.
+  - Preuves CLI (`marionnet.exe -d`, build rc=0) : `tp6c` + `projet-marionnet*` (machine-default
+    48 M → **wheezy**, avant trixie) ; `tp.mar` (mandriva → **wheezy**) ; `tp9` (guignol-21852 →
+    guignol-18474 same-family). Branches `router-default→guignol`, `RAM≥96→trixie`,
+    `pinocchio→guignol`, `lenny→wheezy` : logique en place, **non exercées** faute de `.mar`
+    d'exemple les portant.

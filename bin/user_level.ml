@@ -1136,15 +1136,67 @@ class virtual virtual_machine_with_history_and_ifconfig
     let prefixed = (vm_installations#prefix ^ e) in
     history#redirect_device_to_prefixed_filesystem ~name:self#get_name ~prefixed_filesystem:prefixed
 
+  (* Plain substring test on an epithet (distribution names are lowercase ASCII, so a raw
+     substring search is enough). *)
+  method private epithet_contains ~(sub:string) (e:string) : bool =
+    let le = String.length e and ls = String.length sub in
+    ls = 0 ||
+    (let rec loop i = i + ls <= le && (String.sub e i ls = sub || loop (i + 1)) in loop 0)
+
+  (* First installed filesystem epithet whose name contains [sub] (e.g. "wheezy" ->
+     "debian-wheezy-08367"), if any. *)
+  method private find_installed_filesystem_containing (sub:string) : string option =
+    List.find_opt (self#epithet_contains ~sub) (vm_installations#filesystems#get_epithet_list)
+
+  (* Cross-distribution remap target for a source epithet [x] that has no installed
+     same-family build (abandoned distributions like mandriva/lenny/pinocchio, or the
+     built-in "default"). The choice reflects the two historical guest-image categories:
+     X11/wireshark-capable images (wheezy, then trixie) vs text-terminal-only images
+     (guignol). For a plain "default" component it also depends on the kind (routers are
+     text-only) and, for a machine, on the RAM planned for it ([memory]); the 96 MB pivot
+     is wheezy's suggested size. Each target resolves through a fallback chain so that a
+     bootable filesystem is picked even when the preferred family is not installed. Returns
+     None only if not even a default filesystem exists. *)
+  method private choose_cross_distro_target ?memory (x:string) : string option =
+    let trixie () =
+      match self#find_installed_filesystem_containing "trixie" with
+      | Some _ as r -> r
+      | None        -> vm_installations#filesystems#get_default_epithet
+    in
+    let wheezy () =
+      match self#find_installed_filesystem_containing "wheezy" with
+      | Some _ as r -> r
+      | None        -> trixie ()
+    in
+    let guignol () =
+      match self#find_installed_filesystem_containing "guignol" with
+      | Some _ as r -> r
+      | None        -> wheezy ()
+    in
+    let is_router = (vm_installations#prefix = "router-") in
+    if (self#epithet_contains ~sub:"mandriva" x) || (self#epithet_contains ~sub:"lenny" x)
+    then wheezy ()
+    else if self#epithet_contains ~sub:"pinocchio" x
+    then guignol ()
+    else if x = "default"
+    then
+      (if is_router then guignol () else
+       match memory with
+       | Some m when m >= 96 -> trixie ()
+       | Some _              -> wheezy ()
+       | None                -> trixie ())
+    else vm_installations#filesystems#get_default_epithet
+
   (* If the given filesystem epithet is not installed, try to remap it to an installed
      build of the same family (e.g. "guignol-21852" -> "guignol-18474") or, failing that
-     (abandoned distributions like "mandriva20100215" or "pinocchio-14787"), to the default
-     filesystem of a freshly created component. Both remaps require the project to carry
-     no COW state for this device (see above); otherwise the original epithet is kept,
-     the subsequent set_epithet fails, and the component is silently dropped by the
-     try_to_add_* machinery (network#eval_forest_child) — the emitted warning is then the
-     only user-visible trace of the lost component. *)
-  method remap_absent_distrib_at_import (x:string) : string =
+     (abandoned distributions like "mandriva20100215" or "pinocchio-14787", or the built-in
+     "default"), to a sensible cross-distribution target chosen by choose_cross_distro_target
+     from the source distribution, the component kind and the RAM ([memory], machines only).
+     Both remaps require the project to carry no COW state for this device (see above);
+     otherwise the original epithet is kept, the subsequent set_epithet fails, and the
+     component is silently dropped by the try_to_add_* machinery (network#eval_forest_child)
+     — the emitted warning is then the only user-visible trace of the lost component. *)
+  method remap_absent_distrib_at_import ?memory (x:string) : string =
     if vm_installations#filesystems#epithet_exists x then x else (* continue: *)
     let candidate =
       let family_member =
@@ -1155,7 +1207,7 @@ class virtual virtual_machine_with_history_and_ifconfig
       in
       match family_member with
       | Some e -> Some e
-      | None   -> vm_installations#filesystems#get_default_epithet
+      | None   -> self#choose_cross_distro_target ?memory x
     in
     match candidate with
     | Some e when self#without_cow_states_in_project ->

@@ -108,7 +108,7 @@ module User_level_machine : sig
       method get_variant_as_string           : [ `variant ] Disk.epithet
       method get_variant_realpath            : Disk.realpath option
       (* --- Automatic remapping at project loading (deserialization code only): *)
-      method remap_absent_distrib_at_import  : [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
+      method remap_absent_distrib_at_import  : ?memory:int -> [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
       method remap_absent_variant_at_import  : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet option
       method remap_obsolete_kernel_at_import : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
       (* --- *)

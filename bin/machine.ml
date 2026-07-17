@@ -652,7 +652,7 @@ class machine
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("memory"   , x ) -> self#set_memory (int_of_string x)
-  | ("distrib"  , x ) -> self#set_epithet (self#remap_absent_distrib_at_import x)
+  | ("distrib"  , x ) -> self#set_epithet (self#remap_absent_distrib_at_import ~memory:self#get_memory x)
   | ("variant"  , "aucune" ) -> self#set_variant None (* backward-compatibility *)
   | ("variant"  , "" )-> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)

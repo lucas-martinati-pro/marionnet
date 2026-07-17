@@ -523,7 +523,10 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method private family_of_epithet : [ `distrib ] Disk.epithet -> string option
     method private without_cow_states_in_project : bool
     method private redirect_history_rows_to_distrib : [ `distrib ] Disk.epithet -> unit
-    method remap_absent_distrib_at_import : [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
+    method private epithet_contains : sub:string -> string -> bool
+    method private find_installed_filesystem_containing : string -> [ `distrib ] Disk.epithet option
+    method private choose_cross_distro_target : ?memory:int -> [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet option
+    method remap_absent_distrib_at_import : ?memory:int -> [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
     method remap_absent_variant_at_import : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet option
     method remap_obsolete_kernel_at_import : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
     (* --- *)
