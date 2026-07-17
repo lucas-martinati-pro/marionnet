@@ -100,6 +100,11 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/retro-compatibilite-kernels-images.md` ; mémoire `marionnet-retro-compat-kernels-images` ;
   `git log --grep="marionnet-retro-compat-kernels-images"`. Ép. 0→4 faits 2026-07-17
   (ép. 4 : abandon mandriva/pinocchio/lenny + remap auto kernel/distrib au chargement `.mar`).
+- **modernisation-world-bridge** (rendre `world_bridge` — dernier bouton palette, icône planète —
+  utilisable sans config hôte manuelle risquée [axe barrière, modèle daemon-elimination] **et**
+  compréhensible en GUI ; direction : NAT privé auto par défaut + L2 réel en option experte) :
+  `docs/modernisation-world-bridge.md` ; mémoire `modernisation-world-bridge` ;
+  `git log --grep="modernisation-world-bridge"`. Ép. 0-1 faits 2026-07-18.
 
 ## Où puiser
 
