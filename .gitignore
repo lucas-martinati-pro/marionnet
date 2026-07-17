@@ -63,6 +63,7 @@ uml/pupisto.tester/tester_key.pub
 # --- Outillage Claude Code : journal de dérive des index (généré par hook) ---
 .claude/stale.log
 .claude/settings.local.json
+_claude-local
 
 # --- Notes, essais et scripts de travail locaux (jamais versionnés sous bzr) ---
 /.where_in_ml
