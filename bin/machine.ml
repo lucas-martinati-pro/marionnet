@@ -652,11 +652,11 @@ class machine
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("memory"   , x ) -> self#set_memory (int_of_string x)
-  | ("distrib"  , x ) -> self#set_epithet x
+  | ("distrib"  , x ) -> self#set_epithet (self#remap_absent_distrib_at_import x)
   | ("variant"  , "aucune" ) -> self#set_variant None (* backward-compatibility *)
   | ("variant"  , "" )-> self#set_variant None
-  | ("variant"  , x ) -> self#set_variant (Some x)
-  | ("kernel"   , x ) -> self#set_kernel x
+  | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
+  | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
   | ("rc_config", x ) -> self#set_rc_config (Marshal.from_string x 0)
   | ("console_no" , x ) -> self#set_console_no (int_of_string x)
   | ("terminal" , x ) -> self#set_terminal x

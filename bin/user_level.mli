@@ -458,7 +458,7 @@ class virtual node_with_ledgrid_and_defects :
   end
 
 class virtual virtual_machine_with_history_and_ifconfig :
-  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; .. > ->
+  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : string -> unit; .. > ->
   ?epithet:[ `distrib ] Disk.epithet ->
   ?variant:string ->
   ?kernel:[ `kernel ] Disk.epithet ->
@@ -508,6 +508,15 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method ifconfig_device_type : string
     method is_xnest_enabled : bool
     method private prefixed_epithet : string
+    (* --- Automatic remapping at project loading (deserialization code only): *)
+    method private add_import_warning_and_log : string -> unit
+    method private family_of_epithet : [ `distrib ] Disk.epithet -> string option
+    method private without_cow_states_in_project : bool
+    method private redirect_history_rows_to_distrib : [ `distrib ] Disk.epithet -> unit
+    method remap_absent_distrib_at_import : [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
+    method remap_absent_variant_at_import : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet option
+    method remap_obsolete_kernel_at_import : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
+    (* --- *)
     method set_epithet : [ `distrib ] Disk.epithet -> unit
     method set_kernel : [ `kernel ] Disk.epithet -> unit
     method set_terminal : string -> unit
@@ -606,6 +615,9 @@ class network :
     (* --- *)
     method project_working_directory : string  (* Ex: "/tmp/marionnet-588078453.dir" *)
     method project_root_pathname     : string  (* Ex: "/tmp/marionnet-588078453.dir/foo" *)
+    (* --- *)
+    method add_import_warning : string -> unit
+    method get_and_reset_import_warnings : string list
     (* --- *)
     method ledgrid_manager   : Ledgrid_manager.ledgrid_manager
     method dotoptions        : Sketch.tuning

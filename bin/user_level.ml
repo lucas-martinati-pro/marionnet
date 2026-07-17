@@ -1070,9 +1070,135 @@ class virtual virtual_machine_with_history_and_ifconfig
   method get_kernel   = kernel
   method set_kernel x = kernel <- self#check_kernel x
   method private check_kernel x =
-    match (vm_installations#kernels#epithet_exists kernel) with
+    match (vm_installations#kernels#epithet_exists x) with
     | true -> x
     | false -> self#logged_failwith "unknown kernel \"%s\"" x
+
+  (* --- Automatic remapping at project loading. ---
+     Called ONLY from the deserialization code (eval_forest_attribute in machine.ml and
+     router.ml). Old projects (.mar) may reference kernels of the 2.6.x/3.2.x "-ghost"
+     series, whose SKAS0 stub segfaults on modern hosts, as well as filesystem builds
+     that are not installed. These methods try to remap such references to something
+     bootable, informing the user via network#add_import_warning (the warnings are
+     displayed in a recapitulative dialog at the end of the project loading). *)
+
+  method private add_import_warning_and_log (msg:string) : unit =
+    let () = Log.printf1 "import remapping: %s\n" msg in
+    network#add_import_warning msg
+
+  (* The build-number-less family of a filesystem epithet: "guignol-18474" -> "guignol-".
+     Epithets without a dash-separated trailing build number ("default", "mandriva20100215")
+     have no family and are thus never remapped (abandoned distributions). *)
+  method private family_of_epithet (e:string) : string option =
+    match Str.string_match (Str.regexp "^\\(.*-\\)[0-9]+$") e 0 with
+    | true  -> Some (Str.matched_group 1 e)
+    | false -> None
+
+  (* A distribution remap is sound iff the project carries no actual COW state for this
+     device: a COW references the exact backing filesystem (MTIME included), so remapping
+     under existing states would corrupt them. Without states the device boots a pristine
+     disk from the remapped filesystem instead. *)
+  method private without_cow_states_in_project : bool =
+    let history = (network#history:Treeview_history.t) in
+    let states_directory = history#directory in
+    List.for_all
+      (fun row_id ->
+         let cow_file_name = history#get_row_filename row_id in
+         not (Cow_files.cow_file_exists ~states_directory ~cow_file_name ()))
+      (history#row_ids_of_name self#get_name)
+
+  (* Keep the (already loaded) history rows of this device consistent with a remapped
+     filesystem: *)
+  method private redirect_history_rows_to_distrib (e:string) : unit =
+    let history = (network#history:Treeview_history.t) in
+    let prefixed = (vm_installations#prefix ^ e) in
+    List.iter
+      (fun row_id -> history#set_row_prefixed_filesystem row_id prefixed)
+      (history#row_ids_of_name self#get_name)
+
+  (* If the given filesystem epithet is not installed, try to remap it to an installed
+     build of the same family (e.g. "guignol-21852" -> "guignol-18474") or, failing that
+     (abandoned distributions like "mandriva20100215" or "pinocchio-14787"), to the default
+     filesystem of a freshly created component. Both remaps require the project to carry
+     no COW state for this device (see above); otherwise the original epithet is kept,
+     the subsequent set_epithet fails, and the component is silently dropped by the
+     try_to_add_* machinery (network#eval_forest_child) — the emitted warning is then the
+     only user-visible trace of the lost component. *)
+  method remap_absent_distrib_at_import (x:string) : string =
+    if vm_installations#filesystems#epithet_exists x then x else (* continue: *)
+    let candidate =
+      let family_member =
+        Option.bind (self#family_of_epithet x) (fun family ->
+          List.find_opt
+            (fun e -> self#family_of_epithet e = Some family)
+            (vm_installations#filesystems#get_epithet_list))
+      in
+      match family_member with
+      | Some e -> Some e
+      | None   -> vm_installations#filesystems#get_default_epithet
+    in
+    match candidate with
+    | Some e when self#without_cow_states_in_project ->
+        let () = self#add_import_warning_and_log
+          (Printf.sprintf (f_ "%s \"%s\": the filesystem \"%s\" is not installed: switched to \"%s\" (the project carries no saved disk state for this component)")
+             (self#ifconfig_device_type) (self#get_name) (x) (e))
+        in
+        let () = self#redirect_history_rows_to_distrib e in
+        e
+    | Some e ->
+        let () = self#add_import_warning_and_log
+          (Printf.sprintf (f_ "%s \"%s\": the filesystem \"%s\" is not installed and cannot be switched to \"%s\" because the project carries saved disk states bound to it: the component is dropped from the loaded project (do not save this project on this system, or the component will be lost permanently)")
+             (self#ifconfig_device_type) (self#get_name) (x) (e))
+        in
+        x
+    | None -> x
+
+  (* A variant may have disappeared with its filesystem, in particular when the distrib
+     has just been remapped by the previous method: in this case the component simply
+     loses its variant (it will boot the pristine filesystem). *)
+  method remap_absent_variant_at_import (x:string) : string option =
+    let v = vm_installations#variants_of self#get_epithet in
+    if v#epithet_exists x then Some x else
+    let () = self#add_import_warning_and_log
+      (Printf.sprintf (f_ "%s \"%s\": the variant \"%s\" is not available for the filesystem \"%s\": removed")
+         (self#ifconfig_device_type) (self#get_name) (x) (self#get_epithet))
+    in
+    None
+
+  (* Remap an obsolete kernel epithet (2.6.x/3.2.x "-ghost" series, whose SKAS0 stub is
+     broken by modern hosts) or a not installed one, to a kernel supported by the
+     (possibly just remapped) filesystem, preferring an i386 build when available (the
+     old images are i386 userlands): e.g. "3.2.64-ghost" -> "6.12.95-i386" for wheezy or
+     guignol, "2.6.18-ghost" -> "6.12.95" for a filesystem remapped to a modern distrib. *)
+  method remap_obsolete_kernel_at_import (k:string) : string =
+    let is_broken_old_series =
+      (Initialization.host_kernel_breaks_old_uml_stubs) &&
+      (match String.split_on_char '.' k with
+       | s :: _ -> (match int_of_string_opt s with Some major -> major < 4 | None -> false)
+       | []     -> false)
+    in
+    if (vm_installations#kernels#epithet_exists k) && (not is_broken_old_series) then k else (* continue: *)
+    let supported_kernels = List.map fst (vm_installations#supported_kernels_of self#get_epithet) in
+    let candidate =
+      match List.find_opt (fun e -> Filename.check_suffix e "-i386") supported_kernels with
+      | Some e -> Some e
+      | None   -> (match supported_kernels with e :: _ -> Some e | [] -> None)
+    in
+    match candidate with
+    | Some e when e <> k ->
+        let msg_fmt =
+          if is_broken_old_series
+          then (f_ "%s \"%s\": the kernel \"%s\" is unusable on this host: switched to \"%s\"")
+          else (f_ "%s \"%s\": the kernel \"%s\" is not installed: switched to \"%s\"")
+        in
+        let () = self#add_import_warning_and_log
+          (Printf.sprintf msg_fmt (self#ifconfig_device_type) (self#get_name) (k) (e))
+        in e
+    | _ ->
+        let () = self#add_import_warning_and_log
+          (Printf.sprintf (f_ "%s \"%s\": the kernel \"%s\" is unusable on this host or not installed, and no replacement is available for the filesystem \"%s\"")
+             (self#ifconfig_device_type) (self#get_name) (k) (self#get_epithet))
+        in k
 
   (** A machine can be used accessed in a specific terminal mode. *)
   val mutable terminal : string = terminal
@@ -1299,6 +1425,16 @@ class network
 
  method project_working_directory = Option.extract (project_working_directory ())
  method project_root_pathname     = Option.extract (project_root_pathname ())
+
+ (* Warnings collected while deserializing a project (see the remap_*_at_import methods
+    of virtual_machine_with_history_and_ifconfig); displayed by state#open_project_async
+    in a recapitulative dialog, then reset: *)
+ val mutable import_warnings : string list = []
+ method add_import_warning (msg:string) : unit = import_warnings <- msg :: import_warnings
+ method get_and_reset_import_warnings : string list =
+   let xs = List.rev import_warnings in
+   let () = import_warnings <- [] in
+   xs
 
  (* Immutable field. See the previous comment about the equality: *)
  val nodes : (node Queue.t) Cortex.t =

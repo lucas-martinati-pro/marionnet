@@ -211,6 +211,32 @@ let machine_kernel_default_epithet =
   let default = "default" in
   Configuration.extract_string_variable_or ~default "MARIONNET_MACHINE_KERNEL"
 
+(* The host kernel version, for instance (6,8), read once from /proc/sys/kernel/osrelease: *)
+let host_kernel_version : (int * int) option =
+  try
+    let ic = open_in "/proc/sys/kernel/osrelease" in
+    let line = (try input_line ic with e -> (close_in ic; raise e)) in
+    let () = close_in ic in
+    Scanf.sscanf line "%d.%d" (fun a b -> Some (a, b))
+  with _ -> None
+
+(* Old UML kernels (the 2.6.x/3.2.x "-ghost" series) have a SKAS0 stub that segfaults on
+   modern hosts: proven broken on 6.8, presumed broken since the 5.15 series (the exact
+   breaking host version could not be established). On such hosts, projects referencing
+   these kernels are automatically switched at loading time to a modern i386 UML kernel,
+   when available (see the remapping methods in User_level.virtual_machine_with_history_and_ifconfig): *)
+let old_uml_breaking_host_version = (5, 15)
+
+let host_kernel_breaks_old_uml_stubs : bool =
+  match host_kernel_version with
+  | Some v -> (v >= old_uml_breaking_host_version)
+  | None   -> false
+
+let () = Log.printf2
+  "Host kernel version: %s (obsolete UML kernels remapped at project loading: %b)\n"
+  (match host_kernel_version with Some (a,b) -> Printf.sprintf "%d.%d" a b | None -> "unknown")
+  (host_kernel_breaks_old_uml_stubs)
+
 (* Path related configuration variables.
    TODO: make it more robust and logged *)
 module Path = struct

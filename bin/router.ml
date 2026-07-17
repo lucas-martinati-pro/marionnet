@@ -1215,10 +1215,10 @@ class router
  method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
-  | ("distrib"  , x ) -> self#set_epithet x
+  | ("distrib"  , x ) -> self#set_epithet (self#remap_absent_distrib_at_import x)
   | ("variant"  , "") -> self#set_variant None
-  | ("variant"  , x ) -> self#set_variant (Some x)
-  | ("kernel"   , x ) -> self#set_kernel x
+  | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
+  | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
   | ("show_unix_terminal", x )   -> self#set_show_unix_terminal   (bool_of_string x)
   | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (Marshal.from_string x 0)
   | ("rc_config_unix", x )       -> self#set_rc_config_unix (Marshal.from_string x 0)

@@ -171,3 +171,53 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
     `6.12.95-i386` — `xeyes` affiché sur l'hôte, `ip a`/`ifconfig` sans eth42 dans
     l'invité, arrêt propre ; log `relay script found for "debian-wheezy-08367"`
     (le maillon « détection + copie du hook par l'OCaml » validé en situation).
+- **2026-07-17 — épisode 4 (abandon des autres distros + remap automatique au chargement
+  d'un vieux `.mar`)** :
+  - **Décision de périmètre : seuls wheezy et guignol sont rétro-supportés.** Mandriva,
+    pinocchio et lenny sont **abandonnés** : leurs `.conf` orphelins (sans image) restent
+    versionnés dans `bin/filesystems/` **pour l'historique** (décision : pas de `git rm`),
+    et sont inertes (un `.conf` sans image ne crée pas d'epithet GUI). L'ancienne piste
+    « restaurer l'image mandriva » (plan initial, point 4) est close.
+  - **Remap automatique à la désérialisation** (« Projet → Ouvrir ») : les vieux `.mar`
+    référencent des kernels `2.6.18-ghost`/`3.2.64-ghost` (stub SKAS0 cassé par les hôtes
+    modernes) et parfois des filesystems non installés. Nouvelles méthodes
+    `remap_{absent_distrib,absent_variant,obsolete_kernel}_at_import` dans
+    `user_level.ml` (`virtual_machine_with_history_and_ifconfig`), câblées dans
+    `eval_forest_attribute` de `machine.ml` et `router.ml` (ordre garanti distrib →
+    variant → kernel, celui de `to_tree`) :
+    - **kernel** : si la série est vieille (major < 4) **et** l'hôte cassant
+      (`Initialization.host_kernel_breaks_old_uml_stubs`, lecture de
+      `/proc/sys/kernel/osrelease`, seuil `(5,15)` — **empirique** : prouvé cassé sur 6.8,
+      aucun seuil documenté publiquement trouvé, choix conservateur), ou si le kernel
+      n'est pas installé → bascule vers un kernel supporté par le filesystem (déjà
+      remappé), **préférence `-i386`** (vieilles images = userlands i386) :
+      `3.2.64-ghost` → `6.12.95-i386` (wheezy/guignol), `2.6.18-ghost` → `6.12.95`
+      (après remap du filesystem vers trixie). Sur un hôte < 5.15, les vieux couples
+      installés continuent de tourner tels quels (pas de remap).
+    - **filesystem** : build absent de la même famille (`guignol-21852` →
+      `guignol-18474`), sinon (distro abandonnée, ex. `mandriva20100215`) **fallback
+      cross-distro** vers le filesystem par défaut d'un composant neuf
+      (`get_default_epithet`, en pratique trixie) — **uniquement si le projet ne porte
+      aucun état COW** pour ce composant (un COW référence son backing exact, MTIME
+      compris) ; les rows du treeview history sont réalignées. Avec COW : pas de remap,
+      le composant est **écarté du projet chargé** par le mécanisme historique
+      `try_to_add_*` (échec de `set_epithet` avalé par `network#eval_forest_child`) —
+      le warning émis est la seule trace visible ; il conseille de **ne pas sauvegarder**.
+      Effet bonus : les `.mar` v1 à `distrib="default"` (epithet plus installé
+      aujourd'hui), qui ne se chargeaient plus du tout, se chargent en trixie.
+    - **variant** : une variant disparue avec son filesystem (notamment après remap) est
+      abandonnée (`None`) avec warning, au lieu du `failwith` de `check_variant`.
+  - **Restitution GUI** : warnings collectés dans `class network`
+    (`add_import_warning`/`get_and_reset_import_warnings`), affichés par
+    `state#open_project_async` en **dialogue récapitulatif** (`Simple_dialogs.warning`
+    « Project adapted at loading ») après l'import — ou joints au dialogue d'erreur
+    « Failed loading the project » si l'import lève. Chaînes gettext (`s_`/`f_`) mais
+    **catalogues non régénérés** dans cet épisode (fallback anglais ; à ramasser lors
+    d'une future passe i18n).
+  - **Preuves** (CLI, `marionnet.exe -d FILE.mar`, logs `import remapping:`) : `tp9.mar`
+    (guignol-21852→18474 + 5× 3.2.64-ghost→6.12.95-i386) ; `m1m2m3-dhcpd-conf.mar`
+    (3 COW wheezy : remap kernel seul) ; `tp6c.mar` (2.6.18 et 3.2.64 remappés, warnings
+    simples) ; `tp.mar` (mandriva → trixie, sans COW) ; cas fabriqué « distrib absente +
+    COW » (garde refusée, composant écarté, warning honnête). Bruit `Network.Accepting`
+    en fin de run = séquence d'arrêt des threads accept (préexistant, bénin).
+    Reste : validation visuelle du dialogue en GUI (run interactif).

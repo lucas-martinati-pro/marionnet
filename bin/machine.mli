@@ -107,6 +107,10 @@ module User_level_machine : sig
       method set_variant                     : [ `variant ] Disk.epithet option -> unit
       method get_variant_as_string           : [ `variant ] Disk.epithet
       method get_variant_realpath            : Disk.realpath option
+      (* --- Automatic remapping at project loading (deserialization code only): *)
+      method remap_absent_distrib_at_import  : [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
+      method remap_absent_variant_at_import  : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet option
+      method remap_obsolete_kernel_at_import : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
       (* --- *)
       method get_states_directory            : string
       method get_hostfs_directory            : ?name   :string (* self#get_name *) -> unit -> string

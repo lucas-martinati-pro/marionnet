@@ -494,10 +494,27 @@ class globalState = fun () ->
             ~emergency:(fun () -> self#close_project)
             ~dotAction
             ~project_version
-            self#project_paths#networkFile
+            self#project_paths#networkFile;
+          (* Old projects may have been adapted at loading time (obsolete kernels or
+             absent filesystems remapped, see the remap_*_at_import methods in
+             user_level.ml): recapitulate the adjustments to the user, if any: *)
+          (match self#network#get_and_reset_import_warnings with
+          | [] -> ()
+          | ws ->
+              Simple_dialogs.warning
+                (s_ "Project adapted at loading")
+                (String.concat "\n\n" ws)
+                ())
         with e ->
           self#clear_treeviews;
           Log.printf1 "state#open_project_async: Failed with exception %s\n" (Printexc.to_string e);
+          (* Report the failure properly, including the import warnings that may
+             explain it (e.g. an abandoned distribution with saved disk states): *)
+          let ws = self#network#get_and_reset_import_warnings in
+          Simple_dialogs.error
+            (s_ "Failed loading the project")
+            (String.concat "\n\n" (ws @ [Printexc.to_string e]))
+            ()
         end
       in
       let () = GMain_actor.delegate import () in

@@ -98,7 +98,8 @@ Reprise : appliquer le skill `chantier-long`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
   avec `linux-3.2.64-ghost` sur hôte ≥ 6.x ; solution démontrée = UML récent `SUBARCH=i386`) :
   `docs/retro-compatibilite-kernels-images.md` ; mémoire `marionnet-retro-compat-kernels-images` ;
-  `git log --grep="marionnet-retro-compat-kernels-images"`. Ép. 0 (étude) fait 2026-07-17.
+  `git log --grep="marionnet-retro-compat-kernels-images"`. Ép. 0→4 faits 2026-07-17
+  (ép. 4 : abandon mandriva/pinocchio/lenny + remap auto kernel/distrib au chargement `.mar`).
 
 ## Où puiser
 
