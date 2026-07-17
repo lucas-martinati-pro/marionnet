@@ -506,14 +506,16 @@ class globalState = fun () ->
                   (fun w -> User_level.(w.iw_summary, w.iw_detail, w.iw_severity))
                   ws
               in
-              let intro =
-                Printf.sprintf
-                  (f_ "%d automatic adjustment(s) were applied to make this old project loadable on the current system. Click an item to see the details.")
-                  (List.length ws)
+              let header =
+                Printf.sprintf (f_ "%d automatic adjustment(s) were applied") (List.length ws)
+              in
+              let preamble =
+                s_ "To make this old project loadable on the current system, Marionnet adapted it as shown below. Click an item to see the details."
               in
               Simple_dialogs.recapitulative
                 ~title:(s_ "Project adapted at loading")
-                ~intro
+                ~header
+                ~preamble
                 items
                 ())
         with e ->

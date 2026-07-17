@@ -65,8 +65,9 @@ let info ?modal title msg () =
     of items inside a height-capped scrolled window. Each item shows a one-line summary
     (always visible) and reveals its detail on demand through an expander; items flagged
     [`Warning] (a lossy drop/removal) get a warning marker, [`Info] ones (a harmless
-    switch) none. *)
-let recapitulative ?(modal=false) ~title ~intro (items : (string * string * [`Info | `Warning]) list) () =
+    switch) none. [header] is a short bold headline shown next to the icon; the optional
+    [preamble] is a longer wrapped sentence introducing the list just above it. *)
+let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * string * [`Info | `Warning]) list) () =
   let window =
     GWindow.window
       ~title
@@ -79,17 +80,28 @@ let recapitulative ?(modal=false) ~title ~intro (items : (string * string * [`In
       ()
   in
   let outer = GPack.vbox ~packing:window#add ~border_width:12 ~spacing:12 () in
-  (* Header: warning icon + intro summary. Packed non-expanding, so it stays put. *)
-  let header = GPack.hbox ~packing:(outer#pack ~expand:false) ~spacing:10 () in
+  (* Header: warning icon + short bold headline. Packed non-expanding, so it stays put. *)
+  let header_box = GPack.hbox ~packing:(outer#pack ~expand:false) ~spacing:10 () in
   let () =
-    let img = GMisc.image ~packing:(header#pack ~expand:false) () in
+    let img = GMisc.image ~packing:(header_box#pack ~expand:false) () in
     img#set_file (Initialization.Path.images ^ "ico.warning.orig.png")
   in
   let _ =
     GMisc.label
-      ~markup:("<b>" ^ Glib.Markup.escape_text intro ^ "</b>")
+      ~markup:("<b>" ^ Glib.Markup.escape_text header ^ "</b>")
       ~xalign:0.0 ~line_wrap:true
-      ~packing:(header#pack ~expand:true ~fill:true) ()
+      ~packing:(header_box#pack ~expand:true ~fill:true) ()
+  in
+  (* Optional preamble: a longer sentence introducing the list, full width below the
+     headline. *)
+  let () =
+    match preamble with
+    | None -> ()
+    | Some text ->
+        let _ =
+          GMisc.label ~text ~xalign:0.0 ~line_wrap:true
+            ~packing:(outer#pack ~expand:false) ()
+        in ()
   in
   (* Height-capped scrollable list: this is what keeps CLOSE reachable no matter how many
      items there are. *)
