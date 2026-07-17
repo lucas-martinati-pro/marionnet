@@ -103,6 +103,10 @@ Reprise : appliquer le skill `chantier-long`.
   script SysV + `MARIONNET_SOCKET_NAME` supprimés ; gettext rafraîchi, 12×356/356 ;
   `marionnet_common` → `marionnet_base`). Doc admin : `docs/admin-taps-and-bridge.md`.
   Reste : ép. 5 optionnel (netns de session) ou clôture du chantier.
+- **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
+  avec `linux-3.2.64-ghost` sur hôte ≥ 6.x ; solution démontrée = UML récent `SUBARCH=i386`) :
+  `docs/retro-compatibilite-kernels-images.md` ; mémoire `marionnet-retro-compat-kernels-images` ;
+  `git log --grep="marionnet-retro-compat-kernels-images"`. Ép. 0 (étude) fait 2026-07-17.
 
 ## Où puiser
 

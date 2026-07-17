@@ -1,0 +1,141 @@
+Initializing cgroup subsys cpu
+Linux version 3.2.64 (jean@factotum) (gcc version 4.8.2 (Ubuntu 4.8.2-19ubuntu1) ) #1 Fri Nov 21 13:30:53 CET 2014
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 28595
+Kernel command line: console_no=1 numeric_TZ=+02:00 timezone=Europe/Paris eth0=daemon,02:04:06:b5:8d:62,unix,/tmp/marionnet-588798749.dir/hublet-1-socket-524698604/ctl ubda=/tmp/marionnet-588798749.dir/abc/states/61656-383-33707.cow,/usr/local/share/marionnet/filesystems/machine-debian-wheezy-08367 ubdb=/tmp/marionnet-588798749.dir/sparse-swap-765785120 mem=96M root=98:0 hostfs=/tmp/marionnet-588798749.dir/abc/hostfs/m1 hostname=m1 guestkind=machine eth42=tuntap,mtap2496284-0,42:42:96:c9:cb:22,172.23.0.254 debug_mode=true ssl=pts con=xterm
+Failed to set up console with configuration string "sole_no=1" : Couldn't parse device number
+PID hash table entries: 512 (order: -1, 2048 bytes)
+Dentry cache hash table entries: 16384 (order: 4, 65536 bytes)
+Inode-cache hash table entries: 8192 (order: 3, 32768 bytes)
+Memory: 89428k available
+NR_IRQS:15
+Calibrating delay loop... 8514.76 BogoMIPS (lpj=42573824)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512
+Initializing cgroup subsys devices
+Initializing cgroup subsys freezer
+Initializing cgroup subsys blkio
+Checking for host processor cmov support...Yes
+Checking that host ptys support output SIGIO...Yes
+Checking that host ptys support SIGIO on close...No, enabling workaround
+devtmpfs: initialized
+Using 2.6 host AIO
+NET: Registered protocol family 16
+bio: create slab <bio-0> at 0
+Switching to clocksource itimer
+NET: Registered protocol family 2
+IP route cache hash table entries: 1024 (order: 0, 4096 bytes)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes)
+TCP bind hash table entries: 4096 (order: 2, 16384 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP reno registered
+UDP hash table entries: 256 (order: 0, 4096 bytes)
+UDP-Lite hash table entries: 256 (order: 0, 4096 bytes)
+NET: Registered protocol family 1
+RPC: Registered named UNIX socket transport module.
+RPC: Registered udp transport module.
+RPC: Registered tcp transport module.
+RPC: Registered tcp NFSv4.1 backchannel transport module.
+mconsole (version 2) initialized on /home/jean/.uml/m1/mconsole
+Checking host MADV_REMOVE support...OK
+ubd: Synchronous mode
+UML Audio Relay (host dsp = /dev/sound/dsp, host mixer = /dev/sound/mixer)
+Host TLS support detected
+Detected host type: x86_64 (GDT indexes 12 to 15)
+VFS: Disk quotas dquot_6.5.2
+Dquot-cache hash table entries: 1024 (order 0, 4096 bytes)
+Installing knfsd (copyright (C) 1996 okir@monad.swb.de).
+NTFS driver 2.1.30 [Flags: R/W].
+ROMFS MTD (C) 2007 Red Hat, Inc.
+JFS: nTxBlock = 698, nTxLock = 5589
+SGI XFS with ACLs, security attributes, realtime, large block/inode numbers, no debug enabled
+OCFS2 1.5.0
+ocfs2: Registered cluster interface o2cb
+OCFS2 DLMFS 1.5.0
+OCFS2 User DLM kernel interface loaded
+OCFS2 Node Manager 1.5.0
+OCFS2 DLM 1.5.0
+msgmni has been set to 174
+Block layer SCSI generic (bsg) driver version 0.4 loaded (major 254)
+io scheduler noop registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+brd: module loaded
+loop: module loaded
+nbd: registered device at major 43
+bonding: Ethernet Channel Bonding Driver: v3.7.1 (April 27, 2011)
+tun: Universal TUN/TAP device driver, 1.6
+tun: (C) 1999-2004 Max Krasnyansky <maxk@qualcomm.com>
+PPP generic driver version 2.4.2
+PPP BSD Compression module registered
+PPP Deflate Compression module registered
+PPP MPPE Compression module registered
+NET: Registered protocol family 24
+SLIP: version 0.8.4-NET3.019-NEWTTY (dynamic channels, max=256) (6 bit encapsulation enabled).
+CSLIP: code copyright 1989 Regents of the University of California.
+SLIP linefill/keepalive option.
+aoe: AoE v47q initialised.
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (1397 buckets, 5588 max)
+ctnetlink v0.93: registering with nfnetlink.
+NF_TPROXY: Transparent proxy support initialized, version 4.1.0
+NF_TPROXY: Copyright (c) 2006-2007 BalaBit IT Ltd.
+xt_time: kernel timezone is -0000
+ip_set: protocol 6
+IPVS: Registered protocols ()
+IPVS: Connection hash table configured (size=4096, memory=32Kbytes)
+IPVS: Creating netns size=736 id=0
+IPVS: ipvs loaded.
+IPv4 over IPv4 tunneling driver
+ip_tables: (C) 2000-2006 Netfilter Core Team
+arp_tables: (C) 2002 David S. Miller
+TCP bic registered
+TCP cubic registered
+TCP westwood registered
+TCP highspeed registered
+TCP hybla registered
+TCP htcp registered
+TCP vegas registered
+TCP veno registered
+TCP scalable registered
+TCP lp registered
+Initializing XFRM netlink socket
+NET: Registered protocol family 10
+ip6_tables: (C) 2000-2006 Netfilter Core Team
+IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+Bridge firewalling registered
+Ebtables v2.0 registered
+8021q: 802.1Q VLAN Support v1.8
+sctp: Hash tables configured (established 4096 bind 8192)
+Initialized stdio console driver
+Console initialized on /dev/tty0
+console [tty0] enabled
+Initializing software serial port version 1
+Netdevice 0 (02:04:06:b5:8d:62) : daemon backend (uml_switch version 3) - unix:/tmp/marionnet-588798749.dir/hublet-1-socket-524698604/ctl
+console [mc-1] enabled
+Creating "/tmp/marionnet-588798749.dir/abc/states/61656-383-33707.cow" as COW file for "/usr/local/share/marionnet/filesystems/machine-debian-wheezy-08367"
+ ubda: unknown partition table
+ ubdb: unknown partition table
+Netdevice 42 (42:42:96:c9:cb:22) : 
+TUN/TAP backend - IP = 172.23.0.254
+VFS: Mounted root (ext2 filesystem) readonly on device 98:0.
+Stub registers -
+        0 - 261c87
+        1 - 13
+        2 - 261c87
+        3 - 261c7e
+        4 - 1c
+        5 - ffe85378
+        6 - 0
+        7 - 2b
+        8 - 2b
+        9 - 0
+        10 - 63
+        11 - 25
+        12 - 100080
+        13 - 23
+        14 - 292
+        15 - ffe8534c
+        16 - 2b
+wait_stub_done : failed to wait for SIGTRAP, pid = 2497683, n = 2497683, errno = 0, status = 0xb7f
