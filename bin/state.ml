@@ -510,7 +510,7 @@ class globalState = fun () ->
                 Printf.sprintf (f_ "%d automatic adjustment(s) were applied") (List.length ws)
               in
               let preamble =
-                s_ "To make this old project loadable on the current system, Marionnet adapted it as shown below. Click an item to see the details."
+                s_ "To make this old project loadable on the current system, Marionnet adapted it as shown below.\nClick an item to see the details."
               in
               Simple_dialogs.recapitulative
                 ~title:(s_ "Project adapted at loading")
