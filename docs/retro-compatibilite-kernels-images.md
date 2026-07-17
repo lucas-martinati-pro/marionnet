@@ -74,3 +74,15 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
   incompatible hôte 6.8, aucune parade lanceur), preuve de la solution : UML 6.12.95
   `SUBARCH=i386` boote wheezy et guignol jusqu'à `login:` (build ~2 min, boots ~1 min,
   COW jetables). Officialisation du chantier (doc + fiche mémoire + pointeur CLAUDE.md).
+- **2026-07-17 — épisode 1 (build reproductible + install)** : option `-i/--i386` dans
+  `uml/pupisto.kernel/pupisto.kernel.sh` — pour un noyau ≥ 5.x : config gelée
+  `uml/kernel/CONFIG-<ver>-i386` rejouée par `olddefconfig` si présente, sinon seed
+  `defconfig ARCH=um SUBARCH=i386` + EXT2/3/4, HOSTFS, UBD, `UML_NET{,_TUNTAP,_DAEMON}` ;
+  artefacts et répertoire `_build.*` suffixés `-i386` (la filière legacy < 5.x, déjà i386,
+  ignore l'option). Cibles `make <ver>-i386`, `make install`/`install-dry-run` + installeur
+  noyau seul `Makefile.d/install.last-built-kernel.sh` (pendant kernel-only de celui de
+  `pupisto.debian`). Config gelée `CONFIG-6.12.95-i386` versionnée (gcc 13.3). Preuves :
+  build 43 s ; rejeu de la config gelée → `.config` strictement identique ; wheezy
+  (`factotum login:`) et guignol (`buildroot login:`) bootent sur COW jetables ; installé
+  `/usr/local/share/marionnet/kernels/linux-6.12.95-i386{,.config}` aux côtés du x86_64.
+  (Pas encore visible dans la GUI : aucun `.conf` ne matche cet epithet avant l'épisode 2.)

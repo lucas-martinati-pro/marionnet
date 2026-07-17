@@ -17,15 +17,35 @@
 
 help:
 	@echo "Usage: make <KERNEL-VERSION>"
+	@echo "   or: make <KERNEL-VERSION>-i386   (modern kernel for the old 32-bit guest images)"
 	@echo "   or: make OPTIONS=--custom <KERNEL-VERSION>"
+	@echo "   or: make install         (last built kernel -> \$$PREFIX/share/marionnet/kernels)"
+	@echo "   or: make install-dry-run"
 	@echo "   or: make show_versions"
 	@echo "   or: make dependencies"
 	@echo "   or: make clean"
 	@echo "   or: make help"
 	@echo "Example: make 3.2.48"
+	@echo "Example: make 6.12.95-i386"
 
 2.% 3.% 4.% 5.% 6.%: dependencies
 	./pupisto.kernel.sh $(OPTIONS) $@
+
+# 32-bit (SUBARCH=i386) variant of a modern (>= 5.x) kernel, for the old i386
+# guest images (wheezy, guignol...). For such targets make prefers this rule
+# over the `6.%' one above (shorter stem), and `$*' is the plain version.
+%-i386: dependencies
+	./pupisto.kernel.sh $(OPTIONS) --i386 $*
+
+# Install the last built kernel (see also `make install' in ../pupisto.debian
+# for a whole kernel+image couple):
+PREFIX=/usr/local
+
+install:
+	./Makefile.d/install.last-built-kernel.sh --prefix $(PREFIX)
+
+install-dry-run:
+	./Makefile.d/install.last-built-kernel.sh --prefix $(PREFIX) --dry-run
 
 clean:
 	rm -rf _build.linux-*

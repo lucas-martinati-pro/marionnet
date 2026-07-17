@@ -47,7 +47,7 @@ shopt -s expand_aliases
 }
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hlsc"
+OPTSTRING="hlsci"
 
 function parse_cmdline {
 local i j flag
@@ -58,6 +58,9 @@ for i in "$@"; do
   else case "$i" in
     --custom)
       ARGS+=("-c");
+      ;;
+    --i386)
+      ARGS+=("-i");
       ;;
     --help)
       ARGS+=("-h");
@@ -143,10 +146,15 @@ The fourth synopsis allows this script to be sourced
 
 Options:
   -c/--custom    customize the kernel using 'make menuconfig'
+  -i/--i386      build a modern (>= 5.x) kernel with SUBARCH=i386, for the old
+                 32-bit guest images (artefacts get a \`-i386' suffix); the
+                 legacy < 5.x series is already built SUBARCH=i386, the option
+                 is then meaningless and ignored
 
 Example:
 $ ${0##*/} 3.4.22
 $ ${0##*/} 3.4.22 /tmp/_build.678HG234
+$ ${0##*/} --i386 6.12.95
 $ ${0##*/} -l
 $ source ${0##*/} -s"
  exit $1
@@ -170,6 +178,11 @@ fi
 # Option -c/--custom
 if [[ -n ${option_c} ]]; then
   CUSTOM_OPTION="--custom"
+fi
+
+# Option -i/--i386
+if [[ -n ${option_i} ]]; then
+  I386_OPTION="--i386"
 fi
 
 ####################################
@@ -266,6 +279,35 @@ function create_modern_kernel_config {
 }
 
 
+# Usage: create_modern_i386_kernel_config
+#
+# i386 counterpart of create_modern_kernel_config, for recent kernels (>= 5.x)
+# targeted at the OLD 32-bit guest images (wheezy, guignol...): UML has no
+# 32-bit guest emulation, so a dedicated SUBARCH=i386 kernel is required.
+# There is no frozen 32-bit base to seed from: start from the tree's own UML
+# defconfig and enable what Marionnet guests need (EXT2/3/4 root filesystems,
+# HOSTFS, UBD block devices, tuntap/daemon network transports), then settle
+# everything with olddefconfig. Recipe proven on 6.12.95 (work-stream
+# marionnet-retro-compat-kernels-images, episode 0).
+function create_modern_i386_kernel_config {
+ make mrproper
+ make mrproper ARCH=um
+ make defconfig ARCH=um SUBARCH=i386
+ {
+   echo 'CONFIG_EXT2_FS=y'
+   echo 'CONFIG_EXT3_FS=y'
+   echo 'CONFIG_EXT4_FS=y'
+   echo 'CONFIG_HOSTFS=y'
+   echo 'CONFIG_BLK_DEV_UBD=y'
+   echo 'CONFIG_UML_NET=y'
+   echo 'CONFIG_UML_NET_TUNTAP=y'
+   echo 'CONFIG_UML_NET_DAEMON=y'
+ } >> .config
+ make olddefconfig ARCH=um SUBARCH=i386
+ echo "Ok, modern i386 .config seeded from the tree's defconfig (ARCH=um SUBARCH=i386) and settled with olddefconfig"
+}
+
+
 # ----------------
 # Compilig kernels
 # ----------------
@@ -290,18 +332,32 @@ function get_our_marionnet_slash_uml_directory_path {
 # Example:
 # $ download_patch_and_compile_kernel 3.2.48 /tmp/_building_directory
 function download_patch_and_compile_kernel {
-local CUSTOM
-if [[ $1 = "-c" || $1 = "--custom" ]]; then
-  CUSTOM=y
-  shift
-fi
-# global CUSTOM
+local CUSTOM I386
+while true; do
+  case "$1" in
+    -c|--custom) CUSTOM=y; shift ;;
+    -i|--i386)   I386=y;   shift ;;
+    *) break ;;
+  esac
+done
 [[ $# -ge 1 ]] || return 1
 
 # For instance "3.2.48"
 local VERSION=$1
 local TWDIR=${2:-.}
 local DOWNLOADS_DIRECTORY=${3:-$PWD/_build.downloads}
+
+# The legacy < 5.x series is already built SUBARCH=i386 with unsuffixed
+# artefact names: --i386 only makes sense for modern kernels.
+if [[ $I386 = y ]] && (( ${VERSION%%.*} < 5 )); then
+  echo "Note: --i386 is meaningless for the legacy < 5.x series (already built SUBARCH=i386); ignoring."
+  I386=""
+fi
+local ARCH_SUFFIX="" SUBARCH_OPT=""
+if [[ $I386 = y ]]; then
+  ARCH_SUFFIX="-i386"
+  SUBARCH_OPT="SUBARCH=i386"
+fi
 
 # Before pushing, get our marionnet/uml/kernel directory:
 local OUR_KERNEL_DIR=$(get_our_marionnet_slash_uml_directory_path)/kernel
@@ -354,10 +410,12 @@ if [[ -z $FOUND ]]; then
 fi
 
 # Copy or generate .config from our repository
-# Priority: (1) a frozen exact CONFIG-$VERSION (reproducible), (2) for modern
-# kernels (>= 5.x) the modern base seed migrated with olddefconfig, (3) the
-# historical 2.6.18 merge for the legacy 3.x series.
-FOUND=$OUR_KERNEL_DIR/CONFIG-$VERSION
+# Priority: (1) a frozen exact CONFIG-$VERSION (reproducible; per-arch: the
+# i386 variant of a modern kernel freezes as CONFIG-$VERSION-i386), (2) for
+# modern kernels (>= 5.x) a seed migrated with olddefconfig (i386: the tree's
+# own defconfig; amd64: the modern base), (3) the historical 2.6.18 merge for
+# the legacy 3.x series.
+FOUND=$OUR_KERNEL_DIR/CONFIG-$VERSION$ARCH_SUFFIX
 if [[ -f $FOUND ]]; then
   echo "Using pre-built config file found at $FOUND"
   cp $FOUND .config
@@ -369,7 +427,7 @@ if [[ -f $FOUND ]]; then
   # symbols take their default. Modern kernels only; the legacy 3.x pipeline is
   # validated as-is with its matching trees.
   if (( ${VERSION%%.*} >= 5 )); then
-    make olddefconfig ARCH=um
+    make olddefconfig ARCH=um $SUBARCH_OPT
     # Make any divergence from the frozen config visible (reproducibility audit):
     if ! cmp -s .config $FOUND; then
       echo "Note: .config migrated by olddefconfig differs from the frozen $FOUND:"
@@ -380,6 +438,9 @@ if [[ -f $FOUND ]]; then
       fi
     fi
   fi
+elif (( ${VERSION%%.*} >= 5 )) && [[ $I386 = y ]]; then
+  echo "i386 config for $VERSION not frozen yet: seeding from the tree's defconfig (ARCH=um SUBARCH=i386)"
+  create_modern_i386_kernel_config
 elif (( ${VERSION%%.*} >= 5 )) && [[ -f $OUR_KERNEL_DIR/CONFIG-modern-base ]]; then
   echo "Config for $VERSION not frozen yet: seeding from CONFIG-modern-base and migrating with olddefconfig"
   create_modern_kernel_config $OUR_KERNEL_DIR/CONFIG-modern-base
@@ -413,18 +474,19 @@ fi
 local PROCESSOR_NO=$(\grep "^processor.*:" /proc/cpuinfo | sort | uniq | wc -l)
 
 # Launch the compilation with the virtual `um' architecture (ARCH). Modern
-# kernels (>= 5.x) build 64-bit UML (amd64): ARCH=um with NO SUBARCH, in parallel.
+# kernels (>= 5.x) build 64-bit UML (amd64): ARCH=um with NO SUBARCH, in
+# parallel — unless --i386 was asked, for the old 32-bit guest images.
 # The legacy 3.x series keeps the 32-bit `i386' host sub-architecture (SUBARCH).
 if (( ${VERSION%%.*} >= 5 )); then
-  make ARCH=um -j$PROCESSOR_NO
+  make ARCH=um $SUBARCH_OPT -j$PROCESSOR_NO
 else
   make ARCH=um SUBARCH=i386
 fi
 
-cp -a linux linux-${VERSION}${GHOST_SUFFIX}-unstripped
+cp -a linux linux-${VERSION}${GHOST_SUFFIX}${ARCH_SUFFIX}-unstripped
 strip linux
-ln linux linux-${VERSION}${GHOST_SUFFIX}
-cp .config linux-${VERSION}${GHOST_SUFFIX}.config
+ln linux linux-${VERSION}${GHOST_SUFFIX}${ARCH_SUFFIX}
+cp .config linux-${VERSION}${GHOST_SUFFIX}${ARCH_SUFFIX}.config
 echo -ls -l $PWD
 ls -l linux-*
 popd
@@ -522,7 +584,7 @@ DOWNLOADS_DIRECTORY=$WORKING_DIRECTORY/_build.downloads
 }
 
 set -x
-download_patch_and_compile_kernel $CUSTOM_OPTION $KERNEL_VERSION "$WORKING_DIRECTORY" "$DOWNLOADS_DIRECTORY"
+download_patch_and_compile_kernel $CUSTOM_OPTION $I386_OPTION $KERNEL_VERSION "$WORKING_DIRECTORY" "$DOWNLOADS_DIRECTORY"
 set +x
 
 function abspath {
@@ -534,7 +596,11 @@ function abspath {
 # If we are in the same directory of the script, we switch to a directory name
 # beginning with "_build." (according to the Makefile):
 if [[ $(dirname $(abspath $WORKING_DIRECTORY)) = $(dirname $(abspath "$0")) ]]; then
-  BUILT_DIR=_build.linux-${KERNEL_VERSION}.$(date +%Y-%m-%d.%H\h%M).$RANDOM
+  # The `-i386' infix (if any) makes 32-bit builds of the same version
+  # recognizable among the _build.* directories:
+  ARCH_SUFFIX=""
+  [[ -n $I386_OPTION ]] && (( ${KERNEL_VERSION%%.*} >= 5 )) && ARCH_SUFFIX="-i386"
+  BUILT_DIR=_build.linux-${KERNEL_VERSION}${ARCH_SUFFIX}.$(date +%Y-%m-%d.%H\h%M).$RANDOM
   echo "Moving \`$WORKING_DIRECTORY/linux-$KERNEL_VERSION' -> \`$WORKING_DIRECTORY/$BUILT_DIR'"
   mv $WORKING_DIRECTORY/linux-$KERNEL_VERSION $WORKING_DIRECTORY/$BUILT_DIR
   # Copy log:
