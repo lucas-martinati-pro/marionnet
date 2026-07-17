@@ -1,0 +1,56 @@
+# Ghostification netns + X11 relay for the OLD debian-wheezy image running on a
+# MODERN vanilla UML kernel (epithet linux-*-i386): no ghostification patch and no
+# usable `ethghost' there -- the embedded 2014 relay already tried it in vain.
+#
+# This file lives host-side, next to the image (filesystems/<image>.relay); the
+# OCaml side copies it into the guest's /mnt/hostfs (simulation_level.ml) and the
+# embedded relay of the image (2014, hook-capable) sources it at the END of its
+# start(), AFTER its own eth42/DISPLAY sections, whose effects are amended here.
+#
+# It is the retro-compat counterpart of architecture C, NATIVE to the Debian 13
+# relay (see uml/pupisto.debian/pupisto.debian.sh.files/marionnet-relay.trixie):
+# eth42 is GHOSTIFIED by moving it into the hidden netns `marionnet-mgmt'
+# (pedagogical masking: the student's `ip a'/`ifconfig' no longer lists it), and
+# a socat inside that netns exposes the guest display :0 (a pathname Unix socket,
+# visible across namespaces) and forwards each X connection over eth42 to the
+# host X bridge on ${host_display_ip}:6000. `host_display_ip' reaches the guest
+# via the hostfs boot_parameters, written by the OCaml side when the image .conf
+# says GHOSTIFICATION=netns (or by pupisto.tester -X).
+#
+# Wheezy (2012 userland) constraints, vs the trixie relay: iproute2-ss120521 has
+# `ip netns' but neither the `ip -n NS' shorthand nor systemd-run, hence the long
+# `ip netns exec' form and setsid. All verified in-guest by the ep.3 diagnostic
+# boot: netns add/move/exec, socat, and guest->host TCP over the moved eth42.
+#
+# Sourced in the bash context of the embedded relay's start(): $ip42,
+# $host_display_ip, $mit_magic_cookie_1 and append_line_if_needed() are in scope.
+# No `set -e' (sourced code); on ANY failure the machine is left in its previous
+# state -- eth42 visible and DISPLAY=172.23.0.254:0.0, degraded but functional.
+
+if [[ -z $ip42 || -z $host_display_ip ]]; then
+  echo "wheezy.relay: ip42/host_display_ip unset -- skipping ghostification." 1>&2
+elif ip netns add marionnet-mgmt 2>/dev/null && ip link set eth42 netns marionnet-mgmt; then
+  ip netns exec marionnet-mgmt ifconfig eth42 $ip42 netmask 255.255.0.0 up
+  ip netns exec marionnet-mgmt ifconfig lo up
+  mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+  setsid ip netns exec marionnet-mgmt \
+    socat UNIX-LISTEN:/tmp/.X11-unix/X0,fork,mode=0777 TCP:${host_display_ip}:6000 </dev/null &>/dev/null &
+  # Re-point DISPLAY to the local :0 socket now served by the socat above. The
+  # embedded relay has already appended `export DISPLAY=172.23.0.254:...' to the
+  # profile file and registered the xauth cookie on that name: amend both (the
+  # old cookie entry is left behind, harmless).
+  DISPLAY_VALUE=:0
+  if [[ -n "${mit_magic_cookie_1}" ]] && type -t xauth &>/dev/null; then
+    xauth add $DISPLAY_VALUE . ${mit_magic_cookie_1}
+  fi
+  for f in /etc/profile /etc/bash.bashrc /root/.bash_profile /root/.bashrc; do
+    if [[ -f $f ]]; then
+      sed -i -e '/^export DISPLAY=/d' $f
+      append_line_if_needed "export DISPLAY=$DISPLAY_VALUE" $f
+      break
+    fi
+  done
+  echo "wheezy.relay: eth42 ghostified (netns marionnet-mgmt), X11 relayed to ${host_display_ip}:6000, DISPLAY=$DISPLAY_VALUE"
+else
+  echo "wheezy.relay: netns ghostification failed -- eth42 left as is (DISPLAY over TCP)." 1>&2
+fi

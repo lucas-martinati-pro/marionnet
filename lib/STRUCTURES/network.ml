@@ -185,6 +185,11 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
   (* listen_socket initialization: *)
   let assigned_port =
     Unix.setsockopt listen_socket Unix.SO_REUSEADDR true;
+    (* The listening socket must not leak into exec'ed children (e.g. the xterm/
+       port-helper spawned for UML consoles): an orphan child inheriting it would
+       keep the port bound -- never accepting -- after this process dies, and any
+       further client connecting there would hang in its backlog forever: *)
+    (try Unix.set_close_on_exec listen_socket with Invalid_argument _ -> ());
     fix_IPV6_ONLY_if_needed ~domain listen_socket;
     bind listen_socket sockaddr;
     Unix.listen listen_socket max_pending_requests;

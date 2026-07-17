@@ -128,3 +128,46 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
     `DISPLAY=172.23.0.254:0.0`, eth42 montée non ghostifiée) — attendu : pas de patch
     ghost sur 6.12 et vieux relay embarqué ; c'est le périmètre de la ghostification/relais
     netns par hook `.relay` (épisode 3).
+- **2026-07-17 — épisode 3 (X11 invité→hôte + ghostification netns pour wheezy)** :
+  - **Cause racine du gel `xeyes` — PAS le noyau i386 ni le relay** : un `port-helper`
+    (uml-utilities) **orphelin** d'un run Marionnet mort squattait `0.0.0.0:6000` +
+    `[::]:6000` sur l'hôte. Il avait **hérité des sockets d'écoute X11 de
+    `marionnet.native`** (le pont `bin/x.ml`, cas 5 : `Network.Socat.dual_inet_of_stream_server`)
+    au `fork`/`exec` d'un xterm de console UML — fd non `CLOEXEC` — et leur backlog
+    contenait 3 connexions jamais `accept()`ées : les `xeyes` gelés de l'ép. 2 (handshake
+    TCP réussi, requête X jamais servie). Tué → port libéré.
+  - **Correctif durable (OCaml, ocamlbricks vendored)** : `Unix.set_close_on_exec` sur le
+    **socket d'écoute** dans `Network.server` (`lib/STRUCTURES/network.ml`) — l'idiome
+    existait déjà pour les sockets de service (forks de connexion) mais pas pour le
+    listener. Couvre tous les serveurs ocamlbricks (X11 6000, pts). À reporter dans le
+    projet amont ocamlbricks. `dune build` + `make install-for-testing` OK.
+  - **Diagnostic headless instrumenté** (réutilisable) : boot wheezy + `6.12.95-i386` sans
+    GUI (tap à la main + `timeout`, modèle `pupisto.tester -X`) avec un fichier de
+    diagnostic déposé dans le hostfs et **sourcé par le hook du relay embarqué 2014** —
+    preuve du hook et diagnostic en un boot. Verdict : ping et **TCP 6000 OK** à travers
+    la tap (noyau i386 innocenté), `ip netns` de wheezy (iproute2-ss120521)
+    add/move/exec **OK**, socat présent.
+  - **Hook `bin/filesystems/machine-debian-wheezy-08367.relay`** (versionné, copié dans le
+    hostfs par `simulation_level.ml` car trouvé à côté de l'image) : ghostification netns
+    façon archi C trixie adaptée au userland 2012 — forme longue `ip netns exec` (pas de
+    `ip -n`), `setsid` (pas de systemd-run) ; socat `X0 → TCP:${host_display_ip}:6000`
+    dans le netns ; réécriture `DISPLAY=:0` + xauth (le relay 2014 avait posé
+    `172.23.0.254:0.0`) ; en cas d'échec, statu quo (eth42 visible, DISPLAY TCP direct —
+    dégradé mais fonctionnel). **Preuve headless bout-en-bout** : eth42 absente du root ns,
+    active dans `marionnet-mgmt`, socat vivant, `DISPLAY=:0` posé, et une connexion au
+    socket invité `/tmp/.X11-unix/X0` ressort sur le listener hôte 6000 (`CHAIN-OK`).
+  - **Couplage installé** (patchs voyageant avec l'image, à rejouer si retéléchargée,
+    comme à l'ép. 2) : `.relay` copié dans `/usr/local/share/marionnet/filesystems/` et
+    `GHOSTIFICATION=netns` ajouté à `machine-debian-wheezy-08367.conf` → l'OCaml passe
+    `host_display_ip` en boot_parameters et ne lance pas le watcher X11 série
+    (`machine.ml`), exactement comme trixie. Inoffensif sous 3.2.64-ghost (wheezy n'a pas
+    de marionnet-dummy-xserver).
+  - **Guignol : pas de ghostification (décision)** : le hook est présent dans le
+    `S90marionnet-relay` embarqué 2017 (vérifié par `debugfs`, machine et router) donc le
+    mécanisme reste disponible, mais `X11_SUPPORT=none` (rien à réparer), l'`ip` busybox
+    n'a pas `netns`, et le **router** a besoin d'eth42 en root ns (telnet quagga
+    hôte→invité). eth42 reste donc visible dans guignol, comme aujourd'hui.
+  - **Preuve GUI finale** (run de Jean, install testing) : machine wheezy +
+    `6.12.95-i386` — `xeyes` affiché sur l'hôte, `ip a`/`ifconfig` sans eth42 dans
+    l'invité, arrêt propre ; log `relay script found for "debian-wheezy-08367"`
+    (le maillon « détection + copie du hook par l'OCaml » validé en situation).
