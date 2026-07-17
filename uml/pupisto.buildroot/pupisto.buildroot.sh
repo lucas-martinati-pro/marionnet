@@ -1070,14 +1070,16 @@ AUTHOR=$(awk </etc/passwd -F : '($1 == "'$USER'") {print $5}' | awk -F , '{print
 #  SUPPORTED_KERNELS  #
 #######################
 
-# Set SUPPORTED_KERNELS according to the compiled kernel:
+# Set SUPPORTED_KERNELS according to the compiled kernel. The regexp is
+# anchored: it accepts the plain and `-ghost' epithets of this version, but
+# not other variants (e.g. `-i386', meant for 32-bit userlands only):
 if [[ -z $option_r ]]; then
 # SUPPORTED_KERNELS='/.*-ghost/ ssl=xterm console=ttyS0'
-  SUPPORTED_KERNELS="/$KERNEL_VERSION/" # /../ =>  ghost or not
+  SUPPORTED_KERNELS="/$KERNEL_VERSION\(-ghost\)?\$/"
 else
   # With option --router the console must be 'none' except when the user
   # explicitely requires a unix terminal:
-  SUPPORTED_KERNELS="/$KERNEL_VERSION/" # /../ =>  ghost or not
+  SUPPORTED_KERNELS="/$KERNEL_VERSION\(-ghost\)?\$/"
 fi
 
 ##############################################

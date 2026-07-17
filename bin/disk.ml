@@ -70,15 +70,19 @@ module Filter = struct
  let ending_with_dot_conf =
    StrExtra.First.matchingp (Str.regexp "[.]conf[~]?$")
 
- let exclude_names_ending_with_dot_conf_or_dot_relay x =
-    not ((ending_with_dot_conf x) || (ending_with_dot_relay x))
+ (* `linux-*.config' companions installed in kernels/ next to each kernel: *)
+ let ending_with_dot_config =
+   StrExtra.First.matchingp (Str.regexp "[.]config[~]?$")
+
+ let exclude_companion_files x =
+    not ((ending_with_dot_conf x) || (ending_with_dot_config x) || (ending_with_dot_relay x))
 
 end (* Filter *)
 
  (** Read the given directory searching for names like [~prefix ^ "xxxxx"];
      return the list of epithets ["xxxxx"]. *)
 (* let read_epithet_list ?(name_filter=fun _ -> true) ~prefix ~dir () = *)
-let read_epithet_list ?(name_filter=Filter.exclude_names_ending_with_dot_conf_or_dot_relay) ~prefix ~dir () =
+let read_epithet_list ?(name_filter=Filter.exclude_companion_files) ~prefix ~dir () =
   let prefix_length = String.length prefix in
   let remove_prefix s = String.sub s prefix_length ((String.length s) - prefix_length) in
   let name_filter file_name =
@@ -342,7 +346,7 @@ class virtual_machine_installations
   (* The manager of all filesystem epithets: *)
   let filesystems : [`distrib] epithet_manager =
     new epithet_manager
-        ~filter:Filter.exclude_names_ending_with_dot_conf_or_dot_relay
+        ~filter:Filter.exclude_companion_files
         ~kind:`distrib
 	~prefix
 	~directory_searching_list:filesystem_searching_list
@@ -352,7 +356,7 @@ class virtual_machine_installations
   (* The manager of all kernel epithets: *)
   let kernels : [`kernel] epithet_manager =
     new epithet_manager
-        ~filter:Filter.exclude_names_ending_with_dot_conf_or_dot_relay
+        ~filter:Filter.exclude_companion_files
         ~kind:`kernel
         ~prefix:kernel_prefix
         ~directory_searching_list:kernel_searching_list

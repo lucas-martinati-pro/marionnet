@@ -43,8 +43,10 @@ function rename_with_sum_and_make_image_dot_conf {
  local DATE=$(date +%Y-%m-%d)
  local AUTHOR=$(awk </etc/passwd -F : '($1 == "'$USER'") {print $5}' | awk -F , '{print $1}')
 
- # Set SUPPORTED_KERNELS according to the compiled kernel:
- SUPPORTED_KERNELS="/$KERNEL_VERSION/" # /../ =>  ghost or not
+ # Set SUPPORTED_KERNELS according to the compiled kernel. The regexp is
+ # anchored: it accepts the plain and `-ghost' epithets of this version, but
+ # not other variants (e.g. `-i386', meant for 32-bit userlands only):
+ SUPPORTED_KERNELS="/$KERNEL_VERSION\(-ghost\)?\$/"
 
  # X11_SUPPORT and memory-related variables
  set_X11_SUPPORT_and_related_variables_according_to_choosed_packages

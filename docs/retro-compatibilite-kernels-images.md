@@ -86,3 +86,45 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
   (`factotum login:`) et guignol (`buildroot login:`) bootent sur COW jetables ; installé
   `/usr/local/share/marionnet/kernels/linux-6.12.95-i386{,.config}` aux côtés du x86_64.
   (Pas encore visible dans la GUI : aucun `.conf` ne matche cet epithet avant l'épisode 2.)
+- **2026-07-17 — épisode 2 (couplage GUI)** : les vieux couples sont sélectionnables et
+  bootent depuis la GUI.
+  - **`.conf` installés** (non versionnés — ils voyagent avec les images ; patch à rejouer
+    si une image est retéléchargée, et à reporter un jour côté serveur de téléchargement) :
+    dans `/usr/local/share/marionnet/filesystems/`,
+    `machine-debian-wheezy-08367.conf`, `machine-guignol-18474.conf` et
+    `router-guignol-18474.conf` passent de `SUPPORTED_KERNELS='/3.2.[6-9]/'` à
+    `SUPPORTED_KERNELS='/3.2.[6-9]/ /-i386$/'` (regexp **famille**, même esprit que
+    `/3.2.[6-9]/` : tout UML moderne i386 conviendra sans réédition) ; le statement est
+    **sans PARAMS console** : le repli OCaml « new pairs » (`bin/simulation_level.ml`,
+    `ssl=pts con=none con0..N-1=xterm` piloté par `console_no`) est le bon — un PARAMS
+    statique ne peut pas exprimer `conN=` dynamique. Sauvegardes pré-patch conservées dans
+    `/usr/local/share/marionnet/backups.retro-compat-ep2/` (PAS dans `filesystems/` : tout
+    fichier `machine-*`/`router-*` y devient un epithet de la GUI).
+  - **Effet de bord corrigé** : le match `SUPPORTED_KERNELS` est une recherche de
+    sous-chaîne non ancrée (`StrExtra.First.matchingp`), donc le `/6.12.95/` de trixie
+    matchait aussi `6.12.95-i386` (couple amd64/i386 non bootable proposé par la GUI) →
+    `machine-debian-trixie-47362.conf` ancré en `/6.12.95$/`, et les **générateurs**
+    écrivent désormais `/VERSION\(-ghost\)?$/` (`uml/pupisto.common/toolkit_image.sh`,
+    `uml/pupisto.buildroot/pupisto.buildroot.sh`) — accepte toujours « ghost ou pas »,
+    exclut les autres variantes.
+  - **Bug connexe corrigé (OCaml)** : les compagnons `linux-*.config` de `kernels/`
+    apparaissaient comme choix de noyau (le filtre n'excluait que `.conf`/`.relay`) →
+    `Filter.exclude_companion_files` dans `bin/disk.ml` exclut aussi `[.]config[~]?$`.
+  - **BOOT_QUIRKS vérifié, aucun changement OCaml** : wheezy/guignol sans `INIT_SYSTEM`
+    → `sysv` ; la table (OCaml `bin/simulation_level.ml` et bash `pupisto.tester`) n'a
+    d'entrée que pour `6.12:systemd` → aucun argument parasite (recap du testeur :
+    `boot quirks : 6.12:sysv -> <none>`).
+  - **Preuves** : regexps validées par table de vérité `Str` (`-i386$` matche
+    `6.12.95-i386` mais ni `6.12.95` ni `…-i386.config` ; `/6.12.95$/` exclut l'i386 ;
+    `\(-ghost\)?$` préserve la filière legacy `3.2.64-ghost`). Logs Marionnet (run GUI de
+    Jean, `/tmp/34`) : `Selected kernels for "debian-wheezy-08367" / "guignol-18474"
+    (machine et router) : [3.2.64-ghost 6.12.95-i386]`, trixie : `[6.12.95]` seul, plus
+    aucun epithet `*.config`. Boots GUI complets (tests de Jean) : wheezy +
+    `6.12.95-i386` → login `root`, `uname` → `Linux m1 6.12.95 i686` (`/tmp/35`), puis
+    guignol OK ; boot headless `pupisto.tester` jusqu'à `login:` pour wheezy (guignol
+    headless reste bloqué après « Initialized stdio console driver » sous le canal
+    `con0=fd:0,fd:1` du testeur — caprice du testeur, pas du couple : la GUI le boote).
+  - **Résiduel (→ épisode 3)** : X11 invité→hôte ne s'affiche pas (`xeyes` gelé,
+    `DISPLAY=172.23.0.254:0.0`, eth42 montée non ghostifiée) — attendu : pas de patch
+    ghost sur 6.12 et vieux relay embarqué ; c'est le périmètre de la ghostification/relais
+    netns par hook `.relay` (épisode 3).
