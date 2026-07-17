@@ -84,3 +84,4 @@ useful-scripts/*
 !useful-scripts/marionnet_from_scratch_weights_of_log
 !useful-scripts/prepare_bridge.sh
 !useful-scripts/which_ocamlbricks
+docs/daemon-elimination-final-report-about-X11-guest-support.pdf

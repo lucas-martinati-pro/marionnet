@@ -747,7 +747,7 @@ function echo_required_debian_packages {
    bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
-   coreutils findutils login procps gettext \
+   findutils login procps gettext \
    fonts-noto elementary-xfce-icon-theme \
    rlfe; # alternatives are rlwrap and ledit
    do
