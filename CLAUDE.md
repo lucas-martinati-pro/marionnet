@@ -85,8 +85,6 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-- **finitions du port dune** : `docs/finitions-port-dune.md` ; mémoire `marionnet-finitions-dune` ;
-  `git log --grep="marionnet-finitions-dune"`.
 - **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 pour lever le
   gel OCaml 4.13.1 et restaurer Merlin/LSP ; crux = `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire
   `marionnet-camlp4-ppx` ; `git log --grep="marionnet-camlp4-ppx"`. **NON entamé.**

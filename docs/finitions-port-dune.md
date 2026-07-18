@@ -1,5 +1,15 @@
 # Chantier « finitions du port dune » (`marionnet-finitions-dune`)
 
+> **CHANTIER CLOS (2026-07-18).** Périmètre 100 % atteint : les 4 points qualifiés à l'audit
+> (points 1-4 ci-dessous), le nettoyage du hybride make→dune (Phase A, ép. 1) et le couplage
+> i18n↔dune (ép. 6) sont tous faits et committés. **`dune build` seul suffit** désormais sur un
+> clone frais. Ce qui restait n'appartient plus à ce chantier : la **Phase B** (camlp4 → ppx,
+> levée du gel OCaml 4.13.1) a été **essaimée** en chantier distinct (`docs/camlp4-to-ppx.md`,
+> mémoire `marionnet-camlp4-ppx`) ; les **vestiges non confirmés** (gui.xml glade-2, `*.ml-template`,
+> `uml/startup.old/`, part de `Makefile.d/`, `bin/po/POTFILES.in`) relèvent de décisions séparées à
+> qualifier avec l'auteur. Ce document reste comme **archive durable** ; la fiche mémoire volatile a
+> été réduite à un renvoi. Historique complet : `git log --grep="marionnet-finitions-dune"`.
+
 Purger les vestiges du portage bzr/ocamlbuild → git/dune, qualifiés par l'auteur au
 checkpoint de l'audit du 2026-07-06 (`docs/audit-marionnet-20260706.md`, § I).
 
