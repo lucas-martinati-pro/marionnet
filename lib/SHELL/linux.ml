@@ -130,6 +130,14 @@ module Process = struct
         (Printf.kfprintf flush stderr "Linux.stat: failed scanning file %s: %s\n" filename msg; None)
     end
 
+ (* PIDs are recycled by the kernel: within a single boot, only the pair
+    (pid, starttime) identifies a process unambiguously. Deferred kills must
+    check this identity to avoid killing an unrelated process. *)
+ let is_same_process ~pid ~starttime =
+   match stat pid with
+   | Some s -> s.starttime = starttime
+   | None   -> false
+
  let easy_stat pid =
   let easy_stat_constructor pid comm state ppid pgrp session tty_nr tpgid other_fields =
     object

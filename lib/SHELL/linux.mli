@@ -237,6 +237,12 @@ module Process : sig
  (** Status information about the process. Implemented reading the file [/proc/<PID>/stat]. *)
  val stat : pid -> stat option
 
+ (** PIDs are recycled by the kernel: within a single boot, only the pair
+     (pid, starttime) identifies a process unambiguously ([starttime] is the
+     field 22 of [/proc/<PID>/stat]). Any kill decided on the basis of a PID
+     captured earlier should check this identity first. *)
+ val is_same_process : pid:pid -> starttime:int64 -> bool
+
  (** Status information about the process (simplified object-oriented data structure).
      Implemented as [stat] reading the file [/proc/<PID>/stat]. *)
  val easy_stat : pid -> easy_stat option

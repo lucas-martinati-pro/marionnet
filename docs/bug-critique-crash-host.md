@@ -169,13 +169,15 @@ en cours (terminer tout ? fermeture ?), `df -h` du répertoire temporaire de Mar
 
 ## 5. Pistes de correctifs (épisodes futurs, ordre suggéré)
 
-1. **C1 — identité des processus** : introduire dans `lib/SHELL/linux.ml` un
+1. **C1 — identité des processus** — **FAIT (épisode 1)** : introduire dans `lib/SHELL/linux.ml` un
    `is_same_process ~pid ~starttime` (relire `/proc/<pid>/stat`) et l'exiger **avant tout
    kill différé** ; corriger la GC de `descendants_monitor.ml` (vivant **et** même
    `starttime`, sinon retirer l'entrée) ; faire de même dans `kill_process_set`.
-2. **C1 — thread 30 s** : à l'échéance, re-scanner les descendants réels de `current_pid`
-   (s'il est encore le même processus) au lieu de rejouer la liste figée ; ou annuler le
-   thread quand la terminaison a réussi.
+2. **C1 — thread 30 s** — **FAIT (épisode 1)** : à l'échéance, revérifier l'identité
+   (pid, starttime) de `current_pid` et de chaque descendant capturé à T+0 avant tout
+   SIGKILL — une terminaison gracieuse réussie ne laisse plus rien à tuer. Reste un TOCTOU
+   résiduel (microsecondes) entre le test et le kill, irréductible sans `pidfd_send_signal`
+   (stub C) ; et le site 3 (`future.ml` `Control.make`, fenêtre courte) n'est pas traité.
 3. **C1 — cloisonnement** : étudier `setsid` au spawn (groupe de processus par composant),
    ce qui rendrait les kills bornables au groupe ; mesurer l'impact (xterm, mconsole, relais).
 4. **C2 — garde-fous ressources** : au démarrage d'une VM, comparer la somme des `mem=`
@@ -196,3 +198,13 @@ l'absence prolongée de récidive + la checklist § 4 valident).
   parallèles (sites kill, ressources hôte, cycle de vie), vérification manuelle de chaque
   point retenu, audit de l'image Docker `ubuntu-vnc-xfce-g3-marionnet` (20-04). Livrables :
   ce rapport (causes C1-C5, matrice, checklist, pistes). Aucun correctif appliqué.
+- **2026-07-18 — épisode 1** : correctif C1 « identité des processus » (pistes § 5.1-2).
+  Nouveau prédicat `Linux.Process.is_same_process ~pid ~starttime` (`lib/SHELL/linux.ml` +
+  `.mli`), exigé avant tout SIGKILL différé : GC et `kill_process_set` de
+  `bin/descendants_monitor.ml` (une entrée au PID recyclé est retirée au lieu de rester
+  tuable indéfiniment) ; thread 30 s de `uml_process#gracefully_terminate`
+  (`bin/simulation_level.ml` : capture de couples (pid, starttime) à T+0, identité
+  revérifiée à l'échéance pour la racine et chaque descendant). Vérifié : `dune build` rc 0 ;
+  test comportemental du prédicat (vivant→true, starttime falsifié→false, tué+récolté→false).
+  Hors périmètre (épisodes futurs) : `future.ml` `Control.make`, setsid, C2/C4/C5 ;
+  le bug étant rare, seule l'absence prolongée de récidive validera (piège § 5 in fine).

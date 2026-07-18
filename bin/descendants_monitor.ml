@@ -35,7 +35,10 @@ let start_monitor_and_get_kill_method ?(pid=Unix.getpid ()) ?(wake_up_interval=4
       List.iter (fun elt -> Process_set.add elt pset) xs ;
       let () =
 	if garbage_collection then
-	  Process_set.filter (fun (pid,_starttime) -> UnixExtra.is_process_alive pid) pset
+          (* Alive is not enough: a recycled pid must be removed, otherwise it would
+             stay in the set forever and receive a SIGKILL at exit (the monitor will
+             re-add the new pair (pid, starttime') if it is really a descendant). *)
+	  Process_set.filter (fun (pid,starttime) -> Linux.Process.is_same_process ~pid ~starttime) pset
       in
       Log.printf1 ~v:2 "Descendants monitor: %d descendants currently observed\n" (Process_set.cardinal pset);
     end
@@ -51,10 +54,10 @@ let start_monitor_and_get_kill_method ?(pid=Unix.getpid ()) ?(wake_up_interval=4
   let _ = Thread.create (loop) 0 in
   (* Method provided to the main thread: *)
   let kill_process_set () =
-    let kill_action (pid,_starttime) =
-      begin
-        try Unix.kill pid Sys.sigkill with _ -> ();
-      end
+    let kill_action (pid,starttime) =
+      if Linux.Process.is_same_process ~pid ~starttime
+        then (try Unix.kill pid Sys.sigkill with _ -> ())
+        else Log.printf1 "Descendants monitor: pid %d not killed (already gone or recycled by the kernel)\n" pid
     in
     apply_with_mutex (Process_set.iter kill_action) pset
   in

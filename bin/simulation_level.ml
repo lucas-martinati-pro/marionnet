@@ -1097,7 +1097,17 @@ class uml_process =
    (* --- *)
    | Some current_pid ->
        Log.printf2 "Simulation_level: %s#gracefully_terminate: about to terminate !!! the UML process with pid %d...\n" umid current_pid;
-       let descendants : int list = Linux.Process.get_descendants ~pid:current_pid () in
+       (* PIDs are recycled by the kernel: capture (pid, starttime) pairs now, and
+          re-check this identity at the 30 s deadline before any deferred SIGKILL —
+          otherwise a kill decided now may hit an unrelated process later. *)
+       let descendants : (int * int64) list =
+         List.map
+           (fun s -> (s.Linux.Process.pid, s.Linux.Process.starttime))
+           (Linux.Process.get_descendant_stats ~pid:current_pid ())
+       in
+       let current_starttime : int64 option =
+         Option.map (fun s -> s.Linux.Process.starttime) (Linux.Process.stat current_pid)
+       in
        (* We set here a sort of timeout: we will wait no more than 30 seconds to kill the whole hierarchy.
           This is very ugly, but needed: sometimes uml_console succeeds when sending a 'cad'
           message, but the UML process is just in an early stage of boot, and ignores the
@@ -1106,11 +1116,16 @@ class uml_process =
          Thread.create
            begin fun delay ->
               (Thread.delay delay);
-              (if UnixExtra.is_process_alive (current_pid)
-                then self#kill_descendants_then_myself ~pid:current_pid
-                else ());
+              (match current_starttime with
+               | Some starttime when Linux.Process.is_same_process ~pid:current_pid ~starttime ->
+                   self#kill_descendants_then_myself ~pid:current_pid
+               | _ -> ());
               (* Kill anyway remaining descendants which may be now orphan: *)
-              (List.iter (fun pid -> try Unix.kill pid Sys.sigkill with _ -> ()) descendants);
+              (List.iter
+                 (fun (pid, starttime) ->
+                    if Linux.Process.is_same_process ~pid ~starttime
+                      then (try Unix.kill pid Sys.sigkill with _ -> ()))
+                 descendants);
            end
            (30.) (* timeout: no more than 30 seconds *)
        in
