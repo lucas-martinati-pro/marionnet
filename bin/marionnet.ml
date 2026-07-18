@@ -38,6 +38,26 @@ module StackExtra = Ocamlbricks.StackExtra
 (* open Gui *)
 open Gettext
 (* --- *)
+
+(* Isolate Marionnet and its whole descendance in a new session, detached from the
+   launching terminal / process group: a stray terminal signal (Ctrl-C) or a group-
+   directed signal from the outside can no longer reach the process tree. This is
+   defense-in-depth (kills are per-PID, hence session-independent) and daemon hygiene
+   for the future scriptable/service direction. setsid(2) fails with EPERM when we are
+   already a process-group leader (typical interactive job-control shell launch); we
+   then keep the status quo. No fork -> the PID stays stable (lifecycle by PID).
+   Placed here on purpose: still single-threaded, before GTK and the global state. *)
+let () =
+  try
+    let sid = Unix.setsid () in
+    Log.printf1 "marionnet: new session started (sid=%d); process tree isolated from the launching terminal/group.\n" sid
+  with
+  | Unix.Unix_error (Unix.EPERM, _, _) ->
+      Log.printf "marionnet: setsid skipped (already a process-group leader, e.g. interactive shell); tree stays in the launcher session.\n"
+  | e ->
+      Log.printf1 "marionnet: setsid failed unexpectedly (%s); continuing without session isolation.\n" (Printexc.to_string e)
+
+(* --- *)
 let () = Log.printf1 "Loading module bin/marionnet.ml: cwd: %s\n" (Sys.getcwd ())
 
 (* Enter the right directory: *)

@@ -181,8 +181,17 @@ en cours (terminer tout ? fermeture ?), `df -h` du répertoire temporaire de Mar
    capturé à la création du contrôle, identité revérifiée avant chacun des deux SIGKILL du
    kill par défaut (lecteur `/proc` local à `future.ml` : le cycle de modules
    Linux → Forest → Future interdit d'y réutiliser `Linux.Process.is_same_process`).
-3. **C1 — cloisonnement** : étudier `setsid` au spawn (groupe de processus par composant),
-   ce qui rendrait les kills bornables au groupe ; mesurer l'impact (xterm, mconsole, relais).
+3. **C1 — cloisonnement** — **FAIT (épisode 3, forme A « globale »)** : Marionnet fait
+   `Unix.setsid()` en tête (`bin/marionnet.ml`, avant GTK), plaçant **tout l'arbre** dans une
+   nouvelle session détachée du terminal/groupe de lancement — un signal parasite de l'extérieur
+   (Ctrl-C terminal, signal dirigé au groupe) n'atteint plus l'arbre. Sans fork ⇒ **PID stable**
+   (compatible pilotage par PID / future scriptabilité) ; toléré-`EPERM` (lancement shell
+   interactif = chef de groupe : isolation sautée + journalisée, statu quo). Le variant « B »
+   (fork + superviseur, isolation garantie même en terminal) a été **écarté** : son indirection
+   de PID casserait le pilotage par PID d'un futur automate et se heurterait au modèle service
+   (self-fork = anti-pattern systemd). Reste **hors périmètre** (non nécessaire) : le « groupe
+   **par composant** » (setsid au *spawn* de chaque device) pour des kills bornés au groupe —
+   les kills restent per-PID et déjà gardés par `(pid, starttime)`.
 4. **C2 — garde-fous ressources** : au démarrage d'une VM, comparer la somme des `mem=`
    (+ marge) à `MemAvailable` et avertir ; détecter un répertoire temporaire tmpfs et
    avertir/refuser selon la capacité (`df`).
@@ -222,3 +231,31 @@ l'absence prolongée de récidive + la checklist § 4 valident).
   comportemental sous `strace -e trace=kill` — cible vivante bien tuée (2× SIGKILL),
   **aucun** SIGKILL émis vers un PID mort avant ou après la création du contrôle.
   Les trois sites C1 identifiés à l'épisode 0 sont désormais tous gardés.
+- **2026-07-18 — épisode 3** : cloisonnement §5.3, **forme « globale A »** (isolation de session
+  de l'arbre, pas « un groupe par composant »). `bin/marionnet.ml` fait `Unix.setsid()` en tête
+  (après les alias de modules, **avant** `Sys.chdir`/GTK/`State.globalState` — processus encore
+  mono-thread), **sans fork**, toléré-`EPERM`, non-fatal : sous lancement non-chef-de-groupe
+  (menu/service/automate) une nouvelle session naît et toute la descendance en hérite → l'arbre
+  est détaché du terminal/groupe de lancement ; sous shell interactif (chef de groupe) `EPERM`
+  est capturé et l'on garde le statu quo (journalisé). Choix **A vs B** tranché par la direction
+  future « Marionnet scriptable/service » : A garde le **PID stable** (primitive de cycle de vie
+  d'un automate) et reste compatible superviseur (systemd) ; B (fork+superviseur) casserait le
+  pilotage par PID et double-forkerait sous systemd — écarté. **Honnêteté** : C1 étant clos et
+  les kills restant *per-PID* (insensibles à la session), c'est de la **défense en profondeur /
+  hygiène de démon**, pas le correctif d'un vecteur de crash identifié (aucun `kill 0`/`killpg`
+  dans le code ; `uml_mconsole` par socket nommé, walk `/proc`/ppid, `stop/continue/terminate`
+  per-PID → tous inchangés). Vérifié : `dune build` rc 0 ; preuve fraîche hors GUI (sonde OCaml
+  reproduisant le chemin) des **deux** branches — succès : session `L → sid=PID`, enfant `fork`
+  héritant la nouvelle session (`inherited=true`) ; `EPERM` : capturé, exécution poursuivie.
+  **Fumée GUI faite** (run réel `DISPLAY=:0`, lancement non-chef-de-groupe via wrapper
+  fork-exec) : `ps -o pid,ppid,pgid,sid,tty` du process vivant → `marionnet.exe` avec
+  **`SID = PGID = PID` et `TT = ?`** (nouvelle session, aucun terminal de contrôle) + log
+  « new session started (sid=…) » ; run maintenu ~10 s avec **quit propre** (`state#quit: done`,
+  `at_exit: killing all current descendants`) ⇒ chemin d'arrêt inchangé. La session ne liste
+  que `marionnet.exe` (aucune VM démarrée : les processus composant n'apparaissent qu'avec une
+  machine lancée — leur héritage du `sid` est garanti par le noyau et déjà prouvé par la sonde).
+  Confirmé aussi **sur ton lancement interactif** `marionnet.native -d` : log « setsid skipped
+  (already a process-group leader, e.g. interactive shell) » — **branche EPERM attendue**, statu
+  quo (le shell rend Marionnet chef de groupe). Observations pré-existantes sans lien : le
+  handler SIGTERM (`marionnet.ml:405-415`) absorbe SIGTERM (d'où SIGKILL au nettoyage) ; au
+  shutdown, `Ocamlbricks.Network.Accepting(_)` sur les threads d'accept (teardown, hors setsid).
