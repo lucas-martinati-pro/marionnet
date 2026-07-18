@@ -105,6 +105,11 @@ Reprise : appliquer le skill `chantier-long`.
   compréhensible en GUI ; direction : NAT privé auto par défaut + L2 réel en option experte) :
   `docs/modernisation-world-bridge.md` ; mémoire `modernisation-world-bridge` ;
   `git log --grep="modernisation-world-bridge"`. Ép. 0-1 faits 2026-07-18.
+- **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
+  physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
+  causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
+  `docs/bug-critique-crash-host.md` ; mémoire `bug-critique-crash-host` ;
+  `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18.
 
 ## Où puiser
 
