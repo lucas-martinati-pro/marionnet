@@ -18,12 +18,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Script version: 0.98.3
-# 2023.07.30
+# 2025.02.14
 
 # Thanks:
 # - Lucas Nussbaum for the idea of option "--download-only/-O",
 #   and for his patch proposal (July 2013)
-
+### TO_BE_REMOVED:
+### exit 0
 set -e
 shopt -s nullglob
 shopt -s expand_aliases
@@ -82,7 +83,7 @@ COMMAND_LINE="$(realpath $COMMAND_LINE) "$@""
 # =============================================================
 
 # Getopt's format used to parse the command line:
-OPTSTRING="hp:s:m:t:kd:v:y:VDKFTAOc:"
+OPTSTRING="hp:s:m:t:kd:v:Y:VDKFTAOyc:"
 
 function parse_cmdline {
 local i j flag
@@ -136,8 +137,11 @@ for i in "$@"; do
     --prefix)
      ARGS+=("-p");
      ;;
-    --proxy|--http-proxy)
+    --yes)
      ARGS+=("-y");
+     ;;
+    --proxy|--http-proxy)
+     ARGS+=("-Y");
      ;;
     --tmpdir)
      ARGS+=("-t");
@@ -213,12 +217,13 @@ Options:
   -t, --tmpdir PATH		Set the temporary working directory
   -c, --continue PATH		Continue execution started in PATH
   -k, --keep-debris		Don't clean temporary files when exiting
+  -y, --yes			Answer yes to all questions
   -h				Print this message and exit
   -s, --series VERSION		Set marionnet's series (may be '0.90.x', '0.94.x' or 'trunk')
   -m, --marionnet VERSION	Set marionnet's version
   -v, --vde VERSION             Set vde2's version
   -d, --dot VERSION 		Set dot's (graphviz) version
-  -y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
+  -Y, --proxy IP:PORT	        Set an (http/https) proxy for downloading (wget)
   -V, --no-vde			Do nothing about vde
   -D, --no-dot			Do nothing about dot (graphviz)
   -K, --no-kernels 		Don't download kernels
@@ -301,9 +306,14 @@ else
  KEEP_DEBRIS=no
 fi
 
-# Option -y, --proxy
+# Option -y, --yes
 if [[ -n ${option_y} ]]; then
- HTTP_PROXY_IP_PORT="${option_y_arg#http://}"
+ ANSWER_YES=y
+fi
+
+# Option -Y, --proxy
+if [[ -n ${option_Y} ]]; then
+ HTTP_PROXY_IP_PORT="${option_Y_arg#http://}"
  # ---
  # Environment variables used by `wget':
  export http_proxy="http://${HTTP_PROXY_IP_PORT}/"
@@ -744,7 +754,7 @@ function echo_required_debian_packages {
  # ---
  # NOTE: `fonts-noto' provides some unicode characters used in the Marionnet GUI
  for i in \
-   bzr opam liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
+   bzr liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev \
    libtool bridge-utils coreutils debianutils diffutils \
    net-tools util-linux x11-xserver-utils \
    findutils login procps gettext \
@@ -768,15 +778,15 @@ function echo_required_debian_packages {
    }
  fi
 
- # In Ubuntu >= 18, x86_64 => libc6:i386
+ # In Ubuntu >= 22, x86_64 => libc6:i386
  # Note here ":" instead of "-". The package libc6-i386 appears to have been split into two distinct
  # packages: libc6-i386 to compile for an i386 target, and libc6:i386 to execute i386 code in a x86_64 system.
- if are_we_in_ubuntu_version_or_greater "18"; then
+ if are_we_in_ubuntu_version_or_greater "22"; then
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6:i386; then
     if ! is_package_installed "libc6:i386"; then LIST+="libc6:i386 "; fi
   fi 1>&2
  else
-  # Not in Ubuntu >= 18, x86_64 => libc6-i386
+  # Not in Ubuntu >= 22, x86_64 => libc6-i386
   if type uname && [[ $(uname -m) = "x86_64" ]] && ! is_package_installed libc6-i386; then
     if ! is_package_installed "libc6-i386"; then LIST+="libc6-i386 "; fi
   fi 1>&2
@@ -928,6 +938,11 @@ if [[ $DOWNLOAD_ONLY = yes ]]; then
   exit 0
 fi
 
+# Automatically answers "y" if required by global option -y or --yes:
+function yes_or_read {
+  if [[ $ANSWER_YES = y ]]; then eval $1="y"; echo y; else eval read $1; fi
+}
+
 if are_we_in_debian_or_derived; then
   echo "* This looks like a Debian or derived distribution. Oh, joy!"
   # It's a joy but we have to workaround some security choices:
@@ -939,7 +954,7 @@ if are_we_in_debian_or_derived; then
   if [[ -n ${DEBIAN_PACKAGE_LIST%% } ]]; then
     echo "  Required packages: $DEBIAN_PACKAGE_LIST"
     echo -n "  Shall I install required package(s) with apt ([y]/n)? "
-    read z
+    yes_or_read z
     if [[ $z != n && $z != N ]]; then
       MSG="Installing required packages with apt"
       ensure_sudo_or_continue_as_root "* $MSG"
@@ -958,7 +973,7 @@ if are_we_in_debian_or_derived; then
 	fi
       fi
       # We set the option `--do-not-register-as-done' because sometimes a single call to apt is not sufficient to install all things...
-      launch_and_log --do-not-register-as-done --sudo "$MSG" "apt -y install $DEBIAN_PACKAGE_LIST"
+      launch_and_log --do-not-register-as-done --sudo "$MSG" "apt install -y --no-install-recommends $DEBIAN_PACKAGE_LIST"
       DISABLE_libc6_i386_WARNING=yes
     fi # answered yes
   fi # package list not empty
@@ -978,6 +993,9 @@ fi
 
 # ---
 cd marionnet
+# ---
+# Accept 'overlay' as filesystem type for the /tmp directory:
+sed -i -e 's@xiafs@xiafs overlay@' ./bin/scripts/can-directory-host-sparse-files.sh
 # ---
 sed -i -e "s@^prefix=.*@prefix=$PREFIX@" ./CONFIGME
 # cat >CONFIGME <<EOF
@@ -1217,6 +1235,12 @@ DAEMON=\$(type -p marionnet-daemon.native || type -p marionnet-daemon.byte) || {
   exit 1
 }
 
+function prevent_bug_when_slash_dev_is_a_tmp_directory {
+  mkdir -p /dev/net
+  [[ -e /dev/net/tun ]] || mknod /dev/net/tun c 10 200
+  chmod a+rw /dev/net/tun
+}
+
 function killall_marionnet_daemon {
  ps -u 0 -o pid,cmd | awk '\$2 ~ /marionnet-daemon/ {print \$1}' | while read pid; do kill -9 \$pid; done
 }
@@ -1236,7 +1260,8 @@ case "\$1" in
     exit 0
   else
     echo -n "Starting the marionnet daemon..."
-    \$DAEMON >/dev/null 2>/dev/null &
+    prevent_bug_when_slash_dev_is_a_tmp_directory
+    \$DAEMON >/dev/null 2>/var/log/\$(basename \$DAEMON).errors &
   fi
   echo " Ok"
   ;;
@@ -1267,6 +1292,7 @@ $SUDO_OR_NOTHING mv -f $TMPFILE $1
 function install_the_marionnet_daemon_script {
 # global INIT_DIR
 generate_the_marionnet_daemon_script $INIT_DIR/marionnet-daemon
+# ---
 local RC_DIRS i
 RC_DIRS=$(for i in /etc/rc[2-5S].d /etc/*/rc[2-5S].d/ /etc/*/*/rc[2-5S].d ; do
   [[ -d $i ]] && B=$(basename $i) && echo "$B $i $B"
@@ -1324,12 +1350,12 @@ elif [[ -f $INIT_DIR/marionnet-daemon ]]; then
 else
   echo "* Installing daemon:"
   echo -n "  Shall I install the marionnet daemon in your runlevels ([y]/n)? "
-  read z
+  yes_or_read z
   if [[ $z != n && $z != N ]]; then
     ensure_sudo -p "  Required the [sudo] password for %u:"
     echo -n "  Installing the marionnet daemon ..."
     install_the_marionnet_daemon_script
-    [[ -e /dev/net/tun ]] || $SUDO_OR_NOTHING mknod /dev/net/tun c 10 200
+    [[ -e /dev/net/tun ]] || { $SUDO_OR_NOTHING mkdir -p /dev/net; $SUDO_OR_NOTHING mknod /dev/net/tun c 10 200; }
     $SUDO_OR_NOTHING chmod a+rw /dev/net/tun
     if [[ -f /etc/modules.conf ]]; then
       append_line_if_needed "alias char-major-10-200 tun" /etc/modules.conf
@@ -1473,7 +1499,7 @@ if [[ $MARIONNET_SERIES = "0.90.x" ]]; then
   echo "* Warning: your X server has been launched with the option '-nolisten tcp'"
   echo "  => This option should be removed from your X display manager configuration."
   echo -n "     Shall I try to fix it ([y]/n)? "
-  read z
+  yes_or_read z
   if [[ $z != n && $z != N ]]; then
     if adjust_X_display_manager; then
       echo "     Ok. File(s) changed: $CHANGED_FILES"
@@ -1515,7 +1541,7 @@ if are_we_in_ubuntu_version_or_greater "11"; then
      echo -n "     Shall I add this line to your ~/.bashrc ([y]/n)? "
      ;;
   esac
-  read z
+  yes_or_read z
   if [[ $z != n && $z != N ]]; then
     append_line_if_needed "alias marionnet='UBUNTU_MENUPROXY=0 marionnet'" $DEST
   fi
@@ -1526,7 +1552,11 @@ fi
  # Source: https://askubuntu.com/questions/1318002/why-are-all-button-and-menu-icons-gone
  if are_we_in_ubuntu_version_or_greater "20"; then
    if type -t gsettings 1>&2; then
-     gsettings set org.gnome.settings-daemon.plugins.xsettings overrides "{'Gtk/ButtonImages': <1>, 'Gtk/MenuImages': <1>}"
+     SCHEMAS_DIR=/usr/share/glib-2.0/schemas/
+     SCHEMA=org.gnome.settings-daemon.plugins.xsettings
+     if [[ -e $SCHEMAS_DIR/$SCHEMA ]]; then
+       gsettings set $SCHEMA overrides "{'Gtk/ButtonImages': <1>, 'Gtk/MenuImages': <1>}"
+     fi
    fi
  fi
 
@@ -1546,7 +1576,7 @@ if are_we_in_ubuntu_12_04 && is_the_packaged_vde2_version_lt_2_3_0; then
   echo "  => The problem may be solved installing a vde2 backport (Virtualization)"
   echo "     (see: https://launchpad.net/~pdffs/+archive/precise-virt)"
   echo -n "     Shall I install the vde2 backport ([y]/n)? "
-  read z
+  yes_or_read z
   if [[ $z != n && $z != N ]]; then
     launch_and_log --sudo "Installing vde2 backport for Ubuntu 12.04" "add-apt-repository -y ppa:pdffs/precise-virt && { apt update; apt install -y vde2; }"
   fi
@@ -1592,7 +1622,7 @@ else
      echo -n "     Shall I add this line to your ~/.bashrc ([y]/n)? "
      ;;
  esac
- read z
+ yes_or_read z
  if [[ $z != n && $z != N ]]; then
    append_line_if_needed "export PATH=$PREFIX/bin:$PREFIX/sbin:\$PATH" $DEST
  fi
