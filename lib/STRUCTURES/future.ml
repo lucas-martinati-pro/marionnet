@@ -412,20 +412,46 @@ module Control = struct
    and tid = int (* current thread identifier *)
    and protected_kill = (unit -> unit)
 
+  (* Minimal reader of the starttime field (22) of /proc/<pid>/stat. Local to this
+     module because the equivalent Linux.Process.is_same_process (lib/SHELL) cannot
+     be used here: Linux depends on Forest which depends on Future (module cycle).
+     The comm field (2) may contain spaces/parentheses: parse after the LAST ')'. *)
+  let proc_starttime pid =
+    try
+      let ic = open_in (Printf.sprintf "/proc/%d/stat" pid) in
+      let line = (try input_line ic with e -> (close_in ic; raise e)) in
+      let () = close_in ic in
+      let i = Stdlib.String.rindex line ')' in
+      let rest = Stdlib.String.sub line (i+2) (Stdlib.String.length line - i - 2) in
+      let fields = Stdlib.String.split_on_char ' ' rest in
+      (* rest starts at field 3 (state) => starttime (22) is at index 19: *)
+      Some (Int64.of_string (Stdlib.List.nth fields 19))
+    with _ -> None
+
   let make ?(pid=Unix.getpid ()) ?kill () =
     let tid = Thread.id (Thread.self ()) in
     let kill =
       match kill with
       | Some f -> Fork_implementation.protect f
       | None ->
+         (* PIDs are recycled by the kernel: only the pair (pid, starttime) identifies
+            a process unambiguously. Capture the starttime now (the caller has just
+            forked pid), and require the same identity before each deferred SIGKILL;
+            if the process is already unreadable now, never kill blindly later.
+            A microseconds TOCTOU remains between check and kill (irreducible
+            without pidfd_send_signal). *)
+         let starttime = proc_starttime pid in
          (fun () ->
             let my_pid = Unix.getpid () in
             if pid = my_pid then () else (* continue: *)
-            try
-              Unix.kill pid Sys.sigkill;
-              Thread.delay 0.1;
-              Unix.kill pid Sys.sigkill
-            with _ -> ())
+            match starttime with
+            | None -> ()
+            | Some _ ->
+                try
+                  if proc_starttime pid = starttime then Unix.kill pid Sys.sigkill;
+                  Thread.delay 0.1;
+                  if proc_starttime pid = starttime then Unix.kill pid Sys.sigkill
+                with _ -> ())
     in
     (pid, tid, kill)
 

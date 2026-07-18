@@ -177,7 +177,10 @@ en cours (terminer tout ? fermeture ?), `df -h` du répertoire temporaire de Mar
    (pid, starttime) de `current_pid` et de chaque descendant capturé à T+0 avant tout
    SIGKILL — une terminaison gracieuse réussie ne laisse plus rien à tuer. Reste un TOCTOU
    résiduel (microsecondes) entre le test et le kill, irréductible sans `pidfd_send_signal`
-   (stub C) ; et le site 3 (`future.ml` `Control.make`, fenêtre courte) n'est pas traité.
+   (stub C). Le site 3 (`future.ml` `Control.make`) est **FAIT (épisode 2)** : `starttime`
+   capturé à la création du contrôle, identité revérifiée avant chacun des deux SIGKILL du
+   kill par défaut (lecteur `/proc` local à `future.ml` : le cycle de modules
+   Linux → Forest → Future interdit d'y réutiliser `Linux.Process.is_same_process`).
 3. **C1 — cloisonnement** : étudier `setsid` au spawn (groupe de processus par composant),
    ce qui rendrait les kills bornables au groupe ; mesurer l'impact (xterm, mconsole, relais).
 4. **C2 — garde-fous ressources** : au démarrage d'une VM, comparer la somme des `mem=`
@@ -208,3 +211,14 @@ l'absence prolongée de récidive + la checklist § 4 valident).
   test comportemental du prédicat (vivant→true, starttime falsifié→false, tué+récolté→false).
   Hors périmètre (épisodes futurs) : `future.ml` `Control.make`, setsid, C2/C4/C5 ;
   le bug étant rare, seule l'absence prolongée de récidive validera (piège § 5 in fine).
+- **2026-07-18 — épisode 2** : correctif C1 sur le site 3, dernier kill différé sans garde
+  (`lib/STRUCTURES/future.ml` `Control.make`, kill par défaut du relais X11 pts —
+  `network.ml:1109` `pts_of_stream_server_FORK`, consommé par `machine.ml#stop_pts_relays`).
+  `starttime` capturé à la création (PID tout juste forké par l'appelant), identité
+  revérifiée avant chacun des deux SIGKILL ; processus illisible à la création → aucun kill
+  aveugle. Contrainte découverte : cycle de modules Linux → Forest → Future ⇒ lecteur
+  local `proc_starttime` (champ 22 de `/proc/<pid>/stat`, parsing après le dernier `)`)
+  au lieu de `Linux.Process.is_same_process`. Vérifié : `dune build` rc 0 ; test
+  comportemental sous `strace -e trace=kill` — cible vivante bien tuée (2× SIGKILL),
+  **aucun** SIGKILL émis vers un PID mort avant ou après la création du contrôle.
+  Les trois sites C1 identifiés à l'épisode 0 sont désormais tous gardés.
