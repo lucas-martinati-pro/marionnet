@@ -37,6 +37,7 @@ _build/
 **/limbo.*
 **/BACKUP/
 **/ok.*.md
+.*-workspace
 
 # --- Fichiers générés (compilation des catalogues gettext) ---
 bin/po/*.mo
