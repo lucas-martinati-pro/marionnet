@@ -108,6 +108,13 @@ Reprise : appliquer le skill `chantier-long`.
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
   `docs/bug-critique-crash-host.md` ; mémoire `bug-critique-crash-host` ;
   `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18.
+- **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
+  `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
+  apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
+  essaimera des chantiers enfants par canal) : `docs/modernisation-installation-marionnet.md` ;
+  mémoire `modernisation-installation-marionnet` ;
+  `git log --grep="modernisation-installation-marionnet"`. Ép. 0 (autopsie + officialisation)
+  fait 2026-07-18.
 
 ## Où puiser
 
