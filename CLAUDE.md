@@ -15,8 +15,10 @@ Depuis l'épisode 2 (2026-07-13), `bin/version.ml` et `bin/meta.ml` sont eux aus
 dune** (`(rule)` dans `bin/dune` invoquant les makers bash), plus par le Makefile. `make` ne reste
 requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 
-- Toolchain **gelée OCaml 4.13.1** (dernier compatible camlp4). Merlin/LSP/ocamlformat dégradés
-  sur les fichiers préprocessés (7 extensions camlp4 : voir `docs/ARCHITECTURE.md` § Camlp4).
+- Toolchain **OCaml 4.13.1, gel en cours de levée** → chantier `migration-ocaml5` (cible **5.4.1**).
+  Le motif historique du gel (« dernier compatible camlp4 ») est **caduc** : `camlp4.5.4` existe.
+  Merlin/LSP/ocamlformat restent dégradés sur les fichiers préprocessés (7 extensions camlp4 :
+  voir `docs/ARCHITECTURE.md` § Camlp4) — c'est désormais la seule justification de `camlp4-to-ppx`.
 - Install : `make install-final-as-root` (final) ou variante testing — bascule par le symlink
   `CONFIGME.choice` ; si le choix change : `make rebuild-for-{final,testing}`.
 - i18n (POT/PO/MO) et RPM : **100 % Makefile** (cibles `gettext-*`, `RPMS/`), pas dune.
@@ -85,9 +87,17 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-- **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 pour lever le
-  gel OCaml 4.13.1 et restaurer Merlin/LSP ; crux = `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire
-  `marionnet-camlp4-ppx` ; `git log --grep="marionnet-camlp4-ppx"`. **NON entamé.**
+- **migration-ocaml5** (compiler sur le switch opam **5.4.1** au lieu du gel 4.13.1, **en restant
+  sur camlp4** — la prémisse du gel est fausse, `camlp4.5.4` existe et le projet frère `circa`
+  [`~/DEVEL/repos/circa`] le prouve ; coupure nette, pas de double compat) :
+  `docs/migration-ocaml5.md` ; mémoire `migration-ocaml5` ;
+  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26.
+  ⚠️ **`main` ne compile pas** tant que l'ép. 2 (tables faibles `Ephemeron`) n'est pas fait :
+  état transitoire assumé de la coupure nette, cf. § 4 de la doc.
+- **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 ; crux =
+  `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
+  `git log --grep="marionnet-camlp4-ppx"`. **NON entamé** — et sa justification « lever le gel
+  4.13.1 » tombe si `migration-ocaml5` aboutit ; ne reste que Merlin/LSP.
 - **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
   via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
