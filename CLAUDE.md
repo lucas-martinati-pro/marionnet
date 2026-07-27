@@ -15,15 +15,18 @@ Depuis l'épisode 2 (2026-07-13), `bin/version.ml` et `bin/meta.ml` sont eux aus
 dune** (`(rule)` dans `bin/dune` invoquant les makers bash), plus par le Makefile. `make` ne reste
 requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 
-- Toolchain : **OCaml 5.4.1** (chantier `migration-ocaml5`) — le build est vert sur ce switch
-  depuis le 2026-07-27 ; le gel 4.13.1 est levé **côté compilation**, le runtime n'est pas
-  encore validé. Le `Makefile` (`OPAM_SWITCH_TO`) crée/pointe ce switch.
+- Toolchain : **OCaml 5.4.1** (chantier `migration-ocaml5`) — depuis le 2026-07-27 le build est
+  vert, le **runtime est validé** (cycle GUI réel) et l'**installation en profil *testing*** aussi ;
+  le gel 4.13.1 est levé. Reste non joué : `make install-final-as-root` (root, `/usr/local`).
+  Le `Makefile` (`OPAM_SWITCH_TO`) crée/pointe ce switch.
   Le motif historique du gel (« dernier compatible camlp4 ») est **caduc** : `camlp4.5.4` existe.
   Merlin/LSP/ocamlformat restent dégradés sur les fichiers préprocessés (7 extensions camlp4 :
   voir `docs/ARCHITECTURE.md` § Camlp4) — c'est désormais la seule justification de `camlp4-to-ppx`.
 - Install : `make install-final-as-root` (final) ou variante testing — bascule par le symlink
   `CONFIGME.choice` ; si le choix change : `make rebuild-for-{final,testing}`.
-- i18n (POT/PO/MO) et RPM : **100 % Makefile** (cibles `gettext-*`, `RPMS/`), pas dune.
+- i18n : la compilation `.po` → `.mo` **et** son installation sont **sous dune** (`i18n/dune`, site
+  dune-site `locale`) ; seules l'**extraction POT** (camlp4) et le **msgmerge** restent Makefile
+  (`gettext-messages-pot`, `gettext-update-po`). RPM (`RPMS/`) : 100 % Makefile, non testé sous 5.4.1.
 
 ## Cartographie
 
@@ -93,9 +96,10 @@ Reprise : appliquer le skill `chantier-long`.
   sur camlp4** — la prémisse du gel est fausse, `camlp4.5.4` existe et le projet frère `circa`
   [`~/DEVEL/repos/circa`] le prouve ; coupure nette, pas de double compat) :
   `docs/migration-ocaml5.md` ; mémoire `migration-ocaml5` ;
-  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26, ép. 2-3 faits 2026-07-27 :
-  **`dune build` est vert sur 5.4.1** (la fenêtre transitoire « `main` ne compile pas » est
-  refermée). Reste à vérifier le **runtime** (compiler ≠ fonctionner), puis `make install`.
+  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26, ép. 2-5 faits 2026-07-27 :
+  **build vert**, **runtime validé** (ép. 4 ; régression `Thread.exit` corrigée) et **installation
+  en profil *testing* validée** (ép. 5 ; i18n prouvée par `strace`). Reste : ép. 6 =
+  `make install-final-as-root`, puis rétro-propagation vers `~/DEVEL/repos/ocamlbricks`.
 - **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 ; crux =
   `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé** — et sa justification « lever le gel

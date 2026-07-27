@@ -385,3 +385,75 @@ socket, à la place de `Thread.exit ()`. Aucune exception ne traverse plus les c
 échouer l'`accept` en cours et lever `Accepting`. L'alerte est trompeuse, le comportement est
 nominal. Rien ne permet de l'attribuer à OCaml 5 sans contre-épreuve sur 4.13.1, laquelle n'est
 plus compilable (D1).
+
+---
+
+### Épisode 5 — 2026-07-27 — l'installation : `make install-for-testing` sous 5.4.1
+
+Après l'épisode 4 (le programme **tourne**), le maillon jamais rejoué depuis le changement de switch
+était la **chaîne d'installation** : les stanzas `(install)` de `bin/dune` (glade, images, `share/`,
+scripts) et de `i18n/dune` (12 catalogues `.mo` dans le site dune-site `locale`), plus les symlinks
+kernels/filesystems ajoutés par le `Makefile`.
+
+**Périmètre décidé : le profil `testing` seulement** — `make install-for-testing`, c'est-à-dire
+`dune install` **sans** `--prefix` (donc dans `$OPAM_SWITCH_PREFIX = ~/.opam/5.4.1`), sans `sudo`,
+réversible par `dune uninstall`. L'installation finale (`make install-final-as-root`, `/usr/local`)
+est renvoyée à un épisode ultérieur : elle force d'abord un `make rebuild-for-final` (bascule du
+symlink `CONFIGME.choice` + `make clean && make all`) et écrit en root — un pas séparé, à décider par
+l'auteur.
+
+#### Preuves obtenues
+
+| Preuve | Commande | Résultat |
+|---|---|---|
+| build propre | `dune clean && dune build` | `rc=0` (≈ 22 s) |
+| tests existants | `dune test` | `rc=0` |
+| installation | `make install-for-testing` | `rc=0` ; `which marionnet.native marionnet_telnet.sh` → `~/.opam/5.4.1/bin/` |
+| catalogues i18n | `find …/share/marionnet/locale -name marionnet.mo` | **12** (`de el eo es fr it pt pt_BR ro ru sk tr`), en `<lang>/LC_MESSAGES/marionnet.mo` |
+| ressources | `ls …/share/marionnet/` | `gui/gui_glade3.xml` (+ `.README`), `share/` (6 fichiers dont `marionnet.conf`, `id_rsa_marionnet`), `images/` (**197** fichiers), `scripts/` (2, exécutables) |
+| kernels / filesystems | `ls -l …/share/marionnet/{kernels,filesystems}` | symlinks vers `/usr/local/share/marionnet/…` (3 noyaux + configs, images wheezy/trixie/guignol/lenny…) |
+| binaire installé | `marionnet.native --version` | `rc=0` — « marionnet version trunk revno 679 » |
+| résolution des chemins | `marionnet.native --paths`, **sans** `MARIONNET_PREFIX`, hors de l'arbre de build | `rc=0`, tout résolu sous `~/.opam/5.4.1/share/marionnet/` |
+| i18n bout en bout | `LANG=fr_FR.UTF-8` / `it_IT.UTF-8` / `C` sur un `.mar` inexistant | message d'erreur d'`initialization.ml` en **français**, en **italien**, en **anglais** — `rc=1` (attendu) |
+| catalogue réellement chargé | `strace -f -e trace=openat` sur le même lancement | un **seul** `marionnet.mo` ouvert : `~/.opam/5.4.1/share/marionnet/locale/fr/LC_MESSAGES/marionnet.mo` |
+| extraction POT (camlp4) | `make gettext-messages-pot` | `rc=0`, 372 `msgid` extraits — la chaîne camlp4 `gettext_extract_pot_p4` fonctionne sur 5.4.1 |
+
+#### La note d'environnement de l'épisode 4 est levée
+
+L'épisode 4 devait lancer avec `MARIONNET_PREFIX=/usr/local/share/marionnet` parce qu'en profil
+*testing* `Meta.prefix` vaut `$OPAM_SWITCH_PREFIX` et que `~/.opam/5.4.1/share/marionnet` était
+**vide**. `install-for-testing` le peuple : `dune install` y dépose ressources et catalogues, puis le
+`Makefile` y crée les symlinks `kernels/` et `filesystems/` vers `/usr/local`. Le lancement sans
+`MARIONNET_PREFIX` résout désormais tout, **y compris depuis l'arbre de build**
+(`_build/default/bin/marionnet.exe --paths` donne les mêmes chemins) : ce n'est donc pas le binaire
+installé qui règle la question, c'est le **préfixe peuplé**.
+
+#### Piège relevé : la preuve i18n « en français » n'est pas discriminante
+
+Afficher du français ne prouve rien à soi seul. Deux catalogues concurrents traînent sur cette
+machine — `/usr/local/share/marionnet/locale/fr/…/marionnet.mo` (install finale du 2026-07-19) et
+`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo` (2023) — et le dernier recours de `bin/gettext.ml`
+(`try_to_infer_localeprefix_searching_marionnet_dot_mo_in_usr`, un `find /usr`) trouve le second :
+en masquant temporairement le site dune installé, la sortie **reste** en français. C'est `strace` qui
+tranche : site présent, un seul `.mo` est ouvert, celui du site dune. Retenir la méthode — pour
+prouver *quel* catalogue sert, tracer les `openat`, ne pas se fier à la langue affichée.
+
+#### Correctif embarqué : l'alerte `ocaml_deprecated_auto_include`
+
+Reliquat qualifié à l'épisode 1, traité ici parce qu'il appartient bien à la migration : depuis
+OCaml 5.0 le répertoire `unix` n'est plus dans le chemin de recherche par défaut, et
+`lib/CAMLP4/include_as_string_p4.ml` (seul préprocesseur du lot à appeler `Unix.openfile`/`Unix.read`)
+était compilé sans le déclarer. Correctif dans `lib/dune` : `unix` ajouté au `-package` des 7 `(rule)`
+camlp4 (14 invocations `ocamlfind ocamlc`), suivant la règle d'uniformité déjà en vigueur pour
+`camlp-streams`, commentaire du bloc mis à jour. **Preuve** : `dune clean && dune build` — le log
+complet passe de l'alerte + `Success.` à `Success.` seul, `rc=0`.
+
+#### Hors périmètre, explicitement
+
+- **`make install-final-as-root`** (`/usr/local`, root) : non joué — décision de l'auteur.
+- **RPM** (`RPMS/`, cible `make rpms`) : `rpmbuild` est **absent** de cette machine Kubuntu ; la
+  cible reste **non testée** sous 5.4.1, comme elle l'était sous 4.13.1.
+- **`bin/po/messages.pot`** : l'extraction ci-dessus le régénère et produit un diff **réel** (le
+  texte d'aide `world_bridge` réécrit par le chantier `modernisation-world-bridge` n'y figurait pas).
+  Ce diff appartient à ce chantier-là, pas à celui-ci : le fichier versionné a été **restauré**. À
+  traiter lors de la prochaine passe i18n.
