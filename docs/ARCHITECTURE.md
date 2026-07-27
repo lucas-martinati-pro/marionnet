@@ -3,33 +3,52 @@
 > Récit d'architecture **vivant** : mettre à jour la section touchée quand le code change.
 > Estampille : généré le 2026-07-06 depuis l'audit `docs/audit-marionnet-20260706.md`,
 > périmètre bin/ + bin/gui/ + uml/ + build (lib/ en survol). Lire **par sujet**.
+> Rectifié le 2026-07-27 : § 1 (build) réécrit — la chaîne make→dune décrite jusque-là avait
+> disparu avec `finitions-port-dune` ép. 1-2 — et § 10 (le gel 4.13.1 n'existe plus).
 
-## 1. Build hybride (make orchestre, dune exécute)
+## 1. Build — `dune build` seul suffit
 
-La contrainte fondatrice est **camlp4** : dune ne compile pas (dans ce montage) les
-préprocesseurs avant de s'en servir. D'où la chaîne `make` (cible par défaut) :
+La contrainte fondatrice reste **camlp4** (7 extensions de syntaxe, § Camlp4), mais elle n'impose
+plus de pré-fabrication hors dune : **sur un clone frais, `dune build` seul suffit** (chantier
+`finitions-port-dune`, ép. 1-2, 2026-07-13). L'ordre est entièrement déduit par dune :
 
-1. `make meta` — génère `bin/version.ml` et `bin/meta.ml` via `bin/*.maker.sh`, à partir de
-   `META` (mini-fichier shell name/version, PAS un META ocamlfind) et de `CONFIGME.choice`.
-2. `make -C lib main-no-build` — copie et compile **avec ocamlc/camlp4of directement** les
-   préprocesseurs (`lib/CAMLP4/*_p4`, `gettext_extract_pot_p4`) et les stubs C dans
-   `lib/_build/` (+ `libocamlbricks_stubs.a`). Garde-fou : source ≠ copie → « make clean required! ».
-3. La racine recopie (hard links) `lib/_build/*` → `_build/`.
-4. `dune build` — compile `lib/` (library `ocamlbricks`) puis `bin/` (executables), chaque
-   source passant par `camlp4of` avec les `.cmo` de l'étape 2 (`-I ../../../../lib/_build/`,
-   chemins relatifs au bac à sable `_build/default/...`).
+1. **Les préprocesseurs** — 7 `(rule)` de `lib/dune` invoquent `ocamlfind ocamlc -pp camlp4of`
+   sur `lib/CAMLP4/*_p4` et `GETTEXT/gettext_extract_pot_p4`. Les `.cmo` produits sont ensuite
+   chargés par les `(preprocess)`/`(preprocessor_deps)` de `lib/dune` et `bin/dune`, avec
+   `-I ../../../../_build/default/lib/` — chemin relatif au bac à sable `_build/default/…`,
+   fragile mais stable. Ces modules sont exclus de la bibliothèque par `(modules (:standard \ …))`.
+2. **Les fichiers générés** — `bin/version.ml` et `bin/meta.ml` naissent de `(rule)` de `bin/dune`
+   qui exécutent les makers bash à partir de `META` (mini-fichier shell name/version, PAS un META
+   ocamlfind) et de `CONFIGME.choice`. Ces règles dépendent de `(universe)` : sandbox désactivée
+   (les makers ont besoin du vrai dépôt pour `git rev-parse`/`git log`) et ré-exécution à chaque
+   build. Corollaire : ces deux fichiers ne doivent **jamais** exister dans l'arbre source — une
+   cible de règle ne peut pas coexister avec un fichier source ; `make clean` les supprime.
+3. **Les bibliothèques et l'exécutable** — `ocamlbricks` (`lib/`, avec ses 3 stubs C déclarés en
+   `foreign_stubs`), puis `marionnet_base`, `marionnet_tap`, `marionnet_sites`, puis l'unique
+   exécutable `bin/marionnet.native`.
+4. **L'i18n** — `i18n/dune` compile les 12 `.po` en `.mo` (`msgfmt`) et les installe dans le site
+   dune-site `locale`, que `bin/gettext.ml` consulte en tête de sa cascade (§ i18n).
 
-Conséquences : `dune build` seul échoue sur un clone frais ; OCaml épinglé **4.13.1** ;
-les règles camlp4 sont **dupliquées** entre `Makefile` racine et `lib/Makefile` (piège de
-maintenance). L'installation passe par `make install-final-as-root` (script temporaire sudo
-qui préserve l'env opam — et non `sudo dune install`) ou la variante testing (installe dans
-le switch opam) ; le choix est mémorisé par le symlink `CONFIGME.choice` et `meta.ml` en
-dépend (`make rebuild-for-{final,testing}` si changement). `CONFIGME` est une config shell
-sourcée, surchargée par `~/.marionnet` puis l'environnement à l'exécution.
+**Ce que `make` garde** : l'**installation** (`install-final-as-root` — script temporaire exécuté
+par sudo, qui préserve l'env opam, et non `sudo dune install` — ou `install-for-testing`, qui
+installe dans le switch opam et y symlinke kernels/filesystems), l'**extraction POT** (camlp4,
+`gettext-messages-pot`) et le **msgmerge** (`gettext-update-po`), les **dépendances**
+(`apt-dependencies`, `opam-switch`/`opam-dependencies`) et le **RPM** (`RPMS/Makefile`).
+`all`, `rebuild`, `clean` ne sont plus que des enveloppes de `dune`.
 
-État transitoire connu (chantier « finitions du port dune ») : placeholders de
-`dune-project`, `marionnet.opam` généré mais git-ignoré, `meta.ml.maker.sh` encore bzr,
-strip `lablgtk2` vs `lablgtk3` dans `CONFIGME`, `main.ml` + `(modules :standard)` (§ 2).
+**Toolchain : OCaml 5.4.1** (chantier `migration-ocaml5`, 2026-07-27) — build, runtime et
+installation en profil *testing* validés. Le gel historique en 4.13.1, motivé par « dernier
+compatible camlp4 », reposait sur une prémisse **fausse** (`camlp4.5.4` existe).
+
+**Profil d'installation** : le symlink `CONFIGME.choice` (→ `CONFIGME` = final, ou
+`CONFIGME.testing.sh` = testing) décide des préfixes gravés dans `meta.ml` ; en changer impose
+`make rebuild-for-{final,testing}`. `CONFIGME` est une config shell sourcée, surchargée par
+`~/.marionnet` puis par l'environnement à l'exécution.
+
+**Vestiges à ne pas prendre pour référence** : `lib/Makefile` (cible `main-no-build`),
+`lib/Makefile.local`, `lib/configure`, `lib/META`, `lib/tests/` — l'ancienne chaîne make→dune.
+Il n'y a plus de `lib/_build/`, plus de hard-link vers `_build/`, plus de garde-fou
+« make clean required! », et les règles camlp4 ne sont plus dupliquées entre deux Makefile.
 
 ## 2. Les deux niveaux + composants (le cœur du modèle)
 
@@ -145,4 +164,6 @@ Global sur bin/ (via `bin/dune`) : `option_extract_p4` (sucre d'extraction d'opt
 `../../../../` relatifs au bac à sable dune), `include_as_string_p4` (talking.ml),
 conditionnels `IFDEF` (serial, gettext, ledgrid_manager, router ; pilotés par
 `lib/camlp4of-flags.cfg`). Toute migration hors camlp4 = réécrire ces 7 extensions (ppx ou
-dépliage) — c'est le verrou qui fige OCaml à 4.13.1.
+dépliage). Ce n'est **plus** un verrou de toolchain : `camlp4.5.4` existe et le projet compile
+sur OCaml 5.4.1 (§ 1) ; ne subsiste que la dégradation de **Merlin/LSP/ocamlformat** sur les
+fichiers préprocessés — seule justification restante du chantier `camlp4-to-ppx`.
