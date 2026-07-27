@@ -25,35 +25,93 @@ main: rebuild
 #                     dependencies
 # =============================================================
 
-REQUIRED_PACKAGES = bzr liblablgtk3-ocaml-dev glade libgtksourceview-3.0-dev opam
-OPAM_PACKAGES = camlp4 utop dune odoc ocamlformat inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3
-# ---
-# Target version of OCaml:
-OPAM_SWITCH_TO = 4.13.1
+# Goal: on a bare Debian/Ubuntu box, `make dependencies && eval $$(opam env) && make build'
+# must be enough to get a complete compilation.
 
-# Should be called "apt-opam-dependencies":
-dependencies:
-	@echo "Required packages: $(REQUIRED_PACKAGES)"
+# Target version of the OCaml compiler:
+# 5.4.1 (bugfix, 2026-02-17) rather than 5.5.0 (2026-06-19): nothing in 5.5 is useful here
+# (modular explicits, GC pacing) and `camlp4.5.5' requires there `ocamlfind 1.9.9~preview'.
+# Note that the former freeze on 4.13.1 ("the last one compatible with camlp4") is obsolete:
+# camlp4 does follow OCaml 5 (see docs/migration-ocaml5.md).
+OPAM_SWITCH_TO = 5.4.1
+
+# `apt' packages:
+#  - opam, pkg-config      : OCaml toolchain and detection of the `conf-*' packages
+#  - build-essential       : gcc, required by the C stubs of lib/ (see `foreign_stubs' in lib/dune)
+#  - libgtk-3-dev          : GTK+3 C headers, required to build the opam package `lablgtk3'
+#  - libgtksourceview-3.0-dev : required by `conf-gtksourceview3' -> `lablgtk3-sourceview3'
+#  - gettext               : msgfmt/msgmerge/xgettext, used by the `gettext-*' targets (i18n)
+#  - glade                 : (development) GUI designer used to edit bin/gui/gui_glade3.xml
+REQUIRED_PACKAGES = opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev \
+                    gettext glade
+
+# `opam' packages strictly required by the compilation (see the (libraries ...) stanzas of
+# bin/dune and lib/dune; `camlp4' serves the (preprocess (run camlp4of ...)) of lib/):
+#  - camlp-streams provides the `Stream' module, dropped from the Stdlib by OCaml 5.0 and still
+#    used by lib/CAMLP4/include_type_definitions_p4.ml
+#  - dune-site is required by i18n/dune (relocatable location of the gettext catalogues)
+OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras \
+                lablgtk3-sourceview3 conf-gtksourceview3
+
+# `opam' packages for tooling (editor support and documentation, not needed to build):
+OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server
+
+# ---
+# Call `sudo apt' only if something is actually missing (idempotent target).
+apt-dependencies:
 	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
 	@echo "About to verify or install \`apt' dependencies..."
-	@dpkg 1>/dev/null -l $(REQUIRED_PACKAGES) || sudo apt install -y $(REQUIRED_PACKAGES);
-	@echo "About to update & upgrade opam..."
-	@opam update -y && opam upgrade -y || exit 2;
+	@missing=$$(for p in $(REQUIRED_PACKAGES); do \
+	    dpkg-query -W -f='$${Status}' $$p 2>/dev/null | grep -q "ok installed" || echo $$p; \
+	  done); \
+	if test -n "$$missing"; then \
+	  echo "Missing apt packages:" $$missing; \
+	  sudo apt install -y $$missing || exit 1; \
+	else \
+	  echo "apt packages: nothing to do."; \
+	fi
+
+# ---
+# Move to the right compiler (creating it if needed):
+opam-switch:
 	@echo "About to create or switch to the compatible OCaml compiler version $(OPAM_SWITCH_TO)"
-	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y || exit 3;
+	@opam switch $(OPAM_SWITCH_TO) 1>/dev/null 2>&1 || opam switch create $(OPAM_SWITCH_TO) -y || exit 2
+
+# ---
+# Updating the opam repository: NOT by default (an `opam upgrade' may bump packages and break
+# a working switch). To force it:
+#   make dependencies OPAM_UPDATE=yes
+OPAM_UPDATE =
+
+# IMPORTANT: pass to `opam install' only the packages that are actually ABSENT. Passing an
+# already installed package forces it to its latest version (solver criterion
+# `-notuptodate(request)'), hence a recompilation of the whole switch. Idempotent target:
+# nothing to install => nothing to recompile.
+opam-dependencies: opam-switch
+	@test -z "$(OPAM_UPDATE)" || opam update -y
 	@echo "About to verify or install \`opam' dependencies..."
-	@opam install -y $(OPAM_PACKAGES) || exit 4;
+	@installed=$$(opam list --installed --short); \
+	missing=$$(for p in $(OPAM_PACKAGES) $(OPAM_PACKAGES_DEV); do \
+	    echo "$$installed" | grep -qx "$$p" || echo $$p; \
+	  done); \
+	if test -n "$$missing"; then \
+	  echo "Missing opam packages:" $$missing; \
+	  opam install -y $$missing || exit 3; \
+	else \
+	  echo "opam packages: nothing to do."; \
+	fi
 	@echo '[WARNING] You should run: eval $$(opam env) to synchronize the environment with the current switch.'
+
+# ---
+dependencies: apt-dependencies  opam-dependencies
 	@echo "Success."
 
-# Just switch with opam to the correct version of OCaml:
-switch:
-	@echo "About to create or switch to the compatible OCaml compiler version $(OPAM_SWITCH_TO)"
-	@opam switch $(OPAM_SWITCH_TO) &>/dev/null || opam switch create $(OPAM_SWITCH_TO) -y --verbose || exit 3;
-	@echo "About to verify or install \`opam' dependencies..."
-	@opam install -y $(OPAM_PACKAGES) || exit 4;
-	@echo '[WARNING] You should run: eval $$(opam env) to synchronize the environment with the current switch.'
-	@echo "Success."
+# Aliases (`switch' is the historical entry point):
+deps: dependencies
+switch: opam-switch  opam-dependencies
+
+# ---
+.PHONY: apt-dependencies opam-switch opam-dependencies dependencies deps switch
 
 
 # =============================================================

@@ -82,15 +82,15 @@ CAMLprim value waitpid_c (value ml_flag_list, value ml_child_pid)
 
   child_pid = Int_val(ml_child_pid);
 
-  enter_blocking_section();
+  caml_enter_blocking_section();
   wpid = waitpid(child_pid, &status, options);
-  leave_blocking_section();
+  caml_leave_blocking_section();
 
   if(wpid == -1){
     uerror(WAITPID_NAME, Nothing);
   }
   else {
-    res = alloc_tuple(2);
+    res = caml_alloc_tuple(2);
     Store_field(res, 0, Val_int(wpid));
 
     if(wpid == 0){
