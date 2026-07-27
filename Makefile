@@ -26,7 +26,9 @@ main: rebuild
 # =============================================================
 
 # Goal: on a bare Debian/Ubuntu box, `make dependencies && eval $$(opam env) && make build'
-# must be enough to get a complete compilation.
+# must be enough to get a complete compilation AND a runnable application: `dependencies'
+# installs both the packages needed to BUILD Marionnet and those needed to RUN it (the tools
+# spawned at run-time: vde, graphviz, xterm, iproute2, ...).
 
 # Target version of the OCaml compiler:
 # 5.4.1 (bugfix, 2026-02-17) rather than 5.5.0 (2026-06-19): nothing in 5.5 is useful here
@@ -35,15 +37,50 @@ main: rebuild
 # camlp4 does follow OCaml 5 (see docs/migration-ocaml5.md).
 OPAM_SWITCH_TO = 5.4.1
 
-# `apt' packages:
+# `apt' packages required to BUILD (compile-time) :
 #  - opam, pkg-config      : OCaml toolchain and detection of the `conf-*' packages
 #  - build-essential       : gcc, required by the C stubs of lib/ (see `foreign_stubs' in lib/dune)
 #  - libgtk-3-dev          : GTK+3 C headers, required to build the opam package `lablgtk3'
 #  - libgtksourceview-3.0-dev : required by `conf-gtksourceview3' -> `lablgtk3-sourceview3'
 #  - gettext               : msgfmt/msgmerge/xgettext, used by the `gettext-*' targets (i18n)
 #  - glade                 : (development) GUI designer used to edit bin/gui/gui_glade3.xml
-REQUIRED_PACKAGES = opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev \
-                    gettext glade
+REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev \
+                          gettext glade
+
+# `apt' packages required to RUN Marionnet (run-time), i.e. providing the host tools that the
+# application spawns. The first three are actively checked at startup by bin/marionnet.ml, which
+# pops up an "Unsatisfied dependency" dialog when they are missing:
+#  - vde2               : vde_switch and slirpvde (checked at startup), plus wirefilter (used to
+#                         emulate the defects of a cable: loss, delay, ...)
+#  - graphviz           : `dot', drawing the network graph (checked at startup)
+#  - uml-utilities      : `uml_mconsole', used by bin/simulation_level.ml (#gracefully_terminate:
+#                         sending `halt'/`cad' to a virtual machine) and by bin/serial.ml
+#                         (which pts is assigned to a serial console). NOT for `uml_switch',
+#                         which is no longer used anywhere.
+#  - xterm              : default terminal used to open a console on a virtual machine
+#                         (MARIONNET_TERMINAL, see bin/share/marionnet.conf)
+#  - iproute2           : `ip', used by bin/tap_provider.ml (tap creation, `sudo -n ip tuntap ...')
+#                         and by many host network inspections
+#  - sudo               : the scoped-privileges model that replaced the former root daemon
+#  - bridge-utils       : `brctl', bridge check and setup for the `world_bridge' component
+#  - x11-xserver-utils  : `xhost', granting the X server access to the guests (X11 forwarding)
+#  - xauth              : `xauth list', read at startup by bin/x.ml to get the MIT-MAGIC-COOKIE-1
+#                         then provided to the guests (see bin/simulation_level.ml)
+# NOTES:
+#  - `socat' is NOT listed here: it is required in the GUEST systems, not on the host;
+#  - the commands `getent', `cat', `cp', `rm', `tar', `grep', `du' also called by the code come
+#    from `Essential: yes' packages (libc-bin, coreutils, tar, grep): nothing to declare.
+REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils \
+                            x11-xserver-utils xauth
+
+# The whole set (historical name, kept for compatibility):
+REQUIRED_PACKAGES = $(REQUIRED_PACKAGES_BUILD) $(REQUIRED_PACKAGES_RUNTIME)
+
+# `apt' packages required only to RUN the 32-bit UML kernels (built with SUBARCH=i386) of the old
+# kernel/filesystem couples on a x86_64 host (see docs/retro-compatibilite-kernels-images.md).
+# Deliberately NOT part of `dependencies' (opt-in target `apt-runtime-dependencies-i386'):
+# installing it implies enabling a foreign architecture on the host.
+REQUIRED_PACKAGES_RUNTIME_I386 = libc6:i386
 
 # `opam' packages strictly required by the compilation (see the (libraries ...) stanzas of
 # bin/dune and lib/dune; `camlp4' serves the (preprocess (run camlp4of ...)) of lib/):
@@ -57,19 +94,41 @@ OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-ex
 OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server
 
 # ---
-# Call `sudo apt' only if something is actually missing (idempotent target).
-apt-dependencies:
-	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(REQUIRED_PACKAGES)"; exit 1; }
-	@echo "About to verify or install \`apt' dependencies..."
-	@missing=$$(for p in $(REQUIRED_PACKAGES); do \
+# Verify a list of `apt' packages, calling `sudo apt' only if something is actually missing
+# (hence the idempotency of the targets below).
+# Usage in a recipe: $(call apt_install_if_missing,<kind>,<package list>)
+define apt_install_if_missing
+	@which dpkg 1>/dev/null || { echo "Not a Debian system (oh my god!); please install packages corresponding to: $(2)"; exit 1; }
+	@echo "About to verify or install \`apt' $(1) dependencies..."
+	@missing=$$(for p in $(2); do \
 	    dpkg-query -W -f='$${Status}' $$p 2>/dev/null | grep -q "ok installed" || echo $$p; \
 	  done); \
 	if test -n "$$missing"; then \
-	  echo "Missing apt packages:" $$missing; \
+	  echo "Missing apt packages ($(1)):" $$missing; \
 	  sudo apt install -y $$missing || exit 1; \
 	else \
-	  echo "apt packages: nothing to do."; \
+	  echo "apt packages ($(1)): nothing to do."; \
 	fi
+endef
+
+apt-build-dependencies:
+	$(call apt_install_if_missing,build,$(REQUIRED_PACKAGES_BUILD))
+
+apt-runtime-dependencies:
+	$(call apt_install_if_missing,run-time,$(REQUIRED_PACKAGES_RUNTIME))
+
+# Both kinds (historical entry point):
+apt-dependencies: apt-build-dependencies  apt-runtime-dependencies
+
+# ---
+# Opt-in (not required by `dependencies'): support for the 32-bit UML kernels of the old
+# kernel/filesystem couples. On a x86_64 host this implies enabling the i386 foreign architecture.
+apt-runtime-dependencies-i386:
+	@test "$$(dpkg --print-architecture)" = "amd64" || { echo "Not an amd64 host: nothing to do."; exit 0; }
+	@dpkg --print-foreign-architectures | grep -qx i386 || { \
+	  echo "About to enable the i386 foreign architecture (needed to execute 32-bit UML kernels)..."; \
+	  sudo dpkg --add-architecture i386 && sudo apt update; }
+	$(call apt_install_if_missing,run-time i386,$(REQUIRED_PACKAGES_RUNTIME_I386))
 
 # ---
 # Move to the right compiler (creating it if needed):
@@ -111,7 +170,8 @@ deps: dependencies
 switch: opam-switch  opam-dependencies
 
 # ---
-.PHONY: apt-dependencies opam-switch opam-dependencies dependencies deps switch
+.PHONY: apt-build-dependencies apt-runtime-dependencies apt-runtime-dependencies-i386 \
+        apt-dependencies opam-switch opam-dependencies dependencies deps switch
 
 
 # =============================================================
