@@ -145,6 +145,48 @@ compilateurs récents (4.14, 5.3). Le « gel OCaml 4.13.1 » du projet est un ar
 garantit que le code compile en OCaml ≥ 4.14/5.x, et le chantier `marionnet-camlp4-ppx`
 attaque le problème par l'autre bout (sortir de camlp4).
 
+### 2.4 bis Source de vérité des dépendances : le `Makefile` (depuis le 2026-07-27)
+
+**Décision** : la liste des dépendances n'est plus dérivée du script mourant
+`marionnet_from_scratch` ni redécouverte par canal. Le `Makefile` (§ *dependencies*) la porte,
+scindée en deux variables, et **chaque canal de diffusion la dérive** :
+
+| Variable | Contenu | Consommateurs |
+|---|---|---|
+| `REQUIRED_PACKAGES_BUILD` | `opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev gettext glade` | `make dependencies` ; `Build-Depends` du `.deb` ; image de build Docker |
+| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils x11-xserver-utils xauth` | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
+| `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
+| `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
+
+Cibles : `apt-build-dependencies`, `apt-runtime-dependencies` (les deux appelées par
+`apt-dependencies`, donc par `make dependencies`) et l'opt-in `apt-runtime-dependencies-i386`.
+
+**Implication pour l'outillage release (§ 3.3)** : le champ `Depends` du paquet ne doit **jamais**
+être écrit à la main dans `debian/control` — le générer depuis `$(REQUIRED_PACKAGES_RUNTIME)`
+(p. ex. via un `debian/control.in` + substitution, ou `${misc:Depends}` complété par le
+Makefile). Même règle pour le `Requires` du RPM et le `apt install` du script v2 : une seule
+liste, un seul endroit à mettre à jour quand le code appelle un nouveau binaire.
+
+**Justification, paquet par paquet** (chaque entrée est adossée à un site d'appel dans le code,
+commenté dans le `Makefile`) : `vde2` → `vde_switch`/`slirpvde` (vérifiés au démarrage par
+`bin/marionnet.ml`) + `wirefilter` ; `graphviz` → `dot` (vérifié au démarrage) ;
+`uml-utilities` → **`uml_mconsole`** (`simulation_level.ml#gracefully_terminate`, `serial.ml`) —
+et **non** `uml_switch`, qui n'est plus utilisé nulle part ; `xterm` → terminal par défaut ;
+`iproute2` → `ip` (`tap_provider.ml`) ; `sudo` → privilèges scopés post-daemon-elimination ;
+`bridge-utils` → `brctl` (`world_bridge`) ; `x11-xserver-utils` → `xhost` ; `xauth` →
+MIT-MAGIC-COOKIE-1 lu au lancement (`bin/x.ml`) et transmis aux invités.
+
+**Écartés** par rapport au tableau § 2.4 et au script : `socat` (dépendance **invité**, pas hôte),
+`rlwrap`/`rlfe`/`ledit` (confort du terminal de gestion, `simulation_level.ml:542` : absence sans
+conséquence → au plus `Suggests`), `fonts-noto` (cosmétique → au plus `Recommends`),
+`liblablgtk3-ocaml-dev`/`camlp4` système/`bzr`/`libtool` (voie opam), les paquets
+`Essential: yes` (coreutils, tar, grep, libc-bin).
+
+**Cas `libc6:i386`** : nécessaire seulement pour exécuter les noyaux UML `SUBARCH=i386` des vieux
+couples (chantier `marionnet-retro-compat-kernels-images`), et son installation implique
+`dpkg --add-architecture i386` sur l'hôte. D'où la cible opt-in, hors de `make dependencies` ;
+côté `.deb`, il relève au mieux d'un `Recommends`, à trancher quand le canal sera construit.
+
 ### 2.5 Satellites de `useful-scripts/` (strates historiques)
 
 - `marionnet_from_scratch.{VDI,2018.02.04,orig,NEW,up-to-0.94.sh,*.backup}` : versions
@@ -287,3 +329,14 @@ clôture des enfants.
   images, grosses images via outil de téléchargement ; essai toolchain système borné à
   une session (nouvel épisode 3) ; Docker Hub ; script v2 renommé `marionnet-install.sh`.
   Ordre d'essaimage acté : script → deb → docker → rpm (§ 5 réécrit, arbo § 3.1 par série).
+- **2026-07-27 — les dépendances ont une source de vérité unique** (`Makefile`, § 2.4 bis) :
+  `REQUIRED_PACKAGES` scindée en `REQUIRED_PACKAGES_BUILD` / `REQUIRED_PACKAGES_RUNTIME`
+  (+ `REQUIRED_PACKAGES_RUNTIME_I386` opt-in), avec les cibles `apt-build-dependencies` /
+  `apt-runtime-dependencies` ; `make dependencies` installe désormais de quoi **compiler ET
+  exécuter**. Motif immédiat : Marionnet signalait au lancement des dépendances absentes
+  (`vde_switch`, `slirpvde`, `dot`) qu'aucune cible n'installait. Effet pour ce chantier : le
+  `Depends` du futur `.deb` (et le `Requires` du RPM, et le script v2) se **dérivent** de
+  `$(REQUIRED_PACKAGES_RUNTIME)` — interdit de les ressaisir à la main. Liste établie en
+  auditant les appels du code, pas le script historique : `uml-utilities` conservé mais pour
+  `uml_mconsole` (et non `uml_switch`, mort), `xauth` ajouté (cookie X11 lu par `bin/x.ml`),
+  `socat` écarté (dépendance invité). Aucun code applicatif touché.
