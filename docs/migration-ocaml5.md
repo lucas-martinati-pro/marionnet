@@ -174,19 +174,25 @@ pas itérées. Ici elles **le sont** :
 Reprendre `assert false` **planterait à l'exécution**. C'est la validation empirique de la
 décision D2 : le diff circa se consulte, il ne se copie pas.
 
-Pistes pour l'épisode 2 (à trancher, non tranché) :
+Pistes envisagées, **tranchées à l'épisode 2** :
 
 1. **Ré-implémenter une table faible itérable** au-dessus de `Ephemeron.K1.t` bruts + un `Hashtbl`
    interne — c'est ce que faisait `Ephemeron.K1.Make` avant 5.0. Sémantique préservée, zéro
    dépendance ; le plus de travail, et il faut assumer explicitement l'*unsoundness* que l'amont a
-   voulu supprimer.
+   voulu supprimer. → **RETENUE** (§ 5, épisode 2).
 2. **Dégrader les tables faibles en tables fortes** (`new_weaktbl = new_hashtbl`, `clean` = no-op).
    Trivial — c'est la sonde qui a donné `rc=0` — mais **change la sémantique mémoire** : ces tables
    sont les *books* globaux de `channel.ml`/`lock_clubs.ml`, conçus pour laisser mourir leurs clés.
-   Risque de fuite à évaluer.
+   → **REJETÉE** : `Club2UC_book` (`channel.ml:286`) lie `Club.t -> uc` où `uc.cc` **contient les
+   clubs** ; en table forte aucun club ne meurt jamais et `get_orphan_ids` devient un no-op. Le
+   rejet est empirique et non spéculatif : le test 4 de la preuve de l'épisode 2 (donnée
+   référençant sa propre clé) **échoue** si l'on retire `~weak:()`.
 3. **Restreindre le type d'objet** : sortir `fold`/`iter`/… du type commun et adapter les 4 sites
-   appelants. Honnête, mais touche l'interface publique de `Table` et `Hashset`.
-4. **Dépendance externe** fournissant une table faible itérable. À évaluer contre YAGNI.
+   appelants. → **REJETÉE** : les appelants itèrent *réellement* des tables faibles ; restreindre
+   le type déplace le problème chez eux au lieu de le traiter, en cassant l'interface publique de
+   `Table` et `Hashset`.
+4. **Dépendance externe** fournissant une table faible itérable. → **REJETÉE** (YAGNI) : la Stdlib
+   5.4.1 suffit, `Ephemeron.K1.make`/`query` et `Weak` restent disponibles.
 
 ---
 
@@ -237,3 +243,52 @@ solveur que les paquets **absents**, l'installation de `lablgtk3` & co. a entra�
 `dune` 3.19 → 3.23.1 et donc la **recompilation du switch entier**. Le garde-fou borne la
 *requête*, pas la liberté du solveur sur les dépendances : à savoir, ce n'est pas une régression
 du Makefile.
+
+### Épisode 2 — 2026-07-27 — tables faibles itérables (le seul vrai problème)
+
+Piste 1 du § 4.1 retenue, les trois autres rejetées (justifications au § 4.1). **Un seul fichier
+modifié : `lib/STRUCTURES/table.ml`** ; `table.mli` reste **inchangé**, donc aucun impact sur les
+appelants (`channel.ml`, `hashset.ml`, `tS_memo.ml`, `lock_clubs.ml`).
+
+Un module interne `Weaktbl` (non exporté — `table.mli` ne le mentionne pas, signature explicite
+dans le `.ml`) reconstruit ce que `Ephemeron.K1.Make` fournissait avant 5.0, au-dessus des seules
+primitives restées disponibles en 5.4.1 : `Ephemeron.K1.make`/`query` et le module `Weak`. Une
+liaison est un enregistrement `{ kw : 'k Weak.t (* taille 1 *); mutable eph : ('k,'d) Ephemeron.K1.t }`,
+indexé dans un `Hashtbl` interne par le **hash** de sa clé (structure d'`Ephemeron.K1.Make`).
+
+**Les deux mécanismes sont nécessaires, chacun pour sa raison** :
+
+- l'**éphémère**, parce que la donnée ne doit pas maintenir sa propre clé en vie — cas réel de
+  `Channel.Club2UC_book`, où la donnée (une conjonction) contient les clubs qui servent de clés :
+  une clé faible avec une donnée forte fuirait ;
+- le **pointeur faible**, parce que `Ephemeron.K1.query` exige la clé **en argument** et que 5.x
+  n'offre aucun moyen d'extraire la clé d'un éphémère : sans source de clés énumérable et non
+  rétentive, l'itération est impossible.
+
+Points d'implémentation notables :
+
+- `add` = `Hashtbl.add` (multi-liaisons et ordre « plus récent d'abord » de `find_all` conservés) ;
+- `remove` reconstruit le *bucket* au lieu d'appeler `Hashtbl.remove`, qui retirerait la liaison la
+  plus récente du **hash** — potentiellement une autre clé (collision) ou une entrée morte ;
+- `replace` réinitialise le pointeur faible **et** l'éphémère (la clé stockée devient la nouvelle,
+  comme `Hashtbl.replace`) ; `filter_map_inplace` recrée l'éphémère (5.x n'a pas de `set_data`) ;
+- **nettoyage automatique amorti** (`clean_at`) : `Ephemeron.K1.Make` nettoyait au redimensionnement.
+  Sans cela les entrées mortes s'accumulent là où aucune alarme GC n'appelle `clean` — cas de
+  `Hashset.make_physical_compare`, qui insère une entrée par objet comparé ;
+- `stats_alive` : seul `num_bindings` est exact (histogramme calculé sur une copie des vivants) ;
+  c'est suffisant pour l'usage, qui est du log/debug dans `channel.ml`.
+
+**Sûreté assumée et documentée dans le code** : itérer des structures faibles est *unsound* quand
+plusieurs *domains* tournent en parallèle — c'est la raison du retrait amont. Le code n'utilise pas
+`Domain` (threads seulement, GTK sur le thread principal) ; un usage multi-domaines imposerait de
+revoir ce module.
+
+**Preuve** (`table.ml` ne dépend que de la Stdlib, donc se compile seul) : copie hors dépôt
+compilée par `ocamlfind ocamlopt` sur 5.4.1 **contre le vrai `table.mli`**, plus 7 tests exécutés,
+tous verts : (1) l'exemple documenté du `.mli` — après `Gc.full_major` + `clean`,
+`stats_alive.num_bindings = 0` ; (2) multi-liaisons `add`/`find_all`/`find`/`remove`/`replace`/
+`find_or_bind` ; (3) `fold`/`iter`/`filter_map_inplace`/`to_list`/`to_hashtbl` ; (4) **donnée
+référençant sa propre clé** → collectée ; (5) collisions de hash → `find_all`/`remove` exacts ;
+(6) 1000 clés éphémères → table bornée à 8 liaisons (nettoyage amorti) ; (7) non-régression des
+tables fortes. Contre-épreuve : le test (4) **échoue** si la table est rendue forte, ce qui valide
+à la fois le test et le rejet de la piste 2.

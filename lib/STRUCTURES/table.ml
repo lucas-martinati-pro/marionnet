@@ -19,6 +19,182 @@
 
 let default_size = 0
 
+(* --- Weak tables since OCaml 5.0 ---
+
+   OCaml 5.0 removed `fold', `iter' and `filter_map_inplace' from `Ephemeron.S'
+   (iterating over ephemerons is unsound when several domains run in parallel),
+   while the object type ('a,'b) t defined below requires them, and our own clients
+   really call them (Channel.to_assoc_list, Channel.filter_map_inplace, Hashset.fold).
+   The following module rebuilds what `Ephemeron.K1.Make' used to provide, on top of
+   the primitives that remain available in 5.x, i.e. `Ephemeron.K1.make'/`query' and
+   the `Weak' module. Both are needed, each for its own reason:
+
+     - the ephemeron, because the data must not keep its own key alive: this really
+       happens here (in Channel.Club2UC_book the data, a conjunction, contains the
+       clubs used as keys), so a weak key with a strong data would leak;
+
+     - the weak pointer, because `Ephemeron.K1.query' requires the key as an argument
+       and 5.x provides no way to extract the key from an ephemeron: without an
+       enumerable (and non retaining) source of keys, iteration is impossible.
+
+   Soundness: the reason for the upstream removal is the parallel GC. This library is
+   currently used by single-domain programs (threads, no `Domain'), where the
+   construction is safe. Should it ever be used from several domains, this module must
+   be revisited (and the iterating methods of the object type dropped).
+*)
+module Weaktbl : sig
+  type ('k,'d) t
+  val create   : hash:('k -> int) -> equal:('k -> 'k -> bool) -> int -> ('k,'d) t
+  (* --- *)
+  val add      : ('k,'d) t -> 'k -> 'd -> unit
+  val replace  : ('k,'d) t -> 'k -> 'd -> unit
+  val remove   : ('k,'d) t -> 'k -> unit           (* the most recently added binding *)
+  (* --- *)
+  val mem      : ('k,'d) t -> 'k -> bool
+  val find     : ('k,'d) t -> 'k -> 'd             (* raises Not_found *)
+  val find_all : ('k,'d) t -> 'k -> 'd list        (* most recently added first *)
+  val length   : ('k,'d) t -> int                  (* bindings, dead ones included *)
+  (* --- *)
+  val fold     : ('k -> 'd -> 's -> 's) -> ('k,'d) t -> 's -> 's
+  val iter     : ('k -> 'd -> unit) -> ('k,'d) t -> unit
+  val filter_map_inplace : ('k -> 'd -> 'd option) -> ('k,'d) t -> unit
+  (* --- *)
+  val clean    : ('k,'d) t -> unit
+  val stats    : ('k,'d) t -> Hashtbl.statistics
+  val stats_alive : ('k,'d) t -> Hashtbl.statistics
+end = struct
+
+  (* A binding: the key is only weakly referenced (`kw', a 1-slot weak array) and the
+     data is only referenced by the ephemeron, which drops it as soon as the key dies. *)
+  type ('k,'d) entry = {
+    kw          : 'k Weak.t;                (* of size 1 *)
+    mutable eph : ('k,'d) Ephemeron.K1.t;
+    }
+
+  (* Bindings are indexed by the hash of their key (this is also the way
+     `Ephemeron.K1.Make' was structured). The field `clean_at' supports the amortized
+     automatic cleaning performed by `add' (see below). *)
+  type ('k,'d) t = {
+    tbl              : (int, ('k,'d) entry) Hashtbl.t;
+    hash             : 'k -> int;
+    equal            : 'k -> 'k -> bool;
+    mutable clean_at : int;
+    }
+
+  let min_clean_at = 16
+
+  let create ~hash ~equal size =
+    { tbl = Hashtbl.create size; hash; equal; clean_at = max min_clean_at (2*size) }
+
+  let make_entry k d =
+    let kw = Weak.create 1 in
+    let () = Weak.set kw 0 (Some k) in
+    { kw; eph = Ephemeron.K1.make k d }
+
+  (* The current binding of an entry, if its key is still alive: *)
+  let entry_get (e) =
+    match Weak.get e.kw 0 with
+    | None   -> None
+    | Some k -> (match Ephemeron.K1.query e.eph k with None -> None | Some d -> Some (k,d))
+
+  let entry_alive (e) = match entry_get e with None -> false | Some _ -> true
+
+  (* Remove all dead bindings. Note that this was done automatically by
+     `Ephemeron.K1.Make' when resizing, hence the amortized call in `add': *)
+  let clean t =
+    let () = Hashtbl.filter_map_inplace (fun _h e -> if entry_alive e then Some e else None) t.tbl in
+    t.clean_at <- max min_clean_at (2 * (Hashtbl.length t.tbl))
+
+  let add t k d =
+    let () = if (Hashtbl.length t.tbl) >= t.clean_at then clean t in
+    Hashtbl.add t.tbl (t.hash k) (make_entry k d)
+
+  (* Note: `Hashtbl.find_all' returns the bindings of a hash in the reverse order of
+     introduction, which is exactly the order expected from `find_all' and `remove': *)
+  let bucket t k = Hashtbl.find_all t.tbl (t.hash k)
+
+  let find_all t k =
+    List.filter_map
+      (fun e -> match entry_get e with Some (k',d) when t.equal k k' -> Some d | _ -> None)
+      (bucket t k)
+
+  let find_opt t k =
+    let rec loop = function
+    | []      -> None
+    | e :: es -> (match entry_get e with Some (k',d) when t.equal k k' -> Some d | _ -> loop es)
+    in
+    loop (bucket t k)
+
+  let find t k = match find_opt t k with Some d -> d | None -> raise Not_found
+  let mem  t k = match find_opt t k with Some _ -> true | None -> false
+
+  (* As `Hashtbl.replace', the key of the replaced binding becomes the provided one,
+     hence the weak pointer is reset together with the ephemeron: *)
+  let replace t k d =
+    let rec loop = function
+    | []      -> add t k d
+    | e :: es ->
+        (match entry_get e with
+         | Some (k',_) when t.equal k k' ->
+             let () = Weak.set e.kw 0 (Some k) in
+             e.eph <- Ephemeron.K1.make k d
+         | _ -> loop es)
+    in
+    loop (bucket t k)
+
+  (* Remove the most recently added binding of the key, if any. The bucket is rebuilt
+     because `Hashtbl.remove' would drop the most recent binding of the *hash*, which
+     may belong to another key (collision) or to a dead entry: *)
+  let remove t k =
+    let es = bucket t k in
+    let rec loop acc = function
+    | []      -> None
+    | e :: es ->
+        (match entry_get e with
+         | Some (k',_) when t.equal k k' -> Some (List.rev_append acc es)
+         | _ -> loop (e::acc) es)
+    in
+    match loop [] es with
+    | None      -> ()
+    | Some es' ->
+        let h = t.hash k in
+        (* Empty the bucket, then re-introduce the survivors in their original order
+           (`Hashtbl.add' pushes in front, hence the reversal): *)
+        let () = List.iter (fun _ -> Hashtbl.remove t.tbl h) es in
+        List.iter (fun e -> Hashtbl.add t.tbl h e) (List.rev es')
+
+  let fold f t s =
+    Hashtbl.fold (fun _h e s -> match entry_get e with Some (k,d) -> f k d s | None -> s) t.tbl s
+
+  let iter f t =
+    Hashtbl.iter (fun _h e -> match entry_get e with Some (k,d) -> f k d | None -> ()) t.tbl
+
+  (* Dead bindings are removed on the way. The ephemeron is rebuilt because 5.x
+     provides no way to set the data of an existing one: *)
+  let filter_map_inplace f t =
+    Hashtbl.filter_map_inplace
+      (fun _h e ->
+         match entry_get e with
+         | None       -> None
+         | Some (k,d) ->
+             (match f k d with
+              | None    -> None
+              | Some d' -> let () = e.eph <- Ephemeron.K1.make k d' in Some e))
+      t.tbl
+
+  let length t = Hashtbl.length t.tbl
+  let stats  t = Hashtbl.stats t.tbl
+
+  (* Statistics of alive bindings only. The bucket histogram is the one of a fresh copy
+     containing the alive bindings, not the one of the current table: only `num_bindings'
+     is exact, which is enough for the debugging usage made of it (cf. Channel): *)
+  let stats_alive t =
+    let copy = Hashtbl.create (Hashtbl.length t.tbl) in
+    let () = Hashtbl.iter (fun h e -> if entry_alive e then Hashtbl.add copy h e) t.tbl in
+    Hashtbl.stats copy
+
+end (* Weaktbl *)
+
 (* The function `make' constructs an immediate object of this type: *)
 type ('a,'b) t =
     < mem      : 'a -> bool;
@@ -100,17 +276,18 @@ let new_hashtbl (type keys) ?identifier ?equality ?(size=default_size) () =
       method to_hashtbl = method_to_hashtbl (self)
   end
 
-(* Make a weak hash table (with a parametric equality): *)
-let new_weaktbl (type keys) ?identifier ?equality ?(size=default_size) () =
+(* Make a weak hash table (with a parametric equality). Note that the underlying
+   structure is our own `Weaktbl' and no longer `Ephemeron.K1.Make', which lost its
+   iterating functions in OCaml 5.0 (see the comment on top of this file): *)
+let new_weaktbl ?identifier ?equality ?(size=default_size) () =
   let hash, equal = match identifier, equality with
   | None, None       -> (Hashtbl.hash, (=))
   | None, Some eq    -> (Hashtbl.hash, eq)
   | Some id, None    -> (fun x -> Hashtbl.hash (id x)), (fun x y -> (id x)=(id y))
   | Some id, Some eq -> (fun x -> Hashtbl.hash (id x)), eq
   in
-  let module Hashed = struct  type t = keys  let hash = hash  let equal = equal  end in
-  let module Table  = Ephemeron.K1.Make(Hashed) in
-  let ht : 'b Table.t = Table.create (size) in
+  let module Table = Weaktbl in
+  let ht : ('a, 'b) Table.t = Table.create ~hash ~equal (size) in
   object (self)
       method mem      = Table.mem ht
       method add      = Table.add ht
