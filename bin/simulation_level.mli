@@ -262,7 +262,7 @@ class virtual ['parent] device :
   unexpected_death_callback:(unit -> unit) ->
   unit ->
   object
-    constraint 'parent = < get_name : string; .. > as 'b
+    constraint 'parent = < get_name : string; .. >
     (* --- *)
     method virtual device_type : string
     (* --- *)

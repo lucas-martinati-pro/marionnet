@@ -15,7 +15,9 @@ Depuis l'épisode 2 (2026-07-13), `bin/version.ml` et `bin/meta.ml` sont eux aus
 dune** (`(rule)` dans `bin/dune` invoquant les makers bash), plus par le Makefile. `make` ne reste
 requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 
-- Toolchain **OCaml 4.13.1, gel en cours de levée** → chantier `migration-ocaml5` (cible **5.4.1**).
+- Toolchain : **OCaml 5.4.1** (chantier `migration-ocaml5`) — le build est vert sur ce switch
+  depuis le 2026-07-27 ; le gel 4.13.1 est levé **côté compilation**, le runtime n'est pas
+  encore validé. Le `Makefile` (`OPAM_SWITCH_TO`) crée/pointe ce switch.
   Le motif historique du gel (« dernier compatible camlp4 ») est **caduc** : `camlp4.5.4` existe.
   Merlin/LSP/ocamlformat restent dégradés sur les fichiers préprocessés (7 extensions camlp4 :
   voir `docs/ARCHITECTURE.md` § Camlp4) — c'est désormais la seule justification de `camlp4-to-ppx`.
@@ -91,9 +93,9 @@ Reprise : appliquer le skill `chantier-long`.
   sur camlp4** — la prémisse du gel est fausse, `camlp4.5.4` existe et le projet frère `circa`
   [`~/DEVEL/repos/circa`] le prouve ; coupure nette, pas de double compat) :
   `docs/migration-ocaml5.md` ; mémoire `migration-ocaml5` ;
-  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26.
-  ⚠️ **`main` ne compile pas** tant que l'ép. 2 (tables faibles `Ephemeron`) n'est pas fait :
-  état transitoire assumé de la coupure nette, cf. § 4 de la doc.
+  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26, ép. 2-3 faits 2026-07-27 :
+  **`dune build` est vert sur 5.4.1** (la fenêtre transitoire « `main` ne compile pas » est
+  refermée). Reste à vérifier le **runtime** (compiler ≠ fonctionner), puis `make install`.
 - **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 ; crux =
   `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé** — et sa justification « lever le gel

@@ -6,7 +6,8 @@
 > de la décision D1 (coupure nette) : entre l'épisode 1 et l'épisode 3, `main` **ne compile pas**
 > — ni sur 5.4.1 (3 sites restants, § 4) ni, à partir de l'épisode 2, sur 4.13.1. C'est un état
 > transitoire connu, pas une régression : `git log --grep="migration-ocaml5"` donne la position
-> exacte dans le chantier.
+> exacte dans le chantier. **Depuis l'épisode 3 (2026-07-27), `dune build` est vert sur 5.4.1**
+> et cette fenêtre est refermée.
 
 > Doc durable : conception, décisions, inventaire, journal d'avancement.
 > État vivant et prochaines étapes : fiche mémoire `migration-ocaml5`.
@@ -292,3 +293,19 @@ référençant sa propre clé** → collectée ; (5) collisions de hash → `fin
 (6) 1000 clés éphémères → table bornée à 8 liaisons (nettoyage amorti) ; (7) non-régression des
 tables fortes. Contre-épreuve : le test (4) **échoue** si la table est rendue forte, ce qui valide
 à la fois le test et le rejet de la piste 2.
+
+### Épisode 3 — 2026-07-27 — les 2 `warning 34` et le build vert
+
+Suppression des deux alias de type d'objet jamais référencés (`bin/simulation_level.mli:265`,
+`as 'b` ; `bin/user_level.mli:159`, `as 'c`) — catégorie F du § 4.
+
+**`dune clean && dune build` → `rc=0`** sur le switch 5.4.1 (`marionnet.exe` produit). L'état
+transitoire « `main` ne compile pas », assumé depuis la coupure nette (§ 4 et D1), est **terminé**.
+
+Reliquat mineur, non bloquant, laissé en l'état : le build émet une alerte
+`ocaml_deprecated_auto_include` (une `(rule)` de préprocesseur camlp4 de `lib/dune` utilise `Unix`
+sans le déclarer ; le répertoire `unix/` est ajouté automatiquement). Correctif éventuel : ajouter
+`unix` au `-package` de la règle concernée.
+
+**Rappel : compiler ≠ fonctionner.** Rien n'est encore vérifié à l'exécution sous le runtime
+OCaml 5 (threads, `Unix.fork`, signaux, GTK) — c'est l'objet de l'épisode suivant.

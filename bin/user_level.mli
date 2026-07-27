@@ -156,7 +156,7 @@ class virtual node_with_ports_card :
                                                  (< decrement_alive_endpoint_no : unit;
                                                     increment_alive_endpoint_no : unit;
                                                     show : string -> string;
-                                                    .. > as 'c) list;
+                                                    .. >) list;
              .. >
            as 'b) ->
   name:string ->
