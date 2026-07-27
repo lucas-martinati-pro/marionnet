@@ -257,7 +257,12 @@ object (self)
         let maximum_message_size = 1000 in
         let buffer = Bytes.create maximum_message_size in
         Log.printf ("ledgrid_manager: Ok, entering the thread main loop\n");
-        while true; do
+        (* Set by the "please-die" branch below to leave the loop. Since OCaml 5.0
+           `Thread.exit ()' no longer terminates the thread: it raises `Thread.Exit',
+           which the catch-all handler of this very loop would swallow, spinning
+           forever on an already closed socket. *)
+        let finished = ref false in
+        while not !finished do
           (* ==== Beginning of the reasonable version ==== *)
 (** This commented-out version was absolutely reasonable and it worked with the old
     patched VDE, but for some strange reason I can't understand now recvfrom() fails,
@@ -305,10 +310,11 @@ object (self)
               let () = assert (Scanf.sscanf message "please-die" true) in
               (* --- *)
               Log.printf ("ledgrid_manager: Exiting the LEDgrid manager blinker thread\n");
+              (* Set before closing anything: whatever happens next, the loop ends. *)
+              finished := true;
               Unix.close socket;
               let _ = try Unix.unlink blinker_thread_socket_file_name with _ -> () in
-              Thread.exit ();
-              Log.printf ("ledgrid_manager: !!! This should never be reached !!!\n");
+              ();
             with _ ->
               Log.printf1 "ledgrid_manager: Warning: can't understand the message '%s'\n" message;
         done)

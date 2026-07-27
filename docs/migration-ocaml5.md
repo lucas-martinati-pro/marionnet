@@ -309,3 +309,79 @@ sans le déclarer ; le répertoire `unix/` est ajouté automatiquement). Correct
 
 **Rappel : compiler ≠ fonctionner.** Rien n'est encore vérifié à l'exécution sous le runtime
 OCaml 5 (threads, `Unix.fork`, signaux, GTK) — c'est l'objet de l'épisode suivant.
+
+### Épisode 4 — 2026-07-27 — le runtime : Marionnet **tourne** sur 5.4.1
+
+Premier épisode d'exécution. Méthode : zéro code de test neuf (on exploite l'existant), preuves du
+moins couplé au plus couplé, puis un scénario GUI réel piloté par l'auteur.
+
+**Preuves obtenues, dans l'ordre :**
+
+| Preuve | Commande | Résultat |
+|---|---|---|
+| build + tests existants | `dune build`, `dune test` | `rc=0` (le `test/marionnet.ml` vide exécute toutes les initialisations top-level d'`ocamlbricks`) |
+| résolution des chemins | `marionnet.exe --paths` | `rc=0` |
+| `fork`/`waitpid`/sudo/iproute2 | `tap_provider_test.exe --live` | `rc=0`, **tous les checks** (dont *exit of a forked child* et *orphan collector*) |
+| GUI, cycle complet | 2 machines trixie + hub + câbles, `linux-6.12.95` ×2 réellement lancés, arrêt, `quit` | `rc=0`, aucun processus orphelin |
+| connectivité entre invités | `ping` de `m1` vers `m2` à travers le hub | **OK** (observé en GUI) |
+| X11 dans l'invité + `fork` | `xeyes` dans une machine trixie | **affiché** ; 2 connexions acceptées sur `172.23.0.254:6000`, une par *fork*, « *Protocol completed … Exiting* » |
+
+**Note d'environnement (pas un bug).** En profil *testing*, `Meta.prefix` vaut
+`$OPAM_SWITCH_PREFIX` : le changement de switch a déplacé les chemins vers
+`~/.opam/5.4.1/share/marionnet`, alors que noyaux et rootfs sont installés sous `/usr/local`. On
+lance donc depuis l'arbre de build avec `MARIONNET_PREFIX=/usr/local/share/marionnet`
+(variable déclarée dans `bin/configuration.ml`), sans rien modifier. Prérequis hôte annexe : la
+règle `/etc/sudoers.d/marionnet` (`bin/scripts/marionnet-sudoers.sh install`), absente de la
+machine de test, sans laquelle `Tap_provider` échoue proprement sur `sudo -n`.
+
+#### La régression : `Thread.exit` ne termine plus le thread depuis OCaml 5.0
+
+Symptôme : à la fermeture, le log passait de ~700 à **182 649 lignes**, avec **90 863** paires
+alternées « *Exiting the LEDgrid manager blinker thread* » / « *can't understand the message* » —
+une boucle à 100 % CPU jusqu'à ce que le thread principal tue ses fils.
+
+Cause racine, dans `bin/gui/ledgrid_manager.ml` (thread *blinker* du gestionnaire de LEDs) :
+`thread.mli` de 5.4.1 documente que `Thread.exit ()` est **déprécié** et se contente désormais de
+**lever `Thread.Exit`** (« *@before 5.0 A different implementation was used, not based on
+raising* »). Or l'appel était placé dans un `try` dont le gestionnaire est un **catch-all
+`with _`** : l'exception y était avalée, la boucle `while true` repartait sur un socket **déjà
+fermé** juste au-dessus, `recvfrom` échouait dans un autre `try … with _ -> ()`, le buffer
+inchangé redonnait le même message — et ainsi de suite.
+
+Correctif (minimal, un seul fichier) : sortie de boucle explicite par un drapeau
+(`let finished = ref false in while not !finished do …`), positionné **avant** la fermeture du
+socket, à la place de `Thread.exit ()`. Aucune exception ne traverse plus les catch-all.
+
+**Preuve du correctif** — même scénario rejoué en GUI :
+
+| | avant | après |
+|---|---|---|
+| lignes de log | 182 649 | **691** |
+| « can't understand the message » | 90 863 | **0** |
+| « Exiting … blinker thread » | 90 863 | **1** |
+| sortie de l'application | `rc=0` | `rc=0` |
+
+#### Les trois autres sites de `Thread.exit`, examinés et **laissés en l'état**
+
+- `lib/EXTRA/threadExtra.ml:363` et `:386` — l'appel est en fin de gestionnaire `with e -> …`,
+  aucune clause ne peut avaler `Thread.Exit` : elle remonte au *wrapper* de `Thread.create`, qui
+  la traite silencieusement. Comportement **inchangé** par rapport à 4.13.1.
+- `lib/STRUCTURES/network.ml:264` — fin normale de `server_fun`, dans le `thread_forking_loop` de
+  `Network.server`. Sous 5.x, `Thread.Exit` y serait interceptée par le `with e` de
+  `ThreadExtra.create`, qui journaliserait un « *Terminated by uncaught exception* » trompeur.
+  **Mais cette boucle est du code mort dans Marionnet** : elle n'est atteinte que par
+  `~no_fork:()`, or `bin/x.ml:228` fixe `no_fork = None` (« *Yes fork, i.e. create a process for
+  each connection* ») et les deux variantes « threads » sont commentées (`x.ml:229`,
+  `machine.ml:886`). Le run le confirme : les connexions X11 de `xeyes` sont servies par
+  *fork* (« *Process (fork) created for connection #1* »), jamais par un thread. Non modifié :
+  corriger un chemin mort, non exercé, serait un changement non vérifiable.
+
+#### Reliquat qualifié, non traité
+
+À la fermeture, deux threads sortent sur `Ocamlbricks.Network.Accepting(_)` (journalisé
+« *Terminated by uncaught exception* »). Ce sont les threads `inet4` et `inet6` du service X11
+*dual stack* (`0.0.0.0:6000 → /tmp/.X11-unix/X0`, `bin/x.ml`), arrêtés **volontairement** :
+`ThreadExtra.set_killable_with_thunk` déclenche un `Unix.shutdown` du socket d'écoute, ce qui fait
+échouer l'`accept` en cours et lever `Accepting`. L'alerte est trompeuse, le comportement est
+nominal. Rien ne permet de l'attribuer à OCaml 5 sans contre-épreuve sur 4.13.1, laquelle n'est
+plus compilable (D1).
