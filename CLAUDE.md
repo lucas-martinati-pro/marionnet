@@ -92,18 +92,11 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-- **migration-ocaml5** (compiler sur le switch opam **5.4.1** au lieu du gel 4.13.1, **en restant
-  sur camlp4** — la prémisse du gel est fausse, `camlp4.5.4` existe et le projet frère `circa`
-  [`~/DEVEL/repos/circa`] le prouve ; coupure nette, pas de double compat) :
-  `docs/migration-ocaml5.md` ; mémoire `migration-ocaml5` ;
-  `git log --grep="migration-ocaml5"`. Ép. 0-1 faits 2026-07-26, ép. 2-5 faits 2026-07-27 :
-  **build vert**, **runtime validé** (ép. 4 ; régression `Thread.exit` corrigée) et **installation
-  en profil *testing* validée** (ép. 5 ; i18n prouvée par `strace`). Reste : ép. 6 =
-  `make install-final-as-root`, puis rétro-propagation vers `~/DEVEL/repos/ocamlbricks`.
 - **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 ; crux =
   `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
-  `git log --grep="marionnet-camlp4-ppx"`. **NON entamé** — et sa justification « lever le gel
-  4.13.1 » tombe si `migration-ocaml5` aboutit ; ne reste que Merlin/LSP.
+  `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, et **à re-prioriser à la baisse** : sa
+  moitié de justification « lever le gel 4.13.1 » **est tombée** (chantier `migration-ocaml5` clos
+  le 2026-07-27) ; ne reste que Merlin/LSP/ocamlformat.
 - **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
   via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
@@ -134,8 +127,11 @@ Reprise : appliquer le skill `chantier-long`.
 
 ## Où puiser
 
-- **Récit d'architecture** (build hybride, 2 niveaux, GUI, état, privilèges/taps, i18n, uml, ocamlbricks) :
+- **Récit d'architecture** (build, 2 niveaux, GUI, état, privilèges/taps, i18n, uml, ocamlbricks) :
   `docs/ARCHITECTURE.md` — lire la tranche pertinente, pas tout.
+- **Chantiers clos** (archives durables, à consulter avant de rouvrir un sujet qu'ils couvrent) :
+  `docs/migration-ocaml5.md` (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md`
+  (clos 2026-07-18), `docs/daemon-elimination-study.md` (clos 2026-07-17).
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,
   `marionnet-gui`, `marionnet-pupisto` (`.claude/skills/`).

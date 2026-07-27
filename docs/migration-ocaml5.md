@@ -2,6 +2,11 @@
 
 *Slug de chantier (scope des commits, `git log --grep`) : `migration-ocaml5`.*
 
+> **CHANTIER CLOS (2026-07-27).** Périmètre atteint : Marionnet **compile**, **tourne** et
+> **s'installe** (profil *testing*) sur le switch opam **5.4.1**, en restant sur camlp4. Le gel
+> 4.13.1 est levé, sa justification historique était fausse. Épisodes 0→6 en 2 jours
+> (`git log --grep="migration-ocaml5"`). Bilan et suites : § 6, en fin de document.
+
 > **Historique linéaire sur `main`**, comme tous les chantiers de ce dépôt. Conséquence assumée
 > de la décision D1 (coupure nette) : entre l'épisode 1 et l'épisode 3, `main` **ne compile pas**
 > — ni sur 5.4.1 (3 sites restants, § 4) ni, à partir de l'épisode 2, sur 4.13.1. C'est un état
@@ -457,3 +462,61 @@ complet passe de l'alerte + `Success.` à `Success.` seul, `rc=0`.
   texte d'aide `world_bridge` réécrit par le chantier `modernisation-world-bridge` n'y figurait pas).
   Ce diff appartient à ce chantier-là, pas à celui-ci : le fichier versionné a été **restauré**. À
   traiter lors de la prochaine passe i18n.
+
+---
+
+## 6. Bilan et clôture (2026-07-27)
+
+### Ce que le chantier a livré
+
+En deux jours et sept épisodes, sur `main` en historique linéaire :
+
+| | Preuve | Épisode |
+|---|---|---|
+| **Compile** | `dune clean && dune build` `rc=0` sur 5.4.1 | 1→3 |
+| **Tourne** | `dune test`, `tap_provider_test --live`, cycle GUI réel (2 machines trixie + hub, ping, `xeyes`) | 4 |
+| **S'installe** | `make install-for-testing` `rc=0`, 12 catalogues `.mo`, `--paths` sans `MARIONNET_PREFIX` | 5 |
+
+**Trois modifications de code au total** — c'est la mesure honnête de l'effort réel :
+`lib/STRUCTURES/table.ml` (module interne `Weaktbl`, ép. 2), deux alias de type inutilisés
+(ép. 3), `bin/gui/ledgrid_manager.ml` (`Thread.exit`, ép. 4) ; plus deux correctifs de build
+(`lib/dune`, `lib/EXTRA/waitpid-c-wrapper.c`, ép. 1 et 5).
+
+Le chantier avait été ouvert (ép. 0) en démontrant que sa propre justification officielle était
+fausse : le gel n'était pas imposé par camlp4 (`camlp4.5.4` existe, le projet frère `circa` le
+prouvait). Cette inversion de prémisse est ce qui a rendu le reste presque gratuit.
+
+### Hors périmètre, assumé
+
+- **`make install-final-as-root`** (root, `/usr/local`) : **non joué**, sur décision explicite de
+  l'auteur. La recette n'a rien de spécifique à OCaml 5 (elle enveloppe `dune install --prefix`,
+  déjà exercé en profil *testing*), mais ce n'est pas une preuve — si un jour elle échoue, ce
+  document ne prétend pas le contraire.
+- **RPM** (`RPMS/Makefile`) : `rpmbuild` est absent de la machine de développement ; non testé sous
+  5.4.1, comme il ne l'était pas sous 4.13.1.
+- **`bin/po/messages.pot`** : en retard sur les chaînes de `modernisation-world-bridge` ; relève de
+  la prochaine passe i18n, pas de ce chantier (constaté à l'ép. 5).
+
+### Ce qui reste à rendre à l'upstream — décision D4 réévaluée
+
+D4 prévoyait de rétro-propager les correctifs vers `~/DEVEL/repos/ocamlbricks` « en fin de
+chantier ». Vérification faite à la clôture, **cette étape n'appartient pas à ce chantier** :
+l'upstream est en **bzr**, **sans dune** (build ocamlbuild/Makefile historique), et n'est pas porté
+sur OCaml 5. Rien n'y serait *prouvable* sans le porter d'abord — ce qui est un chantier en soi.
+
+Matériau relevé, pour qui l'ouvrira :
+
+| Correctif | Transposable ? |
+|---|---|
+| `EXTRA/waitpid-c-wrapper.c` | **oui, tel quel** — 21 lignes de diff : `enter/leave_blocking_section` → `caml_enter/leave_blocking_section`, `alloc_tuple` → `caml_alloc_tuple` |
+| `STRUCTURES/table.ml`, module `Weaktbl` | **oui, mais à isoler** — les deux copies divergent de ~399 lignes depuis 2023 ; ne reprendre que le module interne, jamais le fichier en bloc (D2) |
+| `lib/dune` (`-package …,unix`) | **non** — l'upstream n'a pas de dune ; l'équivalent y serait un flag ocamlbuild/`_tags` |
+
+Prérequis d'un tel chantier : porter l'upstream (98 modules, ocamlbuild + camlp4) sur 5.4.1, la
+copie Marionnet servant alors de référence de ce qui casse et de comment le réparer.
+
+### Effet sur les autres chantiers
+
+`camlp4 → ppx` perd sa justification principale : il n'y a plus de gel de toolchain à lever, il ne
+reste que la dégradation **Merlin/LSP/ocamlformat** sur les fichiers préprocessés. À re-prioriser
+en conséquence — cf. `docs/camlp4-to-ppx.md`.
