@@ -7,21 +7,29 @@ Ce dépôt est le **port dune** du projet historique (bzr/ocamlbuild → git/dun
 
 ## Build — `dune build` seul suffit
 
-**Sur un clone frais, `dune build` seul suffit** — plus aucun `make` préalable requis. Depuis
-l'épisode 1 du chantier `finitions-port-dune` (commit `88e614b`, 2026-07-13), les préprocesseurs
-**camlp4** et les stubs C sont construits **par dune** (`(rule)` dans `lib/dune`, `foreign_stubs`),
-plus par `lib/Makefile` : il n'y a plus de pré-fabrication dans `lib/_build/` ni de hand-link.
-Depuis l'épisode 2 (2026-07-13), `bin/version.ml` et `bin/meta.ml` sont eux aussi générés **par
-dune** (`(rule)` dans `bin/dune` invoquant les makers bash), plus par le Makefile. `make` ne reste
-requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
+**Sur un clone frais, `dune build` seul suffit** — plus aucun `make` préalable requis. Les
+préprocesseurs **camlp4**, les stubs C, `bin/version.ml` et `bin/meta.ml` sont tous construits
+**par dune** (`(rule)` dans `lib/dune` et `bin/dune`, `foreign_stubs`) : plus de pré-fabrication
+dans `lib/_build/` ni de hand-link. `make` ne reste requis que pour l'**i18n gettext**,
+l'**install** et le **RPM**.
 
 - Toolchain : **OCaml 5.4.1** (chantier `migration-ocaml5`) — depuis le 2026-07-27 le build est
   vert, le **runtime est validé** (cycle GUI réel) et l'**installation en profil *testing*** aussi ;
   le gel 4.13.1 est levé. Reste non joué : `make install-final-as-root` (root, `/usr/local`).
   Le `Makefile` (`OPAM_SWITCH_TO`) crée/pointe ce switch.
   Le motif historique du gel (« dernier compatible camlp4 ») est **caduc** : `camlp4.5.4` existe.
-  Merlin/LSP/ocamlformat restent dégradés sur les fichiers préprocessés (7 extensions camlp4 :
-  voir `docs/ARCHITECTURE.md` § Camlp4) — c'est désormais la seule justification de `camlp4-to-ppx`.
+  **Merlin/LSP fonctionnent sur les fichiers préprocessés** depuis le 2026-07-28 (`fde2096`,
+  `f0754c5`) : dune passe la commande `(preprocess (action (run camlp4of …)))` telle quelle à
+  merlin, qui la rejoue **depuis le répertoire du fichier source** — d'où un `-I` absolu généré
+  (`(rule)` `camlp4of-include.cfg` de `lib/dune`) et, côté préprocesseurs, un repli vers la racine
+  du projet (`INCLUDE DEFINITIONS`/`INCLUDE_AS_STRING`) plus une garde par suffixe
+  (`log_module_loading_p4`, que la copie temporaire `/tmp/merlinpp<hash><base>` mettait en défaut).
+  Mesuré : 0 diagnostic sur les fichiers de `bin/` et `lib/`, hover correct sur les identifiants
+  déplacés par `where_p4`. Restent aveugles : les 7 **sources de préprocesseurs** elles-mêmes
+  (exclues des modules de la bibliothèque, donc sans config merlin). Côté éditeur, la
+  configuration est **locale et gitignorée** (bac à sable opam `5.4.1`) ; `ocamlformat` y est
+  volontairement **désactivé** (pas de `.ocamlformat`, style maison). Il ne reste donc **plus
+  grand-chose** pour justifier `camlp4-to-ppx`.
 - Install : `make install-final-as-root` (final) ou variante testing — bascule par le symlink
   `CONFIGME.choice` ; si le choix change : `make rebuild-for-{final,testing}`.
 - i18n : la compilation `.po` → `.mo` **et** son installation sont **sous dune** (`i18n/dune`, site
@@ -73,8 +81,7 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 ## Pièges globaux
 
 1. Build : sur clone frais `dune build` seul suffit (cf. § « Build »). L'ancien ordre make→dune
-   obligatoire et le garde-fou « make clean required! » ont disparu avec l'épisode 1 de
-   `finitions-port-dune` ; la génération de `version.ml`/`meta.ml` est passée sous dune à l'épisode 2.
+   obligatoire et le garde-fou « make clean required! » n'existent plus.
 2. `bin/dune` ne produit plus qu'UN exécutable : `marionnet.native` — le démon
    `marionnet-daemon.native` a été supprimé (ép. 4 de `marionnet-daemon-elimination`). Les
    modules sans lablgtk partagés entre la bibliothèque `marionnet_tap` et la GUI
@@ -94,9 +101,12 @@ requis que pour l'**i18n gettext**, l'**install** et le **RPM**.
 Reprise : appliquer le skill `chantier-long`.
 - **camlp4 → ppx** (ancienne « Phase B » de finitions ; sortir des 7 extensions camlp4 ; crux =
   `where_p4`) : `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
-  `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, et **à re-prioriser à la baisse** : sa
-  moitié de justification « lever le gel 4.13.1 » **est tombée** (chantier `migration-ocaml5` clos
-  le 2026-07-27) ; ne reste que Merlin/LSP/ocamlformat.
+  `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, et **à re-prioriser fortement à la
+  baisse** : ses **deux** moitiés de justification sont tombées — « lever le gel 4.13.1 » avec
+  `migration-ocaml5` (clos le 2026-07-27), puis « restaurer Merlin/LSP » le 2026-07-28
+  (`fde2096`, `f0754c5` ; cf. § Build). Reliquats : les 7 sources de préprocesseurs restent sans
+  config merlin, `ocamlformat` reste inutilisable sur la syntaxe camlp4, et la dette de fond
+  (dépendre d'un préprocesseur mort) demeure — mais plus aucune urgence outillage.
 - **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
   via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
