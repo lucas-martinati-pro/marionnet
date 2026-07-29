@@ -15,13 +15,35 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+;; --------------------------------------------------------------------------
+;; ABSOLUTE -I, FOR MERLIN / OCAML-LSP.
+;; Dune hands each (preprocess (action ...)) below — and in bin/dune — VERBATIM to merlin,
+;; as an (FLG (-pp ...)) entry of the generated merlin configuration. But merlin chdir's to
+;; the SOURCE file's directory before running that command (strace: chdir("<repo>/bin") then
+;; execve camlp4of), a directory from which none of the build-tree-relative -I above can
+;; resolve: camlp4of then exits 2 (DynLoader "file not found in path"), merlin silently falls
+;; back to the raw parser, and every #load'ing file gets a bogus "Syntax error" while the
+;; camlp4-rewritten code (where_p4 blocks...) stays invisible to completion and typing.
+;; This rule emits the single -I that holds from ANY cwd: the absolute path of
+;; _build/default/lib, read off the action's own working directory. (universe) disables the
+;; sandbox — the same trick as the makers in bin/dune — so that cwd really is that directory,
+;; and forces a regeneration at every build, so a moved/copied checkout re-points by itself.
+;; Generated only, never a source file: the path is machine-specific.
+;; --------------------------------------------------------------------------
+(rule
+  (target camlp4of-include.cfg)
+  (deps (universe))
+  (action (with-stdout-to camlp4of-include.cfg
+            (run bash -c "printf -- '-I\\n%s\\n' \"$PWD\""))))
+
 (library
   (name ocamlbricks)
   ;; (public_name ocamlbricks)
   ;; ocamlbricks modules #load include_type_definitions_p4.cmo (built by the (rule)s below);
   ;; -I points into dune's own build dir instead of the former hand-linked top-level _build/.
+  ;; The second, generated -I is the merlin-usable one (see the rule right above).
   (preprocessor_deps include_type_definitions_p4.cmo)
-  (preprocess (action (run camlp4of -I ../../../../_build/default/lib/ %{read-lines:camlp4of-flags.cfg} %{input-file})))
+  (preprocess (action (run camlp4of -I ../../../../_build/default/lib/ %{read-lines:camlp4of-include.cfg} %{read-lines:camlp4of-flags.cfg} %{input-file})))
   (libraries str unix threads inotify lablgtk3)
   ;;(library_flags -linkall -cclib -locamlbricks_stubs)
   ;; ---
