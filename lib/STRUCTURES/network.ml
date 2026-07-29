@@ -527,7 +527,17 @@ class stream_or_seqpacket_bidirectional_channel ?(max_input_size=1514) ?seqpacke
   val input_buffer = Bytes.create max_input_size
   val max_input_size = max_input_size
 
+  (* A channel is shut down at most once. Note that this method closes the descriptor
+     whatever the requested shutdown_command is: a #shutdown ~receive:() has always been,
+     in fact, a complete closure. Hence this flag changes no observable behaviour; it
+     simply prevents the *second* call (there are several call sites doing
+     `try ch#shutdown ... with _ -> ()') from closing a descriptor number already
+     released, hence possibly recycled meanwhile by another thread: *)
+  val mutable closed = false
+
   method shutdown ?receive ?send () =
+    if closed then () else
+    let () = closed <- true in
     try
       let shutdown_command =
         match receive, send with
@@ -548,25 +558,46 @@ class stream_or_seqpacket_bidirectional_channel ?(max_input_size=1514) ?seqpacke
 
 end (* class stream_or_seqpacket_bidirectional_channel *)
 
+(* Note about the descriptors below: each stdlib channel is built on its *own* copy of
+   the socket, obtained by Unix.dup. Deriving both channels from the very descriptor
+   owned by the object makes the closure ill-defined: three owners (in_channel,
+   out_channel and the object itself) would close the same number, so two of the three
+   close() would act on a number already released -- hence possibly recycled meanwhile by
+   another thread, whose file or socket would be closed instead (this is the
+   descriptor-flavoured version of the deferred-kill pattern analysed in
+   docs/bug-critique-crash-host.md; note that close_out even *writes* into it, flushing
+   before closing). With a copy per channel, each owner closes exactly what it owns.
+   The cloexec flag is set at creation time so that a concurrent fork+exec cannot inherit
+   these copies (same discipline as the sockets above).
+   The copies are allocated *on demand*, when a stdlib channel is really needed: many
+   protocols use only #send and #receive (both working directly on the socket), and a
+   channel must remain servable when descriptors are scarce -- an accepted connection
+   failing to be served because two spare descriptors were missing would defeat the very
+   purpose of the guarded accepting loop above: *)
 class stream_channel ?max_input_size fd =
-  let in_channel  = Unix.in_channel_of_descr  fd in
-  let out_channel = Unix.out_channel_of_descr fd in
+  let in_channel  = lazy (Unix.in_channel_of_descr  (Unix.dup ~cloexec:true fd)) in
+  let out_channel = lazy (Unix.out_channel_of_descr (Unix.dup ~cloexec:true fd)) in
   let raise_but_also_log_it ?sending caller e =
     let prefix = Printf.sprintf "Network.stream_channel#%s: " caller in
     let () = Log.print_exn ~prefix e in
     if sending=None then raise (Receiving e) else raise (Sending e)
   in
-  let tutor0 f x caller =
+  (* The channel is provided as a thunk, so that a failure of its (lazy) creation is
+     reported as any other failure of the operation: *)
+  let tutor0 f get_channel caller =
     try
-      f x
+      f (get_channel ())
     with e -> raise_but_also_log_it caller e
   in
-  let tutor1 f x y caller =
+  let tutor1 f get_channel y caller =
     try
+      let x = get_channel () in
       f x y;
       flush x
     with e -> raise_but_also_log_it ~sending:() caller e
   in
+  let ic () = Lazy.force in_channel  in
+  let oc () = Lazy.force out_channel in
   let return_of_at_least at_least =
     match at_least with
     | None -> fun y -> y
@@ -581,13 +612,25 @@ class stream_channel ?max_input_size fd =
   object
   inherit stream_or_seqpacket_bidirectional_channel ?max_input_size fd as super
 
-  (* Redefined: *)
-  method! shutdown ?receive ?send () = begin
-    super#shutdown ?receive ?send ();
-    protect close_in   in_channel;
-    protect close_out out_channel;
-    protect Unix.close fd;
-    end
+  (* Redefined: the two stdlib channels must be disposed of *before* the socket is shut
+     down (a flush performed after a SHUTDOWN_SEND would fail) and, above all, they must
+     be disposed of *at all*: the inherited method may very well raise -- Unix.shutdown
+     answers ENOTCONN as soon as the peer closed first, which is a perfectly normal event
+     -- and the previous version had these closures *after* the inherited call, hence
+     skipped in that case (the garbage collector does not close them: it just releases
+     the structure, so the buffered bytes were simply lost). Each close below acts on the
+     channel's own copy (see the comment above the class); the socket itself is closed
+     once, by the inherited method: *)
+  method! shutdown ?receive ?send () =
+    if closed then () else begin
+      (if Lazy.is_val out_channel then
+         let out_channel = Lazy.force out_channel in
+         (* the flush comes before any shutdown of the sending direction: *)
+         let () = protect flush out_channel in
+         close_out_noerr out_channel);
+      (if Lazy.is_val in_channel then protect close_in (Lazy.force in_channel));
+      super#shutdown ?receive ?send () (* sets `closed' and closes fd, exactly once *)
+      end
 
   method receive ?at_least () : string =
     let return = return_of_at_least at_least in
@@ -629,18 +672,18 @@ class stream_channel ?max_input_size fd =
       Log.print_exn ~prefix:"Network.stream_channel#send: " e;
       raise (Sending e)
 
-  method input_char       () : char   = tutor0 Pervasives.input_char in_channel "input_char"
-  method input_line       () : string = tutor0 Pervasives.input_line in_channel "input_line"
-  method input_byte       () : int    = tutor0 Pervasives.input_byte in_channel "input_byte"
-  method input_binary_int () : int    = tutor0 Pervasives.input_binary_int in_channel "input_binary_int"
-  method input_value         : 'a. unit -> 'a = fun () -> tutor0 Pervasives.input_value in_channel "input_value"
+  method input_char       () : char   = tutor0 Pervasives.input_char ic "input_char"
+  method input_line       () : string = tutor0 Pervasives.input_line ic "input_line"
+  method input_byte       () : int    = tutor0 Pervasives.input_byte ic "input_byte"
+  method input_binary_int () : int    = tutor0 Pervasives.input_binary_int ic "input_binary_int"
+  method input_value         : 'a. unit -> 'a = fun () -> tutor0 Pervasives.input_value ic "input_value"
 
-  method output_char   x = tutor1 Pervasives.output_char out_channel x "output_char"
-  method output_line   x = tutor1 Pervasives.output_string out_channel (x^"\n") "output_line"
-  method output_byte   x = tutor1 Pervasives.output_byte out_channel x "output_byte"
-  method output_binary_int x = tutor1 Pervasives.output_binary_int out_channel x "output_binary_int"
+  method output_char   x = tutor1 Pervasives.output_char oc x "output_char"
+  method output_line   x = tutor1 Pervasives.output_string oc (x^"\n") "output_line"
+  method output_byte   x = tutor1 Pervasives.output_byte oc x "output_byte"
+  method output_binary_int x = tutor1 Pervasives.output_binary_int oc x "output_binary_int"
   method output_value : 'a. 'a -> unit =
-    fun x -> tutor1 Pervasives.output_value out_channel x "output_value"
+    fun x -> tutor1 Pervasives.output_value oc x "output_value"
 
   method get_send_wait_at_least   = Unix.getsockopt_int fd Unix.SO_SNDLOWAT
   method set_send_wait_at_least x = Unix.setsockopt_int fd Unix.SO_SNDLOWAT x
@@ -890,7 +933,14 @@ let call_logging_exception ?prefix protocol channel =
 
 let server_fun_of_stream_protocol ?max_input_size (protocol:'a stream_protocol) =
   function fd ->
-    let channel = new stream_channel ?max_input_size fd in
+    (* Should the construction of the channel fail (fix_SO_RCVBUF_if_needed queries and
+       sets a socket option), the descriptor would be leaked: at this point it is ours,
+       its ownership having just been transferred to this serving thread, so nobody else
+       would close it: *)
+    let channel =
+      try new stream_channel ?max_input_size fd
+      with e -> (protect Unix.close fd; raise e)
+    in
     let result =
       call_logging_exception ~prefix:"stream server exception: " protocol channel
     in

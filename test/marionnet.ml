@@ -16,9 +16,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 (* Regression tests for the fixes applied to the vendored [lib/STRUCTURES/network.ml],
-   episode 2 of the `marionnet-pilotage-par-script' work-stream (see the numbering
-   N1..N17 in docs/pilotage-par-script.md, § 7.5). Each test below fails on the code
-   as it was *before* the episode. Run them with:
+   episodes 2 and 2b of the `marionnet-pilotage-par-script' work-stream (see the
+   numbering N1..N18 in docs/pilotage-par-script.md, § 7.5). Except where explicitly
+   stated, each test below fails on the code as it was *before* its episode. Run them
+   with:
 
      dune test
 
@@ -220,13 +221,104 @@ let test_N3_transient_failure_does_not_kill_the_loop () =
     (Printf.sprintf "the server did not survive the transient failure (got %S)" answer)
 
 (* -------------------------------------------------------------------------- *)
+(* N1 (episode 2b) -- a stream_channel used to close the very same descriptor number up
+   to four times: Unix.close in the inherited #shutdown, then close_in, close_out and
+   Unix.close again, the three last ones acting on a number already released. The danger
+   is not the EBADF (harmless) but the case where the number has been recycled meanwhile:
+   an unrelated descriptor gets closed -- close_out even writes into it. The scenario
+   below makes that recycling deterministic: the channel is shut down once, the freed
+   number is immediately taken by a witness descriptor, and the *second* #shutdown --
+   the one performed by server_fun_of_stream_protocol on return, see network.ml, and by
+   three other call sites, each of them written `try ch#shutdown ... with _ -> ()' --
+   must leave the witness untouched.
+
+   The channel is built here on a socketpair rather than through a real client/server
+   exchange, on purpose: a *first* version of this test did the latter and proved to be
+   flaky, because the serving thread running in the same process sometimes grabbed the
+   released number before the witness could (observed: released fd 11, lowest number
+   available to the witness 12). Without any concurrent thread the recycling is
+   deterministic -- and the defect under test needs no network at all.
+
+   Note (measured on OCaml 5.4.1, 2026-07-29): the garbage collector does NOT close the
+   descriptor of a finalized channel, it only releases the structure. The audit entry N1
+   claimed a deferred close by the GC: that half is disproved, exactly as for N4. *)
+(* -------------------------------------------------------------------------- *)
+
+let test_N1_no_close_of_a_recycled_descriptor () =
+  let name = "N1: a second shutdown must not close a descriptor recycled meanwhile" in
+  (* Unix.file_descr is an int on Unix; needed for the diagnostic message only: *)
+  let int_of_fd (fd : Unix.file_descr) : int = Obj.magic fd in
+  let (fd, peer) = Unix.socketpair ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 in
+  let channel = new Network.stream_channel fd in
+  (* A complete, ordinary closure -- it releases the number of fd: *)
+  let () = try channel#shutdown ~receive:() () with _ -> () in
+  (* ... immediately taken by the witness: *)
+  let witness = Unix.openfile "/dev/null" [Unix.O_RDONLY] 0 in
+  let premise = (witness = fd) in
+  (* The second shutdown must be a no-op: *)
+  let () = try channel#shutdown ~receive:() () with _ -> () in
+  let witness_is_alive = (try (ignore (Unix.fstat witness); true) with _ -> false) in
+  let () = List.iter (fun fd -> try Unix.close fd with _ -> ()) [witness; peer] in
+  let details =
+    if not premise
+      then Printf.sprintf
+             "inconclusive: the witness got the descriptor %d instead of the released %d"
+             (int_of_fd witness) (int_of_fd fd)
+      else "the second shutdown closed a descriptor belonging to someone else"
+  in
+  check ~name (premise && witness_is_alive) details
+
+(* -------------------------------------------------------------------------- *)
+(* N1, second half: the fix gives each stdlib channel its own copy of the socket
+   (Unix.dup), so a channel now owns three descriptors instead of one. This test is not
+   discriminant with respect to the previous code -- it guards the fix itself: those
+   copies must be released, otherwise every vde poll of switch.ml (a client connection
+   every few seconds, for the whole life of the simulation) would leak two descriptors. *)
+(* -------------------------------------------------------------------------- *)
+
+let test_N1_repeated_connections_do_not_leak_descriptors () =
+  let name = "N1: repeated client connections do not leak descriptors" in
+  let count_open_descriptors () = Array.length (Sys.readdir "/proc/self/fd") in
+  let socketfile = Network.socketname_in_a_fresh_made_directory ~perm:0o700 "ctrl" in
+  let server_protocol (ch : Network.stream_channel) = ch#output_line ("pong") in
+  let (_server_thread, socketfile) =
+    Network.stream_unix_server ~no_fork:() ~socketfile ~protocol:server_protocol ()
+  in
+  let () = Thread.delay 0.2 in
+  let one_cycle () =
+    let protocol (ch : Network.stream_channel) = ignore (ch#input_line ()) in
+    ignore (Network.stream_client ~target:(`unix socketfile) ~protocol ())
+  in
+  (* A first cycle absorbs the descriptors allocated once and for all (the serving
+     thread, the log, ...): the count is taken afterwards: *)
+  let () = one_cycle () in
+  let () = Thread.delay 0.2 in
+  let before = count_open_descriptors () in
+  let () = for _i = 1 to 30 do one_cycle () done in
+  let () = Thread.delay 0.3 in
+  let after = count_open_descriptors () in
+  check ~name (after <= before + 2)
+    (Printf.sprintf "%d descriptors open before the 30 connections, %d after" before after)
+
+(* -------------------------------------------------------------------------- *)
 
 let () =
+  (* Measured while writing the N1 tests (2026-07-29): without this, the test program is
+     killed by SIGPIPE (exit status 141) as soon as a peer closes slightly before the
+     other end writes -- which happens naturally in the loop of connections below.
+     Nothing in Marionnet nor in ocamlbricks neutralizes that signal (defect N18 of
+     docs/pilotage-par-script.md): the forthcoming control server will have to do the
+     same in bin/marionnet.ml. Here it merely makes the test deterministic: *)
+  let () = try Sys.set_signal Sys.sigpipe Sys.Signal_ignore with _ -> () in
   let () = Log.enable ~level:1 () in
-  let () = Printf.printf "Testing the fixes applied to Ocamlbricks.Network (episode 2)\n%!" in
+  let () = Printf.printf "Testing the fixes applied to Ocamlbricks.Network (episodes 2 and 2b)\n%!" in
+  (* First, while no serving thread of the other tests is alive yet: this one observes
+     descriptor numbers, hence it is the most sensitive to any concurrent allocation: *)
+  let () = test_N1_no_close_of_a_recycled_descriptor () in
   let () = test_N4_no_spurious_uncaught_exception () in
   let () = test_N13_range_predicate_applies_to_peer () in
   let () = test_N2_no_socket_inherited_by_exec () in
+  let () = test_N1_repeated_connections_do_not_leak_descriptors () in
   (* Last, since it temporarily exhausts the descriptor table of the process: *)
   let () = test_N3_transient_failure_does_not_kill_the_loop () in
   let () = Printf.printf "%d failure(s)\n%!" !failures in

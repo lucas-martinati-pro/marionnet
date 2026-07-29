@@ -4,7 +4,10 @@
 > Reprise : appliquer le skill `chantier-long` (mémoire `marionnet-pilotage-par-script`,
 > `git log --grep="marionnet-pilotage-par-script"`).
 >
-> **État : épisode 0 (conception) — aucun code n'a encore été écrit.**
+> **État : épisodes 0 à 2b faits.** La conception (§ 1-6) reste à l'état de projet : aucune ligne
+> de `bin/` n'est encore écrite. Ce qui existe est l'assainissement préalable de
+> `lib/STRUCTURES/network.ml` (§ 7.5, ép. 2 et 2b) et sa suite de tests `test/marionnet.ml`.
+> Prochaine étape : épisode 3.
 
 ---
 
@@ -335,7 +338,7 @@ l'épisode 3. Aucun correctif appliqué : c'est l'épisode 2.
 
 | # | Lieu | Gravité | Défaut | Correctif proposé |
 |---|---|---|---|---|
-| **N1** | `429-430` + `475-480` | **haute** | `stream_channel#shutdown` ferme le **même fd jusqu'à quatre fois** : `Unix.close fd` (l.430), puis `close_in in_channel`, `close_out out_channel`, `Unix.close fd` (l.477-479) — trois `close` de trop, chacun sur un numéro de descripteur **déjà libéré**, donc potentiellement **recyclé par un autre thread**. Pire : `close_out` **flushe avant** de fermer, donc peut écrire dans le descripteur de quelqu'un d'autre. Et si `super#shutdown` lève — `Unix.shutdown` renvoie `ENOTCONN` dès que le pair a fermé en premier, cas **normal** —, le `raise (Closing e)` saute les trois lignes suivantes : les canaux stdlib survivent et leur **finaliseur GC** fera le `close` **plus tard**, sur un fd entre-temps recyclé. C'est le motif C1 de `bug-critique-crash-host` (kill différé vers un PID recyclé), transposé aux descripteurs. | Ne pas dériver de canaux stdlib d'un fd qu'on ferme soi-même : ordonner `flush out_channel` → `Unix.shutdown` (toléré-`ENOTCONN`) → **un seul** `Unix.close`, et supprimer `close_in`/`close_out` ; ou, plus radical, ne créer `in_channel`/`out_channel` qu'à la demande (les méthodes `input_*`/`output_*`). |
+| **N1** | `429-430` + `475-480` | **haute** | `stream_channel#shutdown` ferme le **même fd jusqu'à quatre fois** : `Unix.close fd` (l.430), puis `close_in in_channel`, `close_out out_channel`, `Unix.close fd` (l.477-479) — trois `close` de trop, chacun sur un numéro de descripteur **déjà libéré**, donc potentiellement **recyclé par un autre thread**. Pire : `close_out` **flushe avant** de fermer, donc peut écrire dans le descripteur de quelqu'un d'autre. Et si `super#shutdown` lève — `Unix.shutdown` renvoie `ENOTCONN` dès que le pair a fermé en premier, cas **normal** —, le `raise (Closing e)` saute les trois lignes suivantes : les canaux stdlib survivent et leur **finaliseur GC** fera le `close` **plus tard**, sur un fd entre-temps recyclé. C'est le motif C1 de `bug-critique-crash-host` (kill différé vers un PID recyclé), transposé aux descripteurs. **Rectification de l'ép. 2b** : la clause « *finaliseur GC* » de ce diagnostic est **fausse** — mesuré sur OCaml 5.4.1, le GC d'un canal non fermé **ne ferme pas** son descripteur, il ne libère que la structure (les octets encore en tampon sont perdus, rien de plus). Le défaut réel se réduit donc — mais s'y réduit entièrement — au **quadruple `close`**, dont un avec écriture. Comme pour N4, une moitié de l'audit tombe à l'épreuve. | **Corrigé à l'ép. 2b** : chaque canal stdlib reçoit **sa propre copie** du socket (`Unix.dup ~cloexec:true`), allouée **à la demande** ; `#shutdown` devient idempotent, ferme les copies effectivement créées (`flush` d'abord, avant tout `SHUTDOWN_SEND`) puis délègue au parent l'**unique** `Unix.close` du socket. |
 | **N2** | `258-266` | **haute** | Sur le chemin `~no_fork`, `service_socket` n'obtient **jamais** `CLOEXEC` — le chemin `fork` le pose (l.239), le chemin thread l'oublie. Or Marionnet `exec` en permanence (xterm, UML, vde, port-helper) : chaque connexion de contrôle laisserait un descripteur vivant dans des enfants de longue durée. Précédent exact dans ce dépôt : le *port-helper* orphelin squattant `:6000` (`marionnet-retro-compat-kernels-images`, ép. 3). | `Unix.accept ~cloexec:true` (cf. 7.5.3) : couvre les deux chemins d'un coup. |
 | **N3** | `227`, `257` | **haute** | Les deux boucles `while true` n'ont **aucun** garde : `accepting_function` ne rattrape que `EINTR` et emballe tout le reste en `Accepting e`, qui remonte, sort de la boucle et **tue définitivement** le thread serveur. Un `EMFILE` transitoire (limite de descripteurs) ou un `ECONNABORTED` suffit : le canal de contrôle disparaît en silence, la GUI continue de tourner. | Encapsuler le **corps** de la boucle dans un `try … with` : journaliser, fermer `service_socket` si acquis, temporiser brièvement, continuer ; ne sortir que sur fermeture volontaire du `listen_socket`. |
 | **N4** | `264` | moyenne | `Thread.exit ()`. La documentation d'OCaml 5.4 est explicite : « *Raise the `Thread.Exit` exception […] unless the thread function handles the exception itself. […] **catch-all exception handlers will be executed*** ». Or `ThreadExtra.create` passe par `create_non_killable`, dont le `with e ->` (`threadExtra.ml:383`) est précisément un *catch-all* : **chaque connexion terminée normalement** produit un `Terminated by uncaught exception: Thread.Exit`, puis un second `Thread.exit ()` (`threadExtra.ml:386`). Le thread meurt bien — la crainte initiale d'une fuite de threads est donc **infirmée** —, mais le journal devient inexploitable pour diagnostiquer Marionnet, ce qui est exactement ce que cet instrument doit permettre. | Supprimer l'appel : la fonction retourne naturellement, `create_non_killable` exécute déjà `final_actions ()` sur le chemin normal. |
@@ -357,6 +360,7 @@ l'épisode 3. Aucun correctif appliqué : c'est l'épisode 2.
 | **N15** | `898-907` | basse | `client` : le `try` englobe `Unix.connect` **et** `client_fun`, si bien qu'une exception du protocole ressort étiquetée `Connecting e`. Sans conséquence tant que `client_fun` provient de `server_fun_of_stream_protocol` (qui rend un `Either` et ne lève pas), mais l'étiquette ment pour tout autre usage. | Restreindre le `try` au `connect`. |
 | **N16** | `306-318` | basse | `fresh_socketname` : `Filename.temp_file` puis `Unix.unlink` laisse une fenêtre TOCTOU sur le nom, dans un `/tmp` partagé — aggravée par N6 (socket 0777). | Préférer `socketname_in_a_fresh_made_directory ~perm:0o700`, qui n'a pas ce défaut (le `mkdir` échoue si le nom a été repris). |
 | **N17** | `493-506` | info | `#peek` bascule le descripteur en `set_nonblock` puis le rétablit : course avec tout autre lecteur du même fd, et rupture de `input_line` si l'appel tombe au mauvais moment (`EAGAIN`). | Ne pas exposer `peek` sur un canal partagé ; sur le canal ligne, il est de toute façon incohérent (N7). |
+| **N18** | hors `network.ml` — `bin/marionnet.ml` | **haute** | **`SIGPIPE` n'est jamais neutralisé.** Aucun `Sys.set_signal Sys.sigpipe Signal_ignore` nulle part dans `bin/` ni dans `lib/` (`sysExtra.ml` ne fait que **nommer** les signaux). Or l'action par défaut de `SIGPIPE` est de **tuer le processus** : toute écriture sur un socket dont le pair vient de fermer — `output_line` (qui `flush` à chaque appel), `#send`, le `flush` de fermeture — peut donc terminer Marionnet **sans trace**, sans exception à journaliser. Ce n'est pas une conjecture : le programme de tests de l'ép. 2b s'est fait tuer de cette façon (`exit 141`) dès qu'il a enchaîné des connexions. Un serveur de contrôle dont le client raccroche entre deux lignes serait exactement dans ce cas. | **Découvert à l'ép. 2b**, corrigé à l'ép. 3 : neutraliser le signal **dans `bin/marionnet.ml`**, pas dans `lib/` (un effet global n'a pas à être posé par une bibliothèque vendored). `EPIPE` devient alors une exception ordinaire, capturée par les `tutor*` du canal. Déjà appliqué dans `test/marionnet.ml`, où il rend la suite déterministe. |
 
 #### 7.5.3 Correctif structurant proposé pour l'épisode 2
 
@@ -414,8 +418,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **0** | Officialisation + ce document | **fait** (2026-07-29) |
 | **1** | Audit complet de `lib/STRUCTURES/network.ml` → rapport + correctifs proposés | **fait** (2026-07-29) — § 7.5, 17 défauts |
 | **2** | Application des correctifs retenus (divergence `lib/` vendored), ordre § 7.5.4 | **fait** (2026-07-29) — N2, N3, N11, N4, N5, N8, N13 ; **N1 différé en ép. 2b** |
-| 2b | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` — exige une validation par cycle GUI réel | à faire |
-| 3 | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **preuve GUI réelle** | à faire |
+| **2b** | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` | **fait** (2026-07-29) — code + 2 tests ; **fumée GUI restant à jouer** (protocole § 10) |
+| 3 | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + **preuve GUI réelle** | à faire |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -530,3 +534,74 @@ de la connexion servie — le comportement attendu de la garde.
 **Non fait, et assumé** : aucune fumée GUI n'a été jouée dans cet épisode, alors que les
 correctifs touchent par ricochet `x.ml`, `machine.ml` et `switch.ml` (`~cloexec` sur les sockets
 dgram et client). À jouer avant l'épisode 3, en même temps que la validation de N1 (ép. 2b).
+
+### 2026-07-29 — épisode 2b : N1, un propriétaire par descripteur
+
+Un seul fichier de code touché (`lib/STRUCTURES/network.ml`, classes
+`stream_or_seqpacket_bidirectional_channel` et `stream_channel`), plus deux tests.
+
+**Ce qui a été corrigé.** Le nœud de N1 est qu'`in_channel` et `out_channel` étaient dérivés du
+**même** descripteur que celui possédé par l'objet : trois propriétaires pour un seul numéro,
+donc deux `close` de trop — sur un numéro déjà libéré, et l'un d'eux (`close_out`) **écrit**
+dedans avant de fermer. Correctif : chaque canal stdlib reçoit **sa propre copie**
+(`Unix.dup ~cloexec:true`), et `#shutdown` :
+
+1. est **idempotent** (drapeau `closed` porté par la classe parente) — indispensable, car quatre
+   sites appellent `try ch#shutdown … with _ -> ()`, parfois deux fois sur le même canal ;
+2. `flush` puis ferme les copies **effectivement créées**, *avant* le `Unix.shutdown` (un `flush`
+   postérieur à un `SHUTDOWN_SEND` échouerait) ;
+3. délègue au parent l'**unique** `Unix.close` du socket.
+
+**Copies allouées à la demande** (`lazy`), et c'est une correction de trajectoire dictée par la
+mesure, pas une élégance : la première version dupliquait le descripteur **à la construction** du
+canal, ce qui a fait **échouer le test N3** (`EMFILE` transitoire) — sous pénurie de descripteurs,
+la connexion était acceptée puis abandonnée faute de deux numéros libres pour les copies,
+c'est-à-dire exactement la disparition du service que la garde de l'ép. 2 vise à empêcher. Avec
+l'allocation paresseuse, un protocole qui n'utilise que `#send`/`#receive` — le cas de `x.ml` et
+`machine.ml` — ne consomme **aucun** descripteur supplémentaire ; seul un protocole en mode ligne
+(`switch.ml`, et le futur serveur de contrôle) en demande deux.
+
+**Deux moitiés de l'audit rectifiées.** (a) Le GC **ne ferme pas** le descripteur d'un canal
+finalisé (mesuré sur OCaml 5.4.1) : la clause « fermeture différée par le GC sur un numéro
+recyclé » de N1 est fausse, comme l'avait été la crainte de fuite de threads de N4. Ce qui reste
+de N1 — le quadruple `close`, dont un avec écriture — suffisait amplement. (b) Le défaut **N18**
+(`SIGPIPE` jamais neutralisé, § 7.5.2) a été découvert *par accident* pendant cet épisode : le
+programme de tests s'est fait tuer (`exit 141`) en enchaînant des connexions. À corriger dans
+`bin/marionnet.ml` à l'épisode 3.
+
+**Preuve.** `dune build` et `dune test` verts, 7 vérifications, 6 exécutions consécutives sans
+échec. Le test N1 est **discriminant** : rejoué contre le `network.ml` de `HEAD`, il échoue
+(« *the second shutdown closed a descriptor belonging to someone else* ») et repasse au vert avec
+le correctif. Il est construit sur un `socketpair`, sans serveur ni thread : une **première**
+version passait par un vrai échange client/serveur et s'est révélée *flaky*, le thread servant du
+même processus reprenant parfois le numéro libéré avant le témoin (observé : numéro libéré 11,
+plus petit numéro disponible pour le témoin 12). Le second test N1 (30 connexions successives)
+n'est pas discriminant : il garde le correctif lui-même contre une fuite des copies, puisqu'un
+canal possède désormais jusqu'à trois descripteurs.
+
+**Fumée GUI — jouée le 2026-07-29, partiellement concluante.** Deux sessions
+(`/tmp/marionnet.native.42.log` et `.43.log`, `marionnet.native -d`). Acquis : le relais X11 a
+exercé un `stream_channel` complet en conditions réelles (`Accepted connection #1 on
+172.23.0.254:6000`, `crossover_link`, `#receive`, `Protocol completed`, processus sorti proprement,
+`xeyes` fonctionnel), les deux boucles d'acceptation se terminent sur `terminated by:
+Accepting(_)` — comportement voulu de la garde N3 — et **aucun** `EBADF`, `Bad file descriptor` ni
+`Closing` inattendu n'apparaît dans les deux journaux. **Non couvert** : `grep -c "port/print"`
+donne **0** dans les deux sessions, donc le chemin `input_line`/`output_line` de `switch.ml` — le
+seul qui alloue réellement les copies `dup` de cet épisode — n'a jamais été atteint, un défaut
+**extérieur à ce chantier** empêchant le switch de finir son démarrage (treeview *defects*
+divergent : cf. **B6** de `docs/refonte-automate-composants.md`, signalé le même jour). À rejouer
+sur un **projet neuf** (switch + 2 machines), le projet de test ayant son treeview déjà corrompu.
+
+Protocole, à rejouer intégralement avant l'épisode 3 :
+
+1. `dune build` puis lancer `./_build/default/bin/marionnet.native --debug 2>&1 | tee /tmp/smoke-ep2b.log` ;
+2. noter `ls /proc/$(pgrep -f marionnet.native)/fd | wc -l` juste après le démarrage ;
+3. créer un switch et une machine, les relier, **démarrer** : `switch.ml:478-557` sonde le
+   `vde_switch` en boucle via un `stream_channel` en mode ligne — donc un `#shutdown` par
+   sondage, c'est le chemin corrigé, exercé des dizaines de fois par minute ;
+4. ouvrir la console (xterm) puis un client X dans l'invité (`xeyes`) — chemin `x.ml` /
+   `machine.ml` (`Socat.*_of_stream_server`), impacté par les `~cloexec` de l'ép. 2 ;
+5. après ~2 min de simulation, reprendre le compte de descripteurs : il doit être **stable** ;
+   vérifier aussi qu'aucun socket de Marionnet n'apparaît dans `/proc/<pid xterm>/fd` ;
+6. arrêter les composants, fermer le projet, quitter. Le journal ne doit contenir ni `EBADF`,
+   ni `Bad file descriptor`, ni exception `Closing` inattendue.
