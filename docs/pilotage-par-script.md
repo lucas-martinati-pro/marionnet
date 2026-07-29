@@ -413,7 +413,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 |---|---|---|
 | **0** | Officialisation + ce document | **fait** (2026-07-29) |
 | **1** | Audit complet de `lib/STRUCTURES/network.ml` → rapport + correctifs proposés | **fait** (2026-07-29) — § 7.5, 17 défauts |
-| 2 | Application des correctifs retenus (divergence `lib/` vendored), ordre § 7.5.4 | à faire |
+| **2** | Application des correctifs retenus (divergence `lib/` vendored), ordre § 7.5.4 | **fait** (2026-07-29) — N2, N3, N11, N4, N5, N8, N13 ; **N1 différé en ép. 2b** |
+| 2b | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` — exige une validation par cycle GUI réel | à faire |
 | 3 | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **preuve GUI réelle** | à faire |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
@@ -475,3 +476,57 @@ sont des **contraintes de conception** pour `bin/control_server.ml`, reportées 
 
 Aucun fichier de `bin/` ni de `lib/` modifié : les correctifs sont **proposés** (§ 7.5.3 et 7.5.4),
 leur application est l'épisode 2.
+
+### 2026-07-29 — épisode 2 : application des correctifs à `lib/STRUCTURES/network.ml`
+
+**Périmètre décidé en ouverture** : tranche 1 (N2 + N3 + N11) + correctifs locaux (N4, N5, N8,
+N13). **N1 explicitement exclu** — il change le cycle de vie des descripteurs pour *tous* les
+usages existants (`switch.ml`, `x.ml`, `machine.ml`) et exige un cycle GUI réel de validation :
+il devient l'**épisode 2b**. Un seul fichier de code touché, `lib/STRUCTURES/network.ml`
+(divergence vendored assumée, § 7.4), plus un commentaire dans le `.mli` et la suite de tests.
+
+Ce qui a été appliqué :
+
+- **N2 + correctif structurant § 7.5.3** — `~cloexec:true` posé **à la création** :
+  `Unix.accept` (les deux fonctions d'acceptation, ce qui couvre d'un coup le chemin `fork`
+  *et* le chemin `~no_fork`) et `Unix.socket` (écoute, dgram unix, dgram inet, client). Les
+  trois `set_close_on_exec` posés après coup ont été **retirés** : devenus redondants, ils ne
+  laissaient qu'une fenêtre de course. Leur commentaire justificatif (issu de
+  `marionnet-retro-compat-kernels-images`, ép. 3) a été reporté sur le nouvel emplacement.
+- **N3** — les deux `while true` sont remplacés par une boucle `accepting_loop` qui garde le
+  **corps** : une panne *transitoire* (`EMFILE`, `ENFILE`, `ENOBUFS`, `ECONNABORTED`, `ENOTCONN`…)
+  est journalisée, temporisée 0,1 s, puis la boucle continue ; toute autre erreur termine la
+  boucle. **Invariant préservé** : l'arrêt volontaire (thunk `Unix.shutdown listen_socket`) fait
+  échouer `accept` avec `EINVAL`, qui reste *terminal* — sans quoi le serveur deviendrait
+  immortel. Vérifié dans le journal d'exécution des tests (« *terminated by* » à la sortie).
+- **N11**, et au-delà : introduction d'une petite **discipline de propriété** du socket accepté
+  (`service_socket_ownership` : `release` idempotent + `transfer`). Elle ferme le descripteur
+  quand `Unix.fork` ou `ThreadExtra.create` échoue, et surtout **interdit un second `close`**
+  après transfert de propriété au fils ou au thread servant — c'est-à-dire qu'elle évite
+  d'introduire, dans le correctif de N11, le motif même que N1 dénonce (fermer un numéro de
+  descripteur entre-temps recyclé).
+- **N4** — `Thread.exit ()` supprimé : chaque connexion normale n'est plus journalisée comme
+  « *Terminated by uncaught exception* ».
+- **N5** — le message d'erreur de `bind` est composé selon le **domaine** : un `bind` unix qui
+  échoue produit désormais l'erreur réelle (`EADDRINUSE` sur socketfile résiduel, cas N12) au
+  lieu d'un `Invalid_argument` trompeur.
+- **N8** — `begin … end` aux deux endroits. `SO_RCVBUF` n'est plus **rétréci** à 1514 sur chaque
+  canal créé.
+- **N13** — le prédicat de plage s'applique enfin au **pair** (adresse rendue par `Unix.accept`,
+  `getpeername` en repli) et non à l'adresse locale.
+- **N7** — documenté dans `network.mli` (contrainte, pas correctif) : ne jamais mélanger
+  `input_*`/`output_*` (bufferisés) et `receive`/`send`/`peek` (`Unix.recv`) sur un même canal.
+
+**Preuve** (`test/marionnet.ml`, jusqu'ici vide, lancé par `dune test`) — 4 tests, `dune build`
+et `dune test` verts. Trois d'entre eux ont été **vérifiés discriminants** : rejoués contre le
+`network.ml` de `HEAD`, ils échouent (`N4` : *spurious uncaught exception* ; `N13` : connexion
+légitime rejetée ; `N2` : 1 socket hérité par l'`exec`) et repassent au vert avec les correctifs.
+Le quatrième (N3, saturation de la table de descripteurs pour provoquer `EMFILE`) est **best
+effort** et signalé comme tel dans le fichier : il ne peut pas échouer à tort, mais il peut passer
+sans avoir exercé le défaut, le timing de l'`accept` n'étant pas contrôlable. Ce qui a bien été
+*observé* sur le code corrigé, avec `ulimit -n 256` : cinq « *transient failure, going on* » suivis
+de la connexion servie — le comportement attendu de la garde.
+
+**Non fait, et assumé** : aucune fumée GUI n'a été jouée dans cet épisode, alors que les
+correctifs touchent par ricochet `x.ml`, `machine.ml` et `switch.ml` (`~cloexec` sur les sockets
+dgram et client). À jouer avant l'épisode 3, en même temps que la validation de N1 (ép. 2b).

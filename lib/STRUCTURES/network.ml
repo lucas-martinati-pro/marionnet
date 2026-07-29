@@ -101,20 +101,35 @@ let string_of_domain = function
 | Unix.PF_INET  -> "Internet domain (IPv4)"
 | Unix.PF_INET6 -> "Internet domain (IPv6)"
 
+(* The accepted socket must not leak into exec'ed children (think about the xterm,
+   UML or vde processes spawned by an application using this library): an orphan
+   child inheriting it would keep the connection alive after both peers are gone.
+   The ~cloexec flag is set atomically by Unix.accept, hence without the race
+   window left open by a set_close_on_exec performed afterwards: *)
+
 (* Inspired by the homonymous function in the standard library unix.ml *)
 let rec accept_non_intr s =
-  try Unix.accept s
+  try Unix.accept ~cloexec:true s
   with
   | Unix.Unix_error (Unix.EINTR, _, _) -> accept_non_intr s
   | e -> raise (Accepting e)
 
+(* The address returned by Unix.accept is the address of the *peer*: this is what
+   the range predicate must be applied to (applying it to Unix.getsockname, i.e. to
+   our own address, would make the ~range filter meaningless). Should the system
+   return an unusable sockaddr, getpeername is the fallback: *)
+let peer_sockaddr_of ~service_socket ~accepted_sockaddr =
+  match accepted_sockaddr with
+  | Unix.ADDR_INET (_,_) -> accepted_sockaddr
+  | _ -> (try Unix.getpeername service_socket with _ -> accepted_sockaddr)
+
 let accept_in_range_non_intr ~(range_predicate : Unix.sockaddr -> bool) ~(range_string : string) s =
   let rec loop () =
     try
-      let (service_socket, _) as result = Unix.accept s in
-      let sockaddr0 = (Unix.getsockname service_socket) in
-      if range_predicate sockaddr0 then result else begin
-	Log.printf2 "Rejecting a connexion from %s (not in the range %s)\n" (string_of_sockaddr sockaddr0) range_string;
+      let (service_socket, accepted_sockaddr) as result = Unix.accept ~cloexec:true s in
+      let sockaddr1 = peer_sockaddr_of ~service_socket ~accepted_sockaddr in
+      if range_predicate sockaddr1 then result else begin
+	Log.printf2 "Rejecting a connexion from %s (not in the range %s)\n" (string_of_sockaddr sockaddr1) range_string;
 	Unix.close service_socket;
 	loop ()
       end
@@ -158,19 +173,32 @@ let bind socket sockaddr =
   try
     Unix.bind socket sockaddr
   with e ->
-    let (inet_addr, port) = inet_addr_and_port_of_sockaddr sockaddr in
-    let domain = string_of_domain (domain_of_inet_addr inet_addr) in
-    Log.print_exn ~prefix:(Printf.sprintf "binding socket to %s address %s: " domain (string_of_sockaddr sockaddr)) e;
+    (* The error message must be built according to the domain of the sockaddr:
+       inet_addr_and_port_of_sockaddr raises Invalid_argument on a ADDR_UNIX, and this
+       spurious exception would hide the real failure (typically EADDRINUSE, caused by
+       a socket file left behind by a previous, abruptly terminated, process): *)
+    let prefix =
+      match sockaddr with
+      | Unix.ADDR_UNIX socketfile ->
+          Printf.sprintf "binding socket to %s socket file %s: "
+            (string_of_domain Unix.PF_UNIX) socketfile
+      | Unix.ADDR_INET (inet_addr, _port) ->
+          Printf.sprintf "binding socket to %s address %s: "
+            (string_of_domain (domain_of_inet_addr inet_addr)) (string_of_sockaddr sockaddr)
+    in
+    Log.print_exn ~prefix e;
     raise (Binding e)
 
 (* fix Unix.IPV6_ONLY if needed *)
 let fix_IPV6_ONLY_if_needed ~domain fd =
   if domain <> Unix.PF_INET6 then () else
   let ipv6_only = Unix.getsockopt fd Unix.IPV6_ONLY in
-  (if not ipv6_only then
+  (* Note the begin..end: without them, the `then' would guard the Log.printf only,
+     and the option would be set unconditionally: *)
+  if not ipv6_only then begin
     Log.printf "Fixing option Unix.IPV6_ONLY to true\n";
-    Unix.setsockopt fd Unix.IPV6_ONLY true);
-  ()
+    Unix.setsockopt fd Unix.IPV6_ONLY true
+    end
 
 (* Generic function able to establish a server on a sockaddr. *)
 let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range server_fun sockaddr =
@@ -181,15 +209,16 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
     | Some () -> Unix.SOCK_SEQPACKET (* implies domain = Unix.ADDR_UNIX *)
   in
   let domain = Unix.domain_of_sockaddr sockaddr in
-  let listen_socket = Unix.socket domain socket_type 0 in
+  (* The listening socket must not leak into exec'ed children (e.g. the xterm/
+     port-helper spawned for UML consoles): an orphan child inheriting it would
+     keep the port bound -- never accepting -- after this process dies, and any
+     further client connecting there would hang in its backlog forever. The flag is
+     set at creation time, hence atomically: a set_close_on_exec performed afterwards
+     leaves a race window for a concurrent fork+exec: *)
+  let listen_socket = Unix.socket ~cloexec:true domain socket_type 0 in
   (* listen_socket initialization: *)
   let assigned_port =
     Unix.setsockopt listen_socket Unix.SO_REUSEADDR true;
-    (* The listening socket must not leak into exec'ed children (e.g. the xterm/
-       port-helper spawned for UML consoles): an orphan child inheriting it would
-       keep the port bound -- never accepting -- after this process dies, and any
-       further client connecting there would hang in its backlog forever: *)
-    (try Unix.set_close_on_exec listen_socket with Invalid_argument _ -> ());
     fix_IPV6_ONLY_if_needed ~domain listen_socket;
     bind listen_socket sockaddr;
     Unix.listen listen_socket max_pending_requests;
@@ -207,8 +236,13 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
   in
   let notify_after_accept_and_get_sockaddr0 ~connexion_no ~service_socket =
     incr connexion_no;
-    let sockaddr0 = string_of_sockaddr (Unix.getsockname service_socket) in
-    let sockaddr1 = string_of_sockaddr (Unix.getpeername service_socket) in
+    (* A peer disconnecting immediately after the accept must not disturb the loop:
+       getsockname and getpeername may fail (ENOTCONN) in this case: *)
+    let string_of_sockaddr_or_unknown getname =
+      try string_of_sockaddr (getname service_socket) with _ -> "<unknown>"
+    in
+    let sockaddr0 = string_of_sockaddr_or_unknown Unix.getsockname in
+    let sockaddr1 = string_of_sockaddr_or_unknown Unix.getpeername in
     Log.printf3 "Accepted connection #%d on %s from %s\n" !connexion_no sockaddr0 sockaddr1;
     sockaddr0
   in
@@ -221,22 +255,76 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
 	let () = Log.printf2 "Protocol interrupted (connection #%d on %s). Exiting\n" !connexion_no sockaddr0
 	in 1
   in
+  (* An accepted socket must be released exactly once, and never after its ownership
+     has been transferred (to a child process, or to a serving thread): closing a
+     descriptor twice may hit a number recycled meanwhile by another thread. Hence
+     this tiny ownership discipline, used by both accepting loops below: *)
+  let service_socket_ownership service_socket =
+    let owned = ref true in
+    let release () =
+      if !owned then begin
+        owned := false;
+        try Unix.close service_socket with e ->
+          Log.print_exn ~prefix:"closing the service socket: " e
+        end
+    in
+    let transfer () = owned := false in
+    (release, transfer)
+  in
+  (* The body of an accepting loop must be guarded: a transient failure (EMFILE
+     because of a temporary descriptor shortage, ECONNABORTED, ...) must not silently
+     kill the server thread while the application keeps running -- the service would
+     simply vanish. Conversely, a deliberate shutdown of listen_socket (see the killing
+     thunk registered by forking_loop) must still terminate the loop: this is why the
+     error code is examined instead of catching everything and going on: *)
+  let accepting_loop (body : unit -> unit) : unit =
+    let is_transient = function
+      | Unix.EMFILE | Unix.ENFILE | Unix.ENOBUFS | Unix.ENOMEM
+      | Unix.ECONNABORTED | Unix.ECONNRESET | Unix.ENOTCONN | Unix.EPIPE
+      | Unix.EAGAIN | Unix.EWOULDBLOCK | Unix.EINTR | Unix.EPERM | Unix.ETIMEDOUT -> true
+      | _ -> false
+    in
+    let unix_error_code_of = function
+      | Accepting (Unix.Unix_error (code,_,_)) | Unix.Unix_error (code,_,_) -> Some code
+      | _ -> None
+    in
+    let rec loop () =
+      match body () with
+      | () -> loop ()
+      | exception e ->
+          (match unix_error_code_of e with
+           | Some code when is_transient code ->
+               Log.print_exn e
+                 ~prefix:(Printf.sprintf "accepting loop on %s: transient failure, going on: " listen_socket_as_string);
+               (* Do not spin on a persistent shortage: *)
+               Thread.delay 0.1;
+               loop ()
+           | _ ->
+               Log.print_exn e
+                 ~prefix:(Printf.sprintf "accepting loop on %s: terminated by: " listen_socket_as_string))
+    in
+    loop ()
+  in
   let process_forking_loop () =
     let connexion_no = ref 0 in
     let tutor = ThreadExtra.Easy_API.waitpid_thread ?options:tutor_behaviour () in
-    while true do
+    let body () =
       Log.printf1 "Waiting for connection on %s\n" listen_socket_as_string;
       let (service_socket, _) = accepting_function listen_socket in
-      let sockaddr0 = notify_after_accept_and_get_sockaddr0 ~connexion_no ~service_socket in
-      match Unix.fork () with
-      |	0 ->
+      (* From now on service_socket is ours: it must be released on any failure: *)
+      let (release, _transfer_ownership) = service_socket_ownership service_socket in
+      try
+        begin
+        let sockaddr0 = notify_after_accept_and_get_sockaddr0 ~connexion_no ~service_socket in
+        match Unix.fork () with
+        | 0 ->
           (* The child here: *)
           begin
             try
               Log.printf2 "Process (fork) created for connection #%d on %s\n" !connexion_no sockaddr0;
 	      (* SysExtra.log_signal_reception ~except:[26] (); *)
 	      Unix.close listen_socket;
-	      (try Unix.set_close_on_exec service_socket with Invalid_argument _ -> ());
+	      (* service_socket is already close-on-exec (set atomically by Unix.accept) *)
 	      let result = server_fun service_socket in
 	      let exit_code = exit_code_and_final_notification ~connexion_no ~sockaddr0 ~result in
 	      exit exit_code
@@ -244,27 +332,46 @@ let server ?(max_pending_requests=5) ?seqpacket ?tutor_behaviour ?no_fork ?range
               (Log.printf3 "Process (fork) created for connection #%d on %s: terminated with exn: %s\n" !connexion_no sockaddr0 (Printexc.to_string e);
                exit 4)
 	  end
-      | child_pid ->
+        | child_pid ->
           (* The father here creates a process-tutor thread per child: *)
           begin
-            Unix.close service_socket;
+            release ();
             ignore (tutor ~pid:child_pid)
           end
-    done
+        end
+      with e -> (release (); raise e)
+    in
+    accepting_loop body
   in
   let thread_forking_loop () =
     let connexion_no = ref 0 in
-    while true do
+    let body () =
       let (service_socket, _) = accepting_function listen_socket in
-      let sockaddr0 = notify_after_accept_and_get_sockaddr0 ~connexion_no ~service_socket in
-      let server_fun s =
-        Log.printf2 "Thread created for connection #%d on %s\n" !connexion_no sockaddr0;
-        let result = server_fun s in
-        let _unused_exit_code = exit_code_and_final_notification ~connexion_no ~sockaddr0 ~result in
-	Thread.exit ()
-      in
-      ignore (ThreadExtra.create server_fun service_socket);
-    done
+      (* From now on service_socket is ours: it must be released on any failure, in
+         particular when ThreadExtra.create raises (thread limit reached): otherwise
+         the descriptor would leak at each attempt: *)
+      let (release, transfer_ownership) = service_socket_ownership service_socket in
+      try
+        begin
+        let sockaddr0 = notify_after_accept_and_get_sockaddr0 ~connexion_no ~service_socket in
+        let server_fun s =
+          Log.printf2 "Thread created for connection #%d on %s\n" !connexion_no sockaddr0;
+          let result = server_fun s in
+          let _unused_exit_code = exit_code_and_final_notification ~connexion_no ~sockaddr0 ~result in
+          (* No Thread.exit () here: since OCaml 5.0 it raises Thread.Exit, which is caught
+             by the catch-all of ThreadExtra.create_non_killable and logged as an uncaught
+             exception -- making every *normally* terminated connection look like a failure.
+             Returning is enough: create_non_killable performs its final actions anyway: *)
+          ()
+        in
+        let serving_thread = ThreadExtra.create server_fun service_socket in
+        (* The socket now belongs to the serving thread: *)
+        let () = transfer_ownership () in
+        ignore (serving_thread)
+        end
+      with e -> (release (); raise e)
+    in
+    accepting_loop body
   in
   let forking_loop () =
     (* Provide to the other threads a mean to kill this forking_loop: *)
@@ -384,10 +491,13 @@ let dual_inet_server ?max_pending_requests ?tutor_behaviour ?no_fork
 (* fix Unix.SO_RCVBUF if needed *)
 let fix_SO_RCVBUF_if_needed ~max_input_size fd =
   let recv_buffer_size = Unix.getsockopt_int fd Unix.SO_RCVBUF in
-  (if max_input_size > recv_buffer_size then
+  (* Note the begin..end: without them, the `then' would guard the Log.printf1 only,
+     and SO_RCVBUF would be *reduced* to max_input_size whenever the kernel buffer
+     was larger, i.e. on every created channel: *)
+  if max_input_size > recv_buffer_size then begin
     Log.printf1 "Fixing option Unix.SO_RCVBUF to the value %d\n" max_input_size;
-    Unix.setsockopt_int fd Unix.SO_RCVBUF max_input_size);
-  ()
+    Unix.setsockopt_int fd Unix.SO_RCVBUF max_input_size
+    end
 
 
 class common_low_level_methods_on_socket fd =
@@ -679,7 +789,8 @@ end (* class dgram_channel *)
 
 let dgram_input_socketfile_of ?dgram_output_socketfile ~stream_socketfile () =
   let make_socket ~bind_to =
-    let result = Unix.socket Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
+    (* ~cloexec: no descriptor of this library should leak into exec'ed children: *)
+    let result = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
     let socketfile = bind_to in
     bind result (Unix.ADDR_UNIX socketfile);
     Log.printf1 "Network.dgram_input_socketfile_of: unix datagram socket bound to %s\n" socketfile;
@@ -747,7 +858,8 @@ let dgram_input_socketfile_of ?dgram_output_socketfile ~stream_socketfile () =
 
 let dgram_input_port_of ?dgram_output_port ~my_stream_inet_addr () =
   let domain = domain_of_inet_addr my_stream_inet_addr in
-  let fd0 = Unix.socket domain Unix.SOCK_DGRAM 0 in
+  (* ~cloexec: no descriptor of this library should leak into exec'ed children: *)
+  let fd0 = Unix.socket ~cloexec:true domain Unix.SOCK_DGRAM 0 in
   let (sockaddr0, dgram_input_port) =
     let () =
       match dgram_output_port with
@@ -892,13 +1004,14 @@ let client ?seqpacket (client_fun: Unix.file_descr (*socket*) -> (exn, 'a) Eithe
   in
   (* --- *)
   let socket : (exn, Unix.file_descr) Either.t =
-    Either.apply_or_catch (Unix.socket (Unix.domain_of_sockaddr sockaddr) socket_type) 0
+    (* ~cloexec: the socket must not leak into exec'ed children, and setting the flag
+       at creation time removes the race window of a concurrent fork+exec: *)
+    Either.apply_or_catch (Unix.socket ~cloexec:true (Unix.domain_of_sockaddr sockaddr) socket_type) 0
   in
   (* --- *)
   Either.bind (socket) (fun socket ->
     try
       Unix.connect socket sockaddr;
-      (try Unix.set_close_on_exec socket with Invalid_argument _ -> ());
       client_fun (socket)
     with e ->
       begin

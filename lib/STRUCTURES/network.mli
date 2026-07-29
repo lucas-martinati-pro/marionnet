@@ -95,6 +95,12 @@ val fresh_socketname :
   unit -> string
 
 (* --------------------------- *)
+(* Warning: the two families of input methods must not be mixed on the same channel.
+   The [input_*] and [output_*] methods go through the buffered channels of the
+   standard library, while [receive], [send] and [peek] call Unix.recv/Unix.send
+   directly on the descriptor. Bytes already sucked into the buffer of the standard
+   library are invisible to [peek], and a [receive] performed in between silently
+   loses them. A line-oriented protocol must hence stick to [input_line]/[output_line]. *)
 class stream_channel :
 (* --------------------------- *)
   ?max_input_size:int ->
