@@ -134,6 +134,15 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
   `git log --grep="marionnet-automate-composants"`. Ép. 0 (audit) et ép. 1 (R4) faits
   2026-07-29 ; ordre imposé R4 → R1 → R3 → R2, donc reprendre à **R1**.
+- **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
+  modifications risquées : serveur de contrôle **in-process** sur socket unix
+  [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante
+  et observable ; requête = ligne texte, réponse = ligne **JSON** [aucune dépendance OCaml
+  ajoutée] ; périmètre = noyau + les 4 treeviews) : `docs/pilotage-par-script.md` ; mémoire
+  `marionnet-pilotage-par-script` ; `git log --grep="marionnet-pilotage-par-script"`. Ép. 0
+  (conception seule, aucun code) fait 2026-07-29 ; **ép. 1 = audit complet de
+  `lib/STRUCTURES/network.ml` AVANT tout code** (2 défauts déjà établis : `Thread.exit` l.264,
+  piège OCaml 5 sur le chemin exact du futur serveur ; `chmod 0o777` l.202).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
