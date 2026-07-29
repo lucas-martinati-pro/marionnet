@@ -39,6 +39,20 @@ module Log_module_loading_p4 : Unit = struct
   let first_str_item = ref true ;;
   (* let () = Printf.kfprintf flush stderr "camlp4: Registering filter log_module_loading_p4\n" ;; *)
 
+  (* The modules that would be made circular by the preambule injected below. Matched on the
+     SUFFIX of the basename, not on the basename itself: merlin / ocaml-lsp does not hand the
+     buffer over as is, it preprocesses a temporary copy named /tmp/merlinpp<hash><basename>,
+     for which an equality test misses — the editor then reported "Unbound module
+     Marionnet_log" inside Marionnet_log itself. The names below are specific enough for a
+     suffix test to be safe (at worst a hypothetical my_version.ml would silently lose its
+     loading trace). *)
+  let modules_to_be_left_alone =
+    [(*"gui.ml";*) "meta.ml"; "marionnet_log.ml"; "ocamlbricks_log.ml"; "version.ml"; ] ;;
+
+  let is_to_be_left_alone file_name =
+    let base = Filename.basename file_name in
+    List.exists (fun x -> base = x || Filename.check_suffix base x) modules_to_be_left_alone ;;
+
   register_str_item_filter
    (Ast.map_str_item
     (function
@@ -47,7 +61,7 @@ module Log_module_loading_p4 : Unit = struct
          let loc = Ast.loc_of_str_item s in
          let file_name = Loc.file_name loc in
          (* Avoid circular recursion for Log and Meta modules: *)
-         if List.mem (Filename.basename file_name) [(*"gui.ml";*) "meta.ml"; "marionnet_log.ml"; "ocamlbricks_log.ml"; "version.ml"; ] then
+         if is_to_be_left_alone file_name then
            begin
             (* Printf.kfprintf flush stderr "camlp4: Skipping to apply filter log_module_loading_p4 to %s\n" file_name; *)
              s

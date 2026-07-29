@@ -29,6 +29,37 @@ ENDIF
 open Camlp4.PreCast
 open Syntax
 
+(* --- Reading an INCLUDE'd file from outside the build tree (merlin / ocaml-lsp) ---
+   The paths passed to INCLUDE_AS_STRING are written relative to the directory camlp4of is
+   run from when the build system drives it, hence the leading "../.." steps climbing back
+   to the project root. An editor's merlin replays that very same -pp command after chdir'ing
+   into the source file's own directory, where such a path denotes nothing: the open failed,
+   camlp4of exited non-zero, and the whole file came back to the editor as one syntax error.
+   So, when the literal path does not exist, drop its leading parent steps and resolve what
+   remains against the project root — located by climbing until a dune-project shows up.
+   A build never reaches this fallback. (INCLUDE_AS_STRING_LIST reads its files through the
+   same from_file, but the shell pattern it globs is left untouched: no user in this tree.) *)
+let rec project_root_from dir =
+  if Sys.file_exists (Filename.concat dir "dune-project") then (Some dir) else
+  let parent = Filename.dirname dir in
+  if parent = dir then None else project_root_from parent
+
+let without_leading_parent_steps path =
+  let rec loop p =
+    if (String.length p) >= 3 && (String.sub p 0 3) = "../"
+      then loop (String.sub p 3 ((String.length p) - 3))
+      else p
+  in loop path
+
+let resolve_even_from_elsewhere fname =
+  if Sys.file_exists fname then fname else
+  match project_root_from (Sys.getcwd ()) with
+  | None      -> fname
+  | Some root ->
+      let candidate = Filename.concat root (without_leading_parent_steps fname) in
+      if Sys.file_exists candidate then candidate else fname
+;;
+
 (** Tools for strings. *)
 module Tool = struct
 
@@ -56,6 +87,7 @@ let from_descr (fd:Unix.file_descr) : string =
 ;;
 
 let from_file (filename:string) : string =
+ let filename = resolve_even_from_elsewhere filename in
  let fd = (Unix.openfile filename [Unix.O_RDONLY;Unix.O_RSYNC] 0o640) in
  let result = from_descr fd in
  (Unix.close fd);

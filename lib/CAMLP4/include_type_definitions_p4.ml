@@ -26,6 +26,39 @@ module Id = struct
   let version = "$Id: include_type_definitions_p4.ml,v 0.1 2009/03/18 16:16:16 $"
 end
 
+(* --- Opening an INCLUDE'd file from outside the build tree (merlin / ocaml-lsp) ---
+   The paths passed to INCLUDE DEFINITIONS are written relative to the directory camlp4of
+   is run from when the build system drives it, hence the leading "../.." steps climbing
+   back to the project root. An editor's merlin replays that very same -pp command after
+   chdir'ing into the source file's own directory, where such a path denotes nothing:
+   open_in raised Sys_error, camlp4of exited non-zero, and the whole file came back to the
+   editor as one syntax error. So, when the literal path fails, drop its leading parent
+   steps and resolve what remains against the project root — located by climbing until a
+   dune-project shows up. A build never reaches this fallback. *)
+let rec project_root_from dir =
+  if Sys.file_exists (Filename.concat dir "dune-project") then (Some dir) else
+  let parent = Filename.dirname dir in
+  if parent = dir then None else project_root_from parent
+
+let without_leading_parent_steps path =
+  let rec loop p =
+    if (String.length p) >= 3 && (String.sub p 0 3) = "../"
+      then loop (String.sub p 3 ((String.length p) - 3))
+      else p
+  in loop path
+
+let open_in_even_from_elsewhere fname =
+  try open_in fname with
+  | Sys_error _ as e ->
+      let candidate =
+        match project_root_from (Sys.getcwd ()) with
+        | None      -> None
+        | Some root ->
+            let c = Filename.concat root (without_leading_parent_steps fname) in
+            if Sys.file_exists c then (Some c) else None
+      in
+      (match candidate with Some c -> open_in c | None -> raise e)
+
 (* ----------------------------------- *)
 (* --- Version for OCaml <= 4.02.y --- *)
 (* ----------------------------------- *)
@@ -54,7 +87,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
          "INCLUDE"; "DEFINITIONS"; fname = STRING ->
 
            let parse_file file =
-             let ch = open_in file in
+             let ch = open_in_even_from_elsewhere file in
              let st = Stream.of_channel ch in
              (Gram.parse sig_items (Loc.mk file) st)
            in
@@ -130,7 +163,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
          "INCLUDE"; "DEFINITIONS"; fname = STRING ->
 
            let parse_file file =
-             let ch = open_in file in
+             let ch = open_in_even_from_elsewhere file in
              let st = Stream.of_channel ch in
              (Gram.parse sig_items (Loc.mk file) st)
            in
