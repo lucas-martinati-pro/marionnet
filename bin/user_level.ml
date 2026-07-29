@@ -221,7 +221,10 @@ class virtual ['parent] simulated_device () = object(self)
     self#enqueue_task_with_progress_bar (s_ "Stopping") (fun () -> if self#can_gracefully_shutdown then self#gracefully_shutdown_right_now)
 
   method gracefully_restart =
-    if not self#can_gracefully_shutdown then () else (* continue *)
+    (* The [begin…end] is required: [;] binds less tightly than [if/then/else], so without
+       it the guard would only protect [self#gracefully_shutdown] and the "Restarting" task
+       would be scheduled even on an already stopped component. *)
+    if not self#can_gracefully_shutdown then () else begin (* continue *)
     self#gracefully_shutdown;
     self#set_next_simulated_device_state (Some DeviceOn);
     self#enqueue_task_with_progress_bar
@@ -229,6 +232,7 @@ class virtual ['parent] simulated_device () = object(self)
       (fun () ->
          Thread.delay 7.; (* Ugly: to prevent a killer signal (all this part must be rewritten with Cortex_lib as soon as possible!!) *)
          if self#can_startup then self#startup_right_now)
+    end
 
   method poweroff =
     self#set_next_simulated_device_state (Some DeviceOff);
@@ -1585,11 +1589,19 @@ class network
    Log.printf "network#reset: BEGIN\n";
    Log.printf "network#reset: Destroying all cables...\n";
    (List.iter
-      (fun cable -> try cable#destroy with _ -> ())
+      (fun cable ->
+         try cable#destroy with e ->
+           (* Do not fail, but do not swallow it either: a component failing to die here
+              leaves its processes orphaned while disappearing from the model. *)
+           Log.printf2 "network#reset: WARNING: cable %s failed to be destroyed (%s)\n"
+             cable#get_name (Printexc.to_string e))
       self#get_cable_list);
    Log.printf "network#reset: Destroying all nodes (machines, switchs, hubs, routers, etc)...\n";
    (List.iter
-      (fun node -> try node#destroy with _ -> ())
+      (fun node ->
+         try node#destroy with e ->
+           Log.printf2 "network#reset: WARNING: node %s failed to be destroyed (%s)\n"
+             node#get_name (Printexc.to_string e))
       (self#get_node_list));
    Log.printf "network#reset: Synchronously wait that everything terminates...\n";
    (* --- *)
@@ -1611,8 +1623,20 @@ class network
  method destroy_process_before_quitting () =
   begin
    Log.printf "destroy_process_before_quitting: BEGIN\n";
-   (List.iter (fun cable  -> try cable#destroy_right_now  with _ -> ()) (self#get_cable_list));
-   (List.iter (fun device -> try device#destroy_right_now with _ -> ()) (self#get_node_list ));
+   (* Failures are tolerated (we are quitting anyway) but must be traced: see
+      docs/refonte-automate-composants.md § C5 and docs/bug-critique-crash-host.md. *)
+   (List.iter
+      (fun cable ->
+         try cable#destroy_right_now with e ->
+           Log.printf2 "destroy_process_before_quitting: WARNING: cable %s failed to be destroyed (%s)\n"
+             cable#get_name (Printexc.to_string e))
+      (self#get_cable_list));
+   (List.iter
+      (fun device ->
+         try device#destroy_right_now with e ->
+           Log.printf2 "destroy_process_before_quitting: WARNING: node %s failed to be destroyed (%s)\n"
+             device#get_name (Printexc.to_string e))
+      (self#get_node_list));
    Log.printf "destroy_process_before_quitting: END (success)\n";
   end
 

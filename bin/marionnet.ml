@@ -210,9 +210,6 @@ end (* Just_for_testing *)
                    M A I N
  * ***************************************** *)
 
-(** Timeout for refresh the state_coherence *)
-(* let id = GMain.Timeout.add ~ms:1000 ~callback:(fun () -> st#state_coherence ();true) ;; *)
-
 (* --- *)
 (** eth42 taps (guest X11, quagga terminals) now come from Tap_provider (sudo + iproute2).
     At start-up: collect the taps leaked by dead Marionnet processes, or explain how to

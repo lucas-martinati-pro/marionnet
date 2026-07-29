@@ -111,6 +111,12 @@ module Make_menus
   module Properties = struct
     include Data
 
+    (* Note (audit B5, docs/refonte-automate-composants.md): unlike nodes, which only offer
+       "Modify"/"Remove" on stopped components (dynlist = get_node_names_that_can_startup, see
+       machine.ml, hub.ml, switch.ml…), cables list *all* of their instances, connected and
+       running ones included. The discrepancy is hidden by the three [can_* = true] overrides
+       below ("To do: try reverting this"); aligning it means revisiting them, which belongs to
+       the [Simulated_device] refactoring (R2), not to a local fix. *)
     let dynlist () = match crossover with
     | false -> st#network#get_direct_cable_names
     | true  -> st#network#get_crossover_cable_names
@@ -145,6 +151,14 @@ module Make_menus
       let c = ((Obj.magic c):> User_level_cable.cable) in
       (* Make a new cable; it should have a different identity from the old one, and it's
          important that it's initialized anew, to get the reference counter right: *)
+      (* Known risk (audit B5, docs/refonte-automate-composants.md): [c#destroy] only *schedules*
+         [destroy_right_now] on the task runner (user_level.ml, [destroy_my_simulated_device]),
+         whereas [Add.reaction] builds the replacement synchronously — its initializer may then
+         start a second Simulation_level.ethernet_cable on the very same hublets as the old one,
+         not yet destroyed. Not reproduced so far, and left as is on purpose: forcing the order
+         either takes the recursive mutex from the GTK thread (deadlock risk against a task
+         runner thread waiting for that same thread, cf. C4) or defers the re-creation past the
+         dialog. To be settled with R2. *)
       c#destroy;
       Add.reaction r;
 

@@ -372,7 +372,7 @@ partant de `simulated_device_automaton_state` (`user_level.ml:79`) et en remonta
 (C1-C5), 4 recommandations priorisées (§ 3). Aucun code modifié — `dune build` vert avant comme
 après, l'épisode est inerte par construction.
 
-**Décidé.** R2 (module `Simulated_device`, état porteur du device) est retenue et devient le
+**Décidé (ép. 0).** R2 (module `Simulated_device`, état porteur du device) est retenue et devient le
 cœur du chantier. Écarté : fusionner l'automate utilisateur avec
 `Simulation_level.device_state` (C1) — les deux décrivent des choses différentes, et `Destroyed`
 n'a pas d'équivalent utile côté utilisateur. Écarté aussi : câbler `next_automaton_state` pour
@@ -380,3 +380,41 @@ afficher une icône transitoire — ce serait une fonctionnalité GUI nouvelle, 
 cohérence (cf. R1).
 
 **Reste.** R4 → R1 → R3 → R2, dans cet ordre. Aucun n'est entamé.
+
+### Épisode 1 — 2026-07-29 — R4, correctifs ponctuels
+
+**Fait.** Les quatre points de R4, sur trois fichiers, sans toucher une seule signature ni un
+seul `.mli` :
+
+1. **B1 corrigé** — `begin … end` dans `gracefully_restart` (`user_level.ml:223-236`), avec un
+   commentaire rappelant la précédence du `;` sur `if/then/else`. La garde couvre désormais les
+   trois instructions ; le défaut était latent (seul appelant : `marionnet.ml:146`, qui filtre
+   déjà en amont).
+2. **B5 documenté, non corrigé** (cf. « Décidé » ci-dessous) — deux commentaires dans `cable.ml` :
+   sur `Properties.dynlist` (écart de filtrage avec les nœuds, masqué par les trois
+   `can_* = true`) et sur `Properties.reaction` (fenêtre de coexistence entre l'ancien câble
+   détruit en différé et le nouveau construit tout de suite).
+3. **C5 corrigé** — les quatre `try … with _ -> ()` de `network#reset` et
+   `destroy_process_before_quitting` (`user_level.ml:1589-1637`) journalisent maintenant le nom du
+   composant et `Printexc.to_string`. Comportement inchangé (l'échec reste toléré), traçabilité
+   ajoutée — utile au chantier `bug-critique-crash-host`.
+4. **Commentaire mort supprimé** — `marionnet.ml:213-214` (`st#state_coherence`, méthode
+   inexistante ailleurs dans `bin/`).
+
+Le `Thread.delay 7.` de `gracefully_restart` reste en place, conformément au § 3.
+
+**Décidé.** Ne **pas** modifier le séquencement de `Cable…Properties.reaction` dans cet épisode,
+contrairement à la lettre de R4 : les deux corrections envisageables sortent du « faible risque »
+qui justifie de faire R4 en premier. Un `c#destroy_right_now` synchrone prendrait le
+`Recursive_mutex` depuis le thread GTK alors qu'une tâche du *task runner* peut le détenir en
+attendant ce même thread (barre de progression, `refresh_sketch`) — le scénario même que
+signalent les logs « *You don't deadlock here … do you?* » (`user_level.ml:260-306`) et C4. Passer
+par le *task runner* + `gMain_actor` éviterait le deadlock mais rendrait la re-création asynchrone
+après la fermeture du dialogue, soit un changement de comportement visible. Le point est donc
+consigné dans le code et rattaché à **R2**, qui révise de toute façon les `can_*` des câbles.
+
+**Preuve.** `dune build` : rc = 0, `marionnet.exe` relié après la dernière édition. Aucun scénario
+GUI rejoué : B1 est inatteignable depuis l'IHM actuelle, C5 n'ajoute que des logs, B5 n'a pas
+changé de comportement.
+
+**Reste.** R1 → R3 → R2.

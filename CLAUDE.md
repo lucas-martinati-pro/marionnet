@@ -132,8 +132,8 @@ Reprise : appliquer le skill `chantier-long`.
   filtrages de couple et 7 `raise_forbidden_transition` fourre-tout ; et corriger les
   incohérences avec `st` et les treeviews que cette absence a laissé s'installer) :
   `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
-  `git log --grep="marionnet-automate-composants"`. Ép. 0 (audit) fait 2026-07-29 ; ordre
-  imposé R4 → R1 → R3 → R2.
+  `git log --grep="marionnet-automate-composants"`. Ép. 0 (audit) et ép. 1 (R4) faits
+  2026-07-29 ; ordre imposé R4 → R1 → R3 → R2, donc reprendre à **R1**.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
