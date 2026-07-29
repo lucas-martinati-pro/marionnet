@@ -167,6 +167,66 @@ l'ordonnancement avait déjà retenu l'attention de l'auteur.
 
 ---
 
+### B6 — Le treeview *defects* diverge du modèle réseau, et l'échec est déclaré « réussi »
+
+**Constaté en exécution réelle** les 2026-07-29 (deux sessions GUI, journaux
+`/tmp/marionnet.native.42.log` et `.43.log`), en marge de la fumée du chantier
+`marionnet-pilotage-par-script` — d'où le rattachement ici : la pile ne traverse aucun code
+réseau, c'est bien une incohérence composant ↔ treeview.
+
+**Deux symptômes, une même racine.**
+
+| Session | Geste | Exception | Site |
+|---|---|---|---|
+| 42 | supprimer un hub + ses câbles, ajouter un switch, recâbler, « tout démarrer » | `Not_found` (`List.find`) | `treeview_defects.ml:230` (`get_port_data`), via `simulation_level.ml:710` |
+| 43 | créer un câble `d3`, le supprimer aussitôt, « tout démarrer » | `Assertion failed` — `List.length filtered_cable_directions = 1` | `treeview_defects.ml:242` (`get_cable_data`) pour le câble **`d2`**, que l'utilisateur n'avait pas touché |
+
+Autrement dit : la suppression d'un composant abîme l'entrée d'un **autre** composant, et la
+lecture ultérieure des défauts échoue au moment où `make_ethernet_cable_process` compose la ligne
+de commande du `wirefilter`.
+
+**Mécanismes identifiés dans le code (établis) :**
+
+1. **`Treeview.remove_subtree_by_name` avale toute exception** (`treeview.ml:1714-1718` :
+   `try … with _ -> ()`). Sa première instruction utile, `remove_subtree`, commence par
+   `id_to_iter row_id` (`:1408`), qui **échoue** dès que le modèle GTK a divergé de la forêt
+   interne — et le journal montre cette divergence en cascade
+   (`WARNING: unknown column … (Failure("id_to_iter: id 32 not found"))`). Résultat : la
+   destruction est **intégralement sautée**, sans un mot. Preuve directe dans le journal 42 :
+   `component "d1": destroying my defects.` puis, à la recréation du câble homonyme,
+   `The cable d1 has already defects defined...` (`user_level.ml:746`) — donc `add_my_defects`
+   trouve encore l'entrée censée être détruite, et **ne la recrée pas**. Le nouveau câble hérite
+   de l'entrée du précédent.
+2. **L'exception est ensuite avalée par le `task_runner`**, qui journalise
+   `Warning (q): "Startup m1" raised an exception (…)` **puis** `The task "Startup m1" succeeded.`
+   Le composant reste éteint alors que la tâche est déclarée réussie — même famille que C5, mais
+   sur le chemin de **démarrage**, pas de destruction. Symptôme visible pour l'utilisateur :
+   recliquer « tout démarrer » suffit, le composant démarre alors normalement (le chemin fautif
+   n'est plus emprunté puisque l'objet existe déjà).
+3. **Entrelacement thread GTK / task_runner** (journal 42) : la destruction *logique* des defects
+   se fait sur le thread GTK (`.0`) tandis que la destruction du device simulé est exécutée en
+   tâche de fond (`.8`). L'utilisateur a créé le switch **pendant** que les hublets du hub étaient
+   encore en cours de terminaison. Aucun verrou ne protège le treeview de ce chevauchement.
+
+**Non établi, à instrumenter avant tout correctif** : le pas exact par lequel les lignes de
+direction du câble `d2` deviennent en nombre ≠ 1 (0 ou 2 ?). L'état sauvegardé
+(`abc/states/defects`, extrait du `.mar` postérieur au bug) ne permet pas de trancher : la
+sérialisation OCaml **partage les chaînes identiques**, si bien que l'absence de `leftward` /
+`rightward` après `d2` dans le dump n'est pas une preuve d'absence de lignes. Le moyen honnête est
+de journaliser, dans `get_cable_data`, la longueur réellement trouvée et les noms des enfants,
+puis de rejouer le geste minimal de la session 43 (créer un câble, le supprimer, démarrer).
+
+**Direction de correction** (à trancher au moment de R2/R3, pas avant le diagnostic ci-dessus) :
+
+- faire **échouer bruyamment** `remove_subtree_by_name` (journaliser l'exception au lieu de
+  `with _ -> ()`) — c'est le seul changement qui rendrait le défaut visible plutôt que latent ;
+- ne plus laisser `add_my_defects` conclure de l'existence d'une ligne homonyme que l'entrée est
+  **valide** : vérifier aussi sa structure (nombre de ports, deux directions par port) ;
+- traiter la question du **thread** : le treeview est manipulé depuis GTK *et* depuis le
+  task_runner, sans discipline explicite (à rapprocher de C4).
+
+---
+
 ## 2. Incohérences de conception
 
 ### C1 — Deux automates parallèles, aux alphabets différents
@@ -231,6 +291,12 @@ secondaire lisait ces états.
 avalent **toute** exception (`try … with _ -> ()`), puis vident la liste des nœuds et des câbles.
 Un composant qui échoue à mourir laisse ses processus orphelins et disparaît du modèle sans
 laisser de trace — ni log, ni compteur, ni avertissement.
+
+Le même motif se retrouve **hors** de `user_level.ml`, et il n'y est pas théorique :
+`Treeview.remove_subtree_by_name` (`treeview.ml:1714-1718`) avale lui aussi toute exception, ce
+qui fait passer une destruction entièrement sautée pour une destruction réussie — c'est le
+mécanisme n° 1 de **B6**, constaté en exécution. Et sur le chemin symétrique, le `task_runner`
+déclare « succeeded » une tâche dont le corps a levé.
 
 À rapprocher du chantier `bug-critique-crash-host` (`docs/bug-critique-crash-host.md`), dont
 la cause candidate C1 concerne précisément les terminaisons de composants.
@@ -357,7 +423,9 @@ que le passage de l'un à l'autre soit localisé dans les `*_right_now` — ce q
   `cable.ml:120`, …) sont hors périmètre — dette déjà connue et documentée (`CLAUDE.md`).
 - **Les treeviews comme source d'état** : seul le chemin `after_user_edit_callback` →
   `shutdown_or_restart_relevant_device` a été suivi. La cohérence *interne* des treeviews
-  (ifconfig, defects) avec le modèle réseau n'a pas été auditée.
+  (ifconfig, defects) avec le modèle réseau n'a pas été auditée. ⚠️ **Ce trou s'est révélé
+  habité** : deux plantages reproductibles y ont été constatés en exécution le 2026-07-29, cf.
+  **B6** — l'audit de cette cohérence n'est donc plus optionnel.
 - **Le `Thread.delay 7.`** de `gracefully_restart` : identifié, non diagnostiqué.
 
 ---
@@ -418,3 +486,20 @@ GUI rejoué : B1 est inatteignable depuis l'IHM actuelle, C5 n'ajoute que des lo
 changé de comportement.
 
 **Reste.** R1 → R3 → R2.
+
+### Signalement terrain — 2026-07-29 — B6 (hors épisode)
+
+Deux plantages **constatés en GUI réelle**, rapportés pendant la fumée du chantier
+`marionnet-pilotage-par-script` et consignés ici après vérification du périmètre : les piles ne
+traversent aucun code réseau (`Network` n'apparaît ni dans `treeview.ml` ni dans
+`treeview_defects.ml`), et le journal ne contient aucun `EBADF` ni `Bad file descriptor`. Il
+s'agit bien d'incohérences composant ↔ treeview, cf. **B6** au § 1.
+
+Ce signalement n'est pas un épisode : **aucun code n'a été modifié**. Il ajoute une preuve
+terrain à un chantier jusqu'ici purement statique, et il remplit un trou que le § 4 déclarait
+explicitement non exploré. L'ordre de travail reste **R1 → R3 → R2** ; B6 demande d'abord
+l'instrumentation décrite au § 1 (journaliser ce que `get_cable_data` trouve réellement), pas
+un correctif à l'aveugle.
+
+Journaux de référence : `/tmp/marionnet.native.42.log` (`Not_found`, ligne 900) et
+`/tmp/marionnet.native.43.log` (`Assertion failed`, ligne 569).
