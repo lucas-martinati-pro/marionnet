@@ -127,6 +127,13 @@ Reprise : appliquer le skill `chantier-long`.
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
   `docs/bug-critique-crash-host.md` ; mémoire `bug-critique-crash-host` ;
   `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18.
+- **automate d'état des composants** (refondre `User_level.simulated_device` pour que le type
+  porte l'invariant `NoDevice ⟺ simulated_device = None` — aujourd'hui reconstruit dans 8
+  filtrages de couple et 7 `raise_forbidden_transition` fourre-tout ; et corriger les
+  incohérences avec `st` et les treeviews que cette absence a laissé s'installer) :
+  `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
+  `git log --grep="marionnet-automate-composants"`. Ép. 0 (audit) fait 2026-07-29 ; ordre
+  imposé R4 → R1 → R3 → R2.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
