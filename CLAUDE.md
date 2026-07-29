@@ -140,9 +140,11 @@ Reprise : appliquer le skill `chantier-long`.
   et observable ; requête = ligne texte, réponse = ligne **JSON** [aucune dépendance OCaml
   ajoutée] ; périmètre = noyau + les 4 treeviews) : `docs/pilotage-par-script.md` ; mémoire
   `marionnet-pilotage-par-script` ; `git log --grep="marionnet-pilotage-par-script"`. Ép. 0
-  (conception seule, aucun code) fait 2026-07-29 ; **ép. 1 = audit complet de
-  `lib/STRUCTURES/network.ml` AVANT tout code** (2 défauts déjà établis : `Thread.exit` l.264,
-  piège OCaml 5 sur le chemin exact du futur serveur ; `chmod 0o777` l.202).
+  (conception) et ép. 1 (audit intégral de `lib/STRUCTURES/network.ml` → § 7.5, **17 défauts**,
+  4 bloquants : N1 fd fermé 4×/fermé plus tard par le GC, N2 `CLOEXEC` absent sur le chemin
+  `~no_fork`, N3 boucle d'acceptation non gardée, N13 filtrage `~range` sur l'adresse locale)
+  faits 2026-07-29, **toujours aucun code touché** → reprendre à l'**ép. 2** (application des
+  correctifs dans `lib/` vendored, ordre § 7.5.4).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
