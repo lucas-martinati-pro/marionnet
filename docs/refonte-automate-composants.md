@@ -142,6 +142,22 @@ question « Voulez-vous sauvegarder le projet avant de quitter ? » (`gui_menuba
 Le compteur conflate deux notions distinctes : *« le dessin doit être re-rendu »* et *« le modèle
 persistant a changé »*. Les états des composants relèvent de la première et jamais de la seconde.
 
+> **Seconde cause, découverte à l'épisode 4 en jouant le scénario** (l'audit ne l'avait pas vue, et
+> elle invalide en partie la phrase ci-dessus) : **démarrer une machine ajoute un état de disque
+> dans le treeview *history*** (`Treeview_history#add_substate_of`, appelé par
+> `create_cow_file_name_and_thunk_to_get_the_source`, `user_level.ml:1402`). Le second test de
+> `project_already_saved` — la comparaison des forêts de treeviews — le détecte, à juste titre :
+> un nouveau fichier COW est référencé, le modèle persistant **a** changé. Preuve (journal 48) :
+> `next fresh identifier restored to 2` à l'ouverture, puis au reset
+> `[states-forest] removing row 1 ("m2") together with [3:"m2"]` — l'identifiant 3 est né pendant
+> la session.
+>
+> Conséquence : R3 supprime le **faux** positif (le compteur de rendu) mais **le symptôme de B4
+> subsiste** dès qu'une machine a démarré, cette fois pour une raison défendable. Décider si un
+> nouvel état de disque doit compter comme « projet modifié » est un **arbitrage de l'auteur**, pas
+> une suite mécanique de ce chantier. Le symptôme est en revanche bien supprimé pour tous les
+> composants sans historique (hubs, switchs, câbles) et pour suspendre/reprendre.
+
 ### B5 — Câbles : menus non filtrés sur l'état, et remplacement non séquencé (risque)
 
 Deux écarts cumulés, à traiter ensemble :
@@ -224,6 +240,23 @@ puis de rejouer le geste minimal de la session 43 (créer un câble, le supprime
   **valide** : vérifier aussi sa structure (nombre de ports, deux directions par port) ;
 - traiter la question du **thread** : le treeview est manipulé depuis GTK *et* depuis le
   task_runner, sans discipline explicite (à rapprocher de C4).
+
+> **Élargissement, épisode 4 : ce n'est pas un défaut de `treeview_defects.ml`, mais du socle
+> `Treeview`.** Le journal 48 (projet neuf, propre, jamais victime des gestes de la session 43)
+> montre le **même** motif sur le treeview *history* :
+>
+> ```
+> Warning (q): "Startup m1" raised an exception (Failure("id_to_iter: id 0 not found"))
+>   Treeview.id_to_path (treeview.ml:1498) → Treeview.collapse_row (:1532)
+>   → Treeview_history#add_substate_of (treeview_history.ml:234)
+> task_runner: The task "Startup m1" succeeded.
+> ```
+>
+> Même divergence entre le modèle GTK et la forêt interne, même tâche déclarée « réussie » après
+> avoir levé — et, cette fois, **la machine m1 n'a tout simplement pas démarré**, en silence, sur
+> un projet sain. Deux conséquences : le périmètre de B6 est le socle (`treeview.ml`), donc les
+> quatre treeviews ; et un scénario de reproduction plus simple que celui cherché à l'épisode 2
+> existe peut-être (démarrer deux machines d'un projet fraîchement ouvert).
 
 ---
 
@@ -354,6 +387,20 @@ Introduire dans `State.globalState` un second compteur, distinct de `refresh_ske
 - `project_already_saved` (`state.ml:641`) lit le **second**.
 
 Corrige **B4**. Périmètre : `state.ml` seul, plus l'ajout de l'incrément dans `network_change`.
+
+> **Rectifié à l'épisode 4, sur deux points** (la recette ci-dessus est conservée telle qu'elle
+> avait été arbitrée, pour que le journal reste lisible) :
+>
+> 1. **Un second *compteur* est inutile** : personne n'en lirait la valeur, seul compte le test
+>    « identique à la valeur du dernier enregistrement ». Un **drapeau booléen** `project_dirty`
+>    fait strictement la même chose, et la méthode `set_project_not_already_saved` — qui existe
+>    déjà et que les treeviews appellent déjà (`marionnet.ml:101`, `:195`) — en devient le point
+>    d'entrée unique, en portant enfin son nom.
+> 2. **Les *dotoptions* manquaient à la liste des sources**, et c'était une perte de données :
+>    `iconsize`, `rankdir`, `curved_lines`, `nodesep`, `labeldistance`, `shuffler` et `extrasize`
+>    sont **persistées** (`dotoptions.marshal`, écrite par `save_project` `state.ml:721`, relue à
+>    l'ouverture `:472`). Les incrémenter « uniquement par `network_change` et les treeviews »
+>    aurait laissé une modification de la barre d'outils disparaître en silence à la fermeture.
 
 ### R2 — Module `User_level.Simulated_device`, avec état porteur du device
 
@@ -610,3 +657,71 @@ aucune occurrence. Bilan : 46 lignes retirées, 10 ajoutées. Aucun scénario GU
 
 **Reste.** R3 → R2. Et, hors ordre imposé, B6 (l'ingrédient manquant du scénario) plus le retrait
 de l'instrumentation `B6:` de l'épisode 2.
+
+### Épisode 4 — 2026-07-30 — R3, le rendu du dessin cesse de décider de la sauvegarde
+
+**Fait.** R3 sur deux fichiers, sous la forme rectifiée du § R3 ci-dessus (drapeau, pas compteur).
+
+Le préalable a été un **classement de tous les appelants de `refresh_sketch`** — 14 sites, obtenus
+par `grep` puis vérifiés un à un dans le code, parce que la question n'est pas « qui redessine ? »
+mais « qui écrit dans le `.mar` ? » :
+
+| Site | Persisté ? | Preuve | Après R3 |
+|---|---|---|---|
+| `user_level.ml` ×8 (transitions, posées à l'ép. 3) | non | états de simulation | rendu seul |
+| `cable.ml:436` (`reversed`) | **non** | absent de `to_tree` / `eval_forest_attribute` (`:703-728`) | rendu seul |
+| `cable.ml:756`, `:778` (connect / disconnect) | non | `connected` absent de `to_tree` | rendu seul |
+| `motherboard_builder.ml:151-158` (7 *dotoptions*) | **oui** | `dotoptions.marshal` : `state.ml:721` / `:472` | salit le projet |
+| `state.ml` `network_change` (21 appelants) | oui | `network.xml` | salit le projet |
+| `state.ml` `new_project`, `import_network` | — | cf. invariants ci-dessous | inchangé |
+
+1. **`state.ml`** — `refresh_sketch_counter_value_after_last_save` devient
+   `val mutable project_dirty = true` ; `set_project_not_already_saved` l'arme ;
+   `register_state_after_save_or_open` le désarme (le *snapshot* des forêts de treeviews est
+   conservé tel quel) ; `project_already_saved` teste le drapeau puis, seulement s'il est baissé,
+   fait le test coûteux des forêts — qui reste le filet de sécurité. `network_change` arme le
+   drapeau à côté de son `refresh_sketch`.
+2. **`motherboard_builder.ml:151`** — les 7 `on_commit` des *dotoptions* arment le drapeau en plus
+   de redessiner (cf. rectification n° 2 : ces options sont persistées).
+3. **`method refresh_sketch_counter` supprimée** : cet accès public au compteur n'existait que pour
+   la décision de sauvegarde. Le compteur redevient un canal de rendu **interne**, ce qui retire
+   l'invitation à refaire B4.
+4. **`private_new_project` arme explicitement le drapeau** (`state.ml:316-319`) : sans cette ligne,
+   un projet neuf créé après un projet sauvegardé aurait hérité d'un drapeau baissé, alors que
+   l'ancien compteur garantissait « non sauvé » par son incrément. Préservation d'invariant, pas
+   ajout de comportement.
+
+**Invariants vérifiés avant édition** (par lecture, pas par supposition) : à l'ouverture, les
+*dotoptions* (`:472`) et le réseau (`:533`) sont chargés **avant**
+`register_state_after_save_or_open` (`:535`) — un projet fraîchement ouvert reste donc « déjà
+sauvé » ; et R3 ne peut régresser sur un chemin qui modifierait le modèle sans redessiner, puisque
+ce chemin ne salissait déjà rien.
+
+**Preuve statique.** `dune build` : rc = 0. `grep` : plus aucune référence à l'ancien champ, et
+`refresh_sketch_counter` n'est plus lu que par sa propre réaction de rendu. Fraîcheur du binaire
+vérifiée sur les chaînes de journal, pas sur un horodatage :
+`strings $(which marionnet.native) | grep -c 'the model has been changed'` → 1, et
+`… | grep -c 'seems not already saved (x='` → 0. Bilan : 2 fichiers, +30 / −21.
+
+**Preuve GUI (5 rejeux, journaux 47 à 51).** Les trois voies que le correctif touche sont vertes,
+la corrélation geste ↔ décision étant lisible au nombre de rafraîchissements du dessin :
+
+| Journal | Geste | « About to refresh the sketch » | Décision |
+|---|---|---|---|
+| 49 | ouvrir, ne rien faire, quitter | 1 (l'ouverture) | `The project *is* already saved.` — **aucune question** |
+| 50 | changer l'*iconsize* / le *rankdir* | 2 (le 2ᵉ juste avant la décision) | `not already saved (the model has been changed)` |
+| 51 | renommer un composant | 2 (idem) | `not already saved (the model has been changed)` |
+
+Le journal 50 valide précisément l'écart pris avec la recette d'origine : sans lui, ce réglage
+serait perdu sans un mot à la fermeture.
+
+**Ce que le scénario a démenti.** Sur le cycle « Démarrer tout / Arrêter tout » (journaux 47 sur
+`abc.mar` et 48 sur un projet neuf), le drapeau reste bien baissé — le journal atteint
+`The project *seems* already saved.`, ligne inatteignable avant R3 — **mais la question de
+sauvegarde apparaît encore**, via le test des forêts, et pour une raison légitime : le treeview
+*history*. Cf. l'encadré ajouté au § B4. **B4 n'est donc corrigé qu'à moitié**, et l'autre moitié
+demande un arbitrage, pas du code.
+
+**Reste.** R2 (cœur du chantier). B6, dont le périmètre s'élargit au socle `treeview.ml`
+(cf. encadré du § B6), plus le retrait de l'instrumentation `B6:` de l'épisode 2. Et, si l'auteur
+le décide, la seconde moitié de B4.

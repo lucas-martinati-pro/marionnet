@@ -314,6 +314,9 @@ class globalState = fun () ->
     let () = self#clear_treeviews in
     (* Reset dotoptions *)
     let () = self#dotoptions#reset_defaults () in
+    (* A brand new project has never been saved (do not inherit the flag from the
+       previously opened one): *)
+    let () = self#set_project_not_already_saved in
     (* Refresh the network sketch *)
     let () = self#refresh_sketch in
     ()
@@ -586,9 +589,12 @@ class globalState = fun () ->
 
   (*** BEGIN: this part of code tries to understand if the project must be really saved before exiting. *)
 
-  val mutable refresh_sketch_counter_value_after_last_save = None
+  (* Does the persistent model differ from what has been saved (or opened) last time?
+     Note that this flag is *not* related to the sketch refreshing: starting, stopping
+     or suspending a component redraws the sketch but changes nothing persistent. *)
+  val mutable project_dirty = true
   method set_project_not_already_saved =
-   refresh_sketch_counter_value_after_last_save <- None
+   project_dirty <- true
 
   method treeview =
    object
@@ -634,28 +640,29 @@ class globalState = fun () ->
   val mutable treeview_forest_list_after_save = None
   method private register_state_after_save_or_open =
    begin
-     refresh_sketch_counter_value_after_last_save <- Some (Cortex.get self#refresh_sketch_counter);
+     project_dirty <- false;
      treeview_forest_list_after_save <- Some (self#get_treeview_complete_forest_list);
    end
 
   method project_already_saved =
-    (match refresh_sketch_counter_value_after_last_save, (Cortex.get self#refresh_sketch_counter) with
-     (* Efficient test: *)
-    | Some x, y when x=y ->
-        Log.printf "The project *seems* already saved.\n";
-        (* Potentially expensive test: *)
-        if (treeview_forest_list_after_save = (Some self#get_treeview_complete_forest_list))
-        then begin
-          Log.printf "The project *is* already saved.\n";
-          true
-        end
-        else begin
-          Log.printf "Something has changed in treeviews: the project must be re-saved.\n";
-          false
-        end
-    | Some x, y -> (Log.printf2 "The project seems not already saved (x=%d, y=%d).\n" x y; false)
-    | None, y   -> (Log.printf1 "The project seems not already saved (x=None, y=%d).\n" y; false)
-    )
+    (* Efficient test: *)
+    if project_dirty then begin
+      Log.printf "The project is not already saved (the model has been changed).\n";
+      false
+      end
+    else begin
+      Log.printf "The project *seems* already saved.\n";
+      (* Potentially expensive test, kept as a safety net for whatever the flag may miss: *)
+      if (treeview_forest_list_after_save = (Some self#get_treeview_complete_forest_list))
+      then begin
+        Log.printf "The project *is* already saved.\n";
+        true
+      end
+      else begin
+        Log.printf "Something has changed in treeviews: the project must be re-saved.\n";
+        false
+      end
+      end
 
   (*** END: this part of code try to understand if the project must be really saved before exiting. *)
 
@@ -831,9 +838,9 @@ class globalState = fun () ->
            (Printexc.to_string e))
     end) ()
 
-  (* The structure (counter) for the reactive sketch refreshing: *)
+  (* The structure (counter) for the reactive sketch refreshing. It is purely internal:
+     nothing but the rendering depends on it (in particular, not `project_already_saved'). *)
   val refresh_sketch_counter = Cortex.return 0
-  method refresh_sketch_counter = refresh_sketch_counter
 
   (* Provoke the refreshing simply incrementing the counter (the on_commit reaction is defined elsewhere) *)
   method refresh_sketch =
@@ -847,6 +854,9 @@ class globalState = fun () ->
     action obj;
     self#dotoptions#shuffler_reset;
     self#dotoptions#extrasize_reset;
+    (* A network change (adding, removing or updating a component) is a change of the
+       persistent model, unlike a mere state transition of a component: *)
+    self#set_project_not_already_saved;
     self#refresh_sketch;
    end) ()
 

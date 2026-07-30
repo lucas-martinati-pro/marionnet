@@ -148,7 +148,9 @@ module Make (S : sig val st:State.globalState end) = struct
   (* --- *)
   let () =
    let d = S.st#network#dotoptions in
-   let update = (fun _ _ -> S.st#refresh_sketch) in
+   (* These options are persistent (they are saved into the project's "dotoptions.marshal",
+      see state.ml), hence changing one of them makes the project dirty: *)
+   let update = (fun _ _ -> S.st#set_project_not_already_saved; S.st#refresh_sketch) in
    let _ = Cortex.on_commit_append (d#iconsize)      (update) in
    let _ = Cortex.on_commit_append (d#rankdir)       (update) in
    let _ = Cortex.on_commit_append (d#curved_lines)  (update) in

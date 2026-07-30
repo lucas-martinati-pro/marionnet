@@ -133,8 +133,11 @@ Reprise : appliquer le skill `chantier-long`.
   incohérences avec `st` et les treeviews que cette absence a laissé s'installer) :
   `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
   `git log --grep="marionnet-automate-composants"`. Ordre imposé R4 → R1 → R3 → R2 : ép. 0
-  (audit) et ép. 1 (R4) faits 2026-07-29, ép. 2 (instrumentation B6, diagnostic partiel) et
-  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos) faits 2026-07-30 → reprendre à **R3**.
+  (audit) et ép. 1 (R4) faits 2026-07-29, ép. 2 (instrumentation B6, diagnostic partiel),
+  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos) et ép. 4 (R3 : drapeau `project_dirty`
+  au lieu du compteur de rendu ; prouvé en GUI ; **B4 corrigé à moitié** — l'ajout d'un état de
+  disque COW au treeview *history* reste une modification légitime ; **B6 élargi au socle
+  `treeview.ml`**) faits 2026-07-30 → reste **R2**.
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante
