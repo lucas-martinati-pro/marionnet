@@ -103,6 +103,86 @@ object(self)
       minimum_delay_header, Row_item.String "50";
       maximum_delay_header, Row_item.String "100"; ]
 
+  (* --- B6 (episode 6, work-stream "marionnet-automate-composants") ---
+     Deducing the validity of an entry from a homonymous row is what let a component silently
+     inherit the truncated entry of a previous one: add_my_defects recreated nothing, and
+     get_cable_data then settled the matter with an `assert', which killed the startup of a
+     component the user had not even touched. The three methods below decide validity on the
+     *shape* of the entry, and repair it by completing what is missing — never by destroying and
+     recreating the whole entry, which would silently throw away the defects the user had set on
+     the surviving rows. *)
+
+  (** Add, under the given parent, every (type, name) direction row that is missing. Returns the
+      number of rows added, so that the caller can tell a sound entry from a repaired one. *)
+  method private complete_direction_rows ~parent_row_id ~(expected : (string * string) list) : int =
+    let present = List.map self#get_row_type (self#children_of parent_row_id) in
+    List.fold_left
+      (fun added (direction_type, direction_name) ->
+         if List.mem direction_type present then added else begin
+           ignore
+             (self#add_row
+                ~parent_row_id
+                (List.append
+                   [ name_header, Row_item.String direction_name;
+                     type_header, Row_item.Icon direction_type ]
+                   self#non_defective_defaults));
+           Log.printf2 ~force:true
+             "B6: Treeview_defects: the missing \"%s\" row of the entry \"%s\" has been created\n"
+             direction_type direction_name;
+           added + 1
+           end)
+      0
+      expected
+
+  (* Report what a repair did, or why it could not be attempted. Factored out because both
+     ensure_* methods below must stay total: a component must be created even when its defects
+     entry resists repair — a defective entry is a defect of this treeview, not a reason to
+     refuse the component. *)
+  method private report_repair ~name ~repair =
+    try
+      let added = repair () in
+      if added > 0 then
+        Log.printf2 ~force:true
+          "Treeview_defects: WARNING: the entry of \"%s\" was incomplete (it was very likely inherited from a previous component); %d missing row(s) added\n"
+          name added
+    with e ->
+      Log.printf2 ~force:true
+        "Treeview_defects: WARNING: the entry of \"%s\" could not be checked nor repaired (%s)\n"
+        name (Printexc.to_string e)
+
+  (** Make sure a usable entry exists for that cable: create it when there is none, complete it
+      when it lost one of its two direction rows. *)
+  method ensure_cable_entry ~cable_name ~cable_type ~left_name ~right_name () =
+    if not (self#unique_row_exists_with_binding ~field:name_header ~value:cable_name) then
+      self#add_cable ~cable_name ~cable_type ~left_name ~right_name ()
+    else begin
+      Log.printf1 "The cable %s has already defects defined...\n" cable_name;
+      self#report_repair ~name:cable_name ~repair:(fun () ->
+        self#complete_direction_rows
+          ~parent_row_id:(self#unique_row_id_of_name cable_name)
+          ~expected:[ ("leftward", left_name); ("rightward", right_name) ])
+      end
+
+  (** Make sure a usable entry exists for that device: create it when there is none; otherwise
+      realign the number of ports (update_port_no leaves the existing ones untouched) and complete
+      the ports that lost a direction row. *)
+  method ensure_device_entry ~device_name ~device_type ~port_no ~port_prefix ~user_port_offset () =
+    if not (self#unique_row_exists_with_binding ~field:name_header ~value:device_name) then
+      self#add_device ~device_name ~device_type ~port_no ~port_prefix ~user_port_offset ()
+    else begin
+      Log.printf2 "The %s %s has already defects defined...\n" device_type device_name;
+      self#report_repair ~name:device_name ~repair:(fun () ->
+        let () = self#update_port_no ~device_name ~port_no ~port_prefix ~user_port_offset () in
+        List.fold_left
+          (fun added port_row_id ->
+             added +
+             self#complete_direction_rows
+               ~parent_row_id:port_row_id
+               ~expected:[ ("inward", "inward"); ("outward", "outward") ])
+          0
+          (self#children_of (self#unique_row_id_of_name device_name)))
+      end
+
   method add_device
     ?(defective_by_default=false)
     ~device_name
@@ -299,13 +379,27 @@ object(self)
           ~wanted:cable_direction_str
           ~found
     in
-    assert(found = 1);
+    (* B6 (episode 6): a named failure instead of `assert', whose "Assertion failed" said nothing
+       of what was wrong. Since ensure_cable_entry completes the missing rows when the component
+       is created, `found = 0' should no longer be reachable here; `found > 1' still is, as
+       duplicate rows are reported but never removed — deleting a row the user may have set
+       defects on is not a decision this method can take on its own. *)
+    if found <> 1 then
+      failwith
+        (Printf.sprintf
+           "Treeview_defects#get_cable_data: the entry of the cable \"%s\" has %d row(s) for the direction \"%s\" instead of exactly one"
+           cable_name found cable_direction_str);
     List.hd filtered_cable_directions
 
   method rename_cable_endpoints cable_name left_endpoint_name right_endpoint_name =
     let cable_row_id = self#unique_row_id_of_name cable_name in
     let cable_direction_ids = self#children_of cable_row_id in
-    assert (List.length cable_direction_ids = 2);
+    (* B6 (episode 6): same reasoning as in get_cable_data above. *)
+    if (List.length cable_direction_ids) <> 2 then
+      failwith
+        (Printf.sprintf
+           "Treeview_defects#rename_cable_endpoints: the entry of the cable \"%s\" has %d direction row(s) instead of exactly two"
+           cable_name (List.length cable_direction_ids));
     let directions = List.map self#get_complete_row cable_direction_ids in
     let leftward_direction  =
       List.find (fun row -> Row.Icon_field.eq ~field:type_header ~value:"leftward" row)  directions

@@ -134,10 +134,13 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
   `git log --grep="marionnet-automate-composants"`. Ordre imposé R4 → R1 → R3 → R2 : ép. 0
   (audit) et ép. 1 (R4) faits 2026-07-29, ép. 2 (instrumentation B6, diagnostic partiel),
-  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos) et ép. 4 (R3 : drapeau `project_dirty`
+  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos), ép. 4 (R3 : drapeau `project_dirty`
   au lieu du compteur de rendu ; prouvé en GUI ; **B4 corrigé à moitié** — l'ajout d'un état de
   disque COW au treeview *history* reste une modification légitime ; **B6 élargi au socle
-  `treeview.ml`**) faits 2026-07-30 → reste **R2**.
+  `treeview.ml`**), ép. 5 (B6 socle : plus d'identification de ligne par lecture du widget) et
+  ép. 6 (B6 : `path_to_id` via la forêt interne, renderer d'icônes rendu total, entrées *defects*
+  décidées sur la forme et complétées → `Startup H1` réussit enfin) faits 2026-07-30 →
+  reste **R2**, plus la cause profonde de la lecture décalée et le retrait de l'instrumentation.
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante

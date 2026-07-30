@@ -513,18 +513,16 @@ and virtual cable_defects_zone ~network () =
   method virtual get_right : endpoint
   method virtual add_destroy_callback : unit Lazy.t -> unit
 
+  (* B6 (episode 6): a homonymous row is no longer taken as the proof that the entry is usable.
+     The decision (create, or complete a truncated entry) belongs to the treeview, which is the
+     only one knowing the shape an entry must have; this cable only provides the names. *)
   method private add_my_defects =
-   match
-     (network#defects:Treeview_defects.t)#unique_row_exists_with_binding "Name" self#get_name
-   with
-   | true -> Log.printf1 "The cable %s has already defects defined...\n" self#get_name
-   | false ->
-       network#defects#add_cable
-         ~cable_name:self#get_name
-         ~cable_type:self#defects_cable_type
-         ~left_name:self#get_left#my_name_in_treeview_defects
-         ~right_name:self#get_right#my_name_in_treeview_defects
-         ()
+   (network#defects:Treeview_defects.t)#ensure_cable_entry
+     ~cable_name:self#get_name
+     ~cable_type:self#defects_cable_type
+     ~left_name:self#get_left#my_name_in_treeview_defects
+     ~right_name:self#get_right#my_name_in_treeview_defects
+     ()
 
   method private destroy_my_defects =
     Log.printf1 "component \"%s\": destroying my defects.\n" self#get_name;

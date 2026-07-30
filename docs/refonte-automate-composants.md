@@ -804,3 +804,72 @@ est réelle, mais elle demande un traitement d'ensemble, avec une réponse assum
    que l'entrée est **valide** et que `get_cable_data` tranche par `assert`. L'ingrédient qui fait
    perdre la ligne (recherché à l'épisode 2) reste inconnu.
 4. **Le retrait de l'instrumentation `B6:`** de l'épisode 2, à faire à la clôture de B6.
+
+### Épisode 6 — 2026-07-30 — B6 : plus aucune identité lue dans le widget, et plus rien de fatal
+
+**But** : traiter trois des quatre suites laissées ouvertes par l'épisode 5 — la dépendance
+résiduelle aux lectures du widget, le renderer d'icônes fatal, et le volet *defects* qui empêchait
+encore `H1` de démarrer sur `propre-2machines-1hub`.
+
+**Volet 1 — l'identité d'une ligne ne se lit plus jamais dans le modèle GTK.** `iter_to_id`
+(`treeview.ml`) était le dernier lecteur de la colonne `_id` du widget, et `path_to_id` en
+dépendait. Huit sites en dépendaient à leur tour, dont **deux chemins d'écriture** — la fin d'une
+édition (`editable_string_column#on_edit`) et la bascule d'une case (`checkbox_column`) — où un
+identifiant faux fait atterrir la saisie **dans une autre ligne**. C'est un mécanisme de perte
+silencieuse que l'épisode 2 n'avait pas envisagé : il cherchait un geste utilisateur exotique.
+`path_to_id` dérive désormais l'identifiant de la forêt interne (`path_indices_to_id`, le converse
+exact de `id_to_path_indices` de l'épisode 5) et **échoue nommément** plutôt que de rendre un
+identifiant plausible mais faux. `for_all_rows`, `iter_on_forest` et `iter_on_tree` — le parcours
+à itérateurs mutés destructivement, sans appelant depuis l'épisode 5 — sont supprimés.
+
+**Volet 2 — une icône inconnue ne tue plus le rendu.** `icon_cell_data_function` appelait
+`lookup_by_string`, dont l'échec est un `failwith`, **depuis un `cell_data_func`** : l'exception
+traversait la pile C de Gtk, d'où le `CRITICAL: gtk_tree_cell_data_func` du journal 56. Une
+fonction de rendu doit être totale : la valeur inattendue est journalisée et la cellule dessinée
+vide (pixbuf transparent explicite — laisser `` `PIXBUF `` non positionné ferait hériter l'icône de
+la ligne précédente, le renderer étant réutilisé pour toutes les cellules).
+
+**Volet 3 — le volet *defects*.** La validité d'une entrée était **déduite d'une ligne homonyme**
+(`add_my_defects`, `user_level.ml` et `cable.ml`) puis **tranchée par `assert`**
+(`get_cable_data`). Un composant héritait donc d'une entrée amputée et échouait au démarrage.
+La décision revient maintenant au treeview, seul à connaître la forme attendue :
+`ensure_cable_entry` et `ensure_device_entry` créent l'entrée quand il n'y en a pas et
+**complètent les lignes manquantes** quand elle est tronquée. **Écart assumé avec le plan**, qui
+prévoyait de détruire et recréer une entrée malformée : cela aurait effacé sans le dire les défauts
+réglés par l'utilisateur sur les lignes survivantes — le même refus qu'à l'épisode 4 pour les
+*dotoptions*. Les `assert` deviennent des échecs nommés ; les doublons sont signalés mais jamais
+supprimés (effacer une ligne portant peut-être des réglages n'est pas une décision que ce point du
+code peut prendre seul).
+
+**Preuve GUI.**
+
+| Journal | Scénario | Résultat |
+|---|---|---|
+| 59 | `propre-2machines-1hub`, `-r` (démarrage automatique), tout arrêter, quitter | **`Startup H1` réussit** — jamais obtenu jusqu'ici sur ce projet. `d2` réparé au chargement (`1 missing row(s) added`). **0** `id_to_iter`, **0** `Assertion failed`, **0** `CRITICAL`, **0** exception levée, 12/12 tâches réussies, arrêt et sortie propres, aucun processus résiduel |
+| 60 | même projet, gestes d'**édition** des treeviews (valeur éditée, case, menu contextuel), quitter | **0** échec de `path_to_id`, **0** `CRITICAL`, **0** `Assertion failed`. Les éditions aboutissent (`set` précède le callback métier) |
+
+**Trois constats qui débordent de l'épisode.**
+
+1. **Le défaut de lecture du widget est toujours actif — et il est maintenant *mesurable*.** Le
+   volet 2 l'a rendu observable au lieu de fatal : six lectures de la colonne `Type` ont rendu
+   (journal 60, `cat -v`) `M-??*M-9M-^FZ^@^@port` et `.*,M-9M-^FZ^@ -cable`. Ces valeurs ne sont pas
+   aléatoires : ce sont **huit octets de garbage — dont la signature d'une adresse (`M-9 M-^F Z ^@`,
+   commune à toutes les occurrences) — suivis de la *fin correcte* de la vraie chaîne**
+   (`other-device-port`, `…-cable`). Autrement dit un **décalage d'offset systématique** à la
+   lecture, et non une corruption de données ni une course. Cela explique rétrospectivement le
+   `"@"` lu à la place de `"0"` (épisode 5). La cause reste dans la couche lablgtk3/Gtk sous
+   OCaml 5, non élucidée — mais **toute lecture de colonne du widget est désormais établie comme
+   structurellement suspecte**, ce qui valide la stratégie des volets 1 et 2 : ne plus rien
+   décider sur une telle lecture, et ne jamais en mourir.
+2. **Le `.mar` reste amputé sur le disque.** La réparation opère en mémoire à chaque ouverture ;
+   le projet guérit donc à chaque chargement sans jamais guérir sur disque (tant qu'il n'est pas
+   sauvegardé). C'est délibéré — on ne réécrit pas le projet de l'utilisateur à son insu.
+3. **Bug i18n découvert par le terrain, hors périmètre** : `bin/po/fr.po:2462-2468` traduit un
+   `msgid` à **deux** `%s` par un `msgstr` à **un** seul. `Printf.sprintf (f_ "…")`
+   (`marionnet.ml:122`) lève donc `Scanf.Scan_failure` et **la question « voulez-vous redémarrer
+   maintenant ? » ne s'affiche jamais en français** après l'édition d'un défaut sur un composant en
+   marche : la valeur est bien écrite, mais le redémarrage qui l'applique n'est pas proposé
+   (6 occurrences au journal 60). Les 11 autres catalogues sont à vérifier de la même façon.
+
+**Reste pour clore B6** : la cause profonde de la lecture décalée (point 1), et le retrait de
+l'instrumentation `B6:` de l'épisode 2.

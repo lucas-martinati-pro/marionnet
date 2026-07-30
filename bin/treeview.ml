@@ -607,17 +607,44 @@ object(self)
   method gtree_column (* Ugly kludge which I need to overcome countervariance restrictions *) =
     Obj.magic gtree_column
 
+  (* B6 (episode 6): a transparent pixbuf of the size of the known icons, shown when a value
+     matches no icon. Leaving `PIXBUF unset in that case would not leave the cell empty: Gtk
+     reuses the same renderer for every cell, so the cell would silently inherit the icon of the
+     previously rendered row. *)
+  val blank_pixbuf = lazy
+    (let width, height =
+       match strings_and_pixbufs with
+       | (_, pixbuf) :: _ -> (GdkPixbuf.get_width pixbuf), (GdkPixbuf.get_height pixbuf)
+       | []               -> 16, 16
+     in
+     let pixbuf = GdkPixbuf.create ~width ~height ~has_alpha:true () in
+     let () = GdkPixbuf.fill pixbuf 0l in (* fully transparent *)
+     pixbuf)
+
   method append_to_view (view : GTree.view) =
     let highlight_column = treeview#get_column "_highlight" in
     let highlight_color_column = treeview#get_column "_highlight-color" in
+    (* B6 (episode 6): a cell_data_func is called by Gtk's C code and replayed at every redraw, so
+       raising from here escapes through a C stack — that is the origin of the
+       "CRITICAL: gtk_tree_cell_data_func ... Icon lookup failed" of journal 56. A rendering
+       function must be total: an unknown value is now logged and drawn blank, instead of killing
+       the redraw of the whole treeview. *)
     let icon_cell_data_function =
       (fun renderer (model:GTree.model) iter ->
         let icon_as_string = model#get ~row:iter ~column:self#gtree_column in
-        renderer#set_properties
-         [ `PIXBUF
-             (let (_, result) = self#lookup_by_string icon_as_string in
-             result);
-           `MODE `ACTIVATABLE ]) in
+        let pixbuf =
+          try
+            let (_, pixbuf) = self#lookup_by_string icon_as_string in
+            pixbuf
+          with e ->
+            let () =
+              Log.printf3 ~force:true
+                "Treeview.icon_column#append_to_view: WARNING: column \"%s\": no icon matches the value \"%s\" (%s); drawing an empty cell\n"
+                self#header icon_as_string (Printexc.to_string e)
+            in
+            Lazy.force blank_pixbuf
+        in
+        renderer#set_properties [ `PIXBUF pixbuf; `MODE `ACTIVATABLE ]) in
     let icon_renderer =
       GTree.cell_renderer_pixbuf [ (* `CELL_BACKGROUND highlight_background_color; *) ] in
 
@@ -1475,8 +1502,14 @@ object(self)
     Hashtbl.clear expanded_row_ids;
     self#store#clear ();
 
+  (* B6 (work-stream "marionnet-automate-composants", episode 6): the identifier of a row is no
+     longer read from the "_id" column of the widget. This read was the last one left deciding an
+     identity, and it is precisely the kind of read that was measured returning "@" where the very
+     next traversal read "0" (episode 5, journals 53-55). Only the *structure* of the model is
+     queried now — the path of the row — while the identifier itself comes from the internal
+     forest, which is the source of truth. *)
   method iter_to_id (iter:Gtk.tree_iter) : string =
-    self#store#get ~row:iter ~column:(self#get_column "_id")#gtree_column
+    self#path_to_id (self#iter_to_path iter)
 
   method iter_to_path iter =
     self#store#get_path iter
@@ -1506,6 +1539,20 @@ object(self)
     in
     search_forest ~prefix:[] (self#get_id_forest)
 
+  (* B6 (episode 6): the converse of id_to_path_indices, and legitimate for the same reason (both
+     structures are grown together and in the same order). Answers None when the indices lead
+     nowhere in the internal forest, which can only mean a real divergence with the store. *)
+  method private path_indices_to_id (indices : int list) : string option =
+    let rec descend forest = function
+      | [] -> None
+      | index :: rest ->
+          (match List.nth_opt (Forest.to_treelist forest) index with
+           | None -> None
+           | Some (root, children) ->
+               if rest = [] then Some root else descend children rest)
+    in
+    descend (self#get_id_forest) indices
+
   (* B6: the identifier is resolved through the internal forest — the source of truth — instead
      of scanning the Gtk model row by row and comparing the "_id" column of each one. The former
      implementation was defeated by unreliable reads of that column: a traversal could read "@"
@@ -1523,33 +1570,29 @@ object(self)
              (Printf.sprintf "id_to_iter: id %s is at path %s in the forest of %s, but the store has no such row (%s)"
                 id (GTree.Path.to_string path) self#b6_treeview_nickname (Printexc.to_string e)))
 
+  (* B6 (episode 6): failing here is deliberate, and it is the same choice as in id_to_iter — an
+     identifier that cannot be resolved must not be replaced by a plausible-looking wrong one,
+     because two of the callers (the end of an edition, the toggle of a checkbox) *write* through
+     it. Note the asymmetry with the icon renderer below, which must stay total: this method is
+     called from occasional event callbacks, not from a cell_data_func replayed at every redraw. *)
   method path_to_id path : string =
-    self#iter_to_id (self#path_to_iter path)
+    match self#path_indices_to_id (Array.to_list (GTree.Path.get_indices path)) with
+    | Some id -> id
+    | None ->
+        failwith
+          (Printf.sprintf
+             "path_to_id: the store of %s has a row at path %s, but the internal forest has none"
+             self#b6_treeview_nickname (GTree.Path.to_string path))
 
   method id_to_path (id:string) =
     self#iter_to_path (self#id_to_iter id)
 
-  method for_all_rows f =
-    let iter_first = self#store#get_iter_first in
-    self#iter_on_forest f iter_first
-
-  method iter_on_forest f (iter:(Gtk.tree_iter option)) =
-    match iter with
-      None ->
-        ()
-    | (Some iter) ->
-        self#iter_on_tree f iter;
-        if self#store#iter_next iter then
-          self#iter_on_forest f (Some iter)
-
-  method iter_on_tree f (iter:Gtk.tree_iter) =
-    (* iter may be destructively modified, but we don't want to expose this to
-       the user: *)
-    let copy_of_iter = self#store#get_iter (self#store#get_path iter) in
-    f copy_of_iter;
-    if self#store#iter_has_child iter then
-      let subtrees_iter = self#store#iter_children (Some iter) in
-      self#iter_on_forest f (Some subtrees_iter)
+  (* B6 (episode 6): for_all_rows, iter_on_forest and iter_on_tree used to live here. They walked
+     the widget with a destructively modified iterator, and their only caller was the former
+     id_to_iter, dropped at episode 5 — they are dead code since then. They are removed rather
+     than kept, because every measured phantom read came from that walk, never from a fresh
+     iterator obtained by store#get_iter of a path. Anything needing to traverse the rows should
+     use the internal forest (get_id_forest, get_row_list). *)
 
   method expand_row id =
     view#expand_row (self#id_to_path id)

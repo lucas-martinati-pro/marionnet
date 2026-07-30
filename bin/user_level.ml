@@ -717,24 +717,17 @@ object (self)
   method virtual user_port_offset : int
   method virtual add_destroy_callback : unit Lazy.t -> unit
 
+  (* B6 (episode 6): see the twin method of cable.ml — the existence of a row bearing the name of
+     the component says nothing of the presence of its port rows, and a component silently
+     inheriting a truncated entry is what made a startup fail on a component nobody had touched. *)
   method private add_my_defects =
-   match
-     (network#defects:Treeview_defects.t)#unique_row_exists_with_binding
-        "Name"
-        self#get_name
-   with
-   | true ->
-       Log.printf2 "The %s %s has already defects defined...\n"
-         self#defects_device_type
-         self#get_name
-   | false ->
-       network#defects#add_device
-         ~device_name:self#get_name
-         ~device_type:self#defects_device_type
-         ~port_no:self#get_port_no
-         ~port_prefix:self#port_prefix
-         ~user_port_offset:self#user_port_offset
-         ()
+   (network#defects:Treeview_defects.t)#ensure_device_entry
+     ~device_name:self#get_name
+     ~device_type:self#defects_device_type
+     ~port_no:self#get_port_no
+     ~port_prefix:self#port_prefix
+     ~user_port_offset:self#user_port_offset
+     ()
 
   method private destroy_my_defects =
     Log.printf1 "component \"%s\": destroying my defects.\n" self#get_name;
