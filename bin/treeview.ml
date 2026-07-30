@@ -980,6 +980,12 @@ object(self)
   method filename  : string = method_filename  ()
   method directory : string = method_directory ()
 
+  (* B6 instrumentation (work-stream "marionnet-automate-composants"): a short name telling
+     the four treeviews apart in the log — their row identifiers overlap, which made the
+     traces ambiguous. `filename' raises when no project is active, hence the guard. *)
+  method b6_treeview_nickname : string =
+    try Filename.basename (self#filename) with _ -> "?"
+
   method add_string_column
     ~header ?shown_header
     ?(italic=false) ?(bold=false)
@@ -1291,6 +1297,13 @@ object(self)
             | `v0       -> Backward_compatibility.load_from_old_file (file_name)
           in
           let () = self#counter#set_next_fresh_value_to next_identifier in
+          (* B6 instrumentation: the saved counter tells a row that never existed (counter
+             equal to the greatest identifier + 1) from a row created then lost (counter
+             strictly greater). *)
+          let () =
+            Log.printf2 ~force:true "B6: %s: next fresh identifier restored to %d\n"
+              file_name next_identifier
+          in
           (* Remove incompatible bindings if necessary: *)
           let complete_forest =
             let admissible_fields = SetExtra.String_set.of_list (self#column_headers) in
@@ -1301,8 +1314,15 @@ object(self)
           let () = self#set_complete_forest complete_forest in
           let () = Log.printf1 "Treeview.treeview#load: Ok, treeview content successfully loaded from: %s\n" file_name in
           let () =
-            if (Global_options.Debug_level.get ()) >= 3 then (* we have to set the verbosity to level 3 *)
+            (* B6 instrumentation (work-stream "marionnet-automate-composants"): the guard was
+               `>= 3', hence unreachable — Initialization.Debug_level is built by `of_bool' and
+               caps at 1 (initialization.ml:148-155), so this dump was dead code. Lowered to
+               `>= 1' (i.e. the -d flag) in order to tell a forest already damaged on disk from
+               one damaged during the session. *)
+            if (Global_options.Debug_level.get ()) >= 1 then begin
+            Log.printf1 "B6: freshly loaded forest of %s:\n" file_name;
             Forest.print_forest ~string_of_node:Row.to_pretty_string ~channel:stderr (complete_forest)
+            end
           in
           ()
         with e -> begin
@@ -1375,6 +1395,17 @@ object(self)
        from our updated version.
        This greatly simplifies the GUI part, which is less comfortable
        to work with than our internal data structures. *)
+     (* B6 instrumentation (work-stream "marionnet-automate-composants"): note that
+        Forest.filter "cuts bad nodes and lifts their orphans up" (forest.ml:150), so this
+        method does NOT remove a subtree — the children of row_id survive, promoted one level
+        up. Log the victim and the children it is about to orphan. *)
+     let () =
+       let name = try Row.get_name (self#get_complete_row row_id) with e -> Printexc.to_string e in
+       let orphans = try self#children_of row_id with _ -> [] in
+       Log.printf4 ~force:true
+         "B6: [%s] Treeview#remove_row: removing row %s (\"%s\"); %d child row(s) will be lifted up\n"
+         self#b6_treeview_nickname row_id name (List.length orphans)
+     in
      (* Ok, save the updated state we want to restore later: *)
      let updated_id_forest =
        Forest.filter
@@ -1409,6 +1440,18 @@ object(self)
     (* First find out which rows we have to remove: *)
     let ids_of_the_rows_to_be_removed =
       row_id :: (Forest.descendant_nodes row_id !id_forest) in
+    (* B6 instrumentation (work-stream "marionnet-automate-composants"): who is removed, and
+       with which descendants. Beware: id_to_iter above may have raised already, in which case
+       nothing at all is removed and this line is not printed. *)
+    let () =
+      let describe id = try Row.get_name (self#get_complete_row id) with _ -> "?" in
+      Log.printf4 ~force:true
+        "B6: [%s] Treeview#remove_subtree: removing row %s (\"%s\") together with [%s]\n"
+        self#b6_treeview_nickname row_id (describe row_id)
+        (String.concat "; "
+           (List.map (fun id -> Printf.sprintf "%s:\"%s\"" id (describe id))
+              (List.tl ids_of_the_rows_to_be_removed)))
+    in
     (* Ok, now update id_forest, id_to_row and expanded_row_ids: *)
     List.iter
       (fun row_id ->
@@ -1715,7 +1758,13 @@ class virtual treeview_with_a_primary_key_Name_column
     try
       let row_id = self#unique_row_id_of_name name in
       self#remove_subtree row_id;
-    with _ -> ()
+    with e ->
+      (* B6 instrumentation (work-stream "marionnet-automate-composants"): the exception is
+         still swallowed, so the behaviour is unchanged — but a destruction silently skipped
+         here is the first mechanism of B6, hence it must at least leave a trace. *)
+      Log.printf2 ~force:true
+        "Treeview#remove_subtree_by_name: \"%s\": destruction SKIPPED (%s)\n"
+        name (Printexc.to_string e)
 
   method update_children_no ~(add_child_of:string -> unit) ~parent_name new_children_no =
     let row_id = self#unique_row_id_of_name parent_name in

@@ -503,3 +503,72 @@ un correctif à l'aveugle.
 
 Journaux de référence : `/tmp/marionnet.native.42.log` (`Not_found`, ligne 900) et
 `/tmp/marionnet.native.43.log` (`Assertion failed`, ligne 569).
+
+### Épisode 2 — 2026-07-30 — B6 : instrumentation et diagnostic partiel
+
+**But de l'épisode** (fixé par le § 1 : instrumenter avant de corriger) : établir par quel pas
+les lignes de direction d'un câble deviennent en nombre ≠ 1, et si ce nombre est 0 ou 2.
+
+**Instrumentation posée** — strictement observationnelle : aucun flux de contrôle, aucune valeur
+de retour, aucune exception n'est modifiée. Toutes les traces sont préfixées `B6:` et émises en
+`~force:true` (donc visibles hors mode debug), à l'exception de la ligne nominale de
+`get_cable_data`. Six sites :
+
+| Fichier | Site | Ce que ça montre |
+|---|---|---|
+| `treeview_defects.ml` | `b6_dump_children` (méthode privée, nouvelle) | tous les enfants d'un parent, via `Row.to_pretty_string` |
+| `treeview_defects.ml` | `get_cable_data` | une ligne par appel (`found/total`) + dump si `found ≠ 1` |
+| `treeview_defects.ml` | `get_port_data` | dump avant de relancer le **même** `Not_found` |
+| `treeview_defects.ml` | `add_cable` | les identifiants des deux enfants créés (les deux `ignore` les masquaient) |
+| `treeview.ml` | `remove_subtree`, `remove_row`, `remove_subtree_by_name` | qui est retiré, avec quels descendants ; l'exception que `remove_subtree_by_name` continue d'avaler |
+| `treeview.ml` | `load` | la forêt fraîchement chargée et le `next_identifier` restauré |
+
+**Résultats — ce qui est désormais établi.**
+
+1. **C'est 0, pas 2.** Le câble `d2` (row 24) n'a plus qu'un enfant, `leftward` (row 25) ; le
+   `rightward` manque et le **parent survit** (journal 44, lignes 596-597).
+2. **`remove_subtree_by_name` n'a rien avalé** : aucune trace `SKIPPED`. Le mécanisme n° 1 du
+   § 1, quoique réel dans le code, **n'est pas celui qui a agi ici**.
+3. **L'état est amputé sur le disque**, pas en mémoire : le dump du chargement montre `abc.mar`
+   livrant déjà `d2` avec un unique enfant (journal 45). Tout rejeu ouvrant ce projet ne montre
+   donc que l'état hérité — les journaux 44 et 45 ne prouvent rien sur le *pas* fautif.
+4. **Le geste supposé minimal ne reproduit pas.** Sur projet **neuf** (journal 46) : `d3` est
+   créé (rows 27/28/29), détruit avec ses **deux** enfants, et `d2` conserve les siens du début
+   à la fin. L'hypothèse de travail du § 1 (« créer un câble, le supprimer, démarrer ») est
+   **infirmée** : il manque un ingrédient.
+5. **Le row perdu a bien existé.** Décisif, et obtenu **hors GUI** : le fichier `abc/states/defects`
+   d'`abc.mar` est un `Marshal` direct d'un couple `(next_identifier, forêt)`
+   (`Oomarshal.marshaller`, `lib/MARSHAL/oomarshal.ml:78-99`), lisible par un programme de trois
+   lignes. Il porte **`next_identifier = 30`** alors que le plus grand identifiant présent est
+   **25**. La numérotation d'un projet neuf identique (journal 46) étant `m1` 0-3, `m2` 4-7,
+   `H1` 8-20, `d1` 21-23, `d2` 24-25-**26**, `d3` 27-29, le compteur prouve que **le row 26 —
+   le `rightward` de `d2` — a été alloué**, puis perdu, tandis que `d3` (27-29) a été
+   correctement supprimé. Ce n'est donc pas une création manquée.
+
+**Deux défauts découverts en chemin** (hors périmètre de l'épisode, non corrigés) :
+
+- **`Forest.filter` « coupe les mauvais nœuds et **remonte leurs orphelins** »**
+  (`lib/STRUCTURES/forest.ml:150`). `Treeview.remove_row` étant bâti dessus, il ne détruit pas un
+  sous-arbre : il **promeut** les enfants d'un rang. `remove_subtree` s'en tire parce qu'il
+  filtre aussi tous les descendants, mais la primitive publique est un piège.
+- **La garde des contraintes de rangée est inversée** : `add_unspecified_columns`
+  (`treeview.ml:1046-1059`) exécute `check_constraints` **quand on lui demande de les ignorer**
+  (`if ignore_constraints = Some () then …`), et `add_row` ne passe jamais l'argument — donc
+  aucune contrainte n'est jamais vérifiée à l'ajout. Corollaire utile ici : `add_row` ne peut pas
+  échouer pour cause de contrainte, ce qui écarte le scénario « le second `add_row` a levé ».
+- **Le dump de la forêt au chargement était du code mort** : gardé par
+  `Global_options.Debug_level.get () >= 3` alors que `Initialization.Debug_level` est produit par
+  `of_bool` et plafonne à 1 (`initialization.ml:148-155`). Seuil abaissé à `>= 1` pour cet
+  épisode.
+
+**Reste à faire pour clore B6** : trouver l'ingrédient manquant du scénario. Deux candidats,
+dans l'ordre de vraisemblance, tous deux compatibles avec le mécanisme n° 3 du § 1 (le treeview
+est manipulé depuis le thread GTK *et* depuis le task runner, sans discipline) :
+
+1. **création/suppression de câble pendant que des composants tournent ou terminent** — c'est
+   le seul écart connu entre la session 43 et le rejeu 46 ;
+2. **sauvegarde/rechargement intercalé** avant la suppression, qui rebâtit la forêt et les iters
+   GTK.
+
+Journaux de référence : `/tmp/marionnet.native.44.log` (rejeu sur projet abîmé),
+`.45.log` (ouverture seule : dump du chargement), `.46.log` (projet neuf : pas de reproduction).
