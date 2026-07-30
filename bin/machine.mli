@@ -133,11 +133,8 @@ module User_level_machine : sig
       val simulated_device                   : User_level.node_with_ports_card Simulation_level.device option ref
       method make_simulated_device           : User_level.node_with_ports_card Simulation_level.device
       method simulated_device_state          : User_level.simulated_device_automaton_state
-      method next_simulated_device_state     : User_level.simulated_device_automaton_state option
-      method set_next_simulated_device_state : User_level.simulated_device_automaton_state option -> unit
       (* --- *)
       val automaton_state                    : User_level.simulated_device_automaton_state ref
-      val next_automaton_state               : User_level.simulated_device_automaton_state option ref
       method automaton_state_as_string       : string
       (* --- *)
       method has_ledgrid                     : bool

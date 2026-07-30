@@ -132,8 +132,9 @@ Reprise : appliquer le skill `chantier-long`.
   filtrages de couple et 7 `raise_forbidden_transition` fourre-tout ; et corriger les
   incohérences avec `st` et les treeviews que cette absence a laissé s'installer) :
   `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
-  `git log --grep="marionnet-automate-composants"`. Ép. 0 (audit) et ép. 1 (R4) faits
-  2026-07-29 ; ordre imposé R4 → R1 → R3 → R2, donc reprendre à **R1**.
+  `git log --grep="marionnet-automate-composants"`. Ordre imposé R4 → R1 → R3 → R2 : ép. 0
+  (audit) et ép. 1 (R4) faits 2026-07-29, ép. 2 (instrumentation B6, diagnostic partiel) et
+  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos) faits 2026-07-30 → reprendre à **R3**.
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante

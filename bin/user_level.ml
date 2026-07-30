@@ -128,19 +128,6 @@ class virtual ['parent] simulated_device () = object(self)
   (** For debugging. Failthful translation of constructors: *)
   method automaton_state_as_string = string_of_simulated_device_automaton_state !automaton_state
 
-  (** The automaton state this device is going to. This is only used for the GUI and
-      is not guaranteed to be accurate in case of concurrent access. It's only
-      guaranteed to always hold some value of the correct type.
-      If no transition is occurring then the ref should hold None. *)
-  val next_automaton_state = ref (Some NoDevice)
-
-  method next_simulated_device_state =
-    !next_automaton_state
-
-  method set_next_simulated_device_state state =
-    next_automaton_state := state;
-    Sketch.refresh_sketch (); (* show our transient simulation state icon *)
-
   method virtual get_name : string
 
   (** The device implementing the object in the simulated network, if any (this is ref None
@@ -196,28 +183,24 @@ class virtual ['parent] simulated_device () = object(self)
             assert false)
 
   method create =
-    (* This is invisible for the user: don't set the next state *)
+    (* This is invisible for the user: no progress bar here *)
     Task_runner.the_task_runner#schedule ~name:("create "^self#get_name) (fun () -> self#create_right_now)
 
   method (*private*) destroy_my_simulated_device =
     Log.printf1 "component \"%s\": destroying my simulated device.\n" self#get_name;
-    (* This is invisible for the user: don't set the next state *)
+    (* This is invisible for the user: no progress bar here *)
     Task_runner.the_task_runner#schedule ~name:("destroy "^self#get_name)(fun () -> self#destroy_right_now)
 
   method startup =
-    self#set_next_simulated_device_state (Some DeviceOn);
     self#enqueue_task_with_progress_bar (s_ "Starting") (fun () -> if self#can_startup then    self#startup_right_now)
 
   method suspend =
-    self#set_next_simulated_device_state (Some DeviceSleeping);
     self#enqueue_task_with_progress_bar (s_ "Suspending") (fun () -> if self#can_suspend then self#suspend_right_now)
 
   method resume =
-    self#set_next_simulated_device_state (Some DeviceOn);
     self#enqueue_task_with_progress_bar (s_ "Resuming") (fun () -> if self#can_resume then self#resume_right_now)
 
   method gracefully_shutdown =
-    self#set_next_simulated_device_state (Some DeviceOff);
     self#enqueue_task_with_progress_bar (s_ "Stopping") (fun () -> if self#can_gracefully_shutdown then self#gracefully_shutdown_right_now)
 
   method gracefully_restart =
@@ -226,7 +209,6 @@ class virtual ['parent] simulated_device () = object(self)
        would be scheduled even on an already stopped component. *)
     if not self#can_gracefully_shutdown then () else begin (* continue *)
     self#gracefully_shutdown;
-    self#set_next_simulated_device_state (Some DeviceOn);
     self#enqueue_task_with_progress_bar
       (s_ "Restarting")
       (fun () ->
@@ -235,7 +217,6 @@ class virtual ['parent] simulated_device () = object(self)
     end
 
   method poweroff =
-    self#set_next_simulated_device_state (Some DeviceOff);
     self#enqueue_task_with_progress_bar (s_ "Shutting down") (fun () -> if self#can_poweroff then self#poweroff_right_now)
 
   method (*private*) create_right_now =
@@ -249,7 +230,7 @@ class virtual ['parent] simulated_device () = object(self)
         | NoDevice, None ->
 	    ( simulated_device := (Some self#make_simulated_device);
               automaton_state := DeviceOff;
-	      self#set_next_simulated_device_state None;
+	      Sketch.refresh_sketch (); (* the device icon switches from "no device" to "off" *)
 	      (* An endpoint for cables linked to self was just added; we need to start some cables. *)
 	      ignore (List.map
 			(fun cable ->
@@ -271,7 +252,7 @@ class virtual ['parent] simulated_device () = object(self)
           Log.printf1 "WARNING: destroy_because_of_unexpected_death: failed (%s)\n"
             (Printexc.to_string e);
         end;
-          self#set_next_simulated_device_state None)); (* don't show next-state icons for this *)
+          Sketch.refresh_sketch ())); (* the state may have changed, successfully or not *)
 
   method (*private*) destroy_right_now =
     Recursive_mutex.with_mutex mutex
@@ -306,7 +287,7 @@ class virtual ['parent] simulated_device () = object(self)
              d#destroy; (* This is the a method from some object in Simulation_level *)
              simulated_device := None;
              automaton_state := NoDevice;
-             self#set_next_simulated_device_state None;
+             Sketch.refresh_sketch ();
              Log.printf1 "We're not deadlocked yet (%s). Great.\n" self#get_name);
         | _ ->
             raise_forbidden_transition "destroy_right_now"
@@ -332,7 +313,7 @@ class virtual ['parent] simulated_device () = object(self)
           | DeviceOff, Some(d) ->
              (d#startup;  (* This is the a method from some object in Simulation_level *)
               automaton_state := DeviceOn;
-              self#set_next_simulated_device_state None;
+              Sketch.refresh_sketch ();
               Log.printf1 "The device %s was started up\n" self#get_name
               )
 
@@ -352,7 +333,7 @@ class virtual ['parent] simulated_device () = object(self)
           DeviceOn, Some(d) ->
            (d#suspend; (* This is the a method from some object in Simulation_level *)
             automaton_state := DeviceSleeping;
-            self#set_next_simulated_device_state None)
+            Sketch.refresh_sketch ())
         | _ -> raise_forbidden_transition "suspend_right_now")
 
   method (*private*) resume_right_now =
@@ -363,7 +344,7 @@ class virtual ['parent] simulated_device () = object(self)
         | DeviceSleeping, Some(d) ->
            (d#resume; (* This is the a method from some object in Simulation_level *)
             automaton_state := DeviceOn;
-            self#set_next_simulated_device_state None)
+            Sketch.refresh_sketch ())
 
         | _ -> raise_forbidden_transition "resume_right_now")
 
@@ -378,7 +359,7 @@ class virtual ['parent] simulated_device () = object(self)
         | DeviceOn, Some(d) ->
            (d#gracefully_shutdown; (* This is the a method from some object in Simulation_level *)
             automaton_state := DeviceOff;
-            self#set_next_simulated_device_state None)
+            Sketch.refresh_sketch ())
 
         | DeviceSleeping, Some(d) ->
            (self#resume_right_now;
@@ -397,7 +378,7 @@ class virtual ['parent] simulated_device () = object(self)
         | DeviceOn, Some(d) ->
            (d#shutdown; (* non-gracefully *)
             automaton_state := DeviceOff;
-            self#set_next_simulated_device_state None)
+            Sketch.refresh_sketch ())
 
         | DeviceSleeping, Some(d) ->
             (self#resume_right_now;

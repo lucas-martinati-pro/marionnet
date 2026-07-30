@@ -572,3 +572,41 @@ est manipulé depuis le thread GTK *et* depuis le task runner, sans discipline) 
 
 Journaux de référence : `/tmp/marionnet.native.44.log` (rejeu sur projet abîmé),
 `.45.log` (ouverture seule : dump du chargement), `.46.log` (projet neuf : pas de reproduction).
+
+### Épisode 3 — 2026-07-30 — R1, suppression de `next_automaton_state`
+
+**Fait.** R1 intégralement, sur trois fichiers. Le champ mort disparaît et le rafraîchissement du
+dessin, jusqu'ici effet de bord de son *setter*, devient explicite.
+
+1. **Champ et méthodes retirés** — `val next_automaton_state`, `next_simulated_device_state` et
+   `set_next_simulated_device_state` (`user_level.ml:131-142`), plus leurs 14 déclarations dans
+   `user_level.mli` (4 `val`, 5 couples de méthodes) et 3 dans `machine.mli`. Vérification préalable
+   par `grep` sur `bin/` : aucun lecteur hors du *getter* lui-même — **B3** confirmé sur pièces.
+2. **Six écritures « transition en cours » supprimées** (`startup`, `suspend`, `resume`,
+   `gracefully_shutdown`, `gracefully_restart`, `poweroff`) : elles précédaient une mise en file et
+   n'avaient d'autre effet qu'un `refresh_sketch` sur un état inchangé. Ces méthodes se réduisent à
+   leur `enqueue_task_with_progress_bar` ; le `begin … end` de B1 (épisode 1) est intact.
+3. **Huit écritures « transition finie » remplacées par un `Sketch.refresh_sketch ()` explicite**,
+   au même endroit : `create_right_now`, `destroy_because_of_unexpected_death`,
+   `destroy_right_now`, `startup_right_now`, `suspend_right_now`, `resume_right_now`,
+   `gracefully_shutdown_right_now`, `poweroff_right_now`. Chacun reste dans la branche *aboutie* de
+   son `match` — aucun n'est passé du côté d'un `raise_forbidden_transition`.
+4. **Deux commentaires devenus faux** (« *don't set the next state* », `create` et
+   `destroy_my_simulated_device`) réécrits : ce qui distingue réellement ces deux chemins est
+   l'absence de barre de progression.
+
+**B2 et B3 disparaissent** sans correctif dédié, comme prévu au § 3 : il n'y a plus de champ à
+laisser figé sur une transition fantôme.
+
+**Effet de bord assumé.** Les six refresh supprimés incrémentaient aussi `refresh_sketch_counter`,
+qui sert de drapeau « projet modifié » (**B4**) : démarrer ou arrêter un composant salit désormais
+le projet un peu moins souvent. C'est un pas dans le sens de **R3**, qui séparera les deux
+compteurs, pas une régression.
+
+**Preuve.** `dune build` : rc = 0 après la dernière édition (les `.mli` font échouer toute
+suppression incomplète). `grep -rn "next_automaton_state\|next_simulated_device_state" bin/ lib/` :
+aucune occurrence. Bilan : 46 lignes retirées, 10 ajoutées. Aucun scénario GUI rejoué — le nombre de
+`refresh_sketch` diminue mais aucun n'est déplacé ni supprimé sur un chemin où l'état change.
+
+**Reste.** R3 → R2. Et, hors ordre imposé, B6 (l'ingrédient manquant du scénario) plus le retrait
+de l'instrumentation `B6:` de l'épisode 2.

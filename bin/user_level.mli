@@ -56,12 +56,10 @@ class virtual ['a] simulated_device :
     method gracefully_shutdown_right_now : unit
     method has_hublet_processes : bool
     method is_correct : bool
-    method next_simulated_device_state : simulated_device_automaton_state option
     method poweroff : unit
     method poweroff_right_now : unit
     method resume : unit
     method resume_right_now : unit
-    method set_next_simulated_device_state : simulated_device_automaton_state option -> unit
     method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
@@ -176,7 +174,6 @@ class virtual node_with_ports_card :
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
-    val next_automaton_state : simulated_device_automaton_state option ref
     val mutable ports_card : 'a ports_card option
     val simulated_device : node_with_ports_card Simulation_level.device option ref
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
@@ -217,7 +214,6 @@ class virtual node_with_ports_card :
     method leds_relative_subdir : string
     method virtual make_simulated_device : node_with_ports_card Simulation_level.device
     method name : string
-    method next_simulated_device_state : simulated_device_automaton_state option
     method virtual polarity : polarity
     method port_no_max : int
     method port_no_min : int
@@ -229,7 +225,6 @@ class virtual node_with_ports_card :
     method resume_right_now : unit
     method set_label : string -> unit
     method set_name : string -> unit
-    method set_next_simulated_device_state : simulated_device_automaton_state option -> unit
     method set_port_no : int -> unit
     method simulated_device_state : simulated_device_automaton_state
     method startup : unit
@@ -286,7 +281,6 @@ class virtual node_with_defects :
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
-    val next_automaton_state : simulated_device_automaton_state option ref
     val mutable ports_card : 'a ports_card option
     val simulated_device : node_with_ports_card Simulation_level.device option ref
     method virtual add_destroy_callback : unit Lazy.t -> unit
@@ -331,7 +325,6 @@ class virtual node_with_defects :
     method leds_relative_subdir : string
     method virtual make_simulated_device : node_with_ports_card Simulation_level.device
     method name : string
-    method next_simulated_device_state : simulated_device_automaton_state option
     method virtual polarity : polarity
     method port_no_max : int
     method port_no_min : int
@@ -343,7 +336,6 @@ class virtual node_with_defects :
     method resume_right_now : unit
     method set_label : string -> unit
     method set_name : string -> unit
-    method set_next_simulated_device_state : simulated_device_automaton_state option -> unit
     method set_port_no : int -> unit
     method simulated_device_state : simulated_device_automaton_state
     method startup : unit
@@ -388,7 +380,6 @@ class virtual node_with_ledgrid_and_defects :
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
-    val next_automaton_state : simulated_device_automaton_state option ref
     val mutable ports_card : 'a ports_card option
     val simulated_device : node_with_ports_card Simulation_level.device option ref
     method virtual add_destroy_callback : unit Lazy.t -> unit
@@ -438,7 +429,6 @@ class virtual node_with_ledgrid_and_defects :
     method leds_relative_subdir : string
     method virtual make_simulated_device : node_with_ports_card Simulation_level.device
     method name : string
-    method next_simulated_device_state : simulated_device_automaton_state option
     method virtual polarity : polarity
     method port_no_max : int
     method port_no_min : int
@@ -450,7 +440,6 @@ class virtual node_with_ledgrid_and_defects :
     method resume_right_now : unit
     method set_label : string -> unit
     method set_name : string -> unit
-    method set_next_simulated_device_state : simulated_device_automaton_state option -> unit
     method set_port_no : int -> unit
     method simulated_device_state : simulated_device_automaton_state
     method startup : unit
@@ -557,7 +546,6 @@ class type virtual cable =
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : < .. >
-    val next_automaton_state : simulated_device_automaton_state option ref
     val simulated_device : component Simulation_level.device option ref
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method automaton_state_as_string : string
@@ -597,14 +585,12 @@ class type virtual cable =
     method is_reversed : bool
     method virtual make_simulated_device : component Simulation_level.device
     method name : string
-    method next_simulated_device_state : simulated_device_automaton_state option
     method poweroff : unit
     method poweroff_right_now : unit
     method resume : unit
     method resume_right_now : unit
     method set_label : string -> unit
     method set_name : string -> unit
-    method set_next_simulated_device_state : simulated_device_automaton_state option -> unit
     method set_reversed : bool -> unit
     method show : string -> string
     method simulated_device_state : simulated_device_automaton_state
