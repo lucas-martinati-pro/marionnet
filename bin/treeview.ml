@@ -1484,12 +1484,44 @@ object(self)
   method path_to_iter path =
     self#store#get_iter path
 
+  (* B6 (work-stream "marionnet-automate-composants"): position of a row in the internal forest,
+     as the list of sibling indices leading to it — i.e. exactly the indices of the Gtk tree path
+     of that row. This is legitimate because both structures are grown together and in the same
+     order: Forest.add_tree_to_forest appends the new tree at the END of its parent's children
+     (forest.ml:331-338, via `concat'), just like store#append does, and set_complete_forest
+     fills the store by a pre-order walk of the forest, so ancestors and preceding siblings are
+     always already in place when a path is computed. *)
+  method private id_to_path_indices (id:string) : (int list) option =
+    let rec search_forest ~prefix forest =
+      let rec search_trees ~index = function
+        | [] -> None
+        | (root, children) :: rest ->
+            let here = prefix @ [index] in
+            if root = id then Some here else
+            (match search_forest ~prefix:here children with
+             | (Some _) as found -> found
+             | None -> search_trees ~index:(index + 1) rest)
+      in
+      search_trees ~index:0 (Forest.to_treelist forest)
+    in
+    search_forest ~prefix:[] (self#get_id_forest)
+
+  (* B6: the identifier is resolved through the internal forest — the source of truth — instead
+     of scanning the Gtk model row by row and comparing the "_id" column of each one. The former
+     implementation was defeated by unreliable reads of that column: a traversal could read "@"
+     where the very next one read "0" (journals 53-55), so a perfectly present row was reported
+     as missing, the startup task raised, and the component silently stayed off. As a bonus, the
+     widget is no longer walked at every single column write. *)
   method id_to_iter (id:string) =
-    let result = ref None in
-    self#for_all_rows (fun iter -> if (self#iter_to_id iter) = id then result := Some iter);
-    match !result with
-      Some iter -> iter
-    | None -> failwith ("id_to_iter: id " ^ ((* string_of_int *) id) ^ " not found")
+    match self#id_to_path_indices id with
+    | None ->
+        failwith ("id_to_iter: id " ^ ((* string_of_int *) id) ^ " not found")
+    | Some indices ->
+        let path = GTree.Path.create indices in
+        (try self#store#get_iter path with e ->
+           failwith
+             (Printf.sprintf "id_to_iter: id %s is at path %s in the forest of %s, but the store has no such row (%s)"
+                id (GTree.Path.to_string path) self#b6_treeview_nickname (Printexc.to_string e)))
 
   method path_to_id path : string =
     self#iter_to_id (self#path_to_iter path)

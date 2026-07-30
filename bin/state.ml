@@ -874,14 +874,25 @@ class globalState = fun () ->
               ()
 	    end) ()
 	in
-	begin try
-	  what_to_do_with_a_node node;
-	  with e ->
+	(* B6 (work-stream "marionnet-automate-composants"): the exception used to be swallowed here,
+	   hence the task runner announced that the task "succeeded" while the component had not
+	   started at all — silently, with nothing on screen. It is still logged with its backtrace,
+	   and the progress bar is still destroyed, but the failure is now propagated: the task runner
+	   reports it as a failure and goes on with the next task, exactly as it does for any other
+	   failing task. *)
+	let failure =
+	  try (what_to_do_with_a_node node; None)
+	  with e -> begin
+	    let raw_backtrace = Printexc.get_raw_backtrace () in
 	    let () = Log.printf3 "Warning (q): \"%s %s\" raised an exception (%s)\n" verb node#name (Printexc.to_string e) in
-	    Log.print_backtrace ()
-	end;
+	    let () = Log.print_backtrace () in
+	    Some (e, raw_backtrace)
+	  end
+	in
 	let () = GMain_actor.delegate (Simple_dialogs.destroy_progress_bar_dialog) (progress_bar) in
-	()
+	(match failure with
+	 | None -> ()
+	 | Some (e, raw_backtrace) -> Printexc.raise_with_backtrace e raw_backtrace)
 	))
     )
     node_list

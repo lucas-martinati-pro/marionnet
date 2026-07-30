@@ -258,6 +258,17 @@ puis de rejouer le geste minimal de la session 43 (créer un câble, le supprime
 > quatre treeviews ; et un scénario de reproduction plus simple que celui cherché à l'épisode 2
 > existe peut-être (démarrer deux machines d'un projet fraîchement ouvert).
 
+> **Rectification, épisode 5 : ce n'était NI une divergence des structures, NI une course entre
+> threads.** Les deux mécanismes supposés ci-dessus sont infirmés par la mesure (§ « Épisode 5 ») :
+> à chaque échec, la forêt interne et le modèle GTK contiennent **exactement les mêmes
+> identifiants**, et l'échec se reproduit à l'identique lorsque l'opération est exécutée **par le
+> thread GTK lui-même**. La cause du symptôme « le composant ne démarre pas » sur projet sain est
+> que **la lecture de la colonne `_id` du modèle rend parfois une valeur qui n'est pas celle
+> stockée** (`"@"` là où la lecture suivante donne `"0"`), ce qui faisait déclarer absente une
+> ligne parfaitement présente. Le mécanisme n° 1 (`remove_subtree_by_name` avalant l'exception)
+> et le mécanisme n° 3 (entrelacement des threads) restent des défauts réels du code, mais ils
+> ne sont pas la cause de ce symptôme-ci.
+
 ---
 
 ## 2. Incohérences de conception
@@ -725,3 +736,71 @@ demande un arbitrage, pas du code.
 **Reste.** R2 (cœur du chantier). B6, dont le périmètre s'élargit au socle `treeview.ml`
 (cf. encadré du § B6), plus le retrait de l'instrumentation `B6:` de l'épisode 2. Et, si l'auteur
 le décide, la seconde moitié de B4.
+
+### Épisode 5 — 2026-07-30 — B6 : la lecture du modèle GTK, et non la divergence des forêts
+
+**But de l'épisode** : établir la racine de l'échec `id_to_iter: id 0 not found` — élargi au socle
+à l'épisode 4 — puis corriger. Méthode : instrumenter jusqu'à ce qu'une mesure, et non un
+raisonnement, désigne la cause.
+
+**Les deux hypothèses de l'audit tombent, dans cet ordre.**
+
+| Journal | Mesure | Conséquence |
+|---|---|---|
+| 52 | `Store ids: [0; 2; 1]. Forest ids: [0; 2; 1]` et pourtant « id 0 not found » | la **divergence store ↔ forêt** est infirmée : les deux structures sont d'accord |
+| 53 | `id 0 (length 1) … Found by an immediate retry: true` | ni chaîne piégée ni parcours tronqué : **deux parcours consécutifs se contredisent** |
+| 54 | même échec, `Calling thread: 0` (opération déléguée au thread GTK) | la **course entre threads** est infirmée |
+| 55 | `Visited BY THE FAILING traversal: [@; 2; 1]` | décisif : le parcours lit **`"@"`** dans la colonne `_id` de la première ligne, là où le parcours suivant lit `"0"` |
+| 56 | avec une simple relecture par ligne, m1 démarre ; apparition d'un `CRITICAL … Icon lookup failed` | *heisenbug* ; et le renderer d'icônes montre la **même famille** de défaut sur une autre colonne |
+
+Autrement dit : le socle déclarait absente une ligne parfaitement présente, parce qu'il
+**identifiait les lignes en relisant une colonne du widget**. Le symptôme visible pour
+l'utilisateur était : le composant ne démarre pas, sans un mot à l'écran.
+
+**Correctif n° 1 — `treeview.ml`, résolution par la forêt interne.** `id_to_iter` ne balaie plus
+le modèle GTK en comparant la colonne `_id` de chaque ligne : `id_to_path_indices` calcule les
+indices du chemin depuis la **forêt interne** (la source de vérité), puis `store#get_iter` fait le
+reste. L'équivalence des deux ordres est établie, pas supposée : `Forest.add_tree_to_forest`
+concatène le nouvel arbre **à la fin** des enfants (`forest.ml:331-338`), exactement comme
+`store#append`, et `set_complete_forest` remplit le store par un parcours **pré-ordre** — ancêtres
+et frères précédents sont donc toujours déjà en place quand un chemin est calculé. Effet
+secondaire bienvenu : le widget n'est plus parcouru à **chaque écriture de colonne** (`column#set`
+appelait `id_to_iter`), ce qui retire un coût quadratique au chargement d'un projet.
+
+**Correctif n° 2 — `state.ml`, l'échec cesse d'être déclaré « réussi ».**
+`make_names_and_thunks` avalait l'exception du thunk (`try … with e -> log`), si bien que le task
+runner annonçait ensuite `The task "Startup m1" succeeded.` sur un composant resté éteint.
+L'exception est désormais journalisée **puis propagée** (`Printexc.raise_with_backtrace`, après
+destruction de la barre de progression, qui reste garantie). Preuve au journal 54 :
+`task_runner: WARNING: … raised an exception … THIS MAY BE SERIOUS` a remplacé le « succeeded ».
+
+**Ce qui a été essayé, puis retiré.** La délégation de `add_substate_of` et `remove_device_tree`
+à `gMain_actor` (journal 54) : elle n'a pas corrigé l'échec — puisque la course n'était pas la
+cause — et elle introduisait précisément le motif de deadlock refusé à l'épisode 1, le task runner
+restant bloqué dans `apply` alors qu'il détient deux mutex de composant (cf. B5 et C4). Retirée.
+**La violation de la discipline de thread par les treeviews reste entière et non traitée** : elle
+est réelle, mais elle demande un traitement d'ensemble, avec une réponse assumée sur les mutex.
+
+**Preuve GUI.**
+
+| Journal | Scénario | Résultat |
+|---|---|---|
+| 57 | `propre-2machines-1hub`, tout démarrer | **m1 et m2 démarrent** (l'échec cible a disparu) ; H1 échoue encore, pour la cause historique de B6 côté *defects* : `d2` a perdu son enfant `rightward` **sur le disque** (`0/1` direction, `assert` fatal `treeview_defects.ml:302`) — hors périmètre de cet épisode |
+| 58 | projet **neuf** : 2 machines + hub + 2 câbles, tout démarrer, tout arrêter, quitter | **0** `id_to_iter`, **0** `Assertion failed`, **0** `CRITICAL`, **0** tâche en échec, fermeture propre |
+
+**Suites ouvertes, explicitement non traitées ici.**
+
+1. **La cause profonde de la lecture non fiable** n'est pas établie : lire une colonne du modèle a
+   rendu `"@"` au lieu de `"0"`. Pistes à instruire (dans cet ordre de suspicion) : le
+   `Obj.magic gtree_column` des classes de colonnes (`treeview.ml:321-324` et jumeaux), un iter
+   périmé, ou lablgtk3 sous OCaml 5. Tant qu'elle n'est pas établie, **toute lecture de colonne
+   du widget reste suspecte** — le correctif n° 1 se contente de ne plus en dépendre pour
+   identifier une ligne.
+2. **`CRITICAL: gtk_tree_cell_data_func … Failure("Icon lookup failed")`** (journal 56) : le
+   renderer d'icônes lit lui aussi une valeur qui ne correspond à aucun type connu, et échoue par
+   `failwith` au lieu de tolérer l'inconnu. Même famille que le point 1.
+3. **Le volet *defects* de B6** : une entrée héritée invalide (`d2` sans `rightward`) suffit à
+   empêcher un démarrage, parce que `add_my_defects` conclut de l'existence d'une ligne homonyme
+   que l'entrée est **valide** et que `get_cable_data` tranche par `assert`. L'ingrédient qui fait
+   perdre la ligne (recherché à l'épisode 2) reste inconnu.
+4. **Le retrait de l'instrumentation `B6:`** de l'épisode 2, à faire à la clôture de B6.
