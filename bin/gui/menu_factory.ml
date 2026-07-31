@@ -246,6 +246,17 @@ module Make_entry_with_children =
 
     let item_callback () = begin
       ignore (Submenu.recreate_subshell ());
+      (* Make the toolbar observable in the log. The submenu built here is the only visible
+         effect of the [can_*] predicates filtering each [dynlist] (cf. B5 for cables): without
+         this line, a GUI run tells what the user *did*, never what they were *offered* — so a
+         filtering regression stays invisible in the journal. *)
+      let names = E.dynlist () in
+      let () =
+        Log.printf2 "Menu \"%s\": proposing %s\n" E.text
+          (match names with
+           | [] -> "nothing"
+           | _  -> Printf.sprintf "[%s]" (String.concat "; " names))
+      in
       (List.iter
         (fun name ->
            ignore (Submenu.add_stock_item name
@@ -254,7 +265,7 @@ module Make_entry_with_children =
                       ()
                    )
         )
-        (E.dynlist ()))
+        names)
       end
 
     let _ = item#connect#activate ~callback:item_callback
