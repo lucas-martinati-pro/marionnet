@@ -130,11 +130,8 @@ module User_level_machine : sig
       method get_console_no                  : int
       method set_console_no                  : int -> unit
       (* --- *)
-      val simulated_device                   : User_level.node_with_ports_card Simulation_level.device option ref
       method make_simulated_device           : User_level.node_with_ports_card Simulation_level.device
-      method simulated_device_state          : User_level.simulated_device_automaton_state
       (* --- *)
-      val automaton_state                    : User_level.simulated_device_automaton_state ref
       method automaton_state_as_string       : string
       (* --- *)
       method has_ledgrid                     : bool

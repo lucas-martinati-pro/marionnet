@@ -16,7 +16,20 @@ type import_warning = {
 }
 val string_of_import_warning : import_warning -> string
 
-type simulated_device_automaton_state = NoDevice | DeviceOff | DeviceOn | DeviceSleeping
+(* The automaton state of a component. The state carries the simulation object, so that the
+   invariant "no active state without a device, no device without an active state" cannot be
+   broken: [On] with no device is not representable. *)
+module Simulated_device : sig
+  type 'parent state =
+    | No_device
+    | Off      of 'parent Simulation_level.device
+    | On       of 'parent Simulation_level.device
+    | Sleeping of 'parent Simulation_level.device
+    constraint 'parent = < get_name : string; .. >
+  val to_string   : 'a state -> string          (* "NoDevice" | "DeviceOff" | ... *)
+  val icon_suffix : 'a state -> string          (* "off" | "on" | "pause" *)
+  val device_opt  : 'a state -> 'a Simulation_level.device option
+end
 
 exception ForbiddenTransition
 val raise_forbidden_transition : string -> 'a
@@ -60,7 +73,6 @@ class virtual ['a] simulated_device :
     method poweroff_right_now : unit
     method resume : unit
     method resume_right_now : unit
-    method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
     method string_of_simulated_device_state : string
@@ -168,14 +180,12 @@ class virtual node_with_ports_card :
   ?has_ledgrid:bool ->
   unit ->
   object ('a)
-    val automaton_state : simulated_device_automaton_state ref
     val id : int
     val mutable label : string
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
     val mutable ports_card : 'a ports_card option
-    val simulated_device : node_with_ports_card Simulation_level.device option ref
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method automaton_state_as_string : string
     method can_gracefully_shutdown : bool
@@ -226,7 +236,6 @@ class virtual node_with_ports_card :
     method set_label : string -> unit
     method set_name : string -> unit
     method set_port_no : int -> unit
-    method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
@@ -275,14 +284,12 @@ class virtual node_with_defects :
   port_prefix:string ->
   unit ->
   object ('a)
-    val automaton_state : simulated_device_automaton_state ref
     val id : int
     val mutable label : string
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
     val mutable ports_card : 'a ports_card option
-    val simulated_device : node_with_ports_card Simulation_level.device option ref
     method virtual add_destroy_callback : unit Lazy.t -> unit
     method private add_my_defects : unit
     method automaton_state_as_string : string
@@ -337,7 +344,6 @@ class virtual node_with_defects :
     method set_label : string -> unit
     method set_name : string -> unit
     method set_port_no : int -> unit
-    method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
@@ -374,14 +380,12 @@ class virtual node_with_ledgrid_and_defects :
   port_prefix:string ->
   unit ->
   object ('a)
-    val automaton_state : simulated_device_automaton_state ref
     val id : int
     val mutable label : string
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : 'b
     val mutable ports_card : 'a ports_card option
-    val simulated_device : node_with_ports_card Simulation_level.device option ref
     method virtual add_destroy_callback : unit Lazy.t -> unit
     method private add_my_defects : unit
     method add_my_ledgrid : unit
@@ -441,7 +445,6 @@ class virtual node_with_ledgrid_and_defects :
     method set_label : string -> unit
     method set_name : string -> unit
     method set_port_no : int -> unit
-    method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
@@ -540,13 +543,11 @@ class type endpoint =
 
 class type virtual cable =
   object
-    val automaton_state : simulated_device_automaton_state ref
     val id : int
     val mutable label : string
     val mutex : Recursive_mutex.t
     val mutable name : string
     val network : < .. >
-    val simulated_device : component Simulation_level.device option ref
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method automaton_state_as_string : string
     method can_gracefully_shutdown : bool
@@ -593,7 +594,6 @@ class type virtual cable =
     method set_name : string -> unit
     method set_reversed : bool -> unit
     method show : string -> string
-    method simulated_device_state : simulated_device_automaton_state
     method startup : unit
     method startup_right_now : unit
     method string_of_simulated_device_state : string

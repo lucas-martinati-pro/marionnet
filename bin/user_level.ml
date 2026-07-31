@@ -76,19 +76,42 @@ let string_of_import_warning (w:import_warning) : string =
 
 (** {2 Classes} *)
 
-type simulated_device_automaton_state =
-   NoDevice         (** *)
- | DeviceOff        (** *)
- | DeviceOn         (** *)
- | DeviceSleeping   (** *)
-;;
+(** The automaton state of a component. The invariant "no active state without a simulation
+    object, no simulation object without an active state" is carried by the type itself:
+    [DeviceOn] with no device is not representable. *)
+module Simulated_device = struct
 
-let string_of_simulated_device_automaton_state = function
-  | DeviceOff      -> "DeviceOff"
-  | DeviceOn       -> "DeviceOn"
-  | DeviceSleeping -> "DeviceSleeping"
-  | NoDevice       -> "NoDevice"
-;;
+  type 'parent state =
+    | No_device                                       (** *)
+    | Off      of 'parent Simulation_level.device     (** *)
+    | On       of 'parent Simulation_level.device     (** *)
+    | Sleeping of 'parent Simulation_level.device     (** *)
+    (* Inherited from Simulation_level.device (simulation_level.mli:265): it must be stated
+       explicitly here, otherwise the .mli would declare a less constrained type: *)
+    constraint 'parent = < get_name : string; .. >
+
+  (** For debugging. Faithful translation of constructors. The strings are the historical
+      ones, so that logs remain comparable with the ones of previous episodes: *)
+  let to_string = function
+    | No_device   -> "NoDevice"
+    | Off      _  -> "DeviceOff"
+    | On       _  -> "DeviceOn"
+    | Sleeping _  -> "DeviceSleeping"
+
+  (** Not a faithful conversion but the icon file name suffix, as in
+      [ico.<kind>.<suffix>.<size>.png]. [No_device] maps to "off" because the sketch is
+      sometimes built in this state (this reproduces the former catch-all case): *)
+  let icon_suffix = function
+    | On       _ -> "on"
+    | Sleeping _ -> "pause"
+    | Off _ | No_device -> "off"
+
+  (** The simulation object, if any: *)
+  let device_opt = function
+    | No_device -> None
+    | Off d | On d | Sleeping d -> Some d
+
+end
 
 exception ForbiddenTransition;;
 let raise_forbidden_transition msg =
@@ -111,32 +134,27 @@ class virtual ['parent] simulated_device () = object(self)
   (** We have critical sections here: *)
   val mutex = Recursive_mutex.create ()
 
-  (** The current automaton state, and its access method: *)
-  val automaton_state = ref NoDevice
+  (** The current automaton state. It carries the device implementing the object in the
+      simulated network, when there is one: this single field replaces the former pair
+      (automaton_state, simulated_device), whose invariant was only maintained by hand. *)
+  val state : 'parent Simulated_device.state ref = ref Simulated_device.No_device
 
-  (** Get the state of simulated device. *)
-  method simulated_device_state =
-    !automaton_state
+  (* Note: no public accessor returns [!state] itself. Its type mentions ['parent], and
+     [cable.ml] instantiates ['parent] with its own (recursively defined) object type: an
+     exposed method of type ['parent Simulated_device.state] would make that type recursive
+     in a way the [let rec ... and cable = ...] of cable.ml cannot solve. The state is
+     therefore only readable through the projections below and the [can_*] methods. *)
 
   (** This string will be used to select the good icon for the dot sketch. *)
-  method string_of_simulated_device_state = match !automaton_state with
-  | DeviceOff      -> "off"
-  | DeviceOn       -> "on"
-  | DeviceSleeping -> "pause"
-  | _              -> "off" (* Sometimes the sketch is builded in this state, so... *)
+  method string_of_simulated_device_state = Simulated_device.icon_suffix !state
 
   (** For debugging. Failthful translation of constructors: *)
-  method automaton_state_as_string = string_of_simulated_device_automaton_state !automaton_state
+  method automaton_state_as_string = Simulated_device.to_string !state
 
   method virtual get_name : string
 
-  (** The device implementing the object in the simulated network, if any (this is ref None
-      when the device has not been started yet, or some state modification happened) *)
-  val simulated_device : 'parent Simulation_level.device option ref =
-    ref None
-
   method get_hublet_process_of_port index =
-    match !simulated_device with
+    match Simulated_device.device_opt !state with
     | Some (sd) -> sd#get_hublet_process_of_port index
     | None      -> failwith "looking for a hublet when its device is non-existing"
 
@@ -151,9 +169,8 @@ class virtual ['parent] simulated_device () = object(self)
   (** Return true iff hublet processes are currently existing. This is only meaningful
       for devices which can actually have hublets *)
   method has_hublet_processes =
-    match !simulated_device with
-      Some(_) -> true
-    | None -> false
+    let open Simulated_device in
+    match !state with No_device -> false | Off _ | On _ | Sleeping _ -> true
 
   method private enqueue_task_with_progress_bar verb thunk =
     let text = verb ^ " " ^ self#get_name in
@@ -226,10 +243,10 @@ class virtual ['parent] simulated_device () = object(self)
           self#get_name
           (List.length (self#get_involved_cables));
 
-        match !automaton_state, !simulated_device with
-        | NoDevice, None ->
-	    ( simulated_device := (Some self#make_simulated_device);
-              automaton_state := DeviceOff;
+        let open Simulated_device in
+        match !state with
+        | No_device ->
+	    ( state := Off (self#make_simulated_device);
 	      Sketch.refresh_sketch (); (* the device icon switches from "no device" to "off" *)
 	      (* An endpoint for cables linked to self was just added; we need to start some cables. *)
 	      ignore (List.map
@@ -238,7 +255,9 @@ class virtual ['parent] simulated_device () = object(self)
 			   let () = cable#increment_alive_endpoint_no in ())
 			(self#get_involved_cables)))
 
-        | _ -> raise_forbidden_transition "create_right_now")
+        | (Off _ | On _ | Sleeping _) as s ->
+            raise_forbidden_transition
+              (Printf.sprintf "create_right_now: from %s" (to_string s)))
 
   (** The unit parameter is needed: see how it's used in simulated_network: *)
   method private destroy_because_of_unexpected_death () =
@@ -258,19 +277,20 @@ class virtual ['parent] simulated_device () = object(self)
     Recursive_mutex.with_mutex mutex
       (fun () ->
         Log.printf1 "About to destroy the simulated device %s \n" self#get_name;
-        match !automaton_state, !simulated_device with
-        | (DeviceOn | DeviceSleeping), Some(d) ->
+        let open Simulated_device in
+        match !state with
+        | On _ | Sleeping _ ->
              Log.printf1
                "  (destroying the on/sleeping device %s. Powering it off first...)\n"
                self#get_name;
              self#poweroff_right_now; (* non-gracefully *)
              self#destroy_right_now
-        | NoDevice, None ->
+        | No_device ->
             Log.printf1
              "  (destroying the already 'no-device' device %s. Doing nothing...)\n"
              self#get_name;
             () (* Do nothing, but don't fail. *)
-        | DeviceOff, Some(d) ->
+        | Off d ->
             ((* An endpoint for cables linked to self was just added; we
                 may need to start some cables. *)
              Log.printf1
@@ -285,12 +305,9 @@ class virtual ['parent] simulated_device () = object(self)
                self#get_involved_cables;
              Log.printf1 "  (destroying the simulated device implementing %s...)\n" self#get_name;
              d#destroy; (* This is the a method from some object in Simulation_level *)
-             simulated_device := None;
-             automaton_state := NoDevice;
+             state := No_device;
              Sketch.refresh_sketch ();
-             Log.printf1 "We're not deadlocked yet (%s). Great.\n" self#get_name);
-        | _ ->
-            raise_forbidden_transition "destroy_right_now"
+             Log.printf1 "We're not deadlocked yet (%s). Great.\n" self#get_name)
         );
     Log.printf1 "The simulated device %s was destroyed with success\n" self#get_name
 
@@ -302,25 +319,28 @@ class virtual ['parent] simulated_device () = object(self)
            wrong crossoverness which the user has defined by mistake: *)
         if self#is_correct then begin
           Log.printf1 "Starting up the device %s...\n" self#get_name;
-          match !automaton_state, !simulated_device with
-          | NoDevice, None ->
+          let open Simulated_device in
+          match !state with
+          | No_device ->
              (Log.printf1 "Creating processes for %s first...\n" self#get_name;
               self#create_right_now;
               Log.printf1 "Processes for %s were created...\n" self#get_name;
               self#startup_right_now
               )
 
-          | DeviceOff, Some(d) ->
+          | Off d ->
              (d#startup;  (* This is the a method from some object in Simulation_level *)
-              automaton_state := DeviceOn;
+              state := On d;
               Sketch.refresh_sketch ();
               Log.printf1 "The device %s was started up\n" self#get_name
               )
 
-          | DeviceOn,  _ ->
+          | On _ ->
               Log.printf1 "startup_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string)
 
-          | _ -> raise_forbidden_transition "startup_right_now"
+          | Sleeping _ as s ->
+              raise_forbidden_transition
+                (Printf.sprintf "startup_right_now: from %s" (to_string s))
         end else begin
           Log.printf1 "REFUSING TO START UP the ``incorrect'' device %s!!!\n" self#get_name
         end)
@@ -329,24 +349,30 @@ class virtual ['parent] simulated_device () = object(self)
     Recursive_mutex.with_mutex mutex
       (fun () ->
         Log.printf1 "Suspending up the device %s...\n" self#get_name;
-        match !automaton_state, !simulated_device with
-          DeviceOn, Some(d) ->
+        let open Simulated_device in
+        match !state with
+        | On d ->
            (d#suspend; (* This is the a method from some object in Simulation_level *)
-            automaton_state := DeviceSleeping;
+            state := Sleeping d;
             Sketch.refresh_sketch ())
-        | _ -> raise_forbidden_transition "suspend_right_now")
+        | (No_device | Off _ | Sleeping _) as s ->
+            raise_forbidden_transition
+              (Printf.sprintf "suspend_right_now: from %s" (to_string s)))
 
   method (*private*) resume_right_now =
     Recursive_mutex.with_mutex mutex
       (fun () ->
         Log.printf1 "Resuming the device %s...\n" self#get_name;
-        match !automaton_state, !simulated_device with
-        | DeviceSleeping, Some(d) ->
+        let open Simulated_device in
+        match !state with
+        | Sleeping d ->
            (d#resume; (* This is the a method from some object in Simulation_level *)
-            automaton_state := DeviceOn;
+            state := On d;
             Sketch.refresh_sketch ())
 
-        | _ -> raise_forbidden_transition "resume_right_now")
+        | (No_device | Off _ | On _) as s ->
+            raise_forbidden_transition
+              (Printf.sprintf "resume_right_now: from %s" (to_string s)))
 
   method (*private*) gracefully_shutdown_right_now =
     Recursive_mutex.with_mutex mutex
@@ -355,69 +381,72 @@ class virtual ['parent] simulated_device () = object(self)
         (Log.printf2 "* Gracefully shutting down the device %s (from state: %s)...\n"
           self#get_name
           current_state);
-        match !automaton_state, !simulated_device with
-        | DeviceOn, Some(d) ->
+        let open Simulated_device in
+        match !state with
+        | On d ->
            (d#gracefully_shutdown; (* This is the a method from some object in Simulation_level *)
-            automaton_state := DeviceOff;
+            state := Off d;
             Sketch.refresh_sketch ())
 
-        | DeviceSleeping, Some(d) ->
+        | Sleeping _ ->
            (self#resume_right_now;
             self#gracefully_shutdown_right_now)
 
-        | NoDevice,  _ | DeviceOff, _ ->
-            Log.printf1 "gracefully_shutdown_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string)
-
-        | _ -> raise_forbidden_transition "gracefully_shutdown_right_now")
+        | No_device | Off _ ->
+            Log.printf1 "gracefully_shutdown_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string))
 
   method (*private*) poweroff_right_now =
     Recursive_mutex.with_mutex mutex
       (fun () ->
         Log.printf1 "Powering off the device %s...\n" self#get_name;
-        match !automaton_state, !simulated_device with
-        | DeviceOn, Some(d) ->
+        let open Simulated_device in
+        match !state with
+        | On d ->
            (d#shutdown; (* non-gracefully *)
-            automaton_state := DeviceOff;
+            state := Off d;
             Sketch.refresh_sketch ())
 
-        | DeviceSleeping, Some(d) ->
+        | Sleeping _ ->
             (self#resume_right_now;
              self#poweroff_right_now)
 
-        | NoDevice,  _ | DeviceOff, _ ->
-            Log.printf1 "poweroff_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string)
-
-        | _ -> raise_forbidden_transition "poweroff_right_now")
+        | No_device | Off _ ->
+            Log.printf1 "poweroff_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string))
 
   (** Return true iff the current state allows the user to 'startup' the device from the GUI. *)
   method can_startup =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        match !automaton_state with NoDevice | DeviceOff -> true | _ -> false)
+        let open Simulated_device in
+        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
 
   (** Return true iff the current state allows the user to 'shutdown' a device from the GUI. *)
   method can_gracefully_shutdown =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        match !automaton_state with DeviceOn | DeviceSleeping -> true | _ -> false)
+        let open Simulated_device in
+        match !state with On _ | Sleeping _ -> true | No_device | Off _ -> false)
 
   (** Return true iff the current state allows the user to 'power off' a device from the GUI. *)
   method can_poweroff =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        match !automaton_state with NoDevice | DeviceOff -> false | _ -> true)
+        let open Simulated_device in
+        match !state with No_device | Off _ -> false | On _ | Sleeping _ -> true)
 
   (** Return true iff the current state allows the user to 'suspend' a device from the GUI. *)
   method can_suspend =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        match !automaton_state with DeviceOn -> true | _ -> false)
+        let open Simulated_device in
+        match !state with On _ -> true | No_device | Off _ | Sleeping _ -> false)
 
   (** Return true iff the current state allows the user to 'resume' a device from the GUI. *)
   method can_resume =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        match !automaton_state with DeviceSleeping -> true | _ -> false)
+        let open Simulated_device in
+        match !state with Sleeping _ -> true | No_device | Off _ | On _ -> false)
 
   (** 'Correctness' support: this is needed so that we can refuse to start incorrectly
       placed components such as Ethernet cables of the wrong crossoverness, which the user
