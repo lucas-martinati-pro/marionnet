@@ -928,7 +928,8 @@ composants, via leur méthode `dotImg`.
 
 **Aucun `.ml` de composant n'est touché par la fusion.** Les redéfinitions de `machine.ml:715,742`,
 `router.ml:1169,1192` et `cable.ml:779,783` **délèguent** au parent, et `cable.ml:888-896`
-redéfinit les `can_*` par des constantes : pas une ne lit l'état.
+redéfinit les `can_*` par des constantes : pas une ne lit l'état. *(Ces trois constantes ont été
+levées à l'épisode 8 ; le constat ci-dessus décrit l'état du code à l'épisode 7.)*
 
 **Preuve GUI.**
 
@@ -947,3 +948,78 @@ les prochains scénarios de test partent du bon modèle d'interaction.
 **Reste au chantier** : la cause profonde de la lecture décalée de 8 octets (épisode 6, point 1),
 le retrait de l'instrumentation `B6:` de l'épisode 2, et l'arbitrage B4 (le disque COW ajouté au
 treeview *history* au démarrage salit légitimement le projet).
+
+---
+
+### Épisode 8 — 2026-07-31 — B5, un câble ne s'édite plus en marche
+
+Dernier point de conception encore ouvert : **B5**, que l'épisode 7 n'avait pas traité (il a
+refondu le *type*, pas les câbles). Les deux écarts de B5 se tiennent, et l'ordre entre eux n'est
+pas indifférent.
+
+**Ce que la lecture du code a établi avant d'écrire quoi que ce soit.** Les trois surcharges
+`can_startup`, `can_gracefully_shutdown` et `can_poweroff` forcées à `true` (`cable.ml:887-890`,
+chacune portant « *To do: try reverting this* ») n'ont **aucun lecteur** : `#startup`,
+`#gracefully_shutdown` et `#poweroff` ne sont jamais invoqués sur un câble — la palette n'offre
+pas ces actions pour les câbles, `startup_everything`/`shutdown_everything`/`poweroff_everything`
+(`state.ml:909-923`) et `marionnet.ml:116` passent par `get_node_by_name`, et le cycle du
+processus d'un câble est piloté par le compteur de références (`increment_alive_endpoint_no`
+appelle `startup_right_now` **directement**, sans garde). Conséquence : **lever ces trois
+constantes, seul, est un no-op observable**. Leur seul rôle réel était de rendre inopérant tout
+alignement du `dynlist` — ce que l'audit avait vu (« l'écart est masqué par… »).
+
+**Correctif, en trois gestes, dans le seul `bin/cable.ml`.**
+
+1. Les trois surcharges sont supprimées : les câbles héritent des prédicats **dépendant de
+   l'état** (`user_level.ml:417-435`). Un commentaire garde la trace du « To do » levé et de la
+   raison pour laquelle la levée est sûre.
+2. Le `dynlist` est **scindé**. `Properties.all_names ()` garde la liste brute (tous les câbles du
+   type) ; `Properties.dynlist ()` la filtre sur `can_startup`, et c'est elle que `Properties` et
+   `Remove` emploient — comme les sept autres composants, qui filtrent sur
+   `get_node_names_that_can_startup`. **Le découplage est indispensable** : `Disconnect` et
+   `Reconnect` composaient leur propre filtre **sur `Properties.dynlist ()`** (`cable.ml:199,213`)
+   ; les laisser tels quels aurait fait disparaître « Débrancher » sur un câble en marche,
+   c'est-à-dire exactement le geste que l'utilisateur veut faire. Ils partent désormais de
+   `all_names ()`.
+3. Le commentaire de `Properties.reaction` est réécrit. Le risque de second
+   `Simulation_level.ethernet_cable` sur les mêmes hublets est **fermé par inatteignabilité**, non
+   par séquencement : un câble proposé à la modification n'a plus de processus, il n'y a donc plus
+   rien à ordonner. Le séquencement reste refusé pour la raison des épisodes 1 et 5 (prendre le
+   `Recursive_mutex` depuis le thread GTK, ou différer la re-création après le dialogue). Fenêtre
+   résiduelle assumée et documentée : le câble démarre entre l'ouverture du menu et la validation
+   du dialogue.
+
+**Effet visible, borné.** Simulation en marche, un câble dont les **deux** extrémités tournent
+quitte les menus « Modifier » et « Supprimer » ; il y revient dès qu'on le débranche ou qu'on
+éteint un bout. Restent modifiables en toute circonstance : le câble à une seule extrémité
+allumée, le câble débranché, et le câble de mauvaise *crossoverness* — ce dernier parce que
+`is_correct` lui refuse le démarrage (`user_level.ml:320`), donc il reste `No_device`. Aucun état,
+aucune transition, aucun `.mli`, aucun rendu `dot` ne changent : le dessin n'a jamais représenté
+qu'une arête entre deux nœuds, et le seul cas « débranché » qu'il connaît (`style=dashed` si
+`not is_connected`, `cable.ml:496`) est inchangé.
+
+**Instrumentation permanente, à la demande de l'auteur** (`bin/gui/menu_factory.ml:247`). Un
+journal de run disait ce que l'utilisateur **avait fait**, jamais ce qui lui **était proposé** —
+or c'est le seul effet observable des prédicats `can_*`. `Make_entry_with_children.item_callback`
+journalise donc la liste rendue par `E.dynlist ()` à chaque dépliage de menu. Le point est
+**unique** : tous les composants et toutes les actions en bénéficient, sans toucher les huit
+fichiers. Log ordinaire (pas de `~force:true`) : visible en `-d`, muet en usage normal ; il est
+destiné à **rester**, contrairement à l'instrumentation `B6:` de l'épisode 2.
+
+**Preuve GUI.**
+
+| Journal | Scénario | Résultat |
+|---|---|---|
+| 62 | `propre-2machines-1hub` : tout démarrer, débrancher `d1`, ouvrir « Modifier » sur `d1` (annulé), rebrancher, re-débrancher, **modifier** `d1` en déplaçant son extrémité gauche de `H1 port1` vers `S1 port1`, tout arrêter, quitter sans sauvegarder | **0** `ForbiddenTransition`, `Assertion`, `CRITICAL`, `id_to_iter` ou exception sur 1228 lignes ; sortie propre, aucun processus résiduel. Mesure directe de B5(c) : le nouveau `d1` est créé (l. 864-869) **avant** que le `destroy d1` de l'ancien ne s'exécute (l. 870-874) — l'ordre incriminé est bien réel — mais le nouveau naît à refcount **2**, donc **aucun second processus n'a pu démarrer** |
+| 63 | même projet, avec le log des `dynlist` : déplier « Modifier »/« Supprimer »/« Débrancher » **en marche**, tout arrêter, les redéplier | Preuve écrite et **bidirectionnelle**. En marche (l. 664-668) : `Menu "Modifier": proposing nothing`, `Menu "Supprimer": proposing nothing`, `Menu "Débrancher brutalement": proposing [d1; d2]`. Après arrêt (l. 803-809) : `Modifier` et `Supprimer` proposent de nouveau `[d1; d2]`, `Rebrancher` ne propose `nothing`. **0** erreur, sortie propre |
+
+**Constat révélé par le log, hors périmètre.** À l'arrêt (journal 63, l. 807), « Débrancher
+brutalement » propose encore `[d1; d2]` : `can_suspend` d'un câble teste `!connected`
+(`cable.ml:892-898`) et **ignore l'état du processus**, si bien qu'on peut « débrancher » un câble
+dont les deux nœuds sont éteints. Comportement **préexistant**, inchangé ici, et sans conséquence
+persistante (`connected` n'est pas dans le `.mar`) — consigné comme reliquat, pas corrigé : il
+demanderait de décider ce que « débranché » signifie sur un réseau à l'arrêt.
+
+**Reste au chantier** : la cause profonde de la lecture décalée de 8 octets (épisode 6, point 1),
+le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B4, et le `can_suspend` des
+câbles ci-dessus.

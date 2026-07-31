@@ -142,9 +142,12 @@ Reprise : appliquer le skill `chantier-long`.
   décidées sur la forme et complétées → `Startup H1` réussit enfin) faits 2026-07-30, ép. 7
   (**R2** : `automaton_state` + `simulated_device` fusionnés en `val state`, 3 des 7
   `raise_forbidden_transition` inatteignables, `val` retirés des `.mli` ; prouvé en GUI journal 61)
-  fait 2026-07-31 → **le plan R4→R1→R3→R2 est entièrement joué** ; restent les reliquats : B5
-  (2 points câbles), arbitrage B4, retrait de l'instrumentation, cause profonde de la lecture
-  décalée.
+  fait 2026-07-31 → **le plan R4→R1→R3→R2 est entièrement joué**, et ép. 8 (**B5** : 3 `can_* = true`
+  de `cable.ml` supprimées, `dynlist` scindé — un câble en marche quitte « Modifier »/« Supprimer »
+  mais reste « Débranchable » ; **+ log permanent des `dynlist`** dans `menu_factory.ml`, seul moyen
+  de voir en journal ce que la GUI *propose* ; prouvé en GUI journaux 62-63) fait 2026-07-31 ;
+  restent les reliquats : arbitrage B4, retrait de l'instrumentation `B6:`, cause profonde de la
+  lecture décalée, `can_suspend` des câbles.
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante
