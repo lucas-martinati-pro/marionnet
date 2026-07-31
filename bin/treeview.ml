@@ -1415,7 +1415,7 @@ object(self)
   method set_CheckBox_field field (row_id:string) x =
     self#set_row_field row_id field (Row_item.CheckBox x)
 
-  method remove_row (row_id : string) =
+  method private private_remove_row (row_id : string) =
     (* Removing the row from the Gtk+ tree model is a little involved.
        We have to first build an updated version of our internal data
        structures, then completely clear the state, and re-build it
@@ -1450,7 +1450,7 @@ object(self)
          []
          (Forest.to_list updated_id_forest) in
      (* Clear the full state, which of course includes the GUI: *)
-     self#clear;
+     self#private_clear;
      (* Restore the state we have set apart before: *)
      Forest.iter
        (fun row parent_tree ->
@@ -1462,7 +1462,28 @@ object(self)
          self#add_complete_row_with_no_checking ?parent_row_id row)
        updated_content_forest;
 
-  method remove_subtree (row_id : string) =
+  (* The three methods below mutate the Gtk+ tree model, hence they MUST run in the GTK main
+     thread — like every other GUI call of this program (see the project's CLAUDE.md). Calling
+     them from another thread deadlocks the whole runtime, and does so silently: `store#remove'
+     makes Gtk+ emit a signal (row deletion moves the cursor and the selection), lablgtk then
+     re-enters OCaml through its `marshal' trampoline (ml_gobject.c), which starts by taking the
+     runtime's master lock — a lock the calling thread already holds, and which is not reentrant.
+     The thread thus waits for itself forever, the master lock is never released, and every other
+     OCaml thread piles up behind it: the whole process freezes with no exception and no CPU
+     activity. Measured with gdb on a frozen process (journals 16, 18 and 19 of the work-stream
+     "marionnet-automate-composants"): the closing thread sat in st_masterlock_acquire under
+     gtk_tree_store_remove, called from `network#reset' (state.ml) through `destroy_my_history'.
+     GMain_actor.apply_extract is used, not `delegate': the latter drops the exception raised by
+     the delegated code (it ignores the returned Either), which would silently resurrect the
+     "succeeded task that actually raised" bug fixed in episode 5. apply_extract re-raises in the
+     calling thread, so these methods keep exactly the semantics they had when called directly —
+     `remove_subtree_by_name' below still sees the failure it logs. Note also that apply_extract
+     applies the function on the spot when the caller already is the GTK main thread, so the usual
+     paths (menu callbacks) pay nothing for this protection. *)
+  method remove_row (row_id : string) =
+    GMain_actor.apply_extract (fun () -> self#private_remove_row row_id) ()
+
+  method private private_remove_subtree (row_id : string) =
     let row_iter = self#id_to_iter row_id in
     (* First find out which rows we have to remove: *)
     let ids_of_the_rows_to_be_removed =
@@ -1496,11 +1517,17 @@ object(self)
     (* Finally remove the row, together with its subtrees, from the Gtk+ tree model: *)
     ignore (self#store#remove row_iter);
 
-  method clear =
+  method remove_subtree (row_id : string) =
+    GMain_actor.apply_extract (fun () -> self#private_remove_subtree row_id) ()
+
+  method private private_clear =
     id_forest := Forest.empty;
     Hashtbl.clear id_to_row;
     Hashtbl.clear expanded_row_ids;
     self#store#clear ();
+
+  method clear =
+    GMain_actor.apply_extract (fun () -> self#private_clear) ()
 
   (* B6 (work-stream "marionnet-automate-composants", episode 6): the identifier of a row is no
      longer read from the "_id" column of the widget. This read was the last one left deciding an
