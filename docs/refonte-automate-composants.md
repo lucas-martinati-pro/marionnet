@@ -1023,3 +1023,100 @@ demanderait de décider ce que « débranché » signifie sur un réseau à l'ar
 **Reste au chantier** : la cause profonde de la lecture décalée de 8 octets (épisode 6, point 1),
 le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B4, et le `can_suspend` des
 câbles ci-dessus.
+
+---
+
+### Épisode 9 — 2026-07-31 — le gel à la fermeture d'un projet : le master lock du runtime
+
+Signalement de terrain, hors plan : *Projet → Fermer* fige l'application entière. La fenêtre reste
+affichée, les widgets grisés, aucun menu ne répond, et seul le gestionnaire de fenêtres en vient à
+bout. L'auteur l'a d'abord relié à l'onglet *Disques* (journal 16), puis, journal 18 à l'appui, à
+la **répétition** (la première fermeture passe, la seconde gèle). Ni l'une ni l'autre lecture
+n'était la bonne : les deux ne faisaient que rendre la condition réelle plus probable.
+
+**Ce que les journaux établissent, avant toute hypothèse.** Aucune exception, aucune trace
+d'erreur sur 939 puis 621 lignes : le processus se tait, il ne meurt pas. Le grisage n'est pas le
+bug — c'est le comportement normal du projet fermé (`motherboard_builder.ml:89-93`, `active=false`).
+Les deux journaux s'arrêtent sur la **même** signature : le thread de fermeture au message
+`B6: [states-forest] Treeview#remove_subtree`, c'est-à-dire entre le log (`treeview.ml:1473`) et
+`self#store#remove` (`treeview.ml:1497`) ; le thread principal, lui, au log de
+`update_cable_menu_entries_sensitiveness` (`motherboard_builder.ml:121`).
+
+**La mesure, décisive, et contraire à deux des trois hypothèses.** `top -H` sur le processus figé :
+**0 % de CPU sur les 27 threads** — interblocage franc, pas de boucle. `wchan` : le thread
+principal est en `futex_wait_queue`, pas en `do_poll` — il n'est donc pas bloqué sur la connexion
+X, ce qui écartait l'hypothèse « deux threads dans Xlib ». `gdb -p … -ex 'thread apply all bt'`
+donne le reste, sans ambiguïté : le thread de fermeture porte la pile complète
+`state.ml:340` → `user_level.ml:1603-1605` (`node#destroy`) → `treeview_history.ml:179` →
+`treeview.ml:1497` (`store#remove`) → `gtk_tree_store_remove` → `g_signal_emit` → `marshal`
+(`ml_gobject.c:205`) → **`st_masterlock_acquire`**.
+
+**Cause racine.** `close_project` s'exécute dans un thread dédié (`state.ml:355-358`) — il le doit,
+puisqu'il attend le task runner (`state.ml:344`) — et de là il appelle GTK **directement**,
+en violation de l'invariant du projet (« GTK depuis le seul thread principal, sinon `gMain_actor` »).
+`gtk_tree_store_remove` émet un signal, car retirer une ligne déplace le curseur et la sélection ;
+lablgtk doit alors rappeler du code OCaml et, dans son trampoline `marshal`, réclame le **master
+lock du runtime** — que ce thread **détient déjà**, et qui n'est pas réentrant. Le thread s'attend
+lui-même indéfiniment, `busy` ne retombe jamais à 0, et tous les autres threads OCaml s'empilent
+derrière : thread principal (au retour de son `poll`), threads de `Cortex` (`cortex.ml:411`),
+task runner (`message_passing.ml:53`), threads de simulation. D'où un gel **total, silencieux et
+sans CPU**. Le caractère erratique s'explique alors seul : il faut qu'un **callback OCaml soit
+connecté au signal émis**, donc que la ligne détruite porte la sélection, le curseur, ou une
+expansion. Le treeview *history* est celui que l'utilisateur clique — d'où sa surreprésentation ;
+les treeviews *defects* et *ifconfig*, jamais cliqués, se laissaient vider sans incident dans les
+mêmes journaux.
+
+**Contre-exemple qui valide le correctif avant de l'écrire.** « Remove this document »
+(`treeview_documents.ml:314-322`) et `delete_state` (`treeview_history.ml:263`) suppriment la ligne
+**sélectionnée**, depuis un callback de menu, donc dans le thread principal — et ces fonctions
+marchent au quotidien. Le régime « mutation depuis le thread principal » est donc sain ; seul le
+régime « thread secondaire » casse.
+
+**Correctif, dans le seul `bin/treeview.ml` (+31/−4).** Les trois méthodes qui mutent le modèle
+GTK — `remove_row`, `remove_subtree`, `clear` — deviennent des enveloppes autour de corps privés
+inchangés, et passent par `GMain_actor.apply_extract`. Deux points méritent d'être notés :
+
+1. **`apply_extract`, et non `delegate`.** `delegate` synchrone se réduit à `apply f x |> ignore`
+   (`gMain_actor.ml:126`) : il **jette l'`Either`**, donc avale l'exception. L'employer aurait
+   ressuscité en silence le « tâche réussie qui a pourtant levé » corrigé à l'épisode 5, et privé
+   `remove_subtree_by_name` de l'échec qu'il journalise. `apply_extract` relance dans le thread
+   appelant : la sémantique des trois méthodes est **exactement** celle de l'appel direct.
+2. **Coût nul sur les chemins normaux.** `apply` applique la fonction sur place quand l'appelant
+   est déjà le thread principal (`gMain_actor.ml:82`) : les callbacks de menu ne paient rien, et
+   l'imbrication `remove_row` → `clear` est sûre (le corps privé `private_clear` est appelé
+   directement).
+
+Vérifié aussi, contre le risque d'interblocage inverse : les deux seuls sites qui attendent le
+task runner (`state.ml:344`, `user_level.ml:1613`) sont dans le chemin de fermeture, hors thread
+principal — le thread principal n'attend jamais un thread qui délègue.
+
+**Preuve GUI.**
+
+| Journal | Scénario | Résultat |
+|---|---|---|
+| 19 | reproduction avant correctif, puis capture sur le processus figé | `top -H` : 0 % CPU sur 27 threads ; `gdb` : pile complète ci-dessus, 6 threads en `st_masterlock_acquire` |
+| 20 | après correctif : 4 cycles ouvrir/fermer, curseur posé dans l'onglet *Disques* avant chaque fermeture, puis le scénario complet (tout démarrer, tout arrêter, enregistrer sous, fermer) | **4 fermetures explicites → 4 `state#close_project: END. Success.`**, aucun gel. Le 5ᵉ `BEGIN` sans `END` est la fermeture implicite du *quit* : le journal se poursuit jusqu'à `at_exit: killing all orphans` puis `Thread Exiting (main)` — sortie propre |
+
+**Deux anomalies relevées dans le journal 20, non corrigées.** (a) Huit `Icon lookup failed` sur
+des valeurs corrompues (`"…hc  -cable"`, `"…hc  vice-port"` : début écrasé, fin de chaîne
+correcte) — signature exacte de la lecture décalée de 8 octets de l'épisode 6, préexistante et
+toujours non élucidée ; le journal 20 est trois fois plus long et enchaîne quatre cycles, la hausse
+du compte n'est donc pas imputable au correctif, le renderer tournant dans le thread principal
+avant comme après. (b) Deux `Warning: exception raised in really_refresh_sketch:
+Failure(state.ml:123)` = `Option.extract` sur un `root_pathname` devenu `None` : un rafraîchissement
+du dessin s'exécute après `unset_filename`, première instruction de `close_project`. Défaut
+d'ordonnancement préexistant, **rendu atteignable parce que la fermeture aboutit désormais** ;
+l'exception est attrapée et le dessin est vidé juste après.
+
+**Rattachement.** Cet interblocage est le candidat **C5** (« deadlock GTK fermeture projet ») du
+rapport `docs/bug-critique-crash-host.md` : il est désormais **caractérisé et corrigé**, et il
+n'était pas une cause de crash de l'hôte (le processus se fige, il ne tue rien).
+
+**Risques latents laissés en place**, même violation, autres appels, jamais observés jusqu'ici :
+`self#mainwin#sketch#set_file ""` (`state.ml:342`) et `ledgrid_manager#reset`, appelés depuis le
+thread de fermeture ; et `Treeview#detach_view_in`, qui utilise `delegate` et avale donc les
+exceptions.
+
+**Reste au chantier** : inchangé — la cause profonde de la lecture décalée de 8 octets
+(épisode 6, point 1), le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B4, et le
+`can_suspend` des câbles (épisode 8).

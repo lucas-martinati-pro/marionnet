@@ -126,7 +126,9 @@ Reprise : appliquer le skill `chantier-long`.
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
   `docs/bug-critique-crash-host.md` ; mémoire `bug-critique-crash-host` ;
-  `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18.
+  `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18 ; **C5 clos le
+  2026-07-31** (`d2d03da`, par l'ép. 9 de `marionnet-automate-composants` : master lock OCaml,
+  gel d'appli — jamais un crash hôte).
 - **automate d'état des composants** (refondre `User_level.simulated_device` pour que le type
   porte l'invariant `NoDevice ⟺ simulated_device = None` — aujourd'hui reconstruit dans 8
   filtrages de couple et 7 `raise_forbidden_transition` fourre-tout ; et corriger les
@@ -146,6 +148,14 @@ Reprise : appliquer le skill `chantier-long`.
   de `cable.ml` supprimées, `dynlist` scindé — un câble en marche quitte « Modifier »/« Supprimer »
   mais reste « Débranchable » ; **+ log permanent des `dynlist`** dans `menu_factory.ml`, seul moyen
   de voir en journal ce que la GUI *propose* ; prouvé en GUI journaux 62-63) fait 2026-07-31 ;
+  et ép. 9 (**hors plan, signalement terrain** : *Projet → Fermer* figeait toute l'application —
+  `close_project`, qui tourne dans son propre thread, appelait `store#remove` directement ; Gtk+
+  émet alors un signal et le trampoline `marshal` de lablgtk réclame le **master lock du runtime,
+  déjà détenu par ce thread et non réentrant** → le thread s'attend lui-même et tous les autres
+  s'empilent derrière, 0 % CPU et aucune exception ; les 3 mutations du modèle
+  [`remove_row`, `remove_subtree`, `clear`] passent par `GMain_actor.apply_extract` — **pas
+  `delegate`**, qui avale l'exception ; prouvé en GUI journal 20, et clôt **C5** de
+  `bug-critique-crash-host`) fait 2026-07-31 ;
   restent les reliquats : arbitrage B4, retrait de l'instrumentation `B6:`, cause profonde de la
   lecture décalée, `can_suspend` des câbles.
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les

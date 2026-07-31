@@ -131,6 +131,19 @@ deadlock » de 2023 (commit `0a68ad6`, logs `HERE0..HERE6` ajoutés précisémen
 `remove_device_tree`, jamais suivi d'un correctif structurel). À corriger dans ce chantier,
 mais ce défaut gèle Marionnet — il ne peut pas crasher l'hôte.
 
+**RÉSOLU le 2026-07-31** (`d2d03da`, épisode 9 du chantier `marionnet-automate-composants` ;
+détail et preuves dans `docs/refonte-automate-composants.md`). Le site incriminé ci-dessus était
+le bon, le mécanisme supposé ne l'était pas : ce n'est pas un « deadlock GTK » au sens usuel mais
+le **master lock du runtime OCaml pris deux fois par le même thread**. `store#remove` fait émettre
+un signal à Gtk+ (retirer une ligne déplace curseur et sélection) ; lablgtk rentre alors dans
+OCaml par son trampoline `marshal` (`ml_gobject.c`), lequel réclame le master lock — déjà détenu
+par le thread de `close_project`, et non réentrant. Le thread s'attend lui-même, `busy` ne retombe
+jamais, et **tous** les autres threads OCaml s'empilent derrière : gel total, sans exception et
+sans CPU. Mesuré par `gdb` sur un processus figé (`st_masterlock_acquire` sous
+`gtk_tree_store_remove`). Correctif : `remove_row`, `remove_subtree` et `clear` (`treeview.ml`)
+passent par `GMain_actor.apply_extract`. **Confirme le classement de ce candidat** : le processus
+se fige mais ne tue rien — C5 n'a jamais pu causer un crash de l'hôte.
+
 ## 3. Matrice symptôme ↔ cause
 
 | Symptôme | C1 kill/PID recyclé | C2 OOM | C3 bug noyau (UML) | C4 daemon root (image) |
@@ -198,8 +211,9 @@ en cours (terminer tout ? fermeture ?), `df -h` du répertoire temporaire de Mar
 5. **C4 — image Docker** : reconstruire l'image sur le Marionnet actuel (sans daemon),
    remplacer `--cap-add=ALL` par le minimum (`NET_ADMIN`), envisager une limite mémoire
    explicite (`-m`) pour transformer un OOM hôte diffus en OOM cgroup diagnosticable.
-6. **C5 — GTK** : déléguer via `gMain_actor` les mutations treeview atteintes depuis le
-   thread de `close_project`.
+6. ~~**C5 — GTK** : déléguer via `gMain_actor` les mutations treeview atteintes depuis le
+   thread de `close_project`.~~ **FAIT** le 2026-07-31 (`d2d03da`) : les 3 mutations du modèle
+   Gtk+ de `treeview.ml` passent par `GMain_actor.apply_extract` (cf. § C5 ci-dessus).
 
 Chaque correctif devra être suivi d'une période d'observation (le bug étant rare, seule
 l'absence prolongée de récidive + la checklist § 4 valident).
