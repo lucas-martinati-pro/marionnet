@@ -299,7 +299,7 @@ class world_bridge =
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.world_bridge."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.world_bridge."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   method update_world_bridge_with ~name ~label =
    self_as_node_with_defects#update_with ~name ~label ~port_no:1;

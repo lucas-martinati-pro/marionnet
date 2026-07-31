@@ -132,7 +132,7 @@ module User_level_machine : sig
       (* --- *)
       method make_simulated_device           : User_level.node_with_ports_card Simulation_level.device
       (* --- *)
-      method automaton_state_as_string       : string
+      method state_as_string       : string
       (* --- *)
       method has_ledgrid                     : bool
       method has_hublet_processes            : bool
@@ -140,7 +140,7 @@ module User_level_machine : sig
       (* --- *)
       method devkind                         : User_level.devkind
       method string_of_devkind               : string
-      method string_of_simulated_device_state: string
+      method icon_suffix_of_state: string
       (* --- *)
       method can_startup                     : bool
       method startup                         : unit

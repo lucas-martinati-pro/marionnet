@@ -321,7 +321,7 @@ class hub =
   (* --- *)
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.hub."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.hub."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   (** Create the simulated device *)
   method private make_simulated_device =

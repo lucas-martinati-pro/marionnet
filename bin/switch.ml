@@ -413,7 +413,7 @@ class switch =
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.switch."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.switch."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   method update_switch_with ~name ~label ~port_no
    ~show_vde_terminal ~activate_fstp ~rc_config

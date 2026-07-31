@@ -394,7 +394,7 @@ class world_gateway =
 
   method dotImg (z:User_level.iconsize) =
     let imgDir = Initialization.Path.images in
-    (imgDir^"ico.world_gateway."^(self#string_of_simulated_device_state)^"."^z^".png")
+    (imgDir^"ico.world_gateway."^(self#icon_suffix_of_state)^"."^z^".png")
 
   method show = (self#name^" (world gateway)")
 

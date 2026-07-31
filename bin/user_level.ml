@@ -146,10 +146,10 @@ class virtual ['parent] simulated_device () = object(self)
      therefore only readable through the projections below and the [can_*] methods. *)
 
   (** This string will be used to select the good icon for the dot sketch. *)
-  method string_of_simulated_device_state = Simulated_device.icon_suffix !state
+  method icon_suffix_of_state = Simulated_device.icon_suffix !state
 
   (** For debugging. Failthful translation of constructors: *)
-  method automaton_state_as_string = Simulated_device.to_string !state
+  method state_as_string = Simulated_device.to_string !state
 
   method virtual get_name : string
 
@@ -336,7 +336,7 @@ class virtual ['parent] simulated_device () = object(self)
               )
 
           | On _ ->
-              Log.printf1 "startup_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string)
+              Log.printf1 "startup_right_now: called in state %s: nothing to do.\n" (self#state_as_string)
 
           | Sleeping _ as s ->
               raise_forbidden_transition
@@ -377,7 +377,7 @@ class virtual ['parent] simulated_device () = object(self)
   method (*private*) gracefully_shutdown_right_now =
     Recursive_mutex.with_mutex mutex
       (fun () ->
-        let current_state = self#automaton_state_as_string in
+        let current_state = self#state_as_string in
         (Log.printf2 "* Gracefully shutting down the device %s (from state: %s)...\n"
           self#get_name
           current_state);
@@ -393,7 +393,7 @@ class virtual ['parent] simulated_device () = object(self)
             self#gracefully_shutdown_right_now)
 
         | No_device | Off _ ->
-            Log.printf1 "gracefully_shutdown_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string))
+            Log.printf1 "gracefully_shutdown_right_now: called in state %s: nothing to do.\n" (self#state_as_string))
 
   method (*private*) poweroff_right_now =
     Recursive_mutex.with_mutex mutex
@@ -411,7 +411,7 @@ class virtual ['parent] simulated_device () = object(self)
              self#poweroff_right_now)
 
         | No_device | Off _ ->
-            Log.printf1 "poweroff_right_now: called in state %s: nothing to do.\n" (self#automaton_state_as_string))
+            Log.printf1 "poweroff_right_now: called in state %s: nothing to do.\n" (self#state_as_string))
 
   (** Return true iff the current state allows the user to 'startup' the device from the GUI. *)
   method can_startup =

@@ -631,7 +631,7 @@ class machine
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.machine."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.machine."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   method to_tree =
    Forest.tree_of_leaf ("machine", [

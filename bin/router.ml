@@ -1086,7 +1086,7 @@ class router
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.router."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.router."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   val mutable show_quagga_terminal : (Const.quagga_lowercase_acronym list) = show_quagga_terminal
   method get_show_quagga_terminal = show_quagga_terminal

@@ -51,7 +51,7 @@ class virtual ['a] simulated_device :
     (* --- *)
     val mutex : Recursive_mutex.t
     method private destroy_because_of_unexpected_death : unit -> unit
-    method automaton_state_as_string : string
+    method state_as_string : string
     (* --- *)
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
@@ -75,7 +75,7 @@ class virtual ['a] simulated_device :
     method resume_right_now : unit
     method startup : unit
     method startup_right_now : unit
-    method string_of_simulated_device_state : string
+    method icon_suffix_of_state : string
     method suspend : unit
     method suspend_right_now : unit
   end
@@ -187,7 +187,7 @@ class virtual node_with_ports_card :
     val network : 'b
     val mutable ports_card : 'a ports_card option
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
-    method automaton_state_as_string : string
+    method state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
     method can_resume : bool
@@ -239,7 +239,7 @@ class virtual node_with_ports_card :
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
-    method string_of_simulated_device_state : string
+    method icon_suffix_of_state : string
     method suspend : unit
     method suspend_right_now : unit
     method to_forest : Xforest.forest
@@ -292,7 +292,7 @@ class virtual node_with_defects :
     val mutable ports_card : 'a ports_card option
     method virtual add_destroy_callback : unit Lazy.t -> unit
     method private add_my_defects : unit
-    method automaton_state_as_string : string
+    method state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
     method can_resume : bool
@@ -347,7 +347,7 @@ class virtual node_with_defects :
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
-    method string_of_simulated_device_state : string
+    method icon_suffix_of_state : string
     method suspend : unit
     method suspend_right_now : unit
     method to_forest : Xforest.forest
@@ -389,7 +389,7 @@ class virtual node_with_ledgrid_and_defects :
     method virtual add_destroy_callback : unit Lazy.t -> unit
     method private add_my_defects : unit
     method add_my_ledgrid : unit
-    method automaton_state_as_string : string
+    method state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
     method can_resume : bool
@@ -448,7 +448,7 @@ class virtual node_with_ledgrid_and_defects :
     method startup : unit
     method startup_right_now : unit
     method virtual string_of_devkind : string
-    method string_of_simulated_device_state : string
+    method icon_suffix_of_state : string
     method suspend : unit
     method suspend_right_now : unit
     method to_forest : Xforest.forest
@@ -549,7 +549,7 @@ class type virtual cable =
     val mutable name : string
     val network : < .. >
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
-    method automaton_state_as_string : string
+    method state_as_string : string
     method can_gracefully_shutdown : bool
     method can_poweroff : bool
     method can_resume : bool
@@ -596,7 +596,7 @@ class type virtual cable =
     method show : string -> string
     method startup : unit
     method startup_right_now : unit
-    method string_of_simulated_device_state : string
+    method icon_suffix_of_state : string
     method suspend : unit
     method suspend_right_now : unit
     method to_forest : Xforest.forest

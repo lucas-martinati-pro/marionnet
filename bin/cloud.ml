@@ -277,7 +277,7 @@ class cloud =
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico.cloud."^(self#string_of_simulated_device_state)^"."^iconsize^".png")
+   (imgDir^"ico.cloud."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   method update_cloud_with ~name ~label =
    self_as_node_with_defects#update_with ~name ~label ~port_no:2;
