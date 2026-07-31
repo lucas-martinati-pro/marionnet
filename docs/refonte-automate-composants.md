@@ -418,6 +418,11 @@ Corrige **B4**. Périmètre : `state.ml` seul, plus l'ajout de l'incrément dans
 **Cœur du chantier.** C'est la proposition de fond ; elle dépasse le cadre d'un correctif et
 occupera plusieurs épisodes à elle seule.
 
+> **Fait à l'épisode 7** (`71fca1a`, `cbc6267`, 2026-07-31), en un seul épisode et non
+> plusieurs. Une seule pièce du plan ci-dessous est tombée : `device_opt` existe, mais **aucune
+> méthode publique ne peut rendre l'état lui-même** — son type mentionnerait `'parent`, que
+> `cable.ml` instancie avec son propre type d'objet récursif. Cf. journal § 5.
+
 ```ocaml
 module Simulated_device : sig
 
@@ -465,9 +470,9 @@ que le passage de l'un à l'autre soit localisé dans les `*_right_now` — ce q
 |---|---|---|
 | `simulated_device_automaton_state` | `Simulated_device.state` | le préfixe redondant disparaît avec le module |
 | `NoDevice`, `DeviceOff`, `DeviceOn`, `DeviceSleeping` | `No_device`, `Off`, `On`, `Sleeping` | idem ; aligne sur `Simulation_level` |
-| `simulated_device_state` (getter) | `get_state` | |
+| `simulated_device_state` (getter) | ~~`get_state`~~ → **supprimé** (ép. 7) | son type mentionnerait `'parent` : impossible à exposer sans casser `cable.ml` ; aucun appelant |
 | `string_of_simulated_device_state` | `icon_suffix_of_state` | ce n'est pas une conversion fidèle mais **le suffixe de nom de fichier d'icône** (`ico.<kind>.<suffixe>.<taille>.png`) ; la vraie conversion est `automaton_state_as_string` |
-| `automaton_state_as_string` | `to_string` | |
+| `automaton_state_as_string` | ~~`to_string`~~ → **`state_as_string`** (ép. 7) | sur une classe, `self#to_string` se lirait « chaîne du composant » ; `to_string` est réservé à la fonction du module |
 | `create_right_now` / `destroy_right_now` / … | inchangés | le suffixe `_right_now` distingue utilement la transition réelle de son enveloppe asynchrone |
 
 ---
@@ -873,3 +878,72 @@ code peut prendre seul).
 
 **Reste pour clore B6** : la cause profonde de la lecture décalée (point 1), et le retrait de
 l'instrumentation `B6:` de l'épisode 2.
+
+### Épisode 7 — 2026-07-31 — R2, l'état porte le device
+
+**Fait.** Le cœur du chantier, dernier reliquat du plan de conception. Deux commits, pour que le
+diff sémantique reste relisible ligne à ligne :
+
+- `71fca1a` — la **fusion** : `val automaton_state` et `val simulated_device` deviennent un seul
+  `val state : 'parent Simulated_device.state ref` ;
+- `cbc6267` — les **renommages**, purement mécaniques.
+
+**Ce que la fusion rapporte, mesuré et non supposé.** Les huit filtrages de couple deviennent
+des filtrages simples et exhaustifs. **Trois** des sept `raise_forbidden_transition` disparaissent
+comme **inatteignables** — `destroy_right_now`, `gracefully_shutdown_right_now` et
+`poweroff_right_now` couvraient déjà les quatre états, leur fourre-tout ne rattrapait donc qu'une
+violation d'invariant désormais non représentable. Les quatre restants (`create`, `startup`,
+`suspend`, `resume`) sont des branches **nommées** dont le message porte l'état de départ
+(`"suspend_right_now: from DeviceOff"`), au lieu du nom de méthode nu.
+
+**Les `val` quittent les signatures de classe.** `user_level.mli` les déclarait dans quatre
+signatures, `machine.mli` dans une : un invariant qu'un héritier externe peut écraser par
+affectation n'est pas un invariant. Le retrait était sans risque et sans pari — la signature de
+la classe qui les **définit** (`user_level.mli:30-39`) les omettait déjà, n'exposant que
+`val mutex`, lequel doit rester (il est utilisé par `cable.ml:795`).
+
+**Deux obstacles de typage, dont un qui a modifié le plan.**
+
+1. *Bénin.* `Simulation_level.device` contraint son paramètre
+   (`constraint 'parent = < get_name : string; .. >`, `simulation_level.mli:265`). Le `.ml`
+   l'infère, le `.mli` ne l'aurait pas déclarée : il faut la répéter explicitement dans la
+   déclaration du type `state`, des deux côtés.
+2. *Structurel.* **Aucune méthode publique ne peut avoir un type mentionnant `'parent`.**
+   `cable.ml` fait `inherit [cable] User_level.simulated_device ()` : il instancie `'parent`
+   avec son **propre** type d'objet, défini récursivement dans un `let rec endpoint … and
+   cable = …`. Une méthode de type `'parent Simulated_device.state` y rend l'abréviation `cable`
+   insoluble (l'occurrence récursive est monomorphe). `method simulated_device_state` a donc été
+   **supprimée** au lieu d'être renommée `get_state` comme le prévoyait la table des renommages.
+   Elle n'avait aucun appelant. L'état n'est plus lisible de l'extérieur que par ses projections
+   (`icon_suffix_of_state`, `state_as_string`) et les cinq `can_*` — ce qui est le but de R2.
+   *Corollaire pour la suite* : exposer l'état au chantier `marionnet-pilotage-par-script`
+   demandera une projection **non paramétrée**, pas l'état lui-même.
+
+**Écart avec la table § Renommages.** `automaton_state_as_string` devait devenir `to_string` ;
+sur une classe, `self#to_string` se lit « chaîne représentant le composant », pas son état. Elle
+est devenue `state_as_string` (son ancien nom citait `automaton_state`, champ disparu), et le nom
+court `to_string` est réservé à la fonction du module. `string_of_simulated_device_state` est
+devenue `icon_suffix_of_state` comme prévu — c'est le seul renommage qui déborde sur les sept
+composants, via leur méthode `dotImg`.
+
+**Aucun `.ml` de composant n'est touché par la fusion.** Les redéfinitions de `machine.ml:715,742`,
+`router.ml:1169,1192` et `cable.ml:779,783` **délèguent** au parent, et `cable.ml:888-896`
+redéfinit les `can_*` par des constantes : pas une ne lit l'état.
+
+**Preuve GUI.**
+
+| Journal | Scénario | Résultat |
+|---|---|---|
+| 61 | `propre-2machines-1hub`, `-r`, puis suspendre `m1`, la reprendre, l'arrêter, « Tout éteindre » (brutal), quitter sans sauvegarder | **15/15 tâches réussies**, **0** `ForbiddenTransition`, **0** `Assertion failed`, **0** `CRITICAL`, aucun processus de simulation résiduel. Les cinq `*_right_now` réécrits ont tous tourné : `create` ×5, `startup` ×5, `suspend` ×1, `resume` ×1, `gracefully_shutdown` ×2, `poweroff` ×3, `destroy` ×18 |
+
+**Le scénario a dû être adapté à la GUI réelle** — le plan supposait des clics droits sur le
+dessin. Le dessin est un **PNG graphviz non interactif** : les actions passent par la barre
+verticale **gauche** (icône du type de composant → action → choix du composant, donc
+action-puis-objet), les actions collectives par la barre horizontale **basse**, et l'extinction
+brutale d'un seul composant **n'existe pas** (seul le « Tout éteindre » collectif la déclenche).
+La barre verticale **droite** porte les options dot. Consigné dans `bin/gui/CLAUDE.md` pour que
+les prochains scénarios de test partent du bon modèle d'interaction.
+
+**Reste au chantier** : la cause profonde de la lecture décalée de 8 octets (épisode 6, point 1),
+le retrait de l'instrumentation `B6:` de l'épisode 2, et l'arbitrage B4 (le disque COW ajouté au
+treeview *history* au démarrage salit légitimement le projet).
