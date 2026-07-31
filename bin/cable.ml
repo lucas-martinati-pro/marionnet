@@ -111,15 +111,24 @@ module Make_menus
   module Properties = struct
     include Data
 
-    (* Note (audit B5, docs/refonte-automate-composants.md): unlike nodes, which only offer
-       "Modify"/"Remove" on stopped components (dynlist = get_node_names_that_can_startup, see
-       machine.ml, hub.ml, switch.ml…), cables list *all* of their instances, connected and
-       running ones included. The discrepancy is hidden by the three [can_* = true] overrides
-       below ("To do: try reverting this"); aligning it means revisiting them, which belongs to
-       the [Simulated_device] refactoring (R2), not to a local fix. *)
-    let dynlist () = match crossover with
+    (* All the cables of this kind, whatever their state. Kept unfiltered on purpose for
+       "Disconnect"/"Reconnect": a *running* cable is precisely the one the user wants to
+       unplug, so these two entries must go on seeing it. *)
+    let all_names () = match crossover with
     | false -> st#network#get_direct_cable_names
     | true  -> st#network#get_crossover_cable_names
+
+    (* B5 (episode 8, docs/refonte-automate-composants.md): cables used to offer
+       "Modify"/"Remove" on *all* of their instances, running ones included, whereas nodes only
+       offer them on stopped components (dynlist = get_node_names_that_can_startup, see
+       machine.ml, hub.ml, switch.ml…). They are now aligned. [can_startup] is the inherited
+       predicate again (see below), i.e. "no Simulation_level.ethernet_cable is running for this
+       cable": a cable with a single running endpoint, a disconnected one, or one of the wrong
+       crossoverness (which is refused startup, cf. [is_correct]) all remain modifiable. *)
+    let dynlist () =
+      List.filter
+        (fun x -> (st#network#get_cable_by_name x)#can_startup)
+        (all_names ())
 
     let dialog name () =
      let c = (st#network#get_cable_by_name name) in
@@ -151,14 +160,17 @@ module Make_menus
       let c = ((Obj.magic c):> User_level_cable.cable) in
       (* Make a new cable; it should have a different identity from the old one, and it's
          important that it's initialized anew, to get the reference counter right: *)
-      (* Known risk (audit B5, docs/refonte-automate-composants.md): [c#destroy] only *schedules*
+      (* B5 (episode 8, docs/refonte-automate-composants.md): [c#destroy] only *schedules*
          [destroy_right_now] on the task runner (user_level.ml, [destroy_my_simulated_device]),
-         whereas [Add.reaction] builds the replacement synchronously — its initializer may then
-         start a second Simulation_level.ethernet_cable on the very same hublets as the old one,
-         not yet destroyed. Not reproduced so far, and left as is on purpose: forcing the order
-         either takes the recursive mutex from the GTK thread (deadlock risk against a task
-         runner thread waiting for that same thread, cf. C4) or defers the re-creation past the
-         dialog. To be settled with R2. *)
+         whereas [Add.reaction] builds the replacement synchronously — so a second
+         Simulation_level.ethernet_cable could be started on the very same hublets as the old
+         one, not yet destroyed. This is no longer reachable from the GUI: [dynlist] above only
+         proposes cables that [can_startup], i.e. cables with *no* running process, so there is
+         nothing left to sequence here. The order is deliberately not forced (it would either
+         take the recursive mutex from the GTK thread — deadlock risk against a task runner
+         thread waiting for that same thread, cf. C4 — or defer the re-creation past the
+         dialog). Residual, theoretical window: the cable starts up between the opening of the
+         menu and the validation of the dialog. *)
       c#destroy;
       Add.reaction r;
 
@@ -196,7 +208,7 @@ module Make_menus
     let dynlist () =
       List.filter
         (fun x -> (st#network#get_cable_by_name x)#can_suspend)
-        (Properties.dynlist ())
+        (Properties.all_names ())
 
     let dialog = Menu_factory.no_dialog_but_simply_return_name
     let reaction name = (st#network#get_cable_by_name name)#suspend
@@ -210,7 +222,7 @@ module Make_menus
     let dynlist () =
       List.filter
         (fun x -> (st#network#get_cable_by_name x)#can_resume)
-        (Properties.dynlist ())
+        (Properties.all_names ())
 
     let dialog = Menu_factory.no_dialog_but_simply_return_name
     let reaction name = (st#network#get_cable_by_name name)#resume
@@ -884,10 +896,12 @@ and cable =
            done
          end)
 
-   (** To do: remove this ugly kludge, and make cables stoppable *)
-   method! can_startup = true (* To do: try reverting this *)
-   method! can_gracefully_shutdown = true (* To do: try reverting this *)
-   method! can_poweroff = true (* To do: try reverting this *)
+   (* B5 (episode 8): [can_startup], [can_gracefully_shutdown] and [can_poweroff] used to be
+      overridden to a constant [true] here ("To do: try reverting this"). The kludge is gone: no
+      caller ever invokes [startup]/[gracefully_shutdown]/[poweroff] on a cable — its process is
+      driven by the reference counter above, never by the user — so the inherited, state-aware
+      predicates are read at one place only, the "Modify"/"Remove" dynlist of the toolbar. *)
+
    (** Only connected cables can be 'suspended' *)
    method! can_suspend =
      Recursive_mutex.with_mutex mutex
