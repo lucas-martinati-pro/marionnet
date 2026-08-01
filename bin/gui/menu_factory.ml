@@ -247,9 +247,10 @@ module Make_entry_with_children =
     let item_callback () = begin
       ignore (Submenu.recreate_subshell ());
       (* Make the toolbar observable in the log. The submenu built here is the only visible
-         effect of the [can_*] predicates filtering each [dynlist] (cf. B5 for cables): without
-         this line, a GUI run tells what the user *did*, never what they were *offered* — so a
-         filtering regression stays invisible in the journal. *)
+         effect of each [dynlist], hence of the [can_*] predicates most of them filter on:
+         without this line, a GUI run tells what the user *did*, never what they were *offered*
+         — so a filtering regression stays invisible in the journal (this is precisely how the
+         cable regression of episode 8 was caught, cf. B5). *)
       let names = E.dynlist () in
       let () =
         Log.printf2 "Menu \"%s\": proposing %s\n" E.text

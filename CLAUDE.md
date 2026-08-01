@@ -153,9 +153,9 @@ Reprise : appliquer le skill `chantier-long`.
   (**R2** : `automaton_state` + `simulated_device` fusionnés en `val state`, 3 des 7
   `raise_forbidden_transition` inatteignables, `val` retirés des `.mli` ; prouvé en GUI journal 61)
   fait 2026-07-31 → **le plan R4→R1→R3→R2 est entièrement joué**, et ép. 8 (**B5** : 3 `can_* = true`
-  de `cable.ml` supprimées, `dynlist` scindé — un câble en marche quitte « Modifier »/« Supprimer »
-  mais reste « Débranchable » ; **+ log permanent des `dynlist`** dans `menu_factory.ml`, seul moyen
-  de voir en journal ce que la GUI *propose* ; prouvé en GUI journaux 62-63) fait 2026-07-31 ;
+  de `cable.ml` supprimées ; **+ log permanent des `dynlist`** dans `menu_factory.ml`, seul moyen
+  de voir en journal ce que la GUI *propose* ; prouvé en GUI journaux 62-63) fait 2026-07-31, son
+  filtrage des câbles étant **révisé à l'ép. 12** (cf. plus bas) ;
   et ép. 9 (**hors plan, signalement terrain** : *Projet → Fermer* figeait toute l'application —
   `close_project`, qui tourne dans son propre thread, appelait `store#remove` directement ; Gtk+
   émet alors un signal et le trampoline `marshal` de lablgtk réclame le **master lock du runtime,
@@ -164,8 +164,13 @@ Reprise : appliquer le skill `chantier-long`.
   [`remove_row`, `remove_subtree`, `clear`] passent par `GMain_actor.apply_extract` — **pas
   `delegate`**, qui avale l'exception ; prouvé en GUI journal 20, et clôt **C5** de
   `bug-critique-crash-host`) fait 2026-07-31 ;
-  restent les reliquats : arbitrage B4, retrait de l'instrumentation `B6:`, cause profonde de la
-  lecture décalée, `can_suspend` des câbles.
+  et **ép. 12** (2026-08-01, **révision de l'ép. 8** : « Modifier »/« Supprimer » revoient tous les
+  câbles, **en marche compris** — règle de projet « le câblage suit la réalité » ; **B5(c) réglé par
+  séquencement réel** : `c#destroy` puis `Add.reaction` **enfilé** sur le task runner, dont la file
+  est consommée par un seul thread, tandis que `network_change` délègue déjà au thread GTK et
+  l'attend → aucun verrou pris depuis GTK, rien de différé après le dialogue ; prouvé en GUI
+  journal 24) ; restent les reliquats : arbitrage B4, retrait de l'instrumentation `B6:`, cause
+  profonde de la lecture décalée (**revue en journal 24**, en mode dégradé non fatal).
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante

@@ -1262,32 +1262,81 @@ thread principal) — le chemin *death monitor* / tâche en échec attend toujou
 
 ---
 
-### À RÉVISER — l'épisode 8 a pris la mauvaise direction sur les câbles (décision du 2026-08-01)
+### Épisode 12 — 2026-08-01 — B5 révisé : un câble s'édite **en marche**
 
-Décision de l'auteur, à exécuter **après** le travail en cours, et qui **annule pour partie
-l'épisode 8** : un câble doit pouvoir être **modifié ou supprimé pendant qu'il « tourne »**.
+Cet épisode **annule pour partie l'épisode 8**, sur décision de l'auteur : un câble doit pouvoir
+être **modifié ou supprimé pendant qu'il « tourne »**.
 
 **Pourquoi l'alignement était une erreur.** L'épisode 8 avait filtré le `dynlist` des câbles sur
 `can_startup`, « comme les sept autres composants ». Or un câble n'est pas un composant comme les
 autres : dans la réalité, on déplace un câble d'un hub vers un switch **sans éteindre les
 machines** — on débranche, on rebranche ailleurs. En interdisant « Modifier » et « Supprimer » sur
 un câble en marche, l'épisode 8 a rendu ce geste impossible dans la GUI, alors qu'il est trivial
-avec du matériel réel.
-
-**Preuve, journal 22.** L'instrumentation permanente des `dynlist` (ajoutée à l'épisode 8 justement
-pour cela) enregistre l'échec : quatorze dépliages de « Modifier » et « Supprimer » sur les câbles,
-tous `proposing nothing` (l. 685-742), pendant que « Arrêter » proposait `[H1]` (l. 746) — la
-simulation tournait bien. L'utilisateur n'a pas pu déplacer `d1` de `H1` vers `S1`.
+avec du matériel réel. **Preuve de la régression, journal 22** : quatorze dépliages de « Modifier »
+et « Supprimer » sur les câbles, tous `proposing nothing` (l. 685-742), pendant que « Arrêter »
+proposait `[H1]` (l. 746) — enregistrés par l'instrumentation permanente des `dynlist` que
+l'épisode 8 avait justement ajoutée pour cela.
 
 **La règle générale qui en découle**, désormais inscrite dans `CLAUDE.md` : toute question de
 câblage via la GUI se tranche par **ce qui est possible dans la réalité**, dans les limites de la
 virtualisation ; la symétrie entre composants n'est pas un argument.
 
-**Ce que la révision devra reprendre**, sans défaire ce qui était juste : le `dynlist` des câbles
-revient à `all_names ()` pour « Modifier » et « Supprimer » ; les trois `can_* = true` supprimées à
-l'épisode 8 n'ont pas à revenir (il est établi qu'elles n'avaient aucun lecteur) ; en revanche la
-question **B5(c)**, close à l'épisode 8 « par inatteignabilité », se **rouvre** — modifier un câble
-en marche implique de nouveau de détruire puis recréer un `Simulation_level.ethernet_cable` sur les
-mêmes hublets, donc de reprendre le séquencement écarté aux épisodes 1, 5 et 8 (avec ses raisons :
-`Recursive_mutex` pris depuis le thread GTK, re-création asynchrone après le dialogue). C'est le
-vrai travail de conception à faire, et il est plus lourd qu'un retour en arrière.
+**Ce qui rendait la révision non triviale.** Rendre les deux menus totaux **rouvre B5(c)**, que
+l'épisode 8 avait clos « par inatteignabilité » : `Properties.reaction` fait `c#destroy;
+Add.reaction r`, or `#destroy` ne fait qu'**enfiler** `destroy_right_now` (`user_level.ml:206-209`)
+tandis que le remplaçant est construit **synchroniquement** et démarre aussitôt son processus sur
+des hublets encore tenus par l'ancien. Les épisodes 1, 5 et 8 avaient refusé de séquencer pour deux
+raisons : prendre le `Recursive_mutex` depuis le thread GTK (deadlock contre un thread du task
+runner qui attend ce même thread, cf. C4), ou différer la re-création après le dialogue.
+
+**Le fait qui débloque.** Aucune des deux n'est nécessaire : le task runner est une **file
+séquentielle consommée par un unique thread** (`task_runner.ml:66-101`), et `st#network_change`
+passe **déjà** par `GMain_actor.delegate` (`state.ml:852-863`), qui sans `~async` **attend** le
+thread principal. Il suffit donc d'**enfiler la re-création derrière la destruction** : l'ordre est
+imposé par la file, aucun verrou n'est pris depuis le thread GTK, et rien n'est différé après le
+dialogue. Le journal le montre littéralement — la destruction est exécutée par le thread `.8` (le
+task runner), la re-création par le thread `.0` (GTK) auquel il délègue et qu'il attend.
+
+**Correctif, dans le seul `bin/cable.ml`** (plus un commentaire de `menu_factory.ml`) :
+
+1. `Properties.dynlist` redevient `all_names ()` : les deux menus voient tous les câbles du type,
+   quel que soit leur état. `Remove.dynlist` suit ; `Disconnect`/`Reconnect`, qui partaient déjà de
+   `all_names ()`, sont inchangés.
+2. `Properties.reaction` : `c#destroy` puis
+   `Task_runner.the_task_runner#schedule ~name:("re-create the cable "^r.name) (fun () -> Add.reaction r)`.
+3. Les trois `can_* = true` supprimées à l'épisode 8 **ne reviennent pas** ; le commentaire qui les
+   remplaçait est corrigé, car il n'est plus vrai : pour les câbles, ces prédicats hérités n'ont
+   désormais **plus aucun lecteur**.
+
+**Effets assumés.** La re-création devient asynchrone pour **tous** les câbles, arrêtés compris
+(bref clignotement dans le dessin et les treeviews) ; un échec de `Add.reaction` est journalisé par
+le task runner (« THIS MAY BE SERIOUS ») au lieu de remonter dans le thread GTK, l'ancien câble
+ayant déjà disparu ; et modifier un câble en marche **coupe brièvement le lien** — c'est exactement
+le geste réel, aucun dialogue d'avertissement n'est ajouté.
+
+**Preuve GUI, journal 24** (`propre-2machines-1hub` + un switch `S1` ajouté, tout démarré).
+
+| Mesure | Ce que le journal montre |
+|---|---|
+| Les menus voient de nouveau les câbles en marche | `Menu "Modifier": proposing [d1; d2]` et `Menu "Supprimer": proposing [d1; d2]`, l. 886-893, simulation en marche — l'exact inverse du journal 22 |
+| L'ordre est imposé (B5(c)) | Trois modifications de `d1` : l. 712-740, 775-822, 853-879. Chaque fois la tâche `destroy d1` est **exécutée jusqu'au bout** (`the on/sleeping device d1. Powering it off first…`, `wirefilter` attendu par `waitpid`, hublets détruits, `destroyed with success`) **avant** que la tâche `re-create the cable d1` ne commence |
+| Le cas critique est exercé | À la 2ᵉ modification (l. 781-822) le remplaçant atteint le refcount **3** et **démarre son propre `wirefilter`** (pid 2349506) : le nouveau processus naît bien sur des hublets libérés, jamais en concurrence avec l'ancien |
+| Supprimer un câble en marche | l. 889-900 : `d2` supprimé alors qu'il tourne (`destroying the on/sleeping device d2. Powering it off first…`), sans incident — même chemin que l'arrêt d'un nœud |
+| Sortie | `destroy_process_before_quitting: END (success)` ; **aucun** processus résiduel du répertoire de run (`/tmp/marionnet-819180832.dir`) ; **0** `ForbiddenTransition`, `Assertion`, `id_to_iter`, ni tâche en échec sur 1727 lignes |
+
+**Constat annexe, à ne pas passer sous silence.** Ce run porte **9** occurrences de
+`Treeview.icon_column#lookup: ERROR: icon name lookup failed` (l. 1250-1386), **absentes** des
+journaux 22 et 23. Les valeurs lues y sont corrompues d'une façon caractéristique — préfixe binaire
+et **fin de chaîne correcte** (`"…b  -cable"`) : c'est la **signature de la lecture décalée de
+8 octets** de l'épisode 6, cause profonde connue et toujours non élucidée. Elle se manifeste ici en
+mode dégradé bénin (cellule vide dessinée, `append_to_view: WARNING`) précisément parce que
+l'épisode 6 a rendu ce renderer total. Rien ne permet d'imputer ces lectures au séquencement
+introduit ici — le run 24 enchaîne simplement bien plus de mutations du treeview *defects* (quatre
+`remove_subtree` et quatre `add_cable` de câbles) que les runs 22 et 23 — mais rien ne permet non
+plus de l'exclure : c'est une raison de plus de traiter ce reliquat.
+
+**Reste au chantier** : la cause profonde de la lecture décalée (épisode 6, point 1, désormais
+observée aussi dans ce run), le retrait de l'instrumentation `B6:` de l'épisode 2, et l'arbitrage
+B4. Le reliquat `can_suspend` de l'épisode 8 (« on peut débrancher un câble dont les deux nœuds sont
+éteints ») **se referme par la règle de projet** : dans la réalité, on débranche parfaitement un
+câble d'une machine éteinte — le comportement est légitime, il n'y a rien à corriger.
