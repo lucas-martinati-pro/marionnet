@@ -57,6 +57,14 @@ l'**install** et le **RPM**.
 
 ## Conventions transverses
 
+- **RÈGLE DE PROJET — le câblage suit la réalité.** Toute question portant sur le câblage des
+  composants **via la GUI** se tranche par ce qui est **possible dans la réalité**, dans les
+  limites de la virtualisation. Un geste faisable sur du matériel réel doit rester faisable dans
+  Marionnet, **même si l'implémentation coûte plus cher** : typiquement, déplacer un câble d'un hub
+  vers un switch **pendant que les machines tournent** (on débranche et on rebranche ailleurs, sans
+  éteindre personne). Corollaire : « aligner les câbles sur les autres composants, par symétrie »
+  n'est **pas** un argument recevable — c'est exactement l'erreur de l'épisode 8 du chantier
+  `marionnet-automate-composants`, à réviser (cf. `docs/refonte-automate-composants.md`).
 - **Messages de commit : ANGLAIS obligatoire** pour tout le dépôt Marionnet (règle de scope
   projet). Conventional Commits ; rédiger/traduire le message en anglais avant de committer, corps
   compris. Trailer `Co-Authored-By` selon la règle utilisateur (seulement si j'ai produit le contenu).

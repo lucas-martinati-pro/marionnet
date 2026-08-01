@@ -1246,9 +1246,48 @@ utilise `delegate`, qui **jette l'`Either`** : le `raise e` de `private_detach_v
 change la **propagation des erreurs**, pas la discipline de thread : à décider à part.
 
 **Vérification.** `dune build` rc=0 sur chacune des trois étapes (dialogues, ledgrid, sites
-isolés), puis `make rebuild install-for-testing` rc=0. **Le rejeu GUI n'est pas joué et il est ici
-nécessaire** — contrairement à l'épisode 10 où le correctif était purement préventif, ces chemins
-sont visibles à l'œil : un dialogue d'erreur doit toujours s'afficher (provoquer un « Enregistrer
-sous » en échec), les LED doivent toujours clignoter et les fenêtres LED s'ouvrir/se fermer, la
-fermeture de projet doit toujours vider le dessin. Tant que ce rejeu n'a pas eu lieu, seul le
-compilateur s'est prononcé.
+isolés), puis `make rebuild install-for-testing` rc=0.
+
+**Rejeu GUI joué le 2026-08-01, journal 22** (1054 lignes) : **0** exception, `CRITICAL`,
+`ForbiddenTransition` ou assertion ; LED grid complet et sain — création de `H1` puis `S1`,
+connexions de ports, destructions, *blinker* qui reçoit son « please-die » et sort proprement —
+avec **0** `failed in set_port_connection_state` (le journal 16 en avait) ; sortie propre. La
+mesure qui compte est ailleurs : **toutes** les lignes `ledgrid_manager` portent désormais le
+thread **`.0`**, le thread principal, là où le journal 16 les montrait émises par le thread de
+fermeture (`[…​.351] Making the port 0 of device 1 disconnected`). C'est la preuve directe que
+l'enrobage fait ce qu'il annonce, et l'auteur confirme que le ledgrid se comporte comme avant.
+**Reste non exercé** : aucun `Simple_dialogs.error/warning` n'a été déclenché depuis un thread
+secondaire dans ce run (les 4 « Dialog result » sont des dialogues de composants, ouverts depuis le
+thread principal) — le chemin *death monitor* / tâche en échec attend toujours sa preuve terrain.
+
+---
+
+### À RÉVISER — l'épisode 8 a pris la mauvaise direction sur les câbles (décision du 2026-08-01)
+
+Décision de l'auteur, à exécuter **après** le travail en cours, et qui **annule pour partie
+l'épisode 8** : un câble doit pouvoir être **modifié ou supprimé pendant qu'il « tourne »**.
+
+**Pourquoi l'alignement était une erreur.** L'épisode 8 avait filtré le `dynlist` des câbles sur
+`can_startup`, « comme les sept autres composants ». Or un câble n'est pas un composant comme les
+autres : dans la réalité, on déplace un câble d'un hub vers un switch **sans éteindre les
+machines** — on débranche, on rebranche ailleurs. En interdisant « Modifier » et « Supprimer » sur
+un câble en marche, l'épisode 8 a rendu ce geste impossible dans la GUI, alors qu'il est trivial
+avec du matériel réel.
+
+**Preuve, journal 22.** L'instrumentation permanente des `dynlist` (ajoutée à l'épisode 8 justement
+pour cela) enregistre l'échec : quatorze dépliages de « Modifier » et « Supprimer » sur les câbles,
+tous `proposing nothing` (l. 685-742), pendant que « Arrêter » proposait `[H1]` (l. 746) — la
+simulation tournait bien. L'utilisateur n'a pas pu déplacer `d1` de `H1` vers `S1`.
+
+**La règle générale qui en découle**, désormais inscrite dans `CLAUDE.md` : toute question de
+câblage via la GUI se tranche par **ce qui est possible dans la réalité**, dans les limites de la
+virtualisation ; la symétrie entre composants n'est pas un argument.
+
+**Ce que la révision devra reprendre**, sans défaire ce qui était juste : le `dynlist` des câbles
+revient à `all_names ()` pour « Modifier » et « Supprimer » ; les trois `can_* = true` supprimées à
+l'épisode 8 n'ont pas à revenir (il est établi qu'elles n'avaient aucun lecteur) ; en revanche la
+question **B5(c)**, close à l'épisode 8 « par inatteignabilité », se **rouvre** — modifier un câble
+en marche implique de nouveau de détruire puis recréer un `Simulation_level.ethernet_cable` sur les
+mêmes hublets, donc de reprendre le séquencement écarté aux épisodes 1, 5 et 8 (avec ses raisons :
+`Recursive_mutex` pris depuis le thread GTK, re-création asynchrone après le dialogue). C'est le
+vrai travail de conception à faire, et il est plus lourd qu'un retour en arrière.
