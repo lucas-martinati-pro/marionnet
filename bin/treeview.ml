@@ -1621,17 +1621,29 @@ object(self)
      iterator obtained by store#get_iter of a path. Anything needing to traverse the rows should
      use the internal forest (get_id_forest, get_row_list). *)
 
+  (* Same discipline, and for the same reason, as remove_row/remove_subtree/clear above: these four
+     mutate the widget from whatever thread calls them, and `row-expanded'/`row-collapsed' ARE
+     connected (see the initializer: on_row_expand/on_row_collapse), so Gtk+ re-enters OCaml
+     synchronously inside the call — deadlocking the runtime when the caller is not the GTK main
+     thread. The callers concerned are not hypothetical: `add_substate_of'
+     (treeview_history.ml, one collapse per COW state) runs in a task runner task, reached from
+     create_cow_file_name_and_thunk_to_get_the_source (user_level.ml) every time a machine or a
+     router starts; add_row below collapses the row it has just created; treeview_defects and
+     treeview_ifconfig collapse on component creation. What has kept this from freezing so far is
+     that Gtk+ only emits when the state actually CHANGES: collapsing an already-collapsed row —
+     the common case — emits nothing. A deployed tree is enough to lose the process, which is
+     precisely how the closing freeze behaved before being caught. *)
   method expand_row id =
-    view#expand_row (self#id_to_path id)
+    GMain_actor.apply_extract (fun () -> view#expand_row (self#id_to_path id)) ()
 
   method expand_everything =
-    view#expand_all ()
+    GMain_actor.apply_extract (fun () -> view#expand_all ()) ()
 
   method collapse_everything =
-    view#collapse_all ()
+    GMain_actor.apply_extract (fun () -> view#collapse_all ()) ()
 
   method collapse_row id =
-    view#collapse_row (self#id_to_path id)
+    GMain_actor.apply_extract (fun () -> view#collapse_row (self#id_to_path id)) ()
 
   method is_row_highlighted row_id =
     match self#get_row_field row_id "_highlight" with
