@@ -338,8 +338,10 @@ class globalState = fun () ->
       (* Destroy whatever the LEDgrid manager is managing: *)
       let () = self#network#ledgrid_manager#reset in
       let () = self#network#reset (*~scheduled:true*) () in
-      (* Update the network sketch (now empty): *)
-      let () = self#mainwin#sketch#set_file "" in
+      (* Update the network sketch (now empty). This method runs in its own thread, so the widget
+         call goes through the actor — same discipline as really_refresh_sketch below, and the
+         same reason as the treeview mutations (episodes 9 and 10). *)
+      let () = GMain_actor.apply_extract (fun () -> self#mainwin#sketch#set_file "") () in
       (* --- *)
       let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
       (* --- *)

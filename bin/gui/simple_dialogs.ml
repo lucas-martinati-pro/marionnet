@@ -25,8 +25,21 @@ open Gettext;;
 (* let utf8 x = Glib.Convert.convert x "UTF-8" "ISO-8859-1";;  *)
 let utf8 x = x;; (* We currently don't use this. It works better :-) *)
 
+(* Every dialog built here runs inside GMain_actor.apply_extract, because these functions are
+   called from threads that are NOT the GTK main thread — and building a widget from another
+   thread is the same violation that froze the whole process at episodes 9 and 10 (see the long
+   comment in treeview.ml). The callers that matter are not exotic: the death monitor thread
+   warns the user when a process dies unexpectedly (simulation_level.ml), a failing task runner
+   task pops a warning (user_level.ml), the open/save/close threads report their errors
+   (state.ml), and so do the menu action threads (gui_menubar_MARIONNET.ml) — i.e. precisely the
+   paths that fire when something has already gone wrong. apply_extract runs the body on the spot
+   when the caller already is the GTK main thread, so the many call sites that were correct all
+   along pay nothing and keep their exact semantics, exceptions included. This wrapping is what
+   Progress_bar has been doing since the beginning; these dialogs simply never got it. *)
+
 (** Generic constructor for message dialog *)
 let message win_title ?modal (msg_title) (msg_content) (img_file) () =
+  GMain_actor.apply_extract (fun () ->
   let d = new Gui.dialog_MESSAGE () in
   d#toplevel#set_resizable true;
   Option.iter (d#toplevel#set_modal) modal;
@@ -39,7 +52,7 @@ let message win_title ?modal (msg_title) (msg_content) (img_file) () =
   d#content#set_label msg_content;
   d#content#set_selectable true;
   d#image#set_file (Initialization.Path.images ^ img_file);
-  ()
+  ()) ()
 ;;
 
 (** Specific constructor for help messages *)
@@ -68,6 +81,7 @@ let info ?modal title msg () =
     switch) none. [header] is a short bold headline shown next to the icon; the optional
     [preamble] is a longer wrapped sentence introducing the list just above it. *)
 let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * string * [`Info | `Warning]) list) () =
+  GMain_actor.apply_extract (fun () ->
   let window =
     GWindow.window
       ~title
@@ -144,7 +158,7 @@ let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * st
   end in
   close#misc#set_can_default true;
   close#misc#grab_default ();
-  window#show ()
+  window#show ()) ()
 ;;
 
 (** Show a new dialog displaying a progress bar *)
@@ -157,6 +171,12 @@ let destroy_progress_bar_dialog dialog =
 
 (* --- *)
 let confirm_dialog ~question ?(cancel = false) () =
+  (* Note for this one: #run() enters a nested main loop, which does go back through ml_poll and
+     therefore does release the master lock — so it was not a freeze candidate by itself. It is
+     wrapped all the same, because building the dialog beforehand is, and because a nested main
+     loop spun by a secondary thread while the main thread runs its own is a race we do not want
+     to reason about twice. *)
+  GMain_actor.apply_extract (fun () ->
   let dialog = new Gui.dialog_QUESTION () in
   dialog#toplevel#set_icon (Some Icon.icon_pixbuf);
   dialog#toplevel#set_title (utf8 "Confirmation");
@@ -179,7 +199,8 @@ let confirm_dialog ~question ?(cancel = false) () =
     end
   done;
   dialog#toplevel#destroy ();
-  !result;
+  !result) ()
+;;
 
 (** Only internally used: *)
 exception TheUserCanceled;;
@@ -202,6 +223,7 @@ let ask_text_dialog
     ?(spacing=20)
     ~ok_callback
     () =
+  GMain_actor.apply_extract (fun () ->
   let window =
     GWindow.window
       ~title
@@ -243,4 +265,5 @@ let ask_text_dialog
   end in
   button_ok#misc#set_can_default true;
   button_ok#misc#grab_default ();
-  window#show ();;
+  window#show ()) ()
+;;

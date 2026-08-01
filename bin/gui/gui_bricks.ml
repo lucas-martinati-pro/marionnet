@@ -1003,7 +1003,12 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
         ~position:`MOUSE
         ()
     in
-    ignore (Thread.create (fun () -> buttons_now_insensitive (); content := Option.extract_or (Egg.wait result) !content; buttons_now_sensitive ()) ());
+    (* The two sensitiveness updates are widget calls made from this thread: they go through the
+       actor (episodes 9 and 10). Egg.wait, which is what the thread exists for, stays outside. *)
+    ignore (Thread.create (fun () ->
+      GMain_actor.apply_extract buttons_now_insensitive ();
+      content := Option.extract_or (Egg.wait result) !content;
+      GMain_actor.apply_extract buttons_now_sensitive ()) ());
   in
   ignore (edit_button#connect#clicked (make_editing_window));
   (edit_button#misc#set_sensitive check_button#active);

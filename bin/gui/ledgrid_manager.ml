@@ -145,6 +145,8 @@ object (self)
 
   method make_device_ledgrid ~id ~title ~label ~port_no ?port_labelling_offset ~image_directory
       ?connected_ports:(connected_ports=[])() =
+    (* Widgets from the GTK main thread only — see the comment above `reset' below. *)
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     Log.printf3 "ledgrid_manager: Making a ledgrid with title %s (id=%d) with %d ports.\n" title id port_no;
     let ledgrid_widget, window_widget =
@@ -166,25 +168,28 @@ object (self)
       Log.printf ~v:2 "ledgrid_manager: Ok, passed.\n";
     with _ ->
       Log.printf ~v:2 "ledgrid_manager: FAILED.\n");
-    self#unlock
+    self#unlock) ()
 
   method show_device_ledgrid ~id () =
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     (try
       (self#id_to_window id)#show ();
     with _ ->
       Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id);
-    self#unlock
+    self#unlock) ()
 
   method hide_device_ledgrid ~id () =
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     (try
       (self#id_to_window id)#misc#hide ();
     with _ ->
       Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id);
-    self#unlock
+    self#unlock) ()
 
   method destroy_device_ledgrid ~id () =
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     Log.printf1 "ledgrid_manager: Destroying the ledgrid with id %d\n" id;
     (try
@@ -194,9 +199,10 @@ object (self)
      with _ ->
       Log.printf1 "ledgrid_manager: WARNING: failed in destroy_device_ledgrid: id is %d\n" id
     );
-    self#unlock
+    self#unlock) ()
 
   method set_port_connection_state ~id ~port ~value () =
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     Log.printf3
       "ledgrid_manager: Making the port %d of device %d %s\n"
@@ -212,9 +218,14 @@ object (self)
     with _ ->
       Log.printf2 "ledgrid_manager: WARNING: failed in set_port_connection_state: id=%d port=%d\n" id port
     );
-    self#unlock
+    self#unlock) ()
 
   method flash ~id ~port () =
+    (* Hot path: the blinker thread calls this on every datagram it receives. Kept SYNCHRONOUS
+       (apply_extract, not delegate ~async) on purpose: it gives the blinker natural backpressure
+       instead of piling idle callbacks up in the main loop, and OCaml threads were already
+       serialised by the runtime master lock anyway, so nothing is lost in parallelism. *)
+    GMain_actor.apply_extract (fun () ->
     self#lock;
     (try
 (* Annoying for the world_gateway *)
@@ -224,18 +235,34 @@ object (self)
      with _ ->
        ())
       (* Log.printf "WARNING: failed in flashing (id: %i; port: %i)\n" id port) *);
-    self#unlock
+    self#unlock) ()
 
   (** Destroy all currently existing widgets and their data, so that we can start
       afresh with a new network: *)
+  (* Every method of this class that touches a widget runs inside GMain_actor.apply_extract, for
+     the reason spelled out at length in treeview.ml (episodes 9 and 10): touching Gtk+ from a
+     thread other than the main one can make lablgtk re-enter OCaml and ask for a master lock the
+     calling thread already holds, freezing the whole process. Here the callers are the closing
+     thread (state.ml calls #reset), task runner tasks (component destruction), and above all the
+     permanent blinker thread, which flashes LEDs for the entire life of a simulation.
+     The wrapping deliberately encloses the mutex too: were only the widget calls delegated, a
+     thread would hold this mutex WHILE waiting for the main thread, which is the deadlock shape
+     rejected at episode 5. Enclosing lock and unlock means the mutex is only ever taken by the
+     main thread, so it can no longer be part of a cycle.
+     Left untouched, and pre-existing: make_device_ledgrid takes the lock and then calls
+     set_port_connection_state, which takes it again — Mutex.lock is not recursive, so passing a
+     non-empty ~connected_ports would self-deadlock. It never happens today (the list is always
+     empty at that point) and fixing it means deciding between a recursive mutex and an unlocked
+     inner variant: a separate decision, not a side effect of this one. *)
   method reset =
+    GMain_actor.apply_extract (fun () ->
     (* Log.print_string "\n\n*************** LEDgrid_manager: reset was called.\n\n"; *)
     let hashmap_as_alist = Hashmap.to_list id_to_data in
     ignore (List.map
               (fun (id, _) ->
                 self#destroy_device_ledgrid ~id ();
                 Hashmap.remove id_to_data id)
-              hashmap_as_alist);
+              hashmap_as_alist)) ();
 
   val blinker_thread = ref None;
 
