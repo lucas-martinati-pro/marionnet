@@ -1199,3 +1199,56 @@ replier » de chaque treeview, repli automatique à la création des lignes, dé
 avec l'onglet *Disques* déployé). À faire au prochain run.
 
 **Reste au chantier** : inchangé (épisode 8), plus l'arbitrage sur la **classe B** ci-dessus.
+
+---
+
+### Épisode 11 — 2026-08-01 — la classe B, et le verrou qu'il fallait enfermer avec
+
+Arbitrage rendu : la classe B est corrigée. Quatre fichiers, aucun changement de comportement
+attendu — `apply_extract` applique sur place quand l'appelant **est** le thread principal, ce qui
+est le cas de la grande majorité des sites d'appel existants.
+
+**`bin/gui/simple_dialogs.ml` — les 4 constructeurs.** `message` (donc `error`, `warning`, `info`,
+`help`), `recapitulative`, `confirm_dialog` et `ask_text_dialog` enveloppent désormais leur corps.
+Un seul point pour `message` couvre les quatre fonctions dérivées, soit une quinzaine de sites
+d'appel — dont les trois qui comptent, parce qu'ils se déclenchent **quand quelque chose vient
+déjà de mal tourner** : le thread du *death monitor* qui prévient d'une mort inattendue de
+processus (`simulation_level.ml:1468`), la tâche du task runner qui a échoué (`user_level.ml:190`),
+et les threads open/save/close et d'actions de menu qui rapportent leurs erreurs. `confirm_dialog`
+est enveloppé bien qu'il ne fût **pas** un candidat au gel (son `#run ()` repasse par `ml_poll`,
+qui relâche le master lock) : sa construction, elle, l'était, et une boucle imbriquée lancée par un
+thread secondaire pendant que le thread principal tourne la sienne est une course qu'on préfère ne
+pas avoir à réexaminer.
+
+**`bin/gui/ledgrid_manager.ml` — 7 méthodes, verrou compris.** C'est le cas le plus permanent du
+programme : le **thread blinker** fait clignoter les LED pendant toute la vie d'une simulation, et
+`#reset` est appelé par le thread de fermeture. Le point délicat est le `Mutex` interne : n'envelopper
+que les appels de widgets aurait fait qu'un thread **détient ce mutex pendant qu'il attend le thread
+principal** — exactement la forme de deadlock refusée à l'épisode 5. L'enrobage englobe donc
+`lock` et `unlock` : le mutex n'est plus jamais pris que par le thread principal, il ne peut plus
+entrer dans un cycle. `flash` reste **synchrone** délibérément (`apply_extract`, pas
+`delegate ~async`) : cela donne au blinker une contre-pression naturelle au lieu d'empiler des
+*idle* dans la boucle principale, et les threads OCaml étaient de toute façon déjà sérialisés par
+le master lock — rien n'est perdu en parallélisme.
+
+**Deux sites isolés** : `state.ml:342` (`sketch#set_file ""`, dans le thread de fermeture) et le
+thread de `gui_bricks.ml` (les deux mises à jour de sensibilité des boutons ; `Egg.wait`, raison
+d'être du thread, reste évidemment dehors).
+
+**Trouvé en chemin, signalé, non corrigé.** (a) `make_device_ledgrid` prend le verrou puis appelle
+`set_port_connection_state`, qui le **reprend** — `Mutex.lock` n'est pas récursif, donc un
+`~connected_ports` non vide s'auto-bloquerait. Cela n'arrive pas aujourd'hui (la liste est toujours
+vide à cet endroit) et le corriger suppose de trancher entre mutex récursif et variante interne non
+verrouillée : décision séparée, pas un effet de bord de celle-ci. (b) `Treeview#detach_view_in`
+utilise `delegate`, qui **jette l'`Either`** : le `raise e` de `private_detach_view_in`
+(`treeview.ml:1747`), écrit pour signaler l'échec du *thunk* après restauration du modèle, est donc
+**mort** — aucun appelant ne l'a jamais vu. Le correctif est d'une ligne (`apply_extract`), mais il
+change la **propagation des erreurs**, pas la discipline de thread : à décider à part.
+
+**Vérification.** `dune build` rc=0 sur chacune des trois étapes (dialogues, ledgrid, sites
+isolés), puis `make rebuild install-for-testing` rc=0. **Le rejeu GUI n'est pas joué et il est ici
+nécessaire** — contrairement à l'épisode 10 où le correctif était purement préventif, ces chemins
+sont visibles à l'œil : un dialogue d'erreur doit toujours s'afficher (provoquer un « Enregistrer
+sous » en échec), les LED doivent toujours clignoter et les fenêtres LED s'ouvrir/se fermer, la
+fermeture de projet doit toujours vider le dessin. Tant que ce rejeu n'a pas eu lieu, seul le
+compilateur s'est prononcé.
