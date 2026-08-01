@@ -1120,3 +1120,82 @@ exceptions.
 **Reste au chantier** : inchangé — la cause profonde de la lecture décalée de 8 octets
 (épisode 6, point 1), le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B4, et le
 `can_suspend` des câbles (épisode 8).
+
+---
+
+### Épisode 10 — 2026-08-01 — les frères du gel : audit des appels GTK hors thread principal
+
+L'épisode 9 a corrigé **un** site. La question suivante s'imposait : combien d'autres attendent leur
+tour ? Audit sur `bin/`, `bin/gui/` et les couches GTK de `lib/`, puis correction de la seule classe
+dont les trois conditions sont réunies.
+
+**Le critère, et sa condition discriminante.** Le gel exige **trois** choses simultanément :
+(1) un thread ≠ principal, (2) un appel GTK qui émet un signal **synchronement**, (3) un callback
+OCaml **connecté** à ce signal. La condition (2) est celle qui trie, et elle n'est pas intuitive :
+`#run ()` d'un dialogue **ne gèle pas** par ce mécanisme, parce que sa boucle imbriquée repasse par
+`ml_poll` (`ml_glib.c:319`), lequel **relâche** le master lock avant de dormir ; `store#remove`,
+`view#collapse_row` ou `#destroy`, eux, émettent **dans l'appel**, sans jamais rendre le lock. Un
+audit qui se contenterait de chercher « du GTK dans un thread » classerait donc mal les deux tiers
+des sites.
+
+**Classe A — corrigée ici.** `expand_row`, `expand_everything`, `collapse_everything` et
+`collapse_row` (`treeview.ml`) agissent sur la **vue**, dont les signaux `row-expanded` et
+`row-collapsed` **sont connectés** (`on_row_expand`/`on_row_collapse`, branchés dans
+l'`initializer`). Les trois conditions sont réunies, et les appelants concernés ne sont pas
+théoriques :
+
+| Appelant | Thread | Fréquence |
+|---|---|---|
+| `treeview_history.ml:242` (`add_substate_of`) | **task runner**, via `user_level.ml:1424` ← `machine.ml:672` / `router.ml:1115` ← `create_right_now` (`user_level.ml:204`) | à **chaque** démarrage de machine ou de routeur |
+| `treeview.ml:1180` (`add_row` replie la ligne qu'il vient de créer) | idem | toute addition de ligne hors thread principal |
+| `treeview_defects.ml:204,240` · `treeview_ifconfig.ml:177` | idem | création d'un composant, chargement de projet |
+
+Ce chemin était **déjà attesté** sans avoir été reconnu comme tel : l'échec `id_to_iter` des
+épisodes 4-5 s'est produit exactement dans `add_substate_of → collapse_row`, depuis le task runner.
+Ce qui a empêché le gel jusqu'ici est une propriété de Gtk+ : **le signal n'est émis que si l'état
+change**. Replier une ligne déjà repliée — le cas courant, et le commentaire de
+`treeview_history.ml` le dit — n'émet rien. Il suffit d'un arbre déployé au mauvais moment pour
+perdre le processus : même profil erratique que le gel de fermeture avant qu'on ne le comprenne.
+Correctif : les 4 méthodes passent par `GMain_actor.apply_extract`, ce qui protège leurs **12**
+appelants sans en toucher un seul (vérifié : aucun `view#expand_*`/`view#collapse_*` ne les
+contourne).
+
+**Classe B — inventoriée, non corrigée** (décision de l'auteur : audit d'abord). Appels GTK hors
+thread principal dont on n'a **pas** établi qu'ils émettent vers un callback connecté : gel non
+démontré, mais violation de l'invariant de concurrence et exposition X11 réelle.
+`bin/gui/simple_dialogs.ml` n'utilise **aucun** `GMain_actor` — `message`, donc `error`/`warning`/
+`info`/`help`, construit le dialogue et enchaîne ses `set_*` dans le thread appelant :
+
+| Site | Thread | Déclencheur |
+|---|---|---|
+| `simulation_level.ml:1468` (`execute_the_unexpected_death_callback`) | **thread du death monitor** (`death_monitor.ml:188-192`) | mort inattendue d'un processus — survient à n'importe quel instant |
+| `user_level.ml:190` | task runner | échec d'une tâche (le *progress bar*, lui, est protégé : il passe par `Progress_bar`) |
+| `state.ml:464,518,530,565,824` | threads open/save/close | chargement ou sauvegarde en erreur |
+| `gui_menubar_MARIONNET.ml:194,323` | threads d'actions de menu (5 `Thread.create`) | échec d'un « Enregistrer sous », etc. |
+| `ledgrid_manager.ml:182-192` (`#misc#hide`, `#destroy`) | close_project / task runner | fermeture de projet, destruction de composant |
+| `state.ml:342` (`sketch#set_file ""`) · `gui_bricks.ml:1006` (`set_sensitive`) | close_project / thread `Egg.wait` | déjà relevés à l'épisode 9 |
+
+Si l'on décide de traiter cette classe, le point d'étranglement est étroit : envelopper les
+**4 constructeurs** de `simple_dialogs.ml` couvre d'un coup une dizaine de sites d'appel.
+
+**Classe C — les patrons corrects**, qui montrent que la règle était connue et seulement appliquée
+par endroits : `progress_bar.ml` (`apply_extract` à la création, `delegate` pour `show`/`destroy`),
+`state.ml:807` (`really_refresh_sketch`), `state.ml:852` (`network_change`), et **toutes** les
+réactions Cortex de `motherboard_builder.ml` — ce qui compte double, puisque Cortex exécute chaque
+réaction dans un thread jeté (`cortex.ml:310-313`).
+
+**Non tranché, faute de mesure** : `store#append`/`store#set` (`treeview.ml:1147,1155,371,503,683`)
+déclenchent-ils le `cell_data_func` du renderer d'icônes **synchronement** ? En Gtk+ 3 la
+revalidation passe normalement par un *idle*, auquel cas la condition (2) n'est pas remplie. Cela
+se vérifie par mesure, pas par lecture — et cela conditionne le classement des méthodes d'ajout.
+
+**Vérification, et ce qu'elle ne couvre pas.** `dune build` rc=0 ; `make rebuild
+install-for-testing` rc=0 ; vérifié aussi qu'aucun appel ne contourne les 4 méthodes (les seuls
+`view#expand_*`/`view#collapse_*` du dépôt sont leurs corps). Le correctif est **préventif** : son
+succès ne se prouve pas par un run vert, puisque le déclencheur — replier, depuis le task runner,
+une ligne réellement dépliée — est rare par construction. **Non joué à ce stade** : le rejeu GUI de
+non-régression sur les chemins où ces méthodes servent au quotidien (boutons « tout déplier / tout
+replier » de chaque treeview, repli automatique à la création des lignes, démarrage d'une machine
+avec l'onglet *Disques* déployé). À faire au prochain run.
+
+**Reste au chantier** : inchangé (épisode 8), plus l'arbitrage sur la **classe B** ci-dessus.
