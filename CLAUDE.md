@@ -192,6 +192,9 @@ Reprise : appliquer le skill `chantier-long`.
 - **Chantiers clos** (archives durables, à consulter avant de rouvrir un sujet qu'ils couvrent) :
   `docs/migration-ocaml5.md` (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md`
   (clos 2026-07-18), `docs/daemon-elimination-study.md` (clos 2026-07-17).
+- **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours
+  (ce qui relève d'un chantier reste dans son doc, § « Reste au chantier »). Chaque entrée porte le
+  constat, ce qu'on veut à la place, et l'obstacle d'implémentation déjà identifié.
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,
   `marionnet-gui`, `marionnet-pupisto` (`.claude/skills/`).
