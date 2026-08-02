@@ -345,10 +345,14 @@ class string_column = fun
     col#set_resizable true;
     self#set_gtree_view_column col
 
+  (* B6 (episode 14): read from the internal forest, not from the widget — see the long comment
+     in icon_column#append_to_view. Cheaper too: a hashtable lookup instead of resolving a path
+     and crossing the GValue conversion. *)
   method get row_id =
-    let tree_iter = treeview#id_to_iter row_id in
-    let store = (treeview#store :> GTree.tree_store) in
-    Row_item.String(store#get ~row:tree_iter ~column:self#gtree_column)
+    Row_item.String
+      (Row.String_field.get
+         ~caller:"Treeview.string_column#get" ~field:self#header
+         (treeview#get_complete_row row_id))
 
   method set ?(initialize=false) ?row_iter ?(ignore_constraints=false) row_id item =
     (if not (self#header = "_id") then
@@ -479,10 +483,12 @@ fun ~(treeview:treeview)
     col#set_resizable true;
     self#set_gtree_view_column col
 
+  (* B6 (episode 14): read from the internal forest, not from the widget. *)
   method get row_id =
-    let tree_iter = treeview#id_to_iter row_id in
-    let store = (treeview#store :> GTree.tree_store) in
-    Row_item.CheckBox(store#get ~row:tree_iter ~column:self#gtree_column)
+    Row_item.CheckBox
+      (Row.CheckBox_field.get
+         ~caller:"Treeview.checkbox_column#get" ~field:self#header
+         (treeview#get_complete_row row_id))
 
   method set ?(initialize=false) ?row_iter ?(ignore_constraints=false) row_id (item : Row_item.t) =
     (if not initialize then begin
@@ -629,18 +635,35 @@ object(self)
        "CRITICAL: gtk_tree_cell_data_func ... Icon lookup failed" of journal 56. A rendering
        function must be total: an unknown value is now logged and drawn blank, instead of killing
        the redraw of the whole treeview. *)
+    (* B6 (episode 14): and the icon name is no longer read from the widget at all. Reading a
+       string column of the Gtk model is not reliable in this stack: the returned string has the
+       right length and a correct tail, but its first word is overwritten by a heap address
+       (0x56A90F… in one run, 0x5DD0D3… in the next: constant within a run, so an address, and
+       glibc's brk range rather than OCaml's). The internal forest is the source of truth, exactly
+       as for identities since episodes 5 and 6 — this was the last read of a *value* from the
+       widget on a hot path. Only the *structure* is still asked of the model: the path of the row.
+       Measured, not guessed: 21 and 43 occurrences in the two runs of episode 14, and the
+       hypothesis of a garbage collection artefact was refuted there (a 256 MB minor heap, i.e.
+       almost no minor collection, did not lower the count). *)
+    let icon_name_of_iter (model : GTree.model) iter =
+      match treeview#path_to_id_opt (model#get_path iter) with
+      | None    -> failwith "the internal forest has no row at this path"
+      | Some id ->
+          Row.Icon_field.get
+            ~caller:"Treeview.icon_column: cell renderer" ~field:self#header
+            (treeview#get_complete_row id)
+    in
     let icon_cell_data_function =
       (fun renderer (model:GTree.model) iter ->
-        let icon_as_string = model#get ~row:iter ~column:self#gtree_column in
         let pixbuf =
           try
-            let (_, pixbuf) = self#lookup_by_string icon_as_string in
+            let (_, pixbuf) = self#lookup_by_string (icon_name_of_iter model iter) in
             pixbuf
           with e ->
             let () =
-              Log.printf3 ~force:true
-                "Treeview.icon_column#append_to_view: WARNING: column \"%s\": no icon matches the value \"%s\" (%s); drawing an empty cell\n"
-                self#header icon_as_string (Printexc.to_string e)
+              Log.printf2 ~force:true
+                "Treeview.icon_column#append_to_view: WARNING: column \"%s\": no icon for this row (%s); drawing an empty cell\n"
+                self#header (Printexc.to_string e)
             in
             Lazy.force blank_pixbuf
         in
@@ -659,10 +682,12 @@ object(self)
     col#set_resizable true;
     self#set_gtree_view_column col
 
+  (* B6 (episode 14): read from the internal forest, not from the widget. *)
   method get row_id =
-    let tree_iter = treeview#id_to_iter row_id in
-    let store = (treeview#store :> GTree.tree_store) in
-    Row_item.Icon(store#get ~row:tree_iter ~column:self#gtree_column)
+    Row_item.Icon
+      (Row.Icon_field.get
+         ~caller:"Treeview.icon_column#get" ~field:self#header
+         (treeview#get_complete_row row_id))
 
   method set ?(initialize=false) ?row_iter ?(ignore_constraints=false) row_id (item : Row_item.t) =
     (if not initialize then begin
@@ -1627,8 +1652,13 @@ object(self)
      because two of the callers (the end of an edition, the toggle of a checkbox) *write* through
      it. Note the asymmetry with the icon renderer below, which must stay total: this method is
      called from occasional event callbacks, not from a cell_data_func replayed at every redraw. *)
+  (* B6 (episode 14): the total variant, for the one caller that must never raise — the icon
+     renderer, replayed at every redraw from Gtk's C stack. *)
+  method path_to_id_opt path : string option =
+    self#path_indices_to_id (Array.to_list (GTree.Path.get_indices path))
+
   method path_to_id path : string =
-    match self#path_indices_to_id (Array.to_list (GTree.Path.get_indices path)) with
+    match self#path_to_id_opt path with
     | Some id -> id
     | None ->
         failwith
