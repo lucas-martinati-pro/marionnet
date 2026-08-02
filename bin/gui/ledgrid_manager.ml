@@ -39,6 +39,16 @@ object (self)
   method private lock   = Mutex.lock mutex
   method private unlock = Mutex.unlock mutex
 
+  (** Run the thunk holding the monitor's mutex, releasing it even when the thunk raises.
+      The plain `self#lock; body; self#unlock' sequence used until episode 15 left the mutex
+      locked forever as soon as the body raised — and `make_widget' does build Gtk+ widgets —
+      after which the permanent blinker thread (`flash', called on every datagram received)
+      would block for good. *)
+  method private with_lock : 'a. (unit -> 'a) -> 'a =
+    fun thunk ->
+      let () = self#lock in
+      Fun.protect ~finally:(fun () -> self#unlock) thunk
+
   val id_to_data = Hashmap.make ()
 
   method blinker_thread_socket_file_name =
@@ -73,10 +83,7 @@ object (self)
     connected_ports
 
   method get_connected_ports ~id () =
-    self#lock;
-    let result = self#id_to_connected_ports id in
-    self#unlock;
-    result
+    self#with_lock (fun () -> self#id_to_connected_ports id)
 
   (** This is {e unlocked}! *)
   method private update_connected_ports (id : int) new_connected_ports =
@@ -147,14 +154,18 @@ object (self)
       ?connected_ports:(connected_ports=[])() =
     (* Widgets from the GTK main thread only — see the comment above `reset' below. *)
     GMain_actor.apply_extract (fun () ->
-    self#lock;
+    self#with_lock (fun () ->
     Log.printf3 "ledgrid_manager: Making a ledgrid with title %s (id=%d) with %d ports.\n" title id port_no;
-    let ledgrid_widget, window_widget =
+    (* `make_widget' returns the window first, the ledgrid device second, which is also the order
+       expected by `lookup': (window, device, name, connected_port_indices). *)
+    let window_widget, ledgrid_widget =
       self#make_widget ~id ~port_no ?port_labelling_offset ~title ~label ~image_directory () in
-    Hashmap.add id_to_data id (ledgrid_widget, window_widget, title, connected_ports);
-    ignore (List.map
-              (fun port -> self#set_port_connection_state ~id ~port ~value:true ())
-              connected_ports);
+    Hashmap.add id_to_data id (window_widget, ledgrid_widget, title, connected_ports);
+    (* The *unlocked* variant on purpose: we already hold the mutex, and Mutex.lock is not
+       recursive (episode 15). *)
+    List.iter
+      (fun port -> self#set_port_connection_state_unlocked ~id ~port ~value:true)
+      connected_ports;
     Log.printf ~v:2 "ledgrid_manager: Ok, done.\n";
     Log.printf1 ~v:2 "ledgrid_manager: Testing (1): is id=%d present in the table?...\n" id;
     (try
@@ -167,30 +178,27 @@ object (self)
       let _ = self#lookup id in
       Log.printf ~v:2 "ledgrid_manager: Ok, passed.\n";
     with _ ->
-      Log.printf ~v:2 "ledgrid_manager: FAILED.\n");
-    self#unlock) ()
+      Log.printf ~v:2 "ledgrid_manager: FAILED.\n"))) ()
 
   method show_device_ledgrid ~id () =
     GMain_actor.apply_extract (fun () ->
-    self#lock;
+    self#with_lock (fun () ->
     (try
       (self#id_to_window id)#show ();
     with _ ->
-      Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id);
-    self#unlock) ()
+      Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id))) ()
 
   method hide_device_ledgrid ~id () =
     GMain_actor.apply_extract (fun () ->
-    self#lock;
+    self#with_lock (fun () ->
     (try
       (self#id_to_window id)#misc#hide ();
     with _ ->
-      Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id);
-    self#unlock) ()
+      Log.printf1 "ledgrid_manager: Warning: id %d unknown in show_device_ledgrid\n" id))) ()
 
   method destroy_device_ledgrid ~id () =
     GMain_actor.apply_extract (fun () ->
-    self#lock;
+    self#with_lock (fun () ->
     Log.printf1 "ledgrid_manager: Destroying the ledgrid with id %d\n" id;
     (try
       (self#id_to_window id)#misc#hide ();
@@ -198,12 +206,10 @@ object (self)
       Hashmap.remove id_to_data id
      with _ ->
       Log.printf1 "ledgrid_manager: WARNING: failed in destroy_device_ledgrid: id is %d\n" id
-    );
-    self#unlock) ()
+    ))) ()
 
-  method set_port_connection_state ~id ~port ~value () =
-    GMain_actor.apply_extract (fun () ->
-    self#lock;
+  (** This is {e unlocked}! *)
+  method private set_port_connection_state_unlocked ~id ~port ~value =
     Log.printf3
       "ledgrid_manager: Making the port %d of device %d %s\n"
        port id (if value then " connected" else " disconnected");
@@ -217,8 +223,12 @@ object (self)
       self#update_connected_ports id new_connected_ports;
     with _ ->
       Log.printf2 "ledgrid_manager: WARNING: failed in set_port_connection_state: id=%d port=%d\n" id port
-    );
-    self#unlock) ()
+    )
+
+  method set_port_connection_state ~id ~port ~value () =
+    GMain_actor.apply_extract (fun () ->
+    self#with_lock (fun () ->
+    self#set_port_connection_state_unlocked ~id ~port ~value)) ()
 
   method flash ~id ~port () =
     (* Hot path: the blinker thread calls this on every datagram it receives. Kept SYNCHRONOUS
@@ -226,7 +236,7 @@ object (self)
        instead of piling idle callbacks up in the main loop, and OCaml threads were already
        serialised by the runtime master lock anyway, so nothing is lost in parallelism. *)
     GMain_actor.apply_extract (fun () ->
-    self#lock;
+    self#with_lock (fun () ->
     (try
 (* Annoying for the world_gateway *)
 (*       Log.print_string ("Flashing port " ^ (string_of_int port) ^ " of device " ^ *)
@@ -234,8 +244,7 @@ object (self)
       (self#id_to_device id)#flash port;
      with _ ->
        ())
-      (* Log.printf "WARNING: failed in flashing (id: %i; port: %i)\n" id port) *);
-    self#unlock) ()
+      (* Log.printf "WARNING: failed in flashing (id: %i; port: %i)\n" id port) *))) ()
 
   (** Destroy all currently existing widgets and their data, so that we can start
       afresh with a new network: *)
@@ -249,11 +258,11 @@ object (self)
      thread would hold this mutex WHILE waiting for the main thread, which is the deadlock shape
      rejected at episode 5. Enclosing lock and unlock means the mutex is only ever taken by the
      main thread, so it can no longer be part of a cycle.
-     Left untouched, and pre-existing: make_device_ledgrid takes the lock and then calls
-     set_port_connection_state, which takes it again — Mutex.lock is not recursive, so passing a
-     non-empty ~connected_ports would self-deadlock. It never happens today (the list is always
-     empty at that point) and fixing it means deciding between a recursive mutex and an unlocked
-     inner variant: a separate decision, not a side effect of this one. *)
+     Hence the shape every public method of this class must keep (episode 15):
+       GMain_actor.apply_extract (fun () -> self#with_lock (fun () -> ...)) ()
+     and every *internal* call goes to an `_unlocked' variant instead of to the public method,
+     since Mutex.lock is not recursive: make_device_ledgrid used to call
+     set_port_connection_state, so a non-empty ~connected_ports would have self-deadlocked. *)
   method reset =
     GMain_actor.apply_extract (fun () ->
     (* Log.print_string "\n\n*************** LEDgrid_manager: reset was called.\n\n"; *)
