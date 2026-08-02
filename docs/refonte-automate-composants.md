@@ -1340,3 +1340,73 @@ observée aussi dans ce run), le retrait de l'instrumentation `B6:` de l'épisod
 B4. Le reliquat `can_suspend` de l'épisode 8 (« on peut débrancher un câble dont les deux nœuds sont
 éteints ») **se referme par la règle de projet** : dans la réalité, on débranche parfaitement un
 câble d'une machine éteinte — le comportement est légitime, il n'y a rien à corriger.
+
+---
+
+### Épisode 13 — 2026-08-02 — les **ajouts** au modèle Gtk+ rejoignent le thread principal
+
+L'épisode 10 avait corrigé la classe A, l'épisode 11 la classe B ; la **classe C n'était pas une
+classe à corriger** — c'est l'inventaire des patrons déjà corrects. Ce qui restait ouvert du volet
+« frères du gel » était le point laissé **« non tranché, faute de mesure »** : `store#append` et
+`store#set` déclenchent-ils le `cell_data_func` du renderer d'icônes **synchronement** ? De la
+réponse dépendait le classement des méthodes d'**ajout**, seules mutations du modèle encore nues
+alors que les **suppressions** sont enrobées depuis l'épisode 9.
+
+**Pourquoi la mesure demandée n'aurait pas tranché.** Elle est indécidable dans la direction qui
+compte. Si ce callback OCaml était bien invoqué dans l'appel depuis un thread secondaire, le
+trampoline `marshal` réclamerait le master lock déjà détenu par ce thread : le processus **gèlerait
+avant d'écrire quoi que ce soit** dans le journal. On ne peut instrumenter sans risque que depuis le
+thread principal, où une observation positive prouverait le danger mais où une observation négative
+ne prouverait rien. Comme l'invariant du projet exige déjà que tout appel GTK parte du thread
+principal, et comme `GMain_actor.apply` **applique sur place** quand l'appelant *est* ce thread
+(`gMain_actor.ml:82`), l'enrobage ne coûte rien sur les chemins courants : on enrobe au lieu de
+mesurer. Aucun `Mutex` dans `treeview.ml` — le piège « détenir un verrou en attendant le thread
+principal » de l'épisode 11 ne s'applique pas ici.
+
+**Correctif, `bin/treeview.ml` seul, 5 méthodes, aucun appelant touché** (mêmes patron et
+justification qu'à l'épisode 9, dont le long commentaire fait référence) :
+
+| Méthode | Ce qu'elle mute | Ce que l'enrobage couvre |
+|---|---|---|
+| `add_complete_row_with_no_checking` | `store#append` + `store#set` + n × `column#set` | `add_row` des 4 treeviews ; `private_remove_row`, déjà enrobé, donne une imbrication appliquée sur place |
+| `set_complete_forest` | `store#append` + n × `column#set` (et un `self#clear` lui-même enrobé) | `set_forest`, `load`, `set_row`, `set_row_field`, `set_{String,Icon,CheckBox}_field`, `update_String_field` |
+| `highlight_row`, `unhighlight_row`, `set_row_highlight_color` | `column#set` → `store#set`, **hors** des deux méthodes ci-dessus | `treeview_history.ml:214,228,281,283`, appelés depuis le **task runner** au démarrage d'une machine ; `treeview_defects.ml:452,455` |
+
+Les deux méthodes basses gardent leur corps intact, renommé `private_…`, et l'ancien nom devient
+l'enrobage — le diff est de 39 lignes, dont l'essentiel est du commentaire. `apply_extract`, jamais
+`delegate` : la propagation des exceptions reste celle d'avant.
+
+**Vérification.** `dune build` rc=0 ; `make rebuild install-for-testing` rc=0.
+
+**Rejeu GUI joué le 2026-08-02, journal 25** (1386 lignes ; deux cycles ouvrir/fermer), scénario
+choisi pour exercer les cinq méthodes **et** solder le rejeu que l'épisode 10 avait laissé non
+joué : chargement de projet, « tout déplier / tout replier » dans les 4 onglets, démarrage d'une
+machine avec l'onglet *Disques* déployé, ajout d'une machine et d'un câble, édition d'un champ de
+*Défauts*, suppression d'un composant en marche, sortie.
+
+| Mesure | Résultat |
+|---|---|
+| Gel | aucun ; les deux cycles finissent en `destroy_process_before_quitting: END (success)` et les threads sortent proprement |
+| `id_to_iter … not found`, `ForbiddenTransition`, assertion, `CRITICAL`, tâche « THIS MAY BE SERIOUS » | **0** de chaque |
+| Exceptions | **2**, attendues et identiques : `ColumnConstraintViolated("Loss %")` (l. 910-911) — la saisie hors contrainte dans *Défauts* est refusée par le mécanisme prévu, ce qui atteste au passage que `set_row_field` → `set_complete_forest` fonctionne enrobé |
+| `failed to create the hostfs_directory` | 4, **préexistantes** (déjà au journal 24), sans rapport |
+
+**Ce que ce run infirme — et c'est l'apport le plus utile.** On pouvait espérer que sérialiser les
+mutations avec le rendu ferait disparaître les `icon_column#lookup: ERROR` de la lecture décalée de
+8 octets (épisode 6). **Non** : le journal 25 en porte **25**, toutes dans le thread `.0`, toutes
+émises au **rendu** (`append_to_view` → `cell_data_func`), avec exactement la signature connue —
+préfixe binaire, suffixe lisible intact (`-cable`, `vice-port`, `port`). Le compte brut n'est pas
+comparable à celui du journal 24 (9), le scénario 25 sollicitant bien plus le renderer par ses
+dépliages en masse ; ce qui compte est **qualitatif** : les mutations partent désormais toutes du
+thread principal et la corruption persiste, donc elle **ne provient pas d'une écriture concurrente
+au rendu**. Une famille entière d'hypothèses tombe, et le soupçon se déplace sur la **lecture**
+elle-même — `model#get ~column` (`treeview.ml:634`). Deux indices vont dans ce sens : les octets
+écrasés sont au **nombre de 8**, et leur poids fort est **constant à l'intérieur d'un run** mais
+change d'un run à l'autre (`…5C A3 0D` au 25, `…FC 62` au 24), ce qui est la forme d'une **adresse**
+d'un tas mmapé sous ASLR. Piste, pas conclusion : à instruire dans un épisode dédié.
+
+**Reste au chantier** : la cause profonde de la lecture décalée (épisode 6, désormais mieux cernée
+ci-dessus), le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B4, et les deux
+défauts signalés à l'épisode 11 (mutex non récursif de `make_device_ledgrid`, `raise e` mort de
+`detach_view_in`). Le volet « frères du gel », lui, est **clos** : classes A et B corrigées, classe
+C sans objet, méthodes d'ajout enrobées.
