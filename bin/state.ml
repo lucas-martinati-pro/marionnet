@@ -488,7 +488,18 @@ class globalState = fun () ->
       Log.printf ("state#open_project_async: calling load_treeviews\n");
       (* Undump treeview's data. Doing this action now we allow components
 	 to modify the treeviews according to the marionnet version: *)
-      self#load_treeviews ~project_version ();
+      (* Since episode 15 a treeview failing to load is no longer swallowed. Report it, then carry
+         on with the network import exactly as before: the point is to make the failure visible,
+         not to reorganise the opening. *)
+      (try
+        self#load_treeviews ~project_version ()
+      with e -> begin
+        Log.printf1 "state#open_project_async: load_treeviews failed: %s\n" (Printexc.to_string e);
+        Simple_dialogs.error
+          (s_ "Failed loading the project")
+          (Printexc.to_string e)
+          ()
+        end);
       (* --- *)
       Log.printf ("state#open_project_async: calling import_network\n");
       (* Second, read the xml file containing the network definition.
@@ -619,18 +630,23 @@ class globalState = fun () ->
       ]
    end
 
+  (* The three methods below use apply_extract, not `delegate' (episode 15): `delegate' ignores the
+     Either it gets back, so a treeview failing to load, save or clear was swallowed twice over —
+     once here and once in Treeview#detach_view_in — and, worse, the List.iter silently stopped at
+     the failing treeview, leaving the following ones untouched. For save_treeviews that meant a
+     .mar written without up-to-date treeview files, and a project reported as saved. *)
   method private load_treeviews ~project_version () =
-    GMain_actor.delegate
+    GMain_actor.apply_extract
       (List.iter (fun (treeview : Treeview.t) -> treeview#load ~project_version ()))
       (self#get_treeview_list)
 
   method private save_treeviews =
-    GMain_actor.delegate
+    GMain_actor.apply_extract
       (List.iter (fun (treeview : Treeview.t) -> treeview#save ()))
       (self#get_treeview_list)
 
   method private clear_treeviews =
-    GMain_actor.delegate
+    GMain_actor.apply_extract
       (List.iter (fun (treeview : Treeview.t) -> treeview#clear))
       (self#get_treeview_list)
 
@@ -655,6 +671,12 @@ class globalState = fun () ->
     else begin
       Log.printf "The project *seems* already saved.\n";
       (* Potentially expensive test, kept as a safety net for whatever the flag may miss: *)
+      (* Do NOT "fix" the case which surprises at first sight: after merely starting and stopping
+         a machine, the flag is down (nothing the user edited has changed) yet this test answers
+         "modified", so Marionnet asks whether to save. That is correct and deliberate — starting
+         a machine makes Treeview_history#add_substate_of add a COW disk state, which *is* part of
+         what the .mar stores. The audit of episode 0 (B4) assumed the opposite; the assumption
+         was wrong, and B4 was closed on that ground at episode 15. *)
       if (treeview_forest_list_after_save = (Some self#get_treeview_complete_forest_list))
       then begin
         Log.printf "The project *is* already saved.\n";
@@ -723,50 +745,68 @@ class globalState = fun () ->
       end) ()
     in
     (* --- *)
-    (* Write the network xml file *)
-    User_level.Xml.save_network (self#network) (self#project_paths#networkFile);
-    (* --- *)
-    (* Save also dotoptions for drawing image. *)
-    self#dotoptions#save_to_file (self#project_paths#dotoptionsFile);
-    (* --- *)
-    (* Save treeviews (just to play it safe, because treeview files should be automatically)
-       re-written at every update): *)
-    self#save_treeviews;
-    (* --- *)
-    (* Save the project's version: *)
-    let project_version_as_string = self#string_of_project_version (self#closing_project_version) in
-    UnixExtra.put (self#project_paths#version_file) (project_version_as_string);
-    (* --- *)
-    (* (Re)write the .mar file *)
-    let cmd =
-      let exclude_command_section =
-        let excluded_cows = self#treeview#history#get_files_may_not_be_saved in
-        let excluded_items = List.map (Printf.sprintf "--exclude states/%s") excluded_cows in
-        String.concat " " ("--exclude tmp"::excluded_items)
-      in
-      Printf.sprintf "tar -cSvzf '%s' -C '%s' %s '%s'"
-        filename
-        project_working_directory
-        exclude_command_section
-        project_root_basename
-    in
-    (* --- *)
-    let _ =
-      (*Task_runner.the_task_runner#schedule
-        ~name:"tar"*)
-        ((*fun () ->*) Log.system_or_ignore cmd)
-    in
-    (* --- *)
-    let _ =
-      (*Task_runner.the_task_runner#schedule
-        ~name:"destroy saving progress bar"*)
-        ((*fun () -> *)Progress_bar.destroy_progress_bar_dialog (progress_bar))
-    in
-    (* --- *)
+    (* Since episode 15 `save_treeviews' propagates the failures it used to swallow (see the
+       comment on it above), and so do the other steps below. Two consequences are handled here:
+       (1) whatever happens, the *modal* progress bar must be destroyed, or the GUI would be left
+       unusable; (2) only a save which ran to completion may register the state and report
+       success — otherwise the project would be believed saved while its .mar is incomplete.
+       The failure is caught right here rather than in the callers because `save_project' below
+       runs this body in a thread of its own when called from the GTK main thread, where an
+       escaping exception would simply kill that thread, silently. *)
+    try
+      Fun.protect
+        ~finally:(fun () -> Progress_bar.destroy_progress_bar_dialog (progress_bar))
+        (fun () -> begin
+          (* --- *)
+          (* Write the network xml file *)
+          User_level.Xml.save_network (self#network) (self#project_paths#networkFile);
+          (* --- *)
+          (* Save also dotoptions for drawing image. *)
+          self#dotoptions#save_to_file (self#project_paths#dotoptionsFile);
+          (* --- *)
+          (* Save treeviews (just to play it safe, because treeview files should be automatically)
+             re-written at every update): *)
+          self#save_treeviews;
+          (* --- *)
+          (* Save the project's version: *)
+          let project_version_as_string = self#string_of_project_version (self#closing_project_version) in
+          UnixExtra.put (self#project_paths#version_file) (project_version_as_string);
+          (* --- *)
+          (* (Re)write the .mar file *)
+          let cmd =
+            let exclude_command_section =
+              let excluded_cows = self#treeview#history#get_files_may_not_be_saved in
+              let excluded_items = List.map (Printf.sprintf "--exclude states/%s") excluded_cows in
+              String.concat " " ("--exclude tmp"::excluded_items)
+            in
+            Printf.sprintf "tar -cSvzf '%s' -C '%s' %s '%s'"
+              filename
+              project_working_directory
+              exclude_command_section
+              project_root_basename
+          in
+          (* --- *)
+          let _ =
+            (*Task_runner.the_task_runner#schedule
+              ~name:"tar"*)
+              ((*fun () ->*) Log.system_or_ignore cmd)
+          in
+          (* --- *)
+          ()
+        end);
+      (* --- *)
 (*     let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in (*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*) *)
-    self#register_state_after_save_or_open;
-    Log.printf "state#save_project END. Success.\n";
-    (* --- *)
+      self#register_state_after_save_or_open;
+      Log.printf "state#save_project END. Success.\n";
+      (* --- *)
+    with e -> begin
+      Log.printf1 "state#save_project END. FAILED: %s\n" (Printexc.to_string e);
+      (* The project is deliberately left marked as modified. *)
+      Simple_dialogs.error
+        (s_ "Save")
+        ((s_ "Failed to save the project into the file ") ^ filename)
+        ()
+      end
   end
 
   (* Interface: *)

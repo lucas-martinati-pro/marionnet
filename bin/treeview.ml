@@ -1808,9 +1808,13 @@ object(self)
       raise e;
       end)
 
-  (* Public interface: *)
+  (* Public interface. apply_extract, not `delegate': the latter drops the Either and would make
+     the `raise e' of private_detach_view_in above dead code — the thunk's failure would be
+     silently swallowed, which is exactly the "task that succeeded although it raised" bug of
+     episode 5. Fixed at episode 15, together with the three callers in state.ml which used to
+     swallow it a second time. *)
   method detach_view_in (thunk : unit -> unit) =
-    GMain_actor.delegate (fun () -> self#private_detach_view_in thunk) ()
+    GMain_actor.apply_extract (fun () -> self#private_detach_view_in thunk) ()
 
   initializer
     (* Add hidden reserved columns: *)
