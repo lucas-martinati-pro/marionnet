@@ -169,8 +169,16 @@ Reprise : appliquer le skill `chantier-long`.
   séquencement réel** : `c#destroy` puis `Add.reaction` **enfilé** sur le task runner, dont la file
   est consommée par un seul thread, tandis que `network_change` délègue déjà au thread GTK et
   l'attend → aucun verrou pris depuis GTK, rien de différé après le dialogue ; prouvé en GUI
-  journal 24) ; restent les reliquats : arbitrage B4, retrait de l'instrumentation `B6:`, cause
-  profonde de la lecture décalée (**revue en journal 24**, en mode dégradé non fatal).
+  journal 24) ;
+  et **ép. 15** (2026-08-02, les 2 défauts laissés à l'ép. 11 corrigés — `with_lock`
+  (`Fun.protect`) + variante `_unlocked` dans `ledgrid_manager.ml` ; `apply_extract` sur **toute**
+  la chaîne treeview (`detach_view_in` + les 3 `List.iter` de `state.ml`), avec garde de
+  `private_save_project` : barre modale toujours détruite, succès déclaré **seulement** si la
+  sauvegarde va au bout ; zéro nouvelle chaîne i18n ; prouvé en GUI journal 27 — **et B4 CLOS par
+  arbitrage** : l'état de disque COW ajouté au démarrage d'une machine *est* un contenu du `.mar`,
+  demander la sauvegarde est correct, aucun code de comportement changé).
+  **Reliquat unique** : le retrait de l'instrumentation `B6:` (11 sites). Hors périmètre : la cause
+  profonde de la lecture décalée (sans objet depuis l'ép. 14, le widget n'étant plus lu).
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante

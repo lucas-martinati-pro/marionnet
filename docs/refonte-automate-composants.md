@@ -120,6 +120,15 @@ Le champ est **écrit 14 fois** et **jamais lu** : `grep` sur `next_simulated_de
 
 ### B4 — Le drapeau « projet modifié » est un compteur de rendu
 
+> **CLOS à l'épisode 15** (2026-08-02), en deux temps : la **première** moitié — le compteur de
+> rendu qui salissait le projet — a été supprimée à l'épisode 4 (R3, drapeau `project_dirty`) ; la
+> **seconde** — l'état de disque COW ajouté au treeview *history* — est tranchée par l'auteur comme
+> **légitime**, donc sans correctif. Démarrer une machine crée un état COW qui *est* un contenu
+> persistable du `.mar` : demander la sauvegarde est la bonne réponse, et la prémisse de l'audit
+> ci-dessous (« aucune donnée persistée n'a changé ») était **fausse** dans ce cas. Un commentaire
+> le dit désormais sur place (`state.ml`, `project_already_saved`) pour qu'on ne « corrige » pas ce
+> comportement plus tard.
+
 Chaîne complète :
 
 - `Sketch.refresh_sketch` est un *thunk* installé sur `st#refresh_sketch` (`marionnet.ml:74`,
@@ -157,6 +166,13 @@ persistant a changé »*. Les états des composants relèvent de la première et
 > nouvel état de disque doit compter comme « projet modifié » est un **arbitrage de l'auteur**, pas
 > une suite mécanique de ce chantier. Le symptôme est en revanche bien supprimé pour tous les
 > composants sans historique (hubs, switchs, câbles) et pour suspendre/reprendre.
+>
+> **Arbitrage rendu (épisode 15)** : légitime, on ne touche à rien. Ce qui reste « surprenant » ne
+> l'est qu'au premier regard — après un démarrer/arrêter, le projet contient réellement quelque
+> chose de plus que ce qui a été enregistré. Deux options écartées, et pourquoi : exclure les états
+> COW du test des forêts ferait **perdre en silence** un contenu du `.mar` (même refus qu'à
+> l'épisode 4 pour les *dotoptions*) ; ne salir que si le disque COW *diffère* réellement
+> supposerait de comparer les disques à chaque fermeture, coût sans bénéfice pour l'utilisateur.
 
 ### B5 — Câbles : menus non filtrés sur l'état, et remplacement non séquencé (risque)
 
@@ -1482,3 +1498,158 @@ n'est plus lu. Ce run atteste la non-régression, pas l'élucidation.
 faites depuis OCaml (deux familles réfutées ; instruire par valgrind ou ASAN serait un épisode à
 soi seul, et Marionnet n'y est plus exposé) —, le retrait de l'instrumentation `B6:` de l'épisode 2,
 l'arbitrage B4, et les deux défauts signalés à l'épisode 11.
+
+---
+
+### Épisode 15 — 2026-08-02 — les deux défauts de l'épisode 11, et B4 clos par arbitrage
+
+Le plan de conception étant entièrement joué depuis l'épisode 7, cet épisode ne traite que des
+**reliquats** : les deux défauts que l'épisode 11 avait délibérément laissés (« chacun demande une
+décision propre ») et l'arbitrage B4. Le retrait de l'instrumentation `B6:` reste, par choix de
+l'auteur, pour plus tard.
+
+#### 1. Le verrou du gestionnaire de LED grids (`bin/gui/ledgrid_manager.ml`)
+
+Défaut signalé : `make_device_ledgrid` prend le mutex puis appelle `set_port_connection_state`, qui
+le **reprend** ; `Mutex.lock` n'étant pas récursif, un `~connected_ports` non vide s'auto-bloquerait.
+Inatteignable aujourd'hui (la liste est toujours vide à cet endroit), mais c'est une bombe à
+retardement dans une classe dont **le thread du blinker** est un client permanent.
+
+**Un second défaut, trouvé en relisant, et retenu** : les méthodes faisaient `lock; corps; unlock`
+**sans protection**. Si le corps lève — et `make_widget` construit des widgets Gtk+ —, le mutex
+reste verrouillé **à vie**, après quoi le blinker (`flash`, appelé à chaque datagramme reçu) se
+bloque pour de bon. C'est la même famille de gel silencieux que les épisodes 9 à 13, à ceci près
+que le verrou en cause est celui de la classe, pas le master lock du runtime.
+
+Correctif, en suivant le patron **déjà présent 7 fois** dans le fichier (`(** This is {e
+unlocked}! *)`) plutôt qu'en introduisant un mutex récursif :
+
+- `method private with_lock : 'a. (unit -> 'a) -> 'a` — prend le verrou puis `Fun.protect
+  ~finally:(fun () -> self#unlock)`. Les 7 méthodes verrouillantes y passent ;
+- `method private set_port_connection_state_unlocked` porte désormais le corps, la méthode publique
+  se réduisant à `apply_extract (fun () -> with_lock (fun () -> …)) ()` ;
+- `make_device_ledgrid` appelle la variante **unlocked**, puisqu'il détient déjà le verrou.
+
+L'invariant de l'épisode 11 est préservé : l'enrobage `GMain_actor.apply_extract` **englobe** le
+verrou, de sorte que le mutex n'est jamais détenu pendant l'attente du thread principal. Le
+commentaire de discipline (au-dessus de `reset`) énonce maintenant la forme obligatoire de toute
+méthode publique de la classe, au lieu de décrire un défaut non corrigé.
+
+Au passage, un mésnommage qui n'attendait qu'un lecteur pressé : `make_device_ledgrid` liait
+`ledgrid_widget, window_widget` au couple rendu par `make_widget`, qui rend `window, device` —
+**les deux noms étaient inversés**. Le stockage restait correct (l'ordre attendu par `lookup` est
+`(window, device, name, ports)`), donc rien à corriger côté comportement ; les identifiants locaux
+sont remis à l'endroit.
+
+#### 2. L'échec d'un treeview cesse d'être avalé (`bin/treeview.ml`, `bin/state.ml`)
+
+Défaut signalé : `Treeview#detach_view_in` déléguait par `GMain_actor.delegate`, qui **jette
+l'`Either`** — le `raise e` de `private_detach_view_in` était donc du code mort.
+
+**Ce que la relecture ajoute, et qui a décidé du périmètre** : le corriger seul n'aurait **rien
+changé d'observable**. Son unique appelant, `treeview#load`, avale déjà tout dans son propre
+`try … with`, et surtout `state.ml` ré-avalait via **trois** `delegate` — `load_treeviews`,
+`save_treeviews`, `clear_treeviews`. Le cas grave est `save_treeviews` : un treeview qui échoue à
+s'écrire était silencieux, le `.mar` était produit tout de même et le projet **déclaré
+sauvegardé**. C'est le motif « tâche réussie qui a pourtant levé » de l'épisode 5, cette fois sur
+le chemin le plus coûteux qui soit ; et comme les trois méthodes sont des `List.iter` sur les
+quatre treeviews, l'échec du deuxième laissait silencieusement les deux suivants intacts.
+
+Correctif, de l'aval vers l'amont : `detach_view_in` et les trois méthodes de `state.ml` passent à
+`apply_extract`, puis les deux appelants sensibles sont gardés.
+
+- **`private_save_project`** : le corps qui suit la création de la barre de progression est
+  enveloppé dans `Fun.protect ~finally:(destruction de la barre)` — celle-ci est **modale**, la
+  laisser à l'écran rendrait la GUI inutilisable —, et l'échec est rattrapé sur place :
+  journalisation, dialogue d'erreur, et surtout **ni `register_state_after_save_or_open` ni
+  `END. Success.`**, donc un projet qui reste marqué modifié. Rattraper *ici* et non chez les
+  appelants : sur les six appels de `st#save_project`, un seul chemin (`save_project_as`) possède
+  un `try`, et lorsque l'appel vient du thread GTK, `save_project` exécute ce corps dans un
+  `Thread.create` où une exception échappée tuerait le thread **en silence**.
+- **`open_project_async`** : `load_treeviews` est entouré d'un `try … with` qui journalise et
+  affiche l'échec, **sans changer le flux** — l'import réseau suit son cours comme avant. Le but
+  est la visibilité, pas une réorganisation de l'ouverture.
+
+**Zéro nouvelle chaîne i18n** : l'invariant du projet est que les catalogues soient complets pour
+les 12 langues, une chaîne neuve les casserait toutes. Les trois messages réutilisés — `"Save"`,
+`"Failed to save the project into the file "`, `"Failed loading the project"` — existent et sont
+traduits dans les **14** fichiers `bin/po/*.po` (vérifié avant écriture).
+
+#### 3. B4 : clos par arbitrage, sans correctif
+
+Rappel de l'état : la **première** moitié de B4 — le compteur de rendu qui salissait le projet — a
+été supprimée à l'épisode 4 (drapeau `project_dirty`). La **seconde** est apparue en jouant le
+scénario : démarrer une machine fait ajouter un état de disque COW au treeview *history*, que le
+filet « comparaison des forêts » détecte à juste titre, si bien qu'un simple démarrer/arrêter
+suffit à faire poser la question de la sauvegarde.
+
+**Arbitrage rendu par l'auteur : c'est légitime, on ne touche à rien.** Le nouvel état COW *est* un
+contenu que le `.mar` stocke ; après un démarrer/arrêter, le projet contient réellement quelque
+chose de plus que ce qui a été enregistré. La prémisse de l'audit de l'épisode 0 — « alors
+qu'aucune donnée persistée n'a changé » — était **fausse dans ce cas**. Les deux alternatives sont
+écartées pour des raisons déjà éprouvées dans ce chantier : exclure les états COW du test des
+forêts ferait **perdre en silence** un contenu du `.mar` (même refus qu'à l'épisode 4 pour les
+*dotoptions*) ; ne salir que si le disque diffère réellement supposerait de comparer les disques à
+chaque fermeture, coût sans bénéfice. Un commentaire sur place (`state.ml`,
+`project_already_saved`) dit désormais pourquoi ce comportement ne doit pas être « corrigé ».
+
+#### 4. Preuves
+
+`dune build` rc=0 après chaque volet, `make install-for-testing` rc=0.
+
+**Journal 27** (988 lignes, projet `propre-2machines-1hub`) — ouvrir, enregistrer, démarrer H1,
+tout arrêter, fermer, quitter :
+
+| Ce qui est prouvé | Où |
+|---|---|
+| chargement : `calling load_treeviews` puis **4** treeviews, chacun avec `detach_view_in: about to detach the view` et `successfully loaded` — le `List.iter` va jusqu'au bout | l. 206-262 |
+| sauvegarde : `save_project BEGIN` (thread `.61`) → `save_network: end (success)` → **4** `treeview#save` émis depuis `.0` → `tar` listant les 4 fichiers d'états → `state#save_project END. Success.`, puis destruction de la barre par le `finally` | l. 317-347 |
+| LED grid : `Making a ledgrid with title H1 (id=3) with 4 ports`, blinker démarré puis **sorti proprement** (`please-die` → `has exited now`) | l. 68-69, 286, 952-957 |
+| sortie propre : `at_exit: killing all orphans`, `Thread Exiting (main)` | l. 978-988 |
+| 0 `CRITICAL`, 0 `Assertion`, 0 `id_to_iter`, 0 `ForbiddenTransition`, 0 `Failure`, 0 exception, 0 `FAILED` | — |
+
+Sur le volet 1, la preuve est **indirecte mais décisive** : si `with_lock` avait laissé le mutex
+pris, le `flash` ou le `destroy` suivant aurait gelé le processus. Il est allé jusqu'au bout.
+
+Les **3 `WARNING` du gestionnaire de LED grids** (id 3, l. 837/842/865) ne sont **pas** une
+régression : `ledgrid_manager#reset` détruit le ledgrid de H1 au début de `close_project`, après
+quoi `network#reset` redemande de déconnecter ses ports et de le détruire. Comptes de
+`failed in set_port_connection_state` par journal : j16 = 2, j20 = 10, j22 = 0, j23 = 0, **j24 = 2,
+j25 = 2, j27 = 2** — le motif précède largement cet épisode.
+
+**Ce que ce run ne prouve pas**, et il faut le dire :
+
+- **`clear_treeviews` n'est pas observable** — `Treeview#clear` ne journalise rien ;
+- **`close_project` n'atteint pas son `END. Success.`** : le thread `.359` attendait la terminaison
+  des hublets de H1 (`Waiting for all currently enqueued tasks…`) lorsque le *quit* est arrivé.
+  Ce n'est **pas** un gel — les tâches `destroy H1/m2/m1` se sont exécutées ensuite et la sortie est
+  propre — mais ce n'est pas la preuve de fermeture complète du journal 20 ;
+- les **chemins d'échec** de save/load n'ont pas été déclenchés : ces gardes restent **préventives**,
+  comme celles de l'épisode 10 ;
+- **B4 n'a pas été exercé par ce run, par défaut de scénario** : le projet ayant été fermé avant de
+  quitter, c'est le menu **Fermer** qui a posé la question — or il la pose **inconditionnellement**
+  (`gui_menubar_MARIONNET.ml:257-259`), tandis que seul le **Quitter avec projet actif** consulte
+  `project_already_saved` (`:346`). Le `answer = no` du journal ne dit donc rien de B4. D'où le
+  rejeu ciblé ci-dessous.
+
+**Journal 28** (578 lignes) — ouvrir, démarrer **m1**, l'arrêter, puis **Quitter directement**. Ce
+run n'était pas requis (B4 est clos par arbitrage, aucun code de comportement n'a changé) mais il
+donne la chaîne causale complète, et les deux moitiés de B4 s'y lisent en **deux lignes
+consécutives** :
+
+| l. | ligne du journal | ce qu'elle établit |
+|---|---|---|
+| 332 | `B6: Treeview_history#add_substate_of: parent row 0 ("m1"), 0 sibling(s)…, Calling thread: 8` | démarrer m1 ajoute un état au treeview *history*, depuis le **task runner** |
+| 335 | `cow file: …/states/50674-47107-32583.cow` | l'état ajouté référence un **fichier COW réel**, que le `.mar` stockerait |
+| 508 | `The project *seems* already saved.` | le drapeau `project_dirty` est resté **baissé** — R3 (épisode 4) fait son travail, démarrer/arrêter ne salit rien |
+| 509 | `Something has changed in treeviews: the project must be re-saved.` | c'est **le filet des forêts**, et lui seul, qui déclenche la question |
+| 510-511 | `--- Dialog result: answer = no` | le dialogue de sauvegarde est bien posé au *quit* |
+
+0 `CRITICAL`, 0 `Assertion`, 0 `id_to_iter`, 0 `ForbiddenTransition`, 0 `Failure`, 0
+`raised an exception` ; sortie propre (`at_exit`, `Thread Exiting (main)`) ; aucun `save_project`
+puisque la réponse est *non*. La conclusion de l'arbitrage est ainsi visible plutôt que déduite :
+ce qui déclenche la question n'est pas un artefact de rendu mais un **contenu persistable** de plus.
+
+**Reste au chantier** : le retrait de l'instrumentation `B6:` de l'épisode 2 (11 sites), et la cause
+profonde de l'écrasement — hors d'atteinte des mesures faites depuis OCaml, et sans objet depuis
+l'épisode 14 puisque Marionnet ne lit plus aucune valeur dans le widget.
