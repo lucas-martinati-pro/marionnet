@@ -1118,7 +1118,7 @@ object(self)
     (self#forest_to_id_forest forest),
     (self#forest_to_id_row_list ?add_unspecified_columns forest)
 
-  method private add_complete_row_with_no_checking ?parent_row_id (row: Row.t) =
+  method private private_add_complete_row_with_no_checking ?parent_row_id (row: Row.t) =
     (* Add defaults for unspecified fields: *)
     let row =
       self#add_unspecified_columns ~ignore_constraints:() row
@@ -1163,6 +1163,25 @@ object(self)
           Log.printf2 "  - WARNING: unknown column %s (%s)\n" column_header (Printexc.to_string e);
         end)
       row;
+
+  (* Episode 13 of the work-stream "marionnet-automate-composants": this method, `set_complete_forest'
+     and the three highlighting methods below mutate the Gtk+ tree model exactly as `remove_row',
+     `remove_subtree' and `clear' do, hence they MUST run in the GTK main thread, for the reason
+     detailed at length near `remove_row' (the master lock taken twice by the same thread). They were
+     left out of episode 9 because it had not been established whether `store#append'/`store#set'
+     emit a signal towards a connected OCaml callback *within* the call — the icon renderer's
+     cell_data_func being the candidate. That measurement is undecidable in the direction that
+     matters: were the callback invoked synchronously from a secondary thread, the process would
+     freeze inside the trampoline before logging anything. Since the project's invariant already
+     requires every GTK call to start from the main thread, since the deletions have been wrapped
+     since episode 9, and since apply_extract applies on the spot when the caller already is the main
+     thread, these methods are wrapped rather than measured. The wrapping sits on the private
+     methods, so that every entry point — add_row, set_forest, load, set_row, set_row_field,
+     set_{String,Icon,CheckBox}_field, update_String_field — is covered without touching a single
+     caller. *)
+  method private add_complete_row_with_no_checking ?parent_row_id (row: Row.t) =
+    GMain_actor.apply_extract
+      (fun () -> self#private_add_complete_row_with_no_checking ?parent_row_id row) ()
 
   method add_row ?parent_row_id (row:Row.t) =
     (* Check that no reserved fields are specified: *)
@@ -1210,6 +1229,12 @@ object(self)
 
   (** Completely clear the state, and set it to the given complete forest. *)
   method private set_complete_forest (new_forest : Row.t Forest.t) =
+    (* Episode 13: same reason as `add_complete_row_with_no_checking' above. Note that the nested
+       `self#clear' is itself wrapped: apply_extract applies on the spot once we are the main
+       thread, so the nesting costs nothing and cannot deadlock. *)
+    GMain_actor.apply_extract (fun () -> self#private_set_complete_forest new_forest) ()
+
+  method private private_set_complete_forest (new_forest : Row.t Forest.t) =
     (* Clear our structures and Gtk structures: *)
     self#clear;
     (* Compute our new structures: *)
@@ -1650,17 +1675,23 @@ object(self)
       Row_item.CheckBox b -> b
   | _ -> assert false
 
+  (* Episode 13: these three reach `store#set' through `column#set', outside the two methods wrapped
+     above, and they are called from the task runner (treeview_history.ml, when a machine starts).
+     Same wrapping, same reason. *)
   method highlight_row row_id =
     let highlight_color_column = self#get_column "_highlight" in
-    highlight_color_column#set (row_id) (Row_item.CheckBox true)
+    GMain_actor.apply_extract
+      (fun () -> highlight_color_column#set (row_id) (Row_item.CheckBox true)) ()
 
   method unhighlight_row row_id =
     let highlight_color_column = self#get_column "_highlight" in
-    highlight_color_column#set (row_id) (Row_item.CheckBox false)
+    GMain_actor.apply_extract
+      (fun () -> highlight_color_column#set (row_id) (Row_item.CheckBox false)) ()
 
   method set_row_highlight_color color row_id =
     let highlight_color_column = self#get_column "_highlight-color" in
-    highlight_color_column#set (row_id) (Row_item.String color)
+    GMain_actor.apply_extract
+      (fun () -> highlight_color_column#set (row_id) (Row_item.String color)) ()
 
   method get_row_list =
     Forest.to_list self#get_complete_forest
