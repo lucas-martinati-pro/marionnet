@@ -1410,3 +1410,75 @@ ci-dessus), le retrait de l'instrumentation `B6:` de l'épisode 2, l'arbitrage B
 défauts signalés à l'épisode 11 (mutex non récursif de `make_device_ledgrid`, `raise e` mort de
 `detach_view_in`). Le volet « frères du gel », lui, est **clos** : classes A et B corrigées, classe
 C sans objet, méthodes d'ajout enrobées.
+
+### Épisode 14 — 2026-08-02 — le GC mis hors de cause, et le widget n'est plus lu du tout
+
+Point de départ : le suspect resserré par l'épisode 13 sur la **lecture** `model#get ~column`.
+
+**L'hypothèse, formée par lecture du chemin complet.** `bin/treeview.ml` (renderer d'icônes) appelle
+`GTree.model#get` ; `gTree.ml:85-95` alloue le `GValue` par `Value.create_empty ()`, soit
+(`ml_gobject.c:236`) un bloc custom OCaml de 32 octets — donc logeable dans le *minor heap* — qui
+contient le `GValue` **en ligne**, `GValue_val` en rendant un pointeur **intérieur**. Or le wrapper
+`ML_1 (g_value_get_mlvariant, GValue_val, ID)` (`ml_gobject.c:395`) se développe
+(`wrappers.h:178-179`) en `{ return conv (cname (conv1 (arg1))); }` — **sans `CAMLparam1(arg1)`** :
+l'argument n'est pas une racine GC pendant l'appel, alors que le corps alloue
+(`tmp = Val_option (DATA.v_pointer, copy_string)`, l. 355). D'où l'hypothèse : une valeur déplacée
+ou recyclée par un ramassage survenu au mauvais moment.
+
+**Le test, et sa réfutation.** Levier choisi : la pression du GC mineur, réglable sans recompiler
+(`OCAMLRUNPARAM=s=`), et discriminant **dans les deux sens**. Réglage vérifié effectivement
+appliqué (`Gc.get ()` : 4 096 mots contre 33 554 432, défaut 262 144).
+
+| Run | `minor_heap_size` | GC mineurs | Occurrences | Journal |
+|---|---|---|---|---|
+| témoin (j. 25) | 2 Mo (défaut) | nominaux | 25 | 1386 l. |
+| **A** | **32 Ko** (`s=4k`) | ~64× plus fréquents | **21** | 764 l. |
+| **B** | **256 Mo** (`s=32M`) | quasi aucun de toute la session | **43** | 1104 l. |
+
+Si le mécanisme exigeait une promotion par GC mineur, le run B — où presque aucun ramassage n'a
+lieu, donc où **aucun bloc n'est recyclé** — en aurait montré zéro. Il en montre le double.
+**L'hypothèse est réfutée : le mot écrasé ne vient pas du GC d'OCaml.** C'est le pendant de
+l'épisode 13, qui avait éliminé la concurrence d'écriture : deux familles tombées, la cause reste
+non élucidée.
+
+**Ce que la mesure établit en revanche, et qui corrige la doc.** Les valeurs d'icônes possibles
+étant connues (`treeview_defects.ml:507`, `treeview_ifconfig.ml:393`), on peut confronter longueur
+lue et longueur réelle :
+
+| Valeur réelle | Longueur | Valeur lue | Longueur lue |
+|---|---|---|---|
+| `other-device-port` | 17 | 8 octets + `vice-port` | 17 |
+| `machine-port` | 12 | 8 octets + `port` | 12 |
+| `straight-cable` | 14 | 8 octets + `-cable` | 14 |
+| `rightward` | 9 | 8 octets + `d` | 9 |
+| `machine`, `hub`, `switch`, `router` | 3 à 7 | intégralement écrasées | idem |
+
+La longueur est **rigoureusement conservée**. Ce n'est donc **pas un « décalage d'offset »**, comme
+l'affirmaient les épisodes 6 et 13 — c'est l'**écrasement in-place du premier mot** d'un bloc par
+ailleurs sain. Et la valeur écrite est bien une **adresse** : `0x56A90F……` au run A, `0x5DD0D3……`
+au run B, constante à l'intérieur d'un run, variable d'un run à l'autre. Ces plages sont celles du
+tas `brk` d'un binaire PIE, et non du tas d'OCaml (mmap, `0x7f……`) — indice, non preuve.
+
+**Le correctif : plus aucune valeur n'est lue dans le widget** (`bin/treeview.ml`). La forêt interne
+est la source de vérité depuis les épisodes 5 et 6 pour les *identités* ; l'invariant s'étend
+maintenant aux *valeurs*. Le renderer d'icônes dérive l'identifiant du chemin de la ligne
+(`path_to_id_opt`, variante **totale** ajoutée à côté du `path_to_id` qui échoue nommément —
+un `cell_data_func` ne doit jamais lever, piège de l'épisode 6) puis lit le champ par
+`Row.Icon_field.get`. Les trois `method get` de colonne (`string_column`, `checkbox_column`,
+`icon_column`) suivent la même voie. **Portée à ne pas surestimer** : ces trois méthodes n'ont
+**aucun appelant** dans `bin/` — le chemin réel de lecture est `get_row_field` (`treeview.ml:1424`),
+qui lisait déjà la forêt. Le seul site à la fois fautif et exercé était le renderer ; les trois
+autres réécritures sont **préventives**, et le run ci-dessous ne les exerce pas.
+
+**Preuve GUI, journal C** (932 l., `s=4k` — les conditions mêmes qui produisaient 21 occurrences au
+run A, même projet et même scénario) : **0** `no icon for this row`, **0** `icon_column#lookup`,
+**0** `id_to_iter`, **0** assertion, **0** `CRITICAL`, **0** `ForbiddenTransition`, **0** `Failure`,
+sortie propre. L'absence du premier motif est une preuve *positive* que chaque lecture a abouti sur
+une icône connue : le chemin « cellule vide » est **toujours** journalisé. **Ce que ce run ne prouve
+pas**, et il faut le dire : zéro occurrence était acquis **par construction** puisque le widget
+n'est plus lu. Ce run atteste la non-régression, pas l'élucidation.
+
+**Reste au chantier** : la cause profonde de l'écrasement — désormais hors d'atteinte des mesures
+faites depuis OCaml (deux familles réfutées ; instruire par valgrind ou ASAN serait un épisode à
+soi seul, et Marionnet n'y est plus exposé) —, le retrait de l'instrumentation `B6:` de l'épisode 2,
+l'arbitrage B4, et les deux défauts signalés à l'épisode 11.
