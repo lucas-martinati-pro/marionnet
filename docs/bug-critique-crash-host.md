@@ -180,6 +180,54 @@ chaîne PID 1 — signature compatible C1/C2.
 en cours (terminer tout ? fermeture ?), `df -h` du répertoire temporaire de Marionnet et
 `free -h` en régime de croisière, et récupérer `~/.marionnet/marionnet.log`.
 
+## 4 bis. Faux positifs — ce qui n'est PAS ce bug
+
+Trois symptômes distincts se ressemblent de l'extérieur, parce qu'ils partagent leur **forme
+finale** : le processus racine d'un cgroup/namespace reçoit un SIGKILL et tout ce qui en dépend
+tombe d'un coup. Un observateur voit « tout a disparu brutalement pendant que Marionnet
+tournait » et conclut au crash hôte. **Faire ce tri avant d'accuser le code** : deux des trois
+cas déjà rencontrés sur ce chantier n'étaient pas des crashs hôte (C5, puis l'incident ci-dessous).
+
+Tri en trois commandes, dans cet ordre :
+
+```bash
+uptime -p; who -b                       # (1) la machine a-t-elle VRAIMENT redémarré ?
+journalctl --since '<T-5min>' | grep -E 'user@[0-9]+\.service.*(code=killed|Killing process)'
+journalctl --since '<T-5min>' | grep 'Consumed .* CPU time'   # (3) ordre des morts
+```
+
+- **(1) `uptime` préservé** ⇒ ce n'est pas un reboot : ni C2 (OOM hôte) ni C3 (panic noyau).
+  Le boot d'origine intact **exclut** le symptôme « reboot machine physique » de la matrice § 3.
+- **(2) `user@<UID>.service: Main process exited, code=killed, status=9/KILL`** ⇒ le `systemd
+  --user` de la session a été SIGKILLé ; `systemd[1]` applique alors `KillMode=control-group`
+  et balaie **tout** le cgroup (les lignes `Killing process … with signal SIGKILL` qui suivent
+  sont la **conséquence**, pas la cause). C'est un massacre par SIGKILL à l'échelle de l'UID.
+- **(3) l'ordre tranche l'origine.** Si des `scope: Consumed … CPU time` (un scope se vide)
+  apparaissent **AVANT** la mort de `systemd --user`, les applications mouraient déjà une par
+  une : le tueur **balayait une liste** — filtre de kill trop large. Si elles ne meurent
+  qu'**APRÈS**, c'est bien une cascade descendant de la mort du gestionnaire de session.
+
+**Cas documenté (2026-08-03, 23:52:45) — cause externe, Marionnet hors de cause.** Session KDE
+Plasma entièrement détruite (toutes fenêtres perdues) pendant qu'un Marionnet de test tournait.
+Diagnostic : `uptime` intact (boot du 2026-07-20) ; `user@1001.service … status=9/KILL` ;
+scopes konsole/dolphin/Chrome vidés **avant** (23:52:44.707) la mort de `systemd --user`
+(23:52:45.590) ⇒ critère (3) = filtre trop large. Cause racine établie : non pas Marionnet,
+mais le **harnais de test** (`_claude-local/bench/`), dans une réécriture ad hoc de
+`session_processes` où le motif de session était vide — en bash, `*"$vide"*` se réduit à `**`,
+qui matche **toute** ligne de commande, d'où un `kill -KILL` sur tout `/proc` signalable par
+l'UID. Le motif était vide parce que Marionnet **démarrait encore** (bloqué à
+`x.ml: trying to connect … port 6000`) et n'avait pas encore écrit son répertoire de session
+dans le log lu par le harnais : une course dans l'outil de mesure, pas dans le mesuré.
+Reconstitution temporelle validée à la milliseconde (kill prédit 23:52:44.7 / observé .707).
+Correctif porté dans le harnais : forme du motif validée par regex (et non « non vide »),
+exclusion de PID 1, et **fusible de cardinalité** (au-delà de ~60 processus matchés, le filtre
+est déclaré faux et refuse de rendre sa liste).
+
+**Leçon transposable au code du dépôt** : un garde-fou n'est efficace que s'il est *dans* la
+fonction réutilisée. Ici la version durcie existait déjà et c'est sa copie jetable qui a tué.
+Corollaire pour C1 : préférer partout le prédicat commun (`is_same_process`) à une revérification
+réécrite sur place.
+
 ## 5. Pistes de correctifs (épisodes futurs, ordre suggéré)
 
 1. **C1 — identité des processus** — **FAIT (épisode 1)** : introduire dans `lib/SHELL/linux.ml` un
@@ -273,3 +321,16 @@ l'absence prolongée de récidive + la checklist § 4 valident).
   quo (le shell rend Marionnet chef de groupe). Observations pré-existantes sans lien : le
   handler SIGTERM (`marionnet.ml:405-415`) absorbe SIGTERM (d'où SIGKILL au nettoyage) ; au
   shutdown, `Ocamlbricks.Network.Accepting(_)` sur les threads d'accept (teardown, hors setsid).
+- **2026-08-04 — hors épisode : post-mortem d'un faux positif** (destruction de la session KDE
+  du 2026-08-03 23:52:45, survenue pendant un Marionnet de test). **Marionnet est hors de
+  cause** : la cause racine est le harnais `_claude-local/bench/`, motif de session vide ⇒
+  `*""*` ⇒ `kill -KILL` sur tout `/proc` (détail et preuves § 4 bis). Aucun code du dépôt
+  modifié. Livrables : nouvelle **§ 4 bis « Faux positifs »** (tri en trois commandes :
+  `uptime` ⇒ pas de reboot ; `user@UID.service … status=9/KILL` ⇒ massacre à l'échelle de
+  l'UID ; ordre des `Consumed … CPU time` ⇒ filtre trop large *vs* cascade) et durcissement de
+  `session_processes` dans les deux bancs (regex sur la forme du motif, exclusion de PID 1,
+  fusible de cardinalité à 60). Vérifié : `bash -n` rc 0 sur les deux scripts ; test de la
+  fonction en isolation — cas nominal 1 PID, et 0 PID sur motif vide / `/tmp` / sans suffixe
+  `.dir` / avec métacaractère, fusible déclenché à seuil forcé. **Ce que ça n'apporte pas** :
+  aucune information nouvelle sur C2/C3/C4, qui restent ouverts — cet incident ne réduit ni ne
+  confirme le bug historique, il apprend seulement à ne plus le confondre avec un tiers.
