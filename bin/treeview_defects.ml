@@ -126,9 +126,6 @@ object(self)
                    [ name_header, Row_item.String direction_name;
                      type_header, Row_item.Icon direction_type ]
                    self#non_defective_defaults));
-           Log.printf2 ~force:true
-             "B6: Treeview_defects: the missing \"%s\" row of the entry \"%s\" has been created\n"
-             direction_type direction_name;
            added + 1
            end)
       0
@@ -216,27 +213,20 @@ object(self)
         [ name_header,       Row_item.String cable_name;
           type_header,       Row_item.Icon cable_type;
           uneditable_header, Row_item.CheckBox true; ] in
-    let leftward_row_id =
-      self#add_row
-        ~parent_row_id:cable_row_id
-        (List.append
-           [name_header, Row_item.String left_name;
-            type_header, Row_item.Icon "leftward"]
-           self#non_defective_defaults)
-    in
-    let rightward_row_id =
-      self#add_row
-        ~parent_row_id:cable_row_id
-        (List.append
-           [name_header, Row_item.String right_name;
-            type_header, Row_item.Icon "rightward"]
-           self#non_defective_defaults)
-    in
-    (* B6 instrumentation: the two `ignore' above hid the identifiers of the very rows that
-       later go missing. Nothing else changed here. *)
-    Log.printf6 ~force:true
-      "B6: Treeview_defects#add_cable: cable \"%s\" -> row %s, children %s (leftward \"%s\") and %s (rightward \"%s\")\n"
-      cable_name cable_row_id leftward_row_id left_name rightward_row_id right_name;
+    ignore
+      (self#add_row
+         ~parent_row_id:cable_row_id
+         (List.append
+            [name_header, Row_item.String left_name;
+             type_header, Row_item.Icon "leftward"]
+            self#non_defective_defaults));
+    ignore
+      (self#add_row
+         ~parent_row_id:cable_row_id
+         (List.append
+            [name_header, Row_item.String right_name;
+             type_header, Row_item.Icon "rightward"]
+            self#non_defective_defaults));
     self#collapse_row cable_row_id;
 
   (* Used importing hub/switch/.. for backward compatibility: *)
@@ -309,50 +299,14 @@ object(self)
     in
     self#update_children_no ~add_child_of ~parent_name:device_name port_no
 
-  (* --- B6 instrumentation (work-stream "marionnet-automate-composants") ---
-     In the field, the lookups below fail on components the user did not touch: the defects
-     treeview has silently drifted from the network model. Whether the number of direction
-     rows drops to 0 or grows to 2 is not established yet, hence this dump. Purely
-     observational: no control flow, no returned value and no exception is changed by it.
-     To be removed (or turned into a proper guard) once B6 is diagnosed and fixed. *)
-  method private b6_dump_children ~caller ~parent_name ~parent_row_id ~wanted ~found =
-    let children =
-      try self#children_of parent_row_id with e -> begin
-        Log.printf1 ~force:true "B6:   (children_of failed: %s)\n" (Printexc.to_string e);
-        []
-        end
-    in
-    Log.printf6 ~force:true
-      "B6: %s: \"%s\" (row %s): %d child row(s) of type \"%s\" among %d child row(s). Dumping them all:\n"
-      caller parent_name parent_row_id found wanted (List.length children);
-    List.iter
-      (fun id ->
-         let descr =
-           try Row.to_pretty_string (self#get_complete_row id)
-           with e -> Printf.sprintf "<unreadable: %s>" (Printexc.to_string e)
-         in
-         Log.printf2 ~force:true "B6:   child row %s: %s\n" id descr)
-      children
-
   method get_port_data device_name port_name port_direction =
     let port_row = self#get_complete_row_of_child ~parent_name:device_name ~child_name:port_name in
     let port_id = self#id_of_complete_row port_row in
     let port_direction_ids = self#children_of port_id in
     let port_direction_str = string_of_port_direction (port_direction) in
-    (* The `try' is B6 instrumentation only: the very same exception is re-raised. *)
-    try
-      List.find
-        (fun row -> Row.Icon_field.eq ~field:type_header ~value:port_direction_str row)
-        (List.map self#get_row port_direction_ids)
-    with Not_found -> begin
-      self#b6_dump_children
-        ~caller:"Treeview_defects#get_port_data"
-        ~parent_name:(Printf.sprintf "%s.%s" device_name port_name)
-        ~parent_row_id:port_id
-        ~wanted:port_direction_str
-        ~found:0;
-      raise Not_found
-      end
+    List.find
+      (fun row -> Row.Icon_field.eq ~field:type_header ~value:port_direction_str row)
+      (List.map self#get_row port_direction_ids)
 
   method get_cable_data cable_name cable_direction =
     let cable_row_id = self#unique_row_id_of_name cable_name in
@@ -362,23 +316,7 @@ object(self)
       List.filter
         (fun row -> Row.Icon_field.eq ~field:type_header ~value:cable_direction_str row)
         (List.map self#get_row cable_direction_ids) in
-    (* B6 instrumentation: the concise line gives the nominal sequence, hence the exact
-       moment of the drift; the dump (anomalies only) tells 0 from 2. *)
     let found = List.length filtered_cable_directions in
-    let () =
-      Log.printf5
-        "B6: Treeview_defects#get_cable_data: cable \"%s\" (row %s), direction \"%s\": %d/%d matching child row(s).\n"
-        cable_name cable_row_id cable_direction_str found (List.length cable_direction_ids)
-    in
-    let () =
-      if found <> 1 then
-        self#b6_dump_children
-          ~caller:"Treeview_defects#get_cable_data"
-          ~parent_name:cable_name
-          ~parent_row_id:cable_row_id
-          ~wanted:cable_direction_str
-          ~found
-    in
     (* B6 (episode 6): a named failure instead of `assert', whose "Assertion failed" said nothing
        of what was wrong. Since ensure_cable_entry completes the missing rows when the component
        is created, `found = 0' should no longer be reachable here; `found > 1' still is, as

@@ -227,14 +227,6 @@ object(self)
           in
           self#highlight_row new_row_id)
     (self#get_complete_forest);
-  (* B6 instrumentation (work-stream "marionnet-automate-composants"): date precisely the moment
-     when the parent row becomes unreachable — everything above (unhighlight, add_row_with,
-     the collapse of the new row) has already walked the store successfully. *)
-  let () =
-    Log.printf4 ~force:true
-      "B6: Treeview_history#add_substate_of: parent row %s (\"%s\"), %d sibling(s) before the new row. Calling thread: %d\n"
-      parent_id parent_name sibling_no (Thread.id (Thread.self ()))
-  in
   (* Collapse the new row's parent iff the new row is its first child. This behavior
      gives the impression that trees 'are born' collapsed (collapsing a leaf has no
      effect on the children it doesn't yet have), and on the other hand it does not
