@@ -440,7 +440,24 @@ let ask_for_existing_importable_text_filename ?parent ?(enrich=mkenv []) ?(max_s
 (** Generic constructor for question dialogs.
     With the 'enrich' optional parameter the dialog can enrich a given environnement. Otherwise
     it creates a new one. *)
-let ask_question ?(enrich=mkenv []) ?(title="QUESTION") ?(gen_id="answer") ?(help=None) ?(cancel=false) ~(question:string)  () =
+let ask_question ?(enrich=mkenv []) ?(title="QUESTION") ?(gen_id="answer") ?(help=None) ?(cancel=false) ?script_answer ~(question:string)  () =
+
+   (* Same contract as Simple_dialogs.confirm_dialog: while the control server is serving a
+      command, this dialog would freeze it waiting for a human — and it refuses to be
+      closed. [script_answer] is the value to bind to [gen_id] instead; omitting it means
+      "cancel", i.e. do nothing. Outside that window (a human pulled down a menu) nothing
+      changes. See docs/pilotage-par-script.md § 3.3. *)
+   if Script_mode.must_auto_answer () then begin
+     Log.printf2
+       "EDialog.ask_question: a question was asked while serving a control-server command; answering %S by default. Question was: %s\n"
+       (match script_answer with Some s -> s | None -> "cancel") question;
+     Script_mode.notify ~kind:`Question ~title
+       (Printf.sprintf "auto-answered %s (no human was asked): %s"
+          (match script_answer with Some s -> s | None -> "cancel") question);
+     match script_answer with
+     | Some s -> enrich#add (gen_id, s); Some enrich
+     | None   -> None
+   end else
 
    let dialog=new Gui.dialog_QUESTION () in
 

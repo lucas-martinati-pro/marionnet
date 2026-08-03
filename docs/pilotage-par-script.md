@@ -264,6 +264,64 @@ construction tout ce qui est représentable dans un `.mar`, sans multiplier les 
 sur un fragment rejeté serait pire qu'inutile : la réponse **doit** rendre compte du nombre
 d'éléments réellement intégrés.
 
+### 4.9 Les fenêtres qui s'ouvrent toutes seules
+
+*Conception de l'épisode 3c (2026-08-03).*
+
+Marionnet ouvre des fenêtres **que personne n'a demandées** : l'écran de bienvenue au démarrage,
+un avertissement quand un projet est dans un ancien format, le récapitulatif des adaptations
+appliquées au chargement (images et noyaux remappés — cf. `docs/retro-compatibilite-kernels-images.md`),
+une erreur quand un chargement échoue, une alerte quand un processus meurt. En session pilotée
+personne n'est là pour les fermer : elles s'accumulent, et surtout **ce qu'elles disent est perdu
+pour le script**. L'épisode 3a l'avait déjà rencontré sans le traiter — un `open` en échec rapporte
+sa cause dans un dialogue non modal et nulle part ailleurs.
+
+La réponse n'est donc pas « les fermer » mais **capturer, puis fermer**.
+
+**Armement.** Le mode est impliqué par `--control-socket` (une session pilotée n'a personne devant
+l'écran) et se désarme par `--keep-dialogs` ; `--dialog-timeout=MS` règle le délai avant
+auto-fermeture (défaut 2000 ms — non nul **exprès** : la session doit rester *observable*, un humain
+ou une capture d'écran voit encore ce qui s'est passé).
+
+**Capture.** `bin/script_mode.ml` tient un tampon **borné** (200, éviction FIFO) de messages
+horodatés et numérotés (`seq` monotone). Deux points d'insertion suffisent, et couvrent la
+cinquantaine de sites d'appel :
+
+| Point | Fichier | Ce qui est capturé |
+|---|---|---|
+| `message` (constructeur unique de `help`/`error`/`warning`/`info`) | `bin/gui/simple_dialogs.ml` | titre + corps, avec le `kind` |
+| `recapitulative` | `bin/gui/simple_dialogs.ml` | la liste **structurée** `(résumé, détail, sévérité)`, item par item |
+
+Le splash n'avait même pas besoin de code : `Splash.show_splash ?timeout` savait déjà se fermer
+seul (`bin/splash.ml:112`), le paramètre n'avait jamais servi.
+
+**Restitution.** Deux voies, et la première est la plus utile :
+
+- le champ `notifications` de la réponse d'`open` — les adaptations d'un vieux projet appartiennent
+  à la commande qui les a provoquées, pas à un second aller-retour ; il est présent **aussi sur les
+  réponses d'erreur** (`reply_error_with`), puisque c'est là que la cause se trouve ;
+- la commande `notifications [--since=N] [--clear]`, qui rend `enabled`, `count`, `last_seq` et la
+  liste. Elle ne touche **pas** le thread GTK et n'a pas de délai de garde : quand la GUI est bloquée
+  derrière un modal et que toute autre commande expire, celle-ci répond encore — et dit ce qu'est
+  ce modal.
+
+**Questions (dialogues bloquants).** `Simple_dialogs.confirm_dialog` et `Talking.EDialog.ask_question`
+partagent le même widget, la même boucle `#run ()` et le même refus de se laisser fermer. Ils
+reçoivent un `?script_answer` : la réponse à rendre **sans afficher la fenêtre**. Deux garde-fous
+tiennent la sémantique :
+
+1. **pas de politique globale « oui à tout »** — la valeur est fixée site par site (aujourd'hui :
+   `true` pour « tout arrêter » / « tout éteindre », `"no"` pour « sauvegarder avant de quitter ? » ;
+   l'omettre vaut *annuler*, c'est-à-dire ne rien faire) ;
+2. **la neutralisation est limitée au thread qui sert la commande** (`Script_mode.in_command`), pas
+   au mode script. Un compteur global n'aurait pas suffi : `open` charge le projet dans le thread
+   serveur et prend plusieurs secondes, pendant lesquelles un clic **humain** sur « tout éteindre »
+   aurait perdu sa confirmation. Un callback déclenché par un clic tourne dans le thread GTK, jamais
+   enregistré : les deux cas ne peuvent pas être confondus.
+
+Atteindre cette branche signale d'ailleurs qu'un *callback* GUI a été appelé depuis le serveur, ce
+que le § 3.3 interdit : elle journalise bruyamment. À ce jour aucune commande n'y mène.
+
 ---
 
 ## 5. Client `mrnctl`
@@ -452,6 +510,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **2c** | Fumée GUI : exercer réellement le chemin `input_line`/`output_line` corrigé | **fait** (2026-08-03) — 4 critères sur 5 satisfaits, protocole de l'ép. 2b rectifié |
 | **3a** | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + preuve **scriptée** | **fait** (2026-08-03) |
 | 3b | Preuve **GUI interactive** : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | à faire |
+| **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -799,3 +858,64 @@ c'est `network.ml` qui journalise avant de lever (**N9**), et le corriger suppos
 **Reste à l'épisode 3b** : le critère **C5** (aucun descripteur du canal de contrôle dans
 `/proc/<pid xterm>/fd`, xterm **vivant**), qui suppose une session GUI interactive avec des
 composants démarrés.
+
+---
+
+### 2026-08-03 — épisode 3c : les fenêtres n'attendent plus un humain
+
+**Le point aveugle.** La conception ne parlait des dialogues que comme d'un *risque à éviter*
+(§ 3.3 « jamais de *callback* GUI », § 8 « `apply` bloque si le thread GTK est pris par un modal »).
+L'épisode 3a n'avait posé qu'une **échéance côté serveur** : elle protège le serveur d'un blocage,
+elle ne ferme rien. Le mot « splash » n'apparaissait nulle part. Or Marionnet ouvre des fenêtres de
+lui-même, et en session pilotée elles restent — avec leur contenu.
+
+**Ce que l'inventaire a corrigé dans la représentation qu'on s'en faisait.** Trois constats, tous
+vérifiés dans le code avant d'écrire une ligne :
+
+1. **Aucune confirmation n'est atteignable par le script**, contrairement à ce qu'on pouvait
+   craindre. Les deux appelants de `confirm_dialog` sont les boutons « tout arrêter » / « tout
+   éteindre » (`gui_window_MARIONNET.ml:158,167`), et `ask_question` sert le patron
+   `Menu_factory.Make_entry` : tous partent d'un geste humain. Mieux, `st#quit_async ()`
+   (`state.ml:987`) planifie l'arrêt **sans rien demander** — la commande `quit` était déjà propre.
+   Le traitement des questions est donc un **filet instrumenté**, pas une fonctionnalité.
+2. `yes_no_or_cancel` (`gui_bricks.ml:421`) n'a **aucun appelant** : code mort, non instrumenté.
+3. Les dialogues de composants (`gui_dialog_toolkit.ml:70`, `talking.ml:294,460`) sont **hors
+   périmètre** : les toucher dégraderait l'usage interactif sans rien apporter au script.
+
+**Un cycle de dépendances a dicté la forme du module.** `script_mode.ml` ne lit pas la ligne de
+commande, alors que c'est le plus naturel : `initialization.ml` dépend de `user_level.ml`, qui
+dépend de `simple_dialogs.ml`, qui utilise `script_mode.ml`. La lecture des options aurait bouclé.
+D'où `Script_mode.configure`, appelé par `marionnet.ml` — la racine — **avant** que quoi que ce soit
+puisse afficher une fenêtre (le sondage du *tap provider* ouvre déjà un avertissement).
+
+**Le garde-fou des questions a été resserré en cours de route.** La première version conditionnait
+l'auto-réponse à un compteur global « une commande est en vol ». C'était faux : `open` charge le
+projet **dans le thread serveur** et dure plusieurs secondes, pendant lesquelles un clic humain sur
+« tout éteindre » aurait perdu sa confirmation. Le marqueur retient donc le **thread** qui sert la
+commande ; un *callback* déclenché par un clic tourne dans le thread GTK, jamais enregistré.
+
+**Mesures (2026-08-03).** Deux témoins, un banc scripté, une contrainte de terrain rencontrée en
+chemin : `sun_path` est limité à 108 octets et le chemin du bac à sable de session le dépasse
+(`ENAMETOOLONG`) — le socket de test vit dans `$XDG_RUNTIME_DIR`, qui est court **et** déjà `0700`
+(la garde de l'épisode 3a refuse un répertoire parent accessible en écriture au groupe).
+
+| Épreuve | Mode armé | Témoin `--keep-dialogs` |
+|---|---|---|
+| `open tp.mar` (projet mandriva de 2010) | `ok`, 7 nœuds, **2 notifications** dont le récapitulatif et ses **6 ajustements** détaillés (images `mandriva20100215` → `debian-wheezy-08367`, noyaux `2.6.18-ghost` → `6.12.95-i386`) | `notifications: []` |
+| `open /etc/hostname` (fichier mal formé) | `ok:false` **et la cause capturée** : « Échec lors du chargement du projet… vérifier que le fichier est bien formé » | `notifications: []` |
+| `notifications --since=0` | `enabled:true`, `count:3`, `last_seq:3` | `enabled:false`, `count:0` |
+| splash (session laissée au repos) | affiché **et fermé** | affiché, **jamais fermé** |
+| fenêtres X après chargement | **2** (fenêtre technique + fenêtre principale) | **5** : + « Project adapted at loading », + « Avertissement », + « Bienvenue dans Marionnet » |
+
+Une session ordinaire (sans `--control-socket`) a été rejouée pour la non-régression : `Script_mode`
+reste désarmé, le splash s'affiche et attend son clic, comme toujours.
+
+**Un enseignement de mesure, à ne pas perdre.** L'auto-fermeture dépend d'un `GMain.Timeout`, donc
+d'une boucle GTK qui a un créneau. Quand le script enchaîne les commandes sans répit, la boucle est
+saturée par les `apply_extract` du chargement et les fenêtres restent visibles **plus longtemps que
+le délai annoncé** — elles partent dès que le thread principal respire. C'est ce qui a fait échouer
+la première mesure du splash, dans une session où `open` monopolisait la boucle du début à la fin.
+Un script qui veut un écran propre doit donc laisser un temps mort, ou ne pas s'en soucier : la
+capture, elle, est synchrone et n'attend rien.
+
+**Reste à l'épisode 3b** : le critère **C5**, inchangé.

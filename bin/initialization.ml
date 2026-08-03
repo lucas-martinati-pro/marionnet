@@ -69,6 +69,18 @@ let option_control_socket =
     ~arg_name_in_help:"PATH"
     ~doc:"serve the scripting control channel on the unix socket PATH (absolute)"
     () ;;
+(* Script mode (script_mode.ml) is implied by --control-socket: a driven session has nobody
+   to close the windows Marionnet opens by itself. These two options tune it; the second is
+   also what makes a driven session observable by a human watching the screen. *)
+let option_keep_dialogs =
+  Argv.register_unit_option "-keep-dialogs"
+    ~doc:"in a driven session (--control-socket), leave self-opening windows on screen as usual"
+    () ;;
+let option_dialog_timeout =
+  Argv.register_int_option "-dialog-timeout"
+    ~arg_name_in_help:"MS"
+    ~doc:"in a driven session, how long a captured window stays visible before closing itself (default: 2000)"
+    () ;;
 let () = Argv.register_h_option_as_help () ;;
 
 (* Registering arguments: *)

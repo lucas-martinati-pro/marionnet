@@ -65,6 +65,9 @@ let json_escape (s:string) : string =
 let jstr  (s:string) : string = Printf.sprintf "\"%s\"" (json_escape s)
 let jbool (b:bool)   : string = if b then "true" else "false"
 let jint  (i:int)    : string = string_of_int i
+(* Epoch seconds, millisecond resolution: enough to order messages and to feed `date -d @`,
+   without dragging in a date formatting dependency. *)
+let jfloat (x:float) : string = Printf.sprintf "%.3f" x
 let jnull : string = "null"
 let jopt  : string option -> string = function None -> jnull | Some s -> jstr s
 let jlist (xs: string list) : string = Printf.sprintf "[%s]" (String.concat "," xs)
@@ -78,9 +81,42 @@ let reply_ok (fields : (string * string) list) : string =
 
 (* Normalised error codes (docs/pilotage-par-script.md § 4.1): unknown_command,
    bad_argument, no_active_project, unknown_node, forbidden_transition, timeout,
-   internal. *)
+   internal. [extra] carries the fields a failing command still wants to report — typically
+   the messages captured while it ran, which is where the actual cause is to be found.
+   Two functions rather than an ?extra parameter: with only labelled arguments after it, an
+   optional one is never eliminated, and every call site would have to end with a (). *)
+let reply_error_with ~(extra:(string * string) list) ~(code:string) ~(detail:string) : string =
+  jobj ([ ("ok", jbool false); ("error", jstr code); ("detail", jstr detail) ] @ extra)
+
 let reply_error ~(code:string) ~(detail:string) : string =
-  jobj [ ("ok", jbool false); ("error", jstr code); ("detail", jstr detail) ]
+  reply_error_with ~extra:[] ~code ~detail
+
+(* ---------------------------------------------------------------- *)
+(*                    Messages captured from the GUI                *)
+(* ---------------------------------------------------------------- *)
+
+(* script_mode.ml captures what Marionnet would have *shown*: the windows it opens by
+   itself have no one to read them in a driven session. Rendering them here is what turns
+   a lost dialog into an answer. *)
+let json_of_item (i : Script_mode.item) : string =
+  jobj [
+    ("summary",  jstr i.Script_mode.summary);
+    ("detail",   jstr i.Script_mode.detail);
+    ("severity", jstr (Script_mode.string_of_severity i.Script_mode.severity));
+    ]
+
+let json_of_notification (n : Script_mode.notification) : string =
+  jobj [
+    ("seq",   jint  n.Script_mode.seq);
+    ("time",  jfloat n.Script_mode.time);
+    ("kind",  jstr  (Script_mode.string_of_kind n.Script_mode.kind));
+    ("title", jstr  n.Script_mode.title);
+    ("body",  jstr  n.Script_mode.body);
+    ("items", jlist (List.map json_of_item n.Script_mode.items));
+    ]
+
+let jnotifications (ns : Script_mode.notification list) : string =
+  jlist (List.map json_of_notification ns)
 
 (* ---------------------------------------------------------------- *)
 (*                          Request parsing                         *)
@@ -148,11 +184,11 @@ let ask ?(timeout=default_timeout) (f : unit -> 'a) : 'a outcome =
   in
   wait ()
 
-let reply_of_outcome (render : 'a -> string) : 'a outcome -> string = function
+let reply_of_outcome ?(extra=[]) (render : 'a -> string) : 'a outcome -> string = function
   | Done v      -> render v
-  | Failed e    -> reply_error ~code:"internal" ~detail:(Printexc.to_string e)
+  | Failed e    -> reply_error_with ~extra ~code:"internal" ~detail:(Printexc.to_string e)
   | Timed_out t ->
-      reply_error ~code:"timeout"
+      reply_error_with ~extra ~code:"timeout"
         ~detail:(Printf.sprintf
                    "the GTK main thread did not answer within %.1fs (busy: modal dialog, pulled-down menu or long operation)"
                    t)
@@ -210,7 +246,13 @@ let cmd_ls (st : State.globalState) ~(timeout:float) ~(kind:string option) : str
 
    The loading swallows its own failures: they are reported by a (non-modal) dialog and a
    log line, and the exception never reaches us (state.ml:537-547, 567-580). So we do not
-   pretend to know whether it succeeded: we report the state that *is*, read afterwards. *)
+   pretend to know whether it succeeded: we report the state that *is*, read afterwards.
+
+   Since episode 3c that dialog is no longer lost: everything Marionnet showed while the
+   project was loading comes back in the [notifications] field of this very answer — the
+   cause of a failure, and, for an old project, the list of adaptations it had to apply
+   (remapped kernels and distributions). No second round trip, because these messages
+   belong to the command that provoked them. *)
 let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : string =
   if filename = "" then
     reply_error ~code:"bad_argument" ~detail:"open expects a file name"
@@ -226,17 +268,22 @@ let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : stri
     reply_error ~code:"bad_argument" ~detail:(Printf.sprintf "no such file: %S" filename)
   else
   let () = Log.printf1 "Control_server: opening project %s\n" filename in
+  (* Everything captured from now on belongs to this command. *)
+  let since = Script_mode.last_seq () in
   (* No Thread.join here: on this path the method returns Thread.self (), joining it would
      deadlock. *)
   let _ : Thread.t = st#open_project_async ~filename in
-  ask ~timeout
-    (fun () ->
-       (st#project_paths#get_filename,
-        st#active_project,
-        st#runnable_project,
-        st#project_already_saved,
-        List.length (st#network#get_node_names)))
-  |> reply_of_outcome
+  let outcome =
+    ask ~timeout
+      (fun () ->
+         (st#project_paths#get_filename,
+          st#active_project,
+          st#runnable_project,
+          st#project_already_saved,
+          List.length (st#network#get_node_names)))
+  in
+  let extra = [ ("notifications", jnotifications (Script_mode.notifications ~since ())) ] in
+  outcome |> reply_of_outcome ~extra
        (fun (actual_file, active, runnable, saved, nodes) ->
           (* [saved] is the discriminating signal, and the reason deserves to be spelled
              out. A failed loading still leaves the file name set and the project
@@ -249,29 +296,50 @@ let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : stri
              because it went through that line too. *)
           match active, actual_file with
           | true, Some f when f = filename && saved ->
-              reply_ok [
+              reply_ok ([
                 ("file",     jstr f);
                 ("nodes",    jint nodes);
                 ("runnable", jbool runnable);
-                ]
+                ] @ extra)
           | true, Some f when f = filename ->
-              reply_error ~code:"internal"
+              reply_error_with ~extra ~code:"internal"
                 ~detail:(Printf.sprintf
                            "loading %S did not complete: the project is flagged as unsaved right after opening (malformed file? see the log)"
                            filename)
           | true, Some f ->
               (* Loading failed and a previously opened project is still the active one. *)
-              reply_error ~code:"internal"
+              reply_error_with ~extra ~code:"internal"
                 ~detail:(Printf.sprintf "the active project is still %S: loading %S failed (see the log)" f filename)
           | _ ->
-              reply_error ~code:"internal"
+              reply_error_with ~extra ~code:"internal"
                 ~detail:(Printf.sprintf "no active project after opening %S (see the log)" filename))
+
+(* Reading the capture needs neither the GTK main thread nor a deadline — which is exactly
+   the point: when the GUI is stuck behind a modal dialog and every other command times
+   out, this one still answers, and says what the dialog was. *)
+let cmd_notifications ~(since:string option) ~(clear:bool) : string =
+  match (match since with None -> Some 0 | Some s -> int_of_string_opt s) with
+  | None ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf "--since expects an integer sequence number, got %S"
+                   (match since with Some s -> s | None -> ""))
+  | Some since ->
+      let ns = Script_mode.notifications ~since () in
+      let () = if clear then Script_mode.clear () in
+      reply_ok [
+        ("enabled",       jbool (Script_mode.enabled ()));
+        ("count",         jint (List.length ns));
+        (* The client passes this back as --since to get only what is new. It is the global
+           counter, not the last one served, so it stays meaningful after a --clear. *)
+        ("last_seq",      jint (Script_mode.last_seq ()));
+        ("notifications", jnotifications ns);
+        ]
 
 (* ---------------------------------------------------------------- *)
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
 
-let known_commands = [ "status"; "ls"; "open"; "quit" ]
+let known_commands = [ "status"; "ls"; "open"; "notifications"; "quit" ]
 
 (* The answer must be *sent* before quitting, hence the second component: the session loop
    writes it, then triggers the shutdown. *)
@@ -290,10 +358,19 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
       (match timeout with
        | Error detail -> (reply_error ~code:"bad_argument" ~detail, `Continue)
        | Ok timeout ->
+           (* Script_mode.in_command marks *this* thread as serving a command, which is what
+              allows a question dialog raised on this path — and only there — to be answered
+              by default instead of freezing us (script_mode.ml). *)
+           Script_mode.in_command @@ fun () ->
            (match r.verb with
             | "status" -> (cmd_status st ~timeout, `Continue)
             | "ls"     -> (cmd_ls st ~timeout ~kind:(option_value r "kind"), `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:r.arg, `Continue)
+            | "notifications" ->
+                (cmd_notifications
+                   ~since:(option_value r "since")
+                   ~clear:(option_value r "clear" <> None),
+                 `Continue)
             | "quit"   -> (reply_ok [ ("quitting", jbool true) ], `Quit)
             | verb ->
                 let detail =

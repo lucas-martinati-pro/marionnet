@@ -102,11 +102,15 @@ module EDialog :
       ?help:(unit -> unit) option ->
       unit -> string env option
 
+    (* [script_answer]: the value to bind to [gen_id] when the question is asked while the
+       control server is serving a command, instead of showing a dialog nobody would
+       answer (script_mode.ml). Omitted means "cancel". *)
     val ask_question :
       ?enrich:string env ->
       ?title:string ->
       ?gen_id:string ->
       ?help:(unit -> unit) option ->
       ?cancel:bool ->
+      ?script_answer:string ->
       question:string -> unit -> string env option
   end

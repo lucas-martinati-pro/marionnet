@@ -67,6 +67,20 @@ let () =
 let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
 (* --- *)
+(* Arm script mode, if a control channel was requested. This has to happen here, before
+   anything is allowed to show a window: the tap provider probe below already pops up a
+   warning dialog. script_mode.ml cannot read the command line by itself without closing a
+   dependency cycle (initialization -> user_level -> simple_dialogs -> script_mode), so the
+   root module tells it. *)
+let () =
+  Script_mode.configure
+    ~enabled:((!Initialization.option_control_socket <> None)
+              && (!Initialization.option_keep_dialogs = None))
+    ~auto_dismiss_ms:(match !Initialization.option_dialog_timeout with
+                      | Some ms when ms >= 0 -> ms
+                      | _ -> 2000)
+
+(* --- *)
 let () = Log.printf1 "Loading module bin/marionnet.ml: cwd: %s\n" (Sys.getcwd ())
 
 (* Enter the right directory: *)
@@ -241,7 +255,13 @@ let () =
 let () = Log.printf "Loading module bin/marionnet.ml: about to show the splash screen\n"
 let () =
  if !Initialization.optional_file_to_open = None
-   then Splash.show_splash (* ~timeout:15000 *) ()
+   then
+     (* The splash waits for a click or a keypress, and it is modal: in a driven session
+        nobody is there to dismiss it. show_splash already knows how to close itself
+        (splash.ml:112, a GMain.Timeout) — the parameter just had never been used. *)
+     (if Script_mode.enabled ()
+        then Splash.show_splash ~timeout:(Script_mode.auto_dismiss_ms ()) ()
+        else Splash.show_splash (* ~timeout:15000 *) ())
    else ()
 
 (* --- *)

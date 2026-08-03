@@ -155,8 +155,13 @@ let () =
 
   let _ = button_BASE_SHUTDOWN_EVERYTHING#connect#clicked
     ~callback:(fun () ->
+      (* ~script_answer: were this callback ever reached while the control server serves a
+         command, the intent would not be ambiguous — the caller asked for the shutdown. It
+         is not reachable that way today (the server calls the model, never a GUI callback),
+         so this is a net, not a feature. *)
       match Simple_dialogs.confirm_dialog
           ~question:(s_ "Are you sure that you want to stop\nall the running components?")
+          ~script_answer:true
           () with
         Some true  -> st#shutdown_everything ()
       | Some false -> ()
@@ -166,6 +171,7 @@ let () =
     ~callback:(fun () ->
       match Simple_dialogs.confirm_dialog
           ~question:(s_ "Are you sure that you want to power off\nall the running components? It is also possible to shut them down graciously...")
+          ~script_answer:true
           () with
         Some true -> st#poweroff_everything ()
       | Some false -> ()

@@ -37,8 +37,25 @@ let utf8 x = x;; (* We currently don't use this. It works better :-) *)
    along pay nothing and keep their exact semantics, exceptions included. This wrapping is what
    Progress_bar has been doing since the beginning; these dialogs simply never got it. *)
 
+(* In a driven session (script_mode.ml) a window nobody closes stays there forever, and
+   what it says is lost to the script — a failed project loading reports its cause here and
+   nowhere else (control_server.ml, cmd_open). So capture first, then let the window close
+   itself after a delay: the session is meant to stay observable, hence the delay rather
+   than an immediate destroy. Attached to whatever widget the caller built. *)
+let capture_and_dismiss ~(kind:Script_mode.kind) ~(title:string) ?items (body:string) (destroy : unit -> unit) : unit =
+  if not (Script_mode.enabled ()) then () else
+  let () = Script_mode.notify ~kind ~title ?items body in
+  ignore
+    (GMain.Timeout.add
+       ~ms:(Script_mode.auto_dismiss_ms ())
+       (* The user (or an earlier dismissal) may have destroyed the widget already: firing
+          on a destroyed widget raises, and this callback runs in the GTK main loop, where
+          an escaping exception is nobody's business. *)
+       ~callback:(fun () -> (try destroy () with _ -> ()); false))
+;;
+
 (** Generic constructor for message dialog *)
-let message win_title ?modal (msg_title) (msg_content) (img_file) () =
+let message win_title ?modal ?(kind=`Info) (msg_title) (msg_content) (img_file) () =
   GMain_actor.apply_extract (fun () ->
   let d = new Gui.dialog_MESSAGE () in
   d#toplevel#set_resizable true;
@@ -52,24 +69,26 @@ let message win_title ?modal (msg_title) (msg_content) (img_file) () =
   d#content#set_label msg_content;
   d#content#set_selectable true;
   d#image#set_file (Initialization.Path.images ^ img_file);
+  (* One point of passage for help/error/warning/info, hence for the ~50 call sites. *)
+  capture_and_dismiss ~kind ~title:msg_title msg_content (fun () -> d#toplevel#destroy ());
   ()) ()
 ;;
 
 (** Specific constructor for help messages *)
 let help ?modal title msg () =
-  message ?modal (s_ "Help") title msg "ico.help.orig.png" ();;
+  message ?modal ~kind:`Help (s_ "Help") title msg "ico.help.orig.png" ();;
 
 (** Specific constructor for error messages *)
 let error ?modal title msg () =
-  message ?modal (s_ "Error") title msg "ico.error.orig.png" ();;
+  message ?modal ~kind:`Error (s_ "Error") title msg "ico.error.orig.png" ();;
 
 (** Specific constructor for warning messages *)
 let warning ?modal title msg () =
-  message ?modal (s_ "Warning") title msg "ico.warning.orig.png" ();;
+  message ?modal ~kind:`Warning (s_ "Warning") title msg "ico.warning.orig.png" ();;
 
 (** Specific constructor for info messages *)
 let info ?modal title msg () =
-  message ?modal (s_ "Information") title msg "ico.info.orig.png" ();;
+  message ?modal ~kind:`Info (s_ "Information") title msg "ico.info.orig.png" ();;
 
 (** Recapitulative dialog for a list of adjustments applied while loading an old project.
     Unlike the generic [message] dialog (a single label that grows without bound and no
@@ -158,7 +177,18 @@ let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * st
   end in
   close#misc#set_can_default true;
   close#misc#grab_default ();
-  window#show ()) ()
+  window#show ();
+  (* The archetypal case of this work-stream: the list of adaptations applied to an old
+     project (remapped kernels and distributions) is exactly what a script wants to read
+     back. It goes into the capture *structured*, item by item, not flattened into a
+     paragraph. *)
+  capture_and_dismiss ~kind:`Recap ~title:header
+    ~items:(List.map
+              (fun (summary, detail, severity) ->
+                 { Script_mode.summary; detail; severity })
+              items)
+    (match preamble with None -> "" | Some text -> text)
+    (fun () -> window#destroy ())) ()
 ;;
 
 (** Show a new dialog displaying a progress bar *)
@@ -170,7 +200,28 @@ let destroy_progress_bar_dialog dialog =
   Progress_bar.destroy_progress_bar_dialog dialog;;
 
 (* --- *)
-let confirm_dialog ~question ?(cancel = false) () =
+(* [script_answer] is the answer to give when the question is asked while the control
+   server is serving a command (script_mode.ml, [must_auto_answer]): showing the dialog
+   there would freeze the command until a human decides — and this dialog refuses to be
+   closed. It is deliberately *not* a global "yes to everything": the human is still in
+   front of the screen during a driven session, and their own confirmations must keep
+   being asked. Omitting it means None, i.e. cancel, i.e. do nothing — the conservative
+   default. Reaching this branch also means a GUI callback was called from the server,
+   which docs/pilotage-par-script.md § 3.3 forbids: hence the loud log line. *)
+let confirm_dialog ~question ?script_answer ?(cancel = false) () =
+  if Script_mode.must_auto_answer () then begin
+    let answer = match script_answer with
+      | Some true  -> "yes"
+      | Some false -> "no"
+      | None       -> "cancel"
+    in
+    Log.printf2
+      "Simple_dialogs.confirm_dialog: a question was asked while serving a control-server command; answering %S by default. Question was: %s\n"
+      answer question;
+    Script_mode.notify ~kind:`Question ~title:question
+      (Printf.sprintf "auto-answered %s (no human was asked)" answer);
+    script_answer
+  end else
   (* Note for this one: #run() enters a nested main loop, which does go back through ml_poll and
      therefore does release the master lock — so it was not a freeze candidate by itself. It is
      wrapped all the same, because building the dialog beforehand is, and because a nested main

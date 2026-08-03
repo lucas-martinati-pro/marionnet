@@ -348,6 +348,9 @@ module Created_entry_project_quit = Menu_factory.Make_entry
      else Talking.EDialog.ask_question ~help:None ~cancel:true
            ~title:(s_ "Quit")
            ~question:(s_ "Do you want to save\nthe current project before quitting?")
+           (* Consistent with the branch just above: a driven session quits without saving
+              behind the script's back. A script that wants its project saved says so. *)
+           ~script_answer:"no"
            ()
 
    (* --- *)

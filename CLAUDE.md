@@ -147,9 +147,13 @@ Reprise : appliquer le skill `chantier-long`.
   `marionnet-pilotage-par-script` ; `git log --grep="marionnet-pilotage-par-script"`. Ép. 0
   (conception), ép. 1 (audit intégral de `lib/STRUCTURES/network.ml` → § 7.5, **18 défauts**),
   ép. 2 + 2b (correctifs N2/N3/N11/N4/N5/N8/N13 puis **N1** dans `lib/` vendored, + `test/marionnet.ml`),
-  ép. 2c (**fumée GUI concluante** : fd stables, 0 `EBADF`) et **ép. 3a** (`bin/control_server.ml` :
+  ép. 2c (**fumée GUI concluante** : fd stables, 0 `EBADF`), **ép. 3a** (`bin/control_server.ml` :
   `--control-socket PATH`, commandes `status`/`ls`/`open`/`quit` en JSON, **N18 corrigé** — `SIGPIPE`
   neutralisé dans `bin/marionnet.ml`, sans quoi un client qui raccroche tue Marionnet **sans trace**)
+  et **ép. 3c** (`bin/script_mode.ml` : les fenêtres que Marionnet ouvre **de lui-même** — splash,
+  récapitulatif des adaptations d'un vieux projet, erreur de chargement — sont **capturées puis
+  fermées** ; commande `notifications`, champ `notifications` dans la réponse d'`open`, options
+  `--keep-dialogs` / `--dialog-timeout` ; § 4.9 de la doc)
   faits → reprendre à l'**ép. 3b** (critère C5 en GUI interactive), puis ép. 4. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
