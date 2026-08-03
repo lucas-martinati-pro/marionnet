@@ -112,6 +112,10 @@ Défense en profondeur retenue :
 - répertoire parent `0700`, sous `$XDG_RUNTIME_DIR` si disponible ;
 - activation explicite par option de lancement ;
 - pas d'exécution de code arbitraire dans le protocole (grammaire fermée, § 4) ;
+- **aucun descripteur du canal n'est hérité par les processus exec'és** — `~cloexec` à la
+  création du socket d'écoute (N2), à l'`accept` et au `dup` des canaux stdlib (N1) : sans quoi
+  un `vde_switch` ou un noyau invité pourrait parler au canal de contrôle de son propre hôte.
+  **Prouvé en session réelle à l'ép. 3b**, témoin à l'appui (§ 11) ;
 - le défaut `0o777` reste **signalé** dans le rapport d'audit pour rétro-propagation amont.
 
 ### 3.5 Insertion dans le code existant
@@ -509,7 +513,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **2b** | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` | **fait** (2026-07-29) — code + 2 tests ; fumée GUI reportée en 2c |
 | **2c** | Fumée GUI : exercer réellement le chemin `input_line`/`output_line` corrigé | **fait** (2026-08-03) — 4 critères sur 5 satisfaits, protocole de l'ép. 2b rectifié |
 | **3a** | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + preuve **scriptée** | **fait** (2026-08-03) |
-| 3b | Preuve **GUI interactive** : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | à faire |
+| **3b** | Preuve en session réelle : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | **fait** (2026-08-03) — 0 fd sur 395 processus, témoin à 351 fds |
 | **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
@@ -919,3 +923,61 @@ Un script qui veut un écran propre doit donc laisser un temps mort, ou ne pas s
 capture, elle, est synchrone et n'attend rien.
 
 **Reste à l'épisode 3b** : le critère **C5**, inchangé.
+
+---
+
+### 2026-08-03 — épisode 3b : le descripteur qui ne fuit pas
+
+**Le motif de l'ajournement était devenu faux.** Les épisodes 2c puis 3a ont repoussé C5 en le
+disant tributaire d'« une session GUI interactive avec des composants démarrés ». Or l'option
+`-r`/`--run` existe depuis toujours (`bin/initialization.ml:64`) et déclenche
+`st#startup_everything ()` (`bin/marionnet.ml:431`) : la session pilotée démarre tout seule.
+Mieux, l'ordre du code rend le volet le plus délicat — l'héritage du socket **de session**, et
+pas seulement de l'écoute — **déterministe plutôt qu'aléatoire** : le serveur est démarré en
+`bin/marionnet.ml:519`, soit après le chargement du projet et **avant** `main_loop ()` (l.521),
+tandis que `startup_everything` n'est armé que par un `GMain.Timeout ~ms:1000`. Un client qui se
+connecte dès l'apparition du socket est donc connecté **avant** le premier `exec` de composant.
+Aucun clic humain, aucune course à gagner.
+
+**Le banc** (`_claude-local/bench/c5-bench.sh`, hors dépôt) : lance Marionnet `--debug
+--control-socket … -r tp.mar`, connecte un client persistant dès que le socket paraît, attend
+qu'un xterm **vivant** existe, relève par `ss -xap` les inodes du canal, puis balaie
+`/proc/<pid>/fd` de **tous** les processus lisibles — pas seulement les descendants, parce qu'un
+enfant peut avoir été `setsid`é ou réattaché à `init`.
+
+**La mesure porte sur un canal complet, et `ss` le prouve** : au moment du balayage, l'écoute
+(inode `8771841`) est tenue par le fd 19, et le socket de service (inode `8771842`) par **trois**
+fds de Marionnet — 18, 20 et 23, c'est-à-dire l'accepté plus les deux `Unix.dup` des canaux
+stdlib introduits à l'ép. 2b. Les trois familles de descripteurs étaient donc bien présentes,
+et pas seulement celle qu'on visait.
+
+| Épreuve | Armé (code du dépôt) | Témoin (`~cloexec` retiré) |
+|---|---|---|
+| descripteurs du canal hors Marionnet | **0** sur **395** processus inspectés | **351** sur **88** processus |
+| répartition | — | 30 `vde_switch`, 28 `wirefilter`, 21 noyaux `linux-6.12.95-i386`, 3 `xterm`, 3 `port-helper`, 2 `slirpvde` |
+| xterm vivant à la mesure | oui (pid relevé, 6 s après le lancement) | oui — et il tient `19 → socket:[…040]` (écoute) plus `20,22,23 → socket:[…041]` (session ×3) |
+| canal encore servi en fin de mesure | oui (`status` → 7 nœuds) | oui |
+
+**Le témoin est ce qui donne son sens au « 0 ».** Il consiste à retirer `~cloexec:true` des cinq
+emplacements du chemin serveur — création de l'écoute (`network.ml:218`), les deux `accept`
+(l.112, l.129), les deux `dup` (l.578-579) — puis à rejouer le **même** banc, avant de restaurer
+(`git checkout`, `dune build` et `dune test` verts, `git diff` vide sur `lib/`). Sans lui, un
+verdict à zéro n'aurait rien prouvé d'autre que la capacité du script à ne rien trouver — c'est
+la leçon de l'ép. 2c, où le protocole publié mesurait un critère intestable.
+
+**Ce que le témoin apprend au-delà du pass/fail.** La fuite n'aurait pas été marginale : pour un
+projet de 7 nœuds, **chaque** processus exec'é en hérite, y compris les 21 noyaux invités. Un
+noyau UML tenant le socket de contrôle de son propre hôte, c'est la frontière hôte/invité percée
+par un descripteur — et un orphelin gardant l'écoute, c'est le motif exact du port-helper qui
+squattait `:6000` (`bin/marionnet.ml:475-500`).
+
+**Un enseignement de terrain, payé comptant.** Les enfants **survivent** à la mort de Marionnet :
+la première version du banc est sortie en silence (un `((waited++))` valant 0 sous `set -e`) après
+avoir tué le père, et a laissé **13** `vde_switch`/`wirefilter`/`slirpvde` orphelins. C'est
+précisément le scénario que N2 prévient, observé par accident. Corollaire pour tout banc futur :
+nettoyer par **répertoire de session** (`/tmp/marionnet-<N>.dir`, propre au run) et jamais par
+`pkill -f marionnet`, qui se tue lui-même. Le banc corrigé sort désormais 0 orphelin et 0 fenêtre.
+
+**Aucune ligne de code applicatif n'a été touchée** : l'épisode est une mesure, et son résultat
+est que le correctif N2 (ép. 2) et le cycle de vie des descripteurs de l'ép. 2b tiennent en
+session réelle. C5 est le dernier critère de sûreté de l'ép. 3 ; l'épisode 3 est clos.

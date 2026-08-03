@@ -154,7 +154,10 @@ Reprise : appliquer le skill `chantier-long`.
   récapitulatif des adaptations d'un vieux projet, erreur de chargement — sont **capturées puis
   fermées** ; commande `notifications`, champ `notifications` dans la réponse d'`open`, options
   `--keep-dialogs` / `--dialog-timeout` ; § 4.9 de la doc)
-  faits → reprendre à l'**ép. 3b** (critère C5 en GUI interactive), puis ép. 4. Direction actée
+  et **ép. 3b** (**C5 prouvé** en session réelle, sans clic humain grâce à `-r` : 0 descripteur du
+  canal hors Marionnet sur 395 processus, xterm vivant ; témoin sans `~cloexec` = 351 fds hérités
+  par 88 processus, dont 21 noyaux invités)
+  faits → **l'épisode 3 est clos**, reprendre à l'**ép. 4**. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
