@@ -63,6 +63,12 @@ let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash messa
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
 let option_paths  = Argv.register_unit_option "-paths"  ~doc:"print paths (filesystems, kernels, ..) and exit" () ;;
 let option_r      = Argv.register_unit_option "r" ~aliases:["-run"] ~doc:"immediately run the specified project (if any)" () ;;
+(* Opt-in scripting channel (control_server.ml): without this option no socket is created. *)
+let option_control_socket =
+  Argv.register_string_option "-control-socket"
+    ~arg_name_in_help:"PATH"
+    ~doc:"serve the scripting control channel on the unix socket PATH (absolute)"
+    () ;;
 let () = Argv.register_h_option_as_help () ;;
 
 (* Registering arguments: *)

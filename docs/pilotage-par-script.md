@@ -119,9 +119,17 @@ Défense en profondeur retenue :
 | Fichier | Modification |
 |---|---|
 | `bin/control_server.ml` | **nouveau** — serveur, dispatch, encodage JSON |
-| `bin/initialization.ml` | déclarer `--control-socket[=PATH]` avec `Argv`, à côté de `option_r` (l.65) |
-| `bin/marionnet.ml` | démarrer le thread serveur juste avant `main_loop ()` (l.487), donc après `st` (l.70) et après la construction de la fenêtre |
-| `bin/dune` | ajouter le module à la stanza GUI (l.177) |
+| `bin/initialization.ml` | déclarer `--control-socket PATH` avec `Argv`, à côté de `option_r` (l.65) |
+| `bin/marionnet.ml` | neutraliser `SIGPIPE` (N18) ; démarrer le thread serveur juste avant `main_loop ()`, donc après `st` et après la construction de la fenêtre |
+| ~~`bin/dune`~~ | **rien à faire** (rectifié à l'ép. 3a) : la stanza GUI est `(modules (:standard \ …))` (`bin/dune:163`), elle prend le nouveau module automatiquement |
+
+⚠️ Rectifié à l'ép. 3a : `--control-socket[=PATH]`, avec valeur **optionnelle**, n'est pas
+réalisable — `Argv` n'offre que des options *sans* argument (`register_unit_option`) ou à argument
+**obligatoire** (`register_string_option`, `lib/BASE/argv.mli:26`). La valeur est donc obligatoire,
+ce qui a un avantage : le client connaît le chemin sans avoir à découvrir un nom auto-généré.
+Contrepartie : le `~perm:0o700` du § 3.4 ne s'applique qu'au nom auto-généré, donc c'est le serveur
+qui doit vérifier le répertoire parent d'un chemin imposé (créé en `0700` s'il manque, refus s'il
+est accessible en écriture à autrui).
 
 ---
 
@@ -141,6 +149,24 @@ réponse JSON par ligne.
 Codes d'erreur normalisés : `unknown_command`, `bad_argument`, `no_active_project`,
 `unknown_node`, `forbidden_transition`, `timeout`, `internal`.
 
+**Contenu multi-ligne : par chemin de fichier** (tranché à l'ép. 3a). Un rcfile de scénario (§ 10)
+ou un fragment `Xforest` (§ 4.8) ne tient pas sur une ligne. Plutôt que d'ajouter un mode « corps »
+au protocole (sentinelle de fin, donc un **état** dans le lecteur et un cas d'erreur de plus) ou un
+encodage base64 (illisible, et un décodeur à écrire), la commande reçoit un **chemin** :
+`--from=/chemin/fichier`, que le serveur lit côté hôte. Le lecteur reste un `input_line` **nu**, et
+le mécanisme couvre rcfile et forest d'un seul geste. Légitime ici : un socket unix implique la
+même machine, et le répertoire `0700` borne déjà l'accès au canal. Côté client, un heredoc Bash
+vers `mktemp` fait le reste.
+
+**Options et argument positionnel** (ép. 3a) : les jetons commençant par `--` sont des options
+(`--clé=valeur`, ou `--clé` seule pour un drapeau) ; **tous les autres jetons sont rejoints par un
+espace** pour former l'unique argument positionnel — de sorte qu'un chemin contenant des espaces
+n'a pas besoin d'être protégé. Cette commodité ne vaut que tant qu'une commande a **au plus un**
+argument positionnel : les commandes de l'ép. 4 (`connect`, `ifconfig`…) exigeront une vraie
+tokenisation, et sans doute une convention de citation.
+
+**`--timeout=N`** est accepté par toute commande qui interroge le thread GTK (§ 8).
+
 ### 4.2 Projet
 
 | Commande | Correspondance modèle |
@@ -152,9 +178,13 @@ Codes d'erreur normalisés : `unknown_command`, `bad_argument`, `no_active_proje
 | `quit` | `st#quit_async` (l.924) |
 | `status` | `st#active_project`, `st#runnable_project`, `st#project_already_saved` |
 
-⚠️ `open` est **asynchrone** (retourne un `Thread.t`). La commande doit soit attendre la fin du
-thread, soit renvoyer immédiatement et laisser `wait` faire son office — à trancher à l'épisode 4,
-la réponse ne devant jamais mentir sur l'état atteint.
+⚠️ `open` est **asynchrone** (retourne un `Thread.t`) — **tranché à l'ép. 3a, et le nom trompe** :
+appelé depuis un thread qui n'est pas `gtk_main`, `open_project_async` exécute le chargement
+**dans le thread appelant** (`state.ml:594-596`), sans en créer un autre. Le serveur l'appelle donc
+**directement** — surtout pas via `GMain_actor`, qui le ferait basculer sur la branche « je suis
+gtk_main » et rendrait la main aussitôt, résultat perdu. La commande est ainsi **bloquante**, ce
+qu'un script veut. Restait à ne pas mentir : voir le § 11 (journal de l'ép. 3a), où le premier
+critère de succès s'est révélé menteur et a dû être remplacé.
 
 ### 4.3 Composants
 
@@ -420,7 +450,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **2** | Application des correctifs retenus (divergence `lib/` vendored), ordre § 7.5.4 | **fait** (2026-07-29) — N2, N3, N11, N4, N5, N8, N13 ; **N1 différé en ép. 2b** |
 | **2b** | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` | **fait** (2026-07-29) — code + 2 tests ; fumée GUI reportée en 2c |
 | **2c** | Fumée GUI : exercer réellement le chemin `input_line`/`output_line` corrigé | **fait** (2026-08-03) — 4 critères sur 5 satisfaits, protocole de l'ép. 2b rectifié |
-| 3 | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + **preuve GUI réelle** | à faire |
+| **3a** | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + preuve **scriptée** | **fait** (2026-08-03) |
+| 3b | Preuve **GUI interactive** : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | à faire |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -431,7 +462,48 @@ reviendrait à fabriquer un instrument de mesure faussé.
 
 ---
 
-## 10. Journal d'avancement
+## 10. Perspective : le scripting descend dans les composants
+
+*Direction fixée par l'auteur le 2026-08-03, ancrages vérifiés le jour même.*
+
+Piloter Marionnet ne s'arrête pas aux gestes que la GUI propose. La fonctionnalité **« Startup
+configuration »** — déjà offerte par les machines, les switchs et les routeurs — permet de faire
+**jouer un scénario au démarrage** : une machine peut exécuter sa part d'un TP, écrire un
+**journal d'exécution** récupérable côté hôte, se **synchroniser approximativement** avec les
+autres (`sleep`), et jusqu'à **décider sa propre terminaison** (`halt`) au lieu de subir un arrêt
+piloté depuis l'extérieur. C'est le complément naturel du canal de contrôle : celui-ci commande
+*l'infrastructure*, la configuration de démarrage commande *l'intérieur des machines*.
+
+**Corollaire assumé** : les composants qui n'ont pas cette fonctionnalité (hub, câble, cloud,
+`world_*`) pourront être **augmentés** pour l'obtenir. Élargir la surface scriptable est un
+objectif du chantier, pas une dérive de périmètre.
+
+Le mécanisme **existe déjà de bout en bout** ; seul l'accès programmatique manque :
+
+| Maillon | Où | Nature |
+|---|---|---|
+| `rc_config : bool * string` = (activé, contenu) | `machine.ml:613-615`, `switch.ml:410-412` | état user-level, déjà persistant |
+| 8 variantes pour le routeur (unix + 7 protocoles quagga) | `router.ml:63-250`, `349-389` | idem |
+| lu à la **construction du device** | `machine.ml:674-678` | ⇒ prend effet au **prochain démarrage**, jamais à chaud |
+| déposé dans `hostfs/marionnet-relay.rcfile` | `simulation_level.ml:1244-1251` | côté hôte |
+| **sourcé** en fin de `start()` du relais invité | `marionnet-relay.trixie:486-494` | `for i in /mnt/hostfs/{$virtualfs_name.,marionnet-}relay*; do source "$i"; done` — donc du **bash invité arbitraire**, en fin de boot |
+| hostfs = répertoire **hôte** monté en `/mnt/hostfs` | inotify déjà en place, `machine.ml:867-934` | ⇒ le journal écrit par l'invité est lisible côté hôte |
+
+Deux conséquences pour la suite du chantier :
+
+1. **Le canal « invité prêt » qui manquait au § 4.7 existe déjà.** Un scénario qui touche un fichier
+   dans `/mnt/hostfs/` donne au script un signal de disponibilité **sans** toucher aux images —
+   c'est-à-dire sans dépendre du chantier `marionnet-kernel-rootfs`. Seule la *convention* reste à
+   fixer.
+2. **Ne pas faire passer `rc_config` par `forest`.** Dans le `.mar`, ce champ est **marshalé**
+   (`Marshal.to_string`, `machine.ml:644`/`660`, `switch.ml:455`/`464`) : la commande `forest`
+   (§ 4.8) et le générateur `.mar` (voie C) sont de mauvais véhicules. Il faut une **commande
+   dédiée** qui transporte le contenu **en clair**, par chemin de fichier (§ 4.1) :
+   `rc-set <nœud> --from=<fichier> [--enable|--disable]`, et son pendant `rc-get`.
+
+---
+
+## 11. Journal d'avancement
 
 ### 2026-07-29 — épisode 0 : officialisation et conception
 
@@ -676,3 +748,54 @@ discriminant) : à relever pendant la session GUI de l'épisode 3, tant que le x
 **Conclusion.** La dette de l'épisode 2b est levée : les correctifs de `network.ml` tiennent en
 GUI réelle, sur le chemin qu'ils modifient. L'épisode 3 peut commencer — l'instrument de mesure
 est validé.
+
+---
+
+### 2026-08-03 — épisode 3a : le canal de contrôle existe, et il ne ment plus
+
+Premières lignes de `bin/` du chantier. Trois fichiers : `bin/control_server.ml` (nouveau),
+`bin/initialization.ml` (+1 option), `bin/marionnet.ml` (SIGPIPE + démarrage du thread).
+`bin/dune` n'a **pas** été touché — cf. la rectification du § 3.5.
+
+**Trois questions de conception ont été tranchées avant d'écrire**, chacune parce qu'elle
+changeait l'ossature et non le détail : le transport d'un contenu **multi-ligne** (→ chemin de
+fichier, § 4.1), la sémantique d'**`open`** (→ synchrone, § 4.2), et la protection contre un
+**thread GTK bloqué** (→ échéance côté serveur). Cette dernière mérite d'être justifiée : la GUI
+reste vivante *et* un humain peut être devant l'écran ; un menu déroulé suffit à figer la boucle
+GTK. Sans échéance côté serveur, le client raccroche après *son* délai (§ 8), le thread serveur
+reste pendu (**N10**), puis écrit dans un socket fermé (**N18**) — les trois défauts de l'audit se
+tiennent, et il fallait les traiter ensemble. D'où `GMain_actor.future` + `Future.taste`, défaut
+5 s, `--timeout=N` par commande.
+
+**Le premier critère de succès d'`open` était menteur, et la mesure l'a montré.** La version
+initiale concluait au succès si le projet actif portait le nom demandé. Or l'ouverture d'un fichier
+texte quelconque a répondu `{"ok":true,…,"nodes":0}` : Marionnet **positionne le nom de fichier
+même quand le chargement échoue** (l'exception est ravalée en dialogue non modal,
+`state.ml:537-547`, `567-580`). Le critère retenu s'appuie sur `project_already_saved`, que
+`register_state_after_save_or_open` (`state.ml:551`) ne met à vrai **que** sur le chemin de succès —
+mesuré dans les deux sens : `true` après `tp.mar`, `false` après le fichier mal formé. Un projet
+légitimement vide répond toujours `ok` avec `nodes:0`, puisqu'il passe par cette même ligne.
+
+**N18 est corrigé, et la preuve est discriminante.** Neutraliser `SIGPIPE` n'est utile que si son
+absence tue : la même série de 40 clients qui raccrochent sans lire leur réponse a été jouée deux
+fois. Avec `Sys.Signal_default` (témoin), Marionnet meurt **à la 3ᵉ itération** — « Relais brisé
+(pipe) », aucune trace dans le journal, exactement le motif annoncé. Avec `Sys.Signal_ignore`, il
+survit aux 40 et continue de servir. Le signal est posé dans `bin/marionnet.ml` : une disposition
+globale appartient au programme, pas à une bibliothèque vendored.
+
+**Mesures de la session finale** (mode `--debug`, 23 connexions servies) : **0** `Thread.Exit`,
+**0** *uncaught exception*, **0** `EBADF`, **0** `Closing`. Le plafond de sessions (**N10**, 8)
+refuse la 9ᵉ connexion et rend le jeton dès qu'une session se termine. Le socket est nettoyé à la
+sortie propre (**N12**), et son répertoire parent est bien `drwx------` alors que le socket lui-même
+reste `srwxrwxrwx` : la parade du § 3.4 fait exactement ce qu'elle annonce.
+
+**Deux limites assumées, à traiter plus tard.** (a) Une session refusée pour cause de plafond reçoit
+sa réponse JSON puis voit sa connexion coupée sans `shutdown` ordonné (`Connection reset by peer`
+côté `socat`) — le client est servi, mais la fermeture pourrait être plus propre. (b) Une fin de
+session normale laisse une ligne `stream_channel#input_line: End_of_file` dans le journal *debug* :
+c'est `network.ml` qui journalise avant de lever (**N9**), et le corriger supposerait de toucher
+`lib/` vendored pour un simple bruit de trace.
+
+**Reste à l'épisode 3b** : le critère **C5** (aucun descripteur du canal de contrôle dans
+`/proc/<pid xterm>/fd`, xterm **vivant**), qui suppose une session GUI interactive avec des
+composants démarrés.

@@ -146,10 +146,13 @@ Reprise : appliquer le skill `chantier-long`.
   ajoutée] ; périmètre = noyau + les 4 treeviews) : `docs/pilotage-par-script.md` ; mémoire
   `marionnet-pilotage-par-script` ; `git log --grep="marionnet-pilotage-par-script"`. Ép. 0
   (conception), ép. 1 (audit intégral de `lib/STRUCTURES/network.ml` → § 7.5, **18 défauts**),
-  ép. 2 + 2b (correctifs N2/N3/N11/N4/N5/N8/N13 puis **N1** dans `lib/` vendored, + `test/marionnet.ml`)
-  et ép. 2c (**fumée GUI concluante** : fd stables, 0 `EBADF`) faits → **aucune ligne de `bin/`
-  écrite** : reprendre à l'**ép. 3** (`bin/control_server.ml` + `--control-socket` + 4 commandes
-  + **N18** : `SIGPIPE` n'est neutralisé nulle part, il peut tuer Marionnet sans trace).
+  ép. 2 + 2b (correctifs N2/N3/N11/N4/N5/N8/N13 puis **N1** dans `lib/` vendored, + `test/marionnet.ml`),
+  ép. 2c (**fumée GUI concluante** : fd stables, 0 `EBADF`) et **ép. 3a** (`bin/control_server.ml` :
+  `--control-socket PATH`, commandes `status`/`ls`/`open`/`quit` en JSON, **N18 corrigé** — `SIGPIPE`
+  neutralisé dans `bin/marionnet.ml`, sans quoi un client qui raccroche tue Marionnet **sans trace**)
+  faits → reprendre à l'**ép. 3b** (critère C5 en GUI interactive), puis ép. 4. Direction actée
+  (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
+  (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

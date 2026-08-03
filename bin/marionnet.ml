@@ -57,6 +57,15 @@ let () =
   | e ->
       Log.printf1 "marionnet: setsid failed unexpectedly (%s); continuing without session isolation.\n" (Printexc.to_string e)
 
+(* Neutralise SIGPIPE, whose default action is to *kill* the process. Marionnet writes on
+   sockets whose peer may have gone away at any moment (X11 relay, vde, and now the
+   scripting control channel): such a write would terminate the application without any
+   exception to log, hence without any trace — this is not a conjecture, the test program
+   of the control channel got killed that way (exit 141). Ignored, the same condition
+   surfaces as an ordinary EPIPE exception, caught by the callers. Placed here on purpose:
+   still single-threaded, before GTK and the global state. *)
+let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
+
 (* --- *)
 let () = Log.printf1 "Loading module bin/marionnet.ml: cwd: %s\n" (Sys.getcwd ())
 
@@ -483,6 +492,11 @@ let rec main_loop () =
     end
 in
 let () = Log.printf "Loading module bin/marionnet.ml: about to starting the application\n" in
+(* --- *)
+(* Scripting control channel, if --control-socket was given. Started here on purpose:
+   after the global state (st) and after the main window has been built, but before the
+   GTK main loop, so that the first client finds a complete application. *)
+let () = Control_server.start_if_requested (st) in
 (* --- *)
 main_loop ()
 
