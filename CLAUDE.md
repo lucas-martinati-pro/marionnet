@@ -157,7 +157,12 @@ Reprise : appliquer le skill `chantier-long`.
   et **ép. 3b** (**C5 prouvé** en session réelle, sans clic humain grâce à `-r` : 0 descripteur du
   canal hors Marionnet sur 395 processus, xterm vivant ; témoin sans `~cloexec` = 351 fds hérités
   par 88 processus, dont 21 noyaux invités)
-  faits → **l'épisode 3 est clos**, reprendre à l'**ép. 4**. Direction actée
+  et **ép. 4a** (**l'automate = contrat du script**, § 4.10 de la doc : le script a les mêmes
+  possibilités et limites que la GUI ; table états × actions, règle « tester `can_*` avant →
+  `forbidden_transition` », exception des **câbles** qui s'éditent/se suppriment en marche,
+  commande `can` ; **décision** : `can_destroy`/`can_modify` descendent dans `user_level.ml`,
+  lus par la GUI **et** le serveur)
+  faits → **l'épisode 3 est clos**, reprendre à l'**ép. 4b** (implémentation de 4a). Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort

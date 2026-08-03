@@ -205,6 +205,11 @@ critère de succès s'est révélé menteur et a dû être remplacé.
 `…_gracefully_shutdown`, `…_suspend`, `…_resume`. Un script peut donc **interroger les transitions
 légales** au lieu de les deviner — c'est le moyen le plus sûr de tester l'automate d'état.
 
+⚠️ **`--can=…` ne suffit pas à garantir l'équivalence avec la GUI** (constaté à l'ép. 4a) :
+`del` et `set` obéissent eux aussi à l'état du composant, mais leur garde vit **dans la GUI**, pas
+dans le modèle. Le contrat complet — table des états, règle de refus, exception des câbles,
+commande `can` — est au **§ 4.10**, qui fait autorité sur ce paragraphe.
+
 ### 4.4 Transitions
 
 `start`, `stop`, `suspend`, `resume`, `restart`, `poweroff` sur un composant nommé ;
@@ -213,6 +218,11 @@ légales** au lieu de les deviner — c'est le moyen le plus sûr de tester l'au
 
 Côté composant : `#startup`, `#suspend`, `#resume`, `#gracefully_shutdown`, `#gracefully_restart`,
 `#poweroff` (`user_level.ml:207-238`).
+
+⚠️ Ces méthodes sont **gardées mais muettes** : appeler `#startup` sur un composant qui ne peut
+pas démarrer ne fait rien et ne dit rien. La commande **teste le prédicat avant** et répond
+`forbidden_transition` — cf. **§ 4.10**, qui donne la table complète, l'exception des câbles, et
+le statut particulier de `poweroff` et `restart` (aucun menu par composant ne les offre).
 
 ### 4.5 Câbles
 
@@ -325,6 +335,109 @@ tiennent la sémantique :
 
 Atteindre cette branche signale d'ailleurs qu'un *callback* GUI a été appelé depuis le serveur, ce
 que le § 3.3 interdit : elle journalise bruyamment. À ce jour aucune commande n'y mène.
+
+### 4.10 L'automate d'état, contrat du script
+
+*Conception de l'épisode 4a (2026-08-03), ancres vérifiées le jour même.*
+
+**Exigence.** Un script doit avoir **les mêmes possibilités et les mêmes limites** qu'un humain
+devant la GUI : si un composant est suspendu, il peut être réveillé, pas démarré ; s'il tourne, il
+ne peut pas être supprimé. Cette exigence n'est pas une politesse d'API — c'est ce qui rend le
+canal utilisable comme **instrument de test** : un script qui pourrait faire ce que la GUI
+interdit ne testerait pas Marionnet, il testerait une autre application.
+
+**L'automate existe déjà**, et il est explicite : quatre états
+(`No_device | Off | On | Sleeping`) et cinq prédicats gardés par `Recursive_mutex`
+(`user_level.ml:417-450`), exposés par nature de composant via `get_node_names_that_can_*`
+(`user_level.ml:1838-1868`). Rien à inventer : le chantier `marionnet-automate-composants`
+(16 épisodes, clos le 2026-08-03, `docs/refonte-automate-composants.md`) l'a audité et refondu.
+Ce qui manquait, c'est **d'en publier la table** et de constater qu'elle a un trou.
+
+| Action | Commande | Garde — source de vérité | États autorisés | Dans la GUI ? |
+|---|---|---|---|---|
+| démarrer | `start` | `can_startup` (`user_level.ml:417`) | `No_device`, `Off` | oui — menu *Startup* |
+| arrêter | `stop` | `can_gracefully_shutdown` (`:424`) | `On`, `Sleeping` | oui — menu *Stop* |
+| suspendre | `suspend` | `can_suspend` (`:438`) | `On` **seulement** | oui — menu *Suspend* |
+| réveiller | `resume` | `can_resume` (`:445`) | `Sleeping` **seulement** | oui — menu *Resume* |
+| modifier | `set` | **`can_modify` — à créer** (aujourd'hui : `Properties.dynlist`) | `No_device`, `Off` | oui — menu *Properties* |
+| supprimer | `del` | **`can_destroy` — à créer** (aujourd'hui : `Remove.dynlist`) | `No_device`, `Off` | oui — menu *Remove* |
+| éteindre brutalement | `poweroff` | `can_poweroff` (`:431`) — **sans lecteur** | `On`, `Sleeping` | **non par composant** — seulement « tout éteindre » (`state.ml:962`, filtré par `can_gracefully_shutdown`) |
+| redémarrer | `restart` | `can_gracefully_shutdown` (`marionnet.ml:169`) | `On`, `Sleeping` | **non par menu** — seulement via une édition de treeview, après confirmation (`marionnet.ml:173-175`) |
+
+**Le trou : la règle de suppression n'est pas dans le modèle, elle est dans la GUI.** Sur les sept
+composants-nœuds, sans exception, `Properties.dynlist () = get_node_names_that_can_startup` et
+`Remove.dynlist = Properties.dynlist` (`machine.ml:167`/`229`, `hub.ml:84`/`106`,
+`switch.ml:115`/`149`, `router.ml:490`/`555`, `cloud.ml:88`/`108`, `world_gateway.ml:117`/`158`,
+`world_bridge.ml:93`/`113`) : le menu ne propose « Modifier »/« Supprimer » que pour ce qui peut
+démarrer, c'est-à-dire ce qui est éteint. Mais `#destroy` n'est gardé par **aucun** prédicat —
+`can_destroy` n'existe pas. Un serveur qui appelle les méthodes du modèle (§ 3.3) **contournerait
+donc la règle** et détruirait un composant en marche, avec ses processus vivants.
+
+**Décision (ép. 4a) : la garde descend dans le modèle.** `can_destroy` et `can_modify` sont
+ajoutés à la classe de base de `user_level.ml`, avec la même condition que `can_startup` par
+défaut, et **surchargés à `true` dans `cable.ml`** ; les `dynlist` de la GUI les lisent au lieu de
+`can_startup`, et le serveur lit les mêmes. Source unique de vérité : c'est la seule forme qui
+garantit l'équivalence demandée. Deux prédicats plutôt qu'un, bien qu'ils coïncident aujourd'hui :
+ils recouvrent deux notions qui peuvent diverger — le câble en est déjà la preuve — et le coût
+marginal est nul. *(Implémentation : épisode 4b.)*
+
+**Les câbles ne suivent pas la règle des nœuds**, et c'est délibéré :
+
+| | Câble |
+|---|---|
+| modifier / supprimer | `Properties.dynlist = all_names` (`cable.ml:127`), `Remove.dynlist = Properties.dynlist` (`:181`) → **toujours permis, en marche compris** |
+| suspendre / réveiller | `can_suspend = connected`, `can_resume = not connected` (`cable.ml:906-912`) — sémantique propre : « débranché » plutôt que « endormi » |
+| redémarrer | `suspend` puis `resume` (`marionnet.ml:160-164`), pas `gracefully_restart` |
+| démarrer / arrêter | **inapplicable** : le processus d'un câble est piloté par un compteur de références, jamais par l'utilisateur ; `can_startup` n'a plus aucun lecteur pour un câble depuis l'ép. 12 (`cable.ml:897-903`) |
+
+C'est la règle de projet « le câblage suit la réalité » (`CLAUDE.md`) : on débranche et rebranche
+un câble pendant que les machines tournent, donc Marionnet doit le permettre. Un serveur qui
+appliquerait aux câbles la règle des nœuds serait plus restrictif que la GUI — aussi faux que
+l'inverse.
+
+**Trois règles pour le serveur**, qui découlent de ce qui précède :
+
+1. **Tester `can_*` avant, et refuser explicitement.** Les méthodes de transition du modèle sont
+   gardées mais **muettes** : `user_level.ml:212-237` fait `if self#can_startup then
+   self#startup_right_now`, sans `else`. Un `start` sur un composant déjà démarré est donc un
+   **no-op silencieux**, et un serveur qui se fierait au retour répondrait `ok` alors que rien
+   n'a eu lieu. Toute commande d'action teste le prédicat **avant**, et répond
+   `forbidden_transition` en indiquant l'état courant et les actions légales. Même motif que
+   l'échec silencieux de `try_to_add_*` (§ 4.8) et que le C5 de l'audit de l'automate.
+2. **Ne jamais exposer l'état brut.** `No_device` et `Off` se projettent tous deux sur `off`
+   (§ 2 : `off`/`on`/`sleeping`). La différence est un détail d'implémentation — machines et
+   routeurs enchaînent un `destroy` après l'arrêt pour repartir d'un fichier COW neuf et finissent
+   en `No_device`, les autres restent en `Off` (C2 de l'audit). Un script qui verrait deux états
+   là où l'utilisateur en voit un serait conduit à écrire des conditions fausses.
+3. **Publier l'éligibilité plutôt que la faire deviner** — commande `can` ci-dessous.
+
+**Commande `can [<nom>]`** — l'équivalent scriptable du menu contextuel, vue « par composant »
+(là où `ls --can=…` du § 4.3 est la vue « par action ») :
+
+```
+-> can m1
+<- {"ok":true,"name":"m1","kind":"machine","state":"sleeping","can":["resume","stop"]}
+-> can
+<- {"ok":true,"components":[{"name":"m1","state":"sleeping","can":["resume","stop"]}, …]}
+```
+
+Le script n'a ainsi **aucune table à réimplémenter** : il demande ce qui est permis maintenant.
+C'est aussi le moyen le plus direct de tester l'automate lui-même — comparer `can` avant et après
+chaque transition est un oracle qui ne dépend d'aucune connaissance externe.
+
+**Deux actions restent au-delà de la GUI, à trancher à l'ép. 4b.** `poweroff` et `restart`
+**par composant** n'existent dans aucun menu : le premier n'est offert que globalement
+(« tout éteindre », avec confirmation), le second n'est déclenché que par une édition de treeview.
+Le § 4.4 les prévoit pourtant tous deux. Recommandation : les **garder**, mais les marquer dans la
+grammaire comme *extensions assumées* — l'action existe bel et bien dans l'application, seule sa
+granularité diffère, et un script de test a besoin de simuler une coupure brutale sur **une**
+machine. L'alternative (équivalence stricte, donc suppression des deux commandes) reste ouverte et
+appartient à l'auteur.
+
+**Dette relevée au passage** : `can_poweroff` (`user_level.ml:431`) n'a **aucun lecteur** —
+`poweroff_everything` (`state.ml:962`) filtre sur `can_gracefully_shutdown`. Les deux prédicats
+ont la même définition (`On | Sleeping`), donc pas de bug ; mais c'est un prédicat mort de plus,
+du même genre que `can_startup` sur les câbles. À traiter avec l'ép. 4b, pas avant.
 
 ---
 
@@ -515,7 +628,9 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **3a** | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + preuve **scriptée** | **fait** (2026-08-03) |
 | **3b** | Preuve en session réelle : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | **fait** (2026-08-03) — 0 fd sur 395 processus, témoin à 351 fds |
 | **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
-| 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
+| **4a** | L'automate comme **contrat du script** (§ 4.10) : table états × actions, règle de refus, exception des câbles, commande `can` ; décision `can_destroy`/`can_modify` dans le modèle | **fait** (2026-08-03) — conception, aucun code |
+| 4b | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commande `can` ; arbitrage `poweroff`/`restart` par composant | à faire |
+| 4c | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest`, `rc-set`/`rc-get` | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | 7 | Voie C : générateur de `.mar` | à faire |
@@ -981,3 +1096,55 @@ nettoyer par **répertoire de session** (`/tmp/marionnet-<N>.dir`, propre au run
 **Aucune ligne de code applicatif n'a été touchée** : l'épisode est une mesure, et son résultat
 est que le correctif N2 (ép. 2) et le cycle de vie des descripteurs de l'ép. 2b tiennent en
 session réelle. C5 est le dernier critère de sûreté de l'ép. 3 ; l'épisode 3 est clos.
+
+---
+
+### 2026-08-03 — épisode 4a : l'automate, contrat du script
+
+**L'exigence, posée par l'auteur avant que l'ép. 4 ne commence** : un script doit avoir *les mêmes
+possibilités et les mêmes limites* qu'un humain devant la GUI — un composant suspendu se réveille
+mais ne se démarre pas, un composant en marche ne se supprime pas. La question posée était :
+est-ce déjà prévu, et faut-il un chantier dédié à définir explicitement cet automate ?
+
+**Réponse mesurée sur le code : à moitié prévu, et le trou n'est pas là où on l'attendait.**
+Les transitions d'exécution étaient couvertes (§ 4.3, `ls --can=…`) et l'automate est explicite
+depuis longtemps — quatre états, cinq prédicats (`user_level.ml:417-450`). Mais **`del` et `set`
+échappaient entièrement au raisonnement** : leur garde n'existe que dans la GUI, où
+`Remove.dynlist = Properties.dynlist = get_node_names_that_can_startup`, uniformément sur les sept
+composants-nœuds. Aucun `can_destroy` dans le modèle. Le serveur, qui n'appelle que le modèle
+(§ 3.3), aurait donc détruit des composants en marche — et l'aurait fait *en croyant respecter
+l'automate*, puisque le § 4.3 laissait entendre que `--can=…` suffisait.
+
+**Trois autres constats, chacun capable de fausser une commande.** (a) Les méthodes de transition
+sont gardées mais **muettes** (`user_level.ml:212-237`) : un `start` illégal est un no-op
+silencieux, et un serveur qui se fierait au retour répondrait `ok` sans rien avoir fait — le motif
+d'échec silencieux qui court dans tout ce chantier. (b) Le menu **par composant** n'offre que six
+entrées (*Properties*, *Remove*, *Startup*, *Stop*, *Suspend*, *Resume* — la signature même du
+foncteur de disposition, `gui_toolbar_COMPONENTS_layouts.ml:118-127`) : ni `poweroff`, offert
+seulement globalement
+(`state.ml:962`), ni `restart`, déclenché uniquement par une édition de treeview après
+confirmation (`marionnet.ml:169-175`). Le § 4.4 prévoyait pourtant les deux comme commandes de
+composant : ce sont des **extensions** au-delà de la GUI, et il fallait le dire plutôt que le
+laisser passer. (c) `can_poweroff` n'a **aucun lecteur** — dette relevée, pas traitée.
+
+**Ce que la GUI sait et que le modèle ignore, le modèle doit l'apprendre.** Décision actée avec
+l'auteur : `can_destroy` et `can_modify` descendent dans `user_level.ml`, surchargés à `true` pour
+les câbles, et la GUI comme le serveur lisent ces prédicats — source unique de vérité. L'option
+« recopier la règle dans le serveur » a été écartée : deux vérités divergent toujours, et c'est
+précisément ce dont on sortait.
+
+**Les câbles sont l'exception qui valide la démarche.** Leur `Properties.dynlist` est `all_names`
+(`cable.ml:127`) : un câble se modifie et se supprime **en marche**, conformément à la règle de
+projet « le câblage suit la réalité » et à l'ép. 12 du chantier de l'automate. Un serveur qui
+aurait généralisé la règle des nœuds « par symétrie » aurait été *plus restrictif* que la GUI —
+la même erreur, en miroir, que celle commise à l'ép. 8 de ce chantier-là.
+
+**Pas de nouveau chantier.** L'automate a déjà été audité et refondu de bout en bout
+(`marionnet-automate-composants`, 16 épisodes, clos ; C1 à C5 y sont écrits). Ce qui manquait
+n'était pas de le *définir* mais d'en **publier la table** à l'usage du script et de combler un
+trou précis. D'où le § 4.10, et un ép. 4 découpé : 4a (ce document), 4b (les prédicats et la
+commande `can`), 4c (le noyau des commandes).
+
+**Aucune ligne de code touchée.** La preuve attendue d'un épisode de conception n'est pas une
+exécution mais l'exactitude de ses ancres : chaque garde de la table du § 4.10 a été relue dans
+le source le jour même, y compris les sept couples `Properties`/`Remove` un par un.
