@@ -145,11 +145,11 @@ Reprise : appliquer le skill `chantier-long`.
   et observable ; requête = ligne texte, réponse = ligne **JSON** [aucune dépendance OCaml
   ajoutée] ; périmètre = noyau + les 4 treeviews) : `docs/pilotage-par-script.md` ; mémoire
   `marionnet-pilotage-par-script` ; `git log --grep="marionnet-pilotage-par-script"`. Ép. 0
-  (conception) et ép. 1 (audit intégral de `lib/STRUCTURES/network.ml` → § 7.5, **17 défauts**,
-  4 bloquants : N1 fd fermé 4×/fermé plus tard par le GC, N2 `CLOEXEC` absent sur le chemin
-  `~no_fork`, N3 boucle d'acceptation non gardée, N13 filtrage `~range` sur l'adresse locale)
-  faits 2026-07-29, **toujours aucun code touché** → reprendre à l'**ép. 2** (application des
-  correctifs dans `lib/` vendored, ordre § 7.5.4).
+  (conception), ép. 1 (audit intégral de `lib/STRUCTURES/network.ml` → § 7.5, **18 défauts**),
+  ép. 2 + 2b (correctifs N2/N3/N11/N4/N5/N8/N13 puis **N1** dans `lib/` vendored, + `test/marionnet.ml`)
+  et ép. 2c (**fumée GUI concluante** : fd stables, 0 `EBADF`) faits → **aucune ligne de `bin/`
+  écrite** : reprendre à l'**ép. 3** (`bin/control_server.ml` + `--control-socket` + 4 commandes
+  + **N18** : `SIGPIPE` n'est neutralisé nulle part, il peut tuer Marionnet sans trace).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

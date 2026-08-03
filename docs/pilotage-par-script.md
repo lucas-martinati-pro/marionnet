@@ -4,10 +4,10 @@
 > Reprise : appliquer le skill `chantier-long` (mémoire `marionnet-pilotage-par-script`,
 > `git log --grep="marionnet-pilotage-par-script"`).
 >
-> **État : épisodes 0 à 2b faits.** La conception (§ 1-6) reste à l'état de projet : aucune ligne
+> **État : épisodes 0 à 2c faits.** La conception (§ 1-6) reste à l'état de projet : aucune ligne
 > de `bin/` n'est encore écrite. Ce qui existe est l'assainissement préalable de
-> `lib/STRUCTURES/network.ml` (§ 7.5, ép. 2 et 2b) et sa suite de tests `test/marionnet.ml`.
-> Prochaine étape : épisode 3.
+> `lib/STRUCTURES/network.ml` (§ 7.5, ép. 2 et 2b), sa suite de tests `test/marionnet.ml`, et sa
+> validation en GUI réelle (ép. 2c). Prochaine étape : épisode 3.
 
 ---
 
@@ -418,7 +418,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **0** | Officialisation + ce document | **fait** (2026-07-29) |
 | **1** | Audit complet de `lib/STRUCTURES/network.ml` → rapport + correctifs proposés | **fait** (2026-07-29) — § 7.5, 17 défauts |
 | **2** | Application des correctifs retenus (divergence `lib/` vendored), ordre § 7.5.4 | **fait** (2026-07-29) — N2, N3, N11, N4, N5, N8, N13 ; **N1 différé en ép. 2b** |
-| **2b** | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` | **fait** (2026-07-29) — code + 2 tests ; **fumée GUI restant à jouer** (protocole § 10) |
+| **2b** | **N1** seul : cycle de vie des descripteurs de `stream_channel#shutdown` | **fait** (2026-07-29) — code + 2 tests ; fumée GUI reportée en 2c |
+| **2c** | Fumée GUI : exercer réellement le chemin `input_line`/`output_line` corrigé | **fait** (2026-08-03) — 4 critères sur 5 satisfaits, protocole de l'ép. 2b rectifié |
 | 3 | Squelette `bin/control_server.ml` + option CLI + 4 commandes (`status`, `ls`, `open`, `quit`) + **N18** + **preuve GUI réelle** | à faire |
 | 4 | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest` | à faire |
 | 5 | Les 4 treeviews | à faire |
@@ -605,3 +606,73 @@ Protocole, à rejouer intégralement avant l'épisode 3 :
    vérifier aussi qu'aucun socket de Marionnet n'apparaît dans `/proc/<pid xterm>/fd` ;
 6. arrêter les composants, fermer le projet, quitter. Le journal ne doit contenir ni `EBADF`,
    ni `Bad file descriptor`, ni exception `Closing` inattendue.
+
+⚠️ Ce protocole est **erroné sur trois points** ; voir l'épisode 2c pour la version corrigée.
+
+### 2026-08-03 — épisode 2c : la fumée GUI, et le protocole qui ne mesurait rien
+
+Aucune ligne de code touchée : cet épisode ne produit que de la **preuve**, et une rectification
+du protocole.
+
+**Le protocole de l'ép. 2b ne pouvait pas conclure.** Sa dette (« le chemin `input_line`/
+`output_line` n'a jamais été atteint ») avait été imputée à un défaut extérieur — B6 de
+`marionnet-automate-composants`, qui empêchait le switch de finir son démarrage. Attribution
+**au mieux incomplète** : la lecture de `bin/switch.ml` montre trois erreurs propres au protocole.
+
+1. **Le sondage est conditionnel** (`switch.ml:588`) :
+   `match show_vde_terminal || (rcfile_content <> None) with | false -> super#spawn_internal_cables`.
+   Un switch ordinaire n'ouvre **jamais** de canal ligne. Le geste GUI décisif — absent du
+   protocole — est de cocher **« Show VDE terminal »** dans le dialogue du switch
+   (`switch.ml:249,263`).
+2. **Le critère d'observation était intestable.** `grep -c "port/print"` ne peut rien donner :
+   `ask_vde_switch_for_current_active_ports` et `wait_vde_switch_until_ports_will_be_allocated`
+   (`switch.ml:487-499`) **ne journalisent pas** la commande envoyée. La chaîne `port/print`
+   n'apparaît que dans deux fonctions marquées *currently unused*. Le « 0 » relevé à l'ép. 2b ne
+   prouvait donc rien — ni dans un sens ni dans l'autre.
+3. **La fréquence annoncée était fausse.** « Un `#shutdown` par sondage, des dizaines de fois par
+   minute » : non. Le chemin n'est emprunté qu'à `spawn_internal_cables`, c'est-à-dire **au
+   démarrage du switch**, une fois plus une fois par câble interne. Pour accumuler des cycles, il
+   faut **cycler stop/start** — ce que le protocole ne demandait pas.
+
+Accessoirement, le binaire est `_build/default/bin/marionnet.exe` (`public_name` = `marionnet.native`),
+et non `_build/default/bin/marionnet.native`.
+
+**Critères de succès, fixés avant la mesure** (et non déduits après coup) : C1 le canal ligne est
+ouvert et lu ; C2 les cycles par câble interne tournent ; C3 aucune fermeture fautive ; C4 aucune
+fuite de descripteurs ; C5 aucun socket hérité par un `exec`.
+
+**Session jouée** : `marionnet.exe -d`, projet neuf, switch S1 **avec « Show VDE terminal »**,
+machines m1 et m2 câblées, démarrage complet, deux cycles stop/start de S1, console xterm sur m1
+avec client X dans l'invité, ~9 minutes, puis extinction et sortie propre. Compte de descripteurs
+et de threads échantillonné toutes les 15 s.
+
+| Critère | Mesure | Verdict |
+|---|---|---|
+| C1 — canal ligne exercé | `has currently … active ports` : **3** (démarrage + 2 redémarrages) | satisfait |
+| C2 — cycles par câble interne | `has now … allocated ports` : **12** (4 câbles × 3 démarrages) | satisfait |
+| C3 — fermeture fautive | `EBADF` / `Bad file descriptor` / `Closing` : **0** | satisfait |
+| C4 — fuite de descripteurs | **20-21 fd, stables**, pendant que les threads passaient de 16 à **71** | satisfait |
+| C5 — `CLOEXEC` en GUI | **non relevé** : le xterm était éteint avant la vérification | non couvert |
+
+C4 est le résultat le plus parlant : le nombre de descripteurs n'a pas bougé d'une unité alors que
+le processus montait à 71 threads et que douze cycles de canal ligne — donc jusqu'à trois
+descripteurs par canal, ouverts puis rendus — s'étaient succédé. C'est exactement ce que le
+correctif N1 promettait, et ce que `dune test` ne pouvait pas prouver à cette échelle.
+
+C5 reste adossé au seul test unitaire N2 (« *no socket is inherited by an exec'ed child* »,
+discriminant) : à relever pendant la session GUI de l'épisode 3, tant que le xterm est vivant.
+
+**Deux constats de terrain, en prime.**
+
+- **N4 confirmé hors banc de test** : **zéro** `Thread.Exit`, zéro *uncaught exception* dans
+  1293 lignes de journal. Les deux boucles d'acceptation du relais X11 se terminent sur
+  `Accepting(_)` à l'extinction — comportement voulu de la garde N3 — et aucune n'a eu à
+  journaliser de *transient failure* (rien d'anormal : la charge ne provoquait pas d'`EMFILE`).
+- **N9 observé en conditions réelles** : `Network.stream_channel#receive: Failure("received 0 bytes
+  (peer terminated?)")`, deux fois, à la fermeture **normale** du relais X11, juste avant
+  `crossover_link: joined both threads`. La fin de session propre est bien journalisée comme une
+  erreur ; le serveur de contrôle devra traiter ce cas comme une terminaison ordinaire (§ 7.5, N9).
+
+**Conclusion.** La dette de l'épisode 2b est levée : les correctifs de `network.ml` tiennent en
+GUI réelle, sur le chemin qu'ils modifient. L'épisode 3 peut commencer — l'instrument de mesure
+est validé.
