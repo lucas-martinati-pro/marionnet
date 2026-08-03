@@ -1653,3 +1653,138 @@ ce qui déclenche la question n'est pas un artefact de rendu mais un **contenu p
 **Reste au chantier** : le retrait de l'instrumentation `B6:` de l'épisode 2 (11 sites), et la cause
 profonde de l'écrasement — hors d'atteinte des mesures faites depuis OCaml, et sans objet depuis
 l'épisode 14 puisque Marionnet ne lit plus aucune valeur dans le widget.
+
+---
+
+### Épisode 16 — 2026-08-03 — le retrait de l'instrumentation `B6:`, et la clôture
+
+Dernier reliquat du chantier. L'instrumentation posée à l'épisode 2 pour traquer la divergence du
+treeview *defects* est devenue **du bruit d'exploitation** : la plupart de ses lignes sont en
+`~force:true`, donc visibles hors mode debug, alors que le défaut qu'elles traquaient est corrigé
+depuis les épisodes 5, 6 et 14. Le retrait est **sélectif**, sur décision de l'auteur : ce qui a une
+valeur au-delà du diagnostic reste, débarrassé du jeton.
+
+#### 1. Ce qui a été mesuré avant d'éditer
+
+`grep 'B6:' bin/` donnait **11 lignes de log** (`treeview_defects.ml` ×6, `treeview.ml` ×4,
+`treeview_history.ml` ×1), et la relecture en a trouvé un **douzième site** que le `grep` ne voyait
+pas : `treeview.ml`, `remove_subtree_by_name`, dont le commentaire s'annonce « instrumentation »
+alors que son log — une destruction silencieusement sautée — n'a jamais porté le préfixe et n'a rien
+de temporaire.
+
+#### 2. Les huit lignes retirées
+
+| Site | Ce que c'était | Pourquoi il part |
+|---|---|---|
+| `treeview.ml`, `load` | compteur d'identifiants restauré, `~force` | sonde pure : distinguer « ligne jamais créée » de « ligne créée puis perdue » n'intéressait que le diagnostic |
+| `treeview_defects.ml`, `complete_direction_rows` | « la ligne "%s" manquante a été créée », `~force` | **redondant** : `report_repair`, juste en dessous, journalise déjà en permanent « entrée incomplète … *N* ligne(s) ajoutée(s) » |
+| `treeview_defects.ml`, `add_cable` | identifiants des deux lignes de direction créées, `~force` | ne servait qu'à corréler les traces de l'épisode 2 ; les deux `ignore` d'origine sont restaurés |
+| `treeview_defects.ml`, `b6_dump_children` | la méthode **entière** | dump verbeux d'anomalie, explicitement marqué « à retirer une fois B6 corrigé » |
+| `treeview_defects.ml`, `get_port_data` | l'appel du dump **et son `try … with Not_found → … raise Not_found`** | le `try` n'existait que pour le dump — son propre commentaire le disait ; l'expression redevient nue |
+| `treeview_defects.ml`, `get_cable_data` | l'appel du dump | idem |
+| `treeview_defects.ml`, `get_cable_data` | ligne concise `%d/%d matching child row(s)` | l'anomalie est déjà dite, **nommément**, par le `failwith` de l'épisode 6 trois lignes plus bas |
+| `treeview_history.ml`, `add_substate_of` | parent, frères, **thread appelant**, `~force` | a servi de preuve à B4 (journal 28), désormais clos ; et le thread figure déjà dans le préfixe de *chaque* ligne de journal |
+
+#### 3. Les trois lignes gardées, et pourquoi
+
+Elles perdent le préfixe `B6:` et le vocabulaire « instrumentation », mais restent : chacune dit
+quelque chose qu'aucun autre log ne dit.
+
+- **`treeview.ml`, `load`** — dump de la forêt telle qu'elle sort du fichier. Déjà gardé par
+  `Debug_level >= 1` (coût nul hors `-d`), c'est le seul moyen de distinguer une forêt **déjà abîmée
+  sur disque** d'une forêt abîmée en session. Le commentaire perd l'anecdote de la garde morte
+  (`>= 3`, inatteignable) et garde le fait.
+- **`treeview.ml`, `remove_row`** — la victime et le nombre d'orphelins **remontés d'un niveau**.
+  C'est la trace sur place du piège durable `Forest.filter` (`forest.ml:150`) : cette méthode
+  **n'est pas** une suppression de sous-arbre. Passe sans `~force:true`.
+- **`treeview.ml`, `remove_subtree`** — symétrique (victime + descendants), même traitement, pour
+  que les deux méthodes jumelles se lisent de la même façon dans un journal.
+
+Le douzième site (`remove_subtree_by_name`) garde son log tel quel : une destruction sautée en
+silence est *le premier mécanisme de B6*, elle doit laisser une trace. Seul son commentaire est
+réécrit pour ne plus se présenter comme provisoire.
+
+#### 4. Un renommage et une note
+
+`b6_treeview_nickname` → **`treeview_nickname`**. Cette méthode survit au chantier — deux messages
+d'échec **permanents** l'utilisent (`id_to_iter`, `path_to_id`), en plus des deux logs gardés — son
+nom ne devait plus porter le jeton d'un diagnostic clos. Sans risque : `bin/treeview.mli` n'existe
+pas (les `.mli` de `bin/` sont sélectifs) et aucun fichier hors `treeview.ml` ne la nommait.
+
+Restent une vingtaine de commentaires « B6 (épisode *N*) » dans `treeview.ml`, `treeview_defects.ml`,
+`cable.ml`, `user_level.ml` et `state.ml` : ils documentent des **choix durables** (lire la forêt et
+non le widget ; un `cell_data_func` qui ne lève jamais ; un `failwith` nommé plutôt qu'un `assert`)
+et n'ont aucune raison de disparaître avec la sonde. Plutôt que de les réécrire un par un, **une**
+note d'en-tête a été ajoutée dans `bin/treeview.ml` : ce qu'est B6, et où le lire — ce document.
+
+#### 5. Vérifications
+
+- `dune build` → **rc=0** ;
+- `grep -rn 'B6:' bin/` → **0 résultat** ; `grep -rn 'b6_' bin/` → **0 résultat** ;
+- `make install-for-testing` → **rc=0** ;
+- diff : **3 fichiers**, +49 / −123.
+
+#### 6. Preuve GUI (journal de l'épisode 16, 560 lignes, lancé avec `-d`)
+
+Scénario : ouvrir `propre-2machines-1hub`, démarrer **m1**, l'arrêter, **supprimer le câble d1**,
+quitter.
+
+| Ce qu'on vérifie | Mesure |
+|---|---|
+| plus aucune trace de la sonde | **0** ligne `B6:` |
+| dump de forêt gardé (sous `-d`) | **4** `Treeview.treeview#load: freshly loaded forest of …` — un par treeview (*ifconfig*, *states-forest*, *defects*, *texts*) |
+| `remove_subtree` gardé, et le renommage | `[defects] Treeview#remove_subtree: removing row 21 ("d1") together with [22:"to H1 (port1)"; 23:"to m2 (eth0)"]` — le préfixe `[defects]` est rendu par `treeview_nickname`, donc le renommage tient sur un chemin réellement exercé |
+| le cycle du composant | `Gracefully shutting down the device m1 (from state: DeviceOn)` puis destruction complète (hublets, tap `mtap2772806-0`) |
+| la suppression du câble | `component "d1": destroying my defects.` → le `remove_subtree` ci-dessus → `The task "destroy d1" succeeded.` |
+| erreurs | **0** `CRITICAL`, **0** `Assertion`, **0** `id_to_iter`, **0** `ForbiddenTransition`, **0** `Failure`, **0** `raised an exception` |
+| tâches | **9** `succeeded`, **0** `THIS MAY BE SERIOUS` |
+| sortie | `at_exit` (descendants puis orphelins), boucles d'acceptation terminées, `Thread Exiting (main): nothing to do` |
+
+**Ce que ce run ne prouve pas**, et il faut le dire :
+
+- **`remove_row` n'a pas été exercé** — la suppression d'un câble passe par `remove_subtree` ; le
+  log gardé sur `remove_row` (les orphelins **remontés** par `Forest.filter`) reste donc non
+  observé, comme il l'était avant cet épisode ;
+- `remove_subtree_by_name` n'a pas eu à journaliser de `destruction SKIPPED` — c'est un chemin
+  d'échec, son silence est une bonne nouvelle, pas une mesure ;
+- les **2** `component "m1"/"m2": failed to create the hostfs_directory` sont **préexistants** :
+  le motif est présent aux journaux 24, 25 et 27, bien avant cet épisode.
+
+Un retrait de logs ne peut pas *causer* de régression ; ce rejeu vaut comme non-régression du
+chemin *defects* (celui que la sonde surveillait) et comme preuve que les trois lignes gardées
+sortent bien, au bon moment, sous leur nouvelle forme.
+
+---
+
+## 6. Conclusion du chantier (2026-08-03)
+
+**Le chantier est clos.** Ce qu'il laisse :
+
+- **L'invariant est porté par le type.** `automaton_state` et `simulated_device` sont fusionnés en
+  un unique `val state : 'parent Simulated_device.state ref` (épisode 7) : les huit filtrages de
+  couple sont devenus simples et exhaustifs, et trois des sept `raise_forbidden_transition` ont
+  disparu comme **inatteignables**. C'était l'objectif annoncé au § 3.
+- **Les cinq bugs de l'audit sont soldés** : B1 et B2/B3 corrigés (ép. 1 et 3), B5 corrigé puis
+  **révisé** par la règle de projet « le câblage suit la réalité » (ép. 8 puis 12 — un câble
+  s'édite et se supprime en marche), B6 corrigé sur le socle (ép. 5, 6, 14), B4 **clos par
+  arbitrage** comme légitime (ép. 15).
+- **Un acquis qui déborde largement le périmètre initial** : la discipline des appels Gtk+ hors du
+  thread principal. Partie d'un gel signalé sur le terrain (ép. 9), elle a produit un critère de
+  tri à trois conditions, la correction des classes A et B (ép. 10, 11), l'enrobage des ajouts au
+  modèle (ép. 13) et deux règles de méthode — `apply_extract` plutôt que `delegate` (qui avale
+  l'exception), et englober le verrou quand on enrobe une méthode qui prend un mutex. Ces règles
+  sont résumées dans `docs/ARCHITECTURE.md` § 5 ; le détail et les preuves restent ici.
+- **Un défaut clos par C5** de `docs/bug-critique-crash-host.md` : ce qui passait pour un crash
+  hôte était un gel d'application, mesuré et corrigé (ép. 9).
+
+**Hors périmètre, assumé** : la **cause profonde** de l'écrasement du premier mot d'une valeur lue
+dans le modèle Gtk+. Deux familles d'hypothèses ont été **réfutées par la mesure** — l'écriture
+concurrente au rendu (ép. 13) et le GC d'OCaml (ép. 14, où un minor heap de 256 Mo donne *plus*
+d'occurrences qu'un de 32 Ko, l'inverse de ce qu'exigerait une promotion). L'instruire demanderait
+valgrind ou ASAN, c'est-à-dire un épisode à soi seul, **sans bénéfice pour le produit** : depuis
+l'épisode 14, Marionnet ne lit plus aucune valeur dans le widget et n'y est donc plus exposé. Si
+le sujet devait être rouvert, la caractérisation exacte est au § PIÈGES de l'épisode 14.
+
+Ce document reste comme **archive**. La fiche mémoire `marionnet-automate-composants` est réduite
+aux seuls pièges qui servent hors du chantier ; le pointeur de `CLAUDE.md` a été déplacé en
+« Chantiers clos ». Historique complet : `git log --grep="marionnet-automate-composants"`.

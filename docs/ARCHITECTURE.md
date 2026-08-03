@@ -103,6 +103,20 @@ par `task_runner` (file de tâches nommées + worker, dépendances ordonnancées
 `death_monitor` (polling pid→callback) et `descendants_monitor` (tueur d'orphelins)
 surveillent les processus ; mutex récursifs (`MutexExtra`) partout ailleurs.
 
+**Règles acquises par mesure** (chantier `marionnet-automate-composants`, ép. 9-15 ; détail et
+preuves : `docs/refonte-automate-composants.md`) : (1) appeler Gtk+ hors du thread principal
+**fige tout le processus** — le trampoline `marshal` de lablgtk réclame le master lock du
+runtime, déjà détenu et non réentrant : ni exception ni CPU, juste une fenêtre morte ; (2) un
+site n'est dangereux que si **trois** conditions se réunissent — thread ≠ principal, appel qui
+émet un signal **synchronement** (`store#remove/append`, `expand/collapse_row`, `#destroy` —
+mais **pas** `#run ()` d'un dialogue, dont la boucle imbriquée relâche le lock), et callback
+OCaml connecté à ce signal ; (3) déléguer avec **`apply_extract`**, jamais `delegate`, qui
+`ignore` l'`Either` et **avale l'exception** ; (4) enrober une méthode qui prend un mutex doit
+**englober le verrou**, sinon l'appelant le détient en attendant le thread principal, et tout
+`lock; corps; unlock` nu se protège par `Fun.protect`. Invariant : **toute** mutation du modèle
+Gtk+ — ajout, suppression, surlignage — part du thread principal. Corollaire de lecture : ne
+jamais lire une identité ni une valeur **dans le widget** (forêt interne uniquement).
+
 ## 6. Privilèges (taps) — Tap_provider
 
 Le service root permanent `marionnet-daemon` a été **supprimé** (chantier

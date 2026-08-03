@@ -63,8 +63,9 @@ l'**install** et le **RPM**.
   Marionnet, **même si l'implémentation coûte plus cher** : typiquement, déplacer un câble d'un hub
   vers un switch **pendant que les machines tournent** (on débranche et on rebranche ailleurs, sans
   éteindre personne). Corollaire : « aligner les câbles sur les autres composants, par symétrie »
-  n'est **pas** un argument recevable — c'est exactement l'erreur de l'épisode 8 du chantier
-  `marionnet-automate-composants`, à réviser (cf. `docs/refonte-automate-composants.md`).
+  n'est **pas** un argument recevable — c'est exactement l'erreur commise à l'épisode 8 du chantier
+  `marionnet-automate-composants` (clos), **révisée à son épisode 12** : un câble s'édite et se
+  supprime **en marche** (cf. `docs/refonte-automate-composants.md`).
 - **Messages de commit : ANGLAIS obligatoire** pour tout le dépôt Marionnet (règle de scope
   projet). Conventional Commits ; rédiger/traduire le message en anglais avant de committer, corps
   compris. Trailer `Co-Authored-By` selon la règle utilisateur (seulement si j'ai produit le contenu).
@@ -135,50 +136,9 @@ Reprise : appliquer le skill `chantier-long`.
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
   `docs/bug-critique-crash-host.md` ; mémoire `bug-critique-crash-host` ;
   `git log --grep="bug-critique-crash-host"`. Ép. 0 (audit) fait 2026-07-18 ; **C5 clos le
-  2026-07-31** (`d2d03da`, par l'ép. 9 de `marionnet-automate-composants` : master lock OCaml,
-  gel d'appli — jamais un crash hôte).
-- **automate d'état des composants** (refondre `User_level.simulated_device` pour que le type
-  porte l'invariant `NoDevice ⟺ simulated_device = None` — aujourd'hui reconstruit dans 8
-  filtrages de couple et 7 `raise_forbidden_transition` fourre-tout ; et corriger les
-  incohérences avec `st` et les treeviews que cette absence a laissé s'installer) :
-  `docs/refonte-automate-composants.md` ; mémoire `marionnet-automate-composants` ;
-  `git log --grep="marionnet-automate-composants"`. Ordre imposé R4 → R1 → R3 → R2 : ép. 0
-  (audit) et ép. 1 (R4) faits 2026-07-29, ép. 2 (instrumentation B6, diagnostic partiel),
-  ép. 3 (R1 : `next_automaton_state` supprimé, B2/B3 clos), ép. 4 (R3 : drapeau `project_dirty`
-  au lieu du compteur de rendu ; prouvé en GUI ; **B4 corrigé à moitié** — l'ajout d'un état de
-  disque COW au treeview *history* reste une modification légitime ; **B6 élargi au socle
-  `treeview.ml`**), ép. 5 (B6 socle : plus d'identification de ligne par lecture du widget) et
-  ép. 6 (B6 : `path_to_id` via la forêt interne, renderer d'icônes rendu total, entrées *defects*
-  décidées sur la forme et complétées → `Startup H1` réussit enfin) faits 2026-07-30, ép. 7
-  (**R2** : `automaton_state` + `simulated_device` fusionnés en `val state`, 3 des 7
-  `raise_forbidden_transition` inatteignables, `val` retirés des `.mli` ; prouvé en GUI journal 61)
-  fait 2026-07-31 → **le plan R4→R1→R3→R2 est entièrement joué**, et ép. 8 (**B5** : 3 `can_* = true`
-  de `cable.ml` supprimées ; **+ log permanent des `dynlist`** dans `menu_factory.ml`, seul moyen
-  de voir en journal ce que la GUI *propose* ; prouvé en GUI journaux 62-63) fait 2026-07-31, son
-  filtrage des câbles étant **révisé à l'ép. 12** (cf. plus bas) ;
-  et ép. 9 (**hors plan, signalement terrain** : *Projet → Fermer* figeait toute l'application —
-  `close_project`, qui tourne dans son propre thread, appelait `store#remove` directement ; Gtk+
-  émet alors un signal et le trampoline `marshal` de lablgtk réclame le **master lock du runtime,
-  déjà détenu par ce thread et non réentrant** → le thread s'attend lui-même et tous les autres
-  s'empilent derrière, 0 % CPU et aucune exception ; les 3 mutations du modèle
-  [`remove_row`, `remove_subtree`, `clear`] passent par `GMain_actor.apply_extract` — **pas
-  `delegate`**, qui avale l'exception ; prouvé en GUI journal 20, et clôt **C5** de
-  `bug-critique-crash-host`) fait 2026-07-31 ;
-  et **ép. 12** (2026-08-01, **révision de l'ép. 8** : « Modifier »/« Supprimer » revoient tous les
-  câbles, **en marche compris** — règle de projet « le câblage suit la réalité » ; **B5(c) réglé par
-  séquencement réel** : `c#destroy` puis `Add.reaction` **enfilé** sur le task runner, dont la file
-  est consommée par un seul thread, tandis que `network_change` délègue déjà au thread GTK et
-  l'attend → aucun verrou pris depuis GTK, rien de différé après le dialogue ; prouvé en GUI
-  journal 24) ;
-  et **ép. 15** (2026-08-02, les 2 défauts laissés à l'ép. 11 corrigés — `with_lock`
-  (`Fun.protect`) + variante `_unlocked` dans `ledgrid_manager.ml` ; `apply_extract` sur **toute**
-  la chaîne treeview (`detach_view_in` + les 3 `List.iter` de `state.ml`), avec garde de
-  `private_save_project` : barre modale toujours détruite, succès déclaré **seulement** si la
-  sauvegarde va au bout ; zéro nouvelle chaîne i18n ; prouvé en GUI journal 27 — **et B4 CLOS par
-  arbitrage** : l'état de disque COW ajouté au démarrage d'une machine *est* un contenu du `.mar`,
-  demander la sauvegarde est correct, aucun code de comportement changé).
-  **Reliquat unique** : le retrait de l'instrumentation `B6:` (11 sites). Hors périmètre : la cause
-  profonde de la lecture décalée (sans objet depuis l'ép. 14, le widget n'étant plus lu).
+  2026-07-31** (`d2d03da`, par l'ép. 9 du chantier clos `marionnet-automate-composants` — détail
+  dans `docs/refonte-automate-composants.md` : master lock OCaml, gel d'appli — jamais un crash
+  hôte).
 - **pilotage par script** (piloter Marionnet par script — humain **et** agent — pour tester les
   modifications risquées : serveur de contrôle **in-process** sur socket unix
   [`Network.stream_unix_server ~no_fork:()` + `GMain_actor.apply` sur `st`], GUI restant vivante
@@ -203,8 +163,11 @@ Reprise : appliquer le skill `chantier-long`.
 - **Récit d'architecture** (build, 2 niveaux, GUI, état, privilèges/taps, i18n, uml, ocamlbricks) :
   `docs/ARCHITECTURE.md` — lire la tranche pertinente, pas tout.
 - **Chantiers clos** (archives durables, à consulter avant de rouvrir un sujet qu'ils couvrent) :
-  `docs/migration-ocaml5.md` (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md`
-  (clos 2026-07-18), `docs/daemon-elimination-study.md` (clos 2026-07-17).
+  `docs/refonte-automate-composants.md` (automate d'état des composants **et** discipline des
+  appels Gtk+ hors thread principal — 16 épisodes, clos 2026-08-03 ; à lire avant de toucher
+  `user_level.ml`, `treeview*.ml` ou de déléguer un appel GUI), `docs/migration-ocaml5.md`
+  (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
+  `docs/daemon-elimination-study.md` (clos 2026-07-17).
 - **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours
   (ce qui relève d'un chantier reste dans son doc, § « Reste au chantier »). Chaque entrée porte le
   constat, ce qu'on veut à la place, et l'obstacle d'implémentation déjà identifié.
