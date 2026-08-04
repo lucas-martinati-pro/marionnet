@@ -119,6 +119,24 @@ let jnotifications (ns : Script_mode.notification list) : string =
   jlist (List.map json_of_notification ns)
 
 (* ---------------------------------------------------------------- *)
+(*                    The state, as a script sees it                *)
+(* ---------------------------------------------------------------- *)
+
+(* Rule 2 of § 4.10: never expose the raw state. [No_device] and [Off] both project onto "off";
+   the difference is an implementation detail — machines and routers chain a destroy after the
+   shutdown so as to restart from a fresh COW file and end up in No_device, the other components
+   stay in Off — and a script seeing two states where the user sees one would be led to write false
+   conditions. The projection goes through the historical strings of [Simulated_device.to_string]
+   (user_level.ml:95) rather than through its constructors, which the interface does not export.
+   An unrecognised string is passed through rather than folded into "off": a state added later must
+   show up as unknown, not masquerade as a known one. *)
+let script_state_of_raw : string -> string = function
+  | "NoDevice" | "DeviceOff" -> "off"
+  | "DeviceOn"               -> "on"
+  | "DeviceSleeping"         -> "sleeping"
+  | other                    -> other
+
+(* ---------------------------------------------------------------- *)
 (*                          Request parsing                         *)
 (* ---------------------------------------------------------------- *)
 
@@ -215,28 +233,142 @@ let cmd_status (st : State.globalState) ~(timeout:float) : string =
             ("nodes",    jint nodes);
             ])
 
-(* The `kind' filter is applied outside the GTK main thread, on the extracted triples:
-   nothing but the extraction itself needs to run there. *)
-let cmd_ls (st : State.globalState) ~(timeout:float) ~(kind:string option) : string =
+(* --- eligibility: what a component allows right now -------------- *)
+
+(* One record, read by the two views of the same truth: [can] is the "per component" view (the
+   scriptable equivalent of the contextual menu), [ls --can=...] the "per action" one. The point
+   is that a script has nothing to reimplement — it asks what is permitted now, instead of
+   deducing it from a state machine it would have to keep in sync with ours (§ 4.10).
+
+   The predicates read below are the model's own. Since episode 4b they include [can_modify] and
+   [can_destroy], which used to exist only as a GUI menu filter: without them a script would have
+   destroyed a running component, together with its live Unix processes.
+
+   [poweroff] and [restart] are published although no *per component* menu offers them: poweroff
+   exists only globally ("power off everything", state.ml:962) and restart only through a treeview
+   edit (marionnet.ml:169-175). The action does exist in the application, only its granularity
+   differs, and a test script needs to simulate a brutal power cut on *one* machine. They are named
+   in the [beyond_gui] field so that a client can tell them apart from what a human can click.
+   [restart] reads can_gracefully_shutdown, which is the guard marionnet.ml itself applies. *)
+
+type eligibility = {
+  e_name  : string;
+  e_kind  : string;
+  e_state : string;                (* raw; projected when rendering *)
+  e_can   : (string * bool) list;  (* action -> allowed, in menu order *)
+}
+
+let beyond_gui_actions = [ "poweroff"; "restart" ]
+
+(* The whole vocabulary of actions, and the only one: the names below are those of the commands
+   of § 4.4, so that a client never has to translate between a predicate name and a command name
+   (which is why [ls --can=] takes "start" and not "startup"). *)
+let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
+
+let eligibility_of_node n =
+  { e_name  = n#get_name;
+    e_kind  = n#string_of_devkind;
+    e_state = n#state_as_string;
+    e_can   = [ ("set",      n#can_modify);
+                ("del",      n#can_destroy);
+                ("start",    n#can_startup);
+                ("stop",     n#can_gracefully_shutdown);
+                ("suspend",  n#can_suspend);
+                ("resume",   n#can_resume);
+                ("poweroff", n#can_poweroff);
+                ("restart",  n#can_gracefully_shutdown);
+                ] }
+
+(* A cable publishes four actions, and the four others are not omitted by accident:
+   start/stop/poweroff/restart are meaningless for a wire, whose process is driven by a
+   reference counter and never by the user (cable.ml, comment B5). Worse, the inherited
+   [can_startup] would answer *true* for a cable whose process is not running, so publishing
+   it would advertise an action that does not exist. Its can_suspend/can_resume, on the
+   contrary, have a proper meaning here: unplugged / plugged back. *)
+let eligibility_of_cable c =
+  { e_name  = c#get_name;
+    e_kind  = "cable";
+    e_state = c#state_as_string;
+    e_can   = [ ("set",     c#can_modify);
+                ("del",     c#can_destroy);
+                ("suspend", c#can_suspend);
+                ("resume",  c#can_resume);
+                ] }
+
+let allowed_actions (e : eligibility) : string list =
+  List.filter_map (fun (a, ok) -> if ok then Some a else None) e.e_can
+
+let fields_of_eligibility (e : eligibility) : (string * string) list =
+  let allowed = allowed_actions e in
+  [ ("name",       jstr e.e_name);
+    ("kind",       jstr e.e_kind);
+    ("state",      jstr (script_state_of_raw e.e_state));
+    ("can",        jlist (List.map jstr allowed));
+    ("beyond_gui", jlist (List.map jstr (List.filter (fun a -> List.mem a beyond_gui_actions) allowed)));
+    ]
+
+let json_of_eligibility (e : eligibility) : string = jobj (fields_of_eligibility e)
+
+(* Both filters are applied outside the GTK main thread, on the extracted records: nothing but
+   the extraction itself needs to run there. [ls] lists nodes only — the view that also covers
+   cables is [can] (§ 4.3). An unknown action is refused rather than answered with an empty list,
+   because a typo in a script must be diagnosed and not read as "nothing is allowed"; an unknown
+   [--kind], on the contrary, keeps its historical behaviour (an empty list), the set of kinds
+   being open to whatever a future component adds. *)
+let cmd_ls (st : State.globalState) ~(timeout:float) ~(kind:string option) ~(can:string option)
+  : string
+  =
+  match can with
+  | Some a when not (List.mem a known_actions) ->
+      reply_error ~code:"unknown_can"
+        ~detail:(Printf.sprintf "no such action %S (expected one of: %s)"
+                   a (String.concat ", " known_actions))
+  | _ ->
   ask ~timeout
-    (fun () ->
-       List.map
-         (fun n -> (n#get_name, n#string_of_devkind, n#state_as_string))
-         (st#network#get_node_list))
+    (fun () -> List.map eligibility_of_node (st#network#get_node_list))
   |> reply_of_outcome
-       (fun triples ->
-          let triples =
-            match kind with
-            | None   -> triples
-            | Some k -> List.filter (fun (_, devkind, _) -> devkind = k) triples
+       (fun components ->
+          let keep p l = List.filter p l in
+          let components =
+            match kind with None -> components | Some k -> keep (fun e -> e.e_kind = k) components
           in
-          let node_of_triple (name, devkind, state) =
-            jobj [ ("name", jstr name); ("kind", jstr devkind); ("state", jstr state) ]
+          let components =
+            match can with
+            | None   -> components
+            | Some a -> keep (fun e -> List.mem a (allowed_actions e)) components
+          in
+          let node_of_eligibility e =
+            jobj [ ("name", jstr e.e_name); ("kind", jstr e.e_kind);
+                   ("state", jstr (script_state_of_raw e.e_state)) ]
           in
           reply_ok [
-            ("count", jint (List.length triples));
-            ("nodes", jlist (List.map node_of_triple triples));
+            ("count", jint (List.length components));
+            ("nodes", jlist (List.map node_of_eligibility components));
             ])
+
+(* --- can: the same truth, per component -------------------------- *)
+
+let cmd_can (st : State.globalState) ~(timeout:float) ~(name:string) : string =
+  ask ~timeout
+    (fun () ->
+       let nodes  = List.map eligibility_of_node  (st#network#get_node_list)
+       and cables = List.map eligibility_of_cable (st#network#get_cable_list) in
+       nodes @ cables)
+  |> reply_of_outcome
+       (fun components ->
+          if name = "" then
+            reply_ok [
+              ("count",      jint (List.length components));
+              ("components", jlist (List.map json_of_eligibility components));
+              ]
+          else
+            match List.find_opt (fun e -> e.e_name = name) components with
+            | Some e -> reply_ok (fields_of_eligibility e)
+            (* The normalised code of § 4.1; it covers cables too, the channel having a single
+               namespace of component names. *)
+            | None ->
+                reply_error ~code:"unknown_node"
+                  ~detail:(Printf.sprintf "no component named %S" name))
 
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole
@@ -339,7 +471,7 @@ let cmd_notifications ~(since:string option) ~(clear:bool) : string =
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
 
-let known_commands = [ "status"; "ls"; "open"; "notifications"; "quit" ]
+let known_commands = [ "status"; "ls"; "can"; "open"; "notifications"; "quit" ]
 
 (* The answer must be *sent* before quitting, hence the second component: the session loop
    writes it, then triggers the shutdown. *)
@@ -364,7 +496,9 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
            Script_mode.in_command @@ fun () ->
            (match r.verb with
             | "status" -> (cmd_status st ~timeout, `Continue)
-            | "ls"     -> (cmd_ls st ~timeout ~kind:(option_value r "kind"), `Continue)
+            | "ls"     -> (cmd_ls st ~timeout ~kind:(option_value r "kind")
+                                                ~can:(option_value r "can"), `Continue)
+            | "can"    -> (cmd_can st ~timeout ~name:r.arg, `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:r.arg, `Continue)
             | "notifications" ->
                 (cmd_notifications

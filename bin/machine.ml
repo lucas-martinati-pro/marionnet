@@ -164,7 +164,7 @@ module Make_menus (Params : sig
 
   module Properties = struct
     include Data
-    let dynlist () = st#network#get_node_names_that_can_startup ~devkind:`Machine ()
+    let dynlist () = st#network#get_node_names_that_can_modify ~devkind:`Machine ()
 
     let dialog name () =
      let m = (st#network#get_node_by_name name) in
@@ -226,7 +226,7 @@ module Make_menus (Params : sig
     type t = string (* just the name *)
     let to_string = (Printf.sprintf "name = %s\n")
 
-    let dynlist = Properties.dynlist
+    let dynlist () = st#network#get_node_names_that_can_destroy ~devkind:`Machine ()
 
     let dialog name () =
       Gui_bricks.Dialog.yes_or_cancel_question
@@ -246,7 +246,8 @@ module Make_menus (Params : sig
   module Startup = struct
     type t = string (* just the name *)
     let to_string = (Printf.sprintf "name = %s\n")
-    let dynlist    = Properties.dynlist
+    (* Not an alias of Properties.dynlist: each menu reads its own guard (user_level.ml). *)
+    let dynlist () = st#network#get_node_names_that_can_startup ~devkind:`Machine ()
     let dialog     = Menu_factory.no_dialog_but_simply_return_name
     let reaction name = (st#network#get_node_by_name name)#startup
 

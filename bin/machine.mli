@@ -163,6 +163,11 @@ module User_level_machine : sig
       method poweroff                        : unit
       method poweroff_right_now              : unit
       (* --- *)
+      (* Guards of the "Modify" and "Remove" menus, read by the GUI *and* by the control server
+         (docs/pilotage-par-script.md § 4.10): *)
+      method can_modify                      : bool
+      method can_destroy                     : bool
+      (* --- *)
       method add_my_history                  : unit
       method add_my_ifconfig                 : ?port_row_completions:Treeview_ifconfig.port_row_completions -> int -> unit
       method history_icon                    : Treeview.Row_item.Icon_prj_inj.a

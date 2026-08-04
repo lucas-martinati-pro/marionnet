@@ -197,18 +197,27 @@ critère de succès s'est révélé menteur et a dû être remplacé.
 | `add <kind> <nom> [--ports N] [--…]` | fragment `Xforest.tree` → `network#eval_forest_child` (registre `user_level.ml:1665-1672`) |
 | `del <nom>` | méthode de suppression du composant |
 | `rename <ancien> <nouveau>` | idem |
-| `ls [--kind=…] [--can=startup\|shutdown\|suspend\|resume]` | `network#get_node_names` (l.1823), `get_node_list` (l.1537), `get_node_names_that_can_*` (l.1840-1864) |
+| `ls [--kind=…] [--can=<action>]` — **implémentée (ép. 4b)** | `network#get_node_list` (l.1537) puis les prédicats du modèle, lus par `eligibility_of_node` (`control_server.ml`) |
 | `get <nom> [.champ]` | projection du composant |
 | `set <nom> <champ> <valeur>` | idem |
 
-`--can=…` est directement fourni par le modèle : `get_node_names_that_can_startup`,
-`…_gracefully_shutdown`, `…_suspend`, `…_resume`. Un script peut donc **interroger les transitions
-légales** au lieu de les deviner — c'est le moyen le plus sûr de tester l'automate d'état.
+`--can=<action>` prend un **nom d'action**, c'est-à-dire un nom de commande du § 4.4 — `set`,
+`del`, `start`, `stop`, `suspend`, `resume`, `poweroff`, `restart` — et **non** un nom de prédicat
+(`--can=start`, pas `--can=startup`). Un client n'a ainsi qu'un seul vocabulaire à connaître pour
+tout le canal. Une action inconnue est **refusée** (`unknown_can`) plutôt que rendue par une liste
+vide : dans un script, une faute de frappe doit se diagnostiquer, pas se lire « rien n'est permis ».
+Un `--kind=` inconnu, lui, garde son comportement historique (liste vide), l'ensemble des natures
+de composants étant ouvert.
 
-⚠️ **`--can=…` ne suffit pas à garantir l'équivalence avec la GUI** (constaté à l'ép. 4a) :
-`del` et `set` obéissent eux aussi à l'état du composant, mais leur garde vit **dans la GUI**, pas
-dans le modèle. Le contrat complet — table des états, règle de refus, exception des câbles,
-commande `can` — est au **§ 4.10**, qui fait autorité sur ce paragraphe.
+`ls` ne liste que les **nœuds** ; la vue qui couvre aussi les câbles est `can` (§ 4.10). Les deux
+lisent le **même** enregistrement d'éligibilité : `ls --can=X` est la vue « par action », `can` la
+vue « par composant ».
+
+⚠️ **`--can=…` ne suffisait pas à garantir l'équivalence avec la GUI** (constaté à l'ép. 4a) :
+`del` et `set` obéissent eux aussi à l'état du composant, mais leur garde vivait **dans la GUI**,
+pas dans le modèle. C'est corrigé depuis l'ép. 4b, et le contrat complet — table des états, règle
+de refus, exception des câbles, commande `can` — est au **§ 4.10**, qui fait autorité sur ce
+paragraphe.
 
 ### 4.4 Transitions
 
@@ -221,8 +230,16 @@ Côté composant : `#startup`, `#suspend`, `#resume`, `#gracefully_shutdown`, `#
 
 ⚠️ Ces méthodes sont **gardées mais muettes** : appeler `#startup` sur un composant qui ne peut
 pas démarrer ne fait rien et ne dit rien. La commande **teste le prédicat avant** et répond
-`forbidden_transition` — cf. **§ 4.10**, qui donne la table complète, l'exception des câbles, et
-le statut particulier de `poweroff` et `restart` (aucun menu par composant ne les offre).
+`forbidden_transition` — cf. **§ 4.10**, qui donne la table complète et l'exception des câbles.
+
+⚠️ **`poweroff` et `restart` par composant sont des extensions assumées** (arbitrage de l'auteur,
+ép. 4b) : aucun menu par composant ne les offre — `poweroff` n'existe que globalement
+(« tout éteindre », `state.ml:962`) et `restart` que par une édition de treeview
+(`marionnet.ml:169-175`). L'action existe bel et bien dans l'application, seule sa granularité
+diffère, et un script de test a besoin de simuler une coupure brutale sur **une** machine. Elles
+sont donc gardées, mais **signalées comme telles** : la réponse de `can` les répète dans un champ
+`beyond_gui`, pour qu'un client puisse distinguer ce qu'un humain peut cliquer de ce qu'il ne peut
+pas. C'est la seule entorse à l'équivalence du § 4.10, et elle est explicite.
 
 ### 4.5 Câbles
 
@@ -425,19 +442,39 @@ Le script n'a ainsi **aucune table à réimplémenter** : il demande ce qui est 
 C'est aussi le moyen le plus direct de tester l'automate lui-même — comparer `can` avant et après
 chaque transition est un oracle qui ne dépend d'aucune connaissance externe.
 
-**Deux actions restent au-delà de la GUI, à trancher à l'ép. 4b.** `poweroff` et `restart`
-**par composant** n'existent dans aucun menu : le premier n'est offert que globalement
+**Deux actions restent au-delà de la GUI — tranché à l'ép. 4b : elles sont gardées.** `poweroff` et
+`restart` **par composant** n'existent dans aucun menu : le premier n'est offert que globalement
 (« tout éteindre », avec confirmation), le second n'est déclenché que par une édition de treeview.
-Le § 4.4 les prévoit pourtant tous deux. Recommandation : les **garder**, mais les marquer dans la
-grammaire comme *extensions assumées* — l'action existe bel et bien dans l'application, seule sa
-granularité diffère, et un script de test a besoin de simuler une coupure brutale sur **une**
-machine. L'alternative (équivalence stricte, donc suppression des deux commandes) reste ouverte et
-appartient à l'auteur.
+L'auteur a retenu de les **garder** en les marquant comme *extensions assumées* — l'action existe
+bel et bien dans l'application, seule sa granularité diffère, et un script de test a besoin de
+simuler une coupure brutale sur **une** machine. Le marquage est le champ **`beyond_gui`** de la
+réponse (§ 4.4).
 
-**Dette relevée au passage** : `can_poweroff` (`user_level.ml:431`) n'a **aucun lecteur** —
-`poweroff_everything` (`state.ml:962`) filtre sur `can_gracefully_shutdown`. Les deux prédicats
-ont la même définition (`On | Sleeping`), donc pas de bug ; mais c'est un prédicat mort de plus,
-du même genre que `can_startup` sur les câbles. À traiter avec l'ép. 4b, pas avant.
+**Dette relevée au passage — résolue à l'ép. 4b** : `can_poweroff` (`user_level.ml:431`) n'avait
+**aucun lecteur** (`poweroff_everything`, `state.ml:962`, filtre sur `can_gracefully_shutdown`).
+Il en a un désormais : c'est lui qui décide de publier `poweroff` dans `can`.
+
+---
+
+**Statut d'implémentation (ép. 4b, 2026-08-04).** Tout ce qui précède est en place :
+
+- `can_modify` / `can_destroy` sont dans la classe de base (`user_level.ml`, même condition que
+  `can_startup`), avec leurs accesseurs réseau `get_node{s,_names}_that_can_{modify,destroy}` et
+  `get_cable_names_that_can_{modify,destroy}` ;
+- ils sont **surchargés à `true`** dans `cable.ml`, et les `dynlist` « Modify »/« Remove » des huit
+  composants les lisent — la GUI et le serveur lisent donc la **même** vérité ; au passage
+  `Startup.dynlist` cesse d'être un alias de `Properties.dynlist` (chaque menu lit sa garde) ;
+- la commande **`can [<nom>]`** et le filtre **`ls --can=<action>`** partagent un enregistrement
+  d'éligibilité unique (`control_server.ml`), et l'état publié passe par la projection du § 2
+  (`NoDevice`/`DeviceOff` → `off`), jamais par les constructeurs bruts.
+
+Mesuré (banc `can-bench.sh`, deux runs, rapports sous `_claude-local/bench/runs/`) : sur un projet
+de 7 nœuds et 6 câbles, réseau **éteint**, chaque nœud offre exactement `set`/`del`/`start` ;
+réseau **entièrement démarré**, chaque nœud offre `stop`/`suspend`/`poweroff`/`restart` et
+**n'offre ni `set` ni `del`** — le trou de l'ép. 4a est bien fermé — tandis que les six câbles
+offrent toujours `set`/`del` **en marche**. La non-régression des menus est vérifiée par
+l'équivalence `set` ⟺ `start` sur les nœuds, qui est exactement ce que les `dynlist` listaient
+avant.
 
 ---
 
@@ -629,7 +666,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **3b** | Preuve en session réelle : critère **C5** (aucun fd de contrôle dans `/proc/<pid xterm>/fd`, xterm vivant), non couvert par l'ép. 2c | **fait** (2026-08-03) — 0 fd sur 395 processus, témoin à 351 fds |
 | **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
 | **4a** | L'automate comme **contrat du script** (§ 4.10) : table états × actions, règle de refus, exception des câbles, commande `can` ; décision `can_destroy`/`can_modify` dans le modèle | **fait** (2026-08-03) — conception, aucun code |
-| 4b | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commande `can` ; arbitrage `poweroff`/`restart` par composant | à faire |
+| **4b** | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commandes `can` et `ls --can=` ; arbitrage `poweroff`/`restart` par composant | **fait** (2026-08-04) — 8 assertions mesurées sur deux runs |
 | 4c | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest`, `rc-set`/`rc-get` | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -1148,3 +1185,65 @@ commande `can`), 4c (le noyau des commandes).
 **Aucune ligne de code touchée.** La preuve attendue d'un épisode de conception n'est pas une
 exécution mais l'exactitude de ses ancres : chaque garde de la table du § 4.10 a été relue dans
 le source le jour même, y compris les sept couples `Properties`/`Remove` un par un.
+
+### 2026-08-04 — épisode 4b : l'automate descend dans le modèle
+
+**Ce que l'épisode livre.** Les deux prédicats manquants existent (`can_modify`, `can_destroy`,
+`user_level.ml`, même condition que `can_startup`), leurs accesseurs réseau aussi, ils sont
+surchargés à `true` pour les câbles, les `dynlist` « Modify »/« Remove » des huit composants les
+lisent — donc la GUI et le serveur lisent la même vérité — et le canal expose les deux vues de
+cette vérité : `can [<nom>]` par composant, `ls --can=<action>` par action. Statut détaillé en fin
+de § 4.10.
+
+**Deux arbitrages, tranchés par l'auteur.** (a) `poweroff`/`restart` **par composant** sont
+gardés, marqués `beyond_gui` dans la réponse (§ 4.4) : l'action existe dans l'application, seule sa
+granularité diffère. (b) `ls --can=` est implémenté dès cet épisode, avec une nomenclature unique —
+des **noms de commande** (`start`), jamais des noms de prédicat (`startup`) — et une action inconnue
+refusée par `unknown_can` au lieu d'une liste vide, parce qu'une faute de frappe dans un script doit
+se diagnostiquer. La dette `can_poweroff` (prédicat sans lecteur) est résolue par la même occasion.
+
+**Le banc a d'abord mesuré du vide — trois fois, pour trois raisons différentes.** Cet épisode a
+coûté plus en instrumentation qu'en code, et c'est la partie instructive.
+
+1. *Course perdue contre `-r`* (run du 2026-08-03) : interroger le canal dès l'apparition du
+   socket lisait un réseau **vide**, le chargement `-r` n'ayant lieu qu'~1 s après le début de la
+   boucle GTK. Le rapport en tirait deux conclusions fausses (« aucun nœud éteint », « le projet ne
+   contient aucun câble ») alors que le projet a 7 nœuds et 6 câbles. Correctif : en mode t0, ne
+   pas passer `-r` du tout et charger par la commande **`open`**, qui est synchrone — quand elle
+   répond, le réseau est là et tout est éteint. Déterministe, sans fenêtre à attraper.
+2. *Démarrage bloqué* (même run) : le projet de test contenait deux `world_gateway`, dont le
+   démarrage réclame un tap privilégié ; le `task_runner` étant séquentiel, **rien** d'autre n'a
+   démarré et l'assertion centrale n'a jamais été mesurée. Correctif : un projet sans
+   `world_gateway` ni `world_bridge`.
+3. *Faux positif franc* (première reprise, 2026-08-04 10:55) : la réponse `can` de t1 est arrivée
+   **vide** (client coupé avant la réponse), et le banc a proclamé « toutes les assertions
+   tiennent » — `jq` comparait des listes vides à des listes vides. Un banc qui ne mesure rien doit
+   s'arrêter, pas féliciter : toute réponse est désormais passée par `require_ok` (non vide **et**
+   `ok:true`), A3 exige au moins un nœud `on`, A7 exige deux vues non vides.
+
+**Une limite du canal, mesurée au passage.** Pendant la rafale de démarrages d'un projet, le canal
+devient **muet** : ni `--timeout=25` côté serveur ni `-T30` côté client n'obtiennent de réponse,
+alors que le même canal répondait 2 s plus tôt et répond de nouveau la rafale passée (le thread de
+la session concernée n'est jamais journalisé comme terminé). Ce n'est pas un défaut de l'épisode
+4b — les prédicats, eux, répondent juste — mais c'est une contrainte réelle pour un client :
+**réessayer**, plutôt que faire confiance à un délai. Le banc attend maintenant un réseau
+*stabilisé* (au moins un nœud `on`, plus aucun `off`) au lieu de dormir cinq secondes.
+
+**Et un garde-fou qui protégeait du cas normal.** Le fusible de cardinalité du nettoyage (« au-delà
+de 60 processus, le filtre est forcément faux ») s'est déclenché sur un projet de 5 machines, qui
+en fait **76** : le banc a donc refusé de nettoyer et laissé 76 processus UML orphelins, exactement
+ce que le fusible était censé éviter. Plafond porté à 200 ; la garde qui compte reste la **forme**
+du motif (`/tmp/marionnet-<N>.dir`), pas son cardinal.
+
+**Preuve.** `dune build` et `dune test` verts. Banc `can-bench.sh`, deux runs sur un projet de
+7 nœuds et 6 câbles (`_claude-local/bench/runs/20260804-11*`) :
+
+- **t0**, réseau chargé et éteint, aucun UML : les 7 nœuds offrent exactement `set`/`del`/`start` ;
+  les 6 câbles offrent `set`/`del` et n'exposent aucune action de nœud ; `ls --can=X` coïncide avec
+  `can` pour les 8 actions ; `ls --can=teleport` → `unknown_can` ; `can <inconnu>` →
+  `unknown_node` ; aucun état brut publié.
+- **t1**, réseau entièrement démarré (5 s) : les 7 nœuds offrent `stop`/`suspend`/`poweroff`/
+  `restart` et **aucun** n'offre `set` ni `del` — le trou de l'ép. 4a est fermé — avec
+  `beyond_gui = [poweroff, restart]` ; les 6 câbles restent `set`/`del` **en marche** ; `set` ⟺
+  `start` sur tous les nœuds, donc les menus listent ce qu'ils listaient avant ; la vue à plat
+  `can m1` est identique à l'entrée correspondante de la vue globale.

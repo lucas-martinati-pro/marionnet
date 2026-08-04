@@ -53,7 +53,9 @@ class virtual ['a] simulated_device :
     method private destroy_because_of_unexpected_death : unit -> unit
     method state_as_string : string
     (* --- *)
+    method can_destroy : bool
     method can_gracefully_shutdown : bool
+    method can_modify : bool
     method can_poweroff : bool
     method can_resume : bool
     method can_startup : bool
@@ -188,7 +190,9 @@ class virtual node_with_ports_card :
     val mutable ports_card : 'a ports_card option
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method state_as_string : string
+    method can_destroy : bool
     method can_gracefully_shutdown : bool
+    method can_modify : bool
     method can_poweroff : bool
     method can_resume : bool
     method can_startup : bool
@@ -293,7 +297,9 @@ class virtual node_with_defects :
     method virtual add_destroy_callback : unit Lazy.t -> unit
     method private add_my_defects : unit
     method state_as_string : string
+    method can_destroy : bool
     method can_gracefully_shutdown : bool
+    method can_modify : bool
     method can_poweroff : bool
     method can_resume : bool
     method can_startup : bool
@@ -390,7 +396,9 @@ class virtual node_with_ledgrid_and_defects :
     method private add_my_defects : unit
     method add_my_ledgrid : unit
     method state_as_string : string
+    method can_destroy : bool
     method can_gracefully_shutdown : bool
+    method can_modify : bool
     method can_poweroff : bool
     method can_resume : bool
     method can_startup : bool
@@ -550,7 +558,9 @@ class type virtual cable =
     val network : < .. >
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method state_as_string : string
+    method can_destroy : bool
     method can_gracefully_shutdown : bool
+    method can_modify : bool
     method can_poweroff : bool
     method can_resume : bool
     method can_startup : bool
@@ -642,12 +652,16 @@ class network :
     method is_node_list_empty : bool
     method del_node_by_name : string -> unit
     method get_node_names : string list
+    method get_node_names_that_can_destroy             : ?devkind:devkind -> unit -> string list
     method get_node_names_that_can_gracefully_shutdown : ?devkind:devkind -> unit -> string list
+    method get_node_names_that_can_modify              : ?devkind:devkind -> unit -> string list
     method get_node_names_that_can_resume              : ?devkind:devkind -> unit -> string list
     method get_node_names_that_can_startup             : ?devkind:devkind -> unit -> string list
     method get_node_names_that_can_suspend             : ?devkind:devkind -> unit -> string list
     method get_nodes_such_that                         : ?devkind:devkind -> (node -> bool) -> node list
+    method get_nodes_that_can_destroy                  : ?devkind:devkind -> unit -> node list
     method get_nodes_that_can_gracefully_shutdown      : ?devkind:devkind -> unit -> node list
+    method get_nodes_that_can_modify                   : ?devkind:devkind -> unit -> node list
     method get_nodes_that_can_resume                   : ?devkind:devkind -> unit -> node list
     method get_nodes_that_can_startup                  : ?devkind:devkind -> unit -> node list
     method get_nodes_that_can_suspend                  : ?devkind:devkind -> unit -> node list
@@ -664,6 +678,9 @@ class network :
     method is_cable_list_empty : bool
     method del_cable_by_name : string -> unit
     method get_cables_involved_by_node_name : string -> cable list
+    method get_cables_such_that : crossover:bool -> (cable -> bool) -> cable list
+    method get_cable_names_that_can_destroy : crossover:bool -> unit -> string list
+    method get_cable_names_that_can_modify  : crossover:bool -> unit -> string list
     method get_crossover_cable_names : string list
     method get_crossover_cables : cable list
     method get_direct_cable_names : string list

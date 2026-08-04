@@ -162,7 +162,12 @@ Reprise : appliquer le skill `chantier-long`.
   `forbidden_transition` », exception des **câbles** qui s'éditent/se suppriment en marche,
   commande `can` ; **décision** : `can_destroy`/`can_modify` descendent dans `user_level.ml`,
   lus par la GUI **et** le serveur)
-  faits → **l'épisode 3 est clos**, reprendre à l'**ép. 4b** (implémentation de 4a). Direction actée
+  et **ép. 4b** (implémentation : les deux prédicats dans le modèle — surchargés `true` pour les
+  câbles — lus par les `dynlist` des 8 composants et par le serveur ; commandes `can [<nom>]` et
+  `ls --can=<action>` ; `poweroff`/`restart` par composant **gardés** et marqués `beyond_gui` ;
+  prouvé par `can-bench.sh`, deux modes : réseau éteint puis réseau réellement démarré)
+  faits → **les épisodes 3 et 4 (a, b) sont clos**, reprendre à l'**ép. 4c** (noyau des commandes,
+  `rc-set`/`rc-get`). Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort

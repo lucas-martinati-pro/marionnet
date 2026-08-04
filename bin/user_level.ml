@@ -448,6 +448,32 @@ class virtual ['parent] simulated_device () = object(self)
         let open Simulated_device in
         match !state with Sleeping _ -> true | No_device | Off _ | On _ -> false)
 
+  (** Return true iff the current state allows the user to 'modify' (edit the properties of) a
+      device. Same condition as [can_startup], and for a concrete reason: the number of ports, the
+      kernel or the distribution of a device whose Unix processes are alive cannot be changed under
+      its feet. *)
+  method can_modify =
+    Recursive_mutex.with_mutex mutex
+      (fun () ->
+        let open Simulated_device in
+        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+
+  (** Return true iff the current state allows the user to 'destroy' a device.
+      Until episode 4b of docs/pilotage-par-script.md this rule lived in the GUI *only* — on the
+      seven node components, without exception, "Remove" and "Modify" filtered the menu on
+      [can_startup] — and the model had no predicate at all. Anything calling #destroy directly,
+      typically a script driving the model through the control server, would therefore have
+      destroyed a running device together with its live Unix processes. The guard now belongs to
+      the model, and the GUI reads it like everybody else (§ 4.10).
+      Kept distinct from [can_modify] although the two conditions coincide here: they denote two
+      different permissions, and cables (cable.ml) already override both to a constant true while
+      the very notion of [can_startup] has no reader left for them. *)
+  method can_destroy =
+    Recursive_mutex.with_mutex mutex
+      (fun () ->
+        let open Simulated_device in
+        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+
   (** 'Correctness' support: this is needed so that we can refuse to start incorrectly
       placed components such as Ethernet cables of the wrong crossoverness, which the user
       may have created by mistake: *)
@@ -1867,6 +1893,22 @@ class network
  method get_node_names_that_can_resume ?devkind () =
   List.map (fun x -> x#get_name) (self#get_nodes_that_can_resume ?devkind ())
 
+ (* --- can_modify --- *)
+
+ method get_nodes_that_can_modify ?devkind () =
+  self#get_nodes_such_that ?devkind (fun x -> x#can_modify)
+
+ method get_node_names_that_can_modify ?devkind () =
+  List.map (fun x -> x#get_name) (self#get_nodes_that_can_modify ?devkind ())
+
+ (* --- can_destroy --- *)
+
+ method get_nodes_that_can_destroy ?devkind () =
+  self#get_nodes_such_that ?devkind (fun x -> x#can_destroy)
+
+ method get_node_names_that_can_destroy ?devkind () =
+  List.map (fun x -> x#get_name) (self#get_nodes_that_can_destroy ?devkind ())
+
  (* Including cables (suspend=disconnect, resume=reconnect). The boolean in the result
     indicates if the component is suspended (sleeping): *)
  method get_component_names_that_can_suspend_or_resume () : (string * [`Node|`Cable] * bool) list =
@@ -1894,6 +1936,22 @@ class network
 
  method get_crossover_cables  =
    List.filter (fun x->x#crossover=true) self#get_cable_list
+
+ (* The "Modify" and "Remove" dynlists of cable.ml read the two methods below, exactly as the seven
+    node components read get_node_names_that_can_{modify,destroy}: one truth about what is allowed,
+    read by the GUI and by the control server alike (docs/pilotage-par-script.md § 4.10). The
+    ~crossover filter is the one already applied by get_direct_cable_names and
+    get_crossover_cable_names, straight and crossover cables having separate menus. Note that both
+    predicates are overridden to a constant true in cable.ml: a wire is unplugged, moved and plugged
+    back while the machines keep running. *)
+ method get_cables_such_that ~crossover (predicate) =
+   List.filter (fun x -> (x#crossover = crossover) && (predicate x)) (self#get_cable_list)
+
+ method get_cable_names_that_can_modify ~crossover () =
+   List.map (fun x -> x#get_name) (self#get_cables_such_that ~crossover (fun x -> x#can_modify))
+
+ method get_cable_names_that_can_destroy ~crossover () =
+   List.map (fun x -> x#get_name) (self#get_cables_such_that ~crossover (fun x -> x#can_destroy))
 
  (** Starting and showing the network *)
 

@@ -123,8 +123,12 @@ module Make_menus
        powering off the machines, unplugging it and plugging it elsewhere. So every cable stays
        proposed, whatever its state; symmetry with the other components is not an argument, they
        are boxes and this is a wire. The destruction/re-creation this makes reachable again is
-       what [reaction] below has to sequence. *)
-    let dynlist = all_names
+       what [reaction] below has to sequence.
+       Episode 4b of docs/pilotage-par-script.md keeps the very same behaviour but stops stating it
+       here: the rule now lives in the model, where [can_modify] is overridden to a constant true
+       for cables, and this menu reads it like the control server does. [all_names] stays, used
+       below by "Disconnect"/"Reconnect", which have their own criterion. *)
+    let dynlist () = st#network#get_cable_names_that_can_modify ~crossover ()
 
     let dialog name () =
      let c = (st#network#get_cable_by_name name) in
@@ -178,7 +182,7 @@ module Make_menus
     type t = string (* just the name *)
     let to_string = (Printf.sprintf "name = %s\n")
 
-    let dynlist = Properties.dynlist
+    let dynlist () = st#network#get_cable_names_that_can_destroy ~crossover ()
 
     let dialog name () =
       let question = match crossover with
@@ -898,9 +902,25 @@ and cable =
       overridden to a constant [true] here ("To do: try reverting this"). The kludge is gone: no
       caller ever invokes [startup]/[gracefully_shutdown]/[poweroff] on a cable — its process is
       driven by the reference counter above, never by the user. Since episode 12 the
-      "Modify"/"Remove" dynlist does not read [can_startup] either, so for cables these inherited
-      predicates have no reader left at all; they stay inherited rather than overridden again,
-      a constant [true] being just as unread and far more misleading. *)
+      "Modify"/"Remove" dynlist does not read [can_startup] either, so for cables these three
+      inherited predicates have no reader left at all; they stay inherited rather than overridden
+      again, a constant [true] being just as unread and far more misleading.
+      What the "Modify"/"Remove" dynlists read since episode 4b of docs/pilotage-par-script.md are
+      the two predicates overridden just below — the same ones the control server reads, so that a
+      script has exactly the permissions of a human in front of the GUI. *)
+
+   (** A cable may always be modified, whatever its state. Project rule (CLAUDE.md): cabling
+       through the GUI follows what is possible in reality — one moves a cable from a hub to a
+       switch without powering off the machines, unplugging it and plugging it elsewhere. Applying
+       the rule of the seven node components here would make a script *more* restrictive than the
+       GUI, which is exactly as wrong as the opposite (episode 12 revising episode 8,
+       docs/refonte-automate-composants.md). *)
+   method! can_modify = true
+
+   (** Likewise for destruction: removing a wire is a gesture one performs on a live network. The
+       destruction and re-creation this makes reachable is what the [reaction] of the "Modify"
+       dialog has to sequence (see the Properties module above). *)
+   method! can_destroy = true
 
    (** Only connected cables can be 'suspended' *)
    method! can_suspend =
