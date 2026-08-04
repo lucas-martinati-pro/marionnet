@@ -922,14 +922,15 @@ and cable =
        dialog has to sequence (see the Properties module above). *)
    method! can_destroy = true
 
+   (* Read without the mutex, like the predicates they override: see the long comment on the
+      [can_*] group of user_level.ml (episode 4c). Same argument, and here the read is even more
+      obviously a single one — [!connected] is a bool ref, and [is_connected] just above has
+      always exposed it unlocked. *)
+
    (** Only connected cables can be 'suspended' *)
-   method! can_suspend =
-     Recursive_mutex.with_mutex mutex
-       (fun () -> !connected)
+   method! can_suspend = !connected
    (** Only non-connected cables with refcount exactly equal to 2 can be 'resumed' *)
-   method! can_resume =
-     Recursive_mutex.with_mutex mutex
-       (fun () -> not !connected)
+   method! can_resume = not !connected
 
    (** Get the reference count right at the beginning: it starts at zero, but
        it's immediately incremented if endpoint hublet processes already

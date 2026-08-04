@@ -241,6 +241,34 @@ sont donc gardées, mais **signalées comme telles** : la réponse de `can` les 
 `beyond_gui`, pour qu'un client puisse distinguer ce qu'un humain peut cliquer de ce qu'il ne peut
 pas. C'est la seule entorse à l'équivalence du § 4.10, et elle est explicite.
 
+**Contrat des réponses** (implémenté à l'épisode 4c) :
+
+| Cas | Réponse |
+|---|---|
+| transition acceptée | `{"ok":true,"component":…,"action":…,"accepted":true,"beyond_gui":…}` |
+| prédicat faux | `{"ok":false,"error":"forbidden_transition","detail":"\"m1\" cannot start from state \"on\""}` |
+| action sans objet pour ce type (`start` sur un câble) | `bad_argument` — un fil ne se démarre pas, ce n'est pas la même chose qu'une transition interdite |
+| composant inexistant | `unknown_node` |
+
+Trois règles gouvernent l'implémentation, chacune tirée d'un fait mesuré :
+1. **tester le prédicat d'abord** — les méthodes du modèle sont *gardées mais muettes*
+   (`user_level.ml:211-237`), donc un `start` illégal serait un no-op silencieux ;
+2. **appeler les méthodes de la GUI**, jamais les `…_right_now` : les premières **enfilent** une
+   tâche sur le `task_runner` (avec sa barre de progression), les secondes exécuteraient la
+   transition dans le thread appelant — ici le thread GTK, gelé pour la durée d'un boot UML ;
+3. **d'où `accepted`, jamais « fait »** : au moment de la réponse la tâche est en file, presque
+   jamais terminée. C'est `wait` (§ 4.7) qui rejoint la timeline du modèle.
+
+La recherche du composant **et** l'appel ont lieu dans un même créneau du thread GTK (un seul
+`ask`), si bien qu'aucun autre callback ne peut s'intercaler entre « c'est permis » et « vas-y ».
+Depuis l'épisode 4c cela ne coûte rien : les `can_*` ne prennent plus aucun mutex.
+
+Les trois actions collectives ne sont **pas** une boucle sur la commande par composant :
+`startup_everything` enfile ses nœuds *en séquence* quand les deux autres partent *en parallèle*
+(`state.ml:951-966`). Elles répondent le nombre de composants que le modèle a sélectionnés —
+`count:0` est la façon honnête de dire « rien à faire », et c'est le nombre sur lequel un banc
+doit porter.
+
 ### 4.5 Câbles
 
 `connect <câble> <n1>:<port> <n2>:<port>` et `disconnect <câble>` →
@@ -264,8 +292,8 @@ C'est la partie la plus volumineuse du chantier et la plus exposée à la dériv
 ### 4.7 Synchronisation
 
 ```
-wait <nom> --state=on|off|sleeping --timeout <secondes>
-wait-all --state=… --timeout <secondes>
+wait <nom> --state=on|off|sleeping [--timeout=<secondes>]
+wait-all --state=… [--timeout=<secondes>]
 ```
 
 Scrutation de l'état user-level, avec délai de garde. Rappel du § 2 : `--state=on` signifie
@@ -279,6 +307,25 @@ timeout 120 inotifywait -e close_write "$hostfs"/…
 Un répertoire hostfs par machine existe déjà et Marionnet le surveille lui-même par inotify
 (`bin/machine.ml:867-934`, `simulation_level.ml:868`) — le canal est là, seule la convention de
 « prêt » manque, et elle appartient au chantier `marionnet-kernel-rootfs`.
+
+Trois décisions d'implémentation (épisode 4c) :
+
+- **`--timeout` change de sens pour ces deux commandes** : il borne l'attente de **l'état**
+  (défaut **60 s**), pas l'aller-retour vers le thread GTK. Attendre le boot d'un UML dépasse
+  légitimement les 5 s de délai des autres commandes. Le délai GTK de **chaque sondage**, lui,
+  reste le délai ordinaire : une interface figée est donc toujours signalée comme telle
+  (`error:"timeout"` mentionnant le thread GTK) au lieu d'être masquée par une longue attente.
+- **La boucle de scrutation tourne dans le thread de session**, jamais dans le thread GTK : chaque
+  tour est un aller-retour court, la GUI garde ses créneaux et les autres sessions restent
+  servies. Prix à payer : un client en attente **occupe un des 8 créneaux** pendant toute la durée.
+- **`wait-all` porte sur les nœuds**, comme `ls` et comme les boutons de la barre basse : l'état
+  d'un câble suit celui de ses extrémités et n'est pas quelque chose qu'un script attend. À
+  l'expiration, la réponse porte un champ `pending` listant les retardataires et leur état — de
+  quoi diagnostiquer sans second aller-retour.
+
+À l'expiration, `wait` répond `error:"timeout"` en rappelant l'état **réellement** observé en
+dernier ; le composant détruit pendant l'attente donne `unknown_node`, pas un faux timeout (la
+recherche est refaite à chaque tour).
 
 ### 4.8 Porte de sortie
 
@@ -475,6 +522,32 @@ réseau **entièrement démarré**, chaque nœud offre `stop`/`suspend`/`powerof
 offrent toujours `set`/`del` **en marche**. La non-régression des menus est vérifiée par
 l'équivalence `set` ⟺ `start` sur les nœuds, qui est exactement ce que les `dynlist` listaient
 avant.
+
+---
+
+**Comment ces prédicats sont lus (règle posée à l'ép. 4c) : LE THREAD GTK NE PREND JAMAIS LE
+MUTEX D'UN COMPOSANT.** Les `can_*` lisent `!state` **sans verrou**, et ce n'est pas un
+relâchement de discipline mais la suppression d'un interblocage mesuré (journal du 2026-08-04) :
+tous leurs lecteurs — les `dynlist` des huit composants, le serveur de contrôle, les dialogues
+globaux de `state.ml`, le treeview de `marionnet.ml` — tournent dans le thread GTK, pendant que le
+`task_runner` détient ce même mutex et attend, lui, le thread GTK. Le verrou ne protégeait rien :
+le corps est une lecture unique d'une case mémoire, et la sérialisation qu'il semblait offrir
+était illusoire puisqu'il est relâché avant que l'appelant n'agisse.
+
+**Corollaire pour le script — la réponse de `can` est un indice, pas une promesse.** Entre
+l'instant où `can` dit `start` et celui où le `start` est traité, un composant a pu changer d'état
+(le `task_runner` travaille en parallèle). C'est précisément pourquoi les commandes de transition
+retestent le prédicat **elles-mêmes**, dans le thread GTK, et pourquoi elles répondent
+`accepted` : un script qui déduit une action d'un `can` antérieur doit s'attendre à un
+`forbidden_transition`, et le traiter comme une information, pas comme un incident.
+
+La règle duale — *ne jamais appeler le thread GTK de façon synchrone en tenant un mutex de
+composant* — reste la bonne discipline pour tout code neuf de `user_level.ml` /
+`simulation_level.ml`. Mais ce n'est pas elle qui rend l'application sûre ici : le thread GTK ne
+prenant plus le mutex, il ne peut plus faire partie d'un cycle, quel que soit ce que le
+`task_runner` appelle sous verrou. Même raisonnement qu'à l'épisode 15 de
+`docs/refonte-automate-composants.md` (`ledgrid_manager.ml`), appliqué en sens inverse : là le
+mutex était devenu **celui du seul thread principal**, ici il devient **celui de tous sauf lui**.
 
 ---
 
@@ -1309,3 +1382,75 @@ ou tenir la règle plus générale — *aucun appel synchrone au thread GTK tant
 composant est détenu* — ce qui demande d'inventorier le chemin de démarrage complet. Le premier
 est une ligne et se prouve avec le banc existant ; le second est la vraie règle. La décision
 appartient à l'auteur, parce qu'elle touche le cœur applicatif, pas le canal.
+
+### 2026-08-04 — épisode 4c (2/2) : le thread GTK n'attend plus après un composant
+
+**L'arbitrage.** Des deux correctifs soumis à l'auteur, aucun n'a été retenu tel quel : c'est leur
+**duale** qui l'a été. Un cycle a deux arêtes, et les deux options proposées coupaient la même —
+celle de l'écrivain (le porteur du mutex n'attend plus le thread GTK). La règle retenue coupe
+l'autre : **le thread GTK ne prend jamais le mutex d'un composant**. Les sept `can_*` de
+`user_level.ml` et les deux de `cable.ml` lisent désormais l'état **sans verrou**.
+
+Quatre raisons, toutes vérifiées dans le source avant d'éditer quoi que ce soit :
+
+1. **le correctif d'une ligne était insuffisant** — `Sketch.refresh_sketch` est appelé sous le
+   *même* mutex à huit endroits et mène au même thread GTK. Que le journal montre qu'il « passe »
+   ne prouve pas qu'il est sûr : il prouve qu'il a gagné la course cette fois-là. Corriger le seul
+   gestionnaire de LED laissait une seconde porte ouverte sur le même cycle ;
+2. **la règle générale n'était pas bornable** — l'inventaire descend dans `simulation_level.ml` et
+   dans tout ce que `d#startup` appelle ; périmètre non fini, et aucune garantie qu'un ajout futur
+   ne le rouvre. C'est une discipline, pas une propriété ;
+3. **la duale est bornable et vérifiable par `grep`** — les lecteurs de ces prédicats depuis le
+   thread GTK s'énumèrent : les `dynlist` des huit composants, `control_server.ml`, `state.ml`,
+   `marionnet.ml` ;
+4. **le verrou ne protégeait rien** — chaque prédicat est une lecture unique de `!state` suivie
+   d'un filtrage de constructeur ; aucun invariant composé, et la sérialisation apparente est
+   illusoire, le mutex étant relâché avant que l'appelant n'agisse. On payait un risque de gel pour
+   une garantie inexistante.
+
+La règle générale n'est pas abandonnée pour autant : elle est **écrite** au § 4.10 comme discipline
+du code neuf. Elle n'est simplement plus ce qui rend l'application sûre.
+
+**Mesure.** Banc `mute-diag.sh` **inchangé**, donc directement comparable :
+
+| Run | `status` | `can` | Sonde patiente |
+|---|---|---|---|
+| référence (avant, `4c-mute-3`) | 4 réponses / 15 muettes | 3 / 15 | **aucune réponse en 60 s** — gel définitif à +4,3 s |
+| après (`4c-mute-6-nolock`) | **153 / 0** | **153 / 0** | non déclenchée (aucun trou) |
+
+Et le run mesure bien quelque chose, contrairement à ceux de l'épisode 4b : les 13 composants
+démarrent pendant l'observation (13 lignes « was started up »), la sonde `can` passant de
+`state:"off"` au premier tour à `state:"on"` au dernier, threads montés à 109. Les deux correctifs
+`refresh_sketch` de la session précédente avaient, eux, reproduit le gel **à l'identique**
+(+4,3 s, 7/30) — la mesure les a bien infirmés.
+
+**Les commandes.** `start`, `stop`, `suspend`, `resume`, `restart`, `poweroff` par composant ;
+`start-all`, `shutdown-all`, `poweroff-all` ; `wait` et `wait-all` (§ 4.4 et § 4.7 pour le
+contrat). Rien d'inattendu dans l'écriture — les trois règles étaient tranchées en conception — sauf
+un point de nomenclature : **`start` sur un câble répond `bad_argument`, non
+`forbidden_transition`**. Un fil ne se démarre pas ; son processus suit un compteur de références.
+Dire « interdit » laisserait croire qu'un autre état le permettrait.
+
+**Preuve** : banc `transitions-bench.sh` (nouveau, hors dépôt), 16 assertions, réseau chargé par
+`open` puis **entièrement piloté par le canal** — aucune course contre `-r`. Toutes vertes :
+`start` accepté puis `wait --state=on` rendant la main en 0,8 s avec `can` confirmant ; second
+`start` refusé par `forbidden_transition` ; suspend/resume aller-retour ; `poweroff` accepté avec
+`beyond_gui:true` ; `start-all` (count 7) puis `wait-all --state=on` en **10,1 s**, `shutdown-all`
+(count 7) puis `wait-all --state=off` en **5,3 s**.
+
+**Deux enseignements de mesure**, tous deux payés par un run faux :
+
+- **le client coupait avant la réponse, et cela ressemblait à un mutisme du serveur.** Le premier
+  run a rendu `wait-all` VIDE deux fois. La cause n'est pas dans Marionnet mais dans `socat -t3` :
+  `-T` borne l'inactivité totale, mais **`-t` borne l'attente après EOF** — et il y a EOF dès que
+  le `printf` a écrit la requête. Le client fermait donc 3 s après avoir demandé, quoi que dise
+  `-T`. Toute réponse plus lente était lue comme vide, et le banc accusait le serveur d'un silence
+  qui était le sien. Les gardes de l'épisode 4b (`expect_ok` refuse une réponse vide) ont fait
+  exactement leur travail : échec franc, pas félicitation à vide ;
+- **les câbles restent `on` un instant après que tous les nœuds sont `off`** : leur processus suit
+  un compteur de références décrémenté par la destruction des extrémités, elle-même asynchrone.
+  Ce n'est pas une anomalie, et cela confirme le choix de ne faire porter `wait-all` que sur les
+  nœuds (§ 4.7).
+
+Le préalable de l'épisode est donc levé et son livrable rendu : un script peut piloter les
+transitions et se synchroniser dessus, sans jamais confondre « accepté » et « fait ».

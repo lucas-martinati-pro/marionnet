@@ -166,8 +166,13 @@ Reprise : appliquer le skill `chantier-long`.
   câbles — lus par les `dynlist` des 8 composants et par le serveur ; commandes `can [<nom>]` et
   `ls --can=<action>` ; `poweroff`/`restart` par composant **gardés** et marqués `beyond_gui` ;
   prouvé par `can-bench.sh`, deux modes : réseau éteint puis réseau réellement démarré)
-  faits → **les épisodes 3 et 4 (a, b) sont clos**, reprendre à l'**ép. 4c** (noyau des commandes,
-  `rc-set`/`rc-get`). Direction actée
+  et **ép. 4c** (le « canal muet » était un **interblocage de l'application** ; règle retenue :
+  **le thread GTK ne prend jamais le mutex d'un composant** — les `can_*` de `user_level.ml` et
+  `cable.ml` lisent `!state` **sans verrou**, ne pas « remettre proprement » un `with_mutex` ;
+  puis les 11 commandes `start`/`stop`/`suspend`/`resume`/`restart`/`poweroff`, `*-all`,
+  `wait`/`wait-all` — `accepted`, jamais « fait »)
+  faits → **les épisodes 3 et 4 (a, b, c) sont clos**, reprendre à l'**ép. 4d** (tokenisation,
+  puis composants/câbles/`forest` ; `rc-set`/`rc-get` à l'ép. 4e). Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort

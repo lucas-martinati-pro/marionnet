@@ -413,50 +413,71 @@ class virtual ['parent] simulated_device () = object(self)
         | No_device | Off _ ->
             Log.printf1 "poweroff_right_now: called in state %s: nothing to do.\n" (self#state_as_string))
 
+  (* ==== THE PREDICATES BELOW ARE READ *WITHOUT* THE MUTEX, ON PURPOSE ====
+     Rule (episode 4c of docs/pilotage-par-script.md): THE GTK MAIN THREAD NEVER TAKES A
+     COMPONENT MUTEX. Every reader of these predicates runs in that thread — the "Modify",
+     "Remove", "Startup"... dynlists of the eight components, the control server
+     (control_server.ml, [eligibility_of_node]), the global dialogs of state.ml, the treeview
+     of marionnet.ml — and they all read a boolean to fill a menu or an answer.
+
+     Until episode 4c each of them was wrapped in [Recursive_mutex.with_mutex mutex], which
+     closed a deadlock cycle, captured twice under gdb and reproduced deterministically:
+       - the `task_runner' thread holds this mutex in [startup_right_now] below and waits for
+         the GTK thread ([show_device_ledgrid] is a GMain_actor.apply_extract, and
+         [Sketch.refresh_sketch] goes to the same place);
+       - meanwhile the GTK thread evaluates one of these predicates and waits for the mutex.
+     Each waits for what the other holds; the freeze is permanent, and the control channel was
+     not the only way in — unrolling a per-component menu during a startup did it too.
+
+     Removing the mutex here loses nothing, because it was never protecting anything:
+       (a) the body is a single read of [!state] (one reference cell, an atomic read: Marionnet
+           runs threads, not domains) followed by a match on its constructor. There is no
+           compound invariant to keep — nothing else is read alongside;
+       (b) the serialisation it seemed to give was an illusion anyway: the mutex is released
+           before the caller acts on the answer, so [can_startup] answering true has always
+           been a hint, never a promise (which is precisely why the transition methods of the
+           model are themselves guarded, and why the control server answers `accepted', never
+           `done').
+     In short: an interlock that guaranteed nothing, at the price of freezing the application.
+     The dual rule — never call the GTK thread synchronously while holding a component mutex —
+     remains the right discipline for new code, but it is not what makes this safe: the GTK
+     thread no longer takes the mutex at all, so it can no longer be part of a cycle. Same
+     reasoning as ledgrid_manager.ml (episode 15 of docs/refonte-automate-composants.md),
+     applied the other way round: there the mutex became the main thread's alone, here it
+     becomes everyone's but the main thread's. *)
+
   (** Return true iff the current state allows the user to 'startup' the device from the GUI. *)
   method can_startup =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+    let open Simulated_device in
+    (match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
 
   (** Return true iff the current state allows the user to 'shutdown' a device from the GUI. *)
   method can_gracefully_shutdown =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with On _ | Sleeping _ -> true | No_device | Off _ -> false)
+    let open Simulated_device in
+    (match !state with On _ | Sleeping _ -> true | No_device | Off _ -> false)
 
   (** Return true iff the current state allows the user to 'power off' a device from the GUI. *)
   method can_poweroff =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with No_device | Off _ -> false | On _ | Sleeping _ -> true)
+    let open Simulated_device in
+    (match !state with No_device | Off _ -> false | On _ | Sleeping _ -> true)
 
   (** Return true iff the current state allows the user to 'suspend' a device from the GUI. *)
   method can_suspend =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with On _ -> true | No_device | Off _ | Sleeping _ -> false)
+    let open Simulated_device in
+    (match !state with On _ -> true | No_device | Off _ | Sleeping _ -> false)
 
   (** Return true iff the current state allows the user to 'resume' a device from the GUI. *)
   method can_resume =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with Sleeping _ -> true | No_device | Off _ | On _ -> false)
+    let open Simulated_device in
+    (match !state with Sleeping _ -> true | No_device | Off _ | On _ -> false)
 
   (** Return true iff the current state allows the user to 'modify' (edit the properties of) a
       device. Same condition as [can_startup], and for a concrete reason: the number of ports, the
       kernel or the distribution of a device whose Unix processes are alive cannot be changed under
       its feet. *)
   method can_modify =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+    let open Simulated_device in
+    (match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
 
   (** Return true iff the current state allows the user to 'destroy' a device.
       Until episode 4b of docs/pilotage-par-script.md this rule lived in the GUI *only* — on the
@@ -469,10 +490,8 @@ class virtual ['parent] simulated_device () = object(self)
       different permissions, and cables (cable.ml) already override both to a constant true while
       the very notion of [can_startup] has no reader left for them. *)
   method can_destroy =
-    Recursive_mutex.with_mutex mutex
-      (fun () ->
-        let open Simulated_device in
-        match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+    let open Simulated_device in
+    (match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
 
   (** 'Correctness' support: this is needed so that we can refuse to start incorrectly
       placed components such as Ethernet cables of the wrong crossoverness, which the user

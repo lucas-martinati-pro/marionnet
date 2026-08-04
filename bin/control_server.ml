@@ -370,6 +370,264 @@ let cmd_can (st : State.globalState) ~(timeout:float) ~(name:string) : string =
                 reply_error ~code:"unknown_node"
                   ~detail:(Printf.sprintf "no component named %S" name))
 
+(* ---------------------------------------------------------------- *)
+(*                           Transitions                            *)
+(* ---------------------------------------------------------------- *)
+
+(* § 4.4 and § 4.10. Three rules govern everything below, and each one comes from a measured
+   fact rather than from taste:
+
+   1. TEST THE PREDICATE FIRST. The transition methods of the model are *guarded but silent*
+      (user_level.ml:211-237: [if self#can_startup then ...] with no else), so calling
+      [#startup] on a running component does nothing and says nothing. A channel that
+      answered "ok" there would be lying: we read the same [can_*] the GUI menus read, and
+      answer [forbidden_transition] when it says no.
+
+   2. CALL THE GUI METHODS, NEVER THE [..._right_now] ONES. [#startup] & co. *enqueue* a task
+      on the task runner, with its progress bar (user_level.ml:175-200); the [..._right_now]
+      variants perform the transition in the calling thread — here the GTK main thread, which
+      would freeze the whole interface for the duration of a UML boot.
+
+   3. HENCE "ACCEPTED", NEVER "DONE". By the time we answer, the task is queued, usually not
+      finished. Saying otherwise would push every script into the trap of acting on a state
+      that does not exist yet; that is what [wait] below is for.
+
+   The lookup and the call both happen inside the GTK main thread (one [ask]): the predicate
+   and the enqueueing then belong to the same slot, so no other GTK callback can slip between
+   "it is allowed" and "go". Since episode 4c this costs nothing, the [can_*] no longer taking
+   any mutex. *)
+
+type transition_result =
+  | Tr_accepted
+  | Tr_forbidden   of string   (* raw state, projected when rendering *)
+  | Tr_unknown
+  | Tr_unsupported of string   (* kind: the action makes no sense for this component *)
+
+(* A node accepts the six actions of § 4.4. [restart] reads can_gracefully_shutdown because
+   that is the guard marionnet.ml:169-175 itself applies, and because [#gracefully_restart]
+   starts by shutting down. *)
+let transition_of_node (action:string) n : (bool * (unit -> unit)) option =
+  match action with
+  | "start"    -> Some (n#can_startup,             (fun () -> n#startup))
+  | "stop"     -> Some (n#can_gracefully_shutdown, (fun () -> n#gracefully_shutdown))
+  | "suspend"  -> Some (n#can_suspend,             (fun () -> n#suspend))
+  | "resume"   -> Some (n#can_resume,              (fun () -> n#resume))
+  | "poweroff" -> Some (n#can_poweroff,            (fun () -> n#poweroff))
+  | "restart"  -> Some (n#can_gracefully_shutdown, (fun () -> n#gracefully_restart))
+  | _          -> None
+
+(* A cable accepts two, the same two [can] publishes for it: its process is driven by a
+   reference counter, never by the user (cable.ml, comment B5), so start/stop/poweroff/restart
+   are not "forbidden" for a wire — they are meaningless, which is a different answer. *)
+let transition_of_cable (action:string) c : (bool * (unit -> unit)) option =
+  match action with
+  | "suspend" -> Some (c#can_suspend, (fun () -> c#suspend))
+  | "resume"  -> Some (c#can_resume,  (fun () -> c#resume))
+  | _         -> None
+
+let cmd_transition (st : State.globalState) ~(timeout:float) ~(action:string) ~(name:string)
+  : string
+  =
+  if name = "" then
+    reply_error ~code:"bad_argument"
+      ~detail:(Printf.sprintf "%s expects the name of a component" action)
+  else
+  ask ~timeout
+    (fun () ->
+       match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+       | Some n ->
+           (match transition_of_node action n with
+            | None            -> Tr_unsupported n#string_of_devkind
+            | Some (true,  f) -> let () = f () in Tr_accepted
+            | Some (false, _) -> Tr_forbidden n#state_as_string)
+       | None ->
+       match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+       | Some c ->
+           (match transition_of_cable action c with
+            | None            -> Tr_unsupported "cable"
+            | Some (true,  f) -> let () = f () in Tr_accepted
+            | Some (false, _) -> Tr_forbidden c#state_as_string)
+       | None -> Tr_unknown)
+  |> reply_of_outcome
+       (function
+         | Tr_accepted ->
+             reply_ok [
+               ("component", jstr name);
+               ("action",    jstr action);
+               (* Never "done": the task is queued. See rule 3 above. *)
+               ("accepted",  jbool true);
+               (* Same warning as in [can]: this action is reachable from no per-component
+                  menu (§ 4.4). A client may want to refuse it in "GUI equivalence" mode. *)
+               ("beyond_gui", jbool (List.mem action beyond_gui_actions));
+               ]
+         | Tr_forbidden raw ->
+             reply_error ~code:"forbidden_transition"
+               ~detail:(Printf.sprintf "%S cannot %s from state %S"
+                          name action (script_state_of_raw raw))
+         | Tr_unsupported kind ->
+             reply_error ~code:"bad_argument"
+               ~detail:(Printf.sprintf "the action %S does not apply to %S (kind %s)"
+                          action name kind)
+         | Tr_unknown ->
+             reply_error ~code:"unknown_node"
+               ~detail:(Printf.sprintf "no component named %S" name))
+
+(* The collective actions of the bottom toolbar (state.ml:951-966). They are *not* a loop over
+   the per-component command: [startup_everything] enqueues its nodes in sequence while the two
+   others go in parallel, which is the application's own choice and not ours to second-guess.
+   They are silently empty when nothing is eligible, so we report how many components the model
+   selected — an answer of 0 is the honest way to say "nothing to do", and it is the number a
+   bench must assert on. *)
+let cmd_transition_all (st : State.globalState) ~(timeout:float) ~(action:string) : string =
+  ask ~timeout
+    (fun () ->
+       let selected =
+         match action with
+         | "start-all" -> List.length (st#network#get_nodes_that_can_startup ())
+         (* Both shutdown-all and poweroff-all select on can_gracefully_shutdown: poweroff_everything
+            does exactly that (state.ml:962-966), a brutal cut being applicable to whatever is up. *)
+         | _           -> List.length (st#network#get_nodes_that_can_gracefully_shutdown ())
+       in
+       let () =
+         match action with
+         | "start-all"    -> st#startup_everything ()
+         | "shutdown-all" -> st#shutdown_everything ()
+         | "poweroff-all" -> st#poweroff_everything ()
+         | _              -> ()
+       in
+       selected)
+  |> reply_of_outcome
+       (fun selected ->
+          reply_ok [
+            ("action",   jstr action);
+            ("accepted", jbool true);
+            ("count",    jint selected);
+            ])
+
+(* ---------------------------------------------------------------- *)
+(*                          Synchronisation                         *)
+(* ---------------------------------------------------------------- *)
+
+(* § 4.7. [wait] is the counterpart of rule 3 above: transitions are accepted, not done, so a
+   script needs one primitive to rejoin the model's timeline.
+
+   Two decisions worth stating:
+   - the polling loop runs in THIS thread (the session thread), never in the GTK main thread:
+     each round trip is a short [ask], so the GUI keeps its slot and the other sessions keep
+     being served. The price is that a waiting client holds one of the [max_sessions] slots
+     for the whole wait, which is why the default is generous but finite;
+   - [--timeout] here means "how long to wait for the state", not "how long to wait for the
+     GTK main thread" — waiting for a UML to boot legitimately takes far more than the 5s
+     deadline of the other commands. The GTK deadline of each poll stays [default_timeout],
+     so a frozen interface is still reported as such instead of being hidden by a long wait. *)
+
+let known_script_states = [ "on"; "off"; "sleeping" ]
+let default_wait_timeout = 60.0
+let wait_poll_interval = 0.2
+
+(* Shared by [wait] and [wait-all]: check the argument, then poll [observe] until [reached]
+   holds or the deadline expires. [observe] runs in the GTK main thread. *)
+let poll_until ~(wait_timeout:float) ~(observe: unit -> 'a outcome)
+               ~(reached: 'a -> bool) ~(on_reached: 'a -> float -> string)
+               ~(on_expiry: 'a -> float -> string) : string
+  =
+  let t0 = Unix.gettimeofday () in
+  let deadline = t0 +. wait_timeout in
+  let rec poll () =
+    match observe () with
+    | Failed e    -> reply_error ~code:"internal" ~detail:(Printexc.to_string e)
+    | Timed_out t ->
+        reply_error ~code:"timeout"
+          ~detail:(Printf.sprintf
+                     "the GTK main thread did not answer within %.1fs while waiting (busy: modal dialog, pulled-down menu or long operation)"
+                     t)
+    | Done v ->
+        let elapsed = Unix.gettimeofday () -. t0 in
+        if reached v then on_reached v elapsed
+        else if Unix.gettimeofday () >= deadline then on_expiry v elapsed
+        else let () = Thread.delay wait_poll_interval in poll ()
+  in
+  poll ()
+
+let check_state (state : string option) : (string, string) result =
+  match state with
+  | None   -> Error (Printf.sprintf "--state is required (one of: %s)"
+                       (String.concat ", " known_script_states))
+  | Some s when List.mem s known_script_states -> Ok s
+  | Some s -> Error (Printf.sprintf "no such state %S (expected one of: %s)"
+                       s (String.concat ", " known_script_states))
+
+let cmd_wait (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
+             ~(name:string) ~(state:string option) : string
+  =
+  match check_state state with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok target ->
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"wait expects the name of a component"
+  else
+  (* [None] = no such component. Looked up at every poll on purpose: a component may be
+     destroyed while we wait, and the script must be told rather than time out. *)
+  let observe () =
+    ask ~timeout:gtk_timeout
+      (fun () ->
+         match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+         | Some n -> Some n#state_as_string
+         | None ->
+         match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+         | Some c -> Some c#state_as_string
+         | None   -> None)
+  in
+  poll_until ~wait_timeout ~observe
+    ~reached:(function None -> true | Some raw -> script_state_of_raw raw = target)
+    ~on_reached:(fun v elapsed ->
+       match v with
+       | None -> reply_error ~code:"unknown_node"
+                   ~detail:(Printf.sprintf "no component named %S" name)
+       | Some raw ->
+           reply_ok [
+             ("component", jstr name);
+             ("state",     jstr (script_state_of_raw raw));
+             ("waited",    jfloat elapsed);
+             ])
+    ~on_expiry:(fun v elapsed ->
+       let current = match v with None -> "?" | Some raw -> script_state_of_raw raw in
+       reply_error ~code:"timeout"
+         ~detail:(Printf.sprintf "%S was still %S after %.1fs (expected %S)"
+                    name current elapsed target))
+
+(* Nodes only, like [ls] and like the collective buttons of the toolbar: a cable's state
+   follows its endpoints' and is not something a script waits for (§ 4.7). *)
+let cmd_wait_all (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
+                 ~(state:string option) : string
+  =
+  match check_state state with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok target ->
+  let observe () =
+    ask ~timeout:gtk_timeout
+      (fun () ->
+         List.map (fun n -> (n#get_name, script_state_of_raw n#state_as_string))
+           (st#network#get_node_list))
+  in
+  let pending l = List.filter (fun (_, s) -> s <> target) l in
+  poll_until ~wait_timeout ~observe
+    ~reached:(fun l -> pending l = [])
+    ~on_reached:(fun l elapsed ->
+       reply_ok [
+         ("state",  jstr target);
+         ("count",  jint (List.length l));
+         ("waited", jfloat elapsed);
+         ])
+    ~on_expiry:(fun l elapsed ->
+       let late = pending l in
+       reply_error_with
+         ~extra:[ ("pending",
+                   jlist (List.map (fun (n, s) -> jobj [ ("name", jstr n); ("state", jstr s) ]) late)) ]
+         ~code:"timeout"
+         ~detail:(Printf.sprintf "%d of %d nodes were still not %S after %.1fs"
+                    (List.length late) (List.length l) target elapsed))
+
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole
    loading in the calling thread (state.ml:594-596) — the very case that test provides
@@ -471,7 +729,15 @@ let cmd_notifications ~(since:string option) ~(clear:bool) : string =
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
 
-let known_commands = [ "status"; "ls"; "can"; "open"; "notifications"; "quit" ]
+(* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
+   "set"/"del", which are not transitions and belong to a later episode. *)
+let transition_commands = [ "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
+let transition_all_commands = [ "start-all"; "shutdown-all"; "poweroff-all" ]
+
+let known_commands =
+  [ "status"; "ls"; "can"; "open"; "notifications" ]
+  @ transition_commands @ transition_all_commands
+  @ [ "wait"; "wait-all"; "quit" ]
 
 (* The answer must be *sent* before quitting, hence the second component: the session loop
    writes it, then triggers the shutdown. *)
@@ -504,6 +770,24 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                 (cmd_notifications
                    ~since:(option_value r "since")
                    ~clear:(option_value r "clear" <> None),
+                 `Continue)
+            | verb when List.mem verb transition_commands ->
+                (cmd_transition st ~timeout ~action:verb ~name:r.arg, `Continue)
+            | verb when List.mem verb transition_all_commands ->
+                (cmd_transition_all st ~timeout ~action:verb, `Continue)
+            (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
+               it bounds the wait, not the round trip to the GTK main thread. Hence the
+               distinct default, and hence [timeout] being reused only when the client did
+               name it. *)
+            | "wait" | "wait-all" ->
+                let wait_timeout =
+                  match option_value r "timeout" with None -> default_wait_timeout | Some _ -> timeout
+                in
+                let state = option_value r "state" in
+                ((if r.verb = "wait" then
+                    cmd_wait st ~gtk_timeout:default_timeout ~wait_timeout ~name:r.arg ~state
+                  else
+                    cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
                  `Continue)
             | "quit"   -> (reply_ok [ ("quitting", jbool true) ], `Quit)
             | verb ->
