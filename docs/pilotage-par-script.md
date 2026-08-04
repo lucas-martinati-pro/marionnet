@@ -667,7 +667,9 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
 | **4a** | L'automate comme **contrat du script** (§ 4.10) : table états × actions, règle de refus, exception des câbles, commande `can` ; décision `can_destroy`/`can_modify` dans le modèle | **fait** (2026-08-03) — conception, aucun code |
 | **4b** | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commandes `can` et `ls --can=` ; arbitrage `poweroff`/`restart` par composant | **fait** (2026-08-04) — 8 assertions mesurées sur deux runs |
-| 4c | Noyau complet : projet, composants, transitions, câbles, `wait`, `forest`, `rc-set`/`rc-get` | à faire |
+| 4c | Transitions (`start`/`stop`/`suspend`/`resume`/`restart`/`poweroff` + variantes globales) et `wait` | **en cours** (2026-08-04) — le préalable a mangé l'épisode : interblocage GUI/`task_runner` **diagnostiqué et capturé**, correctif restant à trancher (§ 11) |
+| 4d | Tokenisation des arguments (§ 4.1) puis projet, composants, câbles, `forest` | à faire |
+| 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | 7 | Voie C : générateur de `.mar` | à faire |
@@ -1247,3 +1249,63 @@ du motif (`/tmp/marionnet-<N>.dir`), pas son cardinal.
   `beyond_gui = [poweroff, restart]` ; les 6 câbles restent `set`/`del` **en marche** ; `set` ⟺
   `start` sur tous les nœuds, donc les menus listent ce qu'ils listaient avant ; la vue à plat
   `can m1` est identique à l'entrée correspondante de la vue globale.
+
+### 2026-08-04 — épisode 4c (1/2) : le canal muet n'était pas muet, l'application était gelée
+
+**Ce que l'épisode devait livrer**, et qui reste à faire : les commandes de transition (`start`,
+`stop`, `suspend`, `resume`, `restart`, `poweroff`, leurs variantes globales) et `wait`. Elles
+n'ont pas été écrites : le préalable qu'on croyait mineur — « le canal devient muet pendant la
+rafale de démarrages », noté en marge de l'épisode 4b — s'est révélé être un **interblocage
+franc de l'application entière**, qu'il aurait été absurde d'habiller de commandes nouvelles.
+
+**Reproduction déterministe** (banc `mute-diag.sh`, hors dépôt) : Marionnet lancé avec `-r` sur
+un projet de 7 nœuds, un client qui sonde le canal toutes les 0,5 s.
+
+| Sonde | Résultat |
+|---|---|
+| `status` seul | **187 réponses, aucun trou** ; les 38 tâches du `task_runner` s'exécutent, le réseau démarre entièrement |
+| `status` et `can` en alternance | **gel définitif** à +4,3 s : 30 non-réponses sur 37, le `task_runner` s'arrête et ne redémarre jamais, la GUI ne répond plus, et une requête patiente (`can --timeout=25`, client `-T60`) n'obtient **rien** en 60 s |
+
+La différence entre les deux lignes est le seul fait qui compte : `status` ne lit que l'état
+global, tandis que `can` interroge les prédicats de **chaque composant** — lesquels prennent le
+mutex du composant (`user_level.ml:135`).
+
+**Cause, capturée et non déduite.** `gdb` ne pouvait pas s'attacher au processus
+(`ptrace_scope=1`, et le `sudoers` de Marionnet n'ouvre que des règles `ip`) : le banc
+`deadlock-capture.sh` lance donc Marionnet **sous** gdb et déclenche l'arrêt à distance par
+`SIGUSR2` (`handle SIGUSR2 stop nopass`). Deux captures concordantes :
+
+- **thread GTK** : `main_loop` → idle → `GMain_actor` → `control_server.ml:354` (`can`) →
+  `eligibility_of_node` (`control_server.ml:279`) → `MutexExtra` → `caml_ml_condition_wait`.
+  Il **attend un mutex de composant**.
+- **thread `task_runner`** : `task_runner.ml:87` → `state.ml:926` (le thunk de
+  `make_names_and_thunks`) → `user_level.ml:942` (`startup_right_now`) → `with_mutex` →
+  `GMain_actor.apply_extract` (`gMain_actor.ml:112`) → `Milner`/`Channel` →
+  `caml_ml_condition_wait`. Il **attend le thread GTK, un mutex à la main**.
+
+Chacun attend ce que l'autre tient. Le site de l'appel synchrone est le gestionnaire de LED :
+`show_device_ledgrid` (`bin/gui/ledgrid_manager.ml:184`) est un `GMain_actor.apply_extract`, et
+il est appelé en fin de démarrage d'un nœud (`user_level.ml:944`).
+
+**Ce n'est pas un défaut du canal de contrôle.** Les prédicats en cause alimentent aussi les
+`dynlist` des menus par composant (« Modify », « Remove », « Startup ») : **dérouler un menu
+pendant qu'un composant démarre emprunte exactement le même chemin depuis le thread GTK**. Le
+canal n'a fait que rendre reproductible, et scriptable, un gel que la GUI peut produire seule.
+À rapprocher de `docs/bug-critique-crash-host.md` (C5 : ce qui ressemblait à un crash hôte était
+un gel d'application) et de `docs/refonte-automate-composants.md` (discipline des appels Gtk+).
+
+**Deux correctifs tentés, tous deux annulés** — ils visaient `Sketch.refresh_sketch`, qui est
+appelé sous le même mutex (8 sites de `user_level.ml`) et paraissait le coupable naturel :
+(a) `really_refresh_sketch` en `delegate ~async:()` (`state.ml`) ; (b) le thunk global
+`Refresh_sketch_thunk` posté en asynchrone (`marionnet.ml:97`). **Aucun effet** sur le gel, mesuré
+deux fois. L'explication tient dans le journal : la ligne qui suit `Sketch.refresh_sketch` dans
+`startup_right_now` (« The device H1 was started up ») **est bien écrite** — le refresh passe donc,
+et le blocage est postérieur. Les deux modifications ont été retirées de l'arbre : une hypothèse
+infirmée ne se garde pas « au cas où ».
+
+**Reste à trancher (prochaine session).** Rendre non bloquant l'appel du gestionnaire de LED sur
+le chemin des transitions (`show_device_ledgrid`/`hide_device_ledgrid` en `delegate ~async:()`),
+ou tenir la règle plus générale — *aucun appel synchrone au thread GTK tant qu'un mutex de
+composant est détenu* — ce qui demande d'inventorier le chemin de démarrage complet. Le premier
+est une ligne et se prouve avec le banc existant ; le second est la vraie règle. La décision
+appartient à l'auteur, parce qu'elle touche le cœur applicatif, pas le canal.
