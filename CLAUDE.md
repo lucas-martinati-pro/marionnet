@@ -177,8 +177,12 @@ Reprise : appliquer le skill `chantier-long`.
   projet `new`/`save`/`save-as`/`close`, qui reproduisent la **séquence du menu**
   [`shutdown_everything` → *[save]* → `close_project`] avec `--save`/`--no-save` obligatoires si
   le projet est modifié [`unsaved_changes`] ; **piège** : `camlp4` ne connaît pas `let*`)
-  faits → **les épisodes 3 et 4 (a, b, c, d) sont clos**, reprendre à l'**ép. 4d-2**
-  (composants : `add`/`del`/`rename`/`get`/`set`), puis 4d-3 (câbles + `forest`) et
+  et **ép. 4d-2a** (les composants : `add`/`del`/`get`/`set`, uniformes sur les 8 natures —
+  `#to_tree` publie les champs, `#eval_forest_attribute` les écrit, le constructeur s'enregistre
+  seul ; **frontière assumée** : `name` et `port_no` sont refusés, les écrire hors
+  `update_<kind>_with` laisserait des lignes de treeview orphelines)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a) sont clos**, reprendre à l'**ép. 4d-2b**
+  (champs structurels + `rename`), puis 4d-3 (câbles + `forest`) et
   `rc-set`/`rc-get` à l'ép. 4e. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.

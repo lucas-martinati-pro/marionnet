@@ -258,14 +258,69 @@ critère de succès s'est révélé menteur et a dû être remplacé.
 
 ### 4.3 Composants
 
-| Commande | Correspondance |
-|---|---|
-| `add <kind> <nom> [--ports N] [--…]` | fragment `Xforest.tree` → `network#eval_forest_child` (registre `user_level.ml:1665-1672`) |
-| `del <nom>` | méthode de suppression du composant |
-| `rename <ancien> <nouveau>` | idem |
-| `ls [--kind=…] [--can=<action>]` — **implémentée (ép. 4b)** | `network#get_node_list` (l.1537) puis les prédicats du modèle, lus par `eligibility_of_node` (`control_server.ml`) |
-| `get <nom> [.champ]` | projection du composant |
-| `set <nom> <champ> <valeur>` | idem |
+| Commande | Correspondance modèle | |
+|---|---|---|
+| `add <kind> <nom> [--ports=<n>] [--<champ>=<valeur>]…` | constructeur `new <Kind>.User_level_<kind>.<kind> ~network ~name …`, sous `st#network_change` | **ép. 4d-2a** |
+| `del <nom>` | `#destroy` sous `st#network_change` (patron `Remove.reaction`, ex. `hub.ml:117-119`) | **ép. 4d-2a** |
+| `get <nom> [<champ>]` | `#to_tree` (`machine.ml:637`, `cable.ml:715`…) | **ép. 4d-2a** |
+| `set <nom> <champ> <valeur>` | `#eval_forest_attribute` (`machine.ml:652-666`) sous `network_change` | **ép. 4d-2a** |
+| `rename <ancien> <nouveau>` | `update_<kind>_with ~name` | ép. 4d-2b |
+| `ls [--kind=…] [--can=<action>]` | `network#get_node_list` (l.1537) puis les prédicats du modèle, lus par `eligibility_of_node` | ép. 4b |
+
+**Une seule source pour le vocabulaire des champs : `#to_tree`.** C'est ce qu'un `.mar` enregistre ;
+c'est donc, sans rien inventer, ce que `get` sert, ce contre quoi `set` valide son champ, et ce que
+les options `--<champ>=` d'`add` peuvent viser. Un champ inconnu est **refusé** (`bad_argument`, avec
+la liste des champs de ce composant) et non ignoré : `eval_forest_attribute` ignore silencieusement
+ce qu'il ne connaît pas (`| _ -> ()`, forward-compatibilité avec les `.mar` futurs), donc une faute
+de frappe y disparaîtrait sans trace.
+
+**Trois refus, chacun fondé sur une propriété du modèle :**
+
+1. **Champs structurels — `name`, `port_no` (et l'alias `eth`).** Les modifier n'est pas « écrire un
+   champ » : le chemin de la GUI passe par `update_<kind>_with` → `update_virtual_machine_with`, qui
+   **renomme les entrées ifconfig et history, renomme le répertoire hostfs et met à jour le nombre
+   de ports du treeview** (`user_level.ml:1418-1425`). `eval_forest_attribute` n'appellerait que
+   `set_name`/`set_port_no` et laisserait des lignes de treeview orphelines — un projet corrompu en
+   silence, découvert au démarrage suivant. D'où l'**ép. 4d-2b**, qui portera aussi `rename`.
+2. **Champs marshalés.** `rc_config` (`machine.ml:645`, `switch.ml:455`) et les quatre du routeur
+   (`rc_config_unix`, `rc_config_quagga`, `quagga_selected_srvs`, `show_quagga_terminal`) sont écrits
+   par `Marshal.to_string` : ce ne sont pas des textes. Les servir mettrait de l'UTF-8 invalide au
+   milieu d'une ligne JSON, les accepter reviendrait à demander à un client shell de forger des
+   octets marshalés. Ils relèvent de `rc-set`/`rc-get` (§ 10, ép. 4e). Le serveur ne les **énumère
+   pas** — une liste vieillirait dès qu'un composant en ajoute un : il les reconnaît à leur en-tête
+   (`0x8495A6BD/BE/BF`, les trois nombres magiques de `Marshal`). Ils sont rendus `null` et **nommés**
+   dans le champ `omitted` de la réponse, jamais escamotés.
+3. **État du composant.** `set` teste `can_modify` et `del` teste `can_destroy` — les prédicats
+   descendus dans le modèle à l'ép. 4b — et répondent `forbidden_transition` sinon. Le **§ 4.10 fait
+   autorité** ; rappel de son exception : un **câble** s'édite et se supprime **en marche**.
+
+**`add`.** Le `<kind>` est celui de `ls --kind=` et de la racine d'un `.mar` : le canal n'a qu'un
+vocabulaire (`machine`, `router`, `switch`, `hub`, `cloud`, `world_bridge`, `world_gateway` ; un
+câble se crée par `connect`, § 4.5). Le serveur appelle **le constructeur**, pas le registre
+`try_to_add_*` — celui-ci aurait été uniforme, mais il **avale l'erreur** (`with _ -> false`,
+`machine.ml:545`) et exige `port_no`, alors que le bon défaut est **local à chaque fichier**
+(`Const.port_no_default` : machine 1, hub/switch/routeur/world_gateway 4, cloud 2, world_bridge 1) ;
+le constructeur le prend là où il est défini au lieu d'en recopier sept ici. `--ports` sur un
+composant à ports fixes (cloud, world_bridge) est **refusé** plutôt qu'avalé.
+Les autres `--<champ>=<valeur>` sont appliqués après construction, avec les mêmes refus qu'au-dessus,
+et **un échec ne laisse rien** : le composant à peine créé est détruit, de sorte qu'un `add` refusé
+signifie un réseau inchangé. La réponse rend les champs **relus** dans le réseau, jamais supposés
+(même exigence que l'échec silencieux ci-dessus).
+
+**`del`.** Supprimer un nœud supprime **les câbles qui y sont branchés** (`del_node_by_name`,
+`user_level.ml:1843`) ; la réponse les nomme dans `cables_destroyed`, sans quoi le modèle du réseau
+que tient le script divergerait silencieusement du nôtre.
+
+⚠️ **La réponse de `set` porte la valeur relue** (`old`, `new`, `changed`), pas la valeur demandée :
+certains setters normalisent (le label est *strippé*, une distribution absente est remappée), et
+quelques champs sont **constants par construction** — ceux d'un câble décrivant ses extrémités
+(`crossover`, `leftnodename`…) sont acceptés par `eval_forest_attribute` puis ignorés (`cable.ml`,
+« these attributes have been already read »). Un client compare `new` à ce qu'il voulait.
+
+⚠️ **Ces commandes passent toutes par `st#network_change`** (`state.ml:892-903`), qui marque le
+projet modifié et **redessine le sketch**. Deux conséquences : le coût du créneau GTK croît avec la
+taille du réseau (d'où `--timeout` sur un gros projet), et une mutation exige un **projet ouvert**
+(`no_active_project` sinon).
 
 `--can=<action>` prend un **nom d'action**, c'est-à-dire un nom de commande du § 4.4 — `set`,
 `del`, `start`, `stop`, `suspend`, `resume`, `poweroff`, `restart` — et **non** un nom de prédicat
@@ -808,7 +863,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **4b** | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commandes `can` et `ls --can=` ; arbitrage `poweroff`/`restart` par composant | **fait** (2026-08-04) — 8 assertions mesurées sur deux runs |
 | 4c | Transitions (`start`/`stop`/`suspend`/`resume`/`restart`/`poweroff` + variantes globales) et `wait` | **fait** (2026-08-04) — le préalable a mangé la première moitié : interblocage GUI/`task_runner` diagnostiqué, capturé et **corrigé** (le thread GTK ne prend plus le mutex d'un composant), puis les 11 commandes, 16 assertions |
 | 4d | Arité des arguments (§ 4.1) **et** commandes de projet (§ 4.2) | **fait** (2026-08-05) — 29 assertions, `project-bench.sh` |
-| 4d-2 | Composants : `add`, `del`, `rename`, `get`, `set` (§ 4.3) | à faire |
+| 4d-2a | Composants : `add`, `del`, `get`, `set` **hors champs structurels** (§ 4.3) | **fait** (2026-08-05) — 58 assertions, `components-bench.sh` |
+| 4d-2b | Les champs structurels : `rename`, `set … name`, `set … port_no` — le vrai chemin `update_<kind>_with`, par nature de composant | à faire |
 | 4d-3 | Câbles (`connect`/`disconnect`, § 4.5) et `forest` (§ 4.8) | à faire |
 | 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
 | 5 | Les 4 treeviews | à faire |
@@ -1579,3 +1635,67 @@ instrument de diagnostic ne peut pas mentir, fût-ce par avance.
 **Observation gardée pour les clients** : le champ `saved` de `status` n'a de sens que si
 `active` est vrai — après une fermeture il conserve sa valeur d'avant, l'état global n'étant pas
 réinitialisé. Comportement historique, non touché.
+
+### 2026-08-05 — épisode 4d-2a : construire un réseau, et s'arrêter à la bonne frontière
+
+Jusqu'ici un script pouvait **piloter** un réseau, pas en **construire** un : il fallait partir
+d'un `.mar` dessiné à la main. `add`, `del`, `get` et `set` (§ 4.3) referment ce trou — sauf sur
+deux champs, et c'est le cœur de l'épisode.
+
+**Trois propriétés du modèle rendent ces commandes uniformes sur les huit natures**, si bien que
+presque rien, dans le serveur, ne sait ce qu'est une machine : `#to_tree` publie les attributs
+tels qu'un `.mar` les enregistre ; `#eval_forest_attribute` est le setter indexé par nom
+d'attribut ; le constructeur s'**enregistre lui-même** dans le réseau (`network#add_node`,
+`user_level.ml:854`) et crée son entrée ifconfig (l.1092). `add` est donc l'`Add.reaction` de la
+GUI (`machine.ml:146-161`) sans le dialogue, et `del` son `Remove.reaction`.
+
+**Où l'épisode s'arrête, et pourquoi.** `name` et `port_no` ne sont pas des champs comme les
+autres : le chemin de la GUI passe par `update_<kind>_with` → `update_virtual_machine_with`, qui
+**renomme les entrées ifconfig et history, renomme le répertoire hostfs et met à jour le nombre de
+ports du treeview** (`user_level.ml:1418-1425`). Les écrire par `eval_forest_attribute` n'appellerait
+que `set_name`/`set_port_no` : le composant porterait le nouveau nom, ses lignes de treeview
+l'ancien, et personne ne s'en apercevrait avant le démarrage suivant. Le canal les **refuse** en
+disant pourquoi, et le vrai chemin — avec `rename` — devient l'ép. 4d-2b. Un découpage tiré du
+code, pas du calendrier.
+
+**Le constructeur plutôt que le registre.** Passer par `try_to_add_*`/`eval_forest_child`
+(`user_level.ml:1714`) aurait été tentant : uniforme, déjà écrit, et c'est le chemin du chargement
+d'un `.mar`. Deux faits l'ont écarté. Il **avale l'erreur** (`with _ -> false`, `machine.ml:545`) —
+un nom refusé, un attribut mal formé, tout revient en un `false` nu. Et il exige `port_no`, alors
+que le bon défaut est **local à chaque fichier** (`Const.port_no_default` : machine 1,
+hub/switch/routeur/world_gateway 4, cloud 2, world_bridge 1) : le serveur aurait dû en recopier
+sept, et les voir vieillir. Sept appels de constructeur les prennent là où ils sont définis.
+
+**Les valeurs marshalées se reconnaissent, elles ne s'énumèrent pas.** `rc_config` est écrit par
+`Marshal.to_string` dans l'arbre (`machine.ml:645`) : le servir mettrait de l'UTF-8 invalide au
+milieu d'une ligne JSON. Plutôt qu'une liste de noms de champs — qui aurait vieilli au premier
+composant ajouté — le serveur les reconnaît à l'en-tête de `Marshal` (`0x8495A6BD/BE/BF`). Le run
+l'a immédiatement validé : sur un routeur, **quatre** champs sont ainsi masqués et nommés dans
+`omitted` (`rc_config_unix`, `rc_config_quagga`, `quagga_selected_srvs`, `show_quagga_terminal`)
+alors qu'aucun n'avait été prévu à l'écriture du code.
+
+**Un piège de concurrence, évité par construction puis par mesure.** Tout se joue dans **un seul**
+`ask`, dont le thunk appelle `st#network_change` : recherche, garde et action tiennent dans le même
+créneau GTK. C'est correct parce que `GMain_actor.delegate` sans `~async` **est** `apply`
+(`gMain_actor.ml:126`), et qu'`apply` exécute directement quand l'appelant est déjà le thread GTK
+(l.82). Mais la même lecture révèle un second fait, moins agréable : `apply` **capture**
+l'exception de son thunk (`EitherExtra.protect`) et `delegate` la **jette**. Une action qui échoue
+au fond de `network_change` ressemblerait donc à un succès. D'où la référence `failure` que chaque
+commande porte : l'exception est rattrapée là où elle se produit, et le message du modèle est
+rendu au client (`Failure("int_of_string")`, `Failure("Setting component 1m: invalid name")`…).
+
+**Un `add` refusé laisse le réseau intact.** Les options `--<champ>=<valeur>` sont appliquées après
+construction ; si l'une est refusée — champ inconnu, structurel, marshalé, ou valeur que le modèle
+rejette — le composant à peine créé est **détruit**. L'alternative aurait été un composant à moitié
+configuré que le script n'a pas demandé.
+
+**Preuve** : banc `components-bench.sh` (nouveau, hors dépôt), **58 assertions, toutes vertes au
+premier run**, en un seul mode (sans `-r`, tout par le canal). Notamment : les 7 natures créées
+dans un projet **neuf** puis relues par `ls` ; les cinq refus d'`add` (nom pris, nom non
+identifiant, nature inconnue, `--ports` sur un cloud, `cable`) suivis d'un `ls` qui compte
+toujours 7 ; `set m1 label salle de TP 42` — le dernier argument libre, ici sur une valeur et non
+plus sur un chemin ; les trois rollbacks (`--gruyere=1`, `--memory=beaucoup`, `--name=m5`) laissant
+le réseau à 7 nœuds ; et, **réseau réellement en marche**, `set`/`del` refusés sur une machine `on`
+(`forbidden_transition`) pendant qu'un **câble** s'édite sans broncher — l'exception du § 4.10,
+mesurée. Enfin `del` sur un nœud câblé rend `cables_destroyed: ["d2","d5"]`, et les deux câbles ont
+bien disparu du réseau. `dune build` et `dune test` verts (7 tests, 0 échec), aucun orphelin.

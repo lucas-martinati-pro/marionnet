@@ -40,6 +40,7 @@ module Log = Marionnet_log
 (* Note: [Either] is the stdlib one here, as in gMain_actor.mli, *not* Ocamlbricks.Either. *)
 module Future = Ocamlbricks.Future
 module Network = Ocamlbricks.Network
+module Xforest = Ocamlbricks.Xforest
 
 (* ---------------------------------------------------------------- *)
 (*                      JSON encoding (output only)                 *)
@@ -172,6 +173,11 @@ let no_arg             syntax = { min_args = 0; max_args = 0; free_tail = false;
 let one_component      syntax = { min_args = 1; max_args = 1; free_tail = false; syntax }
 let optional_component syntax = { min_args = 0; max_args = 1; free_tail = false; syntax }
 let one_path           syntax = { min_args = 1; max_args = 1; free_tail = true;  syntax }
+(* Two identifiers (a kind and a name), or a component and one of its field names: both are
+   identifiers, hence strict. Only a *value* may contain spaces, and only in last position. *)
+let two_identifiers           syntax = { min_args = 2; max_args = 2; free_tail = false; syntax }
+let component_and_field       syntax = { min_args = 1; max_args = 2; free_tail = false; syntax }
+let component_field_and_value syntax = { min_args = 3; max_args = 3; free_tail = true;  syntax }
 
 (* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
    "set"/"del", which are not transitions and belong to a later episode. *)
@@ -184,6 +190,10 @@ let arity_of_command : (string * arity) list =
   [ ("status",        no_arg "status");
     ("ls",            no_arg "ls [--kind=<kind>] [--can=<action>]");
     ("can",           optional_component "can [<component>]");
+    ("add",           two_identifiers "add <kind> <name> [--ports=<n>] [--<field>=<value>]…");
+    ("del",           one_component "del <component>");
+    ("get",           component_and_field "get <component> [<field>]");
+    ("set",           component_field_and_value "set <component> <field> <value>");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -246,6 +256,11 @@ let option_value (r:request) (key:string) : string option = List.assoc_opt key r
 (* The first positional argument, or "" when the command takes none: the arity has already
    guaranteed that it is there when the command requires it. *)
 let arg0 (r:request) : string = match r.args with x :: _ -> x | [] -> ""
+
+(* Same guarantee for the following ones, hence the plain string: only an optional argument
+   (get's field) is read through [arg_opt]. *)
+let arg_at  (r:request) (i:int) : string        = match List.nth_opt r.args i with Some x -> x | None -> ""
+let arg_opt (r:request) (i:int) : string option = List.nth_opt r.args i
 
 (* ---------------------------------------------------------------- *)
 (*              Asking the GTK main thread, with a deadline         *)
@@ -362,6 +377,12 @@ let beyond_gui_actions = [ "poweroff"; "restart" ]
    (which is why [ls --can=] takes "start" and not "startup"). *)
 let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
 
+(* The kinds a script may create (§ 4.3). These strings are the model's own
+   (#string_of_devkind, redefined in the seven files) and they are also the roots of a .mar
+   forest, so [ls --kind=], [add <kind>] and a saved project all speak one language. "cable" is
+   absent on purpose: it takes two endpoints, hence its own command (§ 4.5). *)
+let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "world_gateway" ]
+
 let eligibility_of_node n =
   { e_name  = n#get_name;
     e_kind  = n#string_of_devkind;
@@ -466,6 +487,357 @@ let cmd_can (st : State.globalState) ~(timeout:float) ~(name:string) : string =
             | None ->
                 reply_error ~code:"unknown_node"
                   ~detail:(Printf.sprintf "no component named %S" name))
+
+(* ---------------------------------------------------------------- *)
+(*                  Components: add, del, get, set                  *)
+(* ---------------------------------------------------------------- *)
+
+(* § 4.3. Until this episode a script could drive a network, not build one: it had to start from
+   a .mar drawn by hand. Three properties of the model make these four commands uniform over the
+   eight kinds, so that almost nothing here knows what a machine is:
+
+     - [#to_tree] publishes the attributes of a component, exactly as a .mar file stores them
+       (machine.ml:637, hub.ml:339, cable.ml:715, ...) — it is the single source of truth for the
+       field vocabulary, used by [get], by the check [set] applies, and by the extra options
+       of [add];
+     - [#eval_forest_attribute] is the setter indexed by attribute name (machine.ml:652-666);
+     - the constructor registers the component by itself (network#add_node, user_level.ml:854)
+       and creates its ifconfig entry (l.1092), which makes [add] the [Add.reaction] of the GUI
+       (machine.ml:146-161) with the dialog removed.
+
+   Everything below runs inside a single [ask] whose thunk calls [st#network_change]: lookup,
+   guard and action happen in the same GTK slot, as for transitions (§ 4.4). This is correct
+   *because* GMain_actor.delegate without ~async is GMain_actor.apply (gMain_actor.ml:126), and
+   [apply] executes directly when the caller already is the GTK main thread (l.82) — no queuing,
+   no nested wait. Going through network_change is not optional: it is what tells the rest of the
+   application that the persistent model changed (set_project_not_already_saved) and redraws the
+   sketch (state.ml:892-903). That redraw is also why a big network may deserve a larger
+   --timeout here than the 5s default.
+
+   One consequence of the same fact deserves care: [apply] catches the exception of its thunk
+   (EitherExtra.protect) and [delegate] then *ignores* it. An action that raises inside
+   network_change would therefore look like a success. Hence the [failure] reference each command
+   below carries: the exception is caught where it happens, not where it would be lost. *)
+
+(* [#to_tree] is (tag, attributes) * children; components have no children in this version. *)
+let fields_of_tree (((_tag, attrs), _children) : Xforest.tree) : (string * string) list = attrs
+
+(* A value produced by [Marshal.to_string] (rc_config: machine.ml:645, switch.ml:455, and the
+   eight of router.ml) is not text: serving it would put invalid UTF-8 in the middle of a JSON
+   line, and accepting one would mean asking a shell client to forge marshalled bytes. Rather
+   than listing the field names — a list that would rot the day a component adds one — the bytes
+   say it themselves: every marshalled value starts with one of OCaml's three magic numbers
+   (0x8495A6BD/BE/BF). Reading and writing those fields is the business of the dedicated
+   rc-get/rc-set commands (§ 10, episode 4e). *)
+let is_marshalled (v:string) : bool =
+  (String.length v >= 4)
+  && v.[0] = '\x84' && v.[1] = '\x95' && v.[2] = '\xa6'
+  && (match v.[3] with '\xbd' | '\xbe' | '\xbf' -> true | _ -> false)
+
+(* Changing one of these is not "setting a field", and this is precisely where episode 4d-2a
+   stops: the GUI path goes through update_<kind>_with, hence update_virtual_machine_with, which
+   renames the ifconfig and history entries, renames the hostfs directory and updates the port
+   number of the ifconfig treeview (user_level.ml:1418-1425). [eval_forest_attribute] would only
+   call set_name / set_port_no and leave orphan treeview rows behind — a project corrupted in
+   silence, discovered at the next startup. Refused here until episode 4d-2b implements the real
+   path (and the [rename] command with it). *)
+let structural_fields = [ "name"; "port_no"; "eth" ]
+
+(* The options that are *not* fields: they belong to the command itself. *)
+let reserved_options = [ "timeout"; "ports" ]
+
+let json_of_fields (fields : (string * string) list) : string =
+  jobj (List.map (fun (k, v) -> (k, if is_marshalled v then jnull else jstr v)) fields)
+
+(* Named, not silently dropped: a client must see that the field exists and that this channel
+   does not serve it. *)
+let marshalled_field_names (fields : (string * string) list) : string list =
+  List.filter_map (fun (k, v) -> if is_marshalled v then Some k else None) fields
+
+let field_names (fields : (string * string) list) : string = String.concat ", " (List.map fst fields)
+
+(* The common face of a node and a cable. They share [component] (hence Xforest.interpreter) and
+   [simulated_device], but not their type: a cable has no [string_of_devkind], and its can_modify
+   /can_destroy are overridden to true (a wire is edited and removed while the network runs,
+   § 4.10). Coercing both to this closed object type gives one implementation of get/set/del
+   instead of two. *)
+type editable = <
+  to_tree               : Xforest.tree;
+  eval_forest_attribute : Xforest.attribute -> unit;
+  can_modify            : bool;
+  can_destroy           : bool;
+  state_as_string       : string;
+  get_name              : string;
+  destroy               : unit;
+  >
+
+type component_outcome =
+  | Co_added     of string * (string * string) list  (* kind, fields read back after creation *)
+  | Co_deleted   of string * string list             (* kind, cables destroyed along with it *)
+  | Co_set       of string * string * string * string (* kind, field, old value, new value *)
+  | Co_read      of string * (string * string) list  (* kind, fields (all, or the one asked) *)
+  | Co_no_project
+  | Co_unknown
+  | Co_forbidden of string * string                  (* past participle, raw state *)
+  | Co_bad       of string
+
+let reply_of_component_outcome ~(name:string) : component_outcome -> string = function
+  | Co_added (kind, fields) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr kind);
+                 ("added",     jbool true);
+                 (* Read back from the network, never assumed: try_to_add_* fails silently
+                    (machine.ml:545) and the lesson holds for any creation path. *)
+                 ("fields",    json_of_fields fields);
+                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+  | Co_deleted (kind, cables) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr kind);
+                 ("deleted",   jbool true);
+                 (* Removing a node removes the cables plugged into it (user_level.ml:1843).
+                    Saying which ones is not a detail: the script's model of the network would
+                    otherwise silently diverge from ours. *)
+                 ("cables_destroyed", jlist (List.map jstr cables)) ]
+  | Co_set (kind, field, old_value, new_value) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr kind);
+                 ("field",     jstr field);
+                 ("old",       jstr old_value);
+                 ("new",       jstr new_value);
+                 ("changed",   jbool (old_value <> new_value)) ]
+  | Co_read (kind, fields) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr kind);
+                 ("fields",    json_of_fields fields);
+                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+  | Co_no_project ->
+      reply_error ~code:"no_active_project" ~detail:"no project is open"
+  | Co_unknown ->
+      reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+  | Co_forbidden (participle, raw) ->
+      reply_error ~code:"forbidden_transition"
+        ~detail:(Printf.sprintf "%S cannot be %s in state %S"
+                   name participle (script_state_of_raw raw))
+  | Co_bad detail -> reply_error ~code:"bad_argument" ~detail
+
+(* Lookup, guard and action, in one GTK slot. A mutation needs an open project: without one the
+   network is empty but the working directories a component expects (hostfs, states) are not
+   there. *)
+let with_component (st : State.globalState) ~(timeout:float) ~(name:string)
+    ~(f : kind:string -> editable -> component_outcome) : string
+  =
+  ask ~timeout
+    (fun () ->
+       if not st#active_project then Co_no_project else
+       match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+       | Some n -> f ~kind:n#string_of_devkind (n :> editable)
+       | None ->
+       match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+       | Some c -> f ~kind:"cable" (c :> editable)
+       | None -> Co_unknown)
+  |> reply_of_outcome (reply_of_component_outcome ~name)
+
+(* --- get --------------------------------------------------------- *)
+
+let cmd_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
+  : string
+  =
+  with_component st ~timeout ~name ~f:(fun ~kind c ->
+    let fields = fields_of_tree c#to_tree in
+    match field with
+    | None   -> Co_read (kind, fields)
+    | Some f ->
+        (match List.assoc_opt f fields with
+         | Some v -> Co_read (kind, [ (f, v) ])
+         | None   ->
+             Co_bad (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
+                       f name kind (field_names fields))))
+
+(* --- set --------------------------------------------------------- *)
+
+let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string)
+            ~(value:string) : string
+  =
+  with_component st ~timeout ~name ~f:(fun ~kind c ->
+    let fields = fields_of_tree c#to_tree in
+    match List.assoc_opt field fields with
+    (* Unknown field names are refused rather than applied: eval_forest_attribute ignores what it
+       does not know (| _ -> (), machine.ml:666, for forward compatibility with future .mar
+       files), so a typo would be swallowed in silence. *)
+    | None ->
+        Co_bad (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
+                  field name kind (field_names fields))
+    | Some _ when List.mem field structural_fields ->
+        Co_bad (Printf.sprintf
+                  "the field %S cannot be set through this channel: changing it also renames or \
+                   resizes the ifconfig/history entries and the hostfs directory \
+                   (user_level.ml:1418-1425), which needs the model's own update method \
+                   (episode 4d-2b)" field)
+    | Some old when is_marshalled old ->
+        Co_bad (Printf.sprintf
+                  "the field %S holds a marshalled value; it is served by the dedicated \
+                   rc-get/rc-set commands (episode 4e), not by get/set" field)
+    | Some _ when not c#can_modify -> Co_forbidden ("modified", c#state_as_string)
+    | Some old ->
+        let failure = ref None in
+        let () =
+          st#network_change
+            (fun () -> try c#eval_forest_attribute (field, value) with e -> failure := Some e) ()
+        in
+        (match !failure with
+         (* int_of_string on a value that is not a number, set_port_no out of range,
+            check_label on a label carrying '<'... the model's own validation, reported instead
+            of being lost in the GTK slot. *)
+         | Some e -> Co_bad (Printf.sprintf "the model refused %S = %S: %s"
+                               field value (Printexc.to_string e))
+         | None ->
+             let now =
+               match List.assoc_opt field (fields_of_tree c#to_tree) with
+               | Some v -> v
+               | None   -> value
+             in
+             Co_set (kind, field, old, now)))
+
+(* --- del --------------------------------------------------------- *)
+
+let cmd_del (st : State.globalState) ~(timeout:float) ~(name:string) : string =
+  with_component st ~timeout ~name ~f:(fun ~kind c ->
+    if not c#can_destroy then Co_forbidden ("deleted", c#state_as_string) else
+    (* Computed before the destruction, and harmless for a cable: no cable involves a *node*
+       named like a cable, so the list is empty there. *)
+    let doomed_cables =
+      List.map (fun c -> c#get_name) (st#network#get_cables_involved_by_node_name name)
+    in
+    let failure = ref None in
+    let () = st#network_change (fun () -> try c#destroy with e -> failure := Some e) () in
+    match !failure with
+    | Some e -> Co_bad (Printf.sprintf "destroying %S failed: %s" name (Printexc.to_string e))
+    | None   ->
+        if st#network#name_exists name then
+          Co_bad (Printf.sprintf "%S is still in the network after being destroyed (see the log)"
+                    name)
+        else Co_deleted (kind, doomed_cables))
+
+(* --- add --------------------------------------------------------- *)
+
+(* The only place in this file that knows the eight kinds by name, and it knows nothing else
+   about them: one constructor call each. Two facts justify calling them directly instead of
+   going through the try_to_add_* registry (user_level.ml:1714), which would have been uniform:
+     - the registry swallows the error (with _ -> false, machine.ml:545), so a refused name or a
+       malformed attribute would come back as a bare "false";
+     - it requires port_no (List.assoc raises without it) while the correct default is local to
+       each file (Const.port_no_default: machine 1, hub/switch/router/world_gateway 4, cloud 2,
+       world_bridge 1). Calling the constructor takes that default from where it is defined
+       instead of copying seven integers here.
+   Cables are not in this list: they need two endpoints and a polarity, which is § 4.5
+   (episode 4d-3). *)
+let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:int option)
+  : ((unit -> unit), string) result
+  =
+  let network = st#network in
+  let port_no default = match ports with Some n -> n | None -> default in
+  (* cloud and world_bridge have a fixed number of ports (cloud.ml:268, world_bridge.ml:289):
+     accepting --ports there would be accepting an argument we drop. *)
+  let no_ports_here () =
+    Error (Printf.sprintf "a %s has a fixed number of ports: --ports does not apply" kind)
+  in
+  match kind with
+  | "machine" ->
+      Ok (fun () -> ignore (new Machine.User_level_machine.machine ~network ~name
+                              ~port_no:(port_no Machine.Const.port_no_default) ()))
+  | "router" ->
+      Ok (fun () -> ignore (new Router.User_level_router.router ~network ~name
+                              ~port_no:(port_no Router.Const.port_no_default) ()))
+  | "switch" ->
+      Ok (fun () -> ignore (new Switch.User_level_switch.switch ~network ~name
+                              ~port_no:(port_no Switch.Const.port_no_default) ()))
+  | "hub" ->
+      Ok (fun () -> ignore (new Hub.User_level_hub.hub ~network ~name
+                              ~port_no:(port_no Hub.Const.port_no_default) ()))
+  | "world_gateway" ->
+      Ok (fun () -> ignore (new World_gateway.User_level_world_gateway.world_gateway ~network ~name
+                              ~port_no:(port_no World_gateway.Const.port_no_default) ()))
+  | "cloud" when ports <> None -> no_ports_here ()
+  | "cloud" ->
+      Ok (fun () -> ignore (new Cloud.User_level_cloud.cloud ~network ~name ()))
+  | "world_bridge" when ports <> None -> no_ports_here ()
+  | "world_bridge" ->
+      Ok (fun () -> ignore (new World_bridge.User_level_world_bridge.world_bridge ~network ~name ()))
+  | "cable" ->
+      Error "a cable is created by the connect command, which needs its two endpoints (§ 4.5)"
+  | _ ->
+      Error (Printf.sprintf "no such kind %S; known kinds: %s" kind (String.concat ", " known_kinds))
+
+let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:string)
+            ~(ports:string option) ~(extra:(string * string) list) : string
+  =
+  match (match ports with
+         | None   -> Ok None
+         | Some s -> (match int_of_string_opt s with
+                      | Some n when n >= 0 -> Ok (Some n)
+                      | _ -> Error (Printf.sprintf
+                                      "--ports expects a non-negative integer, got %S" s)))
+  with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok ports ->
+  ask ~timeout
+    (fun () ->
+       if not st#active_project then Co_no_project else
+       if st#network#name_exists name then
+         Co_bad (Printf.sprintf "the name %S is already used in this network" name)
+       else
+       match node_maker st ~kind ~name ~ports with
+       | Error detail -> Co_bad detail
+       | Ok create ->
+           let failure = ref None in
+           let () = st#network_change (fun () -> try create () with e -> failure := Some e) () in
+           (match !failure with
+            (* check_name refuses anything that is not an identifier (user_level.ml:521-523);
+               the constructor is the only place that knows it, so we let it speak. *)
+            | Some e -> Co_bad (Printf.sprintf "creating %S failed: %s" name (Printexc.to_string e))
+            | None ->
+            match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+            | None ->
+                Co_bad (Printf.sprintf "%S was not added to the network (see the log)" name)
+            | Some n ->
+                let component = (n :> editable) in
+                let fields = fields_of_tree component#to_tree in
+                (* The remaining --<field>=<value> options are applied through the same setter as
+                   [set], with the same three refusals. An invalid one leaves nothing behind: the
+                   component is destroyed again, so that a failed [add] means an unchanged
+                   network — the alternative being a half-configured component the script never
+                   asked for. *)
+                let rollback detail =
+                  let () = st#network_change (fun () -> try component#destroy with _ -> ()) () in
+                  Co_bad detail
+                in
+                let rec apply = function
+                  | [] -> Co_added (kind, fields_of_tree component#to_tree)
+                  | (k, _) :: _ when not (List.mem_assoc k fields) ->
+                      rollback (Printf.sprintf
+                                  "no field %S on a %s; known fields: %s" k kind (field_names fields))
+                  | (k, _) :: _ when List.mem k structural_fields ->
+                      rollback (Printf.sprintf
+                                  "the field %S cannot be set here: the name is the second \
+                                   argument of add, and the number of ports is --ports" k)
+                  | (k, _) :: _ when is_marshalled (List.assoc k fields) ->
+                      rollback (Printf.sprintf
+                                  "the field %S holds a marshalled value; use rc-set \
+                                   (episode 4e)" k)
+                  | (k, v) :: rest ->
+                      let failure = ref None in
+                      let () =
+                        st#network_change
+                          (fun () -> try component#eval_forest_attribute (k, v)
+                                     with e -> failure := Some e) ()
+                      in
+                      (match !failure with
+                       | Some e -> rollback (Printf.sprintf "the model refused %S = %S: %s"
+                                               k v (Printexc.to_string e))
+                       | None   -> apply rest)
+                in
+                apply extra))
+  |> reply_of_outcome (reply_of_component_outcome ~name)
 
 (* ---------------------------------------------------------------- *)
 (*                           Transitions                            *)
@@ -1002,6 +1374,16 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | "ls"     -> (cmd_ls st ~timeout ~kind:(option_value r "kind")
                                                 ~can:(option_value r "can"), `Continue)
             | "can"    -> (cmd_can st ~timeout ~name:(arg0 r), `Continue)
+            | "add"    ->
+                (* Every option but --timeout and --ports is a field of the component: they are
+                   checked against what the model publishes, never silently dropped. *)
+                let extra = List.filter (fun (k, _) -> not (List.mem k reserved_options)) r.opts in
+                (cmd_add st ~timeout ~kind:(arg0 r) ~name:(arg_at r 1)
+                   ~ports:(option_value r "ports") ~extra, `Continue)
+            | "del"    -> (cmd_del st ~timeout ~name:(arg0 r), `Continue)
+            | "get"    -> (cmd_get st ~timeout ~name:(arg0 r) ~field:(arg_opt r 1), `Continue)
+            | "set"    -> (cmd_set st ~timeout ~name:(arg0 r) ~field:(arg_at r 1)
+                             ~value:(arg_at r 2), `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with
