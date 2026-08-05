@@ -142,15 +142,89 @@ let script_state_of_raw : string -> string = function
 
 type request = {
   verb : string;
-  arg  : string;                  (* positional part, see the note below *)
+  args : string list;             (* positional arguments, checked against the arity below *)
   opts : (string * string) list;  (* --key=value, or --key alone (empty value) *)
 }
 
-(* Positional tokens are joined back with a single space, so that a path containing
-   spaces needs no quoting: every command of this episode takes at most one positional
-   argument. Commands taking several arguments (episode 4: connect, ifconfig...) will
-   need a real tokenisation, and possibly quoting. *)
-let parse_request (line:string) : request option =
+(* § 4.1. Until episode 4d the parser joined every non "--" token with a space, so that a path
+   containing spaces needed no quoting; that convenience held only as long as a command took at
+   most *one* positional argument, which is no longer true (connect c1 m1:0 m2:0, set m1 label
+   ...). The alternative — shell-like quoting — would buy a state machine, one more error code
+   and, on the client side, a second level of escaping on top of the one Bash already did, to
+   solve a problem this channel does not have: a component name is an *identifier*
+   (user_level.ml:521, StrExtra.Class.identifierp), hence never contains a space. Only a path or
+   a free text value does, and either is always the *last* argument.
+
+   So each command declares how many positional arguments it takes and whether its last one may
+   contain spaces. [free_tail] joins the surplus tokens back into that last argument — which is
+   exactly what the old parser did for the whole line, so [open] behaves as before — while a
+   strict command now *reports* the surplus instead of silently swallowing it (ls foo used to be
+   accepted and ignored). Known limitation, inherited: consecutive spaces inside a free tail are
+   normalised to one, the tokens being joined rather than cut out of the raw line. *)
+type arity = {
+  min_args  : int;
+  max_args  : int;
+  free_tail : bool;    (* may the last argument contain spaces? *)
+  syntax    : string;  (* quoted in the error, so that a refusal also teaches the syntax *)
+}
+
+let no_arg             syntax = { min_args = 0; max_args = 0; free_tail = false; syntax }
+let one_component      syntax = { min_args = 1; max_args = 1; free_tail = false; syntax }
+let optional_component syntax = { min_args = 0; max_args = 1; free_tail = false; syntax }
+let one_path           syntax = { min_args = 1; max_args = 1; free_tail = true;  syntax }
+
+(* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
+   "set"/"del", which are not transitions and belong to a later episode. *)
+let transition_commands = [ "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
+let transition_all_commands = [ "start-all"; "shutdown-all"; "poweroff-all" ]
+
+(* The single vocabulary of the channel: what a command is called, what it takes, and how it is
+   spelled. [dispatch] and the [unknown_command] answer both read this list. *)
+let arity_of_command : (string * arity) list =
+  [ ("status",        no_arg "status");
+    ("ls",            no_arg "ls [--kind=<kind>] [--can=<action>]");
+    ("can",           optional_component "can [<component>]");
+    ("open",          one_path "open <absolute path>");
+    ("new",           one_path "new <absolute path> [--save|--no-save]");
+    ("save",          no_arg "save");
+    ("save-as",       one_path "save-as <absolute path>");
+    ("close",         no_arg "close [--save|--no-save]");
+    ("notifications", no_arg "notifications [--since=<n>] [--clear]");
+    ("wait",          one_component "wait <component> --state=on|off|sleeping [--timeout=<s>]");
+    ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
+    ("quit",          no_arg "quit");
+    ]
+  @ (List.map (fun v -> (v, one_component (v ^ " <component>"))) transition_commands)
+  @ (List.map (fun v -> (v, no_arg v)) transition_all_commands)
+
+let known_commands = List.map fst arity_of_command
+
+(* An unknown verb is let through untouched: [dispatch] answering [unknown_command] is more
+   useful than a complaint about the arity of a command that does not exist. *)
+let check_arity ~(verb:string) (args:string list) : (string list, string) result =
+  match List.assoc_opt verb arity_of_command with
+  | None -> Ok args
+  | Some a ->
+      let n = List.length args in
+      let plural k = if k = 1 then "" else "s" in
+      if n < a.min_args then
+        Error (Printf.sprintf "%s expects %d positional argument%s, got %d — usage: %s"
+                 verb a.min_args (plural a.min_args) n a.syntax)
+      else if n <= a.max_args then Ok args
+      else if a.free_tail then
+        (* The surplus belongs to the last argument: a path, or a free text value. *)
+        let head = List.filteri (fun i _ -> i <  a.max_args - 1) args
+        and tail = List.filteri (fun i _ -> i >= a.max_args - 1) args in
+        Ok (head @ [ String.concat " " tail ])
+      else if a.max_args = 0 then
+        Error (Printf.sprintf "%s takes no positional argument, got %d — usage: %s"
+                 verb n a.syntax)
+      else
+        Error (Printf.sprintf "%s accepts at most %d positional argument%s, got %d — usage: %s"
+                 verb a.max_args (plural a.max_args) n a.syntax)
+
+(* [None] is the empty line; [Some (Error detail)] a request whose shape is already wrong. *)
+let parse_request (line:string) : (request, string) result option =
   let tokens = List.filter (fun s -> s <> "") (String.split_on_char ' ' (String.trim line)) in
   match tokens with
   | [] -> None
@@ -163,13 +237,15 @@ let parse_request (line:string) : request option =
         | None   -> (t, "")
         | Some i -> (String.sub t 0 i, String.sub t (i+1) (String.length t - i - 1))
       in
-      Some {
-        verb;
-        arg  = String.concat " " argument_tokens;
-        opts = List.map parse_option option_tokens;
-      }
+      (match check_arity ~verb argument_tokens with
+       | Error detail -> Some (Error detail)
+       | Ok args      -> Some (Ok { verb; args; opts = List.map parse_option option_tokens }))
 
 let option_value (r:request) (key:string) : string option = List.assoc_opt key r.opts
+
+(* The first positional argument, or "" when the command takes none: the arity has already
+   guaranteed that it is there when the command requires it. *)
+let arg0 (r:request) : string = match r.args with x :: _ -> x | [] -> ""
 
 (* ---------------------------------------------------------------- *)
 (*              Asking the GTK main thread, with a deadline         *)
@@ -202,14 +278,35 @@ let ask ?(timeout=default_timeout) (f : unit -> 'a) : 'a outcome =
   in
   wait ()
 
+let gtk_busy_detail (t:float) : string =
+  Printf.sprintf
+    "the GTK main thread did not answer within %.1fs (busy: modal dialog, pulled-down menu or long operation)"
+    t
+
 let reply_of_outcome ?(extra=[]) (render : 'a -> string) : 'a outcome -> string = function
   | Done v      -> render v
   | Failed e    -> reply_error_with ~extra ~code:"internal" ~detail:(Printexc.to_string e)
-  | Timed_out t ->
-      reply_error_with ~extra ~code:"timeout"
-        ~detail:(Printf.sprintf
-                   "the GTK main thread did not answer within %.1fs (busy: modal dialog, pulled-down menu or long operation)"
-                   t)
+  | Timed_out t -> reply_error_with ~extra ~code:"timeout" ~detail:(gtk_busy_detail t)
+
+(* Same as [ask], with the two failure cases already rendered as the answer to send. The project
+   commands (§ 4.2) chain several round trips around one long non-GTK call, and would otherwise
+   repeat those two branches at every step. Combined with [let*] below, a command reads as the
+   sequence it is, and every early exit carries the notifications captured so far. *)
+let ask_or_answer ~(extra: unit -> (string * string) list) ~(timeout:float) (f : unit -> 'a)
+  : ('a, string) result
+  =
+  match ask ~timeout f with
+  | Done v      -> Ok v
+  | Failed e    -> Error (reply_error_with ~extra:(extra ()) ~code:"internal"
+                            ~detail:(Printexc.to_string e))
+  | Timed_out t -> Error (reply_error_with ~extra:(extra ()) ~code:"timeout"
+                            ~detail:(gtk_busy_detail t))
+
+(* Both sides carry an answer already built, so the caller ends with [answer_of_result].
+   [>>=] rather than the [let*] of OCaml 4.08: camlp4 preprocesses this directory and does not
+   know binding operators (it answers "Parse error: ) or module expected"). *)
+let ( >>= ) = Result.bind
+let answer_of_result : (string, string) result -> string = function Ok a | Error a -> a
 
 (* ---------------------------------------------------------------- *)
 (*                             Commands                             *)
@@ -704,6 +801,153 @@ let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : stri
               reply_error_with ~extra ~code:"internal"
                 ~detail:(Printf.sprintf "no active project after opening %S (see the log)" filename))
 
+(* --- the project: new, save, save-as, close ---------------------- *)
+
+(* The menu does not simply call the method bearing the name of the entry. For "New" and
+   "Close" it runs, in a thread of its own (gui_menubar_MARIONNET.ml:94-105 and 262-278), the
+   sequence "shut everything down, save if the human said yes, close" — and only then creates
+   the new project. A script gets that same sequence, with the modal question replaced by an
+   explicit option: an interactive confirmation cannot be honestly emulated, but it can be
+   *demanded*. Hence [unsaved_changes] when neither --save nor --no-save is given while the
+   project holds unsaved changes; quietly discarding someone's work was the only alternative.
+
+   Everything below runs in the serving thread, never through GMain_actor: close_project and
+   save_project dispatch on am_I_the_GTK_main_thread and execute in the *calling* thread when it
+   is not the GTK one (state.ml:357-360, 813-816) — the very path the menu takes from its own
+   thread, and the lesson [open] taught at episode 3a. These commands are therefore blocking,
+   and shutting a running network down takes as long as it takes: a client needs a generous read
+   timeout, not a --timeout, which only bounds each round trip to the GTK thread. *)
+
+type save_policy = Save_it | Discard_it
+
+let save_policy_of_options (r:request) : (save_policy option, string) result =
+  match (option_value r "save" <> None), (option_value r "no-save" <> None) with
+  | true,  true  -> Error "--save and --no-save cannot be given together"
+  | true,  false -> Ok (Some Save_it)
+  | false, true  -> Ok (Some Discard_it)
+  | false, false -> Ok None
+
+(* Leaves whatever project is open, following the menu's sequence. [Ok None]: there was nothing
+   to leave. [Ok (Some saved)]: a project was left, [saved] telling whether it was saved on the
+   way out. [Error answer]: the client must be told why we stopped, [answer] says it. *)
+let leave_current_project (st : State.globalState) ~(timeout:float)
+                          ~(policy: save_policy option)
+                          ~(extra: unit -> (string * string) list)
+  : (bool option, string) result
+  =
+  let ask_ f = ask_or_answer ~extra ~timeout f in
+  ask_ (fun () -> (st#active_project, st#project_already_saved))
+  >>= fun (active, already_saved) ->
+  if not active then Ok None else
+  if policy = None && not already_saved then
+    Error (reply_error_with ~extra:(extra ()) ~code:"unsaved_changes"
+             ~detail:"the project has unsaved changes: pass --save or --no-save to say what to do with them")
+  else
+  let want_save = (policy = Some Save_it) in
+  (* Logged here and not at the entry of the commands: a refused close must not leave a line
+     saying the project was being closed (N4's rule — an instrument may not lie). *)
+  let () = Log.printf1 "Control_server: leaving the current project (save: %b).\n" want_save in
+  (* Same order as the menu: the shutdown is only *scheduled* (schedule_parallel,
+     state.ml:956-960), the saving happens while the components go down, and close_project is
+     what waits for the task runner (state.ml:346). *)
+  let () = st#shutdown_everything () in
+  (if not want_save then Ok true else
+   let () = st#save_project in
+   ask_ (fun () -> st#project_already_saved))
+  >>= fun saved ->
+  (* --save means "save, *then* close": private_save_project catches its own failures and
+     reports them by a dialog (state.ml:800-810), so a plain "no exception" proves nothing. If
+     the saving failed, closing would destroy exactly what the client asked to keep — we stop
+     instead. Deliberately stricter than the menu, which closes anyway. *)
+  if not saved then
+    Error (reply_error_with ~extra:(extra ()) ~code:"internal"
+             ~detail:"saving the project failed: nothing was closed (see the log and the notifications)")
+  else
+  let () = st#close_project in
+  ask_ (fun () -> st#active_project) >>= fun still_active ->
+  if still_active then
+    Error (reply_error_with ~extra:(extra ()) ~code:"internal"
+             ~detail:"the project is still open after closing it (see the log)")
+  else Ok (Some want_save)
+
+let cmd_close (st : State.globalState) ~(timeout:float) ~(policy: save_policy option) : string =
+  let since = Script_mode.last_seq () in
+  let extra () = [ ("notifications", jnotifications (Script_mode.notifications ~since ())) ] in
+  match leave_current_project st ~timeout ~policy ~extra with
+  | Error answer    -> answer
+  | Ok None         -> reply_error_with ~extra:(extra ()) ~code:"no_active_project"
+                         ~detail:"no project is open"
+  | Ok (Some saved) -> reply_ok ([ ("closed", jbool true); ("saved", jbool saved) ] @ extra ())
+
+(* Unlike the menu, no extension is appended to the file name: Talking's helper for that opens
+   dialogs of its own (talking.ml:119-131), and a script that says /tmp/tp.mar means it. *)
+let cmd_new (st : State.globalState) ~(timeout:float) ~(policy: save_policy option)
+            ~(filename:string) : string
+  =
+  (* Marionnet chdir's to its own home at startup, so a relative path would not mean what the
+     client believes (same reason as [open]). *)
+  if Filename.is_relative filename then
+    reply_error ~code:"bad_argument"
+      ~detail:(Printf.sprintf "an absolute path is required (got %S)" filename)
+  else
+  let since = Script_mode.last_seq () in
+  let extra () = [ ("notifications", jnotifications (Script_mode.notifications ~since ())) ] in
+  match leave_current_project st ~timeout ~policy ~extra with
+  | Error answer -> answer
+  | Ok _ ->
+      let () = Log.printf1 "Control_server: creating project %s\n" filename in
+      (* new_project delegates to the GTK main thread and returns at once (state.ml:325-326):
+         its completion is *observed*, not returned. --timeout bounds that wait here. *)
+      let () = st#new_project ~filename in
+      poll_until ~wait_timeout:timeout
+        ~observe:(fun () ->
+           ask ~timeout:default_timeout
+             (fun () -> (st#active_project, st#project_paths#get_filename)))
+        ~reached:(fun (active, actual) -> active && actual = Some filename)
+        ~on_reached:(fun _ elapsed ->
+           reply_ok ([ ("file",    jstr filename);
+                       ("created", jbool true);
+                       ("waited",  jfloat elapsed) ] @ extra ()))
+        ~on_expiry:(fun (active, actual) elapsed ->
+           reply_error_with ~extra:(extra ()) ~code:"timeout"
+             ~detail:(Printf.sprintf
+                        "creating %S did not complete within %.1fs (active=%b, current file=%s; see the log)"
+                        filename elapsed active
+                        (match actual with None -> "none" | Some f -> Printf.sprintf "%S" f)))
+
+(* [save] and [save-as] differ only by the file the project goes to: save_project_as sets the
+   name, then calls save_project (state.ml:820-828). Success is [project_already_saved], never
+   the absence of an exception — same lesson as [open] (episode 3a). *)
+let cmd_save (st : State.globalState) ~(timeout:float) ~(filename: string option) : string =
+  match filename with
+  | Some f when Filename.is_relative f ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf "an absolute path is required (got %S)" f)
+  | _ ->
+  let since = Script_mode.last_seq () in
+  let extra () = [ ("notifications", jnotifications (Script_mode.notifications ~since ())) ] in
+  let ask_ f = ask_or_answer ~extra ~timeout f in
+  answer_of_result @@
+  (ask_ (fun () -> st#active_project) >>= fun active ->
+  if not active then
+    Error (reply_error_with ~extra:(extra ()) ~code:"no_active_project"
+             ~detail:"no project is open")
+  else
+  (* save_project_as re-raises what change_filename_and_root_basename may throw
+     (state.ml:820-828); save_project does not throw at all. *)
+  (try Ok (match filename with
+           | None   -> st#save_project
+           | Some f -> st#save_project_as ~filename:f ())
+   with e -> Error (reply_error_with ~extra:(extra ()) ~code:"internal"
+                      ~detail:(Printexc.to_string e)))
+  >>= fun () ->
+  ask_ (fun () -> (st#project_already_saved, st#project_paths#get_filename))
+  >>= fun (saved, actual) ->
+  if saved then Ok (reply_ok ([ ("saved", jbool true); ("file", jopt actual) ] @ extra ()))
+  else
+    Error (reply_error_with ~extra:(extra ()) ~code:"internal"
+             ~detail:"saving the project failed (see the log and the notifications)"))
+
 (* Reading the capture needs neither the GTK main thread nor a deadline — which is exactly
    the point: when the GUI is stuck behind a modal dialog and every other command times
    out, this one still answers, and says what the dialog was. *)
@@ -729,22 +973,15 @@ let cmd_notifications ~(since:string option) ~(clear:bool) : string =
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
 
-(* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
-   "set"/"del", which are not transitions and belong to a later episode. *)
-let transition_commands = [ "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
-let transition_all_commands = [ "start-all"; "shutdown-all"; "poweroff-all" ]
-
-let known_commands =
-  [ "status"; "ls"; "can"; "open"; "notifications" ]
-  @ transition_commands @ transition_all_commands
-  @ [ "wait"; "wait-all"; "quit" ]
-
 (* The answer must be *sent* before quitting, hence the second component: the session loop
    writes it, then triggers the shutdown. *)
 let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Quit ] =
   match parse_request line with
   | None -> (reply_error ~code:"unknown_command" ~detail:"empty request", `Continue)
-  | Some r ->
+  (* The shape of the request is checked before anything else (§ 4.1): a surplus argument is a
+     script bug, and a silently ignored one is a bug that hides. *)
+  | Some (Error detail) -> (reply_error ~code:"bad_argument" ~detail, `Continue)
+  | Some (Ok r) ->
       let timeout =
         match option_value r "timeout" with
         | None -> Ok default_timeout
@@ -764,15 +1001,24 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | "status" -> (cmd_status st ~timeout, `Continue)
             | "ls"     -> (cmd_ls st ~timeout ~kind:(option_value r "kind")
                                                 ~can:(option_value r "can"), `Continue)
-            | "can"    -> (cmd_can st ~timeout ~name:r.arg, `Continue)
-            | "open"   -> (cmd_open st ~timeout ~filename:r.arg, `Continue)
+            | "can"    -> (cmd_can st ~timeout ~name:(arg0 r), `Continue)
+            | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
+            | "new" | "close" ->
+                (match save_policy_of_options r with
+                 | Error detail -> (reply_error ~code:"bad_argument" ~detail, `Continue)
+                 | Ok policy ->
+                     ((if r.verb = "close" then cmd_close st ~timeout ~policy
+                       else cmd_new st ~timeout ~policy ~filename:(arg0 r)),
+                      `Continue))
+            | "save"    -> (cmd_save st ~timeout ~filename:None, `Continue)
+            | "save-as" -> (cmd_save st ~timeout ~filename:(Some (arg0 r)), `Continue)
             | "notifications" ->
                 (cmd_notifications
                    ~since:(option_value r "since")
                    ~clear:(option_value r "clear" <> None),
                  `Continue)
             | verb when List.mem verb transition_commands ->
-                (cmd_transition st ~timeout ~action:verb ~name:r.arg, `Continue)
+                (cmd_transition st ~timeout ~action:verb ~name:(arg0 r), `Continue)
             | verb when List.mem verb transition_all_commands ->
                 (cmd_transition_all st ~timeout ~action:verb, `Continue)
             (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
@@ -785,7 +1031,7 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                 in
                 let state = option_value r "state" in
                 ((if r.verb = "wait" then
-                    cmd_wait st ~gtk_timeout:default_timeout ~wait_timeout ~name:r.arg ~state
+                    cmd_wait st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r) ~state
                   else
                     cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
                  `Continue)

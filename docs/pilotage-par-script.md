@@ -151,7 +151,7 @@ réponse JSON par ligne.
 ```
 
 Codes d'erreur normalisés : `unknown_command`, `bad_argument`, `no_active_project`,
-`unknown_node`, `forbidden_transition`, `timeout`, `internal`.
+`unknown_node`, `forbidden_transition`, `unsaved_changes`, `timeout`, `internal`.
 
 **Contenu multi-ligne : par chemin de fichier** (tranché à l'ép. 3a). Un rcfile de scénario (§ 10)
 ou un fragment `Xforest` (§ 4.8) ne tient pas sur une ligne. Plutôt que d'ajouter un mode « corps »
@@ -162,25 +162,91 @@ le mécanisme couvre rcfile et forest d'un seul geste. Légitime ici : un socket
 même machine, et le répertoire `0700` borne déjà l'accès au canal. Côté client, un heredoc Bash
 vers `mktemp` fait le reste.
 
-**Options et argument positionnel** (ép. 3a) : les jetons commençant par `--` sont des options
-(`--clé=valeur`, ou `--clé` seule pour un drapeau) ; **tous les autres jetons sont rejoints par un
-espace** pour former l'unique argument positionnel — de sorte qu'un chemin contenant des espaces
-n'a pas besoin d'être protégé. Cette commodité ne vaut que tant qu'une commande a **au plus un**
-argument positionnel : les commandes de l'ép. 4 (`connect`, `ifconfig`…) exigeront une vraie
-tokenisation, et sans doute une convention de citation.
+**Options et arguments positionnels.** Les jetons commençant par `--` sont des options
+(`--clé=valeur`, ou `--clé` seule pour un drapeau), **où qu'ils se trouvent sur la ligne** ; les
+autres sont les arguments positionnels.
+
+**Arité déclarée, dernier argument en texte libre** (tranché à l'**ép. 4d**). La commodité de
+l'ép. 3a — « tous les jetons non-`--` rejoints par un espace » — ne valait que tant qu'une
+commande avait **au plus un** argument positionnel. `connect c1 m1:0 m2:0` et `set m1 label …`
+la rendent ambiguë. La convention retenue **n'est pas** une citation à la shell :
+
+| | |
+|---|---|
+| Chaque commande **déclare** `(min, max, dernier libre ?)` | table `arity_of_command`, `bin/control_server.ml` |
+| Surplus de jetons, dernier **libre** | rejoints par un espace dans ce dernier argument |
+| Surplus de jetons, commande **stricte** | `bad_argument`, avec la syntaxe de la commande dans le `detail` |
+| Manque | `bad_argument`, idem |
+
+Le fondement est une propriété du domaine, pas une préférence : **un nom de composant est un
+identifiant** (`check_name` → `StrExtra.Class.identifierp`, `user_level.ml:521`), donc sans
+espace ; seuls un **chemin** et une **valeur libre** (un label) en contiennent, et l'un comme
+l'autre est toujours en **dernière** position. Une citation shell-like aurait coûté une machine à
+états, un code d'erreur de plus, et surtout un **second niveau d'échappement** côté client Bash —
+qui a déjà fait le sien — pour un problème que ce canal n'a pas.
+
+```
+open /home/jean/mon projet.mar   ->  1 argument : "/home/jean/mon projet.mar"   (dernier libre)
+connect c1 m1:0 m2:0             ->  3 arguments                                (strict)
+connect c1 m1:0 m2:0 zut         ->  {"ok":false,"error":"bad_argument", …}
+ls foo                           ->  {"ok":false,"error":"bad_argument", …}     (0 positionnel)
+```
+
+Deux conséquences assumées : `ls foo` était **accepté et ignoré**, il est maintenant refusé —
+c'est le comportement attendu d'un instrument, un argument avalé en silence est un bug qui se
+cache ; et les espaces **consécutifs** d'un argument libre sont normalisés en un seul, les jetons
+étant rejoints plutôt que découpés dans la ligne brute (limite héritée de l'ép. 3a, sans
+conséquence connue).
 
 **`--timeout=N`** est accepté par toute commande qui interroge le thread GTK (§ 8).
 
 ### 4.2 Projet
 
-| Commande | Correspondance modèle |
-|---|---|
-| `new <fichier>` | `st#new_project ~filename` (`state.ml:322`) |
-| `open <fichier>` | `st#open_project_async ~filename` (`state.ml:577`) |
-| `save` / `save-as <fichier>` | `st#save_project` (l.764) / `st#save_project_as` (l.771) |
-| `close` | `st#close_project` (l.352) |
-| `quit` | `st#quit_async` (l.924) |
-| `status` | `st#active_project`, `st#runnable_project`, `st#project_already_saved` |
+| Commande | Correspondance modèle | |
+|---|---|---|
+| `new <fichier> [--save\|--no-save]` | `st#new_project ~filename` (`state.ml:325`) | **ép. 4d** |
+| `open <fichier>` | `st#open_project_async ~filename` (`state.ml:577`) | ép. 3a |
+| `save` / `save-as <fichier>` | `st#save_project` (l.813) / `st#save_project_as` (l.820) | **ép. 4d** |
+| `close [--save\|--no-save]` | `st#close_project` (l.357) | **ép. 4d** |
+| `quit` | `st#quit_async` (l.987) | ép. 3a |
+| `status` | `st#active_project`, `st#runnable_project`, `st#project_already_saved` | ép. 3a |
+
+**Le menu n'appelle pas la méthode qui porte son nom** (ancrage : `gui_menubar_MARIONNET.ml:94-105`
+et `262-278`). Pour « Nouveau » et « Fermer », il exécute — **dans un `Thread.create`**, donc hors
+thread GTK, exactement comme le thread qui sert une commande — la séquence :
+
+```
+shutdown_everything ()  →  [save_project]  →  close_project  →  [new_project]
+```
+
+Le canal reproduit cette séquence, **la question modale en moins**. Une confirmation
+interactive ne s'émule pas honnêtement ; elle s'**exige** : sans `--save` ni `--no-save`, `close`
+et `new` sur un projet portant des modifications non enregistrées répondent **`unsaved_changes`**.
+Le seul autre choix aurait été de jeter le travail de quelqu'un en silence.
+
+Quatre points de contrat, chacun mesuré :
+
+1. **Appel direct depuis le thread serveur, jamais via `GMain_actor`** : `close_project` et
+   `save_project` testent `am_I_the_GTK_main_thread` et s'exécutent **dans le thread appelant**
+   quand il n'est pas celui de GTK (`state.ml:357-360`, `813-816`) — même leçon qu'`open`.
+2. **Ces commandes sont bloquantes**, et `close` l'est autant que l'arrêt du réseau :
+   `shutdown_everything` ne fait qu'**enfiler** (`schedule_parallel`, `state.ml:956-960`), c'est
+   `close_project` qui attend le `task_runner` (l.346). Mesuré : `close --no-save` sur un réseau
+   en marche rend la main **après** « I have joined "Shut down m1" with success ». Un client a
+   besoin d'un délai de lecture généreux — `--timeout`, lui, ne borne que l'aller-retour GTK.
+3. **`--save` signifie « sauve *puis* ferme »** : si la sauvegarde échoue, rien n'est fermé et la
+   réponse le dit. C'est délibérément **plus strict que le menu**, qui ferme quand même.
+   `private_save_project` rattrape ses propres échecs et les signale par un dialogue
+   (`state.ml:800-810`) : l'absence d'exception ne prouve rien, le critère est
+   `project_already_saved`.
+4. **Aucune extension n'est ajoutée** au nom de fichier : le helper du menu
+   (`Talking.check_filename_validity_and_add_extension_if_needed`) ouvre des dialogues
+   (`talking.ml:119-131`), et un script qui écrit `/tmp/tp.mar` sait ce qu'il veut. Le chemin doit
+   être **absolu** (Marionnet a fait `chdir` vers sa propre racine au démarrage).
+
+⚠️ Le champ `saved` de `status` n'a de sens **que si `active` est vrai** : après une fermeture il
+conserve la valeur qu'il avait, l'état global n'étant pas réinitialisé (observé, inchangé depuis
+toujours).
 
 ⚠️ `open` est **asynchrone** (retourne un `Thread.t`) — **tranché à l'ép. 3a, et le nom trompe** :
 appelé depuis un thread qui n'est pas `gtk_main`, `open_project_async` exécute le chargement
@@ -740,8 +806,10 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **3c** | Fenêtres auto-ouvertes : capture + auto-fermeture, commande `notifications`, `?script_answer` (§ 4.9) | **fait** (2026-08-03) |
 | **4a** | L'automate comme **contrat du script** (§ 4.10) : table états × actions, règle de refus, exception des câbles, commande `can` ; décision `can_destroy`/`can_modify` dans le modèle | **fait** (2026-08-03) — conception, aucun code |
 | **4b** | Implémentation de 4a : `can_destroy`/`can_modify` dans `user_level.ml` (+ surcharge `cable.ml`), `dynlist` GUI qui les lisent, commandes `can` et `ls --can=` ; arbitrage `poweroff`/`restart` par composant | **fait** (2026-08-04) — 8 assertions mesurées sur deux runs |
-| 4c | Transitions (`start`/`stop`/`suspend`/`resume`/`restart`/`poweroff` + variantes globales) et `wait` | **en cours** (2026-08-04) — le préalable a mangé l'épisode : interblocage GUI/`task_runner` **diagnostiqué et capturé**, correctif restant à trancher (§ 11) |
-| 4d | Tokenisation des arguments (§ 4.1) puis projet, composants, câbles, `forest` | à faire |
+| 4c | Transitions (`start`/`stop`/`suspend`/`resume`/`restart`/`poweroff` + variantes globales) et `wait` | **fait** (2026-08-04) — le préalable a mangé la première moitié : interblocage GUI/`task_runner` diagnostiqué, capturé et **corrigé** (le thread GTK ne prend plus le mutex d'un composant), puis les 11 commandes, 16 assertions |
+| 4d | Arité des arguments (§ 4.1) **et** commandes de projet (§ 4.2) | **fait** (2026-08-05) — 29 assertions, `project-bench.sh` |
+| 4d-2 | Composants : `add`, `del`, `rename`, `get`, `set` (§ 4.3) | à faire |
+| 4d-3 | Câbles (`connect`/`disconnect`, § 4.5) et `forest` (§ 4.8) | à faire |
 | 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -1454,3 +1522,60 @@ Dire « interdit » laisserait croire qu'un autre état le permettrait.
 
 Le préalable de l'épisode est donc levé et son livrable rendu : un script peut piloter les
 transitions et se synchroniser dessus, sans jamais confondre « accepté » et « fait ».
+
+### 2026-08-05 — épisode 4d : l'arité des arguments, et les commandes de projet
+
+**Le préalable annoncé, tranché sur une propriété du domaine.** La tokenisation était le dernier
+obstacle avant les commandes à plusieurs arguments. Les trois conventions envisageables ont été
+soumises à l'auteur ; c'est **l'arité déclarée avec dernier argument en texte libre** qui a été
+retenue (§ 4.1), et l'argument décisif n'est pas d'ergonomie mais de domaine : **un nom de
+composant est un identifiant** (`check_name` → `StrExtra.Class.identifierp`, `user_level.ml:521`),
+donc sans espace. Seuls un chemin et une valeur libre en contiennent, et tous deux sont toujours
+en dernière position. Une citation à la shell aurait acheté une machine à états, un code d'erreur
+supplémentaire et un **second niveau d'échappement** côté client Bash, pour couvrir un cas qui
+n'existe pas.
+
+Effet de bord retenu comme un gain : `ls foo` était **accepté et ignoré**, il répond désormais
+`bad_argument` — un argument avalé en silence est un bug qui se cache. Le `detail` porte la
+syntaxe de la commande, si bien qu'un refus enseigne l'usage.
+
+**Ce que le code a appris en chemin** : `camlp4` préprocesse `bin/` et **ne connaît pas les
+*binding operators*** de OCaml 4.08 — `let ( let* ) = Result.bind` échoue en *« Parse error: ")"
+or "module" expected »*. Le chaînage des étapes passe donc par un `( >>= )` classique, ce qui ne
+change rien à la lisibilité et rappelle où l'on écrit.
+
+**Les commandes de projet, ou pourquoi une méthode ne suffit pas.** `new`, `save`, `save-as` et
+`close` (§ 4.2) n'appellent pas la méthode homonyme de `state.ml` : le menu, lui, exécute une
+**séquence** — `shutdown_everything` → *[save]* → `close_project` → *[new_project]* — dans un
+`Thread.create`, c'est-à-dire hors thread GTK, exactement comme le thread qui sert une commande.
+Le canal reproduit cette séquence. Deux décisions y répondent à des questions qu'un humain
+tranchait par un clic :
+
+- la question modale « voulez-vous enregistrer ? » devient `--save` / `--no-save`, et **son
+  absence est une erreur** (`unsaved_changes`) quand le projet est modifié. Émuler la
+  confirmation aurait signifié choisir à la place du script ;
+- `--save` signifie « sauve **puis** ferme » : si la sauvegarde échoue, **rien n'est fermé**.
+  C'est plus strict que le menu, qui ferme quand même — et fondé, `private_save_project`
+  rattrapant ses propres échecs pour les afficher dans un dialogue (`state.ml:800-810`) : le
+  critère de succès est `project_already_saved`, jamais l'absence d'exception. Même leçon qu'à
+  l'épisode 3a.
+
+**Preuve** : banc `project-bench.sh` (nouveau, hors dépôt), **29 assertions, toutes vertes**, en
+un seul mode — Marionnet lancé sans `-r`, tout par le canal. Notamment : les 8 refus d'arité avec
+leur syntaxe ; `new` puis `status` rendant `saved:false` (un projet neuf n'a jamais été
+enregistré, `set_project_not_already_saved`) ; `close` refusé par `unsaved_changes` puis accepté
+après `save` ; **`save-as` vers un chemin contenant un espace**, rendu intact par le serveur et
+écrit sur le disque — la preuve directe du « dernier argument libre » ; et le vrai cas d'usage,
+`open` (7 nœuds) → `start m1` → `wait --state=on` → `close --no-save`, où le journal montre
+`close_project: END` **après** « I have joined "Shut down m1" with success ». Aucun processus
+orphelin, répertoire de session supprimé.
+
+**Un mensonge d'instrumentation corrigé en cours de route** : le premier run a laissé quatre
+lignes « closing the current project » dans le journal pour **deux** fermetures réelles — la
+trace était écrite à l'entrée de la commande, avant même de savoir si elle serait refusée. Elle
+est descendue au seul endroit où la fermeture commence vraiment. C'est la règle de N4 : un
+instrument de diagnostic ne peut pas mentir, fût-ce par avance.
+
+**Observation gardée pour les clients** : le champ `saved` de `status` n'a de sens que si
+`active` est vrai — après une fermeture il conserve sa valeur d'avant, l'état global n'étant pas
+réinitialisé. Comportement historique, non touché.

@@ -171,8 +171,15 @@ Reprise : appliquer le skill `chantier-long`.
   `cable.ml` lisent `!state` **sans verrou**, ne pas « remettre proprement » un `with_mutex` ;
   puis les 11 commandes `start`/`stop`/`suspend`/`resume`/`restart`/`poweroff`, `*-all`,
   `wait`/`wait-all` — `accepted`, jamais « fait »)
-  faits → **les épisodes 3 et 4 (a, b, c) sont clos**, reprendre à l'**ép. 4d** (tokenisation,
-  puis composants/câbles/`forest` ; `rc-set`/`rc-get` à l'ép. 4e). Direction actée
+  et **ép. 4d** (fin de la « jointure par espace » : chaque commande déclare son **arité**
+  `(min, max, dernier libre ?)`, un surplus est refusé avec la syntaxe en clair — fondé sur le
+  fait qu'un nom de composant est un **identifiant**, donc sans espace ; puis les 4 commandes de
+  projet `new`/`save`/`save-as`/`close`, qui reproduisent la **séquence du menu**
+  [`shutdown_everything` → *[save]* → `close_project`] avec `--save`/`--no-save` obligatoires si
+  le projet est modifié [`unsaved_changes`] ; **piège** : `camlp4` ne connaît pas `let*`)
+  faits → **les épisodes 3 et 4 (a, b, c, d) sont clos**, reprendre à l'**ép. 4d-2**
+  (composants : `add`/`del`/`rename`/`get`/`set`), puis 4d-3 (câbles + `forest`) et
+  `rc-set`/`rc-get` à l'ép. 4e. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
