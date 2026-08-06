@@ -33,3 +33,36 @@ faut donc une **source de notification** aux transitions ; les points naturels s
 placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
 
 *Repéré le 2026-08-01, à l'occasion du rejeu GUI du journal 22.*
+
+---
+
+## Modèle — le renommage d'un composant n'est pas atomique
+
+**Constat.** `User_level.virtual_machine_with_history_and_ifconfig#update_virtual_machine_with`
+(`user_level.ml:1418-1425`) renomme les entrées **ifconfig** et **history**, renomme le
+**répertoire hostfs**, puis rend la main ; c'est seulement ensuite que `update_with` appelle
+`set_name`, dont le `check_name` (`user_level.ml:520-523`) **peut refuser** le nom. Un nom
+mal formé produit donc un composant qui garde l'ancien nom pendant que ses lignes de treeview et
+son répertoire portent le nouveau — l'orphelin silencieux qu'on cherche partout à éviter.
+Mesuré le 2026-08-06 (chantier `marionnet-pilotage-par-script`, ép. 4d-2b) : après un `rename m1
+1m` refusé, la ligne ifconfig de `m1` s'appelait `1m`, et l'opération suivante sur ses ports
+échouait sur *« unique_row_id_such_that: there were 0 results instead of 1 »*.
+
+**Pourquoi ce n'est pas un bug observable aujourd'hui.** Les deux seuls appelants valident en
+amont : la GUI par `Gui_bricks.Ok_callback.check_name` (identifiant **puis** unicité, avant
+d'appeler `update_<kind>_with`) et, depuis l'ép. 4d-2b, le serveur de contrôle par les deux mêmes
+tests. C'est une **fragilité** — la garde vit chez les appelants, dupliquée, et un troisième
+appelant l'oubliera.
+
+**Voulu.** Que le modèle valide **avant d'écrire** : `update_virtual_machine_with` (et, tant qu'à
+faire, `update_structural_with`) rejetant un nom mal formé ou déjà pris **sans avoir rien touché**.
+Les appelants pourraient alors se contenter de rapporter l'erreur.
+
+**Ce que l'implémentation devra affronter.** `check_name` est un `let` **local** au corps de
+`component` (`user_level.ml:520`), donc non appelable de l'extérieur : il faut soit l'exposer, soit
+appeler directement `StrExtra.Class.identifierp`. L'unicité, elle, appartient au réseau
+(`network#name_exists`, `user_level.ml:1830`) et n'est testée qu'à l'ajout
+(`network#add_node`) — un renommage n'y passe pas. Attention enfin à ne pas déplacer la validation
+*dans* `set_name` : elle y est déjà, c'est bien **son heure** qui est trop tardive.
+
+*Repéré le 2026-08-06, par le banc de l'épisode 4d-2b.*

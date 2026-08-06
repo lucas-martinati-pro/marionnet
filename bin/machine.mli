@@ -213,6 +213,7 @@ module User_level_machine : sig
       (* --- *)
       method update_virtual_machine_with     : name:string -> port_no:int -> [ `kernel ] Disk.epithet -> unit
       method update_with                     : name:string -> label:string -> port_no:int -> unit
+      method update_structural_with          : name:string -> port_no:int -> unit
     end
 
 end (* User_level_machine *)

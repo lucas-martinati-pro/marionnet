@@ -264,7 +264,8 @@ critère de succès s'est révélé menteur et a dû être remplacé.
 | `del <nom>` | `#destroy` sous `st#network_change` (patron `Remove.reaction`, ex. `hub.ml:117-119`) | **ép. 4d-2a** |
 | `get <nom> [<champ>]` | `#to_tree` (`machine.ml:637`, `cable.ml:715`…) | **ép. 4d-2a** |
 | `set <nom> <champ> <valeur>` | `#eval_forest_attribute` (`machine.ml:652-666`) sous `network_change` | **ép. 4d-2a** |
-| `rename <ancien> <nouveau>` | `update_<kind>_with ~name` | ép. 4d-2b |
+| `set <nom> name\|port_no <valeur>` | `#update_structural_with` (`user_level.ml`) sous `network_change` | **ép. 4d-2b** |
+| `rename <ancien> <nouveau>` | idem — même code, autre verbe | **ép. 4d-2b** |
 | `ls [--kind=…] [--can=<action>]` | `network#get_node_list` (l.1537) puis les prédicats du modèle, lus par `eligibility_of_node` | ép. 4b |
 
 **Une seule source pour le vocabulaire des champs : `#to_tree`.** C'est ce qu'un `.mar` enregistre ;
@@ -274,15 +275,9 @@ la liste des champs de ce composant) et non ignoré : `eval_forest_attribute` ig
 ce qu'il ne connaît pas (`| _ -> ()`, forward-compatibilité avec les `.mar` futurs), donc une faute
 de frappe y disparaîtrait sans trace.
 
-**Trois refus, chacun fondé sur une propriété du modèle :**
+**Deux refus, chacun fondé sur une propriété du modèle :**
 
-1. **Champs structurels — `name`, `port_no` (et l'alias `eth`).** Les modifier n'est pas « écrire un
-   champ » : le chemin de la GUI passe par `update_<kind>_with` → `update_virtual_machine_with`, qui
-   **renomme les entrées ifconfig et history, renomme le répertoire hostfs et met à jour le nombre
-   de ports du treeview** (`user_level.ml:1418-1425`). `eval_forest_attribute` n'appellerait que
-   `set_name`/`set_port_no` et laisserait des lignes de treeview orphelines — un projet corrompu en
-   silence, découvert au démarrage suivant. D'où l'**ép. 4d-2b**, qui portera aussi `rename`.
-2. **Champs marshalés.** `rc_config` (`machine.ml:645`, `switch.ml:455`) et les quatre du routeur
+1. **Champs marshalés.** `rc_config` (`machine.ml:645`, `switch.ml:455`) et les quatre du routeur
    (`rc_config_unix`, `rc_config_quagga`, `quagga_selected_srvs`, `show_quagga_terminal`) sont écrits
    par `Marshal.to_string` : ce ne sont pas des textes. Les servir mettrait de l'UTF-8 invalide au
    milieu d'une ligne JSON, les accepter reviendrait à demander à un client shell de forger des
@@ -290,9 +285,49 @@ de frappe y disparaîtrait sans trace.
    pas** — une liste vieillirait dès qu'un composant en ajoute un : il les reconnaît à leur en-tête
    (`0x8495A6BD/BE/BF`, les trois nombres magiques de `Marshal`). Ils sont rendus `null` et **nommés**
    dans le champ `omitted` de la réponse, jamais escamotés.
-3. **État du composant.** `set` teste `can_modify` et `del` teste `can_destroy` — les prédicats
+2. **État du composant.** `set` teste `can_modify` et `del` teste `can_destroy` — les prédicats
    descendus dans le modèle à l'ép. 4b — et répondent `forbidden_transition` sinon. Le **§ 4.10 fait
    autorité** ; rappel de son exception : un **câble** s'édite et se supprime **en marche**.
+
+**Les champs structurels — `name` et `port_no` (ép. 4d-2b).** Les écrire n'est pas « écrire un
+champ » : renommer un composant renomme aussi ses lignes du treeview **defects**, et pour une
+machine ou un routeur ses lignes **ifconfig** et **history** ainsi que son **répertoire hostfs** ;
+changer le nombre de ports reconstruit la carte de ports et le sous-arbre defects. Le chemin est
+donc celui du modèle, `#update_structural_with ~name ~port_no` (`user_level.ml`) : la **moitié
+structurelle** des huit `update_<kind>_with` qu'appellent les dialogues de la GUI, factorisée pour
+qu'un appelant qui ignore la nature du composant emprunte exactement la même voie. Elle est
+déclarée sur `node_with_ports_card` — la classe qui *est* le type `node` — implémentée une fois
+pour `node_with_defects` et `node_with_ledgrid_and_defects`, et surchargée dans `machine.ml` et
+`router.ml` pour préfixer `update_virtual_machine_with` (dans **cet** ordre : il renomme en lisant
+`self#get_name`, donc avant que le nom ne change). Aucun `Obj.magic` n'a été ajouté, et le serveur
+ne connaît toujours pas les natures. Quatre gardes, **toutes lues dans le modèle**, précèdent
+l'action :
+
+- `can_modify` (§ 4.10) → `forbidden_transition` ;
+- le nouveau nom doit être un **identifiant** (`StrExtra.Class.identifierp`) et **libre**
+  (`network#name_exists`) — les deux tests que fait le dialogue GUI avant d'appeler le modèle
+  (`Gui_bricks.Ok_callback.check_name`). ⚠️ Ils ne peuvent **pas** être laissés au modèle : le
+  chemin de renommage n'est **pas atomique** — `update_virtual_machine_with` renomme les lignes et
+  le répertoire *avant* que `set_name` ait l'occasion de refuser le nom. Un run du banc l'a mesuré :
+  un `rename m1 1m` refusé à mi-chemin laissait la ligne ifconfig de `m1` nommée `1m`, c'est-à-dire
+  précisément l'orphelin que tout cet épisode existe pour empêcher ;
+- `port_no` doit être un entier compris entre `node#port_no_min` et `node#port_no_max`, mais la
+  borne basse réellement appliquée est **`network#port_no_lower_of node`** (`user_level.ml:1836`) —
+  celle que le dialogue GUI calcule lui aussi (`hub.ml:91`) : on ne réduit pas le nombre de ports
+  en dessous du plus grand port **occupé par un câble**. Le refus dit **laquelle** des trois causes
+  s'applique (ports fixes, minimum de la nature, câbles branchés au-dessus).
+
+Une valeur identique à l'actuelle est un **no-op** : `changed:false`, et rien n'est reconstruit
+(`update_with` détruit le device simulé au passage — un renommage vers le même nom ne doit pas le
+payer). `rename <ancien> <nouveau>` est **le même code** sous un autre verbe, pas une seconde
+implémentation à tenir en phase.
+
+⚠️ **Un câble ne se renomme pas** : `set <câble> name` est refusé. Ce n'est pas un trou dans le
+contrat mais la réponse de la GUI elle-même — un câble n'y est jamais renommé, il est **détruit et
+recréé** (`cable.ml:158-176`, `c#destroy` puis `Add.reaction` réenfilé sur le `task_runner`), ce qui
+reconstruit son entrée defects, ses extrémités et ses compteurs de références. Le canal offrira ce
+chemin sous la forme `del` + `connect` (§ 4.5) ; renommer un câble en place laisserait son entrée
+defects sous l'ancien nom, `cable#set_name` n'étant pas redéfini.
 
 **`add`.** Le `<kind>` est celui de `ls --kind=` et de la racine d'un `.mar` : le canal n'a qu'un
 vocabulaire (`machine`, `router`, `switch`, `hub`, `cloud`, `world_bridge`, `world_gateway` ; un
@@ -305,7 +340,9 @@ composant à ports fixes (cloud, world_bridge) est **refusé** plutôt qu'avalé
 Les autres `--<champ>=<valeur>` sont appliqués après construction, avec les mêmes refus qu'au-dessus,
 et **un échec ne laisse rien** : le composant à peine créé est détruit, de sorte qu'un `add` refusé
 signifie un réseau inchangé. La réponse rend les champs **relus** dans le réseau, jamais supposés
-(même exigence que l'échec silencieux ci-dessus).
+(même exigence que l'échec silencieux ci-dessus). `--name=` et `--port_no=` restent **refusés ici**
+même depuis l'ép. 4d-2b : dans `add`, le nom est le deuxième argument et le nombre de ports est
+`--ports` — deux façons d'écrire la même chose inviteraient à les contredire.
 
 **`del`.** Supprimer un nœud supprime **les câbles qui y sont branchés** (`del_node_by_name`,
 `user_level.ml:1843`) ; la réponse les nomme dans `cables_destroyed`, sans quoi le modèle du réseau
@@ -864,7 +901,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4c | Transitions (`start`/`stop`/`suspend`/`resume`/`restart`/`poweroff` + variantes globales) et `wait` | **fait** (2026-08-04) — le préalable a mangé la première moitié : interblocage GUI/`task_runner` diagnostiqué, capturé et **corrigé** (le thread GTK ne prend plus le mutex d'un composant), puis les 11 commandes, 16 assertions |
 | 4d | Arité des arguments (§ 4.1) **et** commandes de projet (§ 4.2) | **fait** (2026-08-05) — 29 assertions, `project-bench.sh` |
 | 4d-2a | Composants : `add`, `del`, `get`, `set` **hors champs structurels** (§ 4.3) | **fait** (2026-08-05) — 58 assertions, `components-bench.sh` |
-| 4d-2b | Les champs structurels : `rename`, `set … name`, `set … port_no` — le vrai chemin `update_<kind>_with`, par nature de composant | à faire |
+| 4d-2b | Les champs structurels : `rename`, `set … name`, `set … port_no` — `#update_structural_with`, la moitié structurelle des huit `update_<kind>_with` | **fait** (2026-08-06) — 85 assertions, `components-bench.sh` |
 | 4d-3 | Câbles (`connect`/`disconnect`, § 4.5) et `forest` (§ 4.8) | à faire |
 | 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
 | 5 | Les 4 treeviews | à faire |
@@ -1699,3 +1736,63 @@ le réseau à 7 nœuds ; et, **réseau réellement en marche**, `set`/`del` refu
 (`forbidden_transition`) pendant qu'un **câble** s'édite sans broncher — l'exception du § 4.10,
 mesurée. Enfin `del` sur un nœud câblé rend `cables_destroyed: ["d2","d5"]`, et les deux câbles ont
 bien disparu du réseau. `dune build` et `dune test` verts (7 tests, 0 échec), aucun orphelin.
+
+### 2026-08-06 — épisode 4d-2b : renommer sans laisser d'orphelin
+
+L'épisode 4d-2a s'était arrêté devant `name` et `port_no` en disant pourquoi : les écrire par
+`eval_forest_attribute` aurait laissé des lignes de treeview sous l'ancien nom. Cet épisode ouvre
+les deux champs — `set … name`, `set … port_no`, `rename` — et le contrat de `set` redevient sans
+exception sur les sept natures de nœuds : **tout champ publié par `#to_tree` s'écrit**.
+
+**Le chemin existait déjà, fragmenté.** Les huit `update_<kind>_with` que les dialogues appellent
+ne font qu'assembler des briques du modèle et y ajouter leurs champs propres. Le serveur n'avait
+besoin que de la partie commune, d'où `#update_structural_with ~name ~port_no` : déclarée sur
+`node_with_ports_card` (la classe qui **est** le type `node`, `class type virtual node =
+node_with_ports_card` — la seule place d'où `get_node_by_name` la voit), implémentée une fois pour
+`node_with_defects` et une fois pour `node_with_ledgrid_and_defects`, surchargée dans `machine.ml`
+et `router.ml` pour préfixer `update_virtual_machine_with`. Cinq fichiers du modèle, une vingtaine
+de lignes, **aucun `Obj.magic` ajouté** — l'alternative (dispatcher les huit natures dans le
+serveur et rappeler chaque `update_<kind>_with` avec tous ses champs relus) en aurait demandé huit,
+et aurait obligé à relire puis réécrire des champs **marshalés** pour ne changer qu'un nom.
+
+**Le banc a trouvé un défaut d'atomicité, et c'est le meilleur moment de l'épisode.** Une seule
+assertion a échoué au premier run : `set m1 port_no 4`, en fin de bloc, avec un message venu du
+treeview — *« unique_row_id_such_that: there were 0 results instead of 1 »*. Un diagnostic isolé
+(projet neuf, aucune autre commande) a montré que `set … port_no` sur une machine fonctionne
+parfaitement : le coupable n'était pas la commande mais **le refus qui la précédait**. `rename m1
+1m` avait été refusé — mais **trop tard** : `update_virtual_machine_with` renomme les lignes
+ifconfig et history et le répertoire hostfs **avant** que `set_name` n'ait l'occasion de rejeter le
+nom (`check_name`). Le composant s'appelait toujours `m1`, sa ligne ifconfig s'appelait `1m`.
+Autrement dit, le code censé empêcher les orphelins en fabriquait un.
+
+La lecture de la GUI a donné la réponse : elle ne s'appuie pas davantage sur le modèle pour cela.
+`Gui_bricks.Ok_callback.check_name` teste **l'identifiant puis l'unicité** *avant* d'appeler
+`update_<kind>_with`. Le serveur fait donc exactement les deux mêmes tests, avant d'agir. Leçon
+générale pour la suite du chantier : « les mêmes possibilités et limites que la GUI » (§ 4.10) ne
+concerne pas que les prédicats d'état — cela inclut les **gardes d'entrée de ses dialogues**, qui
+ne sont pas dans le modèle. Le modèle, lui, reste non atomique sur ce chemin : c'est une fragilité
+inscrite dans `docs/TODO.md`, pas un bug observable (aucun appelant ne l'atteint sans garde).
+
+**Un câble ne se renomme pas, et ce n'est pas une exception arbitraire.** En cherchant comment le
+faire, on trouve que la GUI ne le fait pas non plus : `Properties.reaction` d'un câble **détruit**
+le câble et en **recrée** un (`cable.ml:158-176`), l'enfilant derrière la destruction sur le
+`task_runner`. Renommer en place aurait laissé son entrée defects sous l'ancien nom
+(`cable#set_name` n'est pas redéfini, contrairement à celui des nœuds). Le canal refuse donc, en
+renvoyant à `del` + `connect` (§ 4.5, ép. 4d-3).
+
+**Preuve** : `components-bench.sh` étendu (blocs C7 neuf, C8 et C9 renumérotés), **85 assertions,
+toutes vertes**, en un seul mode (sans `-r`). La preuve du renommage n'est délibérément **pas** le
+canal — il pourrait mentir de bout en bout — mais le **`.mar` enregistré** : après `set m1 name
+machinerenommee` puis `save`, le nouveau nom est dans `states/ifconfig`, `states/defects` et
+`netmodel/network.xml`, le répertoire `hostfs/machinerenommee` existe, `hostfs/m1` a disparu, et
+un `grep -a` sur `states/` et `netmodel/` ne trouve **plus une seule occurrence** de l'ancien nom
+(le motif inclut le préfixe de longueur de `Marshal`, ces fichiers étant binaires). Le reste : le
+no-op (`changed:false`, aucun rebuild), les refus (nom pris, non identifiant, nœud démarré →
+`forbidden_transition`, câble → `bad_argument`), les bornes de `port_no` (minimum de la nature,
+maximum, ports fixes, non entier) et l'assertion discriminante décrite plus haut. `dune build` et
+`dune test` verts (7 tests, 0 échec), aucun processus orphelin.
+
+**Limite assumée** : la borne dynamique `network#port_no_lower_of` est **appliquée** (c'est
+l'expression même du dialogue GUI) mais **non discriminée** par le banc — l'exercer demande un
+câble branché sur un port d'indice supérieur au minimum de la nature, donc `connect`. Assertion à
+ajouter à l'ép. 4d-3.

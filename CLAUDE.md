@@ -179,10 +179,14 @@ Reprise : appliquer le skill `chantier-long`.
   le projet est modifié [`unsaved_changes`] ; **piège** : `camlp4` ne connaît pas `let*`)
   et **ép. 4d-2a** (les composants : `add`/`del`/`get`/`set`, uniformes sur les 8 natures —
   `#to_tree` publie les champs, `#eval_forest_attribute` les écrit, le constructeur s'enregistre
-  seul ; **frontière assumée** : `name` et `port_no` sont refusés, les écrire hors
-  `update_<kind>_with` laisserait des lignes de treeview orphelines)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a) sont clos**, reprendre à l'**ép. 4d-2b**
-  (champs structurels + `rename`), puis 4d-3 (câbles + `forest`) et
+  seul)
+  et **ép. 4d-2b** (les **champs structurels** : `set … name`/`port_no` et `rename` par
+  `#update_structural_with` — moitié structurelle des 8 `update_<kind>_with`, déclarée sur
+  `node_with_ports_card`, surchargée machine/router ; **le modèle n'est pas atomique** sur ce
+  chemin, l'appelant valide le nom **avant**, comme le dialogue GUI ; un **câble ne se renomme
+  pas** — la GUI le détruit et le recrée)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b) sont clos**, reprendre à l'**ép. 4d-3**
+  (câbles `connect`/`disconnect` + `forest`), puis
   `rc-set`/`rc-get` à l'ép. 4e. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.

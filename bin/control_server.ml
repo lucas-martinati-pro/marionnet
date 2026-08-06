@@ -40,6 +40,7 @@ module Log = Marionnet_log
 (* Note: [Either] is the stdlib one here, as in gMain_actor.mli, *not* Ocamlbricks.Either. *)
 module Future = Ocamlbricks.Future
 module Network = Ocamlbricks.Network
+module StrExtra = Ocamlbricks.StrExtra
 module Xforest = Ocamlbricks.Xforest
 
 (* ---------------------------------------------------------------- *)
@@ -194,6 +195,7 @@ let arity_of_command : (string * arity) list =
     ("del",           one_component "del <component>");
     ("get",           component_and_field "get <component> [<field>]");
     ("set",           component_field_and_value "set <component> <field> <value>");
+    ("rename",        two_identifiers "rename <component> <new name>");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -534,14 +536,30 @@ let is_marshalled (v:string) : bool =
   && v.[0] = '\x84' && v.[1] = '\x95' && v.[2] = '\xa6'
   && (match v.[3] with '\xbd' | '\xbe' | '\xbf' -> true | _ -> false)
 
-(* Changing one of these is not "setting a field", and this is precisely where episode 4d-2a
-   stops: the GUI path goes through update_<kind>_with, hence update_virtual_machine_with, which
-   renames the ifconfig and history entries, renames the hostfs directory and updates the port
-   number of the ifconfig treeview (user_level.ml:1418-1425). [eval_forest_attribute] would only
-   call set_name / set_port_no and leave orphan treeview rows behind — a project corrupted in
-   silence, discovered at the next startup. Refused here until episode 4d-2b implements the real
-   path (and the [rename] command with it). *)
-let structural_fields = [ "name"; "port_no"; "eth" ]
+(* Changing one of these two is not "setting a field": renaming a component also renames its
+   defects rows and — for a virtual machine — its ifconfig and history rows and its hostfs
+   directory, while changing the number of ports rebuilds the ports card and the defects
+   sub-tree. [eval_forest_attribute] would only call set_name / set_port_no and leave orphan
+   treeview rows behind, a project corrupted in silence and discovered at the next startup only.
+   Since episode 4d-2b they go through [update_structural_with], the model's own method
+   (user_level.ml), which is the structural half of the eight update_<kind>_with the GUI dialogs
+   call. Note that "eth" needs no entry here: it is a read-only alias kept for old .mar files
+   (machine.ml:664) and is not published by #to_tree, so it is already refused as an unknown
+   field, with the list of the real ones. *)
+let structural_fields = [ "name"; "port_no" ]
+
+(* What a node can do and a cable cannot. The bounds are the ones the GUI dialog itself uses:
+   [port_no_lower_of] (user_level.ml:1836) is not [port_no_min] but the smallest number of ports
+   that still holds every *busy* port — reducing a switch below a cabled port is refused to the
+   script exactly as it is to the human (hub.ml:91). *)
+type structural = {
+  st_update      : name:string -> port_no:int -> unit;
+  st_name        : string;
+  st_port_no     : int;
+  st_port_no_min : int;   (* effective: max (kind's own minimum, busy ports) *)
+  st_port_no_kind_min : int;  (* the kind's own minimum, kept only to say *why* a refusal happens *)
+  st_port_no_max : int;
+  }
 
 (* The options that are *not* fields: they belong to the command itself. *)
 let reserved_options = [ "timeout"; "ports" ]
@@ -624,16 +642,26 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
    network is empty but the working directories a component expects (hostfs, states) are not
    there. *)
 let with_component (st : State.globalState) ~(timeout:float) ~(name:string)
-    ~(f : kind:string -> editable -> component_outcome) : string
+    ~(f : kind:string -> structural:structural option -> editable -> component_outcome) : string
   =
   ask ~timeout
     (fun () ->
        if not st#active_project then Co_no_project else
        match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
-       | Some n -> f ~kind:n#string_of_devkind (n :> editable)
+       | Some n ->
+           let structural = {
+             st_update      = (fun ~name ~port_no -> n#update_structural_with ~name ~port_no);
+             st_name        = n#get_name;
+             st_port_no     = n#get_port_no;
+             st_port_no_min = st#network#port_no_lower_of n;
+             st_port_no_kind_min = n#port_no_min;
+             st_port_no_max = n#port_no_max;
+             }
+           in
+           f ~kind:n#string_of_devkind ~structural:(Some structural) (n :> editable)
        | None ->
        match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
-       | Some c -> f ~kind:"cable" (c :> editable)
+       | Some c -> f ~kind:"cable" ~structural:None (c :> editable)
        | None -> Co_unknown)
   |> reply_of_outcome (reply_of_component_outcome ~name)
 
@@ -642,7 +670,7 @@ let with_component (st : State.globalState) ~(timeout:float) ~(name:string)
 let cmd_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
   : string
   =
-  with_component st ~timeout ~name ~f:(fun ~kind c ->
+  with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
     let fields = fields_of_tree c#to_tree in
     match field with
     | None   -> Co_read (kind, fields)
@@ -655,10 +683,84 @@ let cmd_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
 
 (* --- set --------------------------------------------------------- *)
 
+(* Both branches of [set] end here: run the mutation in the GTK slot we are already in, then
+   report the value *read back*, never the one asked for (some setters normalise). [apply]
+   swallows nothing: [GMain_actor.apply] captures the exception of its thunk, so the failure is
+   caught where it happens and the model's own message is returned to the client. *)
+let mutate_and_read_back (st : State.globalState) ~(kind:string) ~(field:string) ~(old:string)
+    ~(refused:exn -> string) ~(action: unit -> unit) (c : editable) : component_outcome
+  =
+  let failure = ref None in
+  let () = st#network_change (fun () -> try action () with e -> failure := Some e) () in
+  match !failure with
+  | Some e -> Co_bad (refused e)
+  | None ->
+      let now =
+        match List.assoc_opt field (fields_of_tree c#to_tree) with
+        | Some v -> v
+        | None   -> old
+      in
+      Co_set (kind, field, old, now)
+
+(* The structural branch (episode 4d-2b). Every guard below is read from the model — none is a
+   rule invented by the channel — and each one is tested *before* acting, because
+   [update_structural_with] destroys the simulated device on its way: a refusal must cost
+   nothing, and a no-op must not cost a rebuild either. *)
+let set_structural (st : State.globalState) ~(kind:string) ~(field:string) ~(value:string)
+    ~(old:string) ~(s:structural) (c : editable) : component_outcome
+  =
+  let apply ~name ~port_no =
+    mutate_and_read_back st ~kind ~field ~old c
+      ~action:(fun () -> s.st_update ~name ~port_no)
+      ~refused:(fun e -> Printf.sprintf "the model refused %S = %S: %s"
+                           field value (Printexc.to_string e))
+  in
+  match field with
+  | "name" ->
+      if value = s.st_name then Co_set (kind, field, old, old) else
+      (* THE SAME TWO CHECKS THE GUI DIALOG MAKES BEFORE CALLING THE MODEL
+         (Gui_bricks.Ok_callback.check_name: identifier, then uniqueness), and they must happen
+         *here* rather than be left to the model, because the renaming path is NOT atomic:
+         [update_virtual_machine_with] renames the ifconfig and history rows and the hostfs
+         directory *before* [set_name] gets a chance to refuse the name (user_level.ml:1418-1425).
+         A name refused half-way would leave exactly the orphan rows this whole episode exists to
+         prevent — measured, not feared: a bench run left m1's ifconfig row named "1m".
+         Uniqueness is ours to check too: only [network#add_node] tests it, and a rename does not
+         go through it; two homonymous components would then be indistinguishable to every
+         command of this channel, which addresses them by name. *)
+      if not (StrExtra.Class.identifierp value) then
+        Co_bad (Printf.sprintf
+                  "%S is not a well-formed name: admissible characters are letters, digits and \
+                   underscores" value)
+      else if st#network#name_exists value then
+        Co_bad (Printf.sprintf "the name %S is already used in this network" value)
+      else apply ~name:value ~port_no:s.st_port_no
+  | _ (* "port_no" *) ->
+      (match int_of_string_opt value with
+       | None -> Co_bad (Printf.sprintf "%S expects an integer, got %S" field value)
+       | Some n when n = s.st_port_no -> Co_set (kind, field, old, old)
+       | Some n when n < s.st_port_no_min ->
+           (* Three different refusals, and the client is told which one: a fixed-size component,
+              a kind whose minimum is higher, or cables occupying the ports above. *)
+           Co_bad (Printf.sprintf
+                     "a %s cannot have fewer than %d port(s) here: %s"
+                     kind s.st_port_no_min
+                     (if s.st_port_no_kind_min = s.st_port_no_max then
+                        "this kind of component has a fixed number of ports"
+                      else if s.st_port_no_min > s.st_port_no_kind_min then
+                        Printf.sprintf
+                          "cables are plugged into ports above %d, and unplugging one is the \
+                           business of the disconnect command" s.st_port_no_kind_min
+                      else
+                        "this is the minimum of this kind of component"))
+       | Some n when n > s.st_port_no_max ->
+           Co_bad (Printf.sprintf "a %s cannot have more than %d ports" kind s.st_port_no_max)
+       | Some n -> apply ~name:s.st_name ~port_no:n)
+
 let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string)
             ~(value:string) : string
   =
-  with_component st ~timeout ~name ~f:(fun ~kind c ->
+  with_component st ~timeout ~name ~f:(fun ~kind ~structural c ->
     let fields = fields_of_tree c#to_tree in
     match List.assoc_opt field fields with
     (* Unknown field names are refused rather than applied: eval_forest_attribute ignores what it
@@ -667,41 +769,36 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
     | None ->
         Co_bad (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
                   field name kind (field_names fields))
-    | Some _ when List.mem field structural_fields ->
-        Co_bad (Printf.sprintf
-                  "the field %S cannot be set through this channel: changing it also renames or \
-                   resizes the ifconfig/history entries and the hostfs directory \
-                   (user_level.ml:1418-1425), which needs the model's own update method \
-                   (episode 4d-2b)" field)
     | Some old when is_marshalled old ->
         Co_bad (Printf.sprintf
                   "the field %S holds a marshalled value; it is served by the dedicated \
                    rc-get/rc-set commands (episode 4e), not by get/set" field)
     | Some _ when not c#can_modify -> Co_forbidden ("modified", c#state_as_string)
-    | Some old ->
-        let failure = ref None in
-        let () =
-          st#network_change
-            (fun () -> try c#eval_forest_attribute (field, value) with e -> failure := Some e) ()
-        in
-        (match !failure with
-         (* int_of_string on a value that is not a number, set_port_no out of range,
-            check_label on a label carrying '<'... the model's own validation, reported instead
-            of being lost in the GTK slot. *)
-         | Some e -> Co_bad (Printf.sprintf "the model refused %S = %S: %s"
-                               field value (Printexc.to_string e))
+    | Some old when List.mem field structural_fields ->
+        (match structural with
+         | Some s -> set_structural st ~kind ~field ~value ~old ~s c
+         (* A cable, and this is not a hole in the contract but the GUI's own answer: a cable is
+            never renamed, it is destroyed and built again (cable.ml:158-176), so that its
+            defects entry, its endpoints and its reference counters are rebuilt from scratch.
+            The channel will offer that path as del + connect (§ 4.5, episode 4d-3); renaming
+            it in place here would leave its defects entry under the old name. *)
          | None ->
-             let now =
-               match List.assoc_opt field (fields_of_tree c#to_tree) with
-               | Some v -> v
-               | None   -> value
-             in
-             Co_set (kind, field, old, now)))
+             Co_bad (Printf.sprintf
+                       "a cable is not renamed in place: the GUI destroys it and creates it \
+                        again (cable.ml:158-176). Use del + connect (§ 4.5)"))
+    | Some old ->
+        mutate_and_read_back st ~kind ~field ~old c
+          ~action:(fun () -> c#eval_forest_attribute (field, value))
+          (* int_of_string on a value that is not a number, set_port_no out of range,
+             check_label on a label carrying '<'... the model's own validation, reported instead
+             of being lost in the GTK slot. *)
+          ~refused:(fun e -> Printf.sprintf "the model refused %S = %S: %s"
+                               field value (Printexc.to_string e)))
 
 (* --- del --------------------------------------------------------- *)
 
 let cmd_del (st : State.globalState) ~(timeout:float) ~(name:string) : string =
-  with_component st ~timeout ~name ~f:(fun ~kind c ->
+  with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
     if not c#can_destroy then Co_forbidden ("deleted", c#state_as_string) else
     (* Computed before the destruction, and harmless for a cable: no cable involves a *node*
        named like a cable, so the list is empty there. *)
@@ -1384,6 +1481,11 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | "get"    -> (cmd_get st ~timeout ~name:(arg0 r) ~field:(arg_opt r 1), `Continue)
             | "set"    -> (cmd_set st ~timeout ~name:(arg0 r) ~field:(arg_at r 1)
                              ~value:(arg_at r 2), `Continue)
+            (* A verb of its own for an operation that is not "writing a field" (it renames
+               treeview rows and a directory), but strictly the same code: two ways to spell one
+               thing, not two behaviours to keep in step. *)
+            | "rename" -> (cmd_set st ~timeout ~name:(arg0 r) ~field:"name"
+                             ~value:(arg_at r 1), `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

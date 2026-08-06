@@ -1260,6 +1260,13 @@ class router
      self#get_name 0 "IPv6 address"
      (Option.extract_map_or (port_0_ipv6_config) (Ipv6.string_of_config) "");
 
+ (* REDEFINED: the structural half of update_router_with, keeping the same order (see the
+    virtual method in user_level.ml). The kernel is not a structural field: it is read back
+    and set again, unchanged, because update_virtual_machine_with takes it as an argument. *)
+ method! update_structural_with ~name ~port_no =
+   self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no self#get_kernel;
+   self_as_node_with_ledgrid_and_defects#update_structural_with ~name ~port_no
+
  method update_router_with
    ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel
    ~show_unix_terminal ~show_quagga_terminal ~rc_config_unix ~rc_config_quagga ~quagga_selected_srvs

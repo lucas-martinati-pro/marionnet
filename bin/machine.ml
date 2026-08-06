@@ -747,6 +747,13 @@ class machine
        can use a new cow file (see the make_simulated_device method) *)
     self#destroy_right_now
 
+ (* REDEFINED: the structural half of update_machine_with, keeping the same order (see the
+    virtual method in user_level.ml). The kernel is not a structural field: it is read back
+    and set again, unchanged, because update_virtual_machine_with takes it as an argument. *)
+ method! update_structural_with ~name ~port_no =
+   self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no self#get_kernel;
+   self_as_node_with_defects#update_structural_with ~name ~port_no
+
  method update_machine_with ~name ~label ~memory ~port_no ~kernel ~rc_config ~console_no ~terminal =
    (* first action: *)
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;

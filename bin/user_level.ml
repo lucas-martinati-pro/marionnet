@@ -714,6 +714,16 @@ class virtual node_with_ports_card = fun
 
    method virtual destroy : unit
 
+  (** Set the two *structural* fields of a node, i.e. those that no setter alone can change:
+      renaming a node also renames its treeview rows (defects for every node, ifconfig and history
+      for virtual machines) and its hostfs directory, and changing the number of ports rebuilds the
+      ports card and the defects sub-tree. This is the structural part of the eight
+      [update_<kind>_with] methods called by the GUI dialogs, factored out so that a caller which
+      knows nothing about the kind of the node (the control server) still takes the very same path
+      the GUI takes. Callers are expected to check [can_modify] and the port bounds first
+      ([port_no_min], [port_no_max] and [network#port_no_lower_of]). *)
+   method virtual update_structural_with : name:string -> port_no:int -> unit
+
   (** 'Static' methods (in the sense of C++/Java). Polarity is used to decide the correct
       kind of Ethernet cable needed to connect a pair of devices: the cable should be
       crossover iff both endpoints have the same polarity: *)
@@ -896,6 +906,10 @@ class virtual node_with_defects
       self#set_label label;
     end
 
+  (* The structural part of update_with, for a caller that has no reason to know the label: *)
+  method update_structural_with ~name ~port_no =
+    self#update_with ~name ~label:self#get_label ~port_no
+
 end;; (* class node_with_defects *)
 
 
@@ -1047,6 +1061,9 @@ class virtual node_with_ledgrid_and_defects
       self#add_my_ledgrid; (* may use all previous properties (including the label) *)
     end
 
+  (* The structural part of update_with, for a caller that has no reason to know the label: *)
+  method update_structural_with ~name ~port_no =
+    self#update_with ~name ~label:self#get_label ~port_no
 
 end;;
 

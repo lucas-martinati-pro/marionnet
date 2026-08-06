@@ -248,6 +248,7 @@ class virtual node_with_ports_card :
     method suspend_right_now : unit
     method to_forest : Xforest.forest
     method virtual to_tree : Xforest.tree
+    method virtual update_structural_with : name:string -> port_no:int -> unit
     method user_port_offset : int
   end
 
@@ -358,6 +359,7 @@ class virtual node_with_defects :
     method suspend_right_now : unit
     method to_forest : Xforest.forest
     method virtual to_tree : Xforest.tree
+    method update_structural_with : name:string -> port_no:int -> unit
     method update_with :
       name:string ->
       label:string -> port_no:int -> unit
@@ -461,6 +463,7 @@ class virtual node_with_ledgrid_and_defects :
     method suspend_right_now : unit
     method to_forest : Xforest.forest
     method virtual to_tree : Xforest.tree
+    method update_structural_with : name:string -> port_no:int -> unit
     method update_with :
       name:string ->
       label:string -> port_no:int -> unit
