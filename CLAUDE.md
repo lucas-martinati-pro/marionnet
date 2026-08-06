@@ -69,6 +69,13 @@ l'**install** et le **RPM**.
 - **Messages de commit : ANGLAIS obligatoire** pour tout le dépôt Marionnet (règle de scope
   projet). Conventional Commits ; rédiger/traduire le message en anglais avant de committer, corps
   compris. Trailer `Co-Authored-By` selon la règle utilisateur (seulement si j'ai produit le contenu).
+  - **Toute proposition de commit est BILINGUE** : le message **anglais** (celui qui sera
+    réellement committé, tel quel) puis, **juste à la suite**, sa **traduction française
+    intégrale** — titre *et* corps, y compris les listes et les tableaux. Motif : l'anglais est
+    la langue du dépôt, mais le feu vert se donne en français ; relire une traduction fidèle est
+    plus rapide et plus sûr que relire l'original. La traduction est un **support de relecture**,
+    jamais un second message : elle ne part pas dans git, et si les deux divergent, c'est
+    l'anglais qui fait foi (donc traduire **après** avoir figé l'anglais, pas l'inverse).
 - En tête de chaque .ml : bloc d'alias `module X = Ocamlbricks.X` (pas d'`open`) + en-tête GPL.
 - Extensions camlp4 à la demande via `#load` en tête de fichier (`where_p4`,
   `include_type_definitions_p4`…) ; 3 `.mli` sont **injectés dans le .ml** par
