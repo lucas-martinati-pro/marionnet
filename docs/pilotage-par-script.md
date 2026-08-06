@@ -37,7 +37,7 @@ Ce document est la conception ; il ne décrit pas du code existant.
 
 | Point | Décision | Pourquoi |
 |---|---|---|
-| **Ancrage** | **A** — serveur de contrôle *in-process* (cible) ; **C** — générateur de `.mar` + option `-r` (raccourci complémentaire) | A garde la GUI **vivante et observable** pendant le script : c'est précisément ce qui permet de valider une modification risquée. La variante **B** (exécutable *headless* sans GTK) est écartée : `state.ml`, `treeview.ml`, `sketch.ml` et tous les dialogues `where_p4` sont entrelacés avec lablgtk3 ; les découpler serait un refactor massif, sans rapport avec le but |
+| **Ancrage** | **A** — serveur de contrôle *in-process* (cible) ; **C** — décor pré-fabriqué + option `-r` (raccourci complémentaire ; **révisé ép. 4g** : le décor n'est pas *généré hors ligne* mais produit par A et enregistré par `save-as`, cf. § 6) | A garde la GUI **vivante et observable** pendant le script : c'est précisément ce qui permet de valider une modification risquée. La variante **B** (exécutable *headless* sans GTK) est écartée : `state.ml`, `treeview.ml`, `sketch.ml` et tous les dialogues `where_p4` sont entrelacés avec lablgtk3 ; les découpler serait un refactor massif, sans rapport avec le but |
 | **Format** | **JSON asymétrique** : requête = une ligne de texte ; réponse = une ligne JSON | l'OCaml **émet** du JSON (quelques `Printf`, **aucune dépendance ajoutée**) et ne **parse** jamais de format structuré. Les dépendances du projet sont `str unix threads inotify lablgtk3 lablgtk3-extras ocamlbricks` : y ajouter `yojson`/`yaml`/`otoml` se paierait aussi dans le `.deb` et le RPM (chantier `modernisation-installation-marionnet`). Côté client, `jq` est présent sur l'hôte et `bashbricks` fournit 14 helpers `Json_*` — alors qu'il n'a **aucun** `Yaml_*`/`Toml_*` et que `yq`/`tomlq` sont absents. Enfin, un réseau est un **graphe** : mauvais terrain pour TOML |
 | **Observabilité** | état **Marionnet** seul (`off` / `on` / `sleeping`) + `wait` par scrutation avec délai de garde | l'automate user-level ne connaît que `NoDevice \| DeviceOff \| DeviceOn \| DeviceSleeping` (`user_level.ml:81-88`). `DeviceOn` signifie « le processus UML est lancé », **pas** « l'invité a fini de booter ». Un vrai signal « invité prêt » supposerait de toucher les images (`marionnet-relay`), donc le chantier `marionnet-kernel-rootfs` : hors périmètre. Le script détecte la disponibilité de l'invité par ses propres moyens (§ 4.7) |
 | **Périmètre** | noyau **+ les 4 treeviews** (`ifconfig`, `defects`, `history`, `documents`) | c'est là que vit la configuration réelle d'un TP (adresses IP, défauts réseau) ; un pilotage qui ne les couvrirait pas ne remplacerait pas l'utilisateur humain |
@@ -154,13 +154,13 @@ Codes d'erreur normalisés : `unknown_command`, `bad_argument`, `no_active_proje
 `unknown_node`, `forbidden_transition`, `unsaved_changes`, `timeout`, `internal`.
 
 **Contenu multi-ligne : par chemin de fichier** (tranché à l'ép. 3a). Un rcfile de scénario (§ 10)
-ou un fragment `Xforest` (§ 4.8) ne tient pas sur une ligne. Plutôt que d'ajouter un mode « corps »
-au protocole (sentinelle de fin, donc un **état** dans le lecteur et un cas d'erreur de plus) ou un
-encodage base64 (illisible, et un décodeur à écrire), la commande reçoit un **chemin** :
-`--from=/chemin/fichier`, que le serveur lit côté hôte. Le lecteur reste un `input_line` **nu**, et
-le mécanisme couvre rcfile et forest d'un seul geste. Légitime ici : un socket unix implique la
+ne tient pas sur une ligne. Plutôt que d'ajouter un mode « corps » au protocole (sentinelle de fin,
+donc un **état** dans le lecteur et un cas d'erreur de plus) ou un encodage base64 (illisible, et
+un décodeur à écrire), la commande reçoit un **chemin** : `--from=/chemin/fichier`, que le serveur
+lit côté hôte. Le lecteur reste un `input_line` **nu**. Légitime ici : un socket unix implique la
 même machine, et le répertoire `0700` borne déjà l'accès au canal. Côté client, un heredoc Bash
-vers `mktemp` fait le reste.
+vers `mktemp` fait le reste. *(Ce mécanisme devait aussi porter le fragment `Xforest` du § 4.8 ;
+cette commande est abandonnée depuis l'ép. 4g, `rc-set --from=` en reste le seul usager.)*
 
 **Options et arguments positionnels.** Les jetons commençant par `--` sont des options
 (`--clé=valeur`, ou `--clé` seule pour un drapeau), **où qu'ils se trouvent sur la ligne** ; les
@@ -568,34 +568,64 @@ Trois décisions d'implémentation (épisode 4c) :
 dernier ; le composant détruit pendant l'attente donne `unknown_node`, pas un faux timeout (la
 recherche est refaite à chaque tour).
 
-### 4.8 Porte de sortie
+### 4.8 La porte de sortie qui n'en était pas une
+
+*Conçue à l'ép. 0, **suspendue** à l'ép. 4d-3 sur un fait de format, **abandonnée** à l'ép. 4g
+(2026-08-07). La conception d'origine est conservée en fin de paragraphe, comme trace.*
 
 ```
-forest < fragment.xml
+forest < fragment.xml        ← ABANDONNÉ, ne sera pas implémenté
 ```
 
-Applique un fragment `Xforest` au réseau via le registre `eval_forest_child`. Couvre par
-construction tout ce qui est représentable dans un `.mar`, sans multiplier les commandes.
+L'idée était une **porte de sortie** : plutôt que de multiplier les commandes, appliquer au réseau
+un fragment `Xforest` et couvrir d'un coup tout ce qu'un `.mar` sait représenter. Le fait de format
+relevé à l'ép. 4d-3 l'a suspendue — `netmodel/network.xml` **n'est pas du XML** malgré son nom :
+`Netmodel.Xml.save_network` passe par `Oomarshal.marshaller#to_file` (`user_level.ml:2176-2181`),
+c'est-à-dire `Marshal.to_channel` (`lib/MARSHAL/oomarshal.ml:35`,`41`), du **binaire OCaml** ; le
+nom du module et le commentaire « Pseudo XML now! (using xforest instead of ocamlduce) » sont un
+vestige de l'époque ocamlduce. Un client Bash ne peut donc pas écrire un fragment, et lui en faire
+produire un supposerait que l'OCaml **parse** un format structuré, ce que la décision du § 2 exclut.
 
-⚠️ **SUSPENDU — le format n'est pas textuel** (constat de l'ép. 4d-3, 2026-08-06). Le fichier
-`netmodel/network.xml` d'un `.mar` **n'est pas du XML** malgré son nom : `Netmodel.Xml.save_network`
-passe par `Oomarshal.marshaller#to_file` (`user_level.ml:2127`), c'est-à-dire `Marshal.to_channel`
-(`lib/MARSHAL/oomarshal.ml:35`,`41`) — du **binaire OCaml**. Le nom du module et le commentaire
-« Pseudo XML now! (using xforest instead of ocamlduce) » sont un vestige de l'époque ocamlduce.
-Conséquence : un client Bash **ne peut pas** écrire un fragment, et lui en faire produire un
-supposerait que l'OCaml **parse** un format structuré — exactement ce que la décision du § 2
-exclut. La commande sort donc de l'ép. 4d-3 ; trois voies restent ouvertes, à trancher plus tard :
-(a) le fragment est un fichier **produit par Marionnet lui-même** (`.mar` ou sous-arbre), et
-`forest` compose des projets existants ; (b) le besoin réel est couvert par `add`/`set`/`connect`,
-et `forest` est abandonné (le § 9 en fait déjà une ligne à part) ; (c) une syntaxe textuelle est
-définie et parsée côté OCaml, au prix de la décision du § 2. Le reste de ce paragraphe décrit la
-conception d'origine et vaut pour (a).
+**Décision de l'ép. 4g : la commande n'existera pas.** Le format n'en est que l'occasion ; les
+raisons, elles, tiennent au périmètre — dans l'ordre de leur poids.
 
-⚠️ **Échec silencieux connu** : `try_to_add_machine` se termine par `with _ -> false`
-(`machine.ml:545`), et `user_level.ml:1201` documente explicitement qu'un composant mal formé est
-« *silently dropped by the try_to_add_\* machinery* ». Une commande `forest` qui répondrait `ok`
-sur un fragment rejeté serait pire qu'inutile : la réponse **doit** rendre compte du nombre
-d'éléments réellement intégrés.
+1. **Sa couverture est déjà acquise, et par construction — pas par estimation.**
+   `network#eval_forest_child` (`user_level.ml:1808-1816`) ne fait qu'une chose : dispatcher chaque
+   enfant vers les 8 procédures `try_to_add_<kind>` enregistrées, sous une racine
+   `("network",[])` (l.1795). Ce fichier ne porte donc **que des nœuds et des câbles** — les
+   treeviews sont persistées à part (`states/ifconfig`, `states/defects`, mesuré ép. 4d-2b). Or
+   `add`/`set`/`connect` visent **le même vocabulaire** : `#to_tree` publie les champs,
+   `#eval_forest_attribute` les écrit (§ 4.3). Le périmètre de `forest` est **exactement** celui
+   des commandes livrées aux ép. 4d-2a → 4d-3, vocabulaire compris, parce que c'est la **même
+   source de vérité**. Ce que `forest` ajouterait n'est pas du pouvoir d'expression, c'est le
+   **lot** : un aller-retour au lieu de N. Personne ne l'a demandé, et les bancs construisent déjà
+   des réseaux entiers commande par commande.
+2. **Ce lot serait une régression de diagnostic.** `try_to_add_machine` se termine par
+   `with _ -> false` (`machine.ml:545`) et `user_level.ml:1335` documente qu'un composant mal formé
+   est « *silently dropped by the try_to_add_\* machinery* ». L'ép. 4d-2a a écarté ce registre au
+   profit des **constructeurs** pour cette raison précise ; depuis, `add` refuse **avant** d'écrire
+   (ép. 4d-2c, 4f), rapporte ce qu'il réaligne (`adjusted`) et sait défaire. Revenir au registre
+   pour gagner un aller-retour, c'est échanger des refus motivés contre des silences.
+3. **La seule variante qui apporterait quelque chose sort du contrat.** La voie (a) — le fragment
+   est un fichier **produit par Marionnet** et `forest` *compose* deux projets — n'est pas une
+   commande de plus, c'est une **fonctionnalité neuve**, absente de la GUI, donc hors du contrat du
+   § 4.10. Elle butterait de surcroît sur les collisions de noms, les treeviews que
+   `network.xml` ne porte pas, les répertoires `hostfs/`/`states/` à fusionner et les remaps
+   d'import. L'idée est gardée dans `docs/TODO.md` ; elle ne relève pas de ce chantier.
+
+La voie (c) — définir une syntaxe textuelle et la parser côté OCaml — reste ce qu'elle était : le
+prix en est la décision du § 2, pour un bénéfice nul face à un script qui *est* déjà la description
+du réseau.
+
+**Corollaire, tranché dans le même mouvement : l'épisode 7 (voie C, § 6) est absorbé.** Fabriquer
+un décor ne demande pas d'écrire un `.mar` hors ligne — cela demande `new` + `add`/`connect`/`set`
++ **`save-as`** (§ 4.2), c'est-à-dire de laisser **Marionnet** écrire le format dont il est le seul
+producteur légitime. L'option `-r` garde tout son sens : elle **rejoue** un `.mar` ainsi produit.
+
+**Conception d'origine (trace, sans suite).** La commande recevait un fragment par
+`--from=<chemin>` (§ 4.1), le confiait au registre `eval_forest_child`, et sa réponse **devait**
+rendre compte du nombre d'éléments réellement intégrés — un `ok` sur un fragment silencieusement
+rejeté aurait été pire qu'inutile.
 
 ### 4.9 Les fenêtres qui s'ouvrent toutes seules
 
@@ -906,7 +936,9 @@ Contraintes :
 
 ---
 
-## 6. Architecture C — générateur de `.mar`
+## 6. Architecture C — le décor pré-fabriqué (`-r`)
+
+*Intitulée « générateur de `.mar` » jusqu'à l'ép. 4g ; le titre a suivi la révision ci-dessous.*
 
 Voie complémentaire, sans aucune modification d'OCaml : produire le `.mar` hors ligne, puis
 lancer avec l'option **`-r`/`--run` qui existe déjà** (`bin/initialization.ml:65`, « *immediately
@@ -915,6 +947,14 @@ run the specified project* »).
 Utile quand « fabriquer un décor de test » suffit. Insuffisant seul : après le lancement, plus
 aucune prise (pas de transition ciblée, pas d'attente d'état, pas de terminaison propre scriptée).
 D'où l'ordre : **C fabrique le décor, A le pilote**.
+
+⚠️ **RÉVISÉ à l'ép. 4g (2026-08-07) : « hors ligne » était une impasse, et A l'a rendue inutile.**
+Le `.mar` contient du `Marshal` binaire (§ 4.8) : aucun script ne peut l'écrire, et *ce chantier*
+n'écrira pas de générateur OCaml pour cela. La bonne nouvelle est qu'il n'y a plus rien à écrire —
+le décor se fabrique **par le canal** (`new` + `add`/`connect`/`set`/`rc-set`) et c'est **`save-as`**
+(§ 4.2, ép. 4d) qui produit le `.mar`, laissant le format à son seul producteur légitime. La
+séquence devient donc : **A fabrique le décor une fois et l'enregistre, `-r` le rejoue** — autant
+de fois qu'on veut, sans repasser par la fabrication. L'**ép. 7 est absorbé** par ce constat (§ 9).
 
 ---
 
@@ -1076,12 +1116,13 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4d-2b | Les champs structurels : `rename`, `set … name`, `set … port_no` — `#update_structural_with`, la moitié structurelle des huit `update_<kind>_with` | **fait** (2026-08-06) — 85 assertions, `components-bench.sh` |
 | 4d-2c | Le modèle refuse un nom (mal formé **ou** déjà pris) **avant d'écrire** : `check_new_name` en 1ʳᵉ instruction des 5 chemins destructeurs | **fait** (2026-08-06) — banc témoin désarmé, 4 rouges avant / 6 vertes après |
 | 4d-3 | Câbles : `connect` (§ 4.5) — `disconnect` s'est révélé un doublon de `suspend`/`del` | **fait** (2026-08-06) — 119 assertions, `components-bench.sh` |
-| — | `forest` (§ 4.8) : **suspendu**, le `.mar` est du Marshal binaire et non du XML | à re-trancher |
+| **4g** | `forest` (§ 4.8) **re-tranché : abandonné** — sa couverture est acquise par `add`/`set`/`connect` (même source de vérité `#to_tree`/`#eval_forest_attribute`), le lot serait une régression de diagnostic, et la seule variante utile (composer deux projets) sort du contrat § 4.10 ; corollaire : l'ép. 7 est **absorbé** | **fait** (2026-08-07) — décision, aucun code |
 | **4f** | Le couple (distrib, noyau) : le constructeur suit la distribution (comme le dialogue), `set … kernel` hors `SUPPORTED_KERNELS` refusé, `set … distrib` réaligne le noyau et le rapporte dans `adjusted` | **fait** (2026-08-07) — 134 assertions (`components-bench.sh`, bloc C11 neuf) + **le bout en bout de `rc-bench.sh` sans aucune pose de noyau à la main** |
 | 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
+| 4h | Signal « invité prêt » (§ 10, point 1) : convention de marqueur dans le hostfs + `wait <n> --ready` | à faire — arbitrages déjà rendus (cf. fiche mémoire) |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
-| 7 | Voie C : générateur de `.mar` | à faire |
+| ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
 reviendrait à fabriquer un instrument de mesure faussé.
@@ -1121,11 +1162,12 @@ Deux conséquences pour la suite du chantier :
    dans `/mnt/hostfs/` donne au script un signal de disponibilité **sans** toucher aux images —
    c'est-à-dire sans dépendre du chantier `marionnet-kernel-rootfs`. Seule la *convention* reste à
    fixer.
-2. **Ne pas faire passer `rc_config` par `forest`.** Dans le `.mar`, ce champ est **marshalé**
-   (`Marshal.to_string`, `machine.ml:644`/`660`, `switch.ml:455`/`464`) : la commande `forest`
-   (§ 4.8) et le générateur `.mar` (voie C) sont de mauvais véhicules. Il faut une **commande
-   dédiée** qui transporte le contenu **en clair**, par chemin de fichier (§ 4.1) :
-   `rc-set <nœud> --from=<fichier> [--enable|--disable]`, et son pendant `rc-get`.
+2. **Ne pas faire passer `rc_config` par un fichier de projet.** Dans le `.mar`, ce champ est
+   **marshalé** (`Marshal.to_string`, `machine.ml:644`/`660`, `switch.ml:455`/`464`) : il lui
+   fallait une **commande dédiée**, transportant le contenu **en clair** par chemin de fichier
+   (§ 4.1). C'est `rc-set`/`rc-get`, livrées à l'ép. 4e (§ 4.11) — et c'est le premier des deux
+   arguments qui ont fini par emporter l'abandon de `forest` et l'absorption de la voie C
+   (§ 4.8, ép. 4g).
 
 ---
 
@@ -2035,13 +2077,14 @@ que ces commandes n'existent ; le garder aurait créé un synonyme à tenir en c
 
 `forest`, lui, s'est heurté à un fait de format : **`netmodel/network.xml` n'est pas du XML**. Le
 nom, et le commentaire « Pseudo XML now! (using xforest instead of ocamlduce) », sont un vestige ;
-`Netmodel.Xml.save_network` écrit par `Oomarshal.marshaller#to_file` (`user_level.ml:2127`), qui est
-`Marshal.to_channel` (`lib/MARSHAL/oomarshal.ml:35`). Un client Bash ne peut donc pas produire de
-fragment, et lui en faire produire un exigerait que l'OCaml **parse** un format structuré — ce que
-la décision du § 2 exclut depuis l'ép. 0. La commande est **suspendue** avec ses trois voies de
-sortie écrites au § 4.8, plutôt que bâclée. Détail piquant : l'ép. 4d-2b avait déjà tiré profit de
-ce fait, en cherchant les noms au `grep -a` dans un fichier « xml » — sans en tirer la conséquence
-sur `forest`.
+`Netmodel.Xml.save_network` écrit par `Oomarshal.marshaller#to_file` (`user_level.ml:2176-2181`),
+qui est `Marshal.to_channel` (`lib/MARSHAL/oomarshal.ml:35`). Un client Bash ne peut donc pas
+produire de fragment, et lui en faire produire un exigerait que l'OCaml **parse** un format
+structuré — ce que la décision du § 2 exclut depuis l'ép. 0. La commande est **suspendue** avec ses
+trois voies de sortie écrites au § 4.8, plutôt que bâclée. Détail piquant : l'ép. 4d-2b avait déjà
+tiré profit de ce fait, en cherchant les noms au `grep -a` dans un fichier « xml » — sans en tirer
+la conséquence sur `forest`. *(Suite : la suspension est devenue un **abandon** à l'ép. 4g, pour une
+raison de périmètre et non de format — § 4.8.)*
 
 **Reste `connect`, et une garde que le modèle n'a pas.** Le constructeur de câble résout
 `<nœud>:<port>` puis s'enregistre lui-même (`cable.ml:645`,`666`) : il branche là où on lui dit,
@@ -2184,3 +2227,46 @@ posé, machine démarrée, journal de l'invité lu côté hôte après 22 s, 59 
 Et le **témoin** dit l'inverse avec la même netteté : le correctif mis de côté (`git stash` du seul
 `bin/`, les bancs étant hors dépôt), rebuild, rejeu — `add` choisit `3.2.64-ghost`, **aucun journal
 après 90 s**, 2 échecs. `dune build` et `dune test --force` verts, 0 processus orphelin.
+
+### 2026-08-07 — épisode 4g : la porte de sortie qu'on n'ouvrira pas
+
+Épisode de **décision**, sans une ligne de code : la commande `forest`, suspendue à l'ép. 4d-3 sur
+un fait de format, est **abandonnée** — et la voie C (générateur de `.mar`, ép. 7) est **absorbée**
+dans le même mouvement.
+
+**Le motif de la suspension n'était pas le vrai motif de l'abandon.** Le `.mar` est du Marshal
+binaire : ce fait rendait `forest` inécrivable par un client Bash, mais un fait d'implémentation ne
+décide pas d'un périmètre. La question à instruire était : *que resterait-il à `forest` si le
+format était textuel ?* La lecture répond **rien**, et la démonstration est structurelle plutôt
+qu'estimative : `network#eval_forest_child` (`user_level.ml:1808-1816`) ne dispatche que vers les 8
+`try_to_add_<kind>`, sous une racine `("network",[])` (l.1795) — donc **nœuds et câbles, rien
+d'autre** ; les treeviews sont ailleurs. Et le vocabulaire des attributs est **le même** des deux
+côtés : `#to_tree` publie, `#eval_forest_attribute` écrit, aussi bien pour le chargement d'un `.mar`
+que pour `add`/`set`/`connect` depuis l'ép. 4d-2a. Deux chemins qui partagent leur source de vérité
+ont, par construction, la même couverture ; la différence se réduit au **lot** (un aller-retour au
+lieu de N), que personne n'a demandé.
+
+**Et ce lot serait payé en diagnostic.** Le registre `try_to_add_*` se termine par `with _ -> false`
+(`machine.ml:545`), et le modèle documente lui-même qu'un composant mal formé y est *silently
+dropped* (`user_level.ml:1335`). L'ép. 4d-2a l'avait écarté pour cette raison, et tout ce que les
+épisodes suivants ont construit — refuser **avant** d'écrire (4d-2c, 4f), rapporter ce qu'on
+réaligne (`adjusted`), défaire un `add` invalide — vit du côté des constructeurs. `forest` aurait
+échangé des refus motivés contre des silences, dans un chantier dont l'instrument doit d'abord ne
+pas mentir.
+
+**La seule variante qui apportait quelque chose n'appartient pas à ce chantier.** Composer deux
+projets (`forest <projet.mar>`) n'est pas une commande de plus mais une **fonctionnalité neuve**,
+absente de la GUI, donc hors du contrat du § 4.10 — et lourde : collisions de noms, treeviews que
+`network.xml` ne porte pas, `hostfs/`/`states/` à fusionner, remaps d'import. Elle part dans
+`docs/TODO.md`, comme idée, pas comme dette.
+
+**Le corollaire était le vrai gain de l'épisode.** La voie C reposait sur la même impossibilité :
+« produire le `.mar` hors ligne » suppose d'écrire du Marshal. Or le besoin — fabriquer un décor —
+est servi depuis l'ép. 4d sans qu'on l'ait remarqué : `new` + `add`/`connect`/`set`/`rc-set` +
+**`save-as`**, c'est-à-dire laisser Marionnet écrire le format dont il est le seul producteur
+légitime, puis `-r` pour le rejouer autant de fois qu'on veut. Un épisode disparaît du § 9 non
+parce qu'il est difficile, mais parce qu'il est **déjà fait ailleurs**.
+
+Leçon de méthode, la même qu'à l'ép. 4d-3 d'ailleurs : un découpage écrit à l'ép. 0 se **relit**
+après coup, il date d'avant la moitié du code. Sur les quatre lignes qui restaient au § 9, **deux**
+s'y sont dissoutes.

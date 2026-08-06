@@ -212,10 +212,18 @@ Reprise : appliquer le skill `chantier-long`.
   `set … distrib` **accepté** — la GUI l'interdit — et réalignant le noyau, rapporté dans un champ
   `adjusted` ; la garde reste dans le **serveur**, durcir `check_kernel` rendrait un `.mar`
   légitime non chargeable)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f) sont clos**. La direction
-  du § 10 — le scripting **descend dans les composants** — est donc **ouverte et démontrée**.
-  Reprendre par la **convention** de journal / signal « invité prêt » (§ 10, point 1) : le mécanisme
-  est prouvé, seule la convention (nom de fichier, format, un `wait` qui l'attende) manque.
+  et **ép. 4g** (décision, **aucun code** : `forest` **abandonné** — le forest et
+  `add`/`set`/`connect` partagent leur source de vérité [`#to_tree`/`#eval_forest_attribute`], donc
+  leur couverture ; `forest` n'aurait ajouté que le **lot**, au prix d'un registre `try_to_add_*`
+  qui **avale les erreurs**. Corollaire : l'**ép. 7 est absorbé** — un décor se fabrique par le
+  canal puis s'enregistre par **`save-as`**, le seul producteur légitime d'un `.mar` étant
+  Marionnet ; « composer deux projets » part dans `docs/TODO.md`)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g) sont clos**. La
+  direction du § 10 — le scripting **descend dans les composants** — est donc **ouverte et
+  démontrée**. Reprendre par l'**ép. 4h** : le signal « invité prêt » (§ 10, point 1) — mécanisme
+  prouvé, **arbitrages déjà rendus** (attente par le canal `wait <n> --ready` ; anti-périmé par
+  datation contre `<hostfs>/boot_parameters` ; marqueur écrit par le scénario, non injecté), seuls
+  le **nom** et le **format** du marqueur restent à fixer.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
