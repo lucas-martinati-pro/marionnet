@@ -117,6 +117,8 @@ module User_level_machine : sig
       (* [Some] of the above: the return channel of a startup configuration (rc-get/rc-set). *)
       method hostfs_directory_if_any         : string option
       (* --- *)
+      (* The kernels declared as supported by this machine's filesystem (SUPPORTED_KERNELS). *)
+      method supported_kernels_if_any        : string list option
       method get_kernel                      : [ `kernel ] Disk.epithet
       method set_kernel                      : [ `kernel ] Disk.epithet -> unit
       (* --- *)

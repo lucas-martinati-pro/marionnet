@@ -118,6 +118,9 @@ class virtual component :
     (* [None] unless the component has a hostfs directory (machines and routers do), i.e. a host
        directory the guest sees as /mnt/hostfs: the return channel of a startup configuration. *)
     method hostfs_directory_if_any : string option
+    (* [None] unless the component has a filesystem (machines and routers do): the kernels its
+       .conf declares as supported (SUPPORTED_KERNELS), in the GUI combo's order. *)
+    method supported_kernels_if_any : string list option
   end
 
 class port :
@@ -217,6 +220,7 @@ class virtual node_with_ports_card :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method supported_kernels_if_any : string list option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -330,6 +334,7 @@ class virtual node_with_defects :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method supported_kernels_if_any : string list option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -433,6 +438,7 @@ class virtual node_with_ledgrid_and_defects :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method supported_kernels_if_any : string list option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -590,6 +596,7 @@ class type virtual cable =
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method supported_kernels_if_any : string list option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_left : endpoint

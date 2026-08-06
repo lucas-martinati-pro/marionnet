@@ -604,6 +604,11 @@ class machine
      is where a startup configuration writes back to the host (rc-get/rc-set, § 10). *)
   method! hostfs_directory_if_any = Some (self#get_hostfs_directory ())
 
+  (* Redefinition (User_level.component answers None): the kernels this machine's filesystem
+     declares as supported, in the same order as the GUI combo (gui_bricks.ml:540-541). *)
+  method! supported_kernels_if_any =
+    Some (List.map fst (vm_installations#supported_kernels_of self#get_epithet))
+
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
   initializer ignore (self#check_memory memory)

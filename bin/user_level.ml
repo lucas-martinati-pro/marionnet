@@ -590,6 +590,17 @@ fun ~(network:< .. >)
      there makes the two definitions meet by multiple inheritance in machine/router — which is
      warning 7, an error in this build. Two explicit [method!] cost less than silencing it. *)
   method hostfs_directory_if_any : string option = None
+
+  (* Which kernels the component's filesystem declares as supported (SUPPORTED_KERNELS in its
+     .conf, read by Disk.virtual_machine_installations#supported_kernels_of). Only machines and
+     routers have a filesystem, hence the option — [None] means "this kind has no kernel", which
+     is an answer, not a hole. Same reason as above for declaring it here and REDEFINING it in
+     machine.ml and router.ml (multiple inheritance, warning 7).
+     Read-only on purpose: the model still accepts any *installed* kernel (check_kernel below),
+     because a .mar may legitimately reference a kernel that escapes SUPPORTED_KERNELS and
+     tightening the setter would make such a project unloadable. The refusal lives in the control
+     server, which owns the message; this method is what lets it speak. *)
+  method supported_kernels_if_any : string list option = None
 end;;
 
 
@@ -1137,9 +1148,19 @@ class virtual virtual_machine_with_history_and_ifconfig
    | Some x -> x
    | None   -> Option.extract vm_installations#filesystems#get_default_epithet
   in
+  (* The kernel default follows the *filesystem*, exactly as the GUI dialog does
+     (Gui_bricks.make_combo_boxes_of_vm_installations, gui_bricks.ml:520-522): the first kernel
+     declared by the filesystem's .conf (SUPPORTED_KERNELS). The global default epithet ignores
+     the distribution, so it used to build unbootable couples — a machine created without an
+     explicit kernel (the control server's `add', control_server.ml) got "3.2.64-ghost" whatever
+     its filesystem, and the guest never booted. The fallback keeps the old behaviour for a
+     filesystem declaring no supported kernel at all. *)
   let kernel = match kernel with
    | Some x -> x
-   | None   -> Option.extract vm_installations#kernels#get_default_epithet
+   | None   ->
+       (match vm_installations#supported_kernels_of epithet with
+        | (k, _) :: _ -> k
+        | []          -> Option.extract vm_installations#kernels#get_default_epithet)
   in
   let terminal = match terminal with
    | Some x -> x

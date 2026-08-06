@@ -66,3 +66,31 @@ le patron). À faire à l'occasion d'un passage sur `update_with`, pas en campag
 
 *Volet « nom » repéré le 2026-08-06 (ép. 4d-2b), corrigé le même jour (ép. 4d-2c) ; résidu
 « label » repéré à cette occasion.*
+
+## Canal — `set <n> distrib <épithète inexistante>` est accepté **sans rien changer**
+
+**Constat.** `set m1 distrib pas-une-distrib` répond `ok:true` avec `changed:false` : le champ passe
+par `#eval_forest_attribute ("distrib", …)`, qui appelle `remap_absent_distrib_at_import`
+(`machine.ml:660`, `router.ml:1228`). Cette méthode existe pour le **chargement d'un `.mar`** — un
+projet peut nommer un filesystem qui n'est pas installé ici, et le remplacer en silence (avec un
+avertissement d'import) vaut mieux que refuser d'ouvrir le projet. Employée sur un `set` explicite,
+elle transforme une faute de frappe en no-op poli.
+
+**Pourquoi ce n'est pas grave aujourd'hui.** La réponse porte `changed:false` et la valeur **relue**
+(§ 4.3) : un script qui compare `new` à ce qu'il demandait le voit. Mais il doit y penser, alors que
+partout ailleurs le canal **refuse** ce qu'il ne peut pas faire (champ inconnu, noyau hors
+`SUPPORTED_KERNELS` depuis l'ép. 4f, nom non identifiant…).
+
+**Voulu.** Un `bad_argument` nommant les distributions installées, comme la garde du noyau nomme les
+noyaux supportés. C'est la même exigence, sur le champ voisin.
+
+**Ce que l'implémentation devra affronter.** Le modèle ne publie pas la liste des filesystems
+installés : `vm_installations#filesystems#get_epithet_list` n'est accessible qu'aux classes qui
+tiennent `vm_installations`. Il faudrait une méthode de lecture de plus sur `component` (patron de
+`supported_kernels_if_any`, ép. 4f) — donc les trois pièges connus du `.mli` — pour un défaut dont
+personne n'a encore souffert. À faire au prochain passage sur ces gardes, pas avant. **Ne pas**
+toucher `remap_absent_distrib_at_import` : son comportement est correct pour l'import, qui est sa
+raison d'être.
+
+*Repéré le 2026-08-07 par le banc de l'ép. 4f (`components-bench.sh`, bloc C11), qui avait lui-même
+confondu un répertoire `…_variants` avec une épithète — l'erreur du banc a révélé celle du canal.*

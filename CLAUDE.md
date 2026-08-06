@@ -206,11 +206,16 @@ Reprise : appliquer le skill `chantier-long`.
   [`(bool, string)` démarshalé en `Obj.t`] et non à son nom ; `component#hostfs_directory_if_any`
   ajoutée au modèle dit **où l'invité écrit** ; **bout en bout prouvé** : scénario posé par le
   canal, machine démarrée par le canal, journal de l'invité lu côté hôte)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e) sont clos**. La direction du
-  § 10 — le scripting **descend dans les composants** — est donc **ouverte et démontrée**.
-  Reprendre par le défaut que l'ép. 4e a trouvé : **`add` crée une machine qui ne démarre pas**
-  (noyau par défaut *global* au lieu du `SUPPORTED_KERNELS` de la distribution) ; puis la
-  **convention** de journal / signal « invité prêt » (§ 10, point 1).
+  et **ép. 4f** (le **couple (distribution, noyau)** : le constructeur prend le **premier noyau
+  déclaré par le filesystem** — comme le dialogue — au lieu du défaut *global*, si bien qu'`add`
+  produit enfin une machine **démarrable** ; `set … kernel` hors `SUPPORTED_KERNELS` refusé,
+  `set … distrib` **accepté** — la GUI l'interdit — et réalignant le noyau, rapporté dans un champ
+  `adjusted` ; la garde reste dans le **serveur**, durcir `check_kernel` rendrait un `.mar`
+  légitime non chargeable)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f) sont clos**. La direction
+  du § 10 — le scripting **descend dans les composants** — est donc **ouverte et démontrée**.
+  Reprendre par la **convention** de journal / signal « invité prêt » (§ 10, point 1) : le mécanisme
+  est prouvé, seule la convention (nom de fichier, format, un `wait` qui l'attende) manque.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

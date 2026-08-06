@@ -346,6 +346,45 @@ signifie un réseau inchangé. La réponse rend les champs **relus** dans le ré
 même depuis l'ép. 4d-2b : dans `add`, le nom est le deuxième argument et le nombre de ports est
 `--ports` — deux façons d'écrire la même chose inviteraient à les contredire.
 
+**Le couple (distribution, noyau) — ép. 4f.** Une machine et un routeur portent deux champs qui ne
+sont **pas indépendants** : le filesystem (`distrib`) et le noyau qui le démarre (`kernel`). Le
+`.conf` du filesystem déclare ce qu'il supporte (`SUPPORTED_KERNELS`, lu par
+`Disk.virtual_machine_installations#supported_kernels_of`, `disk.ml:272-330`) et le dialogue GUI
+n'offre rien d'autre : le combo des noyaux est un **esclave** de celui des distributions, repeuplé à
+chaque changement (`gui_bricks.ml:540-541`). Le modèle, lui, accepte **n'importe quel noyau
+installé** (`check_kernel`) — délibérément : un `.mar` peut référencer un noyau qui échappe à
+`SUPPORTED_KERNELS`, et durcir le *setter* rendrait ce projet impossible à charger. Trois
+conséquences, toutes du même défaut trouvé par le banc de l'ép. 4e :
+
+- **le défaut du constructeur suit désormais la distribution** (`user_level.ml`, classe
+  `virtual_machine_with_history_and_ifconfig`) : à défaut de `?kernel`, c'est le **premier noyau
+  déclaré par le filesystem** — exactement le choix du dialogue (`gui_bricks.ml:520-522`). Avant,
+  c'était le défaut **global** (`kernels#get_default_epithet`, `3.2.64-ghost`), si bien qu'un
+  `add machine m1` produisait un couple **non démarrable** : « couple
+  (debian-trixie-47362,3.2.64-ghost) unknown! » au journal, puis un UML qui ne boote jamais. La GUI
+  et le chargement d'un `.mar` passent toujours `?kernel` explicitement : eux ne changent pas ;
+- **`set <n> kernel <k>` refuse, avant d'écrire, un noyau que le filesystem ne déclare pas**
+  (`bad_argument`, avec la liste). La garde vit dans le **serveur**, qui possède le message ; le
+  modèle n'expose que la **lecture** (`component#supported_kernels_if_any`, `None` pour les natures
+  sans filesystem — même patron que `hostfs_directory_if_any`, ép. 4e). C'est la décision de
+  l'ép. 4d-3 sur la garde « port libre », pour une raison mesurée cette fois : `check_kernel` durci
+  casserait le chargement d'un `.mar` légitime ;
+- **`set <n> distrib <d>` est accepté et réaligne le noyau** — la GUI, elle, **verrouille** ce combo
+  une fois le composant créé (`gui_bricks.ml:529-531`, avec un « TODO: release this constraint »
+  dans le code), mais le modèle n'a pas cette limite ; le canal la lève et paie la cohérence.
+  Le réalignement est **rapporté**, jamais silencieux : la réponse de `set` porte un champ
+  `adjusted` (`[{field, old, new}]`, vide le reste du temps), comme `del` nomme les câbles emportés.
+  L'ajustement s'exécute **dans le même `network_change`** que l'écriture — restaurer un invariant
+  que l'écriture vient de rompre fait partie de cette écriture. La valeur y est **relue** et non
+  supposée : posé sur wheezy, le premier noyau déclaré (`3.2.64-ghost`) est aussitôt remappé par
+  `remap_obsolete_kernel_at_import` en `6.12.95-i386` sur un hôte moderne.
+
+Dans `add`, la même garde s'applique à `--kernel=`, et `--distrib=` est appliqué **en premier**
+quel que soit l'ordre écrit par le client : il conditionne les autres champs, et valider
+`--kernel=` contre le filesystem *par défaut* refuserait un couple pourtant valide. Un `--kernel=`
+explicite et non supporté est **refusé** (avec le rollback complet d'`add`), jamais corrigé en
+douce ; c'est seulement quand le script n'a pas nommé de noyau que le serveur en choisit un.
+
 **`del`.** Supprimer un nœud supprime **les câbles qui y sont branchés** (`del_node_by_name`,
 `user_level.ml:1843`) ; la réponse les nomme dans `cables_destroyed`, sans quoi le modèle du réseau
 que tient le script divergerait silencieusement du nôtre.
@@ -1038,7 +1077,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4d-2c | Le modèle refuse un nom (mal formé **ou** déjà pris) **avant d'écrire** : `check_new_name` en 1ʳᵉ instruction des 5 chemins destructeurs | **fait** (2026-08-06) — banc témoin désarmé, 4 rouges avant / 6 vertes après |
 | 4d-3 | Câbles : `connect` (§ 4.5) — `disconnect` s'est révélé un doublon de `suspend`/`del` | **fait** (2026-08-06) — 119 assertions, `components-bench.sh` |
 | — | `forest` (§ 4.8) : **suspendu**, le `.mar` est du Marshal binaire et non du XML | à re-trancher |
-| — | `add` choisit un couple (distrib, noyau) **non démarrable** : le constructeur prend le noyau par défaut *global* (`3.2.64-ghost`) là où le dialogue GUI ne propose que les noyaux déclarés par le `.conf` de la distribution (`SUPPORTED_KERNELS`). Trouvé par le banc de l'ép. 4e | à faire (même famille que 4d-2b : « les mêmes limites que la GUI » inclut les **gardes d'entrée des dialogues ») |
+| **4f** | Le couple (distrib, noyau) : le constructeur suit la distribution (comme le dialogue), `set … kernel` hors `SUPPORTED_KERNELS` refusé, `set … distrib` réaligne le noyau et le rapporte dans `adjusted` | **fait** (2026-08-07) — 134 assertions (`components-bench.sh`, bloc C11 neuf) + **le bout en bout de `rc-bench.sh` sans aucune pose de noyau à la main** |
 | 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -2095,3 +2134,53 @@ preuve qui compte pour le § 10 : scénario posé par le canal, machine démarr�
 **le journal écrit par l'invité lu côté hôte au chemin rendu par `hostfs`**, 10 s après le
 démarrage — `hôte vu par l'invité : m1`, suivi de son `ip -brief addr`. Aucun clic, aucune image
 modifiée. `dune build` et `dune test --force` verts (0 échec), aucun processus orphelin.
+
+### 2026-08-07 — épisode 4f : le noyau que la distribution déclare
+
+Épisode entièrement dicté par une trouvaille du banc précédent : **une machine créée par le canal
+ne démarrait pas**. Le correctif de fond tient en cinq lignes du modèle — à défaut de `?kernel`, le
+constructeur prend le **premier noyau déclaré par le filesystem** au lieu du défaut *global*,
+c'est-à-dire exactement ce que fait le dialogue GUI (`gui_bricks.ml:520-522`) — mais la lecture qui
+y menait a montré que le défaut avait **trois faces**, pas une : le constructeur, `set … kernel`
+(qui acceptait n'importe quel noyau installé) et `set … distrib` (qui laissait le noyau derrière
+lui). C'est la même famille que l'ép. 4d-2b, et sa leçon se confirme une troisième fois : *« les
+mêmes limites que la GUI » inclut les gardes d'entrée des dialogues*, qui ne vivent pas dans le
+modèle.
+
+**Deux arbitrages, dans deux directions opposées, et c'est délibéré.**
+
+1. **La garde reste dans le serveur**, le modèle n'exposant que la lecture
+   (`component#supported_kernels_if_any`, patron de `hostfs_directory_if_any`). L'ép. 4d-2c avait
+   fait l'inverse pour le nom (`check_new_name` **dans** le modèle) ; ici, durcir `check_kernel`
+   aurait un coût mesurable : `remap_obsolete_kernel_at_import` **garde** un noyau installé et
+   moderne même s'il échappe à `SUPPORTED_KERNELS` (`user_level.ml:1378`), donc un `.mar` existant
+   dans ce cas deviendrait **non chargeable**. Le patron de l'ép. 4d-3 (« sur mesure du dégât
+   réel, pas par symétrie ») s'applique tel quel.
+2. **`set … distrib` est autorisé alors que la GUI l'interdit.** Son combo est verrouillé une fois
+   le composant créé (`gui_bricks.ml:529-531`) — mais le code porte à cet endroit un
+   « TODO: release this constraint », et le modèle, lui, sait le faire. Le canal le fait donc, et
+   **paie la cohérence** : le noyau est réaligné dans le **même** `network_change` et le
+   changement est **rapporté** dans un champ `adjusted`, jamais silencieux. Le principe est celui
+   de `cables_destroyed` (§ 4.3) : un script dont le modèle du réseau diverge sans le savoir est
+   pire qu'un refus.
+
+**Un détail d'implémentation qui n'en est pas un : l'ordre des options d'`add`.** Le serveur trie
+`--distrib=` en tête quel que soit l'ordre écrit par le client, parce que la distribution
+conditionne la validité du noyau ; sans ce tri, `add machine m --kernel=6.12.95-i386
+--distrib=debian-wheezy-08367` serait refusé au motif d'un filesystem qui n'est même pas celui
+demandé. Le banc mesure les deux ordres.
+
+**Preuve, en deux temps, et le second est le vrai.** D'abord `components-bench.sh`, bloc **C11**
+neuf : **134 assertions vertes** (119 + 15), dont le refus d'un noyau hors liste, le réalignement
+rapporté, la **preuve croisée** (l'ancien noyau devient refusé sous la nouvelle distribution) et le
+rollback d'un `--kernel=` invalide. Les épithètes y sont **découvertes sur le disque**, jamais
+codées — et un premier jet a d'ailleurs pris les répertoires `…_variants` pour des distributions,
+ce qui a fait mesurer des `set distrib <nom inexistant>` : **acceptés en silence** (`ok:true`,
+`changed:false`), un mensonge doux consigné dans `docs/TODO.md` plutôt que corrigé ici.
+
+Ensuite la mesure qui compte : `rc-bench.sh` a **perdu** son `set m1 kernel 6.12.95`, cette ligne
+que l'ép. 4e avait dû écrire pour contourner le défaut. Sans elle, **R8 reste vert** — scénario
+posé, machine démarrée, journal de l'invité lu côté hôte après 22 s, 59 assertions, 0 échec.
+Et le **témoin** dit l'inverse avec la même netteté : le correctif mis de côté (`git stash` du seul
+`bin/`, les bancs étant hors dépôt), rebuild, rejeu — `add` choisit `3.2.64-ghost`, **aucun journal
+après 90 s**, 2 échecs. `dune build` et `dune test --force` verts, 0 processus orphelin.

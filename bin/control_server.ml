@@ -606,13 +606,19 @@ type editable = <
      directory the guest sees as /mnt/hostfs, hence where a startup configuration writes
      back. Read by rc-get/rc-set. *)
   hostfs_directory_if_any : string option;
+  (* [None] for everything but a machine and a router: the kernels their filesystem declares as
+     supported (SUPPORTED_KERNELS), in the same order as the GUI combo. Read by the two guards
+     of episode 4f — the model itself still accepts any installed kernel. *)
+  supported_kernels_if_any : string list option;
   >
 
 type component_outcome =
   | Co_added     of string * (string * string) list  (* kind, fields read back after creation *)
   | Co_connected of (string * string) list * bool    (* fields read back, polarity is right *)
   | Co_deleted   of string * string list             (* kind, cables destroyed along with it *)
-  | Co_set       of string * string * string * string (* kind, field, old value, new value *)
+  (* kind, field, old value, new value, and the fields this write forced along with it
+     (field, old, new) — see [adjust_kernel_after_distrib_change] *)
+  | Co_set       of string * string * string * string * (string * string * string) list
   | Co_read      of string * (string * string) list  (* kind, fields (all, or the one asked) *)
   (* kind, field, (enabled, content), hostfs *)
   | Co_rc_read   of string * string * (bool * string) * string option
@@ -651,13 +657,22 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                     Saying which ones is not a detail: the script's model of the network would
                     otherwise silently diverge from ours. *)
                  ("cables_destroyed", jlist (List.map jstr cables)) ]
-  | Co_set (kind, field, old_value, new_value) ->
+  | Co_set (kind, field, old_value, new_value, adjusted) ->
       reply_ok [ ("component", jstr name);
                  ("kind",      jstr kind);
                  ("field",     jstr field);
                  ("old",       jstr old_value);
                  ("new",       jstr new_value);
-                 ("changed",   jbool (old_value <> new_value)) ]
+                 ("changed",   jbool (old_value <> new_value));
+                 (* Always present, usually empty: a write that forces another field says so,
+                    exactly as [Co_deleted] says which cables went with the node. A script whose
+                    model of the network silently diverges from ours is worse than a refusal. *)
+                 ("adjusted",
+                  jlist (List.map
+                           (fun (f, o, n) -> jobj [ ("field", jstr f);
+                                                    ("old",   jstr o);
+                                                    ("new",   jstr n) ])
+                           adjusted)) ]
   | Co_read (kind, fields) ->
       reply_ok [ ("component", jstr name);
                  ("kind",      jstr kind);
@@ -745,10 +760,19 @@ let cmd_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
    swallows nothing: [GMain_actor.apply] captures the exception of its thunk, so the failure is
    caught where it happens and the model's own message is returned to the client. *)
 let mutate_and_read_back (st : State.globalState) ~(kind:string) ~(field:string) ~(old:string)
-    ~(refused:exn -> string) ~(action: unit -> unit) (c : editable) : component_outcome
+    ~(refused:exn -> string) ~(action: unit -> unit)
+    ?(adjust : (unit -> (string * string * string) list) = fun () -> [])
+    (c : editable) : component_outcome
   =
   let failure = ref None in
-  let () = st#network_change (fun () -> try action () with e -> failure := Some e) () in
+  let adjusted = ref [] in
+  (* [adjust] runs in the *same* network_change as the action: restoring an invariant the write
+     has just broken is part of that write, not a second one — one GTK slot, one redraw, and no
+     window during which the component is inconsistent. *)
+  let () =
+    st#network_change
+      (fun () -> try action (); adjusted := adjust () with e -> failure := Some e) ()
+  in
   match !failure with
   | Some e -> Co_bad (refused e)
   | None ->
@@ -757,7 +781,71 @@ let mutate_and_read_back (st : State.globalState) ~(kind:string) ~(field:string)
         | Some v -> v
         | None   -> old
       in
-      Co_set (kind, field, old, now)
+      Co_set (kind, field, old, now, !adjusted)
+
+(* --- the (filesystem, kernel) couple, episode 4f -------------------- *)
+
+(* Machines and routers carry two fields that are not independent: the filesystem ("distrib") and
+   the kernel that boots it ("kernel"). Their .conf declares which kernels it supports
+   (SUPPORTED_KERNELS, disk.ml:272-330) and the GUI dialog offers no other one: the kernel combo is
+   a *slave* of the distribution combo and is repopulated at every change
+   (Gui_bricks.make_combo_boxes_of_vm_installations, gui_bricks.ml:540-541). The model, on the
+   contrary, accepts any installed kernel (check_kernel, user_level.ml) — deliberately, since a
+   .mar may reference a kernel that escapes SUPPORTED_KERNELS and refusing it would make the
+   project unloadable. So the rule of § 4.10 ("the same limits as the GUI", which includes the
+   dialogs' entry guards, episode 4d-2b) is enforced here, on the two commands that write:
+
+     - [set <n> kernel <k>] refuses a kernel the filesystem does not support, *before* writing;
+     - [set <n> distrib <d>] is accepted (the GUI locks that combo once the device exists,
+       gui_bricks.ml:529-531, but the model has no such limit and the code says "TODO: release
+       this constraint") and the kernel is realigned when the new filesystem does not support the
+       current one — reported in [adjusted], never silently.
+
+   The kernel a component starts with is no longer a problem: since episode 4f the constructor
+   takes the first kernel supported by its filesystem (user_level.ml), as the dialog does. *)
+
+let supported_kernels_and_distrib (c : editable) : (string list * string) option =
+  match c#supported_kernels_if_any with
+  | None | Some [] -> None
+  | Some ks ->
+      let distrib =
+        match List.assoc_opt "distrib" (fields_of_tree c#to_tree) with
+        | Some d -> d
+        | None   -> "?"
+      in
+      Some (ks, distrib)
+
+(* [Some detail] when the value is a kernel this component's filesystem does not declare. *)
+let unsupported_kernel (c : editable) (value : string) : string option =
+  match supported_kernels_and_distrib c with
+  | None -> None
+  | Some (ks, _) when List.mem value ks -> None
+  | Some (ks, distrib) ->
+      Some (Printf.sprintf
+              "the filesystem %S does not support the kernel %S; supported kernels: %s. The GUI \
+               dialog offers no other one either (gui_bricks.ml:540-541); a kernel outside this \
+               list produces a component that never boots"
+              distrib value (String.concat ", " ks))
+
+(* Called inside the network_change that has just changed "distrib". Returns what it had to
+   rewrite, in the (field, old, new) shape of [Co_set]. *)
+let adjust_kernel_after_distrib_change (c : editable) : (string * string * string) list =
+  match supported_kernels_and_distrib c with
+  | None -> []
+  | Some (ks, _) ->
+      (match List.assoc_opt "kernel" (fields_of_tree c#to_tree) with
+       | None -> []
+       | Some k when List.mem k ks -> []
+       | Some k ->
+           let () = c#eval_forest_attribute ("kernel", List.hd ks) in
+           (* Read back rather than assumed, as everywhere else here: eval_forest_attribute goes
+              through remap_obsolete_kernel_at_import (machine.ml:664). *)
+           let now =
+             match List.assoc_opt "kernel" (fields_of_tree c#to_tree) with
+             | Some v -> v
+             | None   -> List.hd ks
+           in
+           [ ("kernel", k, now) ])
 
 (* The structural branch (episode 4d-2b). Every guard below is read from the model — none is a
    rule invented by the channel — and each one is tested *before* acting, because
@@ -774,7 +862,7 @@ let set_structural (st : State.globalState) ~(kind:string) ~(field:string) ~(val
   in
   match field with
   | "name" ->
-      if value = s.st_name then Co_set (kind, field, old, old) else
+      if value = s.st_name then Co_set (kind, field, old, old, []) else
       (* THE SAME TWO CHECKS THE GUI DIALOG MAKES BEFORE CALLING THE MODEL
          (Gui_bricks.Ok_callback.check_name: identifier, then uniqueness), and they must happen
          *here* rather than be left to the model, because the renaming path is NOT atomic:
@@ -795,7 +883,7 @@ let set_structural (st : State.globalState) ~(kind:string) ~(field:string) ~(val
   | _ (* "port_no" *) ->
       (match int_of_string_opt value with
        | None -> Co_bad (Printf.sprintf "%S expects an integer, got %S" field value)
-       | Some n when n = s.st_port_no -> Co_set (kind, field, old, old)
+       | Some n when n = s.st_port_no -> Co_set (kind, field, old, old, [])
        | Some n when n < s.st_port_no_min ->
            (* Three different refusals, and the client is told which one: a fixed-size component,
               a kind whose minimum is higher, or cables occupying the ports above. *)
@@ -845,13 +933,20 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
                        "a cable is not renamed in place: the GUI destroys it and creates it \
                         again (cable.ml:158-176). Use del + connect (§ 4.5)"))
     | Some old ->
-        mutate_and_read_back st ~kind ~field ~old c
-          ~action:(fun () -> c#eval_forest_attribute (field, value))
-          (* int_of_string on a value that is not a number, set_port_no out of range,
-             check_label on a label carrying '<'... the model's own validation, reported instead
-             of being lost in the GTK slot. *)
-          ~refused:(fun e -> Printf.sprintf "the model refused %S = %S: %s"
-                               field value (Printexc.to_string e)))
+        (* The kernel guard comes before the write, like every other one here: the model would
+           accept the value and the component would simply never boot (episode 4f). *)
+        (match (if field = "kernel" then unsupported_kernel c value else None) with
+         | Some detail -> Co_bad detail
+         | None ->
+             mutate_and_read_back st ~kind ~field ~old c
+               ~action:(fun () -> c#eval_forest_attribute (field, value))
+               ~adjust:(fun () ->
+                  if field = "distrib" then adjust_kernel_after_distrib_change c else [])
+               (* int_of_string on a value that is not a number, set_port_no out of range,
+                  check_label on a label carrying '<'... the model's own validation, reported
+                  instead of being lost in the GTK slot. *)
+               ~refused:(fun e -> Printf.sprintf "the model refused %S = %S: %s"
+                                    field value (Printexc.to_string e))))
 
 (* --- del --------------------------------------------------------- *)
 
@@ -967,7 +1062,26 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                   Co_bad detail
                 in
                 let rec apply = function
-                  | [] -> Co_added (kind, fields_of_tree component#to_tree)
+                  | [] ->
+                      (* --distrib= may have brought a filesystem that does not support the kernel
+                         the constructor chose (it chooses the first one supported by the *default*
+                         filesystem, user_level.ml). Realign before answering, so that [add] alone
+                         yields a bootable component; an explicit --kernel= that got through the
+                         guard below is supported by construction, so this is a no-op there. The
+                         adjusted value is not announced apart: [Co_added] reports every field
+                         read back from the model. *)
+                      let failure = ref None in
+                      let () =
+                        st#network_change
+                          (fun () -> try ignore (adjust_kernel_after_distrib_change component)
+                                     with e -> failure := Some e) ()
+                      in
+                      (match !failure with
+                       | Some e ->
+                           rollback (Printf.sprintf
+                                       "aligning the kernel with the filesystem failed: %s"
+                                       (Printexc.to_string e))
+                       | None -> Co_added (kind, fields_of_tree component#to_tree))
                   | (k, _) :: _ when not (List.mem_assoc k fields) ->
                       rollback (Printf.sprintf
                                   "no field %S on a %s; known fields: %s" k kind (field_names fields))
@@ -980,6 +1094,11 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                                   "the field %S holds a marshalled value; use rc-set \
                                    (episode 4e)" k)
                   | (k, v) :: rest ->
+                      (* Same guard as [set]: a kernel the filesystem does not declare builds a
+                         component that never boots (episode 4f). *)
+                      (match (if k = "kernel" then unsupported_kernel component v else None) with
+                       | Some detail -> rollback detail
+                       | None ->
                       let failure = ref None in
                       let () =
                         st#network_change
@@ -989,7 +1108,15 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                       (match !failure with
                        | Some e -> rollback (Printf.sprintf "the model refused %S = %S: %s"
                                                k v (Printexc.to_string e))
-                       | None   -> apply rest)
+                       | None   -> apply rest))
+                in
+                (* "distrib" first, whatever order the client wrote its options in: it conditions
+                   the others (which variants exist, which kernels are supported), so applying
+                   --kernel= before --distrib= would check the kernel against the *default*
+                   filesystem and refuse a couple that is in fact valid. *)
+                let extra =
+                  let (distrib, others) = List.partition (fun (k, _) -> k = "distrib") extra in
+                  distrib @ others
                 in
                 apply extra))
   |> reply_of_outcome (reply_of_component_outcome ~name)
