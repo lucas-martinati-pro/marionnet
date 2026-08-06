@@ -168,7 +168,7 @@ autres sont les arguments positionnels.
 
 **Arité déclarée, dernier argument en texte libre** (tranché à l'**ép. 4d**). La commodité de
 l'ép. 3a — « tous les jetons non-`--` rejoints par un espace » — ne valait que tant qu'une
-commande avait **au plus un** argument positionnel. `connect c1 m1:0 m2:0` et `set m1 label …`
+commande avait **au plus un** argument positionnel. `connect c1 m1:eth0 s1:port1` et `set m1 label …`
 la rendent ambiguë. La convention retenue **n'est pas** une citation à la shell :
 
 | | |
@@ -187,8 +187,8 @@ qui a déjà fait le sien — pour un problème que ce canal n'a pas.
 
 ```
 open /home/jean/mon projet.mar   ->  1 argument : "/home/jean/mon projet.mar"   (dernier libre)
-connect c1 m1:0 m2:0             ->  3 arguments                                (strict)
-connect c1 m1:0 m2:0 zut         ->  {"ok":false,"error":"bad_argument", …}
+connect c1 m1:eth0 s1:port1      ->  3 arguments                                (strict)
+connect c1 m1:eth0 s1:port1 zut  ->  {"ok":false,"error":"bad_argument", …}
 ls foo                           ->  {"ok":false,"error":"bad_argument", …}     (0 positionnel)
 ```
 
@@ -431,9 +431,51 @@ doit porter.
 
 ### 4.5 Câbles
 
-`connect <câble> <n1>:<port> <n2>:<port>` et `disconnect <câble>` →
-`network#add_cable` (l.1805), `#del_cable_by_name` (l.1811),
-`#get_cables_involved_by_node_name` (l.1704).
+*Livré à l'ép. 4d-3 (2026-08-06).*
+
+```
+connect <câble> <nœud>:<port> <nœud>:<port> [--crossover]
+```
+
+**Une seule commande neuve, pas deux.** Le `disconnect` annoncé par la conception de l'ép. 0
+nommait en réalité deux commandes **déjà livrées** : *débrancher* un câble, c'est
+`suspend`/`resume` — le « Disconnect / Reconnect » de la GUI elle-même, § 4.4, ép. 4c — et le
+*supprimer*, c'est `del`, livré à l'ép. 4d-2a et mesuré sur un réseau en marche à l'ép. 4b. Un
+troisième mot aurait été un synonyme à tenir en cohérence, pas une fonctionnalité.
+
+**Le port se nomme, il ne s'indexe pas.** `eth0`, `port1` : le vocabulaire de la GUI et du `.mar`,
+converti par `#ports_card#internal_index_of_user_port_name`, la méthode qu'emploie déjà le
+constructeur (`cable.ml:645`). Ce n'est pas une préférence d'ergonomie : un switch numérote ses
+ports **à partir de 1** (`user_port_offset:1`, `switch.ml:393`, « perfect mapping with VDE ») là où
+une machine part de `eth0` — indexer obligerait le client à recopier cet offset par nature.
+
+**Les gardes, et celle qui manque au modèle.** Le nom (identifiant, libre), l'existence des deux
+nœuds, l'existence du port sur son nœud — et surtout : **le port est-il libre ?** Le constructeur
+ne le vérifie pas ; il branche là où on lui dit, occupé ou non. En GUI, c'est le **dialogue** qui
+tient cette garde, en ne proposant que des extrémités libres
+(`network#free_endpoint_list_humanly_speaking`, `user_level.ml:1833`). Sur ce canal, c'est le
+serveur. Décision de l'ép. 4d-3 : la garde reste **côté serveur**, la question de la descendre dans
+le modèle (comme `check_new_name` à l'ép. 4d-2c) se tranchera **sur mesure du dégât réel**, pas par
+symétrie.
+
+**La polarité est rapportée, jamais imposée.** La réponse porte `correct` (`cable#is_correct`,
+`cable.ml:674`) : `false` dit que le câble est bien branché mais que sa polarité ne convient pas
+aux deux nœuds joints. Le canal ne refuse pas — la GUI ne refuse pas non plus, délibérément
+(« allowing users to define 'wrong' connections may be of some pedagogical interest »,
+`cable.ml:380`).
+
+**Deux libertés assumées** : une boucle d'un nœud vers **lui-même** sur deux ports distincts est
+acceptée (elle l'est en vrai) ; les deux bouts sur **le même** port ne le sont pas. Et un câble se
+**branche pendant que le réseau tourne**, comme il s'édite et se supprime en marche (§ 4.10, règle
+de projet du `CLAUDE.md`).
+
+**Renommer un câble reste impossible** (ép. 4d-2b) : c'est `del` puis `connect`, le chemin que la
+GUI emprunte elle-même (`cable.ml:158-176`). Le refus de `rename` le dit et y renvoie.
+
+Enfin, une mesure faite par le banc de cet épisode et qui ne se devine pas :
+**`network#port_no_lower_of` (`user_level.ml:1872`) n'est pas le nombre de ports câblés**, c'est le
+plus petit **multiple** de `port_no_min` qui les contienne encore. Un switch dont le port câblé le
+plus haut est le 9ᵉ ne peut pas descendre à 9 ports : il descend à **12**.
 
 ### 4.6 Treeviews
 
@@ -495,6 +537,20 @@ forest < fragment.xml
 
 Applique un fragment `Xforest` au réseau via le registre `eval_forest_child`. Couvre par
 construction tout ce qui est représentable dans un `.mar`, sans multiplier les commandes.
+
+⚠️ **SUSPENDU — le format n'est pas textuel** (constat de l'ép. 4d-3, 2026-08-06). Le fichier
+`netmodel/network.xml` d'un `.mar` **n'est pas du XML** malgré son nom : `Netmodel.Xml.save_network`
+passe par `Oomarshal.marshaller#to_file` (`user_level.ml:2127`), c'est-à-dire `Marshal.to_channel`
+(`lib/MARSHAL/oomarshal.ml:35`,`41`) — du **binaire OCaml**. Le nom du module et le commentaire
+« Pseudo XML now! (using xforest instead of ocamlduce) » sont un vestige de l'époque ocamlduce.
+Conséquence : un client Bash **ne peut pas** écrire un fragment, et lui en faire produire un
+supposerait que l'OCaml **parse** un format structuré — exactement ce que la décision du § 2
+exclut. La commande sort donc de l'ép. 4d-3 ; trois voies restent ouvertes, à trancher plus tard :
+(a) le fragment est un fichier **produit par Marionnet lui-même** (`.mar` ou sous-arbre), et
+`forest` compose des projets existants ; (b) le besoin réel est couvert par `add`/`set`/`connect`,
+et `forest` est abandonné (le § 9 en fait déjà une ligne à part) ; (c) une syntaxe textuelle est
+définie et parsée côté OCaml, au prix de la décision du § 2. Le reste de ce paragraphe décrit la
+conception d'origine et vaut pour (a).
 
 ⚠️ **Échec silencieux connu** : `try_to_add_machine` se termine par `with _ -> false`
 (`machine.ml:545`), et `user_level.ml:1201` documente explicitement qu'un composant mal formé est
@@ -904,7 +960,9 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4d | Arité des arguments (§ 4.1) **et** commandes de projet (§ 4.2) | **fait** (2026-08-05) — 29 assertions, `project-bench.sh` |
 | 4d-2a | Composants : `add`, `del`, `get`, `set` **hors champs structurels** (§ 4.3) | **fait** (2026-08-05) — 58 assertions, `components-bench.sh` |
 | 4d-2b | Les champs structurels : `rename`, `set … name`, `set … port_no` — `#update_structural_with`, la moitié structurelle des huit `update_<kind>_with` | **fait** (2026-08-06) — 85 assertions, `components-bench.sh` |
-| 4d-3 | Câbles (`connect`/`disconnect`, § 4.5) et `forest` (§ 4.8) | à faire |
+| 4d-2c | Le modèle refuse un nom (mal formé **ou** déjà pris) **avant d'écrire** : `check_new_name` en 1ʳᵉ instruction des 5 chemins destructeurs | **fait** (2026-08-06) — banc témoin désarmé, 4 rouges avant / 6 vertes après |
+| 4d-3 | Câbles : `connect` (§ 4.5) — `disconnect` s'est révélé un doublon de `suspend`/`del` | **fait** (2026-08-06) — 119 assertions, `components-bench.sh` |
+| — | `forest` (§ 4.8) : **suspendu**, le `.mar` est du Marshal binaire et non du XML | à re-trancher |
 | 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -1849,3 +1907,57 @@ aucun processus orphelin.
 **avant** `set_label`, dont le `check_label` peut encore refuser un label contenant `<` ou `>` —
 même forme de défaut, un cran plus bas, atteignable par le dialogue « Properties » de la GUI mais
 pas par le canal (qui écrit le label par `eval_forest_attribute`, sans écriture préalable).
+
+### 2026-08-06 — épisode 4d-3 : le câble, et la borne qui n'était pas celle qu'on croyait
+
+**L'épisode a d'abord rétréci.** Le § 9 lui donnait trois livrables — `connect`, `disconnect`,
+`forest` — et la lecture en a retiré deux **avant** d'écrire une ligne.
+
+`disconnect` nommait deux commandes déjà livrées : en GUI, « Disconnect / Reconnect » **débranche
+et rebranche** (c'est `suspend`/`resume`, ép. 4c), et **supprimer** un câble, c'est `del`
+(ép. 4d-2a, mesuré en marche à l'ép. 4b). Le mot venait de la conception de l'ép. 0, écrite avant
+que ces commandes n'existent ; le garder aurait créé un synonyme à tenir en cohérence.
+
+`forest`, lui, s'est heurté à un fait de format : **`netmodel/network.xml` n'est pas du XML**. Le
+nom, et le commentaire « Pseudo XML now! (using xforest instead of ocamlduce) », sont un vestige ;
+`Netmodel.Xml.save_network` écrit par `Oomarshal.marshaller#to_file` (`user_level.ml:2127`), qui est
+`Marshal.to_channel` (`lib/MARSHAL/oomarshal.ml:35`). Un client Bash ne peut donc pas produire de
+fragment, et lui en faire produire un exigerait que l'OCaml **parse** un format structuré — ce que
+la décision du § 2 exclut depuis l'ép. 0. La commande est **suspendue** avec ses trois voies de
+sortie écrites au § 4.8, plutôt que bâclée. Détail piquant : l'ép. 4d-2b avait déjà tiré profit de
+ce fait, en cherchant les noms au `grep -a` dans un fichier « xml » — sans en tirer la conséquence
+sur `forest`.
+
+**Reste `connect`, et une garde que le modèle n'a pas.** Le constructeur de câble résout
+`<nœud>:<port>` puis s'enregistre lui-même (`cable.ml:645`,`666`) : il branche là où on lui dit,
+que le port soit libre ou non. En GUI, c'est le **dialogue** qui l'empêche, en ne proposant que des
+extrémités libres. Décision de l'épisode, prise avec l'auteur : la garde vit **côté serveur**, et
+la question de la descendre dans le modèle — comme `check_new_name` à l'ép. 4d-2c — se tranchera
+**sur mesure du dégât réel**, pas par symétrie. Trois autres choix, tous lus dans la GUI : le port
+se **nomme** (`eth0`, `port1`) parce qu'un switch numérote à partir de 1 et une machine à partir de
+0 ; la polarité est **rapportée** (`correct`) et jamais imposée, la GUI laissant elle-même
+construire un câble « faux » à dessein ; et une **boucle** d'un nœud vers lui-même sur deux ports
+distincts est acceptée, les deux bouts sur le même port ne l'étant pas.
+
+**Le moment de mesure : l'assertion discriminante a échoué, et c'est le banc qui avait tort.**
+L'ép. 4d-2b laissait une dette explicite — exercer `network#port_no_lower_of`, ce qui demandait un
+câble. Le banc l'a écrite en croyant la borne égale au **port câblé le plus haut** : câble sur
+`s1:port9`, donc `set s1 port_no 9` attendu accepté. Refusé, avec « fewer than 12 ». Lecture du
+modèle (`user_level.ml:1872`) : la borne est le plus petit **multiple** de `port_no_min` qui
+contienne encore ce port — un switch se dimensionne par multiples de 4, donc **12**. Le code n'avait
+pas tort ; c'est notre description qui l'était, dans le commentaire du type `structural` **et** dans
+le message d'erreur rendu au client (« cables are plugged into ports above 4 », ce qui laissait
+croire que 8 aurait suffi). Les deux ont été corrigés. Et l'assertion a été refaite **discriminante
+par construction**, en ne dépendant plus d'aucune arithmétique devinée : *la même commande, la même
+valeur, avant et après `del c4`* — `set s1 port_no 8` refusé tant que le câble occupe `port9`,
+accepté une fois le câble retiré. Seul le câblage change entre les deux.
+
+**Preuve** : `components-bench.sh` étendu (bloc C8 neuf, C9/C10 renumérotés),
+**119 assertions vertes**, dont la persistance vérifiée sur le **`.mar` enregistré** — `c1bis`
+présent dans `netmodel/network.xml`, et le câble détruit `c1` absent, motif préfixé de son octet
+de longueur Marshal pour ne pas matcher `c1bis`. Les deux dettes de l'ép. 4d-2b sont soldées : la
+borne dynamique ci-dessus, et le « renommage » d'un câble qui est un `del` + `connect` (le canal le
+refuse en y renvoyant, comme la GUI le fait en interne). Un câble est enfin **branché pendant que
+le réseau tourne**, sur deux composants créés eux aussi en marche — la règle de projet, mesurée et
+non plus seulement écrite. `dune build` et `dune test --force` verts (0 échec), aucun processus
+orphelin.

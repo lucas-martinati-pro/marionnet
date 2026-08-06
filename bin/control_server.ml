@@ -150,7 +150,7 @@ type request = {
 
 (* § 4.1. Until episode 4d the parser joined every non "--" token with a space, so that a path
    containing spaces needed no quoting; that convenience held only as long as a command took at
-   most *one* positional argument, which is no longer true (connect c1 m1:0 m2:0, set m1 label
+   most *one* positional argument, which is no longer true (connect c1 m1:eth0 m2:eth0, set m1 label
    ...). The alternative — shell-like quoting — would buy a state machine, one more error code
    and, on the client side, a second level of escaping on top of the one Bash already did, to
    solve a problem this channel does not have: a component name is an *identifier*
@@ -177,6 +177,9 @@ let one_path           syntax = { min_args = 1; max_args = 1; free_tail = true; 
 (* Two identifiers (a kind and a name), or a component and one of its field names: both are
    identifiers, hence strict. Only a *value* may contain spaces, and only in last position. *)
 let two_identifiers           syntax = { min_args = 2; max_args = 2; free_tail = false; syntax }
+(* A cable name and its two endpoints: three tokens, none of which may contain a space, an
+   endpoint being made of two identifiers and a colon. *)
+let three_identifiers         syntax = { min_args = 3; max_args = 3; free_tail = false; syntax }
 let component_and_field       syntax = { min_args = 1; max_args = 2; free_tail = false; syntax }
 let component_field_and_value syntax = { min_args = 3; max_args = 3; free_tail = true;  syntax }
 
@@ -196,6 +199,8 @@ let arity_of_command : (string * arity) list =
     ("get",           component_and_field "get <component> [<field>]");
     ("set",           component_field_and_value "set <component> <field> <value>");
     ("rename",        two_identifiers "rename <component> <new name>");
+    ("connect",       three_identifiers
+                        "connect <cable> <node>:<port> <node>:<port> [--crossover]");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -549,14 +554,16 @@ let is_marshalled (v:string) : bool =
 let structural_fields = [ "name"; "port_no" ]
 
 (* What a node can do and a cable cannot. The bounds are the ones the GUI dialog itself uses:
-   [port_no_lower_of] (user_level.ml:1836) is not [port_no_min] but the smallest number of ports
-   that still holds every *busy* port — reducing a switch below a cabled port is refused to the
-   script exactly as it is to the human (hub.ml:91). *)
+   [port_no_lower_of] (user_level.ml:1872) is not [port_no_min] but the smallest *multiple* of it
+   that still holds every busy port — measured at episode 4d-3, and it is more than a detail: a
+   switch whose highest cabled port is the 9th cannot go down to 9 ports, but to 12, because it is
+   sized by multiples of 4. Reducing a switch below a cabled port is refused to the script exactly
+   as it is to the human (hub.ml:91). *)
 type structural = {
   st_update      : name:string -> port_no:int -> unit;
   st_name        : string;
   st_port_no     : int;
-  st_port_no_min : int;   (* effective: max (kind's own minimum, busy ports) *)
+  st_port_no_min : int;   (* effective: smallest multiple of the kind's minimum holding every cable *)
   st_port_no_kind_min : int;  (* the kind's own minimum, kept only to say *why* a refusal happens *)
   st_port_no_max : int;
   }
@@ -591,6 +598,7 @@ type editable = <
 
 type component_outcome =
   | Co_added     of string * (string * string) list  (* kind, fields read back after creation *)
+  | Co_connected of (string * string) list * bool    (* fields read back, polarity is right *)
   | Co_deleted   of string * string list             (* kind, cables destroyed along with it *)
   | Co_set       of string * string * string * string (* kind, field, old value, new value *)
   | Co_read      of string * (string * string) list  (* kind, fields (all, or the one asked) *)
@@ -608,6 +616,17 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                     (machine.ml:545) and the lesson holds for any creation path. *)
                  ("fields",    json_of_fields fields);
                  ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+  (* Same shape as [Co_added] — a client adds components and connects them with one reading
+     routine — plus the one field a cable has and a node has not. *)
+  | Co_connected (fields, correct) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr "cable");
+                 ("added",     jbool true);
+                 ("fields",    json_of_fields fields);
+                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields)));
+                 (* False is not an error: the cable exists and is plugged in, but its polarity
+                    does not suit the two nodes it joins (cable.ml:674). *)
+                 ("correct",   jbool correct) ]
   | Co_deleted (kind, cables) ->
       reply_ok [ ("component", jstr name);
                  ("kind",      jstr kind);
@@ -749,8 +768,9 @@ let set_structural (st : State.globalState) ~(kind:string) ~(field:string) ~(val
                         "this kind of component has a fixed number of ports"
                       else if s.st_port_no_min > s.st_port_no_kind_min then
                         Printf.sprintf
-                          "cables are plugged into ports above %d, and unplugging one is the \
-                           business of the disconnect command" s.st_port_no_kind_min
+                          "cables are plugged too high for that, and this kind of component is \
+                           sized by multiples of %d (user_level.ml:1872): freeing a port means \
+                           removing its cable (del)" s.st_port_no_kind_min
                       else
                         "this is the minimum of this kind of component"))
        | Some n when n > s.st_port_no_max ->
@@ -934,6 +954,126 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                        | None   -> apply rest)
                 in
                 apply extra))
+  |> reply_of_outcome (reply_of_component_outcome ~name)
+
+(* --- connect ----------------------------------------------------- *)
+
+(* § 4.5. The cable is the one component [add] cannot build: it is made of two endpoints and a
+   polarity instead of a kind and a number of ports (which is why [node_maker] above sends it
+   here). Everything else it shares with the seven others: its constructor registers it by itself
+   (network#add_cable, cable.ml:666), #to_tree publishes its fields, and [get]/[set]/[del] already
+   serve it since episodes 4d-2a and 4b.
+
+   Note what is NOT here. The "disconnect" announced by § 4.5 named two commands that already
+   exist: unplugging a cable is [suspend]/[resume] — the GUI's own Disconnect/Reconnect, delivered
+   at episode 4c — and removing it is [del], measured on a running network at episode 4b. A third
+   spelling would have been a synonym to keep in step, not a feature. *)
+
+type endpoint_spec = { ep_node : string; ep_port : string }
+
+(* "m1:eth0". The separator is unambiguous: a node name is an identifier (no colon,
+   user_level.ml:521) and a user port name is <prefix><digits> (user_level.ml:592). The port is
+   named as the GUI and the .mar name it ("eth0", "port3"), not by index: the translation to an
+   internal index is [ports_card#internal_index_of_user_port_name], the very method the cable
+   constructor uses (cable.ml:645), and going through indexes here would mean copying each kind's
+   [user_port_offset]. *)
+let endpoint_of_string (s:string) : (endpoint_spec, string) result =
+  let malformed () =
+    Error (Printf.sprintf
+             "%S is not an endpoint: expected <node>:<port>, as in m1:eth0" s)
+  in
+  match String.index_opt s ':' with
+  | None -> malformed ()
+  | Some i ->
+      let node = String.sub s 0 i in
+      let port = String.sub s (i + 1) (String.length s - i - 1) in
+      if node = "" || port = "" then malformed () else
+      Ok { ep_node = node; ep_port = port }
+
+let cmd_connect (st : State.globalState) ~(timeout:float) ~(name:string)
+                ~(left:string) ~(right:string) ~(crossover:bool) : string
+  =
+  match endpoint_of_string left with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok l ->
+  match endpoint_of_string right with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok r ->
+  ask ~timeout
+    (fun () ->
+       if not st#active_project then Co_no_project else
+       (* The same two checks the GUI dialog makes (Gui_bricks.Ok_callback.check_name), for the
+          same reason as everywhere else in this file: the model refuses too (check_name at
+          construction, then network#add_cable on a duplicate) but says it with an exception,
+          where the client deserves a motivated bad_argument. *)
+       if not (StrExtra.Class.identifierp name) then
+         Co_bad (Printf.sprintf
+                   "%S is not a well-formed name: admissible characters are letters, digits and \
+                    underscores" name)
+       else if st#network#name_exists name then
+         Co_bad (Printf.sprintf "the name %S is already used in this network" name)
+       else
+       (* Resolved here, inside the GTK slot, and not before: the node list and the busy ports
+          belong to the model, and reading them from the session thread would race with the task
+          runner. The third check is the guard the model does NOT have — the constructor resolves
+          <node>:<port> and plugs in, whatever is already there. In the GUI it is the dialog that
+          holds it, by offering free endpoints only (network#free_endpoint_list_humanly_speaking,
+          user_level.ml:1833); on this channel it is us. *)
+       let resolve (e : endpoint_spec) =
+         match List.find_opt (fun n -> n#get_name = e.ep_node) (st#network#get_node_list) with
+         | None ->
+             Error (Printf.sprintf "no node named %S in this network" e.ep_node)
+         | Some n ->
+             let ports = n#ports_card#user_port_name_list in
+             let free  = st#network#free_user_port_names_of_node n in
+             if not (List.mem e.ep_port ports) then
+               Error (Printf.sprintf "node %S has no port %S; its ports are: %s"
+                        e.ep_node e.ep_port (String.concat ", " ports))
+             else if not (List.mem e.ep_port free) then
+               Error (Printf.sprintf
+                        "port %s:%s is already taken by a cable; free ports of %S: %s"
+                        e.ep_node e.ep_port e.ep_node
+                        (match free with [] -> "none" | _ -> String.concat ", " free))
+             else Ok n
+       in
+       match resolve l with
+       | Error detail -> Co_bad detail
+       | Ok _ ->
+       match resolve r with
+       | Error detail -> Co_bad detail
+       | Ok _ ->
+       (* Both ends are free, so nothing above catches the one endpoint given twice. A loop from a
+          node to itself on two *distinct* ports stays legal: a wire may do that in reality, and
+          the project rule is that cabling follows reality. *)
+       if l.ep_node = r.ep_node && l.ep_port = r.ep_port then
+         Co_bad (Printf.sprintf "a cable cannot have both ends on %s:%s" l.ep_node l.ep_port)
+       else
+       let failure = ref None in
+       let () =
+         st#network_change
+           (fun () ->
+              try
+                ignore
+                  (new Cable.User_level_cable.cable
+                     ~network:st#network ~crossover ~name
+                     ~left_user_endpoint:(l.ep_node, l.ep_port)
+                     ~right_user_endpoint:(r.ep_node, r.ep_port) ())
+              with e -> failure := Some e)
+           ()
+       in
+       (match !failure with
+        | Some e ->
+            Co_bad (Printf.sprintf "connecting %S failed: %s" name (Printexc.to_string e))
+        | None ->
+        match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+        | None ->
+            Co_bad (Printf.sprintf "%S was not added to the network (see the log)" name)
+        | Some c ->
+            (* [is_correct] is reported, never enforced: the GUI itself lets a human build a
+               straight cable between two machines, on purpose ("allowing users to define 'wrong'
+               connections may be of some pedagogical interest", cable.ml:380). The channel does
+               the same — it wires what it is told to wire, and says whether the polarity works. *)
+            Co_connected (fields_of_tree c#to_tree, c#is_correct)))
   |> reply_of_outcome (reply_of_component_outcome ~name)
 
 (* ---------------------------------------------------------------- *)
@@ -1486,6 +1626,26 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                thing, not two behaviours to keep in step. *)
             | "rename" -> (cmd_set st ~timeout ~name:(arg0 r) ~field:"name"
                              ~value:(arg_at r 1), `Continue)
+            | "connect" ->
+                (* The only command whose behaviour hangs on a bare option, hence the only one
+                   that refuses an unknown one: a mistyped --crossover would otherwise build a
+                   straight cable in silence. *)
+                (match List.filter
+                         (fun (k, _) -> not (List.mem k [ "timeout"; "crossover" ])) r.opts
+                 with
+                 | (k, _) :: _ ->
+                     (reply_error ~code:"bad_argument"
+                        ~detail:(Printf.sprintf
+                                   "no option --%s here; syntax: %s" k
+                                   (match List.assoc_opt "connect" arity_of_command with
+                                    | Some a -> a.syntax
+                                    | None   -> "connect")),
+                      `Continue)
+                 | [] ->
+                     (cmd_connect st ~timeout ~name:(arg0 r) ~left:(arg_at r 1)
+                        ~right:(arg_at r 2)
+                        ~crossover:(option_value r "crossover" <> None),
+                      `Continue))
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

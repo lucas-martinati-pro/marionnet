@@ -196,9 +196,13 @@ Reprise : appliquer le skill `chantier-long`.
   n'était pas le nom mal formé mais **l'homonyme**, `network#name_exists` n'étant lu que par
   `add_node`/`add_cable` ; GUI et serveur gardent leurs tests pour la **qualité du message**, c'est
   un filet, pas une source unique de vérité ; prouvé par un **banc témoin désarmé**)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c) sont clos**, reprendre à l'**ép. 4d-3**
-  (câbles `connect`/`disconnect` + `forest`), puis
-  `rc-set`/`rc-get` à l'ép. 4e. Direction actée
+  et **ép. 4d-3** (les **câbles** : `connect <câble> <nœud>:<port> <nœud>:<port> [--crossover]`,
+  port **nommé** comme en GUI ; l'épisode a rétréci de 3 livrables à 1 — `disconnect` était un
+  doublon de `suspend`/`del`, et **`forest` est suspendu** : `netmodel/network.xml` est du
+  **Marshal binaire**, pas du XML, donc inécrivable par un script ; la garde « port libre » vit
+  dans le serveur, pas dans le modèle)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3) sont clos**, reprendre à
+  l'**ép. 4e** (`rc-set`/`rc-get`). Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
   (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
