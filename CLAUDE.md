@@ -201,10 +201,16 @@ Reprise : appliquer le skill `chantier-long`.
   doublon de `suspend`/`del`, et **`forest` est suspendu** : `netmodel/network.xml` est du
   **Marshal binaire**, pas du XML, donc inécrivable par un script ; la garde « port libre » vit
   dans le serveur, pas dans le modèle)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3) sont clos**, reprendre à
-  l'**ép. 4e** (`rc-set`/`rc-get`). Direction actée
-  (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »
-  (`rc_config`), qui font jouer un scénario au démarrage et écrire un journal dans `/mnt/hostfs/`.
+  et **ép. 4e** (la **configuration de démarrage** : `rc-get`/`rc-set`, § 4.11 — le contenu voyage
+  **en clair** et c'est le *serveur* qui marshale, le champ étant reconnu à sa **forme**
+  [`(bool, string)` démarshalé en `Obj.t`] et non à son nom ; `component#hostfs_directory_if_any`
+  ajoutée au modèle dit **où l'invité écrit** ; **bout en bout prouvé** : scénario posé par le
+  canal, machine démarrée par le canal, journal de l'invité lu côté hôte)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e) sont clos**. La direction du
+  § 10 — le scripting **descend dans les composants** — est donc **ouverte et démontrée**.
+  Reprendre par le défaut que l'ép. 4e a trouvé : **`add` crée une machine qui ne démarre pas**
+  (noyau par défaut *global* au lieu du `SUPPORTED_KERNELS` de la distribution) ; puis la
+  **convention** de journal / signal « invité prêt » (§ 10, point 1).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

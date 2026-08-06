@@ -1085,6 +1085,10 @@ class router
   method ledgrid_label = "Router"
   method defects_device_type = "router"
 
+  (* Redefinition (User_level.component answers None): a router has a hostfs directory, which
+     is where a startup configuration writes back to the host (rc-get/rc-set, § 10). *)
+  method! hostfs_directory_if_any = Some (self#get_hostfs_directory ())
+
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.router."^(self#icon_suffix_of_state)^"."^iconsize^".png")

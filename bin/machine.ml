@@ -600,6 +600,10 @@ class machine
   (* Redefinition: *)
   method! dot_fontsize_statement = ""
 
+  (* Redefinition (User_level.component answers None): a machine has a hostfs directory, which
+     is where a startup configuration writes back to the host (rc-get/rc-set, § 10). *)
+  method! hostfs_directory_if_any = Some (self#get_hostfs_directory ())
+
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
   initializer ignore (self#check_memory memory)

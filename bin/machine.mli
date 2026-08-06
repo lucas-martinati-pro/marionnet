@@ -114,6 +114,8 @@ module User_level_machine : sig
       (* --- *)
       method get_states_directory            : string
       method get_hostfs_directory            : ?name   :string (* self#get_name *) -> unit -> string
+      (* [Some] of the above: the return channel of a startup configuration (rc-get/rc-set). *)
+      method hostfs_directory_if_any         : string option
       (* --- *)
       method get_kernel                      : [ `kernel ] Disk.epithet
       method set_kernel                      : [ `kernel ] Disk.epithet -> unit

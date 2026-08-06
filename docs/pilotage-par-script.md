@@ -767,6 +767,81 @@ mutex était devenu **celui du seul thread principal**, ici il devient **celui d
 
 ---
 
+### 4.11 La configuration de démarrage
+
+*Livrée à l'ép. 4e (2026-08-06). C'est le premier pas de la direction du § 10 : le scripting
+descend **dans** les composants.*
+
+```
+rc-get <composant> [<champ>|--field=<champ>]
+rc-set <composant> [<contenu d'une ligne>] [--from=<chemin absolu>] [--enable|--disable] [--field=<champ>]
+```
+
+Le canal commande l'**infrastructure** ; la « Startup configuration » commande l'**intérieur** des
+machines. Le mécanisme était déjà complet — contenu déposé dans `hostfs/marionnet-relay.rcfile`
+(`simulation_level.ml:1244-1251`), **sourcé** en fin de `start()` du relais invité
+(`marionnet-relay.trixie:486-494`) — seul l'accès programmatique manquait.
+
+**Le serveur marshale, le client écrit du texte.** Dans le forest, le champ est un
+`Marshal.to_string (activé, contenu)` (`machine.ml:645`) : c'est pour cela que `get`/`set` le
+servent `null` et le **nomment** dans `omitted` depuis l'ép. 4d-2a. Demander à un client bash de
+forger des octets marshalés était exclu (décision § 2) ; le contenu voyage donc **en clair** et
+c'est le **serveur** qui marshale, à l'aller comme au retour. Cette seule décision est ce qui
+dispense ces deux commandes de tout aiguillage par nature : elles écrivent par le même
+`#eval_forest_attribute` uniforme que `set`.
+
+**Le champ n'est pas nommé, il est reconnu.** Aucune liste de noms de champs — celle-là même que
+`is_marshalled` refuse de tenir « le jour où un composant en ajoute un ». La valeur est
+démarshalée en `Obj.t`, ce qui ne suppose **aucun type**, puis sa **forme** est inspectée : bloc de
+tag 0, taille 2, un immédiat booléen et une chaîne. `Obj.obj` n'est appliqué qu'**après** — le
+contraire exact d'un `Obj.magic`, où le cast est pris sur parole. Conséquence pratique : machine et
+switch (`rc_config`) comme routeur (`rc_config_unix`) sont trouvés sans être nommés, tandis que les
+trois autres champs marshalés du routeur (`rc_config_quagga`, `quagga_selected_srvs`,
+`show_quagga_terminal`) n'ont pas cette forme et restent dans `omitted`. Nommer le champ ne sert
+qu'à lever une ambiguïté future : zéro candidat, ou plusieurs, sont deux refus motivés.
+
+**Deux voies pour le contenu, une par usage.** `--from=<chemin absolu>` est la voie du multi-ligne
+(§ 4.1) : le fichier est lu **dans le thread serveur**, jamais dans le créneau GTK, et l'absolu est
+exigé pour la raison qui vaut déjà pour `open` (Marionnet a fait `chdir` vers sa propre maison).
+Le contenu **d'une ligne** s'écrit directement en dernier argument libre — avec la limite du
+tokeniseur : un mot commençant par `--` y serait pris pour une option, ce que le serveur **dit** au
+lieu de l'avaler (message renvoyant à `--from=`).
+
+**Les gardes**, toutes rendues en `bad_argument` motivé : `--from` et *inline* ensemble ;
+`--enable` et `--disable` ensemble ; ni contenu ni drapeau (« rien à faire » plutôt qu'un no-op
+muet) ; chemin relatif, fichier absent, non régulier, plus grand qu'**1 Mio** (un scénario n'est pas
+une image) ; et surtout **contenu non UTF-8** — la réponse de ce canal est une ligne JSON, un
+contenu invalide serait accepté ici et casserait `rc-get` chez le client, très loin de sa cause.
+
+**Poser un contenu l'active**, sauf `--disable` explicite : un scénario qui ne jouerait jamais est
+exactement la surprise silencieuse que ce canal existe pour éviter. Un drapeau seul ne touche pas
+au contenu. La réponse porte `enabled_before`/`enabled`, `old_bytes`/`bytes` et `changed` — des
+**tailles**, pas l'ancien contenu, qui se relit par `rc-get`.
+
+**`can_modify` s'applique** (§ 4.10), et ici la règle est plus qu'une symétrie avec la GUI : le
+champ est lu à la **construction du device** (`machine.ml:674-678`), donc un scénario se pose
+*avant* `start` et l'écrire sur un composant en marche ne changerait rien d'observable avant le
+prochain démarrage. La **lecture**, elle, reste servie en marche.
+
+**Le canal dit où l'invité écrira** : le champ `hostfs` de la réponse porte
+`<racine du projet>/hostfs/<nom>` (`user_level.ml:1486`), c'est-à-dire le répertoire **hôte** que
+l'invité voit en `/mnt/hostfs`. Il est `null` pour un switch, qui n'en a pas — son rc est un jeu de
+commandes **vdeterm** passé à `vde_switch --rcfile` (`simulation_level.ml:398-409`), dont rien ne
+revient. Pour l'exposer sans recopier la convention de chemin dans le serveur,
+`component#hostfs_directory_if_any` a été ajoutée au modèle (`user_level.ml`, défaut `None`,
+redéfinie dans `machine.ml` et `router.ml` — *pas* dans le mixin
+`virtual_machine_with_history_and_ifconfig`, où elle aurait été chez elle : ce mixin n'hérite pas
+de `component`, et les deux définitions se rencontreraient par héritage multiple, ce qui est le
+*warning* 7, une erreur dans ce build).
+
+À noter, mesuré par le banc : un composant créé **par le canal** part d'un rc **vide** et
+désactivé. Le modèle commenté que l'humain voit dans le dialogue est le défaut du **dialogue**
+(`machine.ml:312`), pas celui du constructeur (`machine.ml:564`). C'est le comportement le plus
+prévisible pour un script, mais un humain qui ouvre ensuite le dialogue d'une machine créée par
+script y trouvera un champ vide.
+
+---
+
 ## 5. Client `mrnctl`
 
 Script Bash, sourçant `bashbricks/bashbricks.sh` par chemin relatif (helpers `Json_*`), transport
@@ -963,7 +1038,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4d-2c | Le modèle refuse un nom (mal formé **ou** déjà pris) **avant d'écrire** : `check_new_name` en 1ʳᵉ instruction des 5 chemins destructeurs | **fait** (2026-08-06) — banc témoin désarmé, 4 rouges avant / 6 vertes après |
 | 4d-3 | Câbles : `connect` (§ 4.5) — `disconnect` s'est révélé un doublon de `suspend`/`del` | **fait** (2026-08-06) — 119 assertions, `components-bench.sh` |
 | — | `forest` (§ 4.8) : **suspendu**, le `.mar` est du Marshal binaire et non du XML | à re-trancher |
-| 4e | `rc-set`/`rc-get` (§ 10) : le scripting descend dans les composants | à faire |
+| — | `add` choisit un couple (distrib, noyau) **non démarrable** : le constructeur prend le noyau par défaut *global* (`3.2.64-ghost`) là où le dialogue GUI ne propose que les noyaux déclarés par le `.conf` de la distribution (`SUPPORTED_KERNELS`). Trouvé par le banc de l'ép. 4e | à faire (même famille que 4d-2b : « les mêmes limites que la GUI » inclut les **gardes d'entrée des dialogues ») |
+| 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | 7 | Voie C : générateur de `.mar` | à faire |
@@ -1961,3 +2037,61 @@ refuse en y renvoyant, comme la GUI le fait en interne). Un câble est enfin **b
 le réseau tourne**, sur deux composants créés eux aussi en marche — la règle de projet, mesurée et
 non plus seulement écrite. `dune build` et `dune test --force` verts (0 échec), aucun processus
 orphelin.
+
+### 2026-08-06 — épisode 4e : la configuration de démarrage, et le journal que l'invité renvoie
+
+**Ce que l'épisode livre.** `rc-get` et `rc-set` (§ 4.11) : le canal sait désormais poser un
+**scénario bash** sur une machine, un switch ou un routeur, le relire, l'activer, le désactiver —
+et dire **où** l'invité écrira ce qu'il a à dire. C'est le premier pas concret de la direction du
+§ 10 : le scripting ne s'arrête plus aux gestes de la GUI, il descend **dans** les composants.
+
+**La décision qui a dispensé de tout aiguillage par nature.** Le champ est marshalé dans le forest
+— c'est pour cela que `get`/`set` le servent `null` depuis l'ép. 4d-2a. Plutôt que d'ajouter huit
+appels `#set_rc_config` typés, le contenu voyage **en clair** et c'est le **serveur** qui marshale,
+puis écrit par le même `#eval_forest_attribute` uniforme que `set`. Les deux commandes ne savent
+donc rien d'une machine, d'un switch ni d'un routeur.
+
+**Et celle qui a dispensé d'une liste de noms.** Le fichier refusait déjà d'énumérer les champs
+marshalés (« a list that would rot the day a component adds one ») ; la même règle valait ici. La
+valeur est démarshalée en `Obj.t` — ce qui ne suppose **aucun** type — et c'est sa **forme** qui la
+désigne : bloc de tag 0, taille 2, un immédiat booléen, une chaîne. `Obj.obj` n'est appliqué
+qu'après. Ce n'est pas un `Obj.magic` de plus dans la dette du dépôt : là le cast est pris sur
+parole, ici il est **vérifié avant**. Effet mesuré : `rc_config` (machine, switch) et
+`rc_config_unix` (routeur) sont trouvés sans être nommés, tandis que `rc_config_quagga`,
+`quagga_selected_srvs` et `show_quagga_terminal` — marshalés mais d'une autre forme — restent dans
+`omitted`, et le disent quand on les demande.
+
+**Le modèle a gagné une méthode, à un endroit qui n'était pas le sien.**
+`component#hostfs_directory_if_any` (défaut `None`) donne au serveur le répertoire hôte que
+l'invité voit en `/mnt/hostfs`, sans recopier la convention de chemin de `user_level.ml:1486`. Sa
+place naturelle était le mixin `virtual_machine_with_history_and_ifconfig` — celui qui porte
+`get_hostfs_directory`. Le compilateur l'a refusée : ce mixin **n'hérite pas** de `component`, donc
+les deux définitions se rencontrent par héritage multiple dans `machine.ml` et `router.ml`, ce qui
+est le *warning* 7 (`method-override`), erreur dans ce build. Deux `method!` explicites, dans les
+deux fichiers concernés, coûtent moins qu'un warning désactivé — et se lisent mieux. Piège voisin,
+déjà payé à l'ép. 4d-2b : ajouter une méthode à `component` oblige à compléter **quatre** classes
+de `user_level.mli` plus `machine.mli`, sans quoi « The public method … cannot be hidden ».
+
+**Le banc a trouvé autre chose que ce qu'il cherchait.** Deux constats, aucun des deux prévu :
+
+1. Un composant créé **par le canal** part d'un rc **vide**. Le modèle commenté que l'humain voit
+   est le défaut du **dialogue** (`machine.ml:312`), pas celui du constructeur (`machine.ml:564`,
+   `?(rc_config=(false,""))`). L'assertion qui attendait un contenu non vide était donc fausse, et
+   c'est elle qui a été corrigée — la deuxième fois en trois épisodes que le banc se trompe avant
+   le code.
+2. Surtout : **`add machine` crée une machine qui ne démarre pas.** Le constructeur prend le noyau
+   par défaut *global* (`3.2.64-ghost`) alors que le dialogue GUI ne propose que ceux déclarés par
+   le `.conf` de la distribution (trixie : `SUPPORTED_KERNELS='/6.12.95$/'`). Le journal le dit
+   franchement — « couple (debian-trixie-47362,3.2.64-ghost) unknown! » — et l'invité ne boote
+   pas. C'est exactement la famille de défauts de l'ép. 4d-2b : *« les mêmes limites que la GUI »
+   inclut les gardes d'entrée des dialogues*, qui ne vivent pas dans le modèle. Défaut d'`add`,
+   pas de cet épisode : inscrit au § 9, et contourné dans le banc par un `set m1 kernel 6.12.95`
+   commenté à l'endroit où il se lit.
+
+**Preuve** : `rc-bench.sh` (neuf), **59 assertions vertes, 0 échec**, dont la persistance sur le
+**`.mar` enregistré** (le scénario retrouvé au `grep -a` dans `netmodel/network.xml`) et le refus
+sur un composant **en marche** mesuré sur un switch réellement démarré. Et surtout le bloc R8, la
+preuve qui compte pour le § 10 : scénario posé par le canal, machine démarrée par le canal, et
+**le journal écrit par l'invité lu côté hôte au chemin rendu par `hostfs`**, 10 s après le
+démarrage — `hôte vu par l'invité : m1`, suivi de son `ip -brief addr`. Aucun clic, aucune image
+modifiée. `dune build` et `dune test --force` verts (0 échec), aucun processus orphelin.

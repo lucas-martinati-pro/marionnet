@@ -575,6 +575,21 @@ fun ~(network:< .. >)
 
   method virtual suspend : unit
   method virtual resume  : unit
+
+  (* Where the host can read what the guest writes. The hostfs directory is a *host* directory
+     mounted as /mnt/hostfs in the guest (simulation_level.ml:1235-1251), which makes it the
+     return channel of a startup configuration (rc_config): a scenario that logs into
+     /mnt/hostfs/ is readable from here without touching the guest images. Only machines and
+     routers have one — a switch's rc file is a set of vdeterm commands handed to vde_switch
+     (simulation_level.ml:398-409), and nothing comes back from it — hence the option, and hence
+     its declaration on the common ancestor: the control server (rc-get/rc-set) asks any
+     component without knowing its kind, and [None] is an answer, not a hole.
+     REDEFINED in machine.ml and router.ml, the two kinds that own a hostfs directory. It is
+     redefined *there* rather than in [virtual_machine_with_history_and_ifconfig], where the
+     method would have been at home: that mixin does not inherit [component], so defining it
+     there makes the two definitions meet by multiple inheritance in machine/router — which is
+     warning 7, an error in this build. Two explicit [method!] cost less than silencing it. *)
+  method hostfs_directory_if_any : string option = None
 end;;
 
 

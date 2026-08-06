@@ -41,6 +41,7 @@ module Log = Marionnet_log
 module Future = Ocamlbricks.Future
 module Network = Ocamlbricks.Network
 module StrExtra = Ocamlbricks.StrExtra
+module UnixExtra = Ocamlbricks.UnixExtra
 module Xforest = Ocamlbricks.Xforest
 
 (* ---------------------------------------------------------------- *)
@@ -182,6 +183,9 @@ let two_identifiers           syntax = { min_args = 2; max_args = 2; free_tail =
 let three_identifiers         syntax = { min_args = 3; max_args = 3; free_tail = false; syntax }
 let component_and_field       syntax = { min_args = 1; max_args = 2; free_tail = false; syntax }
 let component_field_and_value syntax = { min_args = 3; max_args = 3; free_tail = true;  syntax }
+(* A component and, optionally, a free text: the one-line form of rc-set. Which field it writes
+   is said by --field, the second position being taken by the content itself. *)
+let component_and_free_text   syntax = { min_args = 1; max_args = 2; free_tail = true;  syntax }
 
 (* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
    "set"/"del", which are not transitions and belong to a later episode. *)
@@ -201,6 +205,10 @@ let arity_of_command : (string * arity) list =
     ("rename",        two_identifiers "rename <component> <new name>");
     ("connect",       three_identifiers
                         "connect <cable> <node>:<port> <node>:<port> [--crossover]");
+    ("rc-get",        component_and_field "rc-get <component> [<field>|--field=<field>]");
+    ("rc-set",        component_and_free_text
+                        "rc-set <component> [<one-line content>] [--from=<absolute path>] \
+                         [--enable|--disable] [--field=<field>]");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -594,6 +602,10 @@ type editable = <
   state_as_string       : string;
   get_name              : string;
   destroy               : unit;
+  (* [None] for everything but a machine and a router (user_level.ml, component): the host
+     directory the guest sees as /mnt/hostfs, hence where a startup configuration writes
+     back. Read by rc-get/rc-set. *)
+  hostfs_directory_if_any : string option;
   >
 
 type component_outcome =
@@ -602,6 +614,10 @@ type component_outcome =
   | Co_deleted   of string * string list             (* kind, cables destroyed along with it *)
   | Co_set       of string * string * string * string (* kind, field, old value, new value *)
   | Co_read      of string * (string * string) list  (* kind, fields (all, or the one asked) *)
+  (* kind, field, (enabled, content), hostfs *)
+  | Co_rc_read   of string * string * (bool * string) * string option
+  (* kind, field, before, after, hostfs *)
+  | Co_rc_set    of string * string * (bool * string) * (bool * string) * string option
   | Co_no_project
   | Co_unknown
   | Co_forbidden of string * string                  (* past participle, raw state *)
@@ -647,6 +663,28 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                  ("kind",      jstr kind);
                  ("fields",    json_of_fields fields);
                  ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+  (* The content travels in clear, on one line: json_escape turns its newlines into \n, which
+     is what makes a multi-line shell scenario fit the answer format of this channel. *)
+  | Co_rc_read (kind, field, (enabled, content), hostfs) ->
+      reply_ok [ ("component", jstr name);
+                 ("kind",      jstr kind);
+                 ("field",     jstr field);
+                 ("enabled",   jbool enabled);
+                 ("content",   jstr content);
+                 ("bytes",     jint (String.length content));
+                 ("hostfs",    jopt hostfs) ]
+  (* Sizes, not the old content: a scenario may be long, and the client that wants it back
+     asks rc-get. What matters here is *what changed*, and it is read back from the model. *)
+  | Co_rc_set (kind, field, (was_enabled, was), (enabled, content), hostfs) ->
+      reply_ok [ ("component",      jstr name);
+                 ("kind",           jstr kind);
+                 ("field",          jstr field);
+                 ("enabled_before", jbool was_enabled);
+                 ("enabled",        jbool enabled);
+                 ("old_bytes",      jint (String.length was));
+                 ("bytes",          jint (String.length content));
+                 ("changed",        jbool ((was_enabled, was) <> (enabled, content)));
+                 ("hostfs",         jopt hostfs) ]
   | Co_no_project ->
       reply_error ~code:"no_active_project" ~detail:"no project is open"
   | Co_unknown ->
@@ -1075,6 +1113,201 @@ let cmd_connect (st : State.globalState) ~(timeout:float) ~(name:string)
                the same — it wires what it is told to wire, and says whether the polarity works. *)
             Co_connected (fields_of_tree c#to_tree, c#is_correct)))
   |> reply_of_outcome (reply_of_component_outcome ~name)
+
+(* ---------------------------------------------------------------- *)
+(*                  The startup configuration (rc)                  *)
+(* ---------------------------------------------------------------- *)
+
+(* § 4.11, and the direction of § 10: the channel commands the *infrastructure*, the startup
+   configuration commands the *inside* of the machines. The mechanism is entirely in place —
+   the content is dropped into hostfs/marionnet-relay.rcfile (simulation_level.ml:1244-1251)
+   and *sourced* at the end of the guest relay's start() (marionnet-relay.trixie:486-494) —
+   only its programmatic access was missing.
+
+   Two facts shape everything below:
+
+   1. The field is read when the *device is built* (machine.ml:674-678), never while it runs:
+      a scenario is posted *before* [start], and posting one on a running component is refused
+      here exactly as the GUI refuses to edit it ([can_modify], § 4.10).
+
+   2. In the forest the field is *marshalled* (machine.ml:645), which is why get/set serve it
+      as null and name it in [omitted] since episode 4d-2a. The channel could not ask a shell
+      client to forge marshalled bytes — so the content travels in clear and *the server
+      marshals it itself*, on the way in as on the way out. That single decision is what keeps
+      these two commands free of any per-kind dispatch: they go through the same uniform
+      [#eval_forest_attribute] as [set]. *)
+
+(* A scenario is a shell script, not an image. The bound exists so that a mistyped --from does
+   not load a filesystem into the project file. *)
+let max_rc_bytes = 1024 * 1024
+
+(* A startup configuration is a marshalled [(bool * string)] = (enabled, content): machine and
+   switch call the field "rc_config" (machine.ml:614, switch.ml:411), a router calls its own
+   "rc_config_unix" (router.ml:1100). Rather than keeping that list of names — which
+   [is_marshalled] above deliberately refuses to keep, "the day a component adds one" — the
+   value is asked what it is: it is demarshalled into [Obj.t], which assumes *no* type at all,
+   and its shape is then inspected. [Obj.obj] is applied only once the shape matches, which is
+   the exact opposite of an [Obj.magic]: no cast is taken on trust.
+
+   The router's three other marshalled fields do not have this shape (an association list and
+   two string lists) and are therefore not offered here; they stay in [omitted]. *)
+let rc_config_of_marshalled (v:string) : (bool * string) option =
+  if not (is_marshalled v) then None else
+  match (try Some (Marshal.from_string v 0 : Obj.t) with _ -> None) with
+  | None -> None
+  | Some o ->
+      let is_bool x = Obj.is_int x && (let i : int = Obj.obj x in i = 0 || i = 1) in
+      let is_string x = Obj.is_block x && Obj.tag x = Obj.string_tag in
+      if Obj.is_block o && Obj.tag o = 0 && Obj.size o = 2
+         && is_bool (Obj.field o 0) && is_string (Obj.field o 1)
+      then Some (Obj.obj o : bool * string)
+      else None
+
+let rc_fields_of (fields : (string * string) list) : (string * (bool * string)) list =
+  List.filter_map
+    (fun (k, v) -> match rc_config_of_marshalled v with Some rc -> Some (k, rc) | None -> None)
+    fields
+
+(* Naming the field is optional because there is exactly one candidate on each of the three
+   kinds that have one today. The three answers below are all the cases, and none of them is a
+   silence: no candidate, several (a kind that would gain a second one), or a name that is not
+   one. *)
+let rc_field_of ~(kind:string) ~(name:string) ~(field:string option)
+    (fields : (string * string) list) : ((string * (bool * string)), string) result
+  =
+  let candidates = rc_fields_of fields in
+  match field, candidates with
+  | None, [ one ] -> Ok one
+  | None, [] ->
+      Error (Printf.sprintf
+               "%S (kind %s) has no startup configuration: today a machine, a switch and a \
+                router have one" name kind)
+  | None, several ->
+      Error (Printf.sprintf
+               "%S (kind %s) has several startup configuration fields (%s): name the one you \
+                mean" name kind (String.concat ", " (List.map fst several)))
+  | Some f, _ ->
+      (match List.assoc_opt f candidates with
+       | Some rc -> Ok (f, rc)
+       | None ->
+           (match List.assoc_opt f fields with
+            | None ->
+                Error (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
+                         f name kind (field_names fields))
+            | Some _ ->
+                Error (Printf.sprintf
+                         "the field %S is not a startup configuration (it does not hold an \
+                          (enabled, content) pair)%s"
+                         f
+                         (match candidates with
+                          | [] -> ""
+                          | l  -> Printf.sprintf "; here it is: %s"
+                                    (String.concat ", " (List.map fst l))))))
+
+(* Read in the serving thread, never inside the GTK slot: a file read is I/O, and the GTK main
+   loop is not the place for it. The absolute path is required for the reason [open] requires
+   it (cmd_open): Marionnet chdir's to its own home at startup, so a relative path would not
+   mean to us what it means to the client. *)
+let rc_content_of_file (path:string) : (string, string) result =
+  if Filename.is_relative path then
+    Error (Printf.sprintf "--from expects an absolute path (got %S)" path)
+  else
+  match (try Some (Unix.stat path) with _ -> None) with
+  | None -> Error (Printf.sprintf "--from: no such file: %S" path)
+  | Some s when s.Unix.st_kind <> Unix.S_REG ->
+      Error (Printf.sprintf "--from: %S is not a regular file" path)
+  | Some s when s.Unix.st_size > max_rc_bytes ->
+      Error (Printf.sprintf
+               "--from: %S holds %d bytes, more than the %d allowed for a startup configuration"
+               path s.Unix.st_size max_rc_bytes)
+  | Some _ ->
+      (try Ok (UnixExtra.cat path)
+       with e -> Error (Printf.sprintf "--from: cannot read %S: %s" path (Printexc.to_string e)))
+
+(* The answer of this channel is one JSON line, and json_escape passes bytes >= 0x80 through as
+   UTF-8. A content that is not valid UTF-8 would therefore be *accepted* here and make rc-get
+   emit a line no client could parse — a failure landing far from its cause. It is refused at
+   the door instead. *)
+let rc_content_is_servable (content:string) : (unit, string) result =
+  if String.is_valid_utf_8 content then Ok () else
+  Error "the content is not valid UTF-8: this channel answers in JSON, and rc-get could not \
+         serve it back on a line"
+
+let cmd_rc_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
+  : string
+  =
+  with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
+    match rc_field_of ~kind ~name ~field (fields_of_tree c#to_tree) with
+    | Error detail  -> Co_bad detail
+    | Ok (f, rc)    -> Co_rc_read (kind, f, rc, c#hostfs_directory_if_any))
+
+let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
+    ~(from:string option) ~(inline:string option) ~(enable:bool option) : string
+  =
+  let asked_content =
+    match from, inline with
+    | Some _, Some _ ->
+        Error "--from=<file> and an inline content cannot be given together"
+    | Some p, None   -> Result.map (fun s -> Some s) (rc_content_of_file p)
+    | None,   Some s -> Ok (Some s)
+    | None,   None   -> Ok None
+  in
+  let asked_content =
+    asked_content >>= function
+    (* Neither a content nor a flag: there is nothing this command could do, and answering "ok"
+       to a request that changes nothing asked-for would hide a client bug. *)
+    | None when enable = None ->
+        Error "nothing to do: give a content (--from=<file> or an inline one) or a flag \
+               (--enable|--disable)"
+    | None        -> Ok None
+    | Some c as x -> Result.map (fun () -> x) (rc_content_is_servable c)
+  in
+  match asked_content with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok content ->
+  with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
+    match rc_field_of ~kind ~name ~field (fields_of_tree c#to_tree) with
+    | Error detail -> Co_bad detail
+    | Ok (f, before) ->
+        (* The same guard the GUI dialog obeys — and here it is more than a rule: the field is
+           read when the device is built, so writing it on a running component would change
+           nothing the client could observe until the next start. *)
+        if not c#can_modify then Co_forbidden ("modified", c#state_as_string) else
+        let (was_enabled, was_content) = before in
+        let new_content = match content with Some s -> s | None -> was_content in
+        (* Posting a scenario enables it, unless --disable says otherwise: a content that would
+           silently never run is the surprise this channel exists to avoid. The flag alone
+           leaves the content untouched. *)
+        let new_enabled =
+          match enable with
+          | Some b -> b
+          | None   -> (match content with Some _ -> true | None -> was_enabled)
+        in
+        let asked = (new_enabled, new_content) in
+        (* A no-op costs no write: network_change marks the project as modified and redraws the
+           sketch (state.ml:892-903). *)
+        if asked = before then Co_rc_set (kind, f, before, before, c#hostfs_directory_if_any)
+        else
+        let failure = ref None in
+        let () =
+          st#network_change
+            (fun () ->
+               try c#eval_forest_attribute (f, Marshal.to_string asked [])
+               with e -> failure := Some e)
+            ()
+        in
+        (match !failure with
+         | Some e ->
+             Co_bad (Printf.sprintf "the model refused the startup configuration %S: %s"
+                       f (Printexc.to_string e))
+         | None ->
+             (* Read back, never assumed — the rule this file follows everywhere. *)
+             let after =
+               match List.assoc_opt f (fields_of_tree c#to_tree) with
+               | Some v -> (match rc_config_of_marshalled v with Some rc -> rc | None -> asked)
+               | None   -> asked
+             in
+             Co_rc_set (kind, f, before, after, c#hostfs_directory_if_any)))
 
 (* ---------------------------------------------------------------- *)
 (*                           Transitions                            *)
@@ -1646,6 +1879,69 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                         ~right:(arg_at r 2)
                         ~crossover:(option_value r "crossover" <> None),
                       `Continue))
+            (* Like [connect], and for a sharper reason: the behaviour of rc-set hangs on its
+               options, and its second argument is *free text*. An unknown option is therefore
+               either a typo — a mistyped --disable would post a scenario and enable it — or a
+               word of the content that [parse_request] took for an option, the known limit of
+               a one-line content. Both deserve the same answer, which names the way out. *)
+            | "rc-get" | "rc-set" ->
+                let allowed =
+                  if r.verb = "rc-get" then [ "timeout"; "field" ]
+                  else [ "timeout"; "field"; "from"; "enable"; "disable" ]
+                in
+                (* rc-get takes the field where [get] takes it, in second position, *and*
+                   through --field, so that a script may use the same variable in both
+                   commands. Giving both is refused rather than arbitrated: silently keeping
+                   one of two contradictory answers is the kind of quiet choice this channel
+                   does not make. rc-set has only --field, its second position being the
+                   content. *)
+                let field =
+                  match option_value r "field", (if r.verb = "rc-get" then arg_opt r 1 else None)
+                  with
+                  | Some f, None      -> `Field (Some f)
+                  | None,   Some f    -> `Field (Some f)
+                  | None,   None      -> `Field None
+                  | Some _, Some _    -> `Twice
+                in
+                (match field with
+                 | `Twice ->
+                     (reply_error ~code:"bad_argument"
+                        ~detail:"the field is given twice (positional argument and --field): \
+                                 give it once",
+                      `Continue)
+                 | `Field field ->
+                match List.filter (fun (k, _) -> not (List.mem k allowed)) r.opts with
+                 | (k, _) :: _ ->
+                     (reply_error ~code:"bad_argument"
+                        ~detail:(Printf.sprintf
+                                   "no option --%s here%s; syntax: %s" k
+                                   (if r.verb = "rc-set" then
+                                      " (a one-line content cannot hold a word starting with \
+                                       --: use --from=<file>)"
+                                    else "")
+                                   (match List.assoc_opt r.verb arity_of_command with
+                                    | Some a -> a.syntax
+                                    | None   -> r.verb)),
+                      `Continue)
+                 | [] ->
+                     if r.verb = "rc-get" then
+                       (cmd_rc_get st ~timeout ~name:(arg0 r) ~field, `Continue)
+                     else
+                       (match (option_value r "enable" <> None),
+                              (option_value r "disable" <> None) with
+                        | true, true ->
+                            (reply_error ~code:"bad_argument"
+                               ~detail:"--enable and --disable cannot be given together",
+                             `Continue)
+                        | enabled, disabled ->
+                            let enable =
+                              if enabled then Some true
+                              else if disabled then Some false
+                              else None
+                            in
+                            (cmd_rc_set st ~timeout ~name:(arg0 r) ~field
+                               ~from:(option_value r "from") ~inline:(arg_opt r 1) ~enable,
+                             `Continue)))
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

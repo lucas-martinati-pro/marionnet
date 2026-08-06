@@ -115,6 +115,9 @@ class virtual component :
     method eval_forest_child     : Xforest.tree -> unit
     method from_tree             : Xforest.node -> Xforest.forest -> unit
     method to_forest             : Xforest.forest
+    (* [None] unless the component has a hostfs directory (machines and routers do), i.e. a host
+       directory the guest sees as /mnt/hostfs: the return channel of a startup configuration. *)
+    method hostfs_directory_if_any : string option
   end
 
 class port :
@@ -213,6 +216,7 @@ class virtual node_with_ports_card :
     method eval_forest_attribute : Xforest.attribute -> unit
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
+    method hostfs_directory_if_any : string option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -325,6 +329,7 @@ class virtual node_with_defects :
     method eval_forest_attribute : Xforest.attribute -> unit
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
+    method hostfs_directory_if_any : string option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -427,6 +432,7 @@ class virtual node_with_ledgrid_and_defects :
     method eval_forest_attribute : Xforest.attribute -> unit
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
+    method hostfs_directory_if_any : string option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -583,6 +589,7 @@ class type virtual cable =
     method eval_forest_attribute : Xforest.attribute -> unit
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
+    method hostfs_directory_if_any : string option
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_left : endpoint
