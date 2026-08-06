@@ -277,6 +277,7 @@ class virtual node_with_defects :
                string ->  (< decrement_alive_endpoint_no : unit;
                              increment_alive_endpoint_no : unit;
                              show : string -> string; .. >) list;
+             name_exists : string -> bool;
              .. >
            as 'b) ->
   name:string ->
@@ -376,7 +377,8 @@ class virtual node_with_ledgrid_and_defects :
                                                 increment_alive_endpoint_no : unit;
                                                 show : string -> string; .. >
                                               list;
-             ledgrid_manager : Ledgrid_manager.ledgrid_manager; .. >
+             ledgrid_manager : Ledgrid_manager.ledgrid_manager;
+             name_exists : string -> bool; .. >
            as 'b) ->
   name:string ->
   ?label:string ->
@@ -471,7 +473,7 @@ class virtual node_with_ledgrid_and_defects :
   end
 
 class virtual virtual_machine_with_history_and_ifconfig :
-  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : import_warning -> unit; .. > ->
+  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : import_warning -> unit; name_exists : string -> bool; .. > ->
   ?epithet:[ `distrib ] Disk.epithet ->
   ?variant:string ->
   ?kernel:[ `kernel ] Disk.epithet ->

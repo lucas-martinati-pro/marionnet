@@ -182,10 +182,14 @@ Reprise : appliquer le skill `chantier-long`.
   seul)
   et **ép. 4d-2b** (les **champs structurels** : `set … name`/`port_no` et `rename` par
   `#update_structural_with` — moitié structurelle des 8 `update_<kind>_with`, déclarée sur
-  `node_with_ports_card`, surchargée machine/router ; **le modèle n'est pas atomique** sur ce
-  chemin, l'appelant valide le nom **avant**, comme le dialogue GUI ; un **câble ne se renomme
-  pas** — la GUI le détruit et le recrée)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b) sont clos**, reprendre à l'**ép. 4d-3**
+  `node_with_ports_card`, surchargée machine/router ; un **câble ne se renomme pas** — la GUI le
+  détruit et le recrée)
+  et **ép. 4d-2c** (le **modèle refuse un nom avant d'écrire** : `User_level.check_new_name`
+  — identifiant **et** libre — en 1ʳᵉ instruction des 5 chemins destructeurs ; le trou principal
+  n'était pas le nom mal formé mais **l'homonyme**, `network#name_exists` n'étant lu que par
+  `add_node`/`add_cable` ; GUI et serveur gardent leurs tests pour la **qualité du message**, c'est
+  un filet, pas une source unique de vérité ; prouvé par un **banc témoin désarmé**)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c) sont clos**, reprendre à l'**ép. 4d-3**
   (câbles `connect`/`disconnect` + `forest`), puis
   `rc-set`/`rc-get` à l'ép. 4e. Direction actée
   (§ 10 de la doc) : le scripting **descend dans les composants** via les « Startup configuration »

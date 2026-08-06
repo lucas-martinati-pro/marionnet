@@ -306,11 +306,13 @@ l'action :
 - `can_modify` (§ 4.10) → `forbidden_transition` ;
 - le nouveau nom doit être un **identifiant** (`StrExtra.Class.identifierp`) et **libre**
   (`network#name_exists`) — les deux tests que fait le dialogue GUI avant d'appeler le modèle
-  (`Gui_bricks.Ok_callback.check_name`). ⚠️ Ils ne peuvent **pas** être laissés au modèle : le
-  chemin de renommage n'est **pas atomique** — `update_virtual_machine_with` renomme les lignes et
-  le répertoire *avant* que `set_name` ait l'occasion de refuser le nom. Un run du banc l'a mesuré :
-  un `rename m1 1m` refusé à mi-chemin laissait la ligne ifconfig de `m1` nommée `1m`, c'est-à-dire
-  précisément l'orphelin que tout cet épisode existe pour empêcher ;
+  (`Gui_bricks.Ok_callback.check_name`). Le serveur les garde **pour la qualité du refus** (un
+  `bad_argument` motivé plutôt qu'un texte d'exception), non plus pour la sûreté : depuis
+  l'épisode 4d-2c, `User_level.check_new_name` les rejoue **dans le modèle**, en première
+  instruction des cinq chemins destructeurs (`update_virtual_machine_with`, les deux `set_name`
+  redéfinis, les deux `update_with`). Auparavant le chemin de renommage n'était **pas atomique** —
+  les lignes et le répertoire étaient renommés *avant* que `set_name` ait l'occasion de refuser le
+  nom, et un `rename m1 1m` refusé à mi-chemin laissait la ligne ifconfig de `m1` nommée `1m` ;
 - `port_no` doit être un entier compris entre `node#port_no_min` et `node#port_no_max`, mais la
   borne basse réellement appliquée est **`network#port_no_lower_of node`** (`user_level.ml:1836`) —
   celle que le dialogue GUI calcule lui aussi (`hub.ml:91`) : on ne réduit pas le nombre de ports
@@ -1796,3 +1798,54 @@ maximum, ports fixes, non entier) et l'assertion discriminante décrite plus hau
 l'expression même du dialogue GUI) mais **non discriminée** par le banc — l'exercer demande un
 câble branché sur un port d'indice supérieur au minimum de la nature, donc `connect`. Assertion à
 ajouter à l'ép. 4d-3.
+
+### 2026-08-06 — épisode 4d-2c : le modèle refuse avant d'écrire
+
+Épisode court, ouvert par une question : la fragilité que l'épisode précédent avait **constatée**
+puis **contournée** chez l'appelant méritait-elle d'être corrigée avant de continuer ? La relecture
+a répondu oui, mais pas pour les raisons qu'en donnait la fiche `docs/TODO.md`.
+
+**Ce n'était pas un site, mais trois — et le plus accessible manquait à la fiche.** Elle décrivait
+`update_virtual_machine_with` (machine et routeur). Mais `node_with_defects#set_name` et
+`node_with_ledgrid_and_defects#set_name` renomment la ligne **defects** *avant* de déléguer à
+`id_name_label#set_name`, seul porteur de `check_name` : le défaut touchait donc **les sept
+natures de nœuds**, par `set_name` seul, sans passer par aucun `update_*_with`. Et `update_with`
+appelle `destroy_my_simulated_device` en première instruction, laquelle **enfile une tâche** sur le
+`task_runner` (`user_level.ml:206-209`) qu'aucun refus ultérieur ne pourrait rappeler.
+
+**Le trou le plus grave n'était pas le nom mal formé mais l'homonyme.** `network#name_exists` n'est
+lu que par `add_node` et `add_cable` ; un renommage ne passe ni par l'un ni par l'autre. Le modèle
+**acceptait** donc de renommer un nœud sur le nom d'un autre, et le canal — qui adresse les
+composants par nom — n'aurait plus jamais su lequel des deux il désignait. Rien dans la fiche ne le
+disait ; c'est la relecture de `add_node` qui l'a montré.
+
+**Correctif** : une fonction libre `check_new_name ~network ~old_name` (`user_level.ml`), qui rejoue
+les deux tests du dialogue GUI et lève si le nom est mal formé **ou** déjà pris, appelée en
+**première instruction** des cinq chemins destructeurs. Trois rangées de `user_level.mli` gagnent
+`name_exists : string -> bool`. Rien ne change chez les appelants : la GUI garde son
+`Ok_callback.check_name` (elle doit rendre `None` pour reboucler et afficher un message localisé,
+pas attraper une exception) et le serveur garde ses deux tests (ils produisent un `bad_argument`
+motivé). **Ce correctif est un filet, pas une source unique de vérité** — et c'est assumé : ce
+qu'il achète, c'est qu'un troisième appelant échoue **bruyamment et sans dégât** au lieu de
+corrompre en silence.
+
+**Preuve — un banc témoin, parce que le chemin est devenu inatteignable.** Les deux appelants
+pré-valident : aucun banc « normal » ne peut plus mesurer quoi que ce soit. La méthode est celle
+des épisodes 3a (témoin `SIGPIPE`) et 3b (témoin `~cloexec`) : `rename-witness.sh` tourne avec les
+deux tests de `set_structural` **désarmés** (`if false && …`), et regarde le modèle laissé seul.
+Résultat, sur le **`.mar` enregistré** et non sur le canal :
+
+| | avant le correctif | après |
+|---|---|---|
+| `rename alphatemoin 1betatemoin` (mal formé) | refusé, mais `1betatemoin` écrit dans `states/ifconfig`, `states/defects`, `states/states-forest` **et** répertoire `hostfs/1betatemoin` créé | refusé, **aucune trace** nulle part |
+| `rename gammatemoin alphatemoin` (déjà pris) | **accepté** → 2 × `alphatemoin`, plus aucun `gammatemoin`, hostfs fusionné | refusé, les deux composants et leurs deux `hostfs/` intacts |
+
+**4 assertions rouges sur 6** avant, **6/6** après : le banc est discriminant. Puis
+`control_server.ml` restauré (`git checkout`), rebuild, et l'ensemble rejoué :
+`components-bench.sh` **85 assertions vertes**, `dune build` et `dune test` verts (7 tests),
+aucun processus orphelin.
+
+**Reste hors périmètre**, et inscrit comme tel dans `docs/TODO.md` : `update_with` applique le nom
+**avant** `set_label`, dont le `check_label` peut encore refuser un label contenant `<` ou `>` —
+même forme de défaut, un cran plus bas, atteignable par le dialogue « Properties » de la GUI mais
+pas par le canal (qui écrit le label par `eval_forest_attribute`, sans écriture préalable).

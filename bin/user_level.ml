@@ -664,6 +664,29 @@ class ['parent] ports_card
 
 end (** class ports_card *)
 
+(** Check a candidate name for a component that already belongs to the network, i.e. a *renaming*.
+    These are the two tests the GUI dialogs perform with [Gui_bricks.Ok_callback.check_name] before
+    calling any [update_<kind>_with]; they are repeated here so that the *model* itself refuses a
+    name before having written anything. The renaming path is destructive from its very first
+    statement — it renames the defects, ifconfig and history rows and the hostfs directory — while
+    the [check_name] of [id_name_label#set_name] only runs at the very end: a name refused half-way
+    used to leave the rows under the new name and the component under the old one (measured
+    2026-08-06, episode 4d-2b of marionnet-pilotage-par-script). Uniqueness, for its part, had no
+    guard at all on this path: [network#name_exists] is read by [add_node]/[add_cable] only, and a
+    renaming goes through neither, so renaming a node onto an existing name silently produced two
+    homonyms — indistinguishable to anything that addresses components by name.
+    Callers that can phrase a better refusal are still expected to test first (the dialogs loop on
+    themselves, the control server answers a motivated error): this is their net, not their
+    replacement. *)
+let check_new_name ~network ~old_name new_name =
+  if new_name = old_name then () else
+  if not (StrExtra.Class.identifierp new_name)
+    then failwith ("Renaming component "^old_name^": invalid name "^new_name)
+    else
+  if network#name_exists new_name
+    then failwith ("Renaming component "^old_name^": the name "^new_name^" is already used in the network")
+    else ()
+
 (* *************************** *
           class node
  * *************************** *)
@@ -883,6 +906,8 @@ class virtual node_with_defects
   method! set_name new_name =
     let old_name = self#get_name in
     if old_name <> new_name then begin
+      (* Before the first write: the defects row is renamed here, the component only below. *)
+      check_new_name ~network ~old_name new_name;
       network#defects#rename old_name new_name;
       self_as_node_with_ports_card#set_name new_name;
     end;
@@ -900,6 +925,9 @@ class virtual node_with_defects
   (* No: force because the simulated device may be rebuilded with new values of other parameters *)
   (* if self#update_really_needed ~name ~label ~port_no then *)
     begin
+      (* Before the first write: [destroy_my_simulated_device] *schedules* a task on the task
+         runner (user_level.ml:206-209), which no later refusal could recall. *)
+      check_new_name ~network ~old_name:self#get_name name;
       self#destroy_my_simulated_device;
       self#set_name name;
       self#set_port_no port_no;
@@ -1032,6 +1060,8 @@ class virtual node_with_ledgrid_and_defects
   method! set_name new_name =
     let old_name = self#get_name in
     if old_name <> new_name then begin
+      (* Before the first write: the defects row is renamed here, the component only below. *)
+      check_new_name ~network ~old_name new_name;
       network#defects#rename old_name new_name;
       self_as_node_with_ports_card#set_name new_name;
     end;
@@ -1053,6 +1083,9 @@ class virtual node_with_ledgrid_and_defects
   (* No: force because the simulated device may be rebuilded with new values of other parameters *)
   (* if self#update_really_needed ~name ~label ~port_no then *)
     begin
+      (* Before the first write: [destroy_my_simulated_device] *schedules* a task on the task
+         runner (user_level.ml:206-209), which no later refusal could recall. *)
+      check_new_name ~network ~old_name:self#get_name name;
       self#destroy_my_simulated_device;
       self#destroy_my_ledgrid;
       self#set_name name;
@@ -1434,6 +1467,9 @@ class virtual virtual_machine_with_history_and_ifconfig
 
   method update_virtual_machine_with ~name ~port_no kernel =
     begin
+      (* Before the first write: the three renamings below all precede the [set_name] that used to
+         be the only place where the name could still be refused. *)
+      check_new_name ~network ~old_name:self#get_name name;
       network#ifconfig#update_port_no self#get_name port_no;
       network#ifconfig#rename self#get_name name;
       network#history#rename  self#get_name name;

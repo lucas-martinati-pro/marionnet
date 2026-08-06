@@ -36,33 +36,33 @@ placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
 
 ---
 
-## Modèle — le renommage d'un composant n'est pas atomique
+## Modèle — le **label** d'un composant se valide encore trop tard
 
-**Constat.** `User_level.virtual_machine_with_history_and_ifconfig#update_virtual_machine_with`
-(`user_level.ml:1418-1425`) renomme les entrées **ifconfig** et **history**, renomme le
-**répertoire hostfs**, puis rend la main ; c'est seulement ensuite que `update_with` appelle
-`set_name`, dont le `check_name` (`user_level.ml:520-523`) **peut refuser** le nom. Un nom
-mal formé produit donc un composant qui garde l'ancien nom pendant que ses lignes de treeview et
-son répertoire portent le nouveau — l'orphelin silencieux qu'on cherche partout à éviter.
-Mesuré le 2026-08-06 (chantier `marionnet-pilotage-par-script`, ép. 4d-2b) : après un `rename m1
-1m` refusé, la ligne ifconfig de `m1` s'appelait `1m`, et l'opération suivante sur ses ports
-échouait sur *« unique_row_id_such_that: there were 0 results instead of 1 »*.
+> Le volet **nom** de cette fiche est **CLOS** : `User_level.check_new_name` valide identifiant et
+> unicité en première instruction des cinq chemins destructeurs (chantier
+> `marionnet-pilotage-par-script`, ép. **4d-2c**, 2026-08-06 — banc témoin `rename-witness.sh`,
+> 4 assertions rouges avant / 6 vertes après). Ne subsiste que le résidu ci-dessous, de même forme.
 
-**Pourquoi ce n'est pas un bug observable aujourd'hui.** Les deux seuls appelants valident en
-amont : la GUI par `Gui_bricks.Ok_callback.check_name` (identifiant **puis** unicité, avant
-d'appeler `update_<kind>_with`) et, depuis l'ép. 4d-2b, le serveur de contrôle par les deux mêmes
-tests. C'est une **fragilité** — la garde vit chez les appelants, dupliquée, et un troisième
-appelant l'oubliera.
+**Constat.** `update_with` (`user_level.ml`, `node_with_defects` et `node_with_ledgrid_and_defects`)
+applique les champs dans l'ordre `set_name` → `set_port_no` → `set_label`. Le `check_label` de
+`id_name_label` (`user_level.ml:519`, `526-530`) **peut refuser** un label contenant `<` ou `>` — après,
+donc, que le nom et le nombre de ports ont déjà été écrits, le device simulé détruit et (pour les
+hubs/switchs/routeurs) le ledgrid défait. Même défaut d'ordre que celui du nom, un cran plus bas.
 
-**Voulu.** Que le modèle valide **avant d'écrire** : `update_virtual_machine_with` (et, tant qu'à
-faire, `update_structural_with`) rejetant un nom mal formé ou déjà pris **sans avoir rien touché**.
-Les appelants pourraient alors se contenter de rapporter l'erreur.
+**Pourquoi ce n'est pas un bug observable aujourd'hui.** Le canal de contrôle écrit le label par
+`eval_forest_attribute` (`set label`), qui n'écrit rien avant : un refus y coûte zéro. Le seul
+chemin exposé est le dialogue « Properties » de la GUI, dont le champ label n'est pas filtré à la
+saisie — nul ne l'a signalé, le caractère `<` étant peu naturel dans un libellé.
 
-**Ce que l'implémentation devra affronter.** `check_name` est un `let` **local** au corps de
-`component` (`user_level.ml:520`), donc non appelable de l'extérieur : il faut soit l'exposer, soit
-appeler directement `StrExtra.Class.identifierp`. L'unicité, elle, appartient au réseau
-(`network#name_exists`, `user_level.ml:1830`) et n'est testée qu'à l'ajout
-(`network#add_node`) — un renommage n'y passe pas. Attention enfin à ne pas déplacer la validation
-*dans* `set_name` : elle y est déjà, c'est bien **son heure** qui est trop tardive.
+**Voulu.** Que `update_with` valide **tous** ses arguments avant d'écrire le premier, comme il le
+fait désormais pour le nom. Un `check_label` appelable (aujourd'hui `let` local au corps de
+`id_name_label`) rendrait la symétrie évidente ; à défaut, dupliquer son unique test
+(`StrExtra.First.matchingp (Str.regexp ".*[><].*")`) comme `check_new_name` duplique le sien.
 
-*Repéré le 2026-08-06, par le banc de l'épisode 4d-2b.*
+**Ce que l'implémentation devra affronter.** Rien de structurel : c'est deux lignes au même endroit
+que celles de l'ép. 4d-2c. Le coût réel est la **preuve** — comme pour le nom, le chemin fautif
+n'est atteignable qu'en désarmant l'appelant, donc par un banc témoin (`rename-witness.sh` en donne
+le patron). À faire à l'occasion d'un passage sur `update_with`, pas en campagne dédiée.
+
+*Volet « nom » repéré le 2026-08-06 (ép. 4d-2b), corrigé le même jour (ép. 4d-2c) ; résidu
+« label » repéré à cette occasion.*
