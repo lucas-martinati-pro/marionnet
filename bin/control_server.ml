@@ -38,6 +38,7 @@
 (* --- *)
 module Log = Marionnet_log
 (* Note: [Either] is the stdlib one here, as in gMain_actor.mli, *not* Ocamlbricks.Either. *)
+module Forest = Ocamlbricks.Forest
 module Future = Ocamlbricks.Future
 module Network = Ocamlbricks.Network
 module StrExtra = Ocamlbricks.StrExtra
@@ -209,6 +210,13 @@ let arity_of_command : (string * arity) list =
     ("rc-set",        component_and_free_text
                         "rc-set <component> [<one-line content>] [--from=<absolute path>] \
                          [--enable|--disable] [--field=<field>]");
+    (* § 4.6. The optional argument filters the *roots* by their Name column. documents takes
+       none: unlike the three others it has no Name column at all (it inherits the bare
+       Treeview.t), so there would be nothing to match. *)
+    ("ifconfig",      optional_component "ifconfig [<node>]");
+    ("defects",       optional_component "defects [<node>]");
+    ("history",       optional_component "history [<node>]");
+    ("documents",     no_arg "documents");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -2078,6 +2086,120 @@ let cmd_notifications ~(since:string option) ~(clear:bool) : string =
         ]
 
 (* ---------------------------------------------------------------- *)
+(*                            Treeviews                             *)
+(* ---------------------------------------------------------------- *)
+
+(* § 4.6. The four treeviews hold what the network model does not: the addresses (ifconfig), the
+   link impairments (defects), the saved states (history) and the attached documents — that is,
+   where the actual configuration of a lab exercise lives. Reading them costs no new model method:
+   state.ml:612-618 publishes the four instances and state.ml:620-631 already coerces them to
+   [Treeview.t], the class that carries the whole reading API.
+
+   Three facts of the code shape the contract below, rather than a symmetry we would have picked:
+
+   (a) the four do NOT share a mother class. ifconfig and defects inherit
+       [treeview_with_a_primary_key_Name_column] (a Name is unique), history inherits
+       [treeview_with_a_Name_column] (a machine holds several rows, one per saved state, so a name
+       matches several roots) and documents inherits the bare [Treeview.t] — it has no Name column
+       at all. Hence an optional name filter on the first three and none on documents;
+
+   (b) their hierarchies are unequal: ifconfig is node → ports, defects is node → ports →
+       directions *and* cable → directions, history is a tree of COW states, documents is flat.
+       Flattening all that into a table would lose it, so the forest is served as a forest, and the
+       filter stays on the roots — a deeper path would promise one thing and do three;
+
+   (c) reading is pure OCaml, not GTK: #get_forest (treeview.ml:1241) reads the [id_forest] ref and
+       the [id_to_row] hashtable, a legacy of the [marionnet-automate-composants] work stream (the
+       treeviews no longer read the widget). We still go through [ask], because *writes* do go
+       through #set_complete_forest, wrapped in GMain_actor.apply_extract (treeview.ml:1267):
+       reading in a GTK slot is what makes an answer one consistent snapshot rather than a mix. *)
+
+let treeview_name_column = "Name"
+
+(* No UTF-8 guard here, unlike rc-set (episode 4e): [json_escape] passes bytes >= 0x80 through,
+   assuming UTF-8, and that assumption holds on this path — a treeview cell comes from a GTK
+   widget or from the .mar loader, never from an arbitrary host file the way rc-set --from does. *)
+let json_of_row_item : Treeview.Row_item.t -> string = function
+  | Treeview.Row_item.String   s -> jstr s
+  | Treeview.Row_item.Icon     s -> jstr s
+  | Treeview.Row_item.CheckBox b -> jbool b
+
+(* The headers served, in the order the GUI shows them: #add_column *appends*
+   (treeview.ml:908), so #columns keeps that order — whereas #column_headers is a Hashtbl.fold,
+   whose order is unspecified and would make any assertion on it flaky. Reserved columns (_id,
+   _uneditable, _highlight) are left out, exactly as #get_row leaves them out of a row
+   (treeview.ml:1419). *)
+let visible_headers (tv : Treeview.t) : string list =
+  List.filter_map (fun c -> if c#is_reserved then None else Some c#header) tv#columns
+
+(* A column this row does not carry is *omitted*, not served as null: the treeviews do have
+   partial rows (a device row has no MTU), and an absent field is not an empty one. *)
+let rec json_of_row_tree ~(headers : string list)
+    ((row, children) : Treeview.Row.t Forest.tree) : string
+  =
+  let field h =
+    match List.assoc_opt h row with
+    | None   -> None
+    | Some v -> Some (h, json_of_row_item v)
+  in
+  jobj [ ("fields",   jobj (List.filter_map field headers));
+         ("children", jlist (List.map (json_of_row_tree ~headers)
+                               (Forest.to_treelist children))) ]
+
+type treeview_outcome =
+  | Tv_read       of string list * Treeview.Row.t Forest.tree list  (* headers, roots kept *)
+  | Tv_no_project
+  (* The root names, so that a refusal also says what does exist — a script mistyping a node name
+     otherwise learns nothing from the answer. *)
+  | Tv_unknown    of string list
+
+let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(name:string option)
+  : string
+  =
+  ask ~timeout
+    (fun () ->
+       (* Same guard as the component commands: without an open project the treeviews are empty,
+          and an empty answer would read as "this node has no ports". *)
+       if not st#active_project then Tv_no_project else
+       let tv : Treeview.t =
+         match which with
+         | "ifconfig" -> (st#treeview#ifconfig  :> Treeview.t)
+         | "defects"  -> (st#treeview#defects   :> Treeview.t)
+         | "history"  -> (st#treeview#history   :> Treeview.t)
+         | _          -> (st#treeview#documents :> Treeview.t)
+       in
+       let headers = visible_headers tv in
+       let roots = Forest.to_treelist tv#get_forest in
+       let root_name ((row, _) : Treeview.Row.t Forest.tree) =
+         match List.assoc_opt treeview_name_column row with
+         | Some (Treeview.Row_item.String s) -> Some s
+         | _ -> None
+       in
+       match name with
+       | None -> Tv_read (headers, roots)
+       | Some wanted ->
+           (match List.filter (fun t -> root_name t = Some wanted) roots with
+            | []   -> Tv_unknown (List.sort_uniq compare (List.filter_map root_name roots))
+            | kept -> Tv_read (headers, kept)))
+  |> reply_of_outcome
+       (function
+        | Tv_read (headers, roots) ->
+            reply_ok [ ("treeview", jstr which);
+                       ("columns",  jlist (List.map jstr headers));
+                       (* The number of *roots* served, so that a bench may require a non-zero
+                          cardinal: without one, jq compares empty lists and the bench applauds
+                          without having measured anything (lesson (c) of episode 4b). *)
+                       ("count",    jint (List.length roots));
+                       ("rows",     jlist (List.map (json_of_row_tree ~headers) roots)) ]
+        | Tv_no_project ->
+            reply_error ~code:"no_active_project" ~detail:"no project is open"
+        | Tv_unknown names ->
+            reply_error ~code:"unknown_node"
+              ~detail:(Printf.sprintf "no row named %S in the %s treeview; known: %s"
+                         (match name with Some n -> n | None -> "") which
+                         (String.concat ", " names)))
+
+(* ---------------------------------------------------------------- *)
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
 
@@ -2208,6 +2330,11 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                             (cmd_rc_set st ~timeout ~name:(arg0 r) ~field
                                ~from:(option_value r "from") ~inline:(arg_opt r 1) ~enable,
                              `Continue)))
+            (* One implementation for the four (§ 4.6): the verb only says which instance to
+               read, the shape of the answer being the same. documents gets [None] by its
+               arity, which takes no positional argument. *)
+            | "ifconfig" | "defects" | "history" | "documents" ->
+                (cmd_treeview st ~timeout ~which:r.verb ~name:(arg_opt r 0), `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

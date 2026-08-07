@@ -225,11 +225,19 @@ Reprise : appliquer le skill `chantier-long`.
   bord au `start` ; **piège durable** : tout fichier `marionnet-relay*` du hostfs est **sourcé** par
   l'invité, d'où le nom retenu ; l'inotify du hostfs qu'annonçait la doc n'existe pas — il porte sur
   `.X11-unix` seul)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h) sont clos**. La
+  et **ép. 5a** (les **4 treeviews en lecture**, § 4.6 : `ifconfig [<n>]`, `defects [<n>]`,
+  `history [<n>]`, `documents` — un verbe par treeview mais **une** implémentation, la forêt servie
+  **comme une forêt** ; contrat dicté par trois faits du code — classes mères différentes [`Name`
+  unique, non unique, absent], hiérarchies inégales [2 / 3 / arbre / plat] et surtout
+  **populations différentes** : `ifconfig` ne reçoit que les composants **adressables**,
+  `defects` reçoit tout **plus les câbles** ; `columns` dans l'ordre de la GUI via `#columns`, et
+  non `#column_headers` qui n'est pas ordonné)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h) et 5a sont clos**. La
   direction du § 10 — le scripting **descend dans les composants** — est donc **ouverte, démontrée
-  et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 5** : les 4 treeviews
-  (ifconfig, defects, history, documents), là où vit la config réelle d'un TP ; puis l'ép. 6
-  (client `mrnctl`), où les 7 bancs resserviront.
+  et refermée** (l'invité rend la main au script). L'ép. 5 est **scindé** : reprendre par l'**ép. 5b**
+  (écriture d'`ifconfig` — là où se configure un TP ; aucun `.mar` d'exemple ne porte d'adresse),
+  puis 5c (`defects`), 5d (`history`/`documents`, si besoin) et l'ép. 6 (client `mrnctl`), où les
+  8 bancs resserviront.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

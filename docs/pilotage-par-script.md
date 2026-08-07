@@ -518,17 +518,58 @@ plus haut est le 9ᵉ ne peut pas descendre à 9 ports : il descend à **12**.
 
 ### 4.6 Treeviews
 
-| Commande | Source |
-|---|---|
-| `ifconfig <nœud> <port> [--ipv4=… \| --mac=… \| …]` | `Treeview_ifconfig.extract ()` (`state.ml:595`) |
-| `defects <nœud> <port> [--loss=… \| --delay=… \| …]` | `Treeview_defects.extract ()` (`state.ml:597`) |
-| `history …` | `treeview_history` |
-| `documents …` | `treeview_documents` |
+**Lecture — livrée à l'épisode 5a.** Un verbe par treeview, une seule implémentation :
 
-Les quatre modèles de données restent à spécifier colonne par colonne à l'épisode 5, en lisant
-`treeview_ifconfig.ml`, `treeview_defects.ml`, `treeview_history.ml`, `treeview_documents.ml`.
-C'est la partie la plus volumineuse du chantier et la plus exposée à la dérive : le contrat doit
-être dérivé du code, pas réinventé.
+```
+ifconfig  [<nœud>]     # filtre les RACINES par leur colonne Name
+defects   [<nœud>]
+history   [<nœud>]
+documents              # aucun argument positionnel (pas de colonne Name)
+```
+
+Réponse : `{"ok":true,"treeview":…,"columns":[…],"count":N,"rows":[{"fields":{…},"children":[…]}]}`.
+Les valeurs suivent le type de cellule (`Row_item`) : `String`/`Icon` → chaîne JSON,
+`CheckBox` → **booléen** JSON. `count` est le nombre de **racines** rendues. Refus : pas de projet
+→ `no_active_project` ; nom absent → `unknown_node`, **avec la liste des racines existantes**.
+
+Trois faits du code — et non une symétrie choisie — dictent cette forme :
+
+1. **Les quatre n'ont pas la même classe mère.** `ifconfig` et `defects` héritent de
+   `treeview_with_a_primary_key_Name_column` (un `Name` est unique), `history` de
+   `treeview_with_a_Name_column` (un nom désigne **plusieurs** lignes : les états successifs) et
+   `documents` du `Treeview.t` nu — il n'a **aucune** colonne `Name`. D'où le filtre optionnel des
+   trois premiers et son absence sur le quatrième.
+2. **Les hiérarchies sont inégales** : `ifconfig` = nœud → ports ; `defects` = nœud → ports →
+   **directions** (3 niveaux) *et* câble → 2 directions (2 niveaux) ; `history` = arbre de COW ;
+   `documents` = plat. Une réponse aplatie en table perdrait cela : la forêt est servie **comme
+   une forêt**, et le filtre reste sur les racines — un chemin profond promettrait une chose et en
+   ferait trois.
+3. **Les quatre n'ont pas la même population.** `ifconfig` ne reçoit que les composants
+   **adressables** — `add_my_ifconfig` (`user_level.ml:1477`) n'est appelé que par le mixin des
+   machines et routeurs (l.1178) —, tandis que `defects` reçoit les 8 natures **plus les câbles**.
+   « Autant de racines que de nœuds » est donc faux pour `ifconfig` : c'est « autant que de nœuds
+   adressables ».
+
+**Colonnes publiées** (ordre de la GUI : `#add_column` *append*, `treeview.ml:908` — ne jamais
+lire `#column_headers`, qui est un `Hashtbl.fold` d'ordre indéterminé) :
+
+| Treeview | Colonnes servies |
+|---|---|
+| `ifconfig` | `Name`, `_uneditable`, `Type`, `MAC address`, `MTU`, `IPv4 address`, `IPv4 gateway`, `IPv6 address`, `IPv6 gateway` |
+| `defects` | `Name`, `_uneditable`, `Type`, `Loss %`, `Duplication %`, `Flipped bits %`, `Minimum delay (ms)`, `Maximum delay (ms)` |
+| `history` | `Name`, `Type`, `Activation scenario`, `Timestamp`, `Comment`, `File name`, `Prefixed filesystem` |
+| `documents` | `Icon`, `Title`, `Author`, `Type`, `Comment`, `FileName`, `Format` |
+
+Sont exclues les colonnes **réservées** (`_id`, `_highlight`, `_highlight-color`, déclarées
+`~reserved:true` dans `Treeview.t`) : elles portent l'identité de ligne et la surbrillance, pas du
+contenu. `_uneditable`, elle, est **cachée** en GUI (`~hidden:true`) mais **non réservée** — et
+elle est servie, parce qu'elle dit quelles lignes sont éditables : `hidden` est une décision
+d'écran, `reserved` une frontière d'implémentation, et un script n'est pas un écran.
+
+**Écriture — épisodes 5b (`ifconfig`) et 5c (`defects`).** Constat du banc de l'épisode 5a :
+**aucun** des 8 projets de `_claude-local/examples/` ne porte d'adresse IPv4 (vérifié au `grep -a`
+sur `states/ifconfig`, qui est du `Marshal`). Ce que Marionnet peuple seul, ce sont `MAC address`
+et `MTU` ; tout le reste attend qu'on l'écrive — c'est exactement ce que ces épisodes ajouteront.
 
 ### 4.7 Synchronisation
 
@@ -1169,7 +1210,10 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **4f** | Le couple (distrib, noyau) : le constructeur suit la distribution (comme le dialogue), `set … kernel` hors `SUPPORTED_KERNELS` refusé, `set … distrib` réaligne le noyau et le rapporte dans `adjusted` | **fait** (2026-08-07) — 134 assertions (`components-bench.sh`, bloc C11 neuf) + **le bout en bout de `rc-bench.sh` sans aucune pose de noyau à la main** |
 | 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
 | **4h** | Signal « invité prêt » (§ 10, point 1) : marqueur `marionnet-guest-ready` écrit par le scénario, `wait <n> --ready`, fraîcheur par datation contre `boot_parameters` | **fait** (2026-08-07) — 29 assertions, `ready-bench.sh` (dont l'anti-périmé, discriminant) |
-| 5 | Les 4 treeviews | à faire |
+| **5a** | Les 4 treeviews, **face lecture** : un verbe par treeview, une implémentation, la forêt servie comme une forêt (§ 4.6) | **fait** (2026-08-07) — 47 assertions, `treeview-bench.sh` |
+| 5b | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure | à faire |
+| 5c | Écriture de `defects` (pertes, délais) — probablement la seule écriture applicable **en marche** | à faire |
+| 5d | `history` et `documents` en écriture, si un besoin apparaît | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 
@@ -2366,3 +2410,51 @@ tort. Puis le même fichier, re-daté au présent, redevient un signal : le crit
 fraîcheur, et rien d'autre. Le premier run avait une assertion rouge, et c'était le **banc** qui se
 trompait de nom de champ (`connected` pour `added`) — troisième fois du chantier qu'un banc corrige
 sa propre lecture avant de mesurer le code.
+
+### 2026-08-07 — épisode 5a : les quatre treeviews, et les trois familles qu'ils forment
+
+**Ce que l'épisode livre** : `ifconfig`, `defects`, `history`, `documents` en lecture — un verbe par
+treeview, **une seule** implémentation (`cmd_treeview`), la forêt servie comme une forêt. 130 lignes
+dans `bin/control_server.ml`, **aucun autre fichier de code touché** : `state.ml:612-618` publiait
+déjà les quatre instances et `state.ml:620-631` faisait déjà la coercition `(t :> Treeview.t)` qui
+rend l'uniformité gratuite. Aucun `.mli`, donc aucun des trois pièges d'ajout de méthode payés à
+l'épisode 4e.
+
+**Le découpage de l'épisode 5 vient d'une lecture, pas d'un calendrier.** Le § 4.6 annonçait un
+épisode unique — « la partie la plus volumineuse du chantier ». Le scinder en 5a (lecture des
+quatre) puis 5b/5c (écritures) tient à ceci : c'est la lecture qui **décide** si les écritures
+seront uniformes ou aiguillées quatre fois, et la trancher sous couvert d'un épisode d'écriture
+aurait fait payer un aiguillage peut-être inutile. Réponse obtenue : la lecture est uniforme, et
+elle publie le vocabulaire (`columns`) sur lequel les écritures viendront se valider — exactement
+le rôle qu'a joué `#to_tree` pour `add`/`set`/`connect`.
+
+**Trois faits ont dicté le contrat, contre trois symétries tentantes** (détail au § 4.6) : les
+quatre classes mères ne sont pas les mêmes (un `Name` unique pour `ifconfig`/`defects`, non unique
+pour `history`, **absent** pour `documents`) ; les hiérarchies sont inégales (2, 3, arbre, plat) ;
+et — trouvaille du **premier run** — les quatre n'ont pas la même **population** : `ifconfig` ne
+reçoit que les composants adressables, `defects` reçoit tout, câbles compris. Le banc assertait
+« autant de racines que de nœuds » : il mesurait une symétrie qui n'existe pas. C'est le banc qui a
+été corrigé, et l'assertion refaite **discriminante** — un switch absent d'`ifconfig` *et* présent
+dans `defects`, dans le même run.
+
+**Une décision de vocabulaire, prise sur la différence entre deux attributs de colonne.** `_id`,
+`_highlight` et `_highlight-color` sont déclarées `~reserved:true` : elles ne sont pas servies.
+`_uneditable` est déclarée `~hidden:true` **sans** `~reserved` — et elle est servie, parce qu'elle
+dit quelles lignes sont éditables, ce dont l'épisode 5b aura besoin. `hidden` est une décision
+d'écran, `reserved` une frontière d'implémentation : un script n'est pas un écran.
+
+**Lire n'a pas eu besoin du widget, mais a gardé le créneau GTK.** `#get_forest` (`treeview.ml:1241`)
+lit une `ref` et une `Hashtbl` OCaml — héritage du chantier clos `marionnet-automate-composants`
+(les treeviews ne lisent plus le widget). On passe malgré tout par `ask` : les **écritures**, elles,
+traversent `#set_complete_forest`, enveloppé dans `GMain_actor.apply_extract` (l.1267), si bien que
+lire dans le même créneau est ce qui fait de la réponse **une photo** et non un mélange de deux.
+
+**La preuve** : `treeview-bench.sh` (neuf), **47 assertions vertes, 0 échec**, 0 orphelin ;
+`dune build` et `dune test --force` verts. Le bloc discriminant n'est pas la lecture d'un projet
+chargé — qui prouverait seulement qu'on sait lire un fichier — mais la suite `set … port_no 5`,
+`rename`, `del` **par le canal** : les trois changent immédiatement ce que rend `ifconfig`, ce qui
+distingue « lire le treeview » de « lire une copie du treeview ». Deuxième constat du banc, inscrit
+au § 4.6 : **aucun** des huit projets d'exemple ne porte d'adresse IPv4 — Marionnet ne peuple seul
+que `MAC address` et `MTU`. Asserter des adresses aurait mesuré le contenu des exemples, pas le
+canal ; le banc asserte donc les cellules que Marionnet écrit, et **consigne** le zéro pour ce qui
+attend l'épisode 5b.
