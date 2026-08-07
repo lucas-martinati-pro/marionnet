@@ -533,21 +533,70 @@ C'est la partie la plus volumineuse du chantier et la plus exposée à la dériv
 ### 4.7 Synchronisation
 
 ```
-wait <nom> --state=on|off|sleeping [--timeout=<secondes>]
+wait <nom> (--state=on|off|sleeping | --ready) [--timeout=<secondes>]
 wait-all --state=… [--timeout=<secondes>]
 ```
 
 Scrutation de l'état user-level, avec délai de garde. Rappel du § 2 : `--state=on` signifie
-« processus UML lancé », **pas** « invité prêt ». Pour l'invité, le script procède hors Marionnet :
+« processus UML lancé », **pas** « invité prêt ». Ces deux instants sont réellement distincts et le
+banc les mesure : sur une machine trixie, `--state=on` répond en **0,8 s** là où l'invité ne
+signale sa disponibilité qu'après **5,1 s** de plus.
 
-```bash
-hostfs=$(mrnctl get m1 .hostfs)
-timeout 120 inotifywait -e close_write "$hostfs"/…
-```
+Le second instant est ce que dit `--ready` (épisode 4h).
 
-Un répertoire hostfs par machine existe déjà et Marionnet le surveille lui-même par inotify
-(`bin/machine.ml:867-934`, `simulation_level.ml:868`) — le canal est là, seule la convention de
-« prêt » manque, et elle appartient au chantier `marionnet-kernel-rootfs`.
+#### Le signal « invité prêt » (`--ready`)
+
+La convention tient en une ligne : **le scénario de démarrage écrit
+`/mnt/hostfs/marionnet-guest-ready`**, et `wait <nom> --ready` attend ce fichier. Marionnet ne le
+crée pas, ne l'efface pas, et ne touche jamais à l'invité — il regarde le **côté hôte** du
+répertoire que l'invité voit en `/mnt/hostfs` (celui que `rc-get` rend dans son champ `hostfs`).
+
+Trois propriétés, et ce sont elles qui rendent la chose sûre :
+
+- **Rien n'est injecté.** `rc-set` repose exactement ce que le script lui a donné (§ 4.11) : le
+  marqueur est écrit **par le scénario**, à la main. Extrait de référence, à copier dans son
+  scénario — l'écriture doit être **atomique**, sinon la sonde peut lire une ligne tronquée :
+
+  ```bash
+  # ce que l'invité exécute en fin de boot (rc-set … --from=<ce fichier>)
+  LINE='ready'                      # une ligne libre : verdict, version, numéro d'étape…
+  printf '%s\n' "$LINE" > /mnt/hostfs/.marionnet-guest-ready.tmp &&
+    mv -f /mnt/hostfs/.marionnet-guest-ready.tmp /mnt/hostfs/marionnet-guest-ready ||
+    printf '%s\n' "$LINE" > /mnt/hostfs/marionnet-guest-ready   # repli si rename(2) échoue
+  ```
+
+  Côté script, l'attente et la lecture sont un seul aller-retour :
+
+  ```bash
+  mrnctl wait m1 --ready --timeout=300   # → {"ok":true,"ready":true,"line":"ready","marker":"…","mtime":…}
+  ```
+
+- **Rien n'est mémorisé, et `start` ne gagne aucun effet de bord.** Un marqueur laissé par le
+  démarrage *précédent* est ignoré par **datation** : son mtime est comparé à celui de
+  `<hostfs>/boot_parameters`, que `uml_process` réécrit depuis son `initializer`, donc à **chaque**
+  construction de device, donc à chaque démarrage (`simulation_level.ml:1235`, `1253-1256`,
+  `1331-1332`). Un marqueur antérieur au boot courant vaut « pas prêt », et le message d'expiration
+  le dit (« left by a previous run »).
+- **Le nom n'est pas `marionnet-relay.*`, et ce n'est pas un détail de goût** : le relais invité
+  fait `source` de `/mnt/hostfs/{<fs>.,marionnet-}relay*` en fin de boot
+  (`marionnet-relay.trixie:486-494`) — un marqueur tombant dans ce glob serait **exécuté** comme du
+  bash.
+
+La réponse porte `ready`, la première ligne du marqueur (`line`, `null` si elle est vide ou n'est
+pas de l'UTF-8 valide — le *signal* ne dépend jamais de ce que l'invité a écrit), le chemin hôte du
+marqueur, son `mtime` et le temps attendu. Les trois attentes se distinguent dans le détail du
+timeout : jamais démarré (aucun `boot_parameters`), marqueur absent, marqueur périmé. Un composant
+sans hostfs — switch, hub, câble — reçoit un `bad_argument` qui le renvoie à `--state` ; un
+composant détruit en cours d'attente, un `unknown_node`.
+
+`wait-all --ready` n'existe **pas** : un script attend ses machines l'une après l'autre pour un
+temps total identique (elles bootent en parallèle), et le confort ne justifiait pas la question
+« que faire des nœuds sans hostfs ? ».
+
+Ce que la doc affirmait ici avant l'ép. 4h était **faux sur un point** : l'inotify de
+`bin/machine.ml` ne surveille pas la racine du hostfs mais son sous-répertoire `.X11-unix`, avec un
+filtre `ttyS<n>-pts<n>.(opened|closed)` (relais X11). Il n'y avait donc rien à réutiliser — d'où
+l'observation par `stat`, faite dans le thread de session, jamais dans un créneau GTK.
 
 Trois décisions d'implémentation (épisode 4c) :
 
@@ -1119,7 +1168,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **4g** | `forest` (§ 4.8) **re-tranché : abandonné** — sa couverture est acquise par `add`/`set`/`connect` (même source de vérité `#to_tree`/`#eval_forest_attribute`), le lot serait une régression de diagnostic, et la seule variante utile (composer deux projets) sort du contrat § 4.10 ; corollaire : l'ép. 7 est **absorbé** | **fait** (2026-08-07) — décision, aucun code |
 | **4f** | Le couple (distrib, noyau) : le constructeur suit la distribution (comme le dialogue), `set … kernel` hors `SUPPORTED_KERNELS` refusé, `set … distrib` réaligne le noyau et le rapporte dans `adjusted` | **fait** (2026-08-07) — 134 assertions (`components-bench.sh`, bloc C11 neuf) + **le bout en bout de `rc-bench.sh` sans aucune pose de noyau à la main** |
 | 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
-| 4h | Signal « invité prêt » (§ 10, point 1) : convention de marqueur dans le hostfs + `wait <n> --ready` | à faire — arbitrages déjà rendus (cf. fiche mémoire) |
+| **4h** | Signal « invité prêt » (§ 10, point 1) : marqueur `marionnet-guest-ready` écrit par le scénario, `wait <n> --ready`, fraîcheur par datation contre `boot_parameters` | **fait** (2026-08-07) — 29 assertions, `ready-bench.sh` (dont l'anti-périmé, discriminant) |
 | 5 | Les 4 treeviews | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
@@ -1154,14 +1203,19 @@ Le mécanisme **existe déjà de bout en bout** ; seul l'accès programmatique m
 | lu à la **construction du device** | `machine.ml:674-678` | ⇒ prend effet au **prochain démarrage**, jamais à chaud |
 | déposé dans `hostfs/marionnet-relay.rcfile` | `simulation_level.ml:1244-1251` | côté hôte |
 | **sourcé** en fin de `start()` du relais invité | `marionnet-relay.trixie:486-494` | `for i in /mnt/hostfs/{$virtualfs_name.,marionnet-}relay*; do source "$i"; done` — donc du **bash invité arbitraire**, en fin de boot |
-| hostfs = répertoire **hôte** monté en `/mnt/hostfs` | inotify déjà en place, `machine.ml:867-934` | ⇒ le journal écrit par l'invité est lisible côté hôte |
+| hostfs = répertoire **hôte** monté en `/mnt/hostfs` | `simulation_level.ml:868` | ⇒ le journal écrit par l'invité est lisible côté hôte |
+
+*Rectification (ép. 4h)* : ce tableau annonçait un « inotify déjà en place » sur le hostfs
+(`machine.ml:867-934`). Il porte en réalité sur le **sous-répertoire `.X11-unix`** et sur les seuls
+fichiers `ttyS<n>-pts<n>.(opened|closed)` du relais X11 — rien qui serve à observer un marqueur.
 
 Deux conséquences pour la suite du chantier :
 
 1. **Le canal « invité prêt » qui manquait au § 4.7 existe déjà.** Un scénario qui touche un fichier
    dans `/mnt/hostfs/` donne au script un signal de disponibilité **sans** toucher aux images —
-   c'est-à-dire sans dépendre du chantier `marionnet-kernel-rootfs`. Seule la *convention* reste à
-   fixer.
+   c'est-à-dire sans dépendre du chantier `marionnet-kernel-rootfs`. **Fait à l'ép. 4h** : la
+   convention est `marionnet-guest-ready`, l'attente est `wait <n> --ready`, et la fraîcheur se
+   décide par datation contre `boot_parameters` (§ 4.7).
 2. **Ne pas faire passer `rc_config` par un fichier de projet.** Dans le `.mar`, ce champ est
    **marshalé** (`Marshal.to_string`, `machine.ml:644`/`660`, `switch.ml:455`/`464`) : il lui
    fallait une **commande dédiée**, transportant le contenu **en clair** par chemin de fichier
@@ -2270,3 +2324,45 @@ parce qu'il est difficile, mais parce qu'il est **déjà fait ailleurs**.
 Leçon de méthode, la même qu'à l'ép. 4d-3 d'ailleurs : un découpage écrit à l'ép. 0 se **relit**
 après coup, il date d'avant la moitié du code. Sur les quatre lignes qui restaient au § 9, **deux**
 s'y sont dissoutes.
+
+### 2026-08-07 — épisode 4h : le signal que seul l'invité peut donner
+
+`--state=on` a toujours voulu dire « le processus UML a été lancé ». Le banc a enfin **mesuré**
+l'écart que cette phrase recouvre : 0,8 s pour `--state=on`, 5,1 s de plus avant que l'invité ne se
+déclare prêt. Tout l'épisode tient dans ce chiffre — sans lui, un script qui enchaîne sur un
+`--state=on` parle à une machine qui n'a pas encore de shell.
+
+**Un épisode où la conception était déjà faite.** Les trois arbitrages avaient été rendus la veille
+(l'attente vit dans le canal ; la fraîcheur se décide par datation ; le marqueur est écrit par le
+scénario, jamais injecté), et il ne restait qu'à choisir un **nom** et un **format**. Le nom s'est
+tranché sur un fait de lecture plutôt que sur le goût : le relais invité fait `source` de
+`/mnt/hostfs/{<fs>.,marionnet-}relay*` en fin de boot, si bien qu'un marqueur nommé
+`marionnet-relay.ready` — le candidat « par symétrie » — aurait été **exécuté comme du bash**. C'est
+`marionnet-guest-ready`. Le format ajoute la **première ligne** du fichier à la réponse : coût
+marginal nul, et un scénario peut dire « prêt, mais en échec » sans second aller-retour ; le signal,
+lui, ne dépend jamais de ce contenu (ligne vide, binaire ou tronquée → `null`).
+
+**Le code n'a coûté qu'un fichier.** `poll_until` et le patron de `cmd_wait` (épisode 4c) se
+réutilisent tels quels ; `hostfs_directory_if_any` existait depuis l'ép. 4e ; le créneau GTK ne sert
+qu'à retrouver le composant — donc à répondre `unknown_node` s'il est détruit pendant l'attente
+plutôt qu'à faire mine d'expirer — et l'observation elle-même est un `stat`, de l'I/O, faite dans le
+thread de session. Le seul type neuf est la sonde à quatre cas, écrite pour que **les trois manières
+de ne pas être prêt** (jamais démarré, marqueur absent, marqueur périmé) se distinguent dans le
+message d'expiration.
+
+**La doc mentait sur un point, et c'est la conception qui l'a découvert.** Le § 4.7 et le § 10
+annonçaient un inotify « déjà en place » sur le hostfs, réutilisable pour ce signal. Il porte en
+réalité sur le sous-répertoire `.X11-unix` et sur les seuls fichiers du relais X11 : rien à
+réutiliser. Rectifié aux deux endroits ; le `stat` n'est donc pas un choix de facilité mais le seul
+mécanisme disponible.
+
+**La preuve, et son assertion discriminante.** 29 assertions vertes (`ready-bench.sh`), dont le bout
+en bout : scénario posé par `rc-set --from`, machine démarrée par le canal, marqueur écrit par
+l'invité et sa ligne rendue **octet à octet** par la réponse. Mais la mesure de l'épisode est
+ailleurs : le banc **date le marqueur 60 s en arrière** (`touch -d`, sous le mtime de
+`boot_parameters`) et exige alors un **timeout** — c'est exactement ce qu'aurait laissé un run
+précédent, obtenu sans rebooter. Sans la comparaison des mtimes, cette assertion passerait au vert à
+tort. Puis le même fichier, re-daté au présent, redevient un signal : le critère est bien la
+fraîcheur, et rien d'autre. Le premier run avait une assertion rouge, et c'était le **banc** qui se
+trompait de nom de champ (`connected` pour `added`) — troisième fois du chantier qu'un banc corrige
+sa propre lecture avant de mesurer le code.

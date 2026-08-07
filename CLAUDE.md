@@ -218,12 +218,18 @@ Reprise : appliquer le skill `chantier-long`.
   qui **avale les erreurs**. Corollaire : l'**ép. 7 est absorbé** — un décor se fabrique par le
   canal puis s'enregistre par **`save-as`**, le seul producteur légitime d'un `.mar` étant
   Marionnet ; « composer deux projets » part dans `docs/TODO.md`)
-  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g) sont clos**. La
-  direction du § 10 — le scripting **descend dans les composants** — est donc **ouverte et
-  démontrée**. Reprendre par l'**ép. 4h** : le signal « invité prêt » (§ 10, point 1) — mécanisme
-  prouvé, **arbitrages déjà rendus** (attente par le canal `wait <n> --ready` ; anti-périmé par
-  datation contre `<hostfs>/boot_parameters` ; marqueur écrit par le scénario, non injecté), seuls
-  le **nom** et le **format** du marqueur restent à fixer.
+  et **ép. 4h** (le **signal « invité prêt »**, § 4.7 : le scénario écrit **atomiquement**
+  `/mnt/hostfs/marionnet-guest-ready` et `wait <n> --ready` l'attend, rendant sa **première ligne** ;
+  fraîcheur par **datation** contre `<hostfs>/boot_parameters` — réécrit à chaque construction de
+  device — donc un marqueur du run précédent est ignoré, sans rien mémoriser ni ajouter d'effet de
+  bord au `start` ; **piège durable** : tout fichier `marionnet-relay*` du hostfs est **sourcé** par
+  l'invité, d'où le nom retenu ; l'inotify du hostfs qu'annonçait la doc n'existe pas — il porte sur
+  `.X11-unix` seul)
+  faits → **les épisodes 3 et 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h) sont clos**. La
+  direction du § 10 — le scripting **descend dans les composants** — est donc **ouverte, démontrée
+  et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 5** : les 4 treeviews
+  (ifconfig, defects, history, documents), là où vit la config réelle d'un TP ; puis l'ép. 6
+  (client `mrnctl`), où les 7 bancs resserviront.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

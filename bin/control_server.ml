@@ -215,7 +215,8 @@ let arity_of_command : (string * arity) list =
     ("save-as",       one_path "save-as <absolute path>");
     ("close",         no_arg "close [--save|--no-save]");
     ("notifications", no_arg "notifications [--since=<n>] [--clear]");
-    ("wait",          one_component "wait <component> --state=on|off|sleeping [--timeout=<s>]");
+    ("wait",          one_component
+                        "wait <component> (--state=on|off|sleeping | --ready) [--timeout=<s>]");
     ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
     ("quit",          no_arg "quit");
     ]
@@ -1694,6 +1695,144 @@ let cmd_wait_all (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:fl
          ~detail:(Printf.sprintf "%d of %d nodes were still not %S after %.1fs"
                     (List.length late) (List.length l) target elapsed))
 
+(* --- wait --ready: the signal the guest itself writes ------------- *)
+
+(* [--state=on] means "the UML process was launched", never "the guest has booted" (§ 2). The
+   missing half is a signal only the guest can give, and episode 4e proved the whole path: a
+   startup configuration runs arbitrary bash at the end of the boot, and /mnt/hostfs is a *host*
+   directory. The convention, and it is the whole of it: the scenario writes
+   <hostfs>/marionnet-guest-ready.
+
+   Two properties are worth stating, because they are what makes this cheap:
+   - nothing is injected. [rc-set] puts back exactly what the script gave it (episode 4e), so
+     the marker is written by the scenario, by hand, from the snippet documented in § 4.7;
+   - nothing is stored between polls, and [start] gains no side effect. A marker left by the
+     *previous* run is ignored by comparing its mtime with the one of <hostfs>/boot_parameters,
+     which [uml_process] rewrites from its initializer — hence at every device construction,
+     hence at every startup (simulation_level.ml:1235, 1253-1256, 1331-1332).
+
+   The name is deliberately not [marionnet-relay.*]: the guest relay sources
+   /mnt/hostfs/{<fs>.,marionnet-}relay* at the end of its boot (marionnet-relay.trixie:486-494),
+   and a marker matching that glob would be *executed* as bash. *)
+
+let ready_marker_basename    = "marionnet-guest-ready"
+let boot_parameters_basename = "boot_parameters"
+
+(* The marker says "ready"; its first line says whatever the scenario wanted to add to it (a
+   verdict, a version, a step number). Bounded, because a guest writes it. *)
+let max_ready_line_bytes = 4096
+
+type ready_probe =
+  | Rp_gone                                       (* destroyed while we were waiting *)
+  | Rp_no_hostfs                                  (* a switch, a hub, a cable: it cannot apply *)
+  | Rp_waiting of float option * float option     (* mtimes of (marker, boot_parameters) *)
+  | Rp_ready   of string * float * string option  (* marker path, its mtime, its first line *)
+
+let mtime_of_regular_file (path:string) : float option =
+  match (try Some (Unix.stat path) with _ -> None) with
+  | Some s when s.Unix.st_kind = Unix.S_REG -> Some (s.Unix.st_mtime)
+  | _ -> None
+
+(* Cut at the first newline, trimmed, and served only if it is valid UTF-8 — the same reason as
+   [rc_content_is_servable]: the answer is one JSON line. Anything else (empty, binary, or
+   truncated because a scenario wrote in place instead of moving a temporary file) becomes
+   [None]: the *signal* must never depend on what the guest chose to write. *)
+let first_line_of (path:string) : string option =
+  let read () =
+    let ic = open_in_bin path in
+    Fun.protect ~finally:(fun () -> close_in_noerr ic)
+      (fun () -> really_input_string ic (min (max_ready_line_bytes) (in_channel_length ic)))
+  in
+  match (try Some (read ()) with _ -> None) with
+  | None -> None
+  | Some raw ->
+      let line =
+        match String.index_opt raw '\n' with
+        | Some i -> String.sub raw 0 i
+        | None   -> raw
+      in
+      let line = String.trim line in
+      if line = "" || not (String.is_valid_utf_8 line) then None else Some line
+
+let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
+                   ~(name:string) : string
+  =
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"wait expects the name of a component"
+  else
+  (* The GTK slot is spent on one thing, the same one [cmd_wait] spends it on: finding the
+     component — a script must be *told* that it was destroyed instead of timing out — and
+     reading where its guest writes. The observation itself is a [stat]: I/O, hence run in this
+     thread, never in the GTK main loop. *)
+  let observe () =
+    match
+      ask ~timeout:gtk_timeout
+        (fun () ->
+           match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+           | Some n -> Some (n#hostfs_directory_if_any)
+           | None ->
+           match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+           | Some _ -> Some None
+           | None   -> None)
+    with
+    | Failed e         -> Failed e
+    | Timed_out t      -> Timed_out t
+    | Done None        -> Done (Rp_gone)
+    | Done (Some None) -> Done (Rp_no_hostfs)
+    | Done (Some (Some dir)) ->
+        let marker = Filename.concat dir ready_marker_basename in
+        let boot   = Filename.concat dir boot_parameters_basename in
+        (* [>=] and not [>]: a stale marker was written by a previous run, seconds or minutes
+           before the current boot_parameters, so a strict comparison would only buy a
+           theoretical case — and would lose the real one if the mtime resolution ever fell
+           back to the second. *)
+        (match mtime_of_regular_file marker, mtime_of_regular_file boot with
+         | Some m, Some b when m >= b -> Done (Rp_ready (marker, m, first_line_of marker))
+         | m, b                       -> Done (Rp_waiting (m, b)))
+  in
+  poll_until ~wait_timeout ~observe
+    ~reached:(function Rp_waiting _ -> false | _ -> true)
+    ~on_reached:(fun v elapsed ->
+       match v with
+       | Rp_gone ->
+           reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+       | Rp_no_hostfs ->
+           reply_error ~code:"bad_argument"
+             ~detail:(Printf.sprintf
+                        "%S runs no guest system of its own, hence has no hostfs directory: \
+                         --ready applies to a machine or a router; use --state to wait for the \
+                         state Marionnet knows" name)
+       | Rp_ready (marker, mtime, line) ->
+           reply_ok [ ("component", jstr name);
+                      ("ready",     jbool true);
+                      ("line",      jopt line);
+                      ("marker",    jstr marker);
+                      ("mtime",     jfloat mtime);
+                      ("waited",    jfloat elapsed) ]
+       | Rp_waiting _ -> assert false (* [reached] said otherwise *))
+    ~on_expiry:(fun v elapsed ->
+       let detail =
+         match v with
+         | Rp_waiting (_, None) ->
+             Printf.sprintf
+               "%S has not been started since this project was opened (no %s in its hostfs \
+                directory), hence nothing could have written %s (%.1fs waited)"
+               name boot_parameters_basename ready_marker_basename elapsed
+         | Rp_waiting (None, Some _) ->
+             Printf.sprintf
+               "%S wrote no %s in its hostfs directory after %.1fs: the guest may still be \
+                booting, or its startup configuration may be disabled, or may simply not write \
+                the marker (see rc-get, and § 4.7)"
+               name ready_marker_basename elapsed
+         | Rp_waiting (Some m, Some b) ->
+             Printf.sprintf
+               "%S has a %s, but it was written %.1fs *before* its current boot: it was left by \
+                a previous run and is ignored (%.1fs waited)"
+               name ready_marker_basename (b -. m) elapsed
+         | _ -> assert false (* [reached] said otherwise *)
+       in
+       reply_error ~code:"timeout" ~detail)
+
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole
    loading in the calling thread (state.ml:594-596) — the very case that test provides
@@ -2097,10 +2236,31 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                   match option_value r "timeout" with None -> default_wait_timeout | Some _ -> timeout
                 in
                 let state = option_value r "state" in
-                ((if r.verb = "wait" then
-                    cmd_wait st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r) ~state
-                  else
-                    cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
+                let ready = option_value r "ready" <> None in
+                (* The four combinations are decided here, where both options are in sight;
+                   [check_state] keeps saying what a state may be, not which option was meant. *)
+                ((match r.verb, state, ready with
+                  | _, Some _, true ->
+                      reply_error ~code:"bad_argument"
+                        ~detail:"--state and --ready cannot be given together: the first waits \
+                                 for the state Marionnet knows, the second for the signal the \
+                                 guest writes in its hostfs directory"
+                  | "wait-all", _, true ->
+                      reply_error ~code:"bad_argument"
+                        ~detail:"--ready applies to one component at a time: wait <component> \
+                                 --ready"
+                  | "wait", None, false ->
+                      reply_error ~code:"bad_argument"
+                        ~detail:(Printf.sprintf "wait expects --state or --ready — usage: %s"
+                                   (match List.assoc_opt "wait" arity_of_command with
+                                    | Some a -> a.syntax
+                                    | None   -> "wait <component> --state=… | --ready"))
+                  | "wait", _, true ->
+                      cmd_wait_ready st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r)
+                  | "wait", _, false ->
+                      cmd_wait st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r) ~state
+                  | _ ->
+                      cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
                  `Continue)
             | "quit"   -> (reply_ok [ ("quitting", jbool true) ], `Quit)
             | verb ->
