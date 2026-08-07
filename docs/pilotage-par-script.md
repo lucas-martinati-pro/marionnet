@@ -566,10 +566,57 @@ contenu. `_uneditable`, elle, est **cachée** en GUI (`~hidden:true`) mais **non
 elle est servie, parce qu'elle dit quelles lignes sont éditables : `hidden` est une décision
 d'écran, `reserved` une frontière d'implémentation, et un script n'est pas un écran.
 
-**Écriture — épisodes 5b (`ifconfig`) et 5c (`defects`).** Constat du banc de l'épisode 5a :
-**aucun** des 8 projets de `_claude-local/examples/` ne porte d'adresse IPv4 (vérifié au `grep -a`
-sur `states/ifconfig`, qui est du `Marshal`). Ce que Marionnet peuple seul, ce sont `MAC address`
-et `MTU` ; tout le reste attend qu'on l'écrive — c'est exactement ce que ces épisodes ajouteront.
+**Écriture d'`ifconfig` — livrée à l'épisode 5b.** Constat du banc de l'épisode 5a : **aucun** des
+8 projets de `_claude-local/examples/` ne porte d'adresse IPv4 (vérifié au `grep -a` sur
+`states/ifconfig`, qui est du `Marshal`). Ce que Marionnet peuple seul, ce sont `MAC address` et
+`MTU` ; tout le reste attend qu'on l'écrive.
+
+```
+ifconfig-set <nœud> <port> <champ> [<valeur>] [--restart | --no-restart]
+```
+
+Un champ à la fois, comme `set` (§ 4.3) : un refus nomme alors le champ qu'il vise. `<champ>` est
+le **slug** d'une colonne — minuscules, espaces changés en tirets : `mac-address`, `mtu`,
+`ipv4-address`, `ipv4-gateway`, `ipv6-address`, `ipv6-gateway` — dérivé de `#columns` et jamais
+listé dans le serveur : une colonne ajoutée à un treeview devient écrivable le jour où elle
+devient lisible. Une **valeur absente vide la cellule**, comme un humain qui efface la case.
+Réponse : `{"ok":true,"node":…,"port":…,"field":"IPv4 address","old":…,"new":…,"changed":…,`
+`"restarted":…}`, la valeur **relue** après écriture et non celle demandée.
+
+Trois faits du code font que cet épisode ne se réduit pas à un *setter* :
+
+1. **`#set_row_field` ne valide rien et ne prévient personne.** La validation vit dans le chemin
+   GTK *cell-edited* : le prédicat de **colonne** (adresse mal formée, MTU au-dessus du MAXPACKET
+   de vde2) et les contraintes de **ligne**, qu'aucune cellule prise isolément ne peut trancher —
+   une valeur posée sur la ligne du device au lieu d'un de ses ports, ou le `port0` d'un routeur
+   qui perdrait son adresse de configuration. Le serveur les rejoue **avant** d'écrire ; sans
+   cela le canal poserait dans un projet ce qu'un humain n'a pas le droit d'y taper (§ 4.10).
+2. **Le verdict devait se séparer de son affichage.** `#check_constraints` ouvre un dialogue
+   (`Simple_dialogs.error`) avant de lever : sans gel depuis l'épisode 3c, mais un refus de ce
+   canal est une ligne JSON, pas une fenêtre. D'où `#constraints_verdict` (`treeview.ml`) : les
+   mêmes contrôles, le rendu laissé à l'appelant — une source de vérité, deux messages, comme
+   `check_new_name` à l'épisode 4d-2c.
+3. **La question du redémarrage passe du dialogue à la requête.** La GUI demande
+   (« vos changements seront appliqués après le redémarrage de X ; redémarrer maintenant ? »,
+   `marionnet.ml:143-176`) ; le serveur ne peut pas interroger un humain. Tant que le nœud tourne,
+   il refuse par `restart_choice_required` jusqu'à ce que le script dise `--restart` ou
+   `--no-restart` — symétrie exacte de `--save`/`--no-save` (§ 4.2). Réseau éteint, aucune option
+   n'est requise. `--restart` appelle `#gracefully_restart`, donc `restarted` veut dire *accepté*,
+   jamais *fini* (règle 3, § 4.4).
+
+Refus : `no_active_project`, `unknown_node` (avec la liste des composants **adressables** — la
+population de ce treeview, § 4.6), `unknown_port` (avec les ports du nœud ; c'est aussi la réponse
+quand un script vise la ligne du device), `unknown_field` (avec le vocabulaire écrivable),
+`constraint_violated`, `restart_choice_required`. Les colonnes **réservées** restent hors
+d'atteinte, y compris `_highlight-color`, qui est pourtant une colonne *éditable*
+(`treeview.ml:1825`) : `reserved` est une frontière d'implémentation, en écriture comme en lecture.
+
+Ce qu'écrire change vraiment, et pourquoi cela valait un épisode : `simulation_level.ml:723-742`
+lit **ce treeview** à la construction du device et en fait les paramètres de boot
+(`ipv4_address_eth0` et consorts, déposés dans le `boot_parameters` du hostfs). Une adresse posée
+par le canal avant le démarrage atteint donc l'invité — mesuré par le bloc T11 du banc.
+
+**Écriture de `defects` — épisode 5c.**
 
 ### 4.7 Synchronisation
 
@@ -1211,7 +1258,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | 4e | `rc-set`/`rc-get` (§ 4.11, § 10) : la configuration de démarrage, donc le scripting **dans** les composants | **fait** (2026-08-06) — `rc-bench.sh` |
 | **4h** | Signal « invité prêt » (§ 10, point 1) : marqueur `marionnet-guest-ready` écrit par le scénario, `wait <n> --ready`, fraîcheur par datation contre `boot_parameters` | **fait** (2026-08-07) — 29 assertions, `ready-bench.sh` (dont l'anti-périmé, discriminant) |
 | **5a** | Les 4 treeviews, **face lecture** : un verbe par treeview, une implémentation, la forêt servie comme une forêt (§ 4.6) | **fait** (2026-08-07) — 47 assertions, `treeview-bench.sh` |
-| 5b | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure | à faire |
+| **5b** | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure : `ifconfig-set`, les contraintes de la GUI rejouées par le serveur (`#constraints_verdict`), et le choix de redémarrage exigé du script | **fait** (2026-08-07) — 80 assertions, `treeview-bench.sh` (T8→T11, dont le bout en bout `boot_parameters`) |
 | 5c | Écriture de `defects` (pertes, délais) — probablement la seule écriture applicable **en marche** | à faire |
 | 5d | `history` et `documents` en écriture, si un besoin apparaît | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
@@ -2458,3 +2505,53 @@ au § 4.6 : **aucun** des huit projets d'exemple ne porte d'adresse IPv4 — Mar
 que `MAC address` et `MTU`. Asserter des adresses aurait mesuré le contenu des exemples, pas le
 canal ; le banc asserte donc les cellules que Marionnet écrit, et **consigne** le zéro pour ce qui
 attend l'épisode 5b.
+
+### 2026-08-07 — épisode 5b : écrire une cellule, et la question que le canal ne peut pas poser
+
+**Ce que l'épisode livre** : `ifconfig-set <nœud> <port> <champ> [<valeur>]`, un champ à la fois,
+avec `--restart`/`--no-restart` exigés dès que la cible tourne (§ 4.6). C'est l'épisode qui rend le
+treeview d'adresses **utile** : jusqu'ici un script savait fabriquer une topologie mais pas la
+configuration réseau qui en fait un TP — et aucun projet d'exemple n'en portait.
+
+**Ce n'était pas un *setter*, et c'est la lecture du code qui l'a dit.** `#set_row_field`
+(`treeview.ml`) ne valide rien et ne déclenche aucun callback : tout vit dans le chemin GTK
+*cell-edited*. Deux étages de validation y sont perdus si on l'appelle nu — le prédicat de
+**colonne** (adresse mal formée, MTU au-dessus du MAXPACKET de vde2) et surtout les contraintes de
+**ligne**, qui ne sont déductibles d'aucune cellule prise isolément : une valeur posée sur la ligne
+du device plutôt que sur un de ses ports, ou le `port0` d'un routeur qui perdrait son adresse de
+configuration. Écrire sans les rejouer aurait mis dans un projet ce qu'un humain n'a pas le droit
+d'y taper, contre le § 4.10.
+
+**Le verdict s'est séparé de son affichage, pas de sa source.** `#check_constraints` ouvre un
+dialogue avant de lever — sans gel depuis l'épisode 3c, mais un refus de ce canal est une ligne
+JSON, pas une fenêtre. Plutôt que réécrire les contrôles dans le serveur (la tentation, et la
+faute : deux validations divergent le jour où l'une des deux évolue), on a extrait
+`#constraints_verdict`, qui rend le verdict sans rien afficher ; `#check_constraints` est devenu
+son appelant et la GUI n'a pas bougé d'un octet. Même forme qu'`User_level.check_new_name` à
+l'épisode 4d-2c : une source de vérité, deux messages.
+
+**Ce que la GUI met dans un dialogue, le canal le met dans la requête.** Éditer l'ifconfig d'une
+machine allumée est **permis** en GUI — vérifié plutôt que supposé (`marionnet.ml:143-176`) — et
+déclenche une question modale : « redémarrer maintenant ? ». Le serveur ne peut pas interroger un
+humain ; il interroge le script. Tant que le nœud tourne, l'écriture est refusée par
+`restart_choice_required` jusqu'à ce que `--restart` ou `--no-restart` tranche, exactement comme
+`--save`/`--no-save` à l'épisode 4d. Rien n'est deviné pour le client, rien ne se fait dans son dos.
+
+**Le premier run du banc a trouvé deux défauts, et aucun n'était dans le contrat.** (a) Le canal
+offrait `_highlight-color` comme champ écrivable : cette colonne **est** éditable
+(`treeview.ml:1825`) et seulement **réservée** — le filtre `is_reserved` de la face lecture n'avait
+pas été repris côté écriture. (b) Le nom d'une contrainte de ligne, rendu par `%S`, sortait en
+`La premi\195\168re…` : `%S` échappe tout octet ≥ 0x7f, alors que ces noms passent par gettext et
+sont donc **traduits**. Corrigé en `%s` entre guillemets, `json_escape` laissant l'UTF-8 passer. La
+leçon vaut au-delà : un message destiné à un script ne doit pas traverser `%S` s'il peut être
+traduit — et un banc ne doit pas asserter un libellé traduit (l'assertion cherche `rout`, qui
+couvre « router » et « routeur »).
+
+**La preuve** : `treeview-bench.sh` étendu (blocs T8 à T11), **80 assertions vertes, 0 échec**,
+0 orphelin ; `dune build` et `dune test --force` verts. Le bloc discriminant est **T9** : vider
+l'IPv4 du `port0` d'un routeur est refusé alors que la même écriture passe sur `port1` et sur une
+machine — un couple qu'aucune validation réécrite dans le serveur ne produirait, puisqu'il vient
+d'une contrainte de *ligne* du treeview. Et **T11** ferme la boucle sur ce qui compte vraiment :
+`simulation_level.ml:723-742` lit ce treeview à la construction du device, si bien que l'adresse
+posée par le canal se retrouve dans le `boot_parameters` du hostfs — mesuré, machine réellement
+démarrée.

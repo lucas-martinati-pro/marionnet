@@ -232,11 +232,19 @@ Reprise : appliquer le skill `chantier-long`.
   **populations différentes** : `ifconfig` ne reçoit que les composants **adressables**,
   `defects` reçoit tout **plus les câbles** ; `columns` dans l'ordre de la GUI via `#columns`, et
   non `#column_headers` qui n'est pas ordonné)
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h) et 5a sont clos**. La
-  direction du § 10 — le scripting **descend dans les composants** — est donc **ouverte, démontrée
-  et refermée** (l'invité rend la main au script). L'ép. 5 est **scindé** : reprendre par l'**ép. 5b**
-  (écriture d'`ifconfig` — là où se configure un TP ; aucun `.mar` d'exemple ne porte d'adresse),
-  puis 5c (`defects`), 5d (`history`/`documents`, si besoin) et l'ép. 6 (client `mrnctl`), où les
+  et **ép. 5b** (l'**écriture d'`ifconfig`**, § 4.6 :
+  `ifconfig-set <nœud> <port> <champ> [<valeur>] [--restart|--no-restart]`, un champ à la fois ;
+  `#set_row_field` ne **valide rien** — tout vit dans le chemin GTK *cell-edited* —, d'où
+  `#constraints_verdict` neuf dans `treeview.ml`, le verdict **sans dialogue**, les mêmes
+  contrôles que la GUI ; la question modale « redémarrer maintenant ? » devient une **option
+  exigée du script** ; vocabulaire écrivable dérivé de `#columns` via `#is_editable`, filtré
+  **aussi** par `is_reserved` ; bout en bout : `simulation_level.ml:723-742` lit ce treeview à la
+  construction du device, donc l'adresse posée par le canal atteint `boot_parameters`)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a et 5b sont
+  clos**. La direction du § 10 — le scripting **descend dans les composants** — est donc
+  **ouverte, démontrée et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 5c**
+  (écriture de `defects` — la seule peut-être applicable **en marche**, à mesurer et non à
+  présumer), puis 5d (`history`/`documents`, si besoin) et l'ép. 6 (client `mrnctl`), où les
   8 bancs resserviront.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt

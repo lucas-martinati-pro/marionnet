@@ -187,6 +187,11 @@ let component_field_and_value syntax = { min_args = 3; max_args = 3; free_tail =
 (* A component and, optionally, a free text: the one-line form of rc-set. Which field it writes
    is said by --field, the second position being taken by the content itself. *)
 let component_and_free_text   syntax = { min_args = 1; max_args = 2; free_tail = true;  syntax }
+(* A treeview cell: node, port, field, and the value — which is *optional*, because that is how a
+   cell is emptied, the way a human clears it in the GUI (every ifconfig column predicate accepts
+   the empty string, treeview_ifconfig.ml:407-468). Free tail all the same: an address never holds
+   a space, but nothing here should decide that for a column added later. *)
+let node_port_field_and_value syntax = { min_args = 3; max_args = 4; free_tail = true;  syntax }
 
 (* The per-component transitions of § 4.4. Their names are those of [known_actions] minus
    "set"/"del", which are not transitions and belong to a later episode. *)
@@ -217,6 +222,10 @@ let arity_of_command : (string * arity) list =
     ("defects",       optional_component "defects [<node>]");
     ("history",       optional_component "history [<node>]");
     ("documents",     no_arg "documents");
+    (* The write side (episode 5b). One field at a time, like [set]: a refusal then names the
+       field it is about. --restart/--no-restart is required only when the node is running. *)
+    ("ifconfig-set",  node_port_field_and_value
+                        "ifconfig-set <node> <port> <field> [<value>] [--restart|--no-restart]");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -2199,6 +2208,181 @@ let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(nam
                          (match name with Some n -> n | None -> "") which
                          (String.concat ", " names)))
 
+(* § 4.6, write side (episode 5b). ifconfig is where a lab exercise is actually configured — the
+   read side measured that not one example project carries a single IPv4 address — and writing a
+   cell costs more than calling a setter, for two reasons the code states out loud:
+
+   (a) [#set_row_field] (treeview.ml) validates nothing and fires no callback. Both live in the
+       GTK cell-edited path (editable_string_column#on_edit, l.444): the column predicate refuses
+       a malformed address or an MTU above vde2's MAXPACKET, and the *row* constraints refuse what
+       no single cell can tell — a value typed on a device row instead of one of its ports, or a
+       router whose first port would lose its address (treeview_ifconfig.ml:472-493). Writing
+       without them would put into a project what a human is not allowed to type, against § 4.10;
+
+   (b) [#check_constraints] shows a dialog before raising. Not blocking, and captured since
+       episode 3c — but a refusal of this channel is a JSON answer, not a window. Hence
+       [#constraints_verdict] (episode 5b): the very same checks, reporting left to the caller.
+
+   The other half of the GUI's after_user_edit_callback (marionnet.ml:178) is the restart
+   question: "your changes will be applied after the reboot of X; restart it now?". The server
+   cannot ask a human, so it asks the *script*: --restart or --no-restart, required as soon as the
+   node is running, exactly as --save/--no-save became required at episode 4d. What the GUI puts
+   in a dialog, the channel puts in the request. *)
+
+(* A header as a script spells it: lowercase, spaces to dashes ("IPv4 address" → ipv4-address).
+   Derived, never listed — the same reason the read side publishes #columns: a column added to a
+   treeview becomes writable the day it becomes readable, with no table here to update. *)
+let slug_of_header (h:string) : string =
+  String.map (function ' ' -> '-' | c -> c) (String.lowercase_ascii h)
+
+(* Which cells a human may type into. [#is_editable] (treeview.ml, episode 5b) is true of exactly
+   the column class whose GTK renderer carries `EDITABLE true, so this list is the GUI's own
+   answer: Name and Type are read-only, and the hidden _uneditable checkbox is not a text cell.
+   The reserved filter is not redundant: _highlight-color IS an editable string column
+   (treeview.ml:1825), reserved only — the same frontier the read side draws, so the write side
+   draws it too. Measured, not assumed: without it the channel offered _highlight-color as a
+   writable field. *)
+let editable_headers (tv : Treeview.t) : string list =
+  List.filter_map
+    (fun c -> if c#is_editable && not c#is_reserved then Some c#header else None)
+    tv#columns
+
+let tree_name ((row, _) : Treeview.Row.t Forest.tree) : string option =
+  match List.assoc_opt treeview_name_column row with
+  | Some (Treeview.Row_item.String s) -> Some s
+  | _ -> None
+
+let string_cell (row : Treeview.Row.t) (header:string) : string =
+  match List.assoc_opt header row with
+  | Some (Treeview.Row_item.String s) -> s
+  | _ -> ""
+
+type ifconfig_outcome =
+  (* header, old value, value read back, whether the node was restarted *)
+  | If_written        of string * string * string * bool
+  | If_no_project
+  | If_unknown_node   of string list
+  | If_unknown_port   of string list
+  | If_unknown_field  of string list
+  | If_violated       of string
+  | If_restart_choice of string   (* the raw state of the running node *)
+
+let cmd_ifconfig_set (st : State.globalState) ~(timeout:float) ~(node:string) ~(port:string)
+    ~(field:string) ~(value:string) ~(restart:bool option) : string
+  =
+  ask ~timeout
+    (fun () ->
+       if not st#active_project then If_no_project else
+       let tv = (st#treeview#ifconfig :> Treeview.t) in
+       (* The complete forest, not #get_forest: writing needs the _id of the row, which is
+          reserved and therefore absent from the rows the read side serves. *)
+       let roots = Forest.to_treelist tv#get_complete_forest in
+       match List.find_opt (fun t -> tree_name t = Some node) roots with
+       (* The names offered are those of *this* treeview, not of the network: ifconfig only holds
+          addressable components (episode 5a), so listing the network's nodes would offer a switch
+          as a candidate for an address it cannot have. *)
+       | None -> If_unknown_node (List.sort_uniq compare (List.filter_map tree_name roots))
+       | Some (_device_row, children) ->
+           let ports = Forest.to_treelist children in
+           (match List.find_opt (fun t -> tree_name t = Some port) ports with
+            (* Also the answer when a script aims at the device row itself (ifconfig-set m1 m1 …):
+               that row is not a port, and the row constraint below would refuse it anyway. *)
+            | None -> If_unknown_port (List.filter_map tree_name ports)
+            | Some (port_row, _) ->
+                let headers = editable_headers tv in
+                (match List.find_opt (fun h -> slug_of_header h = field) headers with
+                 | None -> If_unknown_field (List.map slug_of_header headers)
+                 | Some header ->
+                     let old = string_cell port_row header in
+                     (* A write that changes nothing validates nothing and restarts nothing: the
+                        GUI does not fire its callback either when a cell is left as it was. *)
+                     if value = old then If_written (header, old, old, false) else
+                     let new_row =
+                       Treeview.Row.set_field ~field:header
+                         ~value:(Treeview.Row_item.String value) port_row
+                     in
+                     (match tv#constraints_verdict new_row with
+                      | Some (`Row name) ->
+                          (* %s and not %S: a row constraint is named with a *translated* string
+                             (s_ "…", treeview_ifconfig.ml:473), and OCaml's %S escapes every byte
+                             above 0x7f as \195\168 — the answer would carry an unreadable name
+                             where json_escape lets UTF-8 through untouched. *)
+                          If_violated
+                            (Printf.sprintf
+                               "the treeview row constraint \"%s\" refuses this write (the GUI \
+                                refuses it too)" name)
+                      | Some (`Column h) ->
+                          If_violated
+                            (Printf.sprintf "the column %S does not accept %S" h value)
+                      | None ->
+                          (* The very guard marionnet.ml:169 applies before asking the human. A
+                             node absent from the network (an orphan ifconfig row) is treated as
+                             not running: there is nothing to restart. *)
+                          let running =
+                            match List.find_opt (fun n -> n#get_name = node)
+                                    (st#network#get_node_list)
+                            with
+                            | Some n when n#can_gracefully_shutdown -> Some n
+                            | _ -> None
+                          in
+                          (match running, restart with
+                           | Some n, None -> If_restart_choice n#state_as_string
+                           | _ ->
+                               let row_id = Treeview.Row.get_id port_row in
+                               let () =
+                                 tv#set_row_field row_id header
+                                   (Treeview.Row_item.String value)
+                               in
+                               (* First half of after_user_edit_callback (marionnet.ml:180). No
+                                  network_change here: the network model did not change, and the
+                                  GUI does not redraw the sketch on this path either. *)
+                               let () = st#set_project_not_already_saved in
+                               let restarted =
+                                 match running, restart with
+                                 | Some n, Some true -> let () = n#gracefully_restart in true
+                                 | _ -> false
+                               in
+                               (* Read back, never assumed — same rule as [set] (episode 4d-2a). *)
+                               let written =
+                                 Treeview.Row_item.extract_String (tv#get_row_field row_id header)
+                               in
+                               If_written (header, old, written, restarted))))))
+  |> reply_of_outcome
+       (function
+        | If_written (header, old, written, restarted) ->
+            reply_ok [ ("node",      jstr node);
+                       ("port",      jstr port);
+                       ("field",     jstr header);
+                       ("old",       jstr old);
+                       ("new",       jstr written);
+                       ("changed",   jbool (old <> written));
+                       (* Never "restarted and booted": #gracefully_restart queues the work on the
+                          task runner, like every transition of § 4.4 (rule 3, episode 4c). *)
+                       ("restarted", jbool restarted) ]
+        | If_no_project ->
+            reply_error ~code:"no_active_project" ~detail:"no project is open"
+        | If_unknown_node names ->
+            reply_error ~code:"unknown_node"
+              ~detail:(Printf.sprintf
+                         "no row named %S in the ifconfig treeview; addressable components: %s"
+                         node (String.concat ", " names))
+        | If_unknown_port names ->
+            reply_error ~code:"unknown_port"
+              ~detail:(Printf.sprintf "%S has no port named %S; its ports are: %s"
+                         node port (String.concat ", " names))
+        | If_unknown_field slugs ->
+            reply_error ~code:"unknown_field"
+              ~detail:(Printf.sprintf "no writable field %S in ifconfig; writable fields: %s"
+                         field (String.concat ", " slugs))
+        | If_violated detail ->
+            reply_error ~code:"constraint_violated" ~detail
+        | If_restart_choice raw ->
+            reply_error ~code:"restart_choice_required"
+              ~detail:(Printf.sprintf
+                         "%S is %s: the GUI asks here whether to reboot it, so the script must \
+                          say --restart or --no-restart"
+                         node (script_state_of_raw raw)))
+
 (* ---------------------------------------------------------------- *)
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
@@ -2335,6 +2519,26 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                arity, which takes no positional argument. *)
             | "ifconfig" | "defects" | "history" | "documents" ->
                 (cmd_treeview st ~timeout ~which:r.verb ~name:(arg_opt r 0), `Continue)
+            (* Same shape as --save/--no-save (episode 4d): the two options are mutually
+               exclusive, and giving neither is legal — it is only refused later, and only if the
+               node turns out to be running. *)
+            | "ifconfig-set" ->
+                (match (option_value r "restart" <> None), (option_value r "no-restart" <> None) with
+                 | true, true ->
+                     (reply_error ~code:"bad_argument"
+                        ~detail:"--restart and --no-restart cannot be given together", `Continue)
+                 | restart_wanted, no_restart_wanted ->
+                     let restart =
+                       if restart_wanted then Some true
+                       else if no_restart_wanted then Some false
+                       else None
+                     in
+                     (cmd_ifconfig_set st ~timeout ~node:(arg0 r) ~port:(arg_at r 1)
+                        ~field:(arg_at r 2)
+                        (* No fourth argument means the empty string: clearing a cell. *)
+                        ~value:(match arg_opt r 3 with Some v -> v | None -> "")
+                        ~restart,
+                      `Continue))
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

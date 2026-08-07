@@ -275,6 +275,13 @@ object(self)
   method shown_header = shown_header
   method hidden = hidden
   method is_reserved =reserved
+  (* Whether a human may type into this column: only [editable_string_column] overrides it, and
+     it is exactly the column class whose renderer carries `EDITABLE true. Without this predicate
+     the distinction is lost the moment a column is added, since #add_column coerces it to
+     [column] (l.1078) — and a caller wanting the writable vocabulary (control_server.ml,
+     ifconfig-set) would have to hard-code a list of headers, which is what publishing #columns
+     was meant to avoid. *)
+  method is_editable = false
   method has_default =
     match default with
       Some _ -> true
@@ -403,6 +410,8 @@ fun ~(treeview:treeview)
 
   method! can_contain x =
     constraint_predicate x
+
+  method! is_editable = true
 
   method! append_to_view (view : GTree.view) =
     let column = (self :> column) in
@@ -841,32 +850,47 @@ object(self)
 
   method private row_constraints = !row_constraints
 
+  (* The verdict alone, with no dialog and no exception: the caller decides how to report it.
+     Extracted at episode 5b of [marionnet-pilotage-par-script] because the control server must
+     refuse an ifconfig write with a JSON answer, not with a window — while running exactly the
+     checks the GUI runs, rather than a validation of its own. One source of truth, two messages
+     (same shape as User_level.check_new_name at episode 4d-2c). *)
+  method constraints_verdict complete_row : [ `Row of constraint_name | `Column of column_header ] option =
+    let violated_row_constraint =
+      List.find_opt
+        (fun (_name, row_constraint) -> not (row_constraint complete_row))
+        self#row_constraints
+    in
+    match violated_row_constraint with
+    | Some (name, _) -> Some (`Row name)
+    | None ->
+        (match
+           List.find_opt
+             (fun (header, value) -> not ((self#get_column header)#can_contain value))
+             complete_row
+         with
+         | Some (header, _) -> Some (`Column header)
+         | None             -> None)
+
   method check_constraints complete_row =
-    List.iter
-      (fun (name, row_constraint) ->
-        if not (row_constraint complete_row) then begin
-          Simple_dialogs.error
-            "Invalid value: row constraint violated"
-            (Printf.sprintf
-               "The value you have chosen for a treeview element violates the row constraint \"%s\"."
-               name)
-            ();
-          raise (RowConstraintViolated name)
-        end)
-      self#row_constraints;
-    List.iter
-      (fun (header, value) ->
-        let column = self#get_column header in
-        if not (column#can_contain value) then begin
-          Simple_dialogs.error
-            "Invalid column value"
-            (Printf.sprintf
-               "The value you have chosen for an element of the column \"%s\" is invalid."
-               header)
-            ();
-          raise (ColumnConstraintViolated header)
-        end)
-      complete_row
+    match self#constraints_verdict complete_row with
+    | None -> ()
+    | Some (`Row name) ->
+        Simple_dialogs.error
+          "Invalid value: row constraint violated"
+          (Printf.sprintf
+             "The value you have chosen for a treeview element violates the row constraint \"%s\"."
+             name)
+          ();
+        raise (RowConstraintViolated name)
+    | Some (`Column header) ->
+        Simple_dialogs.error
+          "Invalid column value"
+          (Printf.sprintf
+             "The value you have chosen for an element of the column \"%s\" is invalid."
+             header)
+          ();
+        raise (ColumnConstraintViolated header)
 
   method columns =
     !columns
