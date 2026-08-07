@@ -240,12 +240,20 @@ Reprise : appliquer le skill `chantier-long`.
   exigée du script** ; vocabulaire écrivable dérivé de `#columns` via `#is_editable`, filtré
   **aussi** par `is_reserved` ; bout en bout : `simulation_level.ml:723-742` lit ce treeview à la
   construction du device, donc l'adresse posée par le canal atteint `boot_parameters`)
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a et 5b sont
+  et **ép. 5c** (l'**écriture de `defects`**, § 4.6 :
+  `defects-set <nœud> <port> <direction> <champ>` **ou** `defects-set <câble> <direction> <champ>`
+  — deux formes sous un verbe, tranchées par le **`Type` de la racine** et non par le nombre
+  d'arguments ; la direction se désigne par son `Type`, le `Name` d'une direction de câble étant
+  `to m1 (eth0)` — espaces compris ; **l'application est asymétrique parce que la GUI l'était** :
+  un câble connecté est `suspend`+`resume` **sans aucune question** — donc le defect atteint
+  `wirefilter` **à chaud**, par recréation du process — là où un nœud exige
+  `--restart`/`--no-restart` ; les 3 effets du chemin GTK (réalignement min/max, surbrillance,
+  avertissement) passent dans `#edit_side_effects`, appelée par la GUI **et** par le serveur)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a, 5b et 5c sont
   clos**. La direction du § 10 — le scripting **descend dans les composants** — est donc
-  **ouverte, démontrée et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 5c**
-  (écriture de `defects` — la seule peut-être applicable **en marche**, à mesurer et non à
-  présumer), puis 5d (`history`/`documents`, si besoin) et l'ép. 6 (client `mrnctl`), où les
-  8 bancs resserviront.
+  **ouverte, démontrée et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 6**
+  (client `mrnctl`), où les 8 bancs resserviront ; l'ép. 5d (`history`/`documents` en écriture)
+  reste conditionné à un besoin réel (YAGNI).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

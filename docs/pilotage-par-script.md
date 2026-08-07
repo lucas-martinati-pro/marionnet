@@ -616,7 +616,68 @@ lit **ce treeview** à la construction du device et en fait les paramètres de b
 (`ipv4_address_eth0` et consorts, déposés dans le `boot_parameters` du hostfs). Une adresse posée
 par le canal avant le démarrage atteint donc l'invité — mesuré par le bloc T11 du banc.
 
-**Écriture de `defects` — épisode 5c.**
+**Écriture de `defects` — livrée à l'épisode 5c.** C'est l'autre moitié de ce qui fait un TP : les
+adresses disent qui parle à qui, les *defects* disent à quel prix — pertes, duplications, bruit,
+délais. Et c'est le seul treeview dont la GUI applique une écriture à un réseau **en marche**.
+
+```
+defects-set <nœud>  <port> <direction> <champ> [<valeur>] [--restart | --no-restart]
+defects-set <câble>         <direction> <champ> [<valeur>]
+```
+
+Un champ à la fois, comme `ifconfig-set`, et une valeur absente vide la cellule. Réponse :
+`{"ok":true,"target":…,"port":…|null,"direction":…,"field":…,"old":…,"new":…,"changed":…,`
+`"adjusted":…|null,"warning":…|null,"reconnected":…|"restarted":…}`, la valeur **relue**.
+
+Quatre faits du code — mesurés, aucun n'étant une symétrie avec `ifconfig-set` :
+
+1. **Deux formes sous un seul verbe, et c'est le treeview qui tranche.** L'entrée d'un nœud a un
+   niveau par port (nœud → port → direction), celle d'un câble n'en a pas (câble → direction). La
+   forme d'une requête ne se déduit donc pas du nombre d'arguments — l'arité déclarée n'est que
+   l'enveloppe, de 3 à 5 — mais du **`Type` de la racine visée** (`straight-cable`/`crossover-cable`).
+   Un mélange des deux est refusé en `bad_argument`, avec la syntaxe de la forme réelle.
+2. **La direction se désigne par son `Type`, jamais par son `Name`.** Sous un nœud les deux
+   coïncident (`inward`/`outward`) ; sous un câble, le `Name` d'une direction est
+   `to m1 (eth0)` (`cable.ml:623`) — il contient des **espaces**, donc ne peut pas être un argument
+   positionnel (§ 4.1), et il **change** quand une extrémité est renommée
+   (`#rename_cable_endpoints`). `Treeview_defects#get_cable_data` filtre lui-même par `Type` : le
+   canal fait comme le modèle, `leftward`/`rightward`.
+3. **L'application est asymétrique, et la GUI l'était déjà.** `after_user_edit_callback` →
+   `shutdown_or_restart_relevant_device` (`marionnet.ml:154`) traite un câble et un nœud
+   différemment : pour un **câble connecté** il fait `c#suspend; c#resume` **sans rien demander**,
+   ce qui détruit et reconstruit le device simulé (`cable.ml:820-847`) dont l'`initializer` relit
+   `get_my_defects` et repasse les valeurs à `wirefilter` en ligne de commande
+   (`simulation_level.ml:604`) ; pour un **nœud**, il ouvre le dialogue « redémarrer maintenant ? ».
+   Le canal reproduit exactement cela : un câble est rebranché d'office (`reconnected`, *accepté*
+   jamais *fini* — règle 3, § 4.4) et `--restart`/`--no-restart` y est **refusé** comme sans objet ;
+   un nœud en marche exige ce choix (`restart_choice_required`), comme à l'épisode 5b. Le contrat
+   § 4.10 se lit ici à l'envers de l'intuition : la restriction ne vient pas de ce qui est risqué,
+   mais de ce que la GUI **demande**.
+4. **Le chemin GTK fait trois choses de plus qu'un `#set_row_field`**, et elles ne sont pas
+   optionnelles : réaligner la borne sœur quand les deux délais se croisent (poser un minimum
+   au-dessus du maximum fait suivre le maximum), rafraîchir la surbrillance de la ligne, et
+   avertir qu'un pourcentage de bits retournés dépasse 1 %. Extraites dans
+   `Treeview_defects#edit_side_effects` sur la forme de `#constraints_verdict` (épisode 5b) : la
+   méthode *fait* les écritures et *rend* ce qu'il y a à rapporter, sans rien afficher — la GUI en
+   tire son dialogue, le canal les champs `adjusted` et `warning`. Une source de vérité, deux
+   messages ; la GUI n'a pas bougé d'un octet.
+
+**Le slug d'un champ est généralisé** (et les slugs d'`ifconfig` en sortent inchangés, ce que le
+banc asserte) : minuscules, tout caractère non alphanumérique devient un tiret, les tirets répétés
+sont compressés et le dernier rogné. `Loss %` → `loss`, `Flipped bits %` → `flipped-bits`,
+`Minimum delay (ms)` → `minimum-delay-ms`. La règle de l'épisode 5b — « espaces en tirets » —
+tenait parce que les en-têtes d'`ifconfig` sont faits de lettres et d'espaces ; ceux de `defects`
+ne le sont pas, et un slug portant `%` ou des parenthèses aurait obligé chaque script à le mettre
+entre guillemets.
+
+Refus : `no_active_project`, `unknown_target` (avec les racines de **ce** treeview — les 8 natures
+**et** les câbles, cf. la note sur les populations ci-dessus), `unknown_port`,
+`unknown_direction` (avec celles de la ligne visée), `unknown_field` (avec le vocabulaire
+écrivable), `constraint_violated`, `restart_choice_required`, `bad_argument`. Deux couples
+mesurés par le banc valent d'être notés, parce qu'aucune validation réécrite dans le serveur ne les
+produirait : `loss 100` est accepté quand `duplication 100` est refusé (`is_a_valid_percentage`
+contre `is_a_valid_non_100_percentage`), et une écriture visant la ligne d'un port ou d'un device —
+et non l'une de ses directions — est refusée par la contrainte de **ligne** du treeview.
 
 ### 4.7 Synchronisation
 
@@ -1259,7 +1320,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **4h** | Signal « invité prêt » (§ 10, point 1) : marqueur `marionnet-guest-ready` écrit par le scénario, `wait <n> --ready`, fraîcheur par datation contre `boot_parameters` | **fait** (2026-08-07) — 29 assertions, `ready-bench.sh` (dont l'anti-périmé, discriminant) |
 | **5a** | Les 4 treeviews, **face lecture** : un verbe par treeview, une implémentation, la forêt servie comme une forêt (§ 4.6) | **fait** (2026-08-07) — 47 assertions, `treeview-bench.sh` |
 | **5b** | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure : `ifconfig-set`, les contraintes de la GUI rejouées par le serveur (`#constraints_verdict`), et le choix de redémarrage exigé du script | **fait** (2026-08-07) — 80 assertions, `treeview-bench.sh` (T8→T11, dont le bout en bout `boot_parameters`) |
-| 5c | Écriture de `defects` (pertes, délais) — probablement la seule écriture applicable **en marche** | à faire |
+| **5c** | Écriture de `defects` (pertes, délais) : `defects-set`, deux formes sous un verbe, la direction désignée par son `Type`, et l'application **à chaud** pour un câble — mesurée, pas présumée | **fait** (2026-08-07) — 138 assertions, `treeview-bench.sh` (T12→T15, dont la ligne de commande du `wirefilter` recréé) |
 | 5d | `history` et `documents` en écriture, si un besoin apparaît | à faire |
 | 6 | Client `mrnctl` + suite de tests scriptés | à faire |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
@@ -2555,3 +2616,66 @@ d'une contrainte de *ligne* du treeview. Et **T11** ferme la boucle sur ce qui c
 `simulation_level.ml:723-742` lit ce treeview à la construction du device, si bien que l'adresse
 posée par le canal se retrouve dans le `boot_parameters` du hostfs — mesuré, machine réellement
 démarrée.
+
+### 2026-08-07 — épisode 5c : le defect qui s'applique sans rien éteindre
+
+**Ce que l'épisode livre** : `defects-set`, sous deux formes qu'un seul verbe porte —
+`<nœud> <port> <direction> <champ>` et `<câble> <direction> <champ>` (§ 4.6). Avec les adresses de
+l'épisode 5b, un script sait désormais poser tout ce qui fait la matière d'un TP : qui parle à qui,
+et à quel prix.
+
+**La question de l'épisode n'était pas « comment écrire » mais « quand cela s'applique », et elle
+se tranchait par lecture, pas par symétrie.** La fiche de reprise disait de mesurer plutôt que de
+présumer, et de ne pas reconduire le `--restart`/`--no-restart` de l'épisode 5b par ressemblance
+entre treeviews. Bien lui en a pris : `shutdown_or_restart_relevant_device` (`marionnet.ml:154`)
+traite les deux natures différemment. Pour un **câble connecté**, la GUI fait `c#suspend; c#resume`
+**sans ouvrir le moindre dialogue** — et ce couple n'est pas cosmétique : il détruit le device
+simulé et le reconstruit (`cable.ml:820-847`), si bien que l'`initializer` du nouveau
+(`cable.ml:981`) relit les defects du treeview et les passe à `wirefilter` sur sa ligne de commande.
+Un defect de câble s'applique donc **à chaud**, par recréation du process, sans que rien ne
+s'éteigne. Pour un **nœud**, en revanche, c'est le dialogue de l'épisode 5b. Le canal reproduit les
+deux : il rebranche le câble d'office et **refuse** `--restart` comme sans objet, il exige le choix
+sur un nœud en marche. Généralisation à garder : dans ce chantier, ce n'est pas le risque qui
+décide d'une restriction, c'est ce que la GUI **demande** à l'humain.
+
+**Trois choses que `#set_row_field` ne fait pas, et qui ne sont pas optionnelles.** Le chemin GTK
+*cell-edited* réaligne la borne sœur quand les deux délais se croisent, rafraîchit la surbrillance,
+et avertit au-delà de 1 % de bits retournés. Les écrire une seconde fois dans le serveur, c'était
+se garantir deux comportements divergents au premier changement de l'un des deux ; elles sont donc
+passées dans `Treeview_defects#edit_side_effects`, qui *fait* les écritures et *rend* ce qu'il y a
+à rapporter, sans rien afficher — même forme que `#constraints_verdict` (épisode 5b) et que
+`User_level.check_new_name` (épisode 4d-2c). La GUI en tire son dialogue, le canal les champs
+`adjusted` et `warning`, et elle n'a pas changé d'un octet. Effet de bord heureux du passage :
+vider une cellule de délai levait une exception dans le callback, que `on_edit` rattrape en
+journalisant — donc `run_after_update_callback` n'était **pas** appelé, et l'effacement d'un délai
+ne redémarrait rien ni ne marquait le projet modifié. Une cellule vide vaut désormais zéro, comme
+`is_defective` la lisait déjà.
+
+**Le nom d'une direction de câble n'est pas utilisable, son type l'est.** Sous un nœud, `Name` et
+`Type` coïncident (`inward`/`outward`) ; sous un câble, le `Name` d'une direction est
+`to m1 (eth0)` — avec des espaces, donc impassable en argument positionnel (§ 4.1), et réécrit
+quand une extrémité est renommée. Le modèle lui-même filtre par `Type` (`get_cable_data`) : le
+canal fait pareil. C'est aussi ce qui a fixé la forme de la commande — ce n'est pas le nombre
+d'arguments qui dit à quoi on s'adresse, c'est le `Type` de la racine visée.
+
+**La preuve, et les trois runs qu'il a fallu.** `treeview-bench.sh` étendu (T12→T15), **138
+assertions vertes, 0 échec**, 0 orphelin ; `dune build` et `dune test --force` verts. Les deux
+premiers runs ont trouvé trois erreurs, **toutes dans le banc** : (a) `defects-set m1 outward loss 5`
+n'est pas une requête à trois arguments mais à quatre, donc un port nommé `outward` — le refus
+qu'elle produit est juste, il énumère les ports ; (b) un câble est `connected` **par défaut**
+(`cable.ml:743`), réseau éteint compris, donc `reconnected` vaut `true` même quand rien ne tourne :
+ce champ dit que le débranchement/rebranchement a été **demandé**, pas que du trafic passait ;
+(c) surtout, le banc croyait mesurer un câble en marche alors qu'il avait relié deux switchs par un
+câble **droit** — « incorrect », donc jamais démarré (`user_level.ml:345`), pendant que neuf
+`wirefilter` (ceux des câbles internes des switchs) donnaient l'illusion du contraire. Corrigé en
+`--crossover`, avec l'assertion de polarité **et** un `wait c2 --state=on` : c'est exactement la
+leçon (c) de l'épisode 4b — une assertion d'ensemble doit d'abord exiger que ce qu'elle prétend
+mesurer existe. Quatrième correction, celle-là utile bien au-delà du bloc : il y a **un répertoire
+de session par projet**, et ce banc en ouvre quatre ; le `head -1` hérité ne connaissait que le
+premier, si bien que le nettoyage laissait filer les orphelins des trois autres.
+
+**Le bloc discriminant est T15**, et il ne coûte aucun invité : deux switchs et un câble croisé
+suffisent à faire tourner un `wirefilter`. Une seconde après le `defects-set`, la perte de 37 %
+figure dans la **ligne de commande** du process recréé, où elle était absente avant — mesuré sur
+`/proc/<pid>/cmdline`, sans qu'aucun composant n'ait été éteint. C'est la différence entre dire
+qu'un defect s'applique à chaud et le montrer.

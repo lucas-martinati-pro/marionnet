@@ -426,6 +426,65 @@ object(self)
     else
       self#show_that_it_is_not_defective row_id
 
+  (* --- Episode 5c, work-stream "marionnet-pilotage-par-script" ---
+     Everything the GTK cell-edited path does *after* a defects cell has been committed, and that
+     [#set_row_field] does not do: realign the sister bound when the two delays cross, refresh the
+     highlighting of the row, and say when a flipped-bits percentage is unusually high. It is
+     extracted here on the very shape of [#constraints_verdict] (episode 5b): the method *does* the
+     writes and *returns* what is to be reported, showing nothing — the GUI turns the verdict into
+     a dialog, the control server into a JSON field. One source of truth, two messages.
+
+     Precondition, the same one the GTK path satisfies (Treeview.editable_string_column#on_edit):
+     the edited cell has ALREADY been written when this is called; [new_content] is its value.
+
+     Returns: (the realigned column and its new value) option × (warning title and body) option,
+     both members being translated strings, hence never to be printed with %S (episode 5b). *)
+  method edit_side_effects
+    ~(row_id : string) ~(header : column_header) ~(new_content : string)
+    : (column_header * string) option * (string * string) option
+    =
+    (* An empty cell means zero here, as [is_defective] already reads it (float_of_string fails and
+       the value counts as 0.0). Reading it as an exception instead is what made the GUI drop the
+       whole update — including the device restart — whenever a delay cell was cleared. *)
+    let float_or_zero s = if s = "" then 0.0 else try float_of_string s with _ -> 0.0 in
+    if header = minimum_delay_header then
+      let minimum_delay = float_or_zero new_content in
+      let maximum_delay = float_or_zero (self#get_row_maximum_delay row_id) in
+      let adjusted =
+        if minimum_delay > maximum_delay then
+          let value = string_of_float minimum_delay in
+          let () = self#set_row_maximum_delay row_id value in
+          Some (maximum_delay_header, value)
+        else None
+      in
+      let () =
+        self#show_defectiveness ~maximum_delay:(max minimum_delay maximum_delay) row_id
+      in
+      (adjusted, None)
+    else if header = maximum_delay_header then
+      let maximum_delay = float_or_zero new_content in
+      let minimum_delay = float_or_zero (self#get_row_minimum_delay row_id) in
+      let adjusted =
+        if minimum_delay > maximum_delay then
+          let value = string_of_float maximum_delay in
+          let () = self#set_row_minimum_delay row_id value in
+          Some (minimum_delay_header, value)
+        else None
+      in
+      let () =
+        self#show_defectiveness ~minimum_delay:(min minimum_delay maximum_delay) row_id
+      in
+      (adjusted, None)
+    else
+      let () = self#show_defectiveness row_id in
+      let warning =
+        if header = flipped_bits_header && (float_or_zero new_content) > 1.0 then
+          Some ((s_ "This value may be too high"),
+                (s_ "Please consider that a flipped bits percentage greater than 1% implies *many* transmission errors.\n\nAnyway you are free to experiment with any percentage."))
+        else None
+      in
+      (None, warning)
+
   (** grandparent for devices, parent for cables: *)
   method private relevant_device_name_for_row_id row_id =
     try  self#get_row_grandparent_name row_id
@@ -468,9 +527,6 @@ object(self)
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_percentage i)
         () in
-    loss#set_after_edit_commit_callback
-      (fun row_id _ _ ->
-        self#show_defectiveness row_id);
     let duplication =
       self#add_editable_string_column
         ~header:duplication_header
@@ -478,9 +534,6 @@ object(self)
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_non_100_percentage i)
         () in
-    duplication#set_after_edit_commit_callback
-      (fun row_id _ _ ->
-        self#show_defectiveness row_id);
     let flipped_bits =
       self#add_editable_string_column
         ~header:flipped_bits_header
@@ -488,15 +541,6 @@ object(self)
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_percentage i)
         () in
-    flipped_bits#set_after_edit_commit_callback
-      (fun row_id _ content ->
-        self#show_defectiveness row_id;
-        let content = float_of_string content in
-        if content > 1.0 then
-          Simple_dialogs.warning
-            (s_ "This value may be too high")
-            (s_ "Please consider that a flipped bits percentage greater than 1% implies *many* transmission errors.\n\nAnyway you are free to experiment with any percentage.")
-            ());
     let minimum_delay =
       self#add_editable_string_column
         ~header:minimum_delay_header
@@ -504,16 +548,6 @@ object(self)
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_delay i)
         () in
-    minimum_delay#set_after_edit_commit_callback
-      (fun row_id _ new_content ->
-        let minimum_delay = if new_content = "" then 0.0 else float_of_string new_content in
-        let maximum_delay = self#get_row_maximum_delay row_id in
-        let maximum_delay = if maximum_delay = "" then 0.0 else float_of_string maximum_delay in
-        (if minimum_delay > maximum_delay then
-          self#set_row_maximum_delay row_id (string_of_float minimum_delay));
-        self#show_defectiveness
-          ~maximum_delay:(max minimum_delay maximum_delay)
-          row_id);
     let maximum_delay =
       self#add_editable_string_column
         ~header:maximum_delay_header
@@ -521,16 +555,19 @@ object(self)
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_delay i)
         () in
-    maximum_delay#set_after_edit_commit_callback
-      (fun row_id _ new_content ->
-        let maximum_delay = if new_content = "" then 0.0 else float_of_string new_content in
-        let minimum_delay = self#get_row_minimum_delay row_id in
-        let minimum_delay = if minimum_delay = "" then 0.0 else float_of_string minimum_delay in
-        (if minimum_delay > maximum_delay then
-           self#set_row_minimum_delay row_id (string_of_float maximum_delay));
-        self#show_defectiveness
-          ~minimum_delay:(min minimum_delay maximum_delay)
-          row_id);
+    (* The five editable columns share one commit path (episode 5c): what each of them used to do
+       inline now lives in [#edit_side_effects], which the control server calls too. Here the
+       verdict becomes a dialog; there, a JSON field. *)
+    List.iter
+      (fun column ->
+         column#set_after_edit_commit_callback
+           (fun row_id _old_content new_content ->
+              match
+                self#edit_side_effects ~row_id ~header:(column#header) ~new_content
+              with
+              | _, Some (title, message) -> Simple_dialogs.warning title message ()
+              | _, None -> ()))
+      [ loss; duplication; flipped_bits; minimum_delay; maximum_delay ];
 
   self#add_row_constraint
     ~name:(s_ "you should choose a direction to define this parameter")

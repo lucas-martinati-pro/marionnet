@@ -226,6 +226,15 @@ let arity_of_command : (string * arity) list =
        field it is about. --restart/--no-restart is required only when the node is running. *)
     ("ifconfig-set",  node_port_field_and_value
                         "ifconfig-set <node> <port> <field> [<value>] [--restart|--no-restart]");
+    (* Episode 5c. Two shapes under one verb, because the treeview has two: a node entry has one
+       level per port (node → port → direction), a cable entry has none (cable → direction). Which
+       one a request has is not decided by counting its arguments but by the *type* of the row it
+       aims at, so the arity here is only the outer envelope — 3 to 5 — and [cmd_defects_set]
+       refuses a mixture with the syntax in clear. *)
+    ("defects-set",   { min_args = 3; max_args = 5; free_tail = true;
+                        syntax = "defects-set <node> <port> <inward|outward> <field> [<value>] \
+                                  [--restart|--no-restart]  |  defects-set <cable> \
+                                  <leftward|rightward> <field> [<value>]" });
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -2229,11 +2238,31 @@ let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(nam
    node is running, exactly as --save/--no-save became required at episode 4d. What the GUI puts
    in a dialog, the channel puts in the request. *)
 
-(* A header as a script spells it: lowercase, spaces to dashes ("IPv4 address" → ipv4-address).
-   Derived, never listed — the same reason the read side publishes #columns: a column added to a
-   treeview becomes writable the day it becomes readable, with no table here to update. *)
+(* A header as a script spells it. Derived, never listed — the same reason the read side publishes
+   #columns: a column added to a treeview becomes writable the day it becomes readable, with no
+   table here to update.
+
+   The rule: lowercase, every non-alphanumeric run becomes a single dash, trailing dashes are
+   dropped. Episode 5b only had to turn spaces into dashes, ifconfig headers being made of letters
+   and spaces; the defects headers are not ("Loss %", "Minimum delay (ms)"), and a slug carrying a
+   percent sign or parentheses would force every script to quote it. The five ifconfig slugs are
+   unchanged by this generalisation — mac-address, mtu, ipv4-address, ipv4-gateway, ipv6-address,
+   ipv6-gateway — which the bench asserts rather than assumes. *)
 let slug_of_header (h:string) : string =
-  String.map (function ' ' -> '-' | c -> c) (String.lowercase_ascii h)
+  let b = Buffer.create (String.length h) in
+  let () =
+    String.iter
+      (fun c ->
+         match Char.lowercase_ascii c with
+         | ('a'..'z' | '0'..'9') as c -> Buffer.add_char b c
+         | _ ->
+             if (Buffer.length b > 0) && (Buffer.nth b (Buffer.length b - 1)) <> '-' then
+               Buffer.add_char b '-')
+      h
+  in
+  let s = Buffer.contents b in
+  let n = String.length s in
+  if n > 0 && s.[n-1] = '-' then String.sub s 0 (n-1) else s
 
 (* Which cells a human may type into. [#is_editable] (treeview.ml, episode 5b) is true of exactly
    the column class whose GTK renderer carries `EDITABLE true, so this list is the GUI's own
@@ -2383,6 +2412,285 @@ let cmd_ifconfig_set (st : State.globalState) ~(timeout:float) ~(node:string) ~(
                           say --restart or --no-restart"
                          node (script_state_of_raw raw)))
 
+(* § 4.6, write side of defects (episode 5c). Losses, delays and noise are what makes a lab
+   exercise realistic, and they are the one treeview whose writes the GUI applies to a *running*
+   network. Measured, not assumed — three facts of the code shape this command, and none of them
+   is a symmetry with ifconfig-set:
+
+   (a) a defect of a CABLE applies hot, and the GUI asks nothing. after_user_edit_callback →
+       shutdown_or_restart_relevant_device (marionnet.ml:154) does, for a connected cable,
+       "c#suspend; c#resume" with no dialog at all. That couple destroys and rebuilds the
+       simulated device (cable.ml:820-847), whose initializer (cable.ml:981) re-reads
+       get_my_defects and passes the values to wirefilter on its command line
+       (defects_to_command_line_options, simulation_level.ml:604). So the channel does the same,
+       and reports it in [reconnected] — accepted, never finished (rule 3, § 4.4);
+
+   (b) a defect of a NODE port falls back on episode 5b: the GUI opens the "reboot now?" dialog
+       (marionnet.ml:141-152), guarded by can_gracefully_shutdown, hence --restart/--no-restart
+       required of the script as soon as the node is running;
+
+   (c) the direction is designated by its TYPE, never by its Name. Under a cable, a direction row
+       is *named* "to m1 (eth0)" (cable.ml:623): it holds spaces, so it could not be a positional
+       argument (§ 4.1), and it changes when an endpoint is renamed
+       (#rename_cable_endpoints). Treeview_defects#get_cable_data filters by Type for the very same
+       reason. Under a node port, Name and Type agree (inward/outward), so Type is uniform.
+
+   The three levels of a node entry (node → port → direction) against the two of a cable one are
+   therefore not a matter of counting arguments: the treeview says which shape a request has, and
+   a request mixing the two is refused with the syntax in clear. *)
+
+let treeview_type_column = "Type"
+
+let icon_cell (row : Treeview.Row.t) (header:string) : string =
+  match List.assoc_opt header row with
+  | Some (Treeview.Row_item.Icon s) -> s
+  | _ -> ""
+
+(* What the write triggered right away. A cable is reconnected with no question asked, a node is
+   restarted only if the script said so — the asymmetry of (a) and (b) above. *)
+type defects_application =
+  | Da_reconnected of bool
+  | Da_restarted   of bool
+
+type defects_written = {
+  dw_port      : string option;
+  dw_direction : string;
+  dw_header    : string;
+  dw_old       : string;
+  dw_new       : string;
+  (* The sister bound realigned by #edit_side_effects, read back like everything else. The GUI
+     does this silently; a script is told, the way episode 4f reports an adjusted kernel. *)
+  dw_adjusted  : (string * string) option;
+  (* The title of the warning the GUI would have shown in a dialog (flipped bits above 1%). *)
+  dw_warning   : string option;
+  dw_applied   : defects_application;
+}
+
+type defects_outcome =
+  | De_written           of defects_written
+  | De_no_project
+  | De_unknown_target    of string list
+  | De_unknown_port      of string list
+  | De_unknown_direction of string list
+  | De_unknown_field     of string list
+  | De_violated          of string
+  | De_restart_choice    of string
+  | De_bad_shape         of string
+
+let cmd_defects_set (st : State.globalState) ~(timeout:float) ~(args:string list)
+    ~(restart:bool option) : string
+  =
+  let target = match args with x :: _ -> x | [] -> "" in
+  ask ~timeout
+    (fun () ->
+       if not st#active_project then De_no_project else
+       let tv  = (st#treeview#defects :> Treeview.t) in
+       let tvd = st#treeview#defects in
+       (* The complete forest, not #get_forest: writing needs the _id of the row, which is reserved
+          and therefore absent from the rows the read side serves. *)
+       let roots = Forest.to_treelist tv#get_complete_forest in
+       match List.find_opt (fun t -> tree_name t = Some target) roots with
+       (* The names of *this* treeview: unlike ifconfig it holds the eight natures **and** the
+          cables (episode 5a), so this list is wider than the addressable components. *)
+       | None -> De_unknown_target (List.sort_uniq compare (List.filter_map tree_name roots))
+       | Some (root_row, root_children) ->
+           let is_cable =
+             match icon_cell root_row treeview_type_column with
+             | "straight-cable" | "crossover-cable" -> true
+             | _                                    -> false
+           in
+           let shape =
+             match is_cable, args with
+             | true,  [ _; d; f ]       -> Ok (None,   d, f, "")
+             | true,  [ _; d; f; v ]    -> Ok (None,   d, f, v)
+             | true,  _                 ->
+                 Error (Printf.sprintf
+                          "%S is a cable, whose entry has no ports — usage: \
+                           defects-set <cable> <leftward|rightward> <field> [<value>]" target)
+             | false, [ _; p; d; f ]    -> Ok (Some p, d, f, "")
+             | false, [ _; p; d; f; v ] -> Ok (Some p, d, f, v)
+             | false, _                 ->
+                 Error (Printf.sprintf
+                          "%S is a node, whose entry has one level per port — usage: \
+                           defects-set <node> <port> <inward|outward> <field> [<value>] \
+                           [--restart|--no-restart]" target)
+           in
+           (match shape with
+            | Error detail -> De_bad_shape detail
+            (* Refused rather than ignored (§ 4.1): the GUI never asks anything before applying a
+               cable defect, so an option that says what to do about a reboot is a script bug. *)
+            | Ok _ when is_cable && restart <> None ->
+                De_bad_shape
+                  (Printf.sprintf
+                     "%S is a cable: it is reconnected right away, as the GUI does, so neither \
+                      --restart nor --no-restart applies here" target)
+            | Ok (port, direction, field, value) ->
+                let direction_rows =
+                  match port with
+                  | None   -> Ok (Forest.to_treelist root_children)
+                  | Some p ->
+                      let ports = Forest.to_treelist root_children in
+                      (match List.find_opt (fun t -> tree_name t = Some p) ports with
+                       | None -> Error (List.filter_map tree_name ports)
+                       | Some (_port_row, port_children) ->
+                           Ok (Forest.to_treelist port_children))
+                in
+                (match direction_rows with
+                 | Error names -> De_unknown_port names
+                 | Ok directions ->
+                     let direction_type ((row, _) : Treeview.Row.t Forest.tree) =
+                       icon_cell row treeview_type_column
+                     in
+                     (match List.find_opt (fun t -> direction_type t = direction) directions with
+                      | None -> De_unknown_direction (List.map direction_type directions)
+                      | Some (direction_row, _) ->
+                          let headers = editable_headers tv in
+                          (match List.find_opt (fun h -> slug_of_header h = field) headers with
+                           | None -> De_unknown_field (List.map slug_of_header headers)
+                           | Some header ->
+                               let old = string_cell direction_row header in
+                               let written ?adjusted ?warning ~applied v =
+                                 De_written { dw_port = port; dw_direction = direction;
+                                              dw_header = header; dw_old = old; dw_new = v;
+                                              dw_adjusted = adjusted; dw_warning = warning;
+                                              dw_applied = applied }
+                               in
+                               (* A write that changes nothing validates nothing and restarts
+                                  nothing, exactly as the GUI fires no callback when a cell is
+                                  left as it was (episode 5b). *)
+                               if value = old then
+                                 written old
+                                   ~applied:(if is_cable then Da_reconnected false
+                                             else Da_restarted false)
+                               else
+                               let new_row =
+                                 Treeview.Row.set_field ~field:header
+                                   ~value:(Treeview.Row_item.String value) direction_row
+                               in
+                               (match tv#constraints_verdict new_row with
+                                | Some (`Row name) ->
+                                    (* %s and not %S: a row constraint is named through gettext,
+                                       and %S would escape its UTF-8 (episode 5b). Here it is the
+                                       constraint that refuses a value typed on a device, a port or
+                                       a cable row instead of one of its directions. *)
+                                    De_violated
+                                      (Printf.sprintf
+                                         "the treeview row constraint \"%s\" refuses this write \
+                                          (the GUI refuses it too)" name)
+                                | Some (`Column h) ->
+                                    De_violated
+                                      (Printf.sprintf "the column %S does not accept %S" h value)
+                                | None ->
+                                    let cable =
+                                      if not is_cable then None else
+                                      try Some (st#network#get_cable_by_name target)
+                                      with _ -> None
+                                    in
+                                    let running =
+                                      if is_cable then None else
+                                      match List.find_opt (fun n -> n#get_name = target)
+                                              (st#network#get_node_list)
+                                      with
+                                      | Some n when n#can_gracefully_shutdown -> Some n
+                                      | _ -> None
+                                    in
+                                    (match running, restart with
+                                     | Some n, None -> De_restart_choice n#state_as_string
+                                     | _ ->
+                                         let row_id = Treeview.Row.get_id direction_row in
+                                         let () =
+                                           tv#set_row_field row_id header
+                                             (Treeview.Row_item.String value)
+                                         in
+                                         (* The other half of the GTK cell-edited path: the sister
+                                            bound, the highlighting and the warning, all of them in
+                                            the treeview's own method (episode 5c). *)
+                                         let (adjusted, warning) =
+                                           tvd#edit_side_effects ~row_id ~header ~new_content:value
+                                         in
+                                         (* First half of after_user_edit_callback
+                                            (marionnet.ml:178). *)
+                                         let () = st#set_project_not_already_saved in
+                                         let applied =
+                                           match cable, running, restart with
+                                           | Some c, _, _ ->
+                                               if c#is_connected then
+                                                 let () = c#suspend in
+                                                 let () = c#resume in
+                                                 Da_reconnected true
+                                               else Da_reconnected false
+                                           | None, Some n, Some true ->
+                                               let () = n#gracefully_restart in
+                                               Da_restarted true
+                                           | _ -> Da_restarted false
+                                         in
+                                         (* Read back, never assumed — the rule of [set]
+                                            (episode 4d-2a), and the only way to see that
+                                            string_of_float wrote "100." where the script said
+                                            "100". *)
+                                         let read_back h =
+                                           Treeview.Row_item.extract_String
+                                             (tv#get_row_field row_id h)
+                                         in
+                                         written (read_back header)
+                                           ?adjusted:(match adjusted with
+                                                      | None        -> None
+                                                      | Some (h, _) -> Some (h, read_back h))
+                                           ?warning:(match warning with
+                                                     | None            -> None
+                                                     | Some (title, _) -> Some title)
+                                           ~applied)))))))
+  |> reply_of_outcome
+       (function
+        | De_written w ->
+            reply_ok [ ("target",    jstr target);
+                       ("port",      jopt w.dw_port);
+                       ("direction", jstr w.dw_direction);
+                       ("field",     jstr w.dw_header);
+                       ("old",       jstr w.dw_old);
+                       ("new",       jstr w.dw_new);
+                       ("changed",   jbool (w.dw_old <> w.dw_new));
+                       ("adjusted",  (match w.dw_adjusted with
+                                      | None -> jnull
+                                      | Some (h, v) -> jobj [ ("field", jstr (slug_of_header h));
+                                                              ("new",   jstr v) ]));
+                       ("warning",   jopt w.dw_warning);
+                       (* Two names for two behaviours, so that a script never has to guess which
+                          one it got: a cable is reconnected, a node is restarted. *)
+                       (match w.dw_applied with
+                        | Da_reconnected b -> ("reconnected", jbool b)
+                        | Da_restarted   b -> ("restarted",   jbool b)) ]
+        | De_no_project ->
+            reply_error ~code:"no_active_project" ~detail:"no project is open"
+        | De_unknown_target names ->
+            reply_error ~code:"unknown_target"
+              ~detail:(Printf.sprintf
+                         "no row named %S in the defects treeview; known: %s"
+                         target (String.concat ", " names))
+        | De_unknown_port names ->
+            reply_error ~code:"unknown_port"
+              ~detail:(Printf.sprintf "%S has no port named %S; its ports are: %s"
+                         target (match args with _ :: p :: _ -> p | _ -> "")
+                         (String.concat ", " names))
+        | De_unknown_direction names ->
+            reply_error ~code:"unknown_direction"
+              ~detail:(Printf.sprintf "no such direction here; available: %s"
+                         (String.concat ", " names))
+        | De_unknown_field slugs ->
+            reply_error ~code:"unknown_field"
+              ~detail:(Printf.sprintf "no writable field in defects; writable fields: %s"
+                         (String.concat ", " slugs))
+        | De_violated detail ->
+            reply_error ~code:"constraint_violated" ~detail
+        | De_bad_shape detail ->
+            reply_error ~code:"bad_argument" ~detail
+        | De_restart_choice raw ->
+            reply_error ~code:"restart_choice_required"
+              ~detail:(Printf.sprintf
+                         "%S is %s: the GUI asks here whether to reboot it, so the script must \
+                          say --restart or --no-restart"
+                         target (script_state_of_raw raw)))
+
 (* ---------------------------------------------------------------- *)
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
@@ -2522,7 +2830,7 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             (* Same shape as --save/--no-save (episode 4d): the two options are mutually
                exclusive, and giving neither is legal — it is only refused later, and only if the
                node turns out to be running. *)
-            | "ifconfig-set" ->
+            | "ifconfig-set" | "defects-set" ->
                 (match (option_value r "restart" <> None), (option_value r "no-restart" <> None) with
                  | true, true ->
                      (reply_error ~code:"bad_argument"
@@ -2533,11 +2841,16 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                        else if no_restart_wanted then Some false
                        else None
                      in
-                     (cmd_ifconfig_set st ~timeout ~node:(arg0 r) ~port:(arg_at r 1)
-                        ~field:(arg_at r 2)
-                        (* No fourth argument means the empty string: clearing a cell. *)
-                        ~value:(match arg_opt r 3 with Some v -> v | None -> "")
-                        ~restart,
+                     ((if r.verb = "defects-set" then
+                         (* The positional arguments are passed whole: their shape depends on the
+                            treeview row aimed at, which only the GTK thread may read (episode 5c). *)
+                         cmd_defects_set st ~timeout ~args:r.args ~restart
+                       else
+                         cmd_ifconfig_set st ~timeout ~node:(arg0 r) ~port:(arg_at r 1)
+                           ~field:(arg_at r 2)
+                           (* No fourth argument means the empty string: clearing a cell. *)
+                           ~value:(match arg_opt r 3 with Some v -> v | None -> "")
+                           ~restart),
                       `Continue))
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
