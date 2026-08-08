@@ -1,0 +1,20 @@
+# The lab of 01-build-a-lab.sh, in batch form:  mrnctl -f lab.mrn
+#
+# One command per line, comments and blank lines ignored. Batch mode stops at the first
+# refusal — which is what you want when each line depends on the one before; --keep-going
+# runs the rest anyway. There is no transaction: a failure in the middle leaves the project
+# in the state the successful lines put it in.
+
+new /tmp/lab.mar --no-save
+
+add machine m1 --ports=2
+add machine m2
+add switch  s1 --ports=8
+
+connect c1 m1:eth0 s1:port1
+connect c2 m2:eth0 s1:port2
+
+ifconfig-set m1 eth0 ipv4-address 10.0.0.1/24
+ifconfig-set m2 eth0 ipv4-address 10.0.0.2/24
+
+save-as /tmp/lab.mar

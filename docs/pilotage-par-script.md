@@ -1234,6 +1234,65 @@ tient désormais en **une ligne**, puisque c'est `marionnet-ctl` qui parle.
 `can-bench.sh` a servi de **témoin** de l'extraction : −100 lignes, et les **16 assertions t0
 rigoureusement identiques** à celles du run joué juste avant conversion.
 
+### 5.5 Le guide utilisateur (épisode 8)
+
+`doc-src/scripting/README.md` (+ `examples/`), **versionné**, en **anglais**. Dernière pièce du
+chantier : jusqu'ici, tout ce qui existait était interne — *ce* document (conception + journal,
+écrit pour nous, en français) et le vocabulaire que le serveur publie lui-même. Il manquait un
+mode d'emploi pour l'enseignant qui scripte un TP, ou pour l'agent qui pilote.
+
+Quatre questions étaient ouvertes ; voici comment elles ont été tranchées, et pourquoi.
+
+- **Forme : un Markdown versionné dans `doc-src/scripting/`, pas du texinfo.** `doc-src/` est
+  bien le dossier des sources de documentation, mais son unique occupant
+  (`documentation.texi`, 2008, Marco Stronati) vise le **développeur**, n'a pas bougé depuis
+  2012, et sa chaîne (`texi2dvi`, `makeinfo` → `doc/`) n'est **pas** branchée sur
+  `dune install`. Refaire un guide utilisateur dans ce moule aurait coûté une chaîne de build
+  pour un gain nul. Le Markdown se lit tel quel dans le dépôt, sur une forge, et reste
+  installable le jour où on le décidera.
+- **Périmètre : la FORME et les INVARIANTS, jamais la liste des commandes.** C'est la décision
+  structurante, et c'est la même qu'à l'ép. 6 pour le client : le serveur est la **source unique**
+  de la grammaire (`help` → `arity_of_command`). Une table de commandes recopiée dans un guide
+  serait un second exemplaire — juste le jour où on l'écrit, faux ensuite. Le guide dit donc la
+  forme du canal (ligne → ligne JSON, codes d'erreur, 4 codes de retour), les **invariants**
+  (le contrat de l'automate, `accepted` ≠ fait, le marqueur d'invité, un champ à la fois, le
+  *slug* de colonne), et des **recettes** complètes ; pour « quels verbes existent », il renvoie
+  à `mrnctl help`. Un § final l'énonce comme règle de maintenance, pas comme un choix de goût.
+- **Langue : l'anglais.** Le vocabulaire documenté l'est (`start`, `wait --ready`,
+  `ifconfig-set`), la documentation livrée du dépôt l'est, et Marionnet se diffuse au-delà du
+  public francophone. Une traduction française reste possible **plus tard et sans risque**,
+  précisément parce que le guide ne porte pas la grammaire : elle ne pourrait pas devenir une
+  seconde source de vérité. Ce document-ci reste en français : il s'adresse aux développeurs.
+- **Anti-dérive : des exemples EXÉCUTABLES, versionnés et joués.** `doc-src/scripting/examples/`
+  contient `01-build-a-lab.sh`, `02-run-and-collect.sh`, `scenario-ping.sh` (côté invité) et
+  `lab.mrn` (mode lot). Ce ne sont pas des extraits illustratifs : le banc les lance **tels
+  quels**. Un exemple qui casse est le signal qu'on attend d'une doc qui a dérivé.
+
+**Les exemples n'utilisent pas `bashbricks`**, contre la règle du dépôt et pour la même raison
+qu'à l'ép. 6 : un exemple est fait pour être **copié hors de l'arbre** et modifié ; une dépendance
+à la disposition du dépôt serait la première chose à casser, et masquerait derrière des helpers
+ce que le lecteur vient voir. Le skill lui-même admet le shell nu quand la tâche est triviale —
+ici, ce sont des suites d'appels à `mrnctl`, sans collection ni JSON à manipuler.
+
+**Ce que le banc a corrigé, et qui n'aurait pas été vu à la relecture** (`doc-bench.sh`,
+39 assertions, 0 échec) : un **switch numérote ses ports à partir de 1** (`port1`) là où une
+machine numérote ses interfaces à partir de 0 (`eth0`) — le guide écrivait `s1:port0` partout ;
+le champ d'une écriture est le **slug** (`ipv4-address`), jamais l'en-tête GUI (`"IPv4 address"`),
+qui est refusé en `unknown_field` ; la réponse d'une transition est
+`{"component","action","accepted":true,"beyond_gui":false}` et non un `"accepted":"start"` ;
+`can` rend une **liste** d'actions autorisées, pas un objet de booléens ; la racine d'une réponse
+de treeview est `rows`, pas `roots`, et chaque nœud est `{"fields","children"}` ; enfin un
+**chemin qui n'est pas un socket** sort en **2** (`not a unix socket`), le **3** étant réservé au
+socket qui existe et ne répond pas. Six affirmations fausses écrites de bonne foi, toutes
+attrapées par l'exécution.
+
+**Hors périmètre, assumé et motivé : l'installation.** Ni le guide ni `marionnet-ctl` ne sont
+ajoutés à `dune install` ici. Les deux forment **un seul** épisode d'installation cohérent (le
+client irait dans `$(SHARE_DIR)/scripts`, recopié vers `$(PREFIX)/bin` par le `Makefile` ; le
+guide en `(section doc)`), et cet épisode appartient au chantier
+`modernisation-installation-marionnet`, pas à celui-ci — c'est exactement la frontière que
+l'ép. 6 avait déjà refusé de franchir.
+
 ---
 
 ## 6. Architecture C — le décor pré-fabriqué (`-r`)
@@ -1426,6 +1485,8 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **5d** | ~~`history` et `documents` en écriture~~ → **`history` par ses ACTIONS** : l'intitulé était trompeur (une seule colonne éditable ici, quatre de métadonnées là), la valeur était dans le menu contextuel — `history-start` (démarrer dans un état donné), `history-del`, `history-set … comment`. `documents` **hors périmètre**, motivé (§ 4.6) | **fait** (2026-08-08) — 22 assertions (`treeview-bench.sh`, T16), dont le discriminant de profondeur |
 | **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
+| **7** | La garde d'`open` : le faux négatif intermittent (`internal — flagged as unsaved`) était une **course** — `Cortex` lance un thread par commit `on_commit`, donc la réaction des `dotoptions` restaurées pouvait salir le projet *après* l'enregistrement de son état | **fait** (2026-08-08) — correctif = **retirer** les callbacks pendant la restauration (`Sketch.tuning`), 7/10 → 0/10 au banc `open-bench.sh` sous `taskset -c 0` |
+| **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
 reviendrait à fabriquer un instrument de mesure faussé.
@@ -2995,3 +3056,54 @@ Non-régression : `dune build` et `dune test --force` verts (0 échec), `project
 **Ce qui reste avant de clore le chantier** : la **documentation utilisateur** du scripting (guides
 formels, avec exemples) — décision prise à cet épisode de ne pas clore tant qu'elle n'est pas
 tranchée. Le canal, lui, n'a plus de défaut connu ouvert.
+
+---
+
+### 2026-08-09 — épisode 8 : un guide qui ne recopie pas la grammaire
+
+**Livrable** : `doc-src/scripting/README.md` (+ `examples/`, 4 fichiers), versionné, en anglais.
+Détail des décisions et de leurs motifs en **§ 5.5** ; on ne les répète pas ici.
+
+**La question posée était « quelle forme, quel périmètre, quelle langue, comment éviter la
+dérive » — et c'est la quatrième qui a commandé les trois autres.** Depuis l'ép. 6, le serveur
+est la source unique de la grammaire : il la publie par `help`, et le client n'en connaît rien.
+Un guide qui aurait recopié la table des verbes aurait rétabli exactement ce que l'ép. 6 avait
+supprimé — un second exemplaire, donc celui qui dérive. Le périmètre s'en déduit : le guide dit
+la **forme** du canal et les **invariants** (contrat de l'automate, `accepted` ≠ fait, marqueur
+d'invité, un champ à la fois, slug de colonne), puis des recettes complètes ; pour « quels
+verbes existent », il renvoie à `mrnctl help`. La langue s'en déduit aussi : un document qui ne
+porte pas la grammaire peut être traduit plus tard sans créer de seconde vérité, donc on a écrit
+d'abord dans la langue du dépôt et du vocabulaire documenté.
+
+**La forme retenue est du Markdown, pas du texinfo.** `doc-src/` est le dossier des sources de
+documentation, mais son unique occupant vise le développeur, date de 2008 et n'a pas bougé depuis
+2012 ; sa chaîne (`texi2dvi`/`makeinfo` → `doc/`) n'est pas branchée sur `dune install`. On
+n'allait pas remonter une chaîne de build pour un document que le dépôt et la forge rendent déjà
+lisible tel quel — et qui reste installable le jour où on le décidera.
+
+**L'anti-dérive n'est pas une intention, c'est un banc.** Les exemples sont des scripts
+exécutables versionnés (`01-build-a-lab.sh`, `02-run-and-collect.sh`, `scenario-ping.sh` côté
+invité, `lab.mrn` en mode lot), et `doc-bench.sh` les lance **tels quels** contre une session
+réelle. Le premier run l'a immédiatement justifié : **six affirmations fausses**, toutes écrites
+de bonne foi après lecture du source, toutes attrapées à l'exécution — le `port0` d'un switch qui
+numérote à partir de `port1` ; l'en-tête GUI `"IPv4 address"` là où l'écriture veut le slug
+`ipv4-address` (refusé en `unknown_field`) ; un `"accepted":"start"` inventé là où la réponse est
+`{"component","action","accepted":true,"beyond_gui":false}` ; un `can` supposé rendre un objet de
+booléens quand il rend une **liste** d'actions autorisées ; une racine `roots` là où le treeview
+sert `rows` de `{"fields","children"}` ; et un chemin non-socket annoncé en code 3 quand le client
+sort en **2**, le 3 étant réservé au socket qui existe et ne répond pas. Relire ne les aurait pas
+trouvées : c'est le mode de défaillance propre à la documentation d'API, et la seule parade est
+de l'exécuter.
+
+**Preuve** : `doc-bench.sh`, **39 assertions, 0 échec**, `dune build` vert. Y compris le bout en
+bout invité — `rc-set` d'un scénario, `start`, `wait --ready` qui rend `ready` comme première
+ligne du marqueur, et les **11 lignes** que l'invité a écrites dans `/mnt/hostfs/lab.log`, relues
+côté hôte par le chemin que `rc-get` publie. Les 4 codes de retour du client sont provoqués
+séparément, dont le « socket muet » par un `socat` qui écoute et n'a rien à dire.
+
+**Écart au périmètre, assumé** : ni le guide ni `marionnet-ctl` ne sont ajoutés à `dune install`.
+Les deux forment un seul épisode d'installation cohérent, qui appartient au chantier
+`modernisation-installation-marionnet` — la frontière que l'ép. 6 avait déjà refusé de franchir.
+
+**État du chantier** : le § 9 est soldé, aucun défaut connu n'est ouvert, et la condition posée à
+la clôture est levée. Le chantier peut être clos (MODE C) sur décision de l'auteur.

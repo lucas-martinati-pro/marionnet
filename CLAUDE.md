@@ -270,12 +270,20 @@ Reprise : appliquer le skill `chantier-long`.
   restauration — jamais un drapeau, qui serait lu trop tard — via `Sketch.tuning`
   (`set_persistence_reaction` / `with_persistence_reaction_suspended`), la garde d'`open` restant
   inchangée ; **7/10 → 0/10** au banc `open-bench.sh`, sous `taskset -c 0`)
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6
-  et 7 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
+  et **ép. 8** (la **documentation utilisateur**, § 5.5 : `doc-src/scripting/README.md` +
+  `examples/`, versionnés, **en anglais** — le guide dit la **forme** du canal et ses
+  **invariants**, plus des recettes, mais **jamais la liste des verbes** : elle appartient à
+  `mrnctl help` depuis l'ép. 6, et la recopier rétablirait la seconde source de vérité qu'on avait
+  supprimée ; **anti-dérive = un banc**, les 4 exemples sont **exécutables** et joués tels quels
+  par `doc-bench.sh` — dont le bout en bout invité ; premier run = **6 affirmations fausses**
+  écrites de bonne foi après lecture du source, que la relecture n'aurait pas vues ;
+  l'**installation** du guide *et* de `marionnet-ctl` est laissée au chantier
+  `modernisation-installation-marionnet`)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6,
+  7 et 8 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
   **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
-  au script). **Plus aucun défaut connu ouvert** ; la **clôture est suspendue à une décision** :
-  la **documentation utilisateur** du scripting (guides formels, avec exemples), forme et périmètre
-  à trancher.
+  au script). **Plus aucun défaut connu ouvert**, et la condition posée à la clôture est **levée** :
+  le chantier est **clôturable (MODE C)**, sur décision de l'auteur.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
