@@ -183,6 +183,25 @@ object(self)
 
   (* This method is useful to understand which source file has
      to be copied into the cow_file_name assigned to an UML device. *)
+  (* Episode 5d. The COW file name is the identity of a state: it is unique by construction
+     (cow_files.ml:23-35, a random triple retried until no such file exists) and, unlike Name, it
+     is unique *in this treeview*, where one machine owns as many rows as it has states. That is
+     what makes it the identifier the control channel takes.
+
+     Written on [row_ids_such_that] rather than on [unique_complete_row_such_that], which raises
+     Failure both when there is no such row and when there are several: a channel command must
+     tell "no such state" apart from an internal inconsistency, and an instrument that reports
+     through an exception it then swallows cannot do that. [~fallback:false] so that a row
+     missing the field answers "no" instead of raising. *)
+  method row_id_of_cow_file_name_if_any (cow_file_name:string) : row_id option =
+    let cow_file_name = Filename.basename cow_file_name in
+    let predicate row =
+      Row.String_field.eq ~fallback:false ~field:filename_header ~value:cow_file_name row
+    in
+    match self#row_ids_such_that predicate with
+    | [ row_id ] -> Some row_id
+    | _          -> None
+
   method get_parent_cow_file_name ~(cow_file_name:string) () : string option =
     let cow_file_name = Filename.basename cow_file_name in
     let complete_row =

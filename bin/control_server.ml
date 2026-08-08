@@ -179,6 +179,13 @@ let optional_component syntax = { min_args = 0; max_args = 1; free_tail = false;
    component. Sharing the constructor would make the table read "component" where it means
    "verb" — an alias costs one line and keeps the table honest. *)
 let optional_identifier = optional_component
+(* Same again for the history commands (episode 5d), whose single argument is the *cow file* of a
+   state, not a component: in that treeview Name is not unique, the cow file is. *)
+let one_identifier = one_component
+(* A state, a field, and an optional free value: a history comment is a sentence, and an absent
+   value clears the cell, as in ifconfig-set (episode 5b). *)
+let identifier_field_and_free_value syntax =
+  { min_args = 2; max_args = 3; free_tail = true; syntax }
 let one_path           syntax = { min_args = 1; max_args = 1; free_tail = true;  syntax }
 (* Two identifiers (a kind and a name), or a component and one of its field names: both are
    identifiers, hence strict. Only a *value* may contain spaces, and only in last position. *)
@@ -242,6 +249,12 @@ let arity_of_command : (string * arity) list =
                         syntax = "defects-set <node> <port> <inward|outward> <field> [<value>] \
                                   [--restart|--no-restart]  |  defects-set <cable> \
                                   <leftward|rightward> <field> [<value>]" });
+    (* Episode 5d. history by its ACTIONS: a state is named by its cow file (Name is not unique
+       in this treeview), and the read side already serves that column. *)
+    ("history-start", one_identifier "history-start <cow file>");
+    ("history-del",   one_identifier "history-del <cow file> [--except]");
+    ("history-set",   identifier_field_and_free_value
+                        "history-set <cow file> <field> [<value>]");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -2736,6 +2749,194 @@ let cmd_defects_set (st : State.globalState) ~(timeout:float) ~(args:string list
                           say --restart or --no-restart"
                          target (script_state_of_raw raw)))
 
+(* § 4.6, episode 5d: history by its ACTIONS, not by its cells.
+
+   The episode was written down as "history and documents, write side", by symmetry with 5b and
+   5c. Applied literally it would deliver almost nothing: history has exactly ONE editable column
+   (Comment, treeview_history.ml:487) and documents four, all of them metadata — nothing that
+   configures a lab, where ifconfig carried the addresses and defects the impairments. What the
+   title hid is that this treeview's value is in its contextual MENU, nine entries none of which
+   the channel covered, and first among them "Start in this state" (treeview_history.ml:540):
+   booting a machine from a *given* disk state. That is the gesture a teacher makes to put
+   students in a prepared situation, and it was the last real gap against the contract of § 4.10.
+
+   THE IDENTIFIER IS THE COW FILE NAME, not the node name. In this treeview Name is NOT unique —
+   one machine owns as many rows as it has states — while the COW file name is unique twice over:
+   by construction (cow_files.ml:23-35) and within the treeview, which is why the model itself
+   keys on it (get_parent_cow_file_name). It holds no space, so it is a legal positional argument
+   (§ 4.1), and the read side already serves it: the "File name" column is ~hidden but NOT
+   reserved, and #get_row only filters the reserved ones (the hidden ≠ reserved trap of 5a). A
+   script reads `history m1`, finds the state it wants, and passes it straight back. *)
+
+(* Only the failures are named as a type: the three commands share their prologue, hence their
+   refusals, while each has its own success to report. A single sum holding both would force a
+   dead branch ("error rendering called on a success") in every one of them. *)
+type history_failure =
+  | H_no_project
+  | H_unknown_state of string list   (* the cow files that do exist *)
+  | H_orphan_row    of string        (* a history row whose node is not in the network *)
+  | H_forbidden     of string
+  | H_unknown_field of string list
+  | H_violated      of string
+
+(* Every cow file the treeview knows, for the refusals: a name that does not exist is answered
+   with the names that do — the rule the whole channel follows since episode 4d-2a. Written on
+   row ids rather than on the forest because the answer needs no structure here, only a list. *)
+let history_cow_files (h : Treeview_history.t) : string list =
+  List.sort_uniq compare (List.map h#get_row_filename (h#row_ids_such_that (fun _ -> true)))
+
+(* Shared prologue of the three commands: no project, or an unknown state, or the row and the
+   name of the machine that owns it. *)
+let history_row_of_cow (st : State.globalState) (cow:string)
+  : (Treeview_history.t * string * string, history_failure) result
+  =
+  if not st#active_project then Error H_no_project else
+  let h = st#treeview#history in
+  match h#row_id_of_cow_file_name_if_any cow with
+  | None        -> Error (H_unknown_state (history_cow_files h))
+  | Some row_id -> Ok (h, row_id, h#get_row_name row_id)
+
+let history_error ?(field="") ~(cow:string) : history_failure -> string = function
+  | H_no_project ->
+      reply_error ~code:"no_active_project" ~detail:"no project is open"
+  | H_unknown_state files ->
+      reply_error ~code:"unknown_state"
+        ~detail:(Printf.sprintf
+                   "no state %S in the history treeview; a state is named by its cow file, and \
+                    these exist: %s"
+                   cow (String.concat ", " files))
+  | H_orphan_row name ->
+      reply_error ~code:"unknown_node"
+        ~detail:(Printf.sprintf
+                   "the history row belongs to %S, which is not in the network" name)
+  | H_forbidden detail ->
+      reply_error ~code:"forbidden_transition" ~detail
+  | H_unknown_field slugs ->
+      reply_error ~code:"unknown_field"
+        ~detail:(Printf.sprintf "no writable field %S in history; writable fields: %s"
+                   field (String.concat ", " slugs))
+  | H_violated detail ->
+      reply_error ~code:"constraint_violated" ~detail
+
+let cmd_history_start (st : State.globalState) ~(timeout:float) ~(cow:string) : string =
+  ask ~timeout
+    (fun () ->
+       match history_row_of_cow st cow with
+       | Error f -> Error f
+       | Ok (h, row_id, name) ->
+           (* The very condition the menu entry carries (treeview_history.ml:542-547): it asks
+              [can_startup name] through Startup_functions, which marionnet.ml:129-141 fills with
+              node#can_startup — the model method the channel already reads for `can`. So this is
+              the GUI's guard, not one invented here. *)
+           (match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+            | None -> Error (H_orphan_row name)
+            | Some n when not n#can_startup ->
+                Error (H_forbidden
+                         (Printf.sprintf
+                            "%S is %s: the GUI greys out \"Start in this state\" here"
+                            name (script_state_of_raw n#state_as_string)))
+            | Some _ ->
+                (* Antedates the row to now — which makes it the most recent, hence the state the
+                   machine will take — starts, then restores the timestamp on the task runner.
+                   Accepted, never finished (rule 3, § 4.4): #startup queues the work. *)
+                let () = h#startup_in_state row_id in
+                Ok name))
+  |> reply_of_outcome
+       (function
+        | Error f  -> history_error ~cow f
+        | Ok name  ->
+            reply_ok [ ("node", jstr name); ("state", jstr cow); ("accepted", jbool true) ])
+
+let cmd_history_del (st : State.globalState) ~(timeout:float) ~(cow:string) ~(except:bool)
+  : string
+  =
+  ask ~timeout
+    (fun () ->
+       match history_row_of_cow st cow with
+       | Error f -> Error f
+       | Ok (h, row_id, name) ->
+           (* Both menu entries are conditioned by number_of_states_with_name > 1
+              (treeview_history.ml:558-563): a machine always keeps a state, and the last one is
+              not removable. The channel refuses where the GUI greys out. *)
+           if h#number_of_states_with_name name <= 1 then
+             Error (H_forbidden
+                      (Printf.sprintf
+                         "%S has a single state: the GUI does not offer to delete it either" name))
+           else
+             (* What was actually removed, read from the treeview before and after:
+                delete_states_except_this removes a whole subtree, and a count computed here would
+                be a guess. The answer reports the difference, never an intention. *)
+             let before = history_cow_files h in
+             let () =
+               if except then h#delete_states_except_this row_id else h#delete_state row_id
+             in
+             let after = history_cow_files h in
+             let () = st#set_project_not_already_saved in
+             Ok (name, List.filter (fun f -> not (List.mem f after)) before))
+  |> reply_of_outcome
+       (function
+        | Error f -> history_error ~cow f
+        | Ok (name, removed) ->
+            reply_ok [ ("node",    jstr name);
+                       ("removed", jlist (List.map jstr removed));
+                       ("count",   jint (List.length removed)) ])
+
+(* The one editable cell, for completeness: leaving it out would be a hole a script would meet at
+   once (the read side serves Comment, and it is the only thing a human may type here). Same
+   pattern as 5b/5c: the verdict before the write, and the callback's own half done by hand. *)
+let cmd_history_set (st : State.globalState) ~(timeout:float) ~(cow:string) ~(field:string)
+    ~(value:string) : string
+  =
+  ask ~timeout
+    (fun () ->
+       match history_row_of_cow st cow with
+       | Error f -> Error f
+       | Ok (h, row_id, _name) ->
+           let tv = (h :> Treeview.t) in
+           let headers = editable_headers tv in
+           (match List.find_opt (fun hd -> slug_of_header hd = field) headers with
+            | None -> Error (H_unknown_field (List.map slug_of_header headers))
+            | Some header ->
+                let old = Treeview.Row_item.extract_String (tv#get_row_field row_id header) in
+                if value = old then Ok (header, old, old) else
+                (* #set_row_field validates nothing — the checks live in the GTK cell-edited path
+                   (episode 5b). Replaying #constraints_verdict is the discipline of this channel
+                   even where the treeview declares few constraints: a column that gains one
+                   tomorrow must not find a writer that bypasses it. *)
+                let new_row =
+                  Treeview.Row.set_field ~field:header
+                    ~value:(Treeview.Row_item.String value) (tv#get_complete_row row_id)
+                in
+                (match tv#constraints_verdict new_row with
+                 | Some (`Row name) ->
+                     (* An escaped-quote %s and not %S: a row constraint is named with a
+                        translated string, and %S escapes every byte above 0x7f — the answer
+                        would carry an unreadable name (lesson of episode 5b). *)
+                     Error (H_violated
+                              (Printf.sprintf
+                                 "the treeview row constraint \"%s\" refuses this write (the GUI \
+                                  refuses it too)" name))
+                 | Some (`Column h) ->
+                     Error (H_violated
+                              (Printf.sprintf "the column %S does not accept %S" h value))
+                 | None ->
+                let () = tv#set_row_field row_id header (Treeview.Row_item.String value) in
+                let () = st#set_project_not_already_saved in
+                (* Read back, never assumed — same rule as [set] (episode 4d-2a). *)
+                let written =
+                  Treeview.Row_item.extract_String (tv#get_row_field row_id header)
+                in
+                Ok (header, old, written))))
+  |> reply_of_outcome
+       (function
+        | Error f -> history_error ~field ~cow f
+        | Ok (header, old, written) ->
+            reply_ok [ ("state",   jstr cow);
+                       ("field",   jstr header);
+                       ("old",     jstr old);
+                       ("new",     jstr written);
+                       ("changed", jbool (old <> written)) ])
+
 (* ---------------------------------------------------------------- *)
 (*                             Dispatch                             *)
 (* ---------------------------------------------------------------- *)
@@ -2897,6 +3098,17 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                            ~value:(match arg_opt r 3 with Some v -> v | None -> "")
                            ~restart),
                       `Continue))
+            (* Episode 5d. No --restart/--no-restart here, and that is not an oversight: starting
+               in a state IS the transition, and deleting a state or editing its comment touches
+               no running device — the GUI asks nothing on these paths either. *)
+            | "history-start" -> (cmd_history_start st ~timeout ~cow:(arg0 r), `Continue)
+            | "history-del"   ->
+                (cmd_history_del st ~timeout ~cow:(arg0 r)
+                   ~except:(option_value r "except" <> None), `Continue)
+            | "history-set"   ->
+                (cmd_history_set st ~timeout ~cow:(arg0 r) ~field:(arg_at r 1)
+                   (* No third argument means the empty string: clearing the cell. *)
+                   ~value:(match arg_opt r 2 with Some v -> v | None -> ""), `Continue)
             | "open"   -> (cmd_open st ~timeout ~filename:(arg0 r), `Continue)
             | "new" | "close" ->
                 (match save_policy_of_options r with

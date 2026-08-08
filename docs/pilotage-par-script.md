@@ -679,6 +679,56 @@ produirait : `loss 100` est accepté quand `duplication 100` est refusé (`is_a_
 contre `is_a_valid_non_100_percentage`), et une écriture visant la ligne d'un port ou d'un device —
 et non l'une de ses directions — est refusée par la contrainte de **ligne** du treeview.
 
+#### `history` — par ses actions, pas par ses cellules (épisode 5d)
+
+```
+history-start <fichier cow>
+history-del   <fichier cow> [--except]
+history-set   <fichier cow> <champ> [<valeur>]
+```
+
+**L'épisode était mal nommé, et le dire fait partie du livrable.** Le § 9 portait « `history` et
+`documents` en **écriture** », par symétrie avec 5b et 5c. Appliqué à la lettre, ce patron ne
+livrait presque rien : `history` n'a **qu'une** colonne éditable (`Comment`) et `documents` quatre
+— des **métadonnées**, là où `ifconfig` portait les adresses et `defects` les défauts. La valeur
+de ce treeview est dans son **menu contextuel**, neuf entrées qu'aucune commande ne couvrait, et
+d'abord **« Start in this state »** : démarrer une machine depuis un **état de disque donné** —
+le geste par lequel un enseignant place ses étudiants dans une situation préparée.
+
+**L'identifiant est le fichier COW, pas le nom.** Dans ce treeview un `Name` désigne autant de
+lignes que la machine a d'états ; le fichier COW, lui, est unique deux fois — par construction
+(`cow_files.ml:23-35`, tirage aléatoire réessayé tant que le fichier existe) et dans le treeview,
+ce dont le modèle lui-même dépend (`get_parent_cow_file_name` y résout par
+`unique_complete_row_such_that`). Il ne porte aucun espace, donc il passe en argument positionnel
+(§ 4.1), et la lecture le sert **déjà** : la colonne `File name` est `~hidden` mais **non
+réservée**, et `#get_row` ne filtre que les réservées (piège « caché ≠ réservé » de l'ép. 5a). Un
+script lit `history m1`, y prend l'état voulu, et le repasse tel quel.
+
+Les gardes sont celles de la GUI, jamais des précautions inventées :
+
+| Commande | Garde | Où elle vit en GUI |
+|---|---|---|
+| `history-start` | `can_startup` du nœud propriétaire | condition de l'entrée de menu (`treeview_history.ml:542-547`), qui interroge `Startup_functions` — rempli de `node#can_startup` (`marionnet.ml:129-141`), le prédicat que `can` publie déjà |
+| `history-del` | la machine doit avoir **plus d'un** état | `number_of_states_with_name > 1` (`treeview_history.ml:558-563`) : le dernier état ne se supprime pas |
+| `history-set` | `#constraints_verdict` avant d'écrire | patron des ép. 5b/5c ; le vocabulaire écrivable est dérivé de `#columns`, donc `comment` et rien d'autre |
+
+`history-start` répond **`accepted`**, jamais « fait » (règle 3 du § 4.4) : `#startup_in_state`
+antidate la ligne visée — ce qui en fait la plus récente, donc celle que la machine prendra —,
+démarre, puis restaure l'horodatage sur le `task_runner`. `history-del` rapporte les fichiers
+**réellement** disparus, relus avant et après : `--except` supprime tout un sous-arbre, et un
+compte calculé de tête serait une supposition.
+
+**Ce qui reste dehors, et pourquoi.** `documents` : ce treeview n'a **aucune** colonne `Name`,
+donc aucun identifiant naturel pour une ligne de commande ; « Display » ouvre un visualiseur
+externe (sans objet pour un script) et « Import » n'est qu'un dépôt de fichier. Les deux « Export
+as machine/router variant » et les quatre suppressions **en masse** de `history` : `--except`
+couvre le besoin réel (repartir d'un état), et le reste attendra un besoin, comme le veut la règle
+de ce chantier.
+
+Refus : `no_active_project`, `unknown_state` (avec la liste des fichiers COW qui existent),
+`unknown_node` (une ligne orpheline, dont le nœud n'est plus dans le réseau), `unknown_field`,
+`forbidden_transition`, `constraint_violated`, `bad_argument`.
+
 ### 4.7 Synchronisation
 
 ```
@@ -1373,7 +1423,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **5a** | Les 4 treeviews, **face lecture** : un verbe par treeview, une implémentation, la forêt servie comme une forêt (§ 4.6) | **fait** (2026-08-07) — 47 assertions, `treeview-bench.sh` |
 | **5b** | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure : `ifconfig-set`, les contraintes de la GUI rejouées par le serveur (`#constraints_verdict`), et le choix de redémarrage exigé du script | **fait** (2026-08-07) — 80 assertions, `treeview-bench.sh` (T8→T11, dont le bout en bout `boot_parameters`) |
 | **5c** | Écriture de `defects` (pertes, délais) : `defects-set`, deux formes sous un verbe, la direction désignée par son `Type`, et l'application **à chaud** pour un câble — mesurée, pas présumée | **fait** (2026-08-07) — 138 assertions, `treeview-bench.sh` (T12→T15, dont la ligne de commande du `wirefilter` recréé) |
-| 5d | `history` et `documents` en écriture, si un besoin apparaît | à faire |
+| **5d** | ~~`history` et `documents` en écriture~~ → **`history` par ses ACTIONS** : l'intitulé était trompeur (une seule colonne éditable ici, quatre de métadonnées là), la valeur était dans le menu contextuel — `history-start` (démarrer dans un état donné), `history-del`, `history-set … comment`. `documents` **hors périmètre**, motivé (§ 4.6) | **fait** (2026-08-08) — 22 assertions (`treeview-bench.sh`, T16), dont le discriminant de profondeur |
 | **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 
@@ -2804,3 +2854,67 @@ projet fraîchement ouvert est propre — une question d'application, pas de pro
 
 **Preuve** : `ctl-bench.sh`, **36 assertions vertes, 0 échec**, 0 orphelin ; `can-bench.sh`
 converti, 16 assertions identiques au témoin ; `dune build` et `dune test --force` verts.
+
+### 2026-08-08 — épisode 5d : l'épisode que son titre cachait
+
+**Le titre disait « `history` et `documents` en écriture ».** Il avait été écrit à l'épisode 5,
+par symétrie avec `ifconfig-set` et `defects-set`, et il portait depuis la mention « si un besoin
+apparaît ». Vérification faite avant de coder quoi que ce soit, le patron « écrire une cellule »
+ne livrait presque rien ici : `history` n'a **qu'une** colonne éditable — `Comment` — et
+`documents` quatre, toutes de métadonnées. Le YAGNI était donc **juste pour l'intitulé**, et c'est
+ce qui l'a fait survivre six épisodes.
+
+**Ce que l'intitulé cachait, c'est le menu contextuel.** `treeview_history.ml` en compte neuf
+entrées, dont aucune n'avait d'équivalent au canal, et l'une d'elles vaut l'épisode à elle seule :
+**« Start in this state »**, qui démarre une machine depuis un **état de disque donné**. C'est le
+geste par lequel un enseignant place ses étudiants dans une situation préparée — et c'était le
+dernier vrai manque au regard du contrat du § 4.10, « le script a les mêmes possibilités et les
+mêmes limites que la GUI ». L'épisode livre donc `history` **par ses actions** :
+`history-start`, `history-del [--except]`, et `history-set … comment` pour ne pas laisser un trou
+là où la lecture, elle, sert la colonne.
+
+**L'identifiant s'est imposé de lui-même : le fichier COW.** Dans ce treeview un `Name` désigne
+autant de lignes que la machine a d'états — c'était déjà écrit au § 4.6 depuis l'ép. 5a, et cela
+interdisait le patron `<nœud> <port> …` des deux épisodes précédents. Le fichier COW, lui, est
+unique deux fois (par construction, `cow_files.ml:23-35` ; et dans le treeview, ce dont le modèle
+dépend déjà dans `get_parent_cow_file_name`), il ne porte aucun espace, et **la lecture le servait
+déjà** : `File name` est une colonne `~hidden` mais **non réservée**, et `#get_row` ne filtre que
+les réservées. Autrement dit, l'épisode 5a avait publié l'identifiant six épisodes avant qu'on
+sache à quoi il servirait. Aucun changement côté lecture n'a été nécessaire.
+
+**Les trois gardes sont celles de la GUI, et cela se vérifie ligne à ligne.** « Start in this
+state » n'est proposé que si `can_startup name` (l. 542-547), via un registre que
+`marionnet.ml:129-141` remplit avec `node#can_startup` — le prédicat que `can` publie depuis
+l'ép. 4b : le canal lit donc la même vérité, sans passer par le registre. Les deux suppressions
+sont conditionnées à `number_of_states_with_name > 1` (l. 558-563) : une machine garde toujours un
+état. Et l'écriture du commentaire rejoue `#constraints_verdict` avant d'écrire, comme aux ép. 5b
+et 5c — même là où le treeview déclare peu de contraintes, parce qu'une colonne qui en gagnerait
+une demain ne doit pas trouver un écrivain qui la contourne.
+
+**Le discriminant du banc ne mesure pas un démarrage, il mesure un CHOIX.** Chaque démarrage crée
+un état, enfant du plus récent (`user_level.ml:1558` → `add_state_for_device` →
+`add_substate_of`). Après un aller-retour, la racine A a donc un enfant B. Si l'on redémarre
+normalement, le nouvel état pend sous **B** ; si `history-start A` a réellement sélectionné A, il
+pend sous **A**. C'est une différence de *profondeur*, observable dans la forêt que `history`
+sert déjà, et qu'aucune écriture du serveur ne produirait sans passer par `#startup_in_state`.
+Mesuré : un enfant de la racine avant, deux après. La preuve tangible l'accompagne — l'UML tourne
+bien sur ce nouvel enfant, lu dans `/proc/<pid>/cmdline` avec le même garde-fou de session qu'en
+T15.
+
+**Un écart au plan, assumé.** Le plan prévoyait de *factoriser* la résolution « fichier COW → ligne »
+depuis `get_parent_cow_file_name`. En lisant l'unique appelant de cette méthode
+(`user_level.ml:1567`, le choix du COW source à la construction d'un device), il est apparu que la
+factorisation changerait sa sémantique : ce qui **levait** sur une ligne introuvable rendrait
+désormais `None`, donc un `get_variant_realpath` silencieux au lieu d'une erreur. Économiser
+quatre lignes au prix d'un changement de comportement sur un chemin de production est un mauvais
+échange : la méthode neuve, `row_id_of_cow_file_name_if_any`, vit **à côté**, écrite sur
+`row_ids_such_that` plutôt que sur `unique_complete_row_such_that` — laquelle lève aussi bien pour
+« aucune ligne » que pour « plusieurs », alors que le canal doit distinguer « cet état n'existe
+pas » d'une incohérence interne.
+
+**Correction au passage, dans le client de l'ép. 6** : le résumé d'erreur affiché sur `stderr`
+rendait les échappements JSON tels quels (`no state \"pas-un-cow.cow\"`). « En clair » veut dire
+en clair : les `\"` et `\\` sont désormais défaits avant impression.
+
+**Preuve** : `treeview-bench.sh` étendu (T16), **160 assertions vertes, 0 échec** (138 + 22),
+0 orphelin ; `dune build` et `dune test --force` verts. Le bloc T16 est passé au premier run.

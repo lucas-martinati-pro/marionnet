@@ -206,10 +206,13 @@ report() {  # $1 = answer line; prints it, returns 0 (accepted) or 1 (refused)
   esac
 
   # Refused: say why on stderr, in clear, so that an interactive user is not left with a JSON
-  # line to decipher. The detail may hold escaped quotes, hence the second alternative.
+  # line to decipher. The detail may hold escaped quotes, hence the second alternative — and,
+  # since a detail routinely quotes the name it complains about, the escapes are undone before
+  # printing: in clear means in clear.
   code=""; detail=""
   [[ $answer =~ \"error\":\"([^\"]*)\" ]] && code="${BASH_REMATCH[1]}"
   [[ $answer =~ \"detail\":\"(([^\"\\]|\\.)*)\" ]] && detail="${BASH_REMATCH[1]}"
+  detail="${detail//\\\"/\"}"; detail="${detail//\\\\/\\}"
   printf '%s: %s%s\n' "$PROGNAME" "${code:-refused}" "${detail:+: $detail}" >&2
   return 1
 }

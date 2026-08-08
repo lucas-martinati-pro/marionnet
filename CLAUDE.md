@@ -257,12 +257,17 @@ Reprise : appliquer le skill `chantier-long`.
   `bashbricks` — mesuré ~65 ms de sourcing par invocation, pour un client appelé des centaines de
   fois ; corollaire hors dépôt : `bench-lib.sh` retire le préambule recopié dans les 8 bancs,
   `can-bench.sh` servant de témoin [−100 l., 16 assertions identiques])
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a, 5b, 5c et 6 sont
-  clos**. La direction du § 10 — le scripting **descend dans les composants** — est donc
-  **ouverte, démontrée et refermée** (l'invité rend la main au script). **Plus aucune étape
-  obligatoire** : l'ép. 5d (`history`/`documents` en écriture) reste conditionné à un besoin réel
-  (YAGNI), et le seul défaut connu laissé ouvert est la garde d'`open`, qui lit
-  `project_already_saved` trop tôt (fiche dans `docs/TODO.md`).
+  et **ép. 5d** (`history` **par ses actions**, § 4.6 : l'intitulé « history/documents en écriture »
+  était trompeur — une seule colonne éditable ici, quatre de métadonnées là ; la valeur était dans
+  le **menu contextuel**, d'abord **« Start in this state »**, démarrer une machine depuis un état
+  de disque **donné** ; `history-start`/`history-del [--except]`/`history-set … comment`,
+  **identifiant = le fichier COW** [un `Name` désigne autant de lignes que la machine a d'états],
+  que la lecture servait **déjà** ; `documents` hors périmètre, motivé)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d) et 6
+  sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting **descend
+  dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main au script).
+  Le chantier est **candidat à clôture** ; seul défaut connu laissé ouvert : la garde d'`open`, qui
+  lit `project_already_saved` trop tôt (fiche dans `docs/TODO.md`).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
