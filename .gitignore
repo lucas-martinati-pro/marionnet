@@ -91,4 +91,6 @@ useful-scripts/*
 !useful-scripts/mrnctl
 # Vérificateur de fichiers .mrn (docs/pilotage-par-script.md § 5.6).
 !useful-scripts/mrn-check
+# Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
+!useful-scripts/marionnet-completion.bash
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

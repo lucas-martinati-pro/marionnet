@@ -286,8 +286,16 @@ Reprise : appliquer le skill `chantier-long`.
   partir de lui-même** [noms, ports, occupation], **cru seulement** quand le fichier part d'un
   `new` — après un `open` les contrôles d'existence s'éteignent, un linter qui invente des erreurs
   se fait désactiver ; discriminant : **même ligne d'arrêt et même motif que `mrnctl -f`**)
+  et **ép. 10** (la **complétion Bash**, § 5.7 : `useful-scripts/marionnet-completion.bash`,
+  **dérivée** de `help` — 4ᵉ application de la règle d'unicité — mais dont le vrai gain est que
+  les **noms** viennent de la **session vivante** [composants par `can`, ports par
+  `defects <nœud>`, champs de `set` par les clés de `get`, états de disque par le `File name`] ;
+  hors ligne par l'instantané de l'ép. 9 ; **3 ajouts au serveur, tous « publier ce qu'il savait
+  déjà »** — `help` sans argument rend `kinds`/`actions`/`beyond_gui`, un treeview rend `slugs` ;
+  **piège attrapé au banc** : `slugs` doit venir d'`editable_headers`, pas de `columns`, sans quoi
+  la complétion propose des champs que le serveur refuse)
   faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6,
-  7, 8 et 9 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
+  7, 8, 9 et 10 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
   **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
   au script). **Plus aucun défaut connu ouvert**, et la condition posée à la clôture est **levée** :
   le chantier est **clôturable (MODE C)**, sur décision de l'auteur.

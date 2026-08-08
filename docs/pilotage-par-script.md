@@ -1335,6 +1335,53 @@ s'arrête réellement — même ligne, même motif**. Sans cette assertion, le b
 la cohérence du vérificateur avec lui-même. Mesuré : ligne 6 des deux côtés, motif
 `node "s1" has no port "port0"`, et le témoin (fichier valide) accepté par les deux.
 
+### 5.7 La complétion Bash (épisode 10)
+
+`useful-scripts/marionnet-completion.bash`, **versionné** : à sourcer (ou à déposer dans
+`/etc/bash_completion.d/`). Elle sert `marionnet-ctl`, `mrnctl` et `mrn-check`.
+
+**Rien n'y est une liste de commandes.** Verbes, arités, noms d'options : tout est **dérivé** de
+ce que `help` publie. Quatrième application de la règle d'unicité (4g, 6, 9, 10). Une seule
+liste vit dans le fichier — les **options du client**, qui appartiennent au client et non au
+canal, et dont `marionnet-ctl --help` est la source.
+
+**Le gain nouveau, c'est que les NOMS viennent de la session vivante**, pas d'une devinette :
+
+| Ce qu'on complète | D'où ça vient |
+|---|---|
+| verbes, options, arité | `help` |
+| natures (`add <kind>`, `ls --kind=`) et actions (`ls --can=`) | `help`, **nouveaux champs `kinds`/`actions`** |
+| noms de composants | `can` (couvre aussi les câbles) / `ls` |
+| ports d'un nœud (`m1:eth0`, `s1:port3`) | `defects <nœud>` — le seul treeview qui reçoit **tout** |
+| champs d'un `set` | les clés de `get <composant>` |
+| champs d'un `ifconfig-set`/`defects-set`/`history-set` | **nouveau champ `slugs`** de la réponse du treeview |
+| états de disque (`history-start`) | le `File name` que la lecture sert déjà (ép. 5d) |
+
+**Trois ajouts au serveur, tous du même genre : publier ce qu'il savait déjà.**
+
+1. `help` (**sans argument**) rend `kinds`, `actions` et `beyond_gui`. Ce sont les listes que les
+   refus d'`add` et de `ls --can=` nomment déjà en clair ; sans elles, la complétion en aurait
+   tenu une **troisième copie**. `help <verbe>` ne les rend pas : il répond sur une commande.
+2. La réponse d'un treeview rend `slugs` à côté de `columns` — et **pas** les slugs de `columns` :
+   ceux de `editable_headers` (`#is_editable && not is_reserved`, ép. 5b), c'est-à-dire
+   **exactement la liste qu'un refus `unknown_field` énumère**. `Name` et `Type` se lisent et ne
+   s'écrivent pas : servir leur slug aurait fait proposer un champ que le serveur refuse. Le banc
+   l'a montré au premier run — la première version, naïve, offrait `name`, `type` et `uneditable`.
+3. Deux déplacements de définitions (`known_actions`/`known_kinds` au-dessus de `cmd_help`,
+   `slug_of_header`/`editable_headers` au-dessus de `cmd_treeview`) : de l'ordre, aucun changement
+   de comportement.
+
+**Hors ligne** : `MARIONNET_CTL_GRAMMAR=<instantané>` fait compléter verbes et options sans
+Marionnet — mécanisme repris tel quel de l'ép. 9. Les **noms**, eux, sont muets, et c'est la
+bonne réponse : sans session, ils n'existent pas. Sans serveur **ni** instantané, la complétion
+ne propose que les options du client — jamais un verbe inventé.
+
+**Le discriminant du banc** (`completion-bench.sh`, L18) : l'ensemble des verbes proposés à la
+position du verbe doit être **rigoureusement égal** à celui que `help` publie — `diff` de deux
+listes triées, pas une inclusion. Sans lui, le banc ne mesurerait que la cohérence de la
+complétion avec elle-même, c'est-à-dire précisément le défaut qu'on veut rendre impossible.
+Mesuré : identiques, 39 verbes.
+
 ---
 
 ## 6. Architecture C — le décor pré-fabriqué (`-r`)
@@ -1528,6 +1575,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 | **7** | La garde d'`open` : le faux négatif intermittent (`internal — flagged as unsaved`) était une **course** — `Cortex` lance un thread par commit `on_commit`, donc la réaction des `dotoptions` restaurées pouvait salir le projet *après* l'enregistrement de son état | **fait** (2026-08-08) — correctif = **retirer** les callbacks pendant la restauration (`Sketch.tuning`), 7/10 → 0/10 au banc `open-bench.sh` sous `taskset -c 0` |
+| **10** | **Complétion Bash** (§ 5.7) : `useful-scripts/marionnet-completion.bash`, **dérivée** de `help` — et les **noms** (composants, ports, états de disque, champs) viennent de la session vivante. Trois ajouts au serveur, tous « publier ce qu'il savait déjà » : `kinds`/`actions`/`beyond_gui` dans `help`, `slugs` dans les treeviews | **fait** (2026-08-09) — 40 assertions (`completion-bench.sh`), **discriminant L18** : égalité stricte des verbes proposés et des verbes publiés |
 | **9** | **`mrn-check`** (§ 5.6) : vérifier un `.mrn` **sans rien envoyer** — le mode lot n'a pas de transaction. Grammaire **demandée au serveur** (`--grammar=` pour l'instantané hors ligne), plus un **modèle rejoué depuis le fichier** (noms, ports, occupation), cru seulement quand le fichier part d'un `new` | **fait** (2026-08-09) — 32 assertions (`check-bench.sh`), **discriminant K4** : même ligne et même motif que l'arrêt réel de `mrnctl -f` |
 | **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
 
@@ -3207,3 +3255,53 @@ trois codes de retour.
 **Deux défauts trouvés au premier run**, tous deux dans le vérificateur : `-` (lire l'entrée
 standard) était rejeté comme option inconnue, et le message d'échec « le serveur n'a rien publié »
 n'enseignait pas l'option hors ligne. Corrigés, run suivant vert.
+
+---
+
+### 2026-08-09 — épisode 10 : compléter sans jamais lister
+
+**Livrable** : `useful-scripts/marionnet-completion.bash`, versionné, + trois ajouts au serveur.
+Décisions et tableau des sources en **§ 5.7** ; on ne les répète pas ici.
+
+**Ce que l'ép. 9 avait changé sans qu'on le voie.** La complétion figurait au vivier depuis l'ép. 6
+avec une réserve : « il faut un serveur qui tourne pour compléter — à réfléchir ». L'ép. 9 a levé
+la réserve sans le dire, en inventant l'**instantané de grammaire** : `MARIONNET_CTL_GRAMMAR`
+reprend le mécanisme tel quel, et verbes et options complètent alors sans Marionnet. Les **noms**,
+eux, restent muets — et c'est la bonne réponse, pas une limite : sans session, ils n'existent pas.
+
+**La règle d'unicité, quatrième application.** Rien ici n'est une liste de commandes : les verbes,
+les arités et les noms d'options sont **dérivés** de la `syntax` que `help` publie. Une seule liste
+vit dans le fichier — les options du **client**, qui appartiennent au client et non au canal.
+
+**Mais le gain n'est pas là.** Une complétion de verbes fait gagner trois lettres ; ce qu'on ne
+peut pas deviner, ce sont les **noms** : les composants d'un projet, les ports d'un switch (qui
+commencent à `port1`, la faute-témoin de l'ép. 8), le fichier COW d'un état de disque (ép. 5d), les
+champs écrivables d'un treeview. Tous viennent de la session vivante, par les commandes qui les
+servaient déjà — `can`, `ls`, `defects <nœud>`, `get <composant>`, `history`.
+
+**Trois ajouts au serveur, tous du même genre : lui faire publier ce qu'il savait déjà.**
+`help` (sans argument) rend `kinds`, `actions` et `beyond_gui` — les listes que les refus d'`add`
+et de `ls --can=` nomment déjà en clair, et dont la complétion aurait sinon tenu une **troisième**
+copie. La réponse d'un treeview rend `slugs` à côté de `columns`. Deux déplacements de définitions
+accompagnent le tout, sans changement de comportement.
+
+**Et `slugs` a failli être faux.** La première version servait les slugs de `columns` : le banc a
+aussitôt montré la complétion proposant `name`, `type` et `uneditable` — trois champs que
+`ifconfig-set` refuse. La bonne source était `editable_headers` (`#is_editable && not is_reserved`,
+ép. 5b), c'est-à-dire **exactement la liste qu'un refus `unknown_field` énumère**. Un champ
+`slugs` qui n'est pas celui du refus n'est pas une commodité, c'est un mensonge : corrigé, et
+l'assertion tient désormais que `name`/`type`/`uneditable` en sont **absents**. Le guide y gagne
+au passage : la règle du slug n'a plus à être appliquée à la main, elle voyage dans la réponse.
+
+**Preuve** : `completion-bench.sh`, **40 assertions, 0 échec**. Le pilote rejoue ce que fait Bash
+— poser `COMP_WORDS`/`COMP_CWORD`, appeler la fonction, lire `COMPREPLY`. Le discriminant est
+**L18** : l'ensemble des verbes proposés doit être **rigoureusement égal** à celui que `help`
+publie (un `diff` de deux listes triées, pas une inclusion) — mesuré identiques, 39 verbes. Sans
+lui, le banc n'aurait mesuré que la cohérence de la complétion avec elle-même, c'est-à-dire le
+défaut même qu'on veut rendre impossible. **Non-régression** : `dune build`, `dune test --force`,
+`ctl-bench` 36/36, `treeview-bench` (`E2E=0`) 0 échec, `doc-bench` 39/39, `check-bench` 32/32.
+
+**Trois défauts trouvés au premier run** : les `slugs` ci-dessus ; les *placeholders* extraits de
+la syntaxe se cassaient sur `wait <component> (--state=on|off|sleeping | --ready)` (un token qui
+n'est ni une option ni un placeholder) et sur les placeholders à espace (`<absolute path>`,
+`<cow file>`), d'où l'extraction par accumulation entre `<` et `>` plutôt que mot à mot.

@@ -67,6 +67,38 @@ says so and stops.
 `mrnctl` needs `socat`. It needs `jq` only for its two formatting options, `--pretty` and
 `--query`.
 
+### Tab completion
+
+```bash
+. /path/to/marionnet-completion.bash      # or drop it in /etc/bash_completion.d/
+```
+
+From then on, TAB completes verbs, options, and — this is the part worth having — the **real
+names of the session**:
+
+```
+$ mrnctl connect c2 <TAB>
+m1:  m2:  s1:
+$ mrnctl connect c2 s1:<TAB>
+s1:port1  s1:port2  s1:port3  s1:port4  s1:port5  s1:port6  s1:port7  s1:port8
+$ mrnctl ifconfig-set m1 eth0 <TAB>
+mac-address  mtu  ipv4-address  ipv4-gateway  ipv6-address  ipv6-gateway
+```
+
+Components, ports, disk states and field names come from the Marionnet you are driving, so they
+are the ones that exist, not a list someone typed. The verbs and options come from `help`, so a
+verb added to Marionnet completes the day it exists.
+
+With no Marionnet running there is nothing to publish. Point the completion at a snapshot and
+verbs and options still work — the *names*, of course, cannot:
+
+```bash
+mrnctl help > ~/.marionnet-grammar.json
+export MARIONNET_CTL_GRAMMAR=~/.marionnet-grammar.json
+```
+
+It needs `jq`. Without it, or without anything to read, it stays silent rather than guessing.
+
 ---
 
 ## 2. Five minutes, end to end
@@ -359,7 +391,9 @@ their directions). `columns` gives the headers in the order the interface shows 
 row is `{"fields": …, "children": […]}`:
 
 ```json
-{"ok":true,"treeview":"ifconfig","columns":["Name","Type","MAC address","MTU","IPv4 address", …],
+{"ok":true,"treeview":"ifconfig",
+ "columns":["Name","Type","MAC address","MTU","IPv4 address", …],
+ "slugs":["mac-address","mtu","ipv4-address","ipv4-gateway","ipv6-address","ipv6-gateway"],
  "count":1,"rows":[{"fields":{"Name":"m1","Type":"machine"},
                     "children":[{"fields":{"Name":"eth0","MTU":"1500", …},"children":[]}]}]}
 ```
@@ -372,9 +406,18 @@ everything, cables included.
 Writing is **one field at a time**, and the field is named by the **slug** of its column:
 lowercase, every run of non-alphanumeric characters becomes one dash, trailing dashes dropped.
 So `IPv4 address` is written `ipv4-address`, `Loss %` is `loss`, `Minimum delay (ms)` is
-`minimum-delay-ms`. The slug is *derived*, never listed — a column becomes writable the day it
-becomes readable — and a wrong one is refused with the whole list of valid slugs for that
-table.
+`minimum-delay-ms`.
+
+You never have to apply that rule yourself: every read answer carries a `slugs` field beside
+`columns`, holding exactly the names that table accepts for writing — which is fewer than the
+columns it shows, `Name` and `Type` being readable and not writable.
+
+```bash
+mrnctl -q '.slugs[]' ifconfig m1
+# mac-address mtu ipv4-address ipv4-gateway ipv6-address ipv6-gateway
+```
+
+A wrong slug is refused with that same list.
 
 ```bash
 mrnctl ifconfig-set m1 eth0 ipv4-address 10.0.0.1/24

@@ -209,6 +209,23 @@ let node_port_field_and_value syntax = { min_args = 3; max_args = 4; free_tail =
 let transition_commands = [ "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
 let transition_all_commands = [ "start-all"; "shutdown-all"; "poweroff-all" ]
 
+let beyond_gui_actions = [ "poweroff"; "restart" ]
+
+(* The whole vocabulary of actions, and the only one: the names below are those of the commands
+   of § 4.4, so that a client never has to translate between a predicate name and a command name
+   (which is why [ls --can=] takes "start" and not "startup"). *)
+let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
+
+(* The kinds a script may create (§ 4.3). These strings are the model's own
+   (#string_of_devkind, redefined in the seven files) and they are also the roots of a .mar
+   forest, so [ls --kind=], [add <kind>] and a saved project all speak one language. "cable" is
+   absent on purpose: it takes two endpoints, hence its own command (§ 4.5). *)
+let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "world_gateway" ]
+
+(* Declared here, above [cmd_help], and not beside their first user further down: episode 10
+   made [help] publish them, so a Bash completion derives the values of [--kind=] and [--can=]
+   instead of holding a third copy of lists the refusals already name. *)
+
 (* The single vocabulary of the channel: what a command is called, what it takes, and how it is
    spelled. [dispatch] and the [unknown_command] answer both read this list. *)
 let arity_of_command : (string * arity) list =
@@ -306,8 +323,20 @@ let cmd_help ~(verb:string option) : string =
   match selected with
   | Error v       -> unknown_command_reply ~verb:v
   | Ok commands   ->
-      reply_ok [ ("count",    jint (List.length commands));
-                 ("commands", jlist (List.map json_of_command commands)) ]
+      (* The three closed vocabularies a syntax mentions without spelling out: "<kind>" in [add]
+         and [ls --kind=], "<action>" in [ls --can=], and the actions no per-component menu
+         offers. Published only by the *whole* listing — [help <verb>] answers about one command
+         and nothing else — and read by the Bash completion (episode 10), which would otherwise
+         hold a third copy of lists the refusals of [add] and [ls] already name. *)
+      let vocabularies =
+        match verb with
+        | Some _ -> []
+        | None   -> [ ("kinds",      jlist (List.map jstr known_kinds));
+                      ("actions",    jlist (List.map jstr known_actions));
+                      ("beyond_gui", jlist (List.map jstr beyond_gui_actions)) ]
+      in
+      reply_ok ([ ("count",    jint (List.length commands));
+                  ("commands", jlist (List.map json_of_command commands)) ] @ vocabularies)
 
 (* An unknown verb is let through untouched: [dispatch] answering [unknown_command] is more
    useful than a complaint about the arity of a command that does not exist. *)
@@ -469,19 +498,6 @@ type eligibility = {
   e_state : string;                (* raw; projected when rendering *)
   e_can   : (string * bool) list;  (* action -> allowed, in menu order *)
 }
-
-let beyond_gui_actions = [ "poweroff"; "restart" ]
-
-(* The whole vocabulary of actions, and the only one: the names below are those of the commands
-   of § 4.4, so that a client never has to translate between a predicate name and a command name
-   (which is why [ls --can=] takes "start" and not "startup"). *)
-let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "poweroff"; "restart" ]
-
-(* The kinds a script may create (§ 4.3). These strings are the model's own
-   (#string_of_devkind, redefined in the seven files) and they are also the roots of a .mar
-   forest, so [ls --kind=], [add <kind>] and a saved project all speak one language. "cable" is
-   absent on purpose: it takes two endpoints, hence its own command (§ 4.5). *)
-let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "world_gateway" ]
 
 let eligibility_of_node n =
   { e_name  = n#get_name;
@@ -2200,6 +2216,32 @@ let json_of_row_item : Treeview.Row_item.t -> string = function
   | Treeview.Row_item.Icon     s -> jstr s
   | Treeview.Row_item.CheckBox b -> jbool b
 
+(* A header as a script spells it. Derived, never listed — the same reason the read side publishes
+   #columns: a column added to a treeview becomes writable the day it becomes readable, with no
+   table here to update.
+
+   The rule: lowercase, every non-alphanumeric run becomes a single dash, trailing dashes are
+   dropped. Episode 5b only had to turn spaces into dashes, ifconfig headers being made of letters
+   and spaces; the defects headers are not ("Loss %", "Minimum delay (ms)"), and a slug carrying a
+   percent sign or parentheses would force every script to quote it. The five ifconfig slugs are
+   unchanged by this generalisation — mac-address, mtu, ipv4-address, ipv4-gateway, ipv6-address,
+   ipv6-gateway — which the bench asserts rather than assumes. *)
+let slug_of_header (h:string) : string =
+  let b = Buffer.create (String.length h) in
+  let () =
+    String.iter
+      (fun c ->
+         match Char.lowercase_ascii c with
+         | ('a'..'z' | '0'..'9') as c -> Buffer.add_char b c
+         | _ ->
+             if (Buffer.length b > 0) && (Buffer.nth b (Buffer.length b - 1)) <> '-' then
+               Buffer.add_char b '-')
+      h
+  in
+  let s = Buffer.contents b in
+  let n = String.length s in
+  if n > 0 && s.[n-1] = '-' then String.sub s 0 (n-1) else s
+
 (* The headers served, in the order the GUI shows them: #add_column *appends*
    (treeview.ml:908), so #columns keeps that order — whereas #column_headers is a Hashtbl.fold,
    whose order is unspecified and would make any assertion on it flaky. Reserved columns (_id,
@@ -2207,6 +2249,18 @@ let json_of_row_item : Treeview.Row_item.t -> string = function
    (treeview.ml:1419). *)
 let visible_headers (tv : Treeview.t) : string list =
   List.filter_map (fun c -> if c#is_reserved then None else Some c#header) tv#columns
+
+(* Which cells a human may type into. [#is_editable] (treeview.ml, episode 5b) is true of exactly
+   the column class whose GTK renderer carries `EDITABLE true, so this list is the GUI's own
+   answer: Name and Type are read-only, and the hidden _uneditable checkbox is not a text cell.
+   The reserved filter is not redundant: _highlight-color IS an editable string column
+   (treeview.ml:1825), reserved only — the same frontier the read side draws, so the write side
+   draws it too. Measured, not assumed: without it the channel offered _highlight-color as a
+   writable field. *)
+let editable_headers (tv : Treeview.t) : string list =
+  List.filter_map
+    (fun c -> if c#is_editable && not c#is_reserved then Some c#header else None)
+    tv#columns
 
 (* A column this row does not carry is *omitted*, not served as null: the treeviews do have
    partial rows (a device row has no MTU), and an absent field is not an empty one. *)
@@ -2223,7 +2277,8 @@ let rec json_of_row_tree ~(headers : string list)
                                (Forest.to_treelist children))) ]
 
 type treeview_outcome =
-  | Tv_read       of string list * Treeview.Row.t Forest.tree list  (* headers, roots kept *)
+  (* headers shown, field names a script may *write* (episode 10), roots kept *)
+  | Tv_read       of string list * string list * Treeview.Row.t Forest.tree list
   | Tv_no_project
   (* The root names, so that a refusal also says what does exist — a script mistyping a node name
      otherwise learns nothing from the answer. *)
@@ -2245,6 +2300,9 @@ let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(nam
          | _          -> (st#treeview#documents :> Treeview.t)
        in
        let headers = visible_headers tv in
+       (* Computed here, in the GTK slot, because it reads the columns of the widget: the reply
+          below runs outside it and has no [tv]. *)
+       let slugs = List.map slug_of_header (editable_headers tv) in
        let roots = Forest.to_treelist tv#get_forest in
        let root_name ((row, _) : Treeview.Row.t Forest.tree) =
          match List.assoc_opt treeview_name_column row with
@@ -2252,16 +2310,24 @@ let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(nam
          | _ -> None
        in
        match name with
-       | None -> Tv_read (headers, roots)
+       | None -> Tv_read (headers, slugs, roots)
        | Some wanted ->
            (match List.filter (fun t -> root_name t = Some wanted) roots with
             | []   -> Tv_unknown (List.sort_uniq compare (List.filter_map root_name roots))
-            | kept -> Tv_read (headers, kept)))
+            | kept -> Tv_read (headers, slugs, kept)))
   |> reply_of_outcome
        (function
-        | Tv_read (headers, roots) ->
+        | Tv_read (headers, slugs, roots) ->
             reply_ok [ ("treeview", jstr which);
                        ("columns",  jlist (List.map jstr headers));
+                       (* The field names a script may WRITE here: the very list a refusal
+                          names ([editable_headers] through [slug_of_header], episode 5b), served
+                          beside the headers since episode 10. A completion — or a reader
+                          wondering why "IPv4 address" is refused — gets the write vocabulary
+                          from the same answer as the read one, instead of recomputing the slug
+                          rule on its side. Not the slugs of [columns]: Name and Type are
+                          readable and not writable, and that difference is the point. *)
+                       ("slugs",    jlist (List.map jstr slugs));
                        (* The number of *roots* served, so that a bench may require a non-zero
                           cardinal: without one, jq compares empty lists and the bench applauds
                           without having measured anything (lesson (c) of episode 4b). *)
@@ -2296,43 +2362,9 @@ let cmd_treeview (st : State.globalState) ~(timeout:float) ~(which:string) ~(nam
    node is running, exactly as --save/--no-save became required at episode 4d. What the GUI puts
    in a dialog, the channel puts in the request. *)
 
-(* A header as a script spells it. Derived, never listed — the same reason the read side publishes
-   #columns: a column added to a treeview becomes writable the day it becomes readable, with no
-   table here to update.
 
-   The rule: lowercase, every non-alphanumeric run becomes a single dash, trailing dashes are
-   dropped. Episode 5b only had to turn spaces into dashes, ifconfig headers being made of letters
-   and spaces; the defects headers are not ("Loss %", "Minimum delay (ms)"), and a slug carrying a
-   percent sign or parentheses would force every script to quote it. The five ifconfig slugs are
-   unchanged by this generalisation — mac-address, mtu, ipv4-address, ipv4-gateway, ipv6-address,
-   ipv6-gateway — which the bench asserts rather than assumes. *)
-let slug_of_header (h:string) : string =
-  let b = Buffer.create (String.length h) in
-  let () =
-    String.iter
-      (fun c ->
-         match Char.lowercase_ascii c with
-         | ('a'..'z' | '0'..'9') as c -> Buffer.add_char b c
-         | _ ->
-             if (Buffer.length b > 0) && (Buffer.nth b (Buffer.length b - 1)) <> '-' then
-               Buffer.add_char b '-')
-      h
-  in
-  let s = Buffer.contents b in
-  let n = String.length s in
-  if n > 0 && s.[n-1] = '-' then String.sub s 0 (n-1) else s
 
-(* Which cells a human may type into. [#is_editable] (treeview.ml, episode 5b) is true of exactly
-   the column class whose GTK renderer carries `EDITABLE true, so this list is the GUI's own
-   answer: Name and Type are read-only, and the hidden _uneditable checkbox is not a text cell.
-   The reserved filter is not redundant: _highlight-color IS an editable string column
-   (treeview.ml:1825), reserved only — the same frontier the read side draws, so the write side
-   draws it too. Measured, not assumed: without it the channel offered _highlight-color as a
-   writable field. *)
-let editable_headers (tv : Treeview.t) : string list =
-  List.filter_map
-    (fun c -> if c#is_editable && not c#is_reserved then Some c#header else None)
-    tv#columns
+
 
 let tree_name ((row, _) : Treeview.Row.t Forest.tree) : string option =
   match List.assoc_opt treeview_name_column row with
