@@ -2918,3 +2918,80 @@ en clair : les `\"` et `\\` sont désormais défaits avant impression.
 
 **Preuve** : `treeview-bench.sh` étendu (T16), **160 assertions vertes, 0 échec** (138 + 22),
 0 orphelin ; `dune build` et `dune test --force` verts. Le bloc T16 est passé au premier run.
+
+### 2026-08-08 — épisode 7 : la course que le journal montrait à l'envers
+
+**Le seul défaut connu du chantier restait la garde d'`open`** (fiche de `docs/TODO.md`, ouverte à
+l'ép. 6) : ouvrir par le canal un vieux projet répondait *parfois* `internal` — « the project is
+flagged as unsaved right after opening » — alors que le chargement avait réussi. Deux échecs sur
+quatre runs enchaînés, zéro sur neuf runs isolés : c'est le profil d'une **course**, et la fiche
+prévenait qu'un correctif exigeait d'abord un banc qui la **reproduise**.
+
+**Reproduire d'abord : `open-bench.sh`, et deux leviers.** Le premier est l'**alternance de deux
+projets**. Un `Cortex.set` ne commite que s'il **change** la valeur (`cortex.ml:281`) : rouvrir dix
+fois le même projet ne rejoue donc aucune réaction — mesuré au run de sanité, 2 réactions pour 5
+ouvertures. Le régime fautif est celui des bancs de ce chantier, qui ouvrent plusieurs projets par
+run. Le second est l'**épinglage sur un seul CPU** (`taskset -c 0`, option `PIN_CPU` du banc) :
+avec un seul processeur, le thread de réaction ne s'exécute plus en parallèle du thread de
+chargement mais **derrière** lui. Le symptôme passe alors de « parfois » à **7 sur 10**.
+
+**La cause, établie par des piles d'appel, pas par déduction.** Une instrumentation temporaire de
+`state#set_project_not_already_saved` (`Printexc.get_callstack`) a montré que, pendant un
+chargement, **toutes** les marques « projet modifié » viennent du même endroit :
+`motherboard_builder.ml`, la réaction branchée sur les sept options persistantes du sketch, appelée
+depuis un thread créé par `cortex.ml:312`. Cortex lance en effet **un thread par commit** pour
+exécuter ses callbacks `on_commit`, hors section critique : le chargement restaure les
+`dotoptions`, donc commite, donc réagit — et cette réaction peut atterrir *après*
+`register_state_after_save_or_open` (`state.ml:551`), qui venait de déclarer le projet propre.
+
+**Leçon durable, payée au passage : l'ordre des lignes du journal ne prouve rien.** La première
+version du banc assertait « aucune réaction *postérieure* à la ligne de registration ». Elle
+mesurait 2 réactions tardives là où le symptôme frappait 9 fois : incohérence. `Log.printf` prend
+un **mutex global** avant d'écrire (`log_builder.ml:132-136`), si bien qu'un thread ayant déjà muté
+peut attendre ce mutex pendant qu'un autre mute et écrit — les lignes s'inversent. Une assertion
+fondée sur cet ordre mesure l'ordonnancement du **logger**, pas celui du code. Le banc mesure donc
+la **cause**, qui est déterministe : pendant une ouverture, une réaction `dotoptions` ne doit plus
+exister **du tout**.
+
+**Le correctif retire les callbacks, il ne lève pas un drapeau.** Un drapeau lu par la réaction
+serait consulté au moment où le thread s'exécute, c'est-à-dire précisément à l'instant
+imprévisible dont on veut se débarrasser. Ce qui supprime la course, c'est de retirer les
+callbacks : leur présence est testée par le thread qui commite, sous les mutex
+(`cortex.ml:301-307`) — **sans callback, aucun thread n'est créé**. Le mécanisme vit dans la classe
+qui possède les cortex (`Sketch.tuning`) et non dans `motherboard_builder`, qui se contente
+désormais de **déclarer** sa réaction (`set_persistence_reaction`) au lieu de l'attacher option par
+option ; `state#open_project_async` enveloppe la restauration dans
+`with_persistence_reaction_suspended`. C'est le jumeau exact de `disable_gui_callbacks`, qui
+protège déjà `set_toolbar_widgets` des callbacks GTK : même idée, pour des réactions au lieu de
+widgets.
+
+**Ce que cela change de visible** : un projet fraîchement ouvert est « non modifié » de façon
+**systématique**, adaptations automatiques comprises. Ce n'est pas une décision nouvelle, c'est
+l'intention déjà écrite en `state.ml:551` — que la réaction contredisait au hasard. La garde
+d'`open`, elle, n'a **pas** été touchée : `saved` reste ce qui distingue un chargement raté (ouvrir
+un fichier texte répond `active:true, nodes:0`), et la piste (a) de la fiche, qui proposait de ne
+plus le tester, aurait échangé une intermittence contre un silence.
+
+**Un déclencheur écarté par un témoin désarmé.** Pour vérifier que la suspension est bien
+*temporaire*, le banc a d'abord essayé de provoquer un commit par la commande `new` (elle appelle
+`dotoptions#reset_defaults`, `state.ml:316`). Zéro réaction. Plutôt que d'en conclure que la
+réinstallation était cassée, un run avec la suspension **neutralisée** a tranché : zéro réaction
+là aussi. Les deux commits d'une ouverture sont un aller-retour, si bien qu'après le chargement les
+options sont déjà revenues à leurs valeurs par défaut. L'assertion mesure donc la suspension
+elle-même, que la classe journalise : par ouverture, **une** suspension et **une** réinstallation.
+
+**Piège de fichier** : `raise` explicite est impossible dans `sketch.ml` sans alias `Log` — la
+mesure `raise_p4`, appliquée à tout `bin/`, réécrit `raise` en une version qui journalise, d'où un
+« Unbound module Log » sans localisation (`File "_none_"`). D'où `Fun.protect ~finally` pour rendre
+la réaction quoi qu'il arrive, et l'alias ajouté ensuite pour les deux lignes de journal.
+
+**Preuve** : `open-bench.sh` (neuf, 4 assertions O0…O3), à conditions identiques (K=10, `PIN_CPU=0`,
+alternance `tp9.mar`/`tp.mar`) — **avant** : 20 réactions `dotoptions` (10 ouvertures sur 10),
+symptôme **7/10**, 3 ouvertures correctes sur 10 ; **après** : **0** réaction, symptôme **0/10**,
+10/10 correctes, et 10 suspensions pour 11 installations. Le même banc sans épinglage : 4/4 vertes.
+Non-régression : `dune build` et `dune test --force` verts (0 échec), `project-bench.sh` 29/29,
+`can-bench.sh t0` 16/16, `treeview-bench.sh` (`E2E=0`) 128/128, 0 échec partout.
+
+**Ce qui reste avant de clore le chantier** : la **documentation utilisateur** du scripting (guides
+formels, avec exemples) — décision prise à cet épisode de ne pas clore tant qu'elle n'est pas
+tranchée. Le canal, lui, n'a plus de défaut connu ouvert.

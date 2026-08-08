@@ -471,7 +471,14 @@ class globalState = fun () ->
       (* --- *)
       (* Dot_tuning.network will be undumped after the network,
 	in order to support cable inversions. *)
+      (* Restoring these options commits them, and each commit fires the reaction installed by
+         Motherboard_builder, which marks the project as modified — in a thread of its own, hence
+         possibly *after* register_state_after_save_or_open below. That race is what made `open`
+         answer, now and then, that a correctly loaded project was unsaved (episode 7 of the
+         script-driving work-stream). The reaction is therefore suspended here: what is restored
+         from the project file is not a modification of it. *)
       let dotAction () =
+       self#dotoptions#with_persistence_reaction_suspended (fun () ->
         let () =
 	  try
 	    let () = self#dotoptions#load_from_file ~project_version (self#project_paths#dotoptionsFile) in
@@ -482,7 +489,7 @@ class globalState = fun () ->
 	      self#dotoptions#reset_defaults ()
 	    end
 	in
-	self#dotoptions#set_toolbar_widgets ()
+	self#dotoptions#set_toolbar_widgets ())
       in
       (* --- *)
       Log.printf ("state#open_project_async: calling load_treeviews\n");
@@ -659,6 +666,12 @@ class globalState = fun () ->
   method private register_state_after_save_or_open =
    begin
      project_dirty <- false;
+     (* The moment the project becomes clean. Logged on purpose (episode 7 of the script-driving
+        work-stream), but beware of what that line proves: Log.printf takes a global mutex before
+        writing (log_builder.ml:132-136), so a thread that has already mutated may be waiting for
+        it while another mutates and writes. The order of the lines is therefore NOT the order of
+        the mutations; the line dates the event, it does not order it. *)
+     Log.printf "state#register_state_after_save_or_open: the project is registered as saved\n";
      treeview_forest_list_after_save <- Some (self#get_treeview_complete_forest_list);
    end
 

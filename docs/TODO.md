@@ -120,37 +120,3 @@ importée seulement. Une fois cela fait, l'exposer au canal serait trivial (une 
 *Idée issue de la voie (a) de `forest`, écartée le 2026-08-07 (ép. 4g de `pilotage-par-script`) :
 gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scripting.*
 
----
-
-## `open` — la garde « projet propre » lit un état encore instable
-
-**Constat (mesuré le 2026-08-08, ép. 6 de `pilotage-par-script`).** Ouvrir par le canal un vieux
-projet qui subit des **adaptations automatiques** (`tp9.mar` : six remaps kernel/filesystem) répond
-parfois `internal` — *« loading … did not complete: the project is flagged as unsaved right after
-opening »* — alors que le projet est correctement chargé. Fréquence observée : **2 échecs sur 4
-runs** enchaînés, puis 0 sur 9 runs isolés et 3 runs de banc. Ce n'est ni le client ni le
-transport : les neuf runs isolés couvrent les deux (trois en `socat` nu, six en `marionnet-ctl`).
-
-**Cause probable.** `cmd_open` (`bin/control_server.ml`) conclut au succès si le fichier attendu
-est actif **et** `st#project_already_saved` — un critère juste sur le principe
-(`register_state_after_save_or_open`, `state.ml:551`, n'est atteint qu'au bout d'un chargement
-réussi). Mais l'état qu'il lit peut être **repoussé à « modifié » par un réacteur asynchrone** :
-`motherboard_builder.ml:153` branche `set_project_not_already_saved` sur sept `Cortex` des
-`dotoptions`, lesquelles sont persistantes — donc restaurées, donc *commitées*, au chargement. Le
-serveur lit dans son créneau GTK ; le réacteur passe dans le sien. Qui arrive le premier dépend de
-la charge.
-
-**Voulu.** Que `open` réponde sur un **fait stable**. Trois pistes, par coût croissant : (a) ne
-tester que « le fichier attendu est actif » et rapporter `saved` comme un simple champ, laissant le
-script juger ; (b) relire `project_already_saved` après avoir laissé passer un créneau GTK — un
-sondage, donc une convention de délai, ce que ce chantier a évité partout ; (c) traiter la vraie
-question : les commits de `dotoptions` **au chargement** ne devraient pas salir un projet qu'on
-vient d'ouvrir (le drapeau devrait être posé après, pas pendant). C'est (c) qui corrige la cause ;
-c'est aussi la seule qui touche l'application au-delà du canal.
-
-**Ce que l'implémentation devra affronter.** Distinguer un commit *de restauration* d'un commit
-*d'utilisateur* n'est pas gratuit : `Cortex.on_commit_append` ne dit pas d'où vient la valeur. La
-piste la moins intrusive est sans doute d'inhiber ces réacteurs pendant le chargement (un drapeau
-lu par `update`, posé/levé autour de la restauration), ce qui suppose de vérifier qu'aucun autre
-lecteur n'en dépend. À faire avec un banc qui **reproduit** l'intermittence — sans quoi on ne
-saura pas si c'est corrigé : le symptôme n'apparaît que sous charge.

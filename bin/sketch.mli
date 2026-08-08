@@ -64,6 +64,7 @@ class tuning :
     method reset_defaults             : unit -> unit
     method save_to_file               : string -> unit
     method set_gui_callbacks_disable  : bool -> unit
+    method set_persistence_reaction   : (unit -> unit) -> unit
     method set_reversed_cables        : string list -> unit
     method set_toolbar_widgets        : unit -> unit
     method shuffler                   : int list Cortex.t
@@ -73,4 +74,5 @@ class tuning :
     method to_tree                    : Xforest.tree
     method toolbar_driver             : toolbar_driver
     method set_toolbar_driver         : toolbar_driver -> unit
+    method with_persistence_reaction_suspended : (unit -> unit) -> unit
   end

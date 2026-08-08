@@ -21,6 +21,7 @@
 
 (* Dependencies: *)
 (* module Recursive_mutex = Ocamlbricks.MutexExtra.Recursive *)
+module Log = Marionnet_log
 module Stateful_modules = Ocamlbricks.Stateful_modules
 module Oomarshal = Ocamlbricks.Oomarshal
 module Cortex = Ocamlbricks.Cortex
@@ -126,6 +127,67 @@ class tuning
   method disable_gui_callbacks    () = gui_callbacks_disable <- true
   method enable_gui_callbacks     () =
    ignore (GMain.Timeout.add ~ms:500 ~callback:(fun () -> gui_callbacks_disable <- false; false))
+
+  (* --- The reaction of the *persistent* options (episode 7 of the script-driving work-stream).
+     The seven options above are saved into the project (dotoptions.marshal, see state.ml), so
+     changing one of them does make the project dirty: that is the reaction Motherboard_builder
+     installs here. But RESTORING them, while a project is being opened, must not: the project has
+     just been read from the disk, nothing has been modified.
+
+     Suspending that reaction cannot be a flag read by the callback, because the callback does not
+     run in the thread that committed: Cortex creates a thread of its own for the on_commit
+     callbacks (cortex.ml:307-312), so a flag lowered at the end of the loading would be read at an
+     unpredictable moment, which is precisely the race we are removing. What does remove it is
+     removing the callbacks themselves: their presence is tested by the committing thread, under
+     the mutexes (cortex.ml:301-307), hence no callback means no thread at all.
+
+     This is the twin of gui_callbacks_disable above: the same idea for reactions instead of
+     widgets, kept here because this is the class that owns the cortexes. *)
+  val mutable persistence_reaction : (unit -> unit) option = None
+  val mutable persistence_reaction_removers : (unit -> unit) list = []
+
+  method private remove_persistence_reaction =
+    let () = List.iter (fun remove -> remove ()) persistence_reaction_removers in
+    persistence_reaction_removers <- []
+
+  method private install_persistence_reaction =
+    let () = self#remove_persistence_reaction in
+    match persistence_reaction with
+    | None   -> ()
+    | Some f ->
+        let react = fun _ _ -> f () in
+        let append c =
+          let id = Cortex.on_commit_append c react in
+          (fun () -> Cortex.on_commit_remove c id)
+        in
+        let () =
+          persistence_reaction_removers <- [
+            append (iconsize);
+            append (rankdir);
+            append (curved_lines);
+            append (shuffler);
+            append (nodesep);
+            append (labeldistance);
+            append (extrasize);
+            ]
+        in
+        Log.printf1 "Sketch.tuning: persistence reaction installed on %d options\n"
+          (List.length persistence_reaction_removers)
+
+  (* Called once, at startup, by Motherboard_builder: *)
+  method set_persistence_reaction (f : unit -> unit) : unit =
+    let () = persistence_reaction <- Some f in
+    self#install_persistence_reaction
+
+  (* Called by state#open_project_async around the restoration of these options. The reaction is
+     put back even if [f] raises, otherwise a failed loading would leave the sketch options mute
+     for the rest of the session — hence Fun.protect rather than a try/with re-raising by hand,
+     which would also drag in the camlp4 extension raise_p4 (it rewrites every explicit raise of
+     bin/ into a logging one). *)
+  method with_persistence_reaction_suspended (f : unit -> unit) : unit =
+    let () = self#remove_persistence_reaction in
+    let () = Log.printf "Sketch.tuning: persistence reaction suspended\n" in
+    Fun.protect ~finally:(fun () -> self#install_persistence_reaction) f
 
   (* Delete _alone here:  *)
   method reset_defaults () =

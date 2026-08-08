@@ -149,16 +149,19 @@ module Make (S : sig val st:State.globalState end) = struct
   let () =
    let d = S.st#network#dotoptions in
    (* These options are persistent (they are saved into the project's "dotoptions.marshal",
-      see state.ml), hence changing one of them makes the project dirty: *)
-   let update = (fun _ _ -> S.st#set_project_not_already_saved; S.st#refresh_sketch) in
-   let _ = Cortex.on_commit_append (d#iconsize)      (update) in
-   let _ = Cortex.on_commit_append (d#rankdir)       (update) in
-   let _ = Cortex.on_commit_append (d#curved_lines)  (update) in
-   let _ = Cortex.on_commit_append (d#shuffler)      (update) in
-   let _ = Cortex.on_commit_append (d#nodesep)       (update) in
-   let _ = Cortex.on_commit_append (d#labeldistance) (update) in
-   let _ = Cortex.on_commit_append (d#extrasize)     (update) in
-   ()
+      see state.ml), hence changing one of them makes the project dirty.
+      ---
+      Since episode 7 the reaction is installed by the class that owns the seven cortexes, and
+      not here one cortex at a time: opening a project RESTORES these options, which commits
+      them, and the reaction must not mark as modified a project that has just been read from
+      the disk (see Sketch.tuning#with_persistence_reaction_suspended and state.ml). The log line
+      is what the bench counts: during a loading, this reaction must not happen at all. *)
+   let update = (fun () ->
+     Log.printf "Motherboard_builder: dotoptions commit => the project is marked as modified\n";
+     S.st#set_project_not_already_saved;
+     S.st#refresh_sketch)
+   in
+   d#set_persistence_reaction (update)
 
   (* ----------------------------------------
                   Debugging

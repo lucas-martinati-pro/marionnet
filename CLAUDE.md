@@ -263,11 +263,19 @@ Reprise : appliquer le skill `chantier-long`.
   de disque **donné** ; `history-start`/`history-del [--except]`/`history-set … comment`,
   **identifiant = le fichier COW** [un `Name` désigne autant de lignes que la machine a d'états],
   que la lecture servait **déjà** ; `documents` hors périmètre, motivé)
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d) et 6
-  sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting **descend
-  dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main au script).
-  Le chantier est **candidat à clôture** ; seul défaut connu laissé ouvert : la garde d'`open`, qui
-  lit `project_already_saved` trop tôt (fiche dans `docs/TODO.md`).
+  et **ép. 7** (la **garde d'`open`** : le faux négatif intermittent était une **course** —
+  `Cortex` lance **un thread par commit** pour ses `on_commit` (`cortex.ml:307-312`), si bien que la
+  réaction des `dotoptions` restaurées pouvait salir le projet **après**
+  `register_state_after_save_or_open` ; correctif = **retirer les callbacks** pendant la
+  restauration — jamais un drapeau, qui serait lu trop tard — via `Sketch.tuning`
+  (`set_persistence_reaction` / `with_persistence_reaction_suspended`), la garde d'`open` restant
+  inchangée ; **7/10 → 0/10** au banc `open-bench.sh`, sous `taskset -c 0`)
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6
+  et 7 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
+  **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
+  au script). **Plus aucun défaut connu ouvert** ; la **clôture est suspendue à une décision** :
+  la **documentation utilisateur** du scripting (guides formels, avec exemples), forme et périmètre
+  à trancher.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
