@@ -175,6 +175,10 @@ type arity = {
 let no_arg             syntax = { min_args = 0; max_args = 0; free_tail = false; syntax }
 let one_component      syntax = { min_args = 1; max_args = 1; free_tail = false; syntax }
 let optional_component syntax = { min_args = 0; max_args = 1; free_tail = false; syntax }
+(* Same arity, different domain (episode 6): [help] takes the name of a *command*, not of a
+   component. Sharing the constructor would make the table read "component" where it means
+   "verb" — an alias costs one line and keeps the table honest. *)
+let optional_identifier = optional_component
 let one_path           syntax = { min_args = 1; max_args = 1; free_tail = true;  syntax }
 (* Two identifiers (a kind and a name), or a component and one of its field names: both are
    identifiers, hence strict. Only a *value* may contain spaces, and only in last position. *)
@@ -201,7 +205,10 @@ let transition_all_commands = [ "start-all"; "shutdown-all"; "poweroff-all" ]
 (* The single vocabulary of the channel: what a command is called, what it takes, and how it is
    spelled. [dispatch] and the [unknown_command] answer both read this list. *)
 let arity_of_command : (string * arity) list =
-  [ ("status",        no_arg "status");
+  [ (* The vocabulary served by the channel itself (§ 5, episode 6). First in the list because it
+       is the way in: a client needs to know nothing but this verb. *)
+    ("help",          optional_identifier "help [<command>]");
+    ("status",        no_arg "status");
     ("ls",            no_arg "ls [--kind=<kind>] [--can=<action>]");
     ("can",           optional_component "can [<component>]");
     ("add",           two_identifiers "add <kind> <name> [--ports=<n>] [--<field>=<value>]…");
@@ -250,6 +257,44 @@ let arity_of_command : (string * arity) list =
   @ (List.map (fun v -> (v, no_arg v)) transition_all_commands)
 
 let known_commands = List.map fst arity_of_command
+
+(* Said in one place because it is said twice: by [help] about the command it was asked for, and
+   by [dispatch] about the command it was given. Both read [known_commands], so a verb added to
+   the table above is named here without touching anything else. *)
+let unknown_command_reply ~(verb:string) : string =
+  reply_error ~code:"unknown_command"
+    ~detail:(Printf.sprintf "unknown command %S; known commands: %s"
+               verb (String.concat ", " known_commands))
+
+(* § 5, episode 6: the channel publishes its own vocabulary. The point is not convenience but
+   *unicity* — a client holding its own copy of the grammar would be a second source of truth,
+   and the one to drift; that is the reason [forest] was dropped at episode 4g. The order is the
+   table's, which is the order of the documentation: nothing here folds a hashtable (the lesson
+   of [#column_headers], episode 5a).
+
+   [help] reads a constant list: it touches neither the global state nor the GTK thread, hence no
+   ~timeout and no [GMain_actor] on this path. *)
+let json_of_command ((verb, a) : string * arity) : string =
+  jobj [ ("verb",      jstr verb);
+         ("syntax",    jstr a.syntax);
+         ("min_args",  jint a.min_args);
+         ("max_args",  jint a.max_args);
+         ("free_tail", jbool a.free_tail) ]
+
+let cmd_help ~(verb:string option) : string =
+  let selected =
+    match verb with
+    | None   -> Ok arity_of_command
+    | Some v ->
+        (match List.assoc_opt v arity_of_command with
+         | Some a -> Ok [ (v, a) ]
+         | None   -> Error v)
+  in
+  match selected with
+  | Error v       -> unknown_command_reply ~verb:v
+  | Ok commands   ->
+      reply_ok [ ("count",    jint (List.length commands));
+                 ("commands", jlist (List.map json_of_command commands)) ]
 
 (* An unknown verb is let through untouched: [dispatch] answering [unknown_command] is more
    useful than a complaint about the arity of a command that does not exist. *)
@@ -2906,13 +2951,9 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                   | _ ->
                       cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
                  `Continue)
+            | "help"   -> (cmd_help ~verb:(arg_opt r 0), `Continue)
             | "quit"   -> (reply_ok [ ("quitting", jbool true) ], `Quit)
-            | verb ->
-                let detail =
-                  Printf.sprintf "unknown command %S; known commands: %s"
-                    verb (String.concat ", " known_commands)
-                in
-                (reply_error ~code:"unknown_command" ~detail, `Continue)))
+            | verb     -> (unknown_command_reply ~verb, `Continue)))
 
 (* ---------------------------------------------------------------- *)
 (*                             Sessions                             *)

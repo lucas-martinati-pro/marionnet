@@ -1,0 +1,265 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2026  Jean-Vincent Loddo
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# marionnet-ctl — command line client of Marionnet's control channel.
+#
+# Marionnet started with --control-socket PATH serves a line-oriented channel on that unix
+# socket: one request per line, one JSON line back (docs/pilotage-par-script.md). This script
+# is the client side of it, and nothing more.
+#
+# DELIBERATELY IT KNOWS NO GRAMMAR. It does not know that "start" takes a component or that
+# "connect" takes three: it hands the line over and returns the answer. The vocabulary belongs
+# to the server, which publishes it — try `marionnet-ctl help`. A client holding its own copy
+# of the grammar would be a second source of truth, hence the one to drift.
+#
+# NO bashbricks HERE, ON PURPOSE. The library is vendored in this repository and is the rule for
+# new scripts, but sourcing it costs ~65 ms measured, per invocation, while the useful work of
+# this client is one socket round trip; a test bench calls it hundreds of times per run. And the
+# only JSON it must read is the "ok" field, which the server always emits first (reply_ok /
+# reply_error, bin/control_server.ml). Richer extraction is delegated to jq through --query,
+# an *optional* dependency checked where it is used.
+#
+# Requires: socat. Optionally: jq (only for --query and --pretty).
+
+set -euo pipefail
+
+readonly PROGNAME="${0##*/}"
+
+# Exit codes. The contract is that of § 5: `marionnet-ctl … && …` must be trustworthy.
+readonly EXIT_REFUSED=1    # the channel answered, and it said no (ok:false)
+readonly EXIT_USAGE=2      # our own fault: no socket, missing tool, unknown client option
+readonly EXIT_NO_ANSWER=3  # nothing came back, or what came back is not a channel reply
+
+# Transport timeout when nothing else says otherwise. Both socat delays are set to it: -T bounds
+# an idle connection, -t the time after our stdin is closed — and the second matters as much as
+# the first (episode 4c), the request being written by a printf that closes stdin at once.
+readonly DEFAULT_TRANSPORT_TIMEOUT=30
+# What we add to the server-side --timeout when the request carries one: the transport must
+# outlive the deadline the server was given, never the other way round.
+readonly TRANSPORT_MARGIN=10
+
+usage() {
+  cat <<EOF
+Usage: $PROGNAME [client options] <command> [arguments…] [--server-options…]
+       $PROGNAME [client options] -f <file>|-
+
+Talks to a running Marionnet started with --control-socket PATH. Everything from <command>
+onwards is sent to the server untouched; client options must come *before* it.
+
+Client options:
+  -s, --socket=PATH     control socket (default: \$MARIONNET_CONTROL_SOCKET)
+  -q, --query=FILTER    print jq FILTER applied to the answer instead of the raw line
+  -p, --pretty          print the answer indented (needs jq)
+  -f, --file=PATH       batch mode: one command per line, '-' for stdin
+      --keep-going      in batch mode, do not stop at the first refusal
+      --socket-timeout=N  transport timeout in seconds (default: $DEFAULT_TRANSPORT_TIMEOUT, or
+                        the request's --timeout plus $TRANSPORT_MARGIN s)
+  -h, --help            this message
+
+Exit codes: 0 the channel accepted · $EXIT_REFUSED it refused (ok:false) · $EXIT_USAGE client-side error ·
+            $EXIT_NO_ANSWER no answer.
+
+The command vocabulary is served by Marionnet itself:
+  $PROGNAME help              list every command with its syntax
+  $PROGNAME help connect      the syntax of one of them
+
+Examples:
+  $PROGNAME status
+  $PROGNAME -q '.nodes[].name' ls
+  $PROGNAME add machine m1 --ports=3
+  $PROGNAME wait m1 --state=on --timeout=120     # transport waits 120+$TRANSPORT_MARGIN s
+  $PROGNAME -f scenario.mrn                      # batch
+EOF
+}
+
+die() {  # $1 = exit code, $2… = message
+  local code="$1"; shift
+  printf '%s: %s\n' "$PROGNAME" "$*" >&2
+  exit "$code"
+}
+
+# --------------------------------------------------------------------------
+#                            Client options
+# --------------------------------------------------------------------------
+
+# They stop at the first token that is not a client option — that token is the verb, and from
+# there the line belongs to the server (git -C dir status, systemctl --user start: same rule).
+# In particular --timeout is *not* consumed here: it is the server's, we only read it in passing
+# to size our own wait.
+
+socket="${MARIONNET_CONTROL_SOCKET:-}"
+query=""
+pretty=0
+batch_file=""
+keep_going=0
+socket_timeout=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    -s|--socket)          [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; socket="$2"; shift 2 ;;
+    --socket=*)           socket="${1#*=}"; shift ;;
+    -q|--query)           [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; query="$2"; shift 2 ;;
+    --query=*)            query="${1#*=}"; shift ;;
+    -p|--pretty)          pretty=1; shift ;;
+    -f|--file)            [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; batch_file="$2"; shift 2 ;;
+    --file=*)             batch_file="${1#*=}"; shift ;;
+    --keep-going)         keep_going=1; shift ;;
+    --socket-timeout=*)   socket_timeout="${1#*=}"; shift ;;
+    -h|--help)            usage; exit 0 ;;
+    --)                   shift; break ;;
+    -*)                   die $EXIT_USAGE "unknown client option: $1 (client options come before the command; see --help)" ;;
+    *)                    break ;;
+  esac
+done
+
+command -v socat >/dev/null 2>&1 || die $EXIT_USAGE "socat is required (apt install socat)"
+
+if [[ -z $socket ]]; then
+  die $EXIT_USAGE "no control socket: pass --socket=PATH or set MARIONNET_CONTROL_SOCKET
+Marionnet must have been started with:  marionnet --control-socket PATH"
+fi
+[[ -S $socket ]] || die $EXIT_USAGE "not a unix socket: $socket (is Marionnet running with --control-socket?)"
+
+if [[ -n $batch_file && $# -gt 0 ]]; then
+  die $EXIT_USAGE "-f and a command are exclusive: batch mode reads its commands from the file"
+fi
+if [[ -z $batch_file && $# -eq 0 ]]; then
+  usage >&2; exit $EXIT_USAGE
+fi
+
+need_jq() {
+  command -v jq >/dev/null 2>&1 || die $EXIT_USAGE "jq is required by $1 (apt install jq)"
+}
+[[ -z $query ]] || need_jq "--query"
+(( pretty == 0 )) || need_jq "--pretty"
+
+# --------------------------------------------------------------------------
+#                              Transport
+# --------------------------------------------------------------------------
+
+# How long to wait for one request. A request carrying --timeout=N tells the server how long it
+# may spend; waiting less than that on our side would report a false silence — which is exactly
+# the trap the benches worked around by hand with a separate `ask_long`.
+transport_timeout_for() {  # $1… = the tokens of the request
+  local token n
+  if [[ -n $socket_timeout ]]; then printf '%s' "$socket_timeout"; return 0; fi
+  for token in "$@"; do
+    if [[ $token =~ ^--timeout=([0-9]+)(\.[0-9]+)?$ ]]; then
+      n="${BASH_REMATCH[1]}"
+      printf '%s' "$(( n + TRANSPORT_MARGIN ))"
+      return 0
+    fi
+  done
+  printf '%s' "$DEFAULT_TRANSPORT_TIMEOUT"
+}
+
+# One round trip. `head -1` is not cosmetic: it is what closes the pipe as soon as the answer is
+# there, so socat leaves immediately instead of idling until -t expires. Closing it makes socat
+# die of SIGPIPE, hence the subshell that turns pipefail off — the failure is expected, and the
+# real signal of trouble is an empty answer.
+ask() {  # $1 = request line, $2 = timeout in seconds
+  local line="$1" timeout="$2"
+  ( set +o pipefail
+    printf '%s\n' "$line" | socat -t"$timeout" -T"$timeout" - UNIX-CONNECT:"$socket" 2>/dev/null | head -1 )
+}
+
+# --------------------------------------------------------------------------
+#                          Answer and exit code
+# --------------------------------------------------------------------------
+
+# Reading "ok" by pattern rather than by parsing is sound here, and only here: every answer is
+# built by reply_ok or reply_error (bin/control_server.ml), both of which put "ok" first.
+report() {  # $1 = answer line; prints it, returns 0 (accepted) or 1 (refused)
+  local answer="$1" code detail
+
+  if [[ -z $answer ]]; then
+    die $EXIT_NO_ANSWER "no answer from $socket — Marionnet may be busy in a modal dialog, or gone"
+  fi
+
+  if [[ -n $query ]]; then
+    jq -r "$query" <<<"$answer"
+  elif (( pretty )); then
+    jq . <<<"$answer"
+  else
+    printf '%s\n' "$answer"
+  fi
+
+  case "$answer" in
+    '{"ok":true'*)  return 0 ;;
+    '{"ok":false'*) ;;
+    *) die $EXIT_NO_ANSWER "unexpected answer (not a channel reply): $answer" ;;
+  esac
+
+  # Refused: say why on stderr, in clear, so that an interactive user is not left with a JSON
+  # line to decipher. The detail may hold escaped quotes, hence the second alternative.
+  code=""; detail=""
+  [[ $answer =~ \"error\":\"([^\"]*)\" ]] && code="${BASH_REMATCH[1]}"
+  [[ $answer =~ \"detail\":\"(([^\"\\]|\\.)*)\" ]] && detail="${BASH_REMATCH[1]}"
+  printf '%s: %s%s\n' "$PROGNAME" "${code:-refused}" "${detail:+: $detail}" >&2
+  return 1
+}
+
+send() {  # $1… = the tokens of one request
+  local line answer
+  line="$*"
+  answer="$(ask "$line" "$(transport_timeout_for "$@")")"
+  report "$answer"
+}
+
+# --------------------------------------------------------------------------
+#                                 Batch
+# --------------------------------------------------------------------------
+
+# One connection per line rather than one session for the whole file: the server does loop on a
+# session, but pairing answers to requests would put state in this client for no measurable gain
+# (the benches ran hundreds of commands this way). A line is a request, its answer is printed,
+# and the first refusal stops the run unless --keep-going.
+run_batch() {  # $1 = file, or "-"
+  local file="$1" line executed=0 refused=0 rc=0
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    # A comment is a line whose first non-blank character is '#' — never a '#' met in the middle,
+    # which may perfectly well belong to a label or a path.
+    [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
+    executed=$(( executed + 1 ))
+    rc=0
+    # shellcheck disable=SC2086  # deliberate: the line is split into tokens, as the channel does
+    send $line || rc=$?
+    if (( rc != 0 )); then
+      refused=$(( refused + 1 ))
+      (( keep_going )) || {
+        printf '%s: stopped at command %d (use --keep-going to continue)\n' "$PROGNAME" "$executed" >&2
+        return $EXIT_REFUSED
+      }
+    fi
+  done < <(if [[ $file == "-" ]]; then cat; else cat -- "$file"; fi)
+
+  (( refused == 0 )) || return $EXIT_REFUSED
+  return 0
+}
+
+# --------------------------------------------------------------------------
+#                                  Main
+# --------------------------------------------------------------------------
+
+if [[ -n $batch_file ]]; then
+  [[ $batch_file == "-" || -r $batch_file ]] || die $EXIT_USAGE "cannot read $batch_file"
+  run_batch "$batch_file"
+else
+  send "$@"
+fi

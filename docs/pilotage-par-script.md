@@ -1109,28 +1109,80 @@ script y trouvera un champ vide.
 
 ---
 
-## 5. Client `mrnctl`
+## 5. Client `marionnet-ctl` (symlink `mrnctl`)
 
-Script Bash, sourçant `bashbricks/bashbricks.sh` par chemin relatif (helpers `Json_*`), transport
-`socat` ou `nc`. Script **neuf** : le skill `use-bashbricks` s'applique, ainsi que
-`set -euo pipefail`.
+*Réalisé à l'**ép. 6** (2026-08-08) — `useful-scripts/marionnet-ctl`, versionné. Le nom court de
+la conception (`mrnctl`) est gardé en **symlink** : le long se découvre à la complétion
+(`marionnet<TAB>`) et suit la convention du seul autre exécutable compagnon installé
+(`marionnet-sudoers.sh`), le court reste tapable dans les bancs. `ctl` = *control*, comme dans
+`systemctl`/`journalctl` : le **client** en ligne de commande d'un service.*
 
 ```bash
-mrnctl open /tmp/lab.mar
-mrnctl add machine m1 --ports 2
-mrnctl connect c1 m1:0 s1:0
+export MARIONNET_CONTROL_SOCKET=$XDG_RUNTIME_DIR/mrn.sock
+marionnet --control-socket "$MARIONNET_CONTROL_SOCKET" &
+
+mrnctl help                       # le vocabulaire, servi par le serveur lui-même
+mrnctl help connect               # la syntaxe d'un verbe
+mrnctl new /tmp/lab.mar
+mrnctl add machine m1 --ports=2
+mrnctl connect c1 m1:eth0 s1:port1
 mrnctl start m1
-mrnctl wait m1 --state=on --timeout 30
-state=$(mrnctl ls | jq -r '.nodes[] | select(.id=="m1") | .state')
+mrnctl wait m1 --state=on --timeout=120
+state=$(mrnctl -q '.nodes[] | select(.name=="m1") | .state' ls)
 mrnctl shutdown-all && mrnctl quit
 ```
 
-Contraintes :
+### 5.1 Il ne connaît aucune grammaire — et c'est le point
 
-- **délai de garde systématique** côté client (cf. § 8) ;
-- code de retour du script aligné sur le champ `ok` de la réponse, pour que
-  `mrnctl … && …` soit fiable ;
-- mode `--raw` restituant la ligne JSON telle quelle, pour un agent.
+Le client **ne sait pas** que `start` prend un composant ni que `connect` en prend trois : il
+transmet la ligne et rend la réponse. Le vocabulaire appartient au serveur, qui le **publie** —
+commande **`help`** (ép. 6, ~35 l. dans `bin/control_server.ml`), qui rend `arity_of_command` en
+JSON : `verb`, `syntax`, `min_args`, `max_args`, `free_tail`, dans l'ordre de la table.
+
+Le motif n'est pas la commodité mais l'**unicité** : un client portant sa propre copie de la
+grammaire serait une seconde source de vérité, donc celle qui dérive — c'est exactement ce qui a
+fait abandonner `forest` à l'ép. 4g. L'assertion C1 du banc le mesure : la liste servie par `help`
+et celle que le dispatch énumère dans le `detail` d'un `unknown_command` sont **identiques**.
+
+Conséquence pratique : une commande ajoutée au serveur est immédiatement utilisable, documentée et
+complétable, sans toucher au client.
+
+### 5.2 Ce qu'il apporte, lui
+
+| | |
+|---|---|
+| **Résolution du socket** | `--socket=PATH`, sinon `$MARIONNET_CONTROL_SOCKET`, sinon une erreur qui dit comment lancer Marionnet. **Aucune découverte automatique** : le serveur n'a pas de chemin par défaut, et deviner en balayant `$XDG_RUNTIME_DIR` serait de la magie |
+| **Délai de transport** | `socat -t N -T N` — les **deux**, leçon de l'ép. 4c. Et surtout : une requête portant `--timeout=N` fait attendre le client **N + 10 s**, sans qu'on ait rien à régler. C'est ce que les bancs faisaient à la main en basculant sur `ask_long` |
+| **Code de retour** | `0` accepté · `1` refusé (`ok:false`) · `2` faute du client (socket absent, `socat`/`jq` manquant) · `3` pas de réponse. C'est ce qui rend `mrnctl … && …` fiable |
+| **Sorties** | par défaut **la ligne JSON telle quelle** ; `--query=<jq>` extrait ; `--pretty` indente. Le refus reste sur **stdout** en JSON *et* s'explique en clair sur **stderr** |
+| **Mode lot** | `-f <fichier>` (ou `-`) : une commande par ligne, arrêt au premier refus sauf `--keep-going`. Commentaires `#` en début de ligne ignorés — jamais un `#` rencontré au milieu d'une valeur |
+
+⚠️ **Révision de la conception** : le `--raw` prévu ici « pour un agent » n'existe pas — c'est le
+**défaut**. Le brut est le comportement honnête et scriptable ; c'est l'humain qui demande un
+confort, avec `--pretty`.
+
+### 5.3 Deux décisions de mise en œuvre, motivées
+
+- **Pas de `bashbricks`**, alors que la règle du dépôt l'impose à tout script neuf : sourcer la
+  bibliothèque coûte **~65 ms mesurés par invocation**, quand le travail utile du client est un
+  aller-retour de socket et qu'un banc l'appelle des centaines de fois par run. Le seul JSON qu'il
+  doit lire est le champ `ok`, que le serveur émet **toujours en premier** (`reply_ok` /
+  `reply_error`) : un motif ancré suffit, et il est asserté. Les extractions riches sont déléguées
+  à `jq` (`--query`), dépendance **optionnelle** vérifiée au point d'usage.
+- **Une connexion par commande**, y compris en mode lot. Le serveur boucle bien sur une session,
+  mais apparier les réponses aux requêtes mettrait un **état** dans le client pour un gain nul :
+  les bancs ont passé des centaines de commandes ainsi.
+
+### 5.4 `bench-lib.sh` — le préambule des bancs, extrait
+
+Hors dépôt (`_claude-local/bench/`), corollaire direct du client : les huit bancs portaient chacun
+~80 lignes identiques (lancement, attente du socket, `ask`, `expect_*`, nettoyage par répertoire
+de session, fusible de cardinalité). Un garde-fou recopié à la main finit par diverger — et
+celui-là a coûté une session KDE entière le 2026-08-03. Il n'y en a plus qu'une copie ; `ask` y
+tient désormais en **une ligne**, puisque c'est `marionnet-ctl` qui parle.
+
+`can-bench.sh` a servi de **témoin** de l'extraction : −100 lignes, et les **16 assertions t0
+rigoureusement identiques** à celles du run joué juste avant conversion.
 
 ---
 
@@ -1322,7 +1374,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **5b** | Écriture d'`ifconfig` (adresses, MAC, MTU) — là où le TP se configure : `ifconfig-set`, les contraintes de la GUI rejouées par le serveur (`#constraints_verdict`), et le choix de redémarrage exigé du script | **fait** (2026-08-07) — 80 assertions, `treeview-bench.sh` (T8→T11, dont le bout en bout `boot_parameters`) |
 | **5c** | Écriture de `defects` (pertes, délais) : `defects-set`, deux formes sous un verbe, la direction désignée par son `Type`, et l'application **à chaud** pour un câble — mesurée, pas présumée | **fait** (2026-08-07) — 138 assertions, `treeview-bench.sh` (T12→T15, dont la ligne de commande du `wirefilter` recréé) |
 | 5d | `history` et `documents` en écriture, si un besoin apparaît | à faire |
-| 6 | Client `mrnctl` + suite de tests scriptés | à faire |
+| **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
@@ -2679,3 +2731,76 @@ suffisent à faire tourner un `wirefilter`. Une seconde après le `defects-set`,
 figure dans la **ligne de commande** du process recréé, où elle était absente avant — mesuré sur
 `/proc/<pid>/cmdline`, sans qu'aucun composant n'ait été éteint. C'est la différence entre dire
 qu'un defect s'applique à chaud et le montrer.
+
+### 2026-08-08 — épisode 6 : un client qui ne sait rien, et un serveur qui se raconte
+
+**Le canal avait tout, sauf quelqu'un à qui parler.** Trente-six verbes côté serveur, huit bancs
+qui les exercent — et, pour dialoguer, la même ligne `printf … | socat -t30 -T30 - UNIX-CONNECT:…
+| head -1` recopiée huit fois. L'épisode livre `useful-scripts/marionnet-ctl` (symlink `mrnctl`),
+**versionné** parce que c'est un livrable d'utilisateur : piloter un TP par script, pas seulement
+mesurer un chantier.
+
+**La décision structurante est une abstention : le client ne connaît aucune grammaire.** Il ignore
+que `start` prend un composant et que `connect` en prend trois ; il transmet la ligne, rend la
+réponse, et c'est tout. Ce qui aurait pu être une facilité — une fonction Bash par verbe, avec son
+aide — aurait recréé une **seconde source de vérité**, celle qui dérive au premier épisode suivant.
+C'est le raisonnement qui avait fait abandonner `forest` (ép. 4g), appliqué ici à l'autre bout du
+canal. À la place, le serveur se raconte : commande **`help`**, ~35 lignes, qui rend
+`arity_of_command` en JSON — verbe, syntaxe, arité, queue libre — dans l'ordre de la table.
+
+**L'assertion qui garde cette propriété (C1) compare deux chemins de code.** La liste servie par
+`help` et celle que le dispatch énumère dans le `detail` d'un `unknown_command` doivent être
+**identiques** : si `help` recopiait la grammaire au lieu de la lire, cette assertion tomberait la
+première. Sa jumelle C2 joue les 35 verbes (tous sauf `quit`) sur un réseau vide et exige
+qu'aucun ne réponde `unknown_command` — un verbe publié mais non branché serait une aide qui ment.
+Au passage, la factorisation d'`unknown_command_reply` fait que les deux chemins **ne peuvent
+plus** diverger.
+
+**Ce que le client apporte de son côté**, puisqu'il n'apporte pas de grammaire : la résolution du
+socket (option, puis `$MARIONNET_CONTROL_SOCKET`, puis une erreur qui enseigne — jamais une
+découverte automatique) ; quatre codes de retour distincts, chacun provoqué au banc (`0` accepté,
+`1` refusé, `2` faute du client, `3` pas de réponse) ; la sortie brute par défaut, `--query` et
+`--pretty` en options — ce qui **révise** le `--raw` de la conception, écrit à l'envers ; un mode
+lot. Et un gain qu'on n'avait pas prévu : le délai de transport se **cale tout seul** sur le
+`--timeout=N` de la requête (N + 10 s), là où les bancs devaient penser à basculer sur `ask_long`.
+C8 le mesure en exigeant qu'un `wait --timeout=45` voué à l'échec rende bien un `timeout` **du
+serveur**, et non le silence d'un transport coupé trop tôt.
+
+**Une règle du dépôt a été écartée, avec mesure à l'appui.** Tout script Bash neuf doit employer
+`bashbricks` ; celui-ci ne le source pas. Sourcer la bibliothèque coûte **~65 ms par invocation**
+— pour un client dont le travail utile est un aller-retour de socket, et qu'un banc appelle des
+centaines de fois. Le seul JSON qu'il doit lire est le champ `ok`, que `reply_ok`/`reply_error`
+placent **toujours en tête** ; un motif ancré suffit, et il est asserté. Le reste est délégué à
+`jq`, dépendance **optionnelle** vérifiée au point d'usage.
+
+**Corollaire immédiat : `bench-lib.sh`.** Le préambule des huit bancs — lancement, attente du
+socket, `ask`, `expect_*`, nettoyage par répertoire de session, fusible de cardinalité — n'existe
+plus qu'en un exemplaire. `ask` y tient en une ligne. `can-bench.sh` a servi de témoin de
+l'extraction : cent lignes de moins, et les **seize assertions t0 rigoureusement identiques** à
+celles du run joué juste avant conversion (comparaison ligne à ligne, pas « toutes vertes des deux
+côtés »). Les sept autres bancs n'ont pas été touchés : ils sont verts, et leur valeur est d'avoir
+déjà mesuré.
+
+**Trois erreurs, toutes dans le banc, toutes instructives.** (a) `.commands | length == .count` est
+un filtre `jq` faux — après le pipe, `.count` est cherché dans le tableau ; il faut parenthéser.
+(b) `ls` **sans projet actif répond `ok:true`** avec une liste vide : ce sont les treeviews (§ 4.6)
+qui refusent, pas l'inventaire — le banc voulait provoquer un refus et provoquait un succès. (c) Le
+socket du « pair muet », placé sous le répertoire du run, dépassait les **108 octets** de
+`sun_path` : `socat` échouait en silence et le client répondait « pas un socket » (code 2) au lieu
+du 3 attendu. Le piège de `sun_path`, connu depuis l'ép. 3c pour le socket de Marionnet, vaut pour
+**tout** socket auxiliaire d'un banc.
+
+**Un défaut du serveur, découvert par accident et laissé ouvert.** En enchaînant les runs, `open`
+d'un vieux projet (`tp9.mar`, six adaptations automatiques) a répondu deux fois sur quatre
+`internal` — « the project is flagged as unsaved right after opening » — alors que le chargement
+s'était bien passé. Ce n'est **ni le client ni la bibliothèque** : neuf runs isolés, trois avec le
+transport `socat` d'origine et six avec `marionnet-ctl`, sont tous verts, et les trois runs de banc
+suivants aussi. La garde de `cmd_open` lit `st#project_already_saved` immédiatement après le
+chargement, alors que des réacteurs `Cortex.on_commit_append` (`motherboard_builder.ml:153`, sur
+les `dotoptions` — persistantes, donc « salissantes ») marquent le projet modifié **de façon
+asynchrone**. La garde mesure donc un état instable, et rend un faux négatif sous charge. Consigné
+dans `docs/TODO.md` : ce n'est pas un défaut du canal, et le corriger demande de décider *quand* un
+projet fraîchement ouvert est propre — une question d'application, pas de protocole.
+
+**Preuve** : `ctl-bench.sh`, **36 assertions vertes, 0 échec**, 0 orphelin ; `can-bench.sh`
+converti, 16 assertions identiques au témoin ; `dune build` et `dune test --force` verts.

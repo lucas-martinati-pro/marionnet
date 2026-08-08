@@ -249,11 +249,20 @@ Reprise : appliquer le skill `chantier-long`.
   `wirefilter` **à chaud**, par recréation du process — là où un nœud exige
   `--restart`/`--no-restart` ; les 3 effets du chemin GTK (réalignement min/max, surbrillance,
   avertissement) passent dans `#edit_side_effects`, appelée par la GUI **et** par le serveur)
-  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a, 5b et 5c sont
+  et **ép. 6** (le **client**, § 5 : `useful-scripts/marionnet-ctl` + symlink `mrnctl`, **versionné**
+  — il ne connaît **aucune grammaire**, c'est le serveur qui publie son vocabulaire par la commande
+  **`help`** [`arity_of_command` en JSON], si bien qu'un verbe ajouté est aussitôt utilisable et
+  documenté ; 4 codes de retour, sortie **brute par défaut** [`--pretty`/`--query` en options],
+  mode lot `-f`, et le délai de transport **calé seul** sur le `--timeout=N` de la requête ; pas de
+  `bashbricks` — mesuré ~65 ms de sourcing par invocation, pour un client appelé des centaines de
+  fois ; corollaire hors dépôt : `bench-lib.sh` retire le préambule recopié dans les 8 bancs,
+  `can-bench.sh` servant de témoin [−100 l., 16 assertions identiques])
+  faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5a, 5b, 5c et 6 sont
   clos**. La direction du § 10 — le scripting **descend dans les composants** — est donc
-  **ouverte, démontrée et refermée** (l'invité rend la main au script). Reprendre par l'**ép. 6**
-  (client `mrnctl`), où les 8 bancs resserviront ; l'ép. 5d (`history`/`documents` en écriture)
-  reste conditionné à un besoin réel (YAGNI).
+  **ouverte, démontrée et refermée** (l'invité rend la main au script). **Plus aucune étape
+  obligatoire** : l'ép. 5d (`history`/`documents` en écriture) reste conditionné à un besoin réel
+  (YAGNI), et le seul défaut connu laissé ouvert est la garde d'`open`, qui lit
+  `project_already_saved` trop tôt (fiche dans `docs/TODO.md`).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

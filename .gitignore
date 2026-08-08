@@ -75,7 +75,7 @@ bin/gui/icons_forge/
 lib/history.sh
 lib/modules.lst
 
-# --- useful-scripts/ : approche inverse — tout est ignoré SAUF les 7 fichiers
+# --- useful-scripts/ : approche inverse — tout est ignoré SAUF les fichiers
 #     versionnés listés ci-dessous. Attention : tout NOUVEAU fichier à versionner
 #     ici devra être ajouté en `!useful-scripts/...`.
 useful-scripts/*
@@ -86,4 +86,7 @@ useful-scripts/*
 !useful-scripts/marionnet_from_scratch_weights_of_log
 !useful-scripts/prepare_bridge.sh
 !useful-scripts/which_ocamlbricks
+# Client du canal de contrôle (docs/pilotage-par-script.md § 5) et son nom court.
+!useful-scripts/marionnet-ctl
+!useful-scripts/mrnctl
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf
