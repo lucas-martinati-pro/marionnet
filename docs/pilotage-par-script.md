@@ -1293,6 +1293,48 @@ guide en `(section doc)`), et cet épisode appartient au chantier
 `modernisation-installation-marionnet`, pas à celui-ci — c'est exactement la frontière que
 l'ép. 6 avait déjà refusé de franchir.
 
+### 5.6 `mrn-check` — vérifier un `.mrn` sans rien envoyer (épisode 9)
+
+`useful-scripts/mrn-check`, **versionné**. Motif : le mode lot **n'a pas de transaction**
+(§ 5.2) — envoyer un fichier à l'aveugle, c'est découvrir la faute de la 5ᵉ ligne quand les
+quatre premières ont déjà modifié le projet. Le vérificateur lit, contrôle, et n'envoie **rien**.
+
+**Il ne porte pas plus la grammaire que le client** : il la demande au serveur (`marionnet-ctl
+help`), et `--grammar=FICHIER` valide **hors ligne** contre un instantané pris par
+`marionnet-ctl help > grammar.json`. L'instantané est un **cache**, jamais une source — dit dans
+le script, dit dans le guide. C'est la même règle qu'aux ép. 4g et 6, appliquée une troisième fois.
+
+**Ce qu'il contrôle au-delà de l'arité**, et que la grammaire ne peut pas dire : le fichier est
+**rejoué contre un modèle construit à partir de lui-même** — nom déjà pris, composant référencé
+sans `add`, nom de port, port hors du `--ports=` déclaré, port déjà occupé par un câble antérieur.
+
+**Le modèle n'est cru que quand ce fichier le construit à partir de rien** (drapeau
+`authoritative`). `new` ouvre un projet vide, donc on connaît tout ; `open` charge un projet
+qu'on ne voit pas, et un fichier sans commande de projet s'appuie sur la session en cours. Dans
+ces deux derniers cas les contrôles d'existence sont **désactivés** et une `note` le dit :
+inventer des erreurs sur des noms qu'on ne peut pas connaître serait pire que ne rien dire.
+
+**Une seule connaissance du modèle est recopiée ici, et c'est un choix borné** : la table
+`kind → (préfixe, offset)` des noms de ports (machine `eth0`…, switch/hub/world_gateway
+`port1`…, routeur/cloud/world_bridge `port0`…), avec les `fichier:ligne` qui la déclarent. Elle
+n'est pas publiée par `help` et c'est elle qui attrape la faute-témoin de l'ép. 8. Un `kind`
+absent de la table **désactive** les contrôles de port pour ce composant au lieu de deviner.
+Les **nombres de ports par défaut**, eux, ne sont **pas** recopiés : sans `--ports=` explicite,
+le contrôle de borne ne s'applique pas — moins de couverture, mais aucune valeur à resynchroniser.
+
+**Pas de `bashbricks`, et cette fois pour une raison vérifiable** : `mrn-check` est destiné à
+`$(PREFIX)/bin` à côté de `marionnet-ctl`, et **rien n'installe `bashbricks`** (vérifié :
+aucune mention dans `Makefile`, `Makefile.d/`, ni dans une stanza `(install)`). Un `source`
+relatif marcherait dans l'arbre des sources et casserait une fois installé. `jq`, en revanche,
+est une dépendance **dure** ici — l'outil lit un JSON de grammaire, il n'est pas sur un chemin
+chaud, et deux chemins de lecture vaudraient moins qu'un message clair.
+
+**Le discriminant du banc, c'est l'accord avec le serveur** (`check-bench.sh`, K4) : sur un
+fichier fautif, la **première ligne** signalée par `mrn-check` doit être **celle où `mrnctl -f`
+s'arrête réellement — même ligne, même motif**. Sans cette assertion, le banc ne mesurerait que
+la cohérence du vérificateur avec lui-même. Mesuré : ligne 6 des deux côtés, motif
+`node "s1" has no port "port0"`, et le témoin (fichier valide) accepté par les deux.
+
 ---
 
 ## 6. Architecture C — le décor pré-fabriqué (`-r`)
@@ -1486,6 +1528,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 | **7** | La garde d'`open` : le faux négatif intermittent (`internal — flagged as unsaved`) était une **course** — `Cortex` lance un thread par commit `on_commit`, donc la réaction des `dotoptions` restaurées pouvait salir le projet *après* l'enregistrement de son état | **fait** (2026-08-08) — correctif = **retirer** les callbacks pendant la restauration (`Sketch.tuning`), 7/10 → 0/10 au banc `open-bench.sh` sous `taskset -c 0` |
+| **9** | **`mrn-check`** (§ 5.6) : vérifier un `.mrn` **sans rien envoyer** — le mode lot n'a pas de transaction. Grammaire **demandée au serveur** (`--grammar=` pour l'instantané hors ligne), plus un **modèle rejoué depuis le fichier** (noms, ports, occupation), cru seulement quand le fichier part d'un `new` | **fait** (2026-08-09) — 32 assertions (`check-bench.sh`), **discriminant K4** : même ligne et même motif que l'arrêt réel de `mrnctl -f` |
 | **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
@@ -3107,3 +3150,60 @@ Les deux forment un seul épisode d'installation cohérent, qui appartient au ch
 
 **État du chantier** : le § 9 est soldé, aucun défaut connu n'est ouvert, et la condition posée à
 la clôture est levée. Le chantier peut être clos (MODE C) sur décision de l'auteur.
+
+---
+
+### 2026-08-09 — épisode 9 : un vérificateur qui ne connaît toujours pas la grammaire
+
+**Livrable** : `useful-scripts/mrn-check`, versionné, + § 12 du guide utilisateur. Décisions et
+motifs en **§ 5.6** ; on ne les répète pas ici.
+
+**Le besoin vient d'une propriété qu'on avait documentée sans en tirer les conséquences** : le
+mode lot **n'a pas de transaction** (§ 5.2). Un `.mrn` envoyé à l'aveugle fait découvrir la faute
+de sa 5ᵉ ligne quand les quatre premières ont déjà modifié le projet — et l'ép. 8 venait d'en
+donner l'exemple parfait, un `s1:port0` sur un switch qui numérote à partir de `port1`. Le
+vérificateur lit le fichier et n'envoie rien.
+
+**Trois questions ont été posées avant d'écrire, et les trois réponses tiennent en une règle.**
+La grammaire n'est **pas** écrite dans le vérificateur : il la demande au serveur, exactement
+comme le client de l'ép. 6, et `--grammar=FICHIER` permet de valider hors ligne contre un
+instantané explicitement désigné comme **cache**. C'est la troisième application de la règle
+d'unicité (ép. 4g pour `forest`, ép. 6 pour le client) : deux copies d'une grammaire, c'est une
+copie qui dérive. Corollaire de forme : un **script autonome** plutôt qu'un `-n` sur
+`marionnet-ctl`, pour ne pas donner au client la compréhension de ce qu'il transmet — c'est
+précisément ce qu'il n'a pas.
+
+**Le contrôle utile n'est pourtant pas dans la grammaire.** L'arité attrape un verbe mal tapé ;
+elle ne dira jamais qu'un câble se branche sur un port qui n'existe pas. D'où le second étage :
+le fichier est **rejoué contre un modèle construit à partir de lui-même** — noms déclarés et
+encore libres, composant référencé sans `add`, nom de port, borne du `--ports=`, port déjà pris.
+Avec une limite explicite, qui est ce qui empêche l'outil de mentir : **le modèle n'est cru que
+quand le fichier le construit à partir de rien**. Après un `open`, ou sans commande de projet, on
+ne voit pas le décor : les contrôles d'existence s'éteignent et une `note` le dit. Un linter qui
+invente des erreurs se fait désactiver la semaine suivante.
+
+**Une seule connaissance du modèle est recopiée, et elle est bornée** : la table
+`kind → (préfixe, offset)` des noms de ports, avec les `fichier:ligne` qui la déclarent. Elle
+n'est pas publiée par `help`, et c'est elle qui attrape la faute-témoin. Les **nombres de ports
+par défaut**, eux, ne sont pas recopiés : sans `--ports=` explicite, la borne n'est pas
+contrôlée. Moins de couverture contre zéro valeur à resynchroniser — le même arbitrage qu'ailleurs
+dans ce chantier.
+
+**Pas de `bashbricks`, pour une raison vérifiable cette fois** : `mrn-check` est destiné à
+`$(PREFIX)/bin` et rien n'installe `bashbricks` (aucune mention dans `Makefile`, `Makefile.d/`,
+ni dans une stanza `(install)`) — un `source` relatif marcherait dans l'arbre des sources et
+casserait une fois installé. `jq` est en revanche une dépendance **dure** ici : l'outil lit un
+JSON de grammaire, il n'est pas sur un chemin chaud, et deux chemins de lecture vaudraient moins
+qu'un message clair.
+
+**Preuve** : `check-bench.sh`, **32 assertions, 0 échec**. Le discriminant est **K4** — sur un
+fichier fautif, la première ligne signalée par `mrn-check` doit être **celle où `mrnctl -f`
+s'arrête réellement** : mesuré ligne 6 des deux côtés, même motif
+(`node "s1" has no port "port0"`), avec le témoin (fichier valide) accepté par les deux. Sans
+cette assertion, le banc n'aurait mesuré que la cohérence du vérificateur avec lui-même. Le reste
+couvre le mode hors ligne **Marionnet arrêté**, sept classes d'erreur une par fichier, et les
+trois codes de retour.
+
+**Deux défauts trouvés au premier run**, tous deux dans le vérificateur : `-` (lire l'entrée
+standard) était rejeté comme option inconnue, et le message d'échec « le serveur n'a rien publié »
+n'enseignait pas l'option hors ligne. Corrigés, run suivant vert.

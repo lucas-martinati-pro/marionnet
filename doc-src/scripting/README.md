@@ -526,7 +526,50 @@ the one before. `--keep-going` runs the rest anyway.
 
 Batch mode is a convenience of transport, not of semantics: each line is still a separate
 request with its own answer, and a failure in the middle leaves the project in the state the
-successful lines put it in. There is no transaction.
+successful lines put it in. **There is no transaction** — which is exactly why the next section
+exists.
+
+### Checking a `.mrn` before sending it
+
+`mrn-check` reads the file and sends nothing:
+
+```bash
+mrn-check lab.mrn
+# lab.mrn: 9 request(s), no error
+
+mrn-check broken.mrn
+# broken.mrn:6: error — a switch numbers its ports from 1, so "port0" does not
+#               exist (its first port is port1)
+# broken.mrn:7: error — "m3" is declared by no add
+# broken.mrn: 2 error(s), 0 warning(s)
+```
+
+Exit codes: `0` valid, `1` errors found, `2` nothing could be checked.
+
+**It does not hold a copy of the grammar either.** It asks the running Marionnet, exactly as
+you would (`help`). To check without a running Marionnet — in an editor, in CI, before
+launching anything — take a snapshot once and point at it:
+
+```bash
+mrnctl help > grammar.json
+mrn-check --grammar=grammar.json lab.mrn
+```
+
+A snapshot is a *cache*. If it ages, the file it validates may be checked against a vocabulary
+Marionnet no longer serves; retake it rather than edit it.
+
+What it checks beyond the verb and its arity: names already taken, components referenced before
+being added, port names (a machine numbers its interfaces from 0, a switch its ports from 1),
+ports outside the declared `--ports=`, ports already taken by an earlier cable.
+
+Those checks need to know what exists, so they are only applied when the file **builds the
+project itself**, that is from a `new`. After an `open`, or with no project command at all, the
+file leans on a project `mrn-check` cannot see: it then checks the syntax and the port names,
+says so in a `note`, and does not invent errors about names it has no way to know.
+
+It is a *lint*, not a promise: it catches what can be decided by reading, and leaves to the
+channel what only the running model can answer (whether a machine may be started right now,
+whether a value satisfies a treeview constraint).
 
 ---
 
@@ -553,6 +596,7 @@ never have to configure both.
 
 * `mrnctl help` — the vocabulary, always current.
 * `mrnctl --help` — the client's own options.
+* `mrn-check --help` — checking a `.mrn` before sending it (§ 12).
 * `docs/pilotage-par-script.md` — the design of the channel, its rationale, and the journal of
   how it was built (in French, developer audience).
 * `doc-src/scripting/examples/` — the scripts of this guide, runnable as they are.

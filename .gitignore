@@ -89,4 +89,6 @@ useful-scripts/*
 # Client du canal de contrôle (docs/pilotage-par-script.md § 5) et son nom court.
 !useful-scripts/marionnet-ctl
 !useful-scripts/mrnctl
+# Vérificateur de fichiers .mrn (docs/pilotage-par-script.md § 5.6).
+!useful-scripts/mrn-check
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

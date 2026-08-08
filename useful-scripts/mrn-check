@@ -1,0 +1,394 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2026  Jean-Vincent Loddo
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# mrn-check — check a .mrn batch file before feeding it to `marionnet-ctl -f`.
+#
+# A .mrn file is one channel request per line (doc-src/scripting/README.md § 12). Sending it
+# blind means finding the fifth line's mistake after the first four have already changed the
+# project: batch mode has no transaction. This checks the file first, and sends nothing.
+#
+# WHERE THE GRAMMAR COMES FROM, AND WHY IT MATTERS. The vocabulary is not written here. It is
+# read from the running Marionnet, which publishes it (`marionnet-ctl help`), for the reason
+# that made the client grammar-less in the first place: a second copy of the grammar is the one
+# that drifts. --grammar=FILE validates offline against a snapshot taken with
+# `marionnet-ctl help > grammar.json` — a *cache*, never a source.
+#
+# WHAT IS CHECKED HERE THAT THE GRAMMAR CANNOT SAY. Beyond the verb and its arity, the file is
+# replayed against a model built from the file itself: names declared and still free, components
+# referenced before being added, port names, ports already taken. That model is only trusted
+# when this file builds it from nothing — see [authoritative] below.
+#
+# NO bashbricks HERE, and this time for a checkable reason: this script is meant to sit in
+# $(PREFIX)/bin next to marionnet-ctl, and nothing installs bashbricks there. A relative source
+# would work in the source tree and break once installed.
+#
+# Requires: jq. Optionally (online mode): marionnet-ctl and a running Marionnet.
+
+set -euo pipefail
+
+readonly PROGNAME="${0##*/}"
+
+readonly EXIT_INVALID=1   # the file has at least one error
+readonly EXIT_USAGE=2     # our own fault: no grammar, unreadable file, missing tool
+
+usage() {
+  cat <<EOF
+Usage: $PROGNAME [options] <file.mrn>|-
+
+Checks a batch file of channel requests without sending anything.
+
+Options:
+  -s, --socket=PATH     control socket of a running Marionnet
+                        (default: \$MARIONNET_CONTROL_SOCKET)
+  -g, --grammar=FILE    check offline against a snapshot of the vocabulary,
+                        taken with:  marionnet-ctl help > FILE
+      --ctl=PATH        the marionnet-ctl to ask (default: beside this script, then \$PATH)
+  -q, --quiet           print nothing, only set the exit code
+  -h, --help            this message
+
+Exit codes: 0 the file is valid · $EXIT_INVALID it has errors · $EXIT_USAGE nothing could be checked.
+
+The vocabulary is never written here: it comes from the running Marionnet, which publishes it
+(marionnet-ctl help). A snapshot is a cache, never a second source of truth.
+EOF
+}
+
+die() { local code="$1"; shift; printf '%s: %s\n' "$PROGNAME" "$*" >&2; exit "$code"; }
+
+# --------------------------------------------------------------------------
+#                             Options
+# --------------------------------------------------------------------------
+
+socket="${MARIONNET_CONTROL_SOCKET:-}"
+grammar_file=""
+ctl=""
+quiet=0
+file=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s|--socket)   [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; socket="$2"; shift 2 ;;
+    --socket=*)    socket="${1#*=}"; shift ;;
+    -g|--grammar)  [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; grammar_file="$2"; shift 2 ;;
+    --grammar=*)   grammar_file="${1#*=}"; shift ;;
+    --ctl)         [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; ctl="$2"; shift 2 ;;
+    --ctl=*)       ctl="${1#*=}"; shift ;;
+    -q|--quiet)    quiet=1; shift ;;
+    -h|--help)     usage; exit 0 ;;
+    --)            shift; break ;;
+    -)             break ;;   # the file, read from standard input — not an option
+    -*)            die $EXIT_USAGE "unknown option $1 (try --help)" ;;
+    *)             break ;;
+  esac
+done
+
+[[ $# -ge 1 ]] || { usage >&2; exit $EXIT_USAGE; }
+file="$1"; shift
+[[ $# -eq 0 ]] || die $EXIT_USAGE "one file at a time, got $(( $# + 1 ))"
+
+command -v jq >/dev/null 2>&1 || die $EXIT_USAGE "jq is required (apt install jq)"
+[[ $file == "-" || -r $file ]] || die $EXIT_USAGE "cannot read $file"
+
+# --------------------------------------------------------------------------
+#                            The vocabulary
+# --------------------------------------------------------------------------
+
+# Filled from the grammar, never from a table written here.
+declare -A MIN_ARGS=() MAX_ARGS=() FREE_TAIL=() SYNTAX=()
+
+load_grammar() {  # $1 = the JSON answer of `help`
+  local json="$1" verb min max tail syn
+  [[ $(jq -r '.ok // false' <<<"$json") == true ]] ||
+    die $EXIT_USAGE "the vocabulary could not be read: $json"
+  while IFS=$'\t' read -r verb min max tail syn; do
+    MIN_ARGS["$verb"]="$min"; MAX_ARGS["$verb"]="$max"
+    FREE_TAIL["$verb"]="$tail"; SYNTAX["$verb"]="$syn"
+  done < <(jq -r '.commands[] | [.verb,(.min_args|tostring),(.max_args|tostring),
+                                 (.free_tail|tostring),.syntax] | @tsv' <<<"$json")
+  (( ${#MIN_ARGS[@]} > 0 )) || die $EXIT_USAGE "the vocabulary is empty"
+}
+
+find_ctl() {
+  local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -n $ctl ]]; then printf '%s' "$ctl"; return 0; fi
+  if [[ -x "$here/marionnet-ctl" ]]; then printf '%s' "$here/marionnet-ctl"; return 0; fi
+  command -v marionnet-ctl 2>/dev/null && return 0
+  return 1
+}
+
+if [[ -n $grammar_file ]]; then
+  [[ -r $grammar_file ]] || die $EXIT_USAGE "cannot read the grammar snapshot $grammar_file"
+  load_grammar "$(cat -- "$grammar_file")"
+else
+  ctl_path="$(find_ctl)" ||
+    die $EXIT_USAGE "no marionnet-ctl found: pass --ctl=PATH, or check offline with --grammar=FILE"
+  [[ -n $socket ]] ||
+    die $EXIT_USAGE "no control socket: pass --socket=PATH, set \$MARIONNET_CONTROL_SOCKET,
+or check offline against a snapshot:  marionnet-ctl help > grammar.json && $PROGNAME --grammar=grammar.json $file"
+  answer="$("$ctl_path" --socket="$socket" help 2>/dev/null)" ||
+    die $EXIT_USAGE "no vocabulary published on $socket: is Marionnet running with --control-socket?
+Otherwise check offline against a snapshot:  marionnet-ctl help > grammar.json && $PROGNAME --grammar=grammar.json $file"
+  load_grammar "$answer"
+fi
+
+# --------------------------------------------------------------------------
+#                        What the grammar cannot say
+# --------------------------------------------------------------------------
+
+# Port naming, per kind. This IS model knowledge, and the only piece of it kept here: a port is
+# named <prefix><index>, the index starting at an offset that differs between kinds because the
+# GUI's does (user_level.ml:613-619 builds the name; the values below are declared in
+# machine.ml:583, router.ml:1069 (offset defaulting to 0, user_level.ml:635), switch.ml:393,
+# hub.ml:311, cloud.ml:271, world_bridge.ml:292, world_gateway.ml:386).
+# A kind absent from this table disables the port checks for that component rather than guessing.
+declare -A PORT_PREFIX=(
+  [machine]=eth  [router]=port [switch]=port [hub]=port
+  [cloud]=port   [world_bridge]=eth [world_gateway]=port )
+declare -A PORT_OFFSET=(
+  [machine]=0    [router]=0    [switch]=1    [hub]=1
+  [cloud]=0      [world_bridge]=0   [world_gateway]=1 )
+
+# The model built from the file itself.
+declare -A KIND=()       # name -> kind ("cable" for a cable)
+declare -A PORT_NO=()    # name -> declared number of ports, when --ports= said so
+declare -A DECL_LINE=()  # name -> line where it was declared
+declare -A PORT_USED=()  # "name:port" -> line of the cable that took it
+
+# The model is only trusted when this file builds it from nothing. `new` starts an empty project,
+# so from there we know every component that exists. `open` loads a project we cannot see, and no
+# project command at all means the session may already hold one: in both cases existence checks
+# would invent errors, so they are turned off. Arity and port *naming* are checked either way.
+authoritative=0
+
+errors=0
+warnings=0
+
+say() { (( quiet )) || printf '%s\n' "$*"; }
+err()  { errors=$((errors+1));   say "$file:$1: error — $2"; }
+warn() { warnings=$((warnings+1)); say "$file:$1: warning — $2"; }
+
+# --------------------------------------------------------------------------
+#                          Per-line checking
+# --------------------------------------------------------------------------
+
+# "m1:eth0" -> checks the endpoint of a cable. Returns non-zero if it reported something.
+check_endpoint() {  # $1 = line number, $2 = "<node>:<port>", $3 = cable name
+  local ln="$1" ep="$2" cable="$3" node port prefix offset idx max
+  if [[ $ep != *:* ]]; then
+    err "$ln" "\"$ep\" is not an endpoint: expected <node>:<port>, as in m1:eth0"; return 1
+  fi
+  node="${ep%%:*}"; port="${ep#*:}"
+  if [[ -z $node || -z $port ]]; then
+    err "$ln" "\"$ep\" is not an endpoint: expected <node>:<port>, as in m1:eth0"; return 1
+  fi
+
+  if (( authoritative )) && [[ -z ${KIND[$node]+set} ]]; then
+    err "$ln" "\"$node\" is declared by no add"; return 1
+  fi
+  if [[ ${KIND[$node]:-} == cable ]]; then
+    err "$ln" "\"$node\" is a cable (line ${DECL_LINE[$node]}), not a node"; return 1
+  fi
+
+  # A port already taken is an error the server would raise too, and the reason we can raise it
+  # first is that the cables of this file are all in it.
+  if [[ -n ${PORT_USED[$node:$port]+set} ]]; then
+    err "$ln" "$node:$port is already taken by a cable (line ${PORT_USED[$node:$port]})"; return 1
+  fi
+
+  local kind="${KIND[$node]:-}"
+  if [[ -n $kind && -n ${PORT_PREFIX[$kind]+set} ]]; then
+    prefix="${PORT_PREFIX[$kind]}"; offset="${PORT_OFFSET[$kind]}"
+    if [[ $port != "$prefix"[0-9]* ]]; then
+      err "$ln" "a $kind names its ports ${prefix}<n>, not \"$port\""; return 1
+    fi
+    idx="${port#"$prefix"}"
+    if [[ ! $idx =~ ^[0-9]+$ ]]; then
+      err "$ln" "\"$port\" is not a port name of the $kind \"$node\""; return 1
+    fi
+    if (( idx < offset )); then
+      err "$ln" "a $kind numbers its ports from $offset, so \"$port\" does not exist (its first port is ${prefix}${offset})"
+      return 1
+    fi
+    if [[ -n ${PORT_NO[$node]:-} ]]; then
+      max=$(( offset + PORT_NO[$node] - 1 ))
+      if (( idx > max )); then
+        err "$ln" "\"$node\" has ${PORT_NO[$node]} ports (line ${DECL_LINE[$node]}): ${prefix}${offset}..${prefix}${max}, so \"$port\" does not exist"
+        return 1
+      fi
+    fi
+  fi
+
+  PORT_USED["$node:$port"]="$ln"
+  return 0
+}
+
+# A component name is an identifier — that is the property the whole grammar rests on.
+is_identifier() { [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
+
+declare_component() {  # $1 = line, $2 = name, $3 = kind
+  local ln="$1" name="$2" kind="$3"
+  if ! is_identifier "$name"; then
+    err "$ln" "\"$name\" is not a valid name: a component name is an identifier (letters, digits, _)"
+    return
+  fi
+  if [[ -n ${KIND[$name]+set} ]]; then
+    err "$ln" "the name \"$name\" is already taken (line ${DECL_LINE[$name]})"
+    return
+  fi
+  KIND["$name"]="$kind"; DECL_LINE["$name"]="$ln"
+}
+
+forget_component() {  # $1 = name
+  local name="$1" key
+  for key in "${!PORT_USED[@]}"; do
+    [[ $key == "$name":* ]] && unset 'PORT_USED[$key]'
+  done
+  unset 'KIND[$name]' 'PORT_NO[$name]' 'DECL_LINE[$name]'
+}
+
+reset_model() {
+  KIND=(); PORT_NO=(); DECL_LINE=(); PORT_USED=()
+}
+
+check_line() {  # $1 = line number, $2… = the tokens of the request
+  local ln="$1"; shift
+  local verb="$1"; shift
+  local -a args=() opts=()
+  local t
+
+  # Options are recognised exactly as the server recognises them (control_server.ml:342): a
+  # token *longer than two characters* and starting with "--", wherever it sits. A bare "--" is
+  # therefore a positional argument, here as there.
+  for t in "$@"; do
+    if [[ ${#t} -gt 2 && $t == --* ]]; then opts+=("$t"); else args+=("$t"); fi
+  done
+
+  if [[ -z ${MIN_ARGS[$verb]+set} ]]; then
+    err "$ln" "\"$verb\": unknown command (try: marionnet-ctl help)"
+    return
+  fi
+
+  local n=${#args[@]} min="${MIN_ARGS[$verb]}" max="${MAX_ARGS[$verb]}" tail="${FREE_TAIL[$verb]}"
+  if (( n < min )); then
+    err "$ln" "$verb expects at least $min positional argument(s), got $n — usage: ${SYNTAX[$verb]}"
+    return
+  fi
+  if (( n > max )) && [[ $tail != true ]]; then
+    if (( max == 0 )); then
+      err "$ln" "$verb takes no positional argument, got $n — usage: ${SYNTAX[$verb]}"
+    else
+      err "$ln" "$verb accepts at most $max positional argument(s), got $n — usage: ${SYNTAX[$verb]}"
+    fi
+    return
+  fi
+
+  # --- the model, for the verbs that move it -------------------------------
+  local name kind ports_opt o
+  case "$verb" in
+    new)
+      reset_model; authoritative=1 ;;
+    open)
+      reset_model; authoritative=0 ;;
+    close)
+      reset_model; authoritative=0 ;;
+    add)
+      kind="${args[0]}"; name="${args[1]}"
+      if [[ -z ${PORT_PREFIX[$kind]+set} ]]; then
+        warn "$ln" "\"$kind\": unknown kind here, so the ports of \"$name\" will not be checked"
+      fi
+      declare_component "$ln" "$name" "$kind"
+      ports_opt=""
+      for o in ${opts[@]+"${opts[@]}"}; do
+        [[ $o == --ports=* ]] && ports_opt="${o#*=}"
+      done
+      if [[ -n $ports_opt ]]; then
+        if [[ $ports_opt =~ ^[0-9]+$ ]]; then PORT_NO["$name"]="$ports_opt"
+        else err "$ln" "--ports=$ports_opt: expected a number"; fi
+      fi
+      ;;
+    connect)
+      declare_component "$ln" "${args[0]}" cable
+      check_endpoint "$ln" "${args[1]}" "${args[0]}" || true
+      check_endpoint "$ln" "${args[2]}" "${args[0]}" || true
+      ;;
+    rename)
+      name="${args[0]}"
+      if (( authoritative )) && [[ -z ${KIND[$name]+set} ]]; then
+        err "$ln" "\"$name\" is declared by no add"
+      else
+        kind="${KIND[$name]:-}"
+        declare_component "$ln" "${args[1]}" "$kind"
+        [[ -n $kind ]] && forget_component "$name"
+      fi
+      ;;
+    del)
+      name="${args[0]}"
+      if (( authoritative )) && [[ -z ${KIND[$name]+set} ]]; then
+        err "$ln" "\"$name\" is declared by no add"
+      else
+        forget_component "$name"
+      fi
+      ;;
+    *)
+      # Every other verb whose first argument is a component name: the syntax published by the
+      # server says so, and reading it is what keeps this branch from being a second list.
+      if (( authoritative )) && (( n >= 1 )) &&
+         [[ ${SYNTAX[$verb]} == *"<component>"* || ${SYNTAX[$verb]} == *"<node>"* ]]; then
+        name="${args[0]}"
+        [[ -n ${KIND[$name]+set} ]] || err "$ln" "\"$name\" is declared by no add"
+      fi
+      ;;
+  esac
+}
+
+# --------------------------------------------------------------------------
+#                                 Main
+# --------------------------------------------------------------------------
+
+lineno=0
+statements=0
+first_verb=""
+
+while IFS= read -r raw || [[ -n $raw ]]; do
+  lineno=$((lineno+1))
+  # A comment is a line whose first non-blank character is '#', exactly as marionnet-ctl reads
+  # it: a '#' met in the middle may belong to a label or a path.
+  [[ $raw =~ ^[[:space:]]*(#|$) ]] && continue
+  statements=$((statements+1))
+  # shellcheck disable=SC2086  # deliberate: the line is split into tokens, as the channel does
+  set -- $raw
+  [[ -n $first_verb ]] || first_verb="$1"
+  check_line "$lineno" "$@"
+done < <(if [[ $file == "-" ]]; then cat; else cat -- "$file"; fi)
+
+if (( statements == 0 )); then
+  say "$file: warning — nothing to check: the file holds no request"
+  warnings=$((warnings+1))
+fi
+
+if (( statements > 0 )) && [[ $first_verb != new && $first_verb != open ]]; then
+  say "$file: note — the file does not start with new or open, so it relies on the project already \
+open in the session; existence of the components it names was not checked"
+fi
+
+if (( errors == 0 )); then
+  say "$file: $statements request(s), no error$( (( warnings )) && printf ', %d warning(s)' "$warnings" )"
+  exit 0
+fi
+say "$file: $errors error(s), $warnings warning(s)"
+exit $EXIT_INVALID

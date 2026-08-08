@@ -279,8 +279,15 @@ Reprise : appliquer le skill `chantier-long`.
   écrites de bonne foi après lecture du source, que la relecture n'aurait pas vues ;
   l'**installation** du guide *et* de `marionnet-ctl` est laissée au chantier
   `modernisation-installation-marionnet`)
+  et **ép. 9** (**`useful-scripts/mrn-check`**, § 5.6 : vérifier un `.mrn` **sans rien envoyer**,
+  le mode lot n'ayant pas de transaction ; **3ᵉ application de la règle d'unicité** — la grammaire
+  est **demandée au serveur**, `--grammar=<instantané>` pour le hors-ligne, et c'est un **cache**,
+  jamais une source ; au-delà de l'arité, le fichier est **rejoué contre un modèle construit à
+  partir de lui-même** [noms, ports, occupation], **cru seulement** quand le fichier part d'un
+  `new` — après un `open` les contrôles d'existence s'éteignent, un linter qui invente des erreurs
+  se fait désactiver ; discriminant : **même ligne d'arrêt et même motif que `mrnctl -f`**)
   faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6,
-  7 et 8 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
+  7, 8 et 9 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
   **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
   au script). **Plus aucun défaut connu ouvert**, et la condition posée à la clôture est **levée** :
   le chantier est **clôturable (MODE C)**, sur décision de l'auteur.
