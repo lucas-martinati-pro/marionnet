@@ -333,14 +333,23 @@ Reprise : appliquer le skill `chantier-long`.
   `git log --grep="migration-marshal-to-text"`. Ép. 0 (officialisation) fait 2026-08-09 ;
   **ép. 1 (le filet) fait le 2026-08-09** — corpus de 7 `.mar` de TP réels + 1 projet fabriqué par
   le canal, et banc `_claude-local/bench/marshal-bench.sh` **vert** (hors dépôt, comme les 8 bancs
-  du chantier pilotage : un commit d'épisode ne porte donc que `docs/`). Il mesure **un**
-  invariant, indépendant du format : *ce que le canal dit d'un projet ne change pas au travers
-  d'un cycle sauvegarde → relecture*. Trois faits mesurés en dictent la forme et valent pour
-  quiconque touche au chemin d'enregistrement (§ 7.5 de la doc) : l'**ordre des nœuds s'inverse à
-  chaque cycle** (période 2 — comparer UN cycle échoue sur du `v2` intact), **enregistrer aussitôt
-  après l'ouverture** fige l'état transitoire de la restauration dans `dotoptions.marshal`, et
-  `states/ifconfig-counters` **change à chaque enregistrement** sur les 4 octets d'un champ déclaré
-  obsolète. **Prochaine étape = ép. 2** (`Xforest.to_JSON_*` + `yojson` dans `lib/dune`).
+  du chantier pilotage). Il mesure **un** invariant, indépendant du format : *ce que le canal dit
+  d'un projet ne change pas au travers d'un cycle sauvegarde → relecture*. Trois faits mesurés en
+  dictent la forme et valent pour quiconque touche au chemin d'enregistrement (§ 7.5 de la doc) :
+  l'**ordre des nœuds s'inverse à chaque cycle** (période 2 — comparer UN cycle échoue sur du `v2`
+  intact), **enregistrer aussitôt après l'ouverture** fige l'état transitoire de la restauration
+  dans `dotoptions.marshal`, et `states/ifconfig-counters` **change à chaque enregistrement** sur
+  les 4 octets d'un champ déclaré obsolète.
+  **Ép. 2 (le codec du forest) fait le 2026-08-09**, § 8 de la doc — `Xforest.{to,of}_JSON_{string,file}`
+  dans `lib/STRUCTURES/xforest.ml`, `yojson` **et `base64`** dans `lib/dune`, `test/xforest_json.ml`
+  joué par `dune test` (`test/dune` passe de `test` à `tests`) : les tests **unitaires** sont
+  **versionnés**, contrairement au banc de l'ép. 1 qui, lui, exige la GUI. **Rien n'est branché** :
+  `state.ml` écrit toujours du `Marshal`. Le point durable est que **la mesure a corrigé la
+  conception** — `yojson` 3.0.0 écrit les octets non-UTF-8 **verbatim** et les **relit à
+  l'identique**, donc le repli base64 n'est pas une protection contre la perte de données mais la
+  seule façon d'émettre du **JSON valide** ; corollaire : un banc bâti sur le seul aller-retour
+  est **vert sur un codec cassé** (vérifié : repli désarmé → 7 assertions tombent, tous les
+  round-trips passent). **Prochaine étape = ép. 3** (codec des treeviews et des compteurs).
 
 ## Où puiser
 

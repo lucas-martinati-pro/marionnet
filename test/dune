@@ -1,4 +1,7 @@
-(test
- (name marionnet)
+;; Two independent test programs, both run by `dune test':
+;;   marionnet     -- the fixes applied to Ocamlbricks.Network (pilotage-par-script, ep. 2)
+;;   xforest_json  -- the JSON codec of Ocamlbricks.Xforest (migration-marshal-to-text, ep. 2)
+(tests
+ (names marionnet xforest_json)
  (libraries ocamlbricks)
  )

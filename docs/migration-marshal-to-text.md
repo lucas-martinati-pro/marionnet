@@ -81,6 +81,7 @@ Il n'y a donc que **trois schémas** à concevoir :
 | Format | **JSON** | décision de l'auteur |
 | Point d'entrée | `Xforest.to_JSON_string` / `of_JSON_string` / `to_JSON_file` / `of_JSON_file`, dans `lib/STRUCTURES/xforest.ml` | le codec appartient à la structure qu'il sérialise |
 | Bibliothèque | **`yojson` 3.0.0**, déjà installée dans le switch `5.4.1` — **pas `ocf`** | `ocf` (1.0.0, également installé) est une couche de *configuration typée* **au-dessus** de yojson, faite pour des options à valeurs par défaut. Le forest est un arbre **dynamique** : `ocf` n'apporterait rien et ajouterait un intermédiaire |
+| Repli base64 | **paquet opam `base64`** (3.5.2), installé à l'ép. 2 — pas une implémentation maison | décision de l'auteur (2026-08-09), la question ayant été posée précisément parce qu'elle ajoute un **second** paquet au packaging (cf. § 6.6). Une implémentation locale aurait mis ~35 lignes de RFC 4648 à maintenir dans une copie *vendored* |
 | Les 6 attributs marshalés *dans* le forest | **hybride** : les désimbriquer, avec un **repli d'encodage** pour tout résidu | le format devient réellement lisible là où ça compte (config Quagga d'un routeur), sans risquer une perte de projet en séance |
 | Compat descendante | **nouveaux noms de fichiers en `v3`** | ruse maison déjà éprouvée pour `v1`→`v2` : un vieux binaire ne **trouve** pas les fichiers, donc ne passe jamais d'octets étrangers à `Marshal.from_file` |
 | ocamlbricks amont | la divergence de la copie vendored est **assumée** — pas de remontée du patch vers Launchpad | décision de l'auteur (2026-08-09) |
@@ -91,6 +92,9 @@ sérialiseur : c'est une algèbre de produits typés (GADT `Atom | Cons`), sans 
 `of_string`. Rien n'y est réutilisable pour ce chantier.
 
 ## 4. Schémas JSON proposés (à figer à l'épisode 2)
+
+> **§ 4.1 figé le 2026-08-09** par l'épisode 2, qui l'a implémenté — tel qu'écrit ici, à trois
+> précisions près, consignées au § 8.1. Les § 4.2 et 4.3 restent des propositions (ép. 3).
 
 ### 4.1 Le forest de nœuds
 
@@ -237,8 +241,9 @@ consigné — il est né directement comme chantier.)*
 5. **Interaction avec `marionnet-pilotage-par-script`** : ce chantier fournit l'instrument de
    mesure (ép. 1) et subit un contrecoup (ép. 6). Le chantier est clôturable mais pas clos ; si
    sa clôture intervient avant l'ép. 6, la dette passe ici.
-6. **Interaction avec `modernisation-installation-marionnet`** : `yojson` devient une dépendance
-   de build à déclarer dans les paquets.
+6. **Interaction avec `modernisation-installation-marionnet`** : `yojson` **et `base64`** deviennent
+   des dépendances de build à déclarer dans les paquets (`lib/dune`, ép. 2). En Debian :
+   `libyojson-ocaml-dev` et `libbase64-ocaml-dev`.
 
 ## 7. Le filet : corpus témoin et banc de non-régression (ép. 1)
 
@@ -343,6 +348,97 @@ le nom des ports et le **fichier COW** qui identifie une ligne d'historique.
    Le fichier fait 39 octets : en-tête `Marshal` (20), `0xb0` bloc de 3 champs, `0x02` CODE_INT32,
    les 4 octets de l'entier, `0x41` (petit entier 1), puis l'`Int64` custom `_j`.
 
+## 8. Le codec du forest (ép. 2)
+
+`lib/STRUCTURES/xforest.ml`, à la suite du couple `encode`/`decode` historique — le codec
+appartient à la structure qu'il sérialise. Il n'y a pas de `xforest.mli` dans la copie *vendored*,
+donc tout est exporté de fait ; la surface **voulue** est celle-ci :
+
+```ocaml
+val is_valid_utf_8 : string -> bool
+val to_JSON_string : t -> string
+val of_JSON_string : string -> (t, string) result
+val to_JSON_file   : t -> string -> unit
+val of_JSON_file   : string -> (t, string) result
+```
+
+`Result` sur les deux lectures, conformément au style visé pour le code neuf ; en interne le
+décodage lève une exception privée `Malformed`, rattrapée au bord — l'alternative, un `bind`
+monadique traversant listes et arbres, aurait été illisible, et `let*` est **interdit ici** (piège
+déjà payé à l'ép. 4d du chantier `marionnet-pilotage-par-script` : `camlp4` ne le connaît pas, et
+tout `lib/` passe par `camlp4of`).
+
+**Asymétrie assumée sur les fichiers** : `to_JSON_file` **laisse remonter** une erreur d'E/S — un
+projet qui ne peut pas être enregistré doit se signaler bruyamment, comme le fait le chemin
+`Marshal` qu'il remplace —, tandis qu'`of_JSON_file` la **retourne** : un fichier absent ou
+illisible est un cas ordinaire, que l'appelant traitera avec les échecs de décodage.
+
+### 8.1 Les trois précisions que le § 4.1 ne portait pas
+
+1. **Le repli base64 vaut pour toute chaîne**, pas seulement pour la valeur d'un attribut : un
+   **tag** et un **nom** d'attribut y passent aussi. Ils sont des identifiants du code, donc en
+   pratique de l'ASCII ; mais un trou là aurait produit un fichier invalide tout autant, pour un
+   coût de zéro ligne.
+2. **L'enveloppe est vérifiée à la lecture** : `format` doit valoir `marionnet/xforest`, `version`
+   doit valoir `3`. Une version future est refusée **en la nommant**
+   (`unsupported version 4 (this binary understands 3)`) — c'est très exactement ce qu'un format
+   auto-descriptif achète, là où `Marshal.from_file` déréférençait au hasard.
+3. **Les trois membres d'un arbre sont requis** (`tag`, `attrs`, `children`). Reconstruire un
+   membre absent — lire un `children` manquant comme une forêt vide — réintroduirait l'à-peu-près
+   silencieux que ce format est là pour supprimer (§ 6.2).
+
+Deux choix de forme, enfin : la sortie est **indentée** (`pretty_to_string ~std:true`) et terminée
+par un saut de ligne. Un projet *diffable* est l'une des raisons d'être du chantier ; `~std:true`
+écarte les extensions propres à yojson.
+
+### 8.2 Le fait mesuré qui change la nature du repli base64
+
+Mesure faite avant d'écrire le codec, sur `yojson` 3.0.0 : **yojson écrit les octets non-UTF-8
+verbatim et les relit à l'identique**. Autrement dit, un codec *sans* repli aurait un round-trip
+parfait — et produirait des fichiers qu'aucun autre outil ne sait lire.
+
+Le repli n'est donc **pas** une protection contre la perte de données, comme le § 4.1 le laissait
+entendre : c'est la seule façon d'émettre un texte qui soit du **JSON valide**, ce qui est l'objet
+même de la migration. Conséquence directe sur la forme des tests : l'invariant « ce qui entre
+ressort » ne suffit pas à les rendre discriminants, il faut lui adjoindre « **le texte produit est
+de l'UTF-8 valide** ».
+
+Corollaire sur le validateur : c'est le décodeur de la bibliothèque standard
+(`String.get_utf_8_uchar`, `Uchar.utf_decode_is_valid`) qui décide, et non un test maison — il
+rejette aussi les **encodages surlongs** (`C0 80`) et les **surrogates** (`ED A0 80`), que les
+validateurs écrits à la main laissent passer. Les deux cas sont au banc.
+
+### 8.3 Les tests — dans le dépôt, cette fois
+
+`test/xforest_json.ml`, joué par `dune test` (la stanza `test/dune` devient `tests`, deux
+programmes indépendants). **Divergence assumée avec l'ép. 1**, dont le banc est hors dépôt : le
+banc de l'ép. 1 exige la GUI, un corpus de `.mar` et plusieurs minutes ; ces tests-ci sont purs et
+tiennent en une seconde, exactement comme `test/marionnet.ml` déjà versionné. Un commit d'épisode
+de ce chantier ne porte donc plus seulement `docs/`.
+
+38 assertions : forêt vide, tag/nom/valeur vides, UTF-8 accentué avec guillemets et sauts de
+ligne, octets bruts en valeur **et** en tag **et** en nom d'attribut, surlong, surrogate, ordre
+des attributs **et doublons de clés**, forêt profonde à plusieurs racines, aller-retour par
+fichier ; puis les échecs, qui doivent être **rapportés** et non devinés : JSON mal formé, racine
+qui n'est pas un objet, format inconnu, version future, membre manquant, `attrs` écrit comme un
+objet (l'erreur qu'un humain bien intentionné commettra), paire d'attribut à trois éléments,
+base64 invalide, fichier absent.
+
+**Discriminance mesurée**, pas supposée : le repli désarmé (`json_of_string` rendant toujours une
+chaîne JSON), **7 assertions tombent** — et, révélateur, **les round-trips passent tous**. C'est
+la démonstration du § 8.2 : un banc bâti sur le seul aller-retour aurait certifié un codec cassé.
+
+**Preuve externe**, indépendante de yojson : le fichier produit pour un projet portant à la fois
+un nom accentué et un `rc_config` marshalé est relu par le module `json` de `python3` sans erreur, et rend
+`[['name', 'café'], ['rc_config', {'b64': 'hJWmvQE='}]]` — c'est-à-dire la lisibilité recherchée,
+le blob binaire restant **explicitement** désigné comme tel.
+
+### 8.4 Ce que l'épisode 2 ne fait PAS
+
+Rien n'est branché. `state.ml`, `user_level.ml` et `sketch.ml` écrivent et lisent toujours du
+`Marshal` ; aucun `.mar` produit par ce code n'a changé d'un octet. Le codec est une brique
+disponible, éprouvée isolément — le branchement est l'ép. 4, après le codec des treeviews (ép. 3).
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -418,3 +514,38 @@ Livrables : `_claude-local/bench/marshal-bench.sh`, `_claude-local/bench/worst-c
 `_claude-local/examples/worst-case.mar` (tous hors dépôt, comme les huit bancs du chantier
 `marionnet-pilotage-par-script` — décision de l'auteur) ; côté versionné, le § 7 de ce document,
 son journal, l'entrée de `docs/TODO.md` et le pointeur de `CLAUDE.md`.
+
+### 2026-08-09 — Épisode 2 : le codec du forest
+
+**Premier code de production du chantier**, et rien de branché : `lib/STRUCTURES/xforest.ml`
+gagne `to_JSON_string` / `of_JSON_string` / `to_JSON_file` / `of_JSON_file`, `lib/dune` gagne
+`yojson` et `base64`, et `test/xforest_json.ml` (38 assertions, `dune test`) les éprouve. Détail
+au § 8 ; le § 4.1 est **figé**, à trois précisions près (§ 8.1).
+
+**Une décision revenait à l'auteur** et a été posée avant d'écrire : le repli base64 vient du
+**paquet opam `base64`** (3.5.2, installé pour l'occasion) et non d'une implémentation maison. Le
+motif de la question n'était pas la difficulté — la RFC 4648 tient en ~35 lignes — mais le fait
+qu'un **second** paquet s'ajoute au packaging, donc au chantier
+`modernisation-installation-marionnet` ; les deux existent en Debian (`libyojson-ocaml-dev`,
+`libbase64-ocaml-dev`, vérifié).
+
+**Ce que la mesure a corrigé dans la conception.** Avant d'écrire une ligne, `yojson` 3.0.0 a été
+mis à l'épreuve sur des octets non-UTF-8 : il les écrit **verbatim** et les **relit à
+l'identique**. Le repli base64 n'est donc pas ce que le § 4.1 croyait — une protection contre la
+perte de données — mais la seule façon d'émettre du **JSON valide**. Ce déplacement n'est pas
+cosmétique : il **change la forme du banc**. Un test bâti sur le seul aller-retour aurait été
+vert sur un codec cassé ; il fallait lui adjoindre l'invariant « le texte produit est de l'UTF-8
+valide ». Vérifié en désarmant le repli : **7 assertions tombent, et tous les round-trips
+passent**.
+
+Trois autres choix méritent d'être retenus, tous du même côté : ne rien deviner. Les trois
+membres d'un arbre sont **requis** ; une version future est refusée **en la nommant** ; le
+validateur UTF-8 est celui de la bibliothèque standard, qui rejette surlongs et surrogates — deux
+familles qu'un test maison laisse passer, et qui sont au banc.
+
+Enfin, **les tests de cet épisode sont dans le dépôt**, contrairement au banc de l'ép. 1 : ils
+sont purs, tiennent en une seconde et n'ont besoin ni de GUI ni de corpus, exactement comme
+`test/marionnet.ml`. `test/dune` passe donc de `test` à `tests`.
+
+Livrables : `lib/STRUCTURES/xforest.ml`, `lib/dune`, `test/xforest_json.ml`, `test/dune`, les § 3,
+4, 6 et 8 de ce document.
