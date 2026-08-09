@@ -1,7 +1,15 @@
-;; Two independent test programs, both run by `dune test':
-;;   marionnet     -- the fixes applied to Ocamlbricks.Network (pilotage-par-script, ep. 2)
-;;   xforest_json  -- the JSON codec of Ocamlbricks.Xforest (migration-marshal-to-text, ep. 2)
+;; Three independent test programs, all run by `dune test':
+;;   marionnet      -- the fixes applied to Ocamlbricks.Network (pilotage-par-script, ep. 2)
+;;   xforest_json   -- the JSON codec of Ocamlbricks.Xforest (migration-marshal-to-text, ep. 2)
+;;   treeview_json  -- the JSON codecs of a treeview and of its counters (idem, ep. 3)
+;; utf_8_reference is not a test program but a module shared by the last two: the
+;; INDEPENDENT UTF-8 validator against which their output is checked (never the one the
+;; codecs use to decide the base64 fallback, which would be circular).
+;; marionnet_base holds treeview_row / treeview_counters: the data a treeview saves, and
+;; their codecs, deliberately kept out of the Gtk+ module Treeview so that they can be
+;; tested without a display.
 (tests
- (names marionnet xforest_json)
- (libraries ocamlbricks)
+ (names marionnet xforest_json treeview_json)
+ (modules marionnet xforest_json treeview_json utf_8_reference)
+ (libraries ocamlbricks marionnet_base)
  )

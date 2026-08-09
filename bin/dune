@@ -83,7 +83,11 @@
 (library
   (name marionnet_base)
   (wrapped false)
-  (modules marionnet_log configuration meta)
+  ;; treeview_row / treeview_counters: the DATA a treeview saves (a row, its items, the
+  ;; counters of `ifconfig') together with their JSON codec, which the (tests) stanza of
+  ;; test/dune links - hence a library module rather than a module of the GUI executable
+  ;; (work-stream `migration-marshal-to-text', episode 3). Neither knows about Gtk+.
+  (modules marionnet_log configuration meta treeview_row treeview_counters)
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -97,7 +101,9 @@
       %{read-lines:../lib/camlp4of-flags.cfg}
       option_extract_p4.cmo raise_p4.cmo log_module_loading_p4.cmo %{input-file}
       )))
-  (libraries str unix threads ocamlbricks))
+  ;; yojson: the JSON codecs of treeview_row / treeview_counters build JSON values, so the
+  ;; library is named in their sources - it is not merely inherited from ocamlbricks.
+  (libraries str unix threads ocamlbricks yojson))
 
 ;; ---
 ;; --- LIBRARY: marionnet_tap — the sudo+iproute2 tap provider that replaced
@@ -160,7 +166,8 @@
 (executable
   (public_name marionnet.native)
   (name marionnet)
-  (modules (:standard \ marionnet_log configuration meta tap_provider tap_provider_test))
+  (modules (:standard \ marionnet_log configuration meta treeview_row treeview_counters
+                        tap_provider tap_provider_test))
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)

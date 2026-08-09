@@ -24,7 +24,7 @@ pour référence. ⚠️ `docs/ARCHITECTURE.md` § 1 décrit encore l'ancienne c
 | Sous-dossier | Rôle |
 |---|---|
 | `BASE/` | briques de base : `log_builder`, `argv` (CLI déclaratif), sugar/misc |
-| `STRUCTURES/` | structures & abstractions : `forest`/`xforest`, `cortex` (réactif), `option`, `either`, `future`, `thunk`, `stateful_modules` (singletons), ipv4/6… |
+| `STRUCTURES/` | structures & abstractions : `forest`/`xforest`, `json_bricks` (la couche JSON : octet-sûreté base64, en-tête `format`/`version` — chantier `migration-marshal-to-text`), `cortex` (réactif), `option`, `either`, `future`, `thunk`, `stateful_modules` (singletons), ipv4/6… |
 | `EXTRA/` | extensions stdlib (`unixExtra`, `listExtra`, `stringExtra`, `mutexExtra`…) + 2 stubs C |
 | `CHANNEL/` | concurrence par messages : canaux à la Milner, hublets, structures thread-safe |
 | `CAMLP4/` | les extensions de syntaxe (compilées par les `(rule)` de `lib/dune`) |

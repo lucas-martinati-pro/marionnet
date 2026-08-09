@@ -353,8 +353,22 @@ Reprise : appliquer le skill `chantier-long`.
   de l'implémentation deviennent privés et **`yojson` n'apparaît dans aucune signature** ; surtout,
   l'écriture de l'interface a révélé que le banc vérifiait « sortie UTF-8 valide » avec **le
   prédicat même qui décide du repli** (circulaire), d'où un validateur indépendant dans le test et
-  une **remesure** de la discriminance. **Prochaine étape = ép. 3** (codec des treeviews et des
-  compteurs).
+  une **remesure** de la discriminance.
+  **Ép. 3 (codecs des treeviews et des compteurs) fait le 2026-08-09**, § 9 de la doc : les
+  **trois** schémas du § 4 sont désormais **figés et implémentés**, et **rien n'est toujours
+  branché**. Deux décisions de structure, prises parce que le § 5 annonçait le codec « dans
+  `bin/treeview.ml` » et que c'était intenable : (1) une stanza `(tests)` ne lie que des
+  **bibliothèques**, donc la **donnée** d'un treeview (`Row`, `Row_item`) déménage dans
+  `bin/treeview_row.ml` (biblio `marionnet_base`, sans Gtk+) avec son codec, les compteurs dans
+  `bin/treeview_counters.ml` — `treeview.ml` garde les noms historiques par alias, **aucun des
+  7 appelants** ne change, et déplacer un type de somme ne change **pas** son encodage `Marshal`
+  (banc de l'ép. 1 rejoué : 41 assertions vertes sur 8 projets) ; (2) la plomberie JSON (validateur
+  UTF-8, repli base64, `Malformed`, en-tête `format`/`version`, I/O) devient **un** module,
+  `lib/STRUCTURES/json_bricks.ml{,i}`, sur lequel les trois codecs s'adossent — `yojson` apparaît
+  dans **cette** interface, ce qui est assumé (`xforest.mli` n'en parle toujours pas). `dune test`
+  = 134 assertions, 0 échec ; discriminance **remesurée** (repli désarmé → 5 assertions du nouveau
+  banc tombent, tous les round-trips passent). **Prochaine étape = ép. 4** (`v3` dans `state.ml`,
+  les 8 chemins + le repli de détection de version).
 
 ## Où puiser
 

@@ -133,45 +133,16 @@ v}
 let json_format  = "marionnet/xforest" ;;
 let json_version = 3 ;;
 
-(* Raised while decoding, caught back at the border of the two entry points, which report
-   every failure as a [result]: *)
-exception Malformed of string ;;
-let fail fmt = Printf.ksprintf (fun msg -> raise (Malformed msg)) fmt ;;
-
-let kind_of_json = function
-  | `String _ -> "a string"  | `Int _   -> "an integer" | `Float _ -> "a float"
-  | `Bool _   -> "a boolean" | `Null    -> "null"
-  | `List _   -> "an array"  | `Assoc _ -> "an object"
-  | _         -> "an unexpected value"
-;;
-
-(* A string is written as a JSON string when, and only when, it is valid UTF-8. The
-   stdlib decoder is taken as the reference, since it also rejects overlong encodings and
-   surrogates - which a hand-written check usually forgets: *)
-let is_valid_utf_8 (s:string) : bool =
-  let n = String.length s in
-  let rec loop i =
-    (i >= n) ||
-    (let d = String.get_utf_8_uchar s i in
-     (Uchar.utf_decode_is_valid d) && (loop (i + Uchar.utf_decode_length d)))
-  in
-  loop 0
-;;
-
-let json_of_string (s:string) : Yojson.Safe.t =
-  if is_valid_utf_8 s
-    then `String s
-    else `Assoc [("b64", `String (Base64.encode_string s))]
-;;
-
-let string_of_json ~(what:string) : Yojson.Safe.t -> string = function
-  | `String s -> s
-  | `Assoc [("b64", `String b)] ->
-      (match Base64.decode b with
-       | Ok s -> s
-       | Error (`Msg m) -> fail "%s: invalid base64 content (%s)" what m)
-  | j -> fail "%s: expected a string or a {\"b64\": ...} object, found %s" what (kind_of_json j)
-;;
+(* The byte-safe representation of a string (the base64 fallback and the trap it avoids),
+   the reporting of a malformed text and the {"format", "version", ...} envelope are the
+   same for every v3 file of a project - here, but also for the forest of treeview rows
+   and for the counters of the treeview `ifconfig', both in Marionnet's bin/. They are
+   therefore stated once, in [Json_bricks], and only named here: *)
+let fail          = Json_bricks.fail ;;
+let kind_of_json  = Json_bricks.kind_of ;;
+let json_of_string = Json_bricks.json_of_string ;;
+let string_of_json = Json_bricks.string_of_json ;;
+let member_of      = Json_bricks.member_of ;;
 
 let json_of_attribute ((name, value) : attribute) : Yojson.Safe.t =
   `List [ (json_of_string name); (json_of_string value) ]
@@ -193,14 +164,9 @@ and json_of_tree (((tag, attrs), children) : tree) : Yojson.Safe.t =
            ("children", (json_of_forest children)) ]
 ;;
 
-(* The three members of a tree are all required. Rebuilding a missing one (an absent
-   "children" read as an empty forest, say) would reintroduce exactly the kind of silent
-   approximation this format was introduced to remove: *)
-let member_of ~(where:string) (fields : (string * Yojson.Safe.t) list) (key:string) =
-  try List.assoc key fields with
-  | Not_found -> fail "missing member \"%s\" in %s" key where
-;;
-
+(* Note that the three members of a tree are all required ([member_of] fails on a missing
+   one): rebuilding an absent "children" as an empty forest, say, would reintroduce
+   exactly the kind of silent approximation this format was introduced to remove. *)
 let rec forest_of_json : Yojson.Safe.t -> forest = function
   | `List trees -> Forest.of_treelist (List.map tree_of_json trees)
   | j -> fail "expected an array of trees, found %s" (kind_of_json j)
@@ -223,65 +189,29 @@ and attributes_of_json : Yojson.Safe.t -> attributes = function
 
 (** Encode a forest as a JSON text, newline-terminated. *)
 let to_JSON_string (forest:forest) : string =
-  let json =
-    `Assoc [ ("format",  `String json_format);
-             ("version", `Int json_version);
-             ("roots",   (json_of_forest forest)) ]
-  in
-  (* Pretty-printed on purpose: a project file that can be diff'ed is one of the reasons
-     this format exists. [~std:true] rules out the yojson-specific extensions: *)
-  (Yojson.Safe.pretty_to_string ~std:true json) ^ "\n"
+  Json_bricks.to_text ~format:json_format ~version:json_version
+    [ ("roots", (json_of_forest forest)) ]
 ;;
 
 (** Decode a forest from a JSON text. Every failure - ill-formed JSON, unexpected format
     or version, missing member, undecodable base64 - is reported as [Error message]. *)
 let of_JSON_string (text:string) : (forest, string) result =
-  try
-    match Yojson.Safe.from_string text with
-    | `Assoc fields ->
-        let member = member_of ~where:"the toplevel object" fields in
-        let () =
-          match member "format" with
-          | `String f when (f = json_format) -> ()
-          | `String f -> fail "unexpected format \"%s\" (expecting \"%s\")" f json_format
-          | j -> fail "\"format\" should be a string, found %s" (kind_of_json j)
-        in
-        let () =
-          match member "version" with
-          | `Int v when (v = json_version) -> ()
-          | `Int v -> fail "unsupported version %d (this binary understands %d)" v json_version
-          | j -> fail "\"version\" should be an integer, found %s" (kind_of_json j)
-        in
-        Ok (forest_of_json (member "roots"))
-    | j -> fail "expected an object, found %s" (kind_of_json j)
-  with
-  | Malformed msg          -> Error msg
-  | Yojson.Json_error msg  -> Error (Printf.sprintf "not a well-formed JSON text: %s" msg)
+  Json_bricks.of_text ~format:json_format ~version:json_version
+    ~decode:(fun member -> forest_of_json (member "roots"))
+    text
 ;;
 
 (** Write a forest into a file. As with the [Marshal] path it replaces, an I/O failure is
     raised, not returned: a project that cannot be saved must be reported as such. *)
 let to_JSON_file (forest:forest) (filename:string) : unit =
-  let text = to_JSON_string forest in
-  let channel = open_out filename in
-  Fun.protect ~finally:(fun () -> close_out_noerr channel)
-    (fun () -> output_string channel text)
+  Json_bricks.write_file ~filename (to_JSON_string forest)
 ;;
 
 (** Read a forest from a file. Unlike its writing counterpart, I/O failures are returned
     as [Error message]: an unreadable project file is an ordinary case here, dealt with
     by the caller together with the decoding failures. *)
 let of_JSON_file (filename:string) : (forest, string) result =
-  let text =
-    try
-      let channel = open_in_bin filename in
-      Ok (Fun.protect ~finally:(fun () -> close_in_noerr channel)
-            (fun () -> really_input_string channel (in_channel_length channel)))
-    with
-    | Sys_error msg -> Error msg
-    | End_of_file   -> Error (Printf.sprintf "%s: unexpected end of file" filename)
-  in
-  match text with
+  match Json_bricks.read_file filename with
   | Error msg -> Error msg
   | Ok text ->
       (match of_JSON_string text with

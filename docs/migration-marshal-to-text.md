@@ -94,7 +94,8 @@ sérialiseur : c'est une algèbre de produits typés (GADT `Atom | Cons`), sans 
 ## 4. Schémas JSON proposés (à figer à l'épisode 2)
 
 > **§ 4.1 figé le 2026-08-09** par l'épisode 2, qui l'a implémenté — tel qu'écrit ici, à trois
-> précisions près, consignées au § 8.1. Les § 4.2 et 4.3 restent des propositions (ép. 3).
+> précisions près, consignées au § 8.1. **§ 4.2 et § 4.3 figés le 2026-08-09** par l'épisode 3,
+> également tels qu'écrits ici, aux précisions du § 9.3 près. **Les trois schémas sont donc figés.**
 
 ### 4.1 Le forest de nœuds
 
@@ -177,9 +178,11 @@ attribut vide, forest vide.
 ⚠️ `yojson` devient une dépendance de build : intéresse le chantier
 `modernisation-installation-marionnet` (paquets `.deb`/RPM, image Docker).
 
-**Ép. 3 — Le codec des treeviews et des compteurs.** Schémas § 4.2 et § 4.3, dans
-`bin/treeview.ml` (`Row_item` discriminé, couple `(next_identifier, forest)`,
-`treeview.ml:1388-1394`) et `bin/treeview_ifconfig.ml:306-317`.
+**Ép. 3 — Le codec des treeviews et des compteurs** *(fait le 2026-08-09)*. Schémas § 4.2 et
+§ 4.3, **figés**. Le codec n'a **pas** atterri dans `bin/treeview.ml` comme annoncé ici : la
+donnée d'un treeview (`Row_item`, `Row`) a déménagé dans `bin/treeview_row.ml` — sans Gtk+, donc
+testable —, les compteurs dans `bin/treeview_counters.ml`, et la plomberie JSON commune aux
+**trois** codecs dans `lib/STRUCTURES/json_bricks.ml`. Détail au § 9.
 ⚠️ `load_counters` est enrobé d'un `try … with _ -> ()` (`treeview_ifconfig.ml:339-347`) : une
 conversion ratée y serait **silencieuse**. Le banc doit vérifier les compteurs **explicitement**,
 pas se contenter d'un chargement sans exception.
@@ -473,6 +476,140 @@ Rien n'est branché. `state.ml`, `user_level.ml` et `sketch.ml` écrivent et lis
 `Marshal` ; aucun `.mar` produit par ce code n'a changé d'un octet. Le codec est une brique
 disponible, éprouvée isolément — le branchement est l'ép. 4, après le codec des treeviews (ép. 3).
 
+## 9. Le codec des treeviews et des compteurs (ép. 3)
+
+Deux schémas de plus, donc **les trois** du § 4 sont écrits ; toujours **rien de branché**. Mais
+l'épisode a surtout tranché une question que le § 5 avait posée de travers : *où* le codec vit.
+
+### 9.1 Le codec ne pouvait pas vivre dans `bin/treeview.ml`
+
+Le § 5 annonçait le codec « dans `bin/treeview.ml` ». Impossible d'y tenir la propriété acquise à
+l'ép. 2 — **des tests unitaires versionnés, joués par `dune test`** : `treeview.ml` est un widget
+Gtk+ de l'**exécutable**, et une stanza `(tests)` ne peut lier que des **bibliothèques**. Le codec
+y aurait donc été prouvé par le seul banc de l'ép. 1 (GUI, corpus, plusieurs minutes) — pour un
+chemin de chargement qui, précisément, **avale ses erreurs**.
+
+D'où le déplacement : `Row_item` et `Row` — la **donnée** d'un treeview, qui n'a jamais eu besoin
+de Gtk+ — vivent dans `bin/treeview_row.ml`, module de la bibliothèque **`marionnet_base`**
+(`wrapped false`, sans lablgtk), avec le codec. Les compteurs suivent dans
+`bin/treeview_counters.ml`. `treeview.ml` conserve les **noms historiques** :
+
+```ocaml
+module Row_item = Treeview_row.Row_item
+module Row      = Treeview_row.Row
+```
+
+si bien qu'**aucun des 7 fichiers** qui parlent de `Treeview.Row_item` / `Treeview.Row`
+(`treeview_{ifconfig,defects,history,documents}.ml`, `router.ml`, `control_server.ml`,
+`treeview.ml`) n'a changé d'une ligne. Un alias de module préserve types, sous-modules et
+égalités : le foncteur `Row.Make_field_accessors` et les trois `Row_item.*_prj_inj` restent
+accessibles par leur ancien chemin.
+
+Pas de `.mli` pour ces deux modules, contrairement à `json_bricks` : la convention du dépôt est
+d'en écrire pour les modules « bibliothèque » et l'ép. 2b a montré ce que l'exercice révèle — mais
+ici le déplacement de `Row`/`Row_item` est à **iso-code**, et leur doter d'une interface (type de
+module `Projection_injection`, trois `*_prj_inj`, le foncteur et ses égalités `with type a = …`)
+aurait mêlé à cet épisode un changement d'abstraction qui n'est pas le sien. La discipline qu'on
+tenait à préserver — le piège du repli base64 énoncé et testé une fois, hors de portée de ses
+appelants — est portée par `json_bricks.mli`, là où elle vit désormais.
+
+**Point de non-régression vérifié et non supposé** : déplacer un type de somme d'un module à un
+autre ne change **pas** la représentation `Marshal` — l'encodage porte des tags de blocs, jamais
+des chemins de modules. Les `.mar` `v0`/`v1`/`v2` existants se relisent donc à l'identique, ce que
+le banc de l'ép. 1 confirme (8 projets, cf. journal).
+
+### 9.2 La plomberie JSON était en train d'être écrite trois fois
+
+Le codec de l'ép. 2 portait, mêlée à lui, la partie **dure** du format : le validateur UTF-8 de la
+stdlib, le repli base64 et le piège qu'il évite (JSON n'a pas d'échappement d'octet), l'exception
+`Malformed`, `kind_of_json`, `member_of`, le contrôle de l'en-tête `format`/`version`, la lecture
+et l'écriture de fichier. Les treeviews en avaient besoin ; les compteurs aussi. **Trois
+exemplaires du même piège, c'est trois endroits à corriger si l'un est faux** — exactement la
+dérive que ce chantier combat.
+
+D'où `lib/STRUCTURES/json_bricks.ml` + `.mli` (neuf) : *la* couche JSON du dépôt. `Xforest` s'y
+adosse (l'ép. 2 a été refactoré, ses 4 fonctions publiques inchangées), les deux codecs de `bin/`
+aussi. L'énoncé du piège, sa documentation et son test sont **uniques**.
+
+Contrepartie **assumée** : `yojson` apparaît dans cette interface (`Yojson.Safe.t` dans les
+signatures de `json_of_string`, `member_of`, `of_text`…). L'invariant de l'ép. 2b reste vrai là où
+il avait un sens — `xforest.mli` ne mentionne toujours pas `yojson`, et un appelant du codec ne
+manipule jamais de valeur JSON — mais le dépôt a désormais **une** interface qui l'expose, et c'est
+celle dont le rôle *est* d'être la couche JSON. Corollaire de build : `yojson` est nommé dans les
+`(libraries …)` de `marionnet_base` (`bin/dune`), les sources y construisant des valeurs JSON — il
+ne suffit pas de l'hériter d'`ocamlbricks`.
+
+### 9.3 Les deux schémas, et les précisions que le § 4 ne portait pas
+
+Le § 4.2 est implémenté tel quel, avec trois précisions :
+
+1. **Ce qui est enregistré n'est pas la forêt seule** mais le couple `(next_identifier, forest)` —
+   le compteur d'identifiants frais voyage avec les lignes qu'il a numérotées. Il est un membre à
+   part entière (`"next_identifier": 42`), et son absence est une **erreur**, jamais un `1` deviné.
+2. **Les deux membres d'une ligne sont requis** (`fields`, `children`), comme les trois d'un arbre
+   à l'ép. 2. Un `children` absent lu comme « pas d'enfants » serait une approximation silencieuse
+   — et les enfants d'une ligne, dans `states-forest`, sont les **états de disque** d'une machine.
+3. **Un `kind` inconnu est refusé en le nommant.** Se rabattre sur `string` mettrait une valeur du
+   mauvais type dans une colonne du widget : c'est la forme même du défaut B6 du chantier
+   `marionnet-automate-composants`.
+
+Un champ est une **paire dans un tableau**, jamais un membre d'objet JSON — même raison qu'au
+§ 4.1 : une ligne est une liste d'association, dont un objet JSON perdrait l'ordre et les
+doublons. Les noms de champs comme les valeurs `string`/`icon` passent par le repli base64
+(`{"b64": …}`) : une ligne porte réellement des octets quelconques (un commentaire tapé dans
+l'invité, un nom de fichier dans une locale oubliée).
+
+Le § 4.3 est implémenté tel quel, avec une précision qui est un **choix** : `next_ipv6_address_as_int`
+voyage en **chaîne, et en chaîne seulement**. Accepter *aussi* un nombre JSON à la lecture rendrait
+la relecture dépendante de la forme qu'un producteur a choisie — et un nombre JSON ne peut pas
+porter un `Int64` (au-delà de 2^53, tout lecteur qui suit la norme perd les bits de poids faible).
+Le champ obsolète `_OBSOLETE_mac_address_as_int` est conservé, tiré au hasard à chaque
+enregistrement comme aujourd'hui : ce chantier n'est pas l'endroit pour retirer un champ d'un
+fichier que des binaires plus anciens lisent.
+
+### 9.4 Les tests, et la discriminance remesurée
+
+`test/treeview_json.ml` (**74 assertions**), joué par `dune test` avec les deux autres programmes
+— **134 assertions, 0 échec**. Même forme qu'à l'ép. 2 : l'**instrument d'abord** (24 assertions
+sur le validateur UTF-8), puis les aller-retours (les trois sortes d'item, ligne vide, champs
+vides, UTF-8 accentué avec guillemets et sauts de ligne, octets bruts en valeur **et** en nom de
+champ **et** en icône, surlong, surrogate, ordre des champs **et doublons**, forêt à trois niveaux
+et plusieurs racines, `next_identifier`, aller-retour par fichier), puis **les échecs, un par un**,
+dont les messages sont vérifiés : JSON mal formé, racine non-objet, `format` d'un autre fichier du
+même `.mar`, version future nommée, `next_identifier` manquant ou écrit en chaîne, `fields` ou
+`children` manquant, `fields` écrit comme un objet, champ à trois éléments, `kind` inconnu, `value`
+manquante, checkbox non booléenne, base64 invalide, fichier absent. Puis les compteurs : bornes de
+l'`Int64` (max, négatif), forme chaîne exigée, entier non analysable, membre manquant, format
+croisé, version future, fichier absent.
+
+Le validateur UTF-8 indépendant — celui qui rend ces tests discriminants — est passé dans
+`test/utf_8_reference.ml`, **partagé** par les deux programmes de test : une seule référence, et
+surtout **jamais** le prédicat qu'utilise le codec (cf. § 8.4, c'est le défaut que l'écriture de
+l'interface avait révélé à l'ép. 2).
+
+**Discriminance mesurée deux fois**, pas supposée :
+
+| Désarmement | Ce qui tombe |
+|---|---|
+| repli base64 neutralisé (`json_of_string` rend toujours une chaîne JSON) | **5** assertions du nouveau banc — *et les 7 de l'ép. 2, inchangées*. **Tous les round-trips passent.** |
+| compteur 64 bits accepté aussi comme nombre JSON | **1** assertion (« rejeté quand il est écrit en nombre ») |
+
+**Preuve externe**, indépendante de yojson : les deux fichiers produits (une ligne portant un nom
+accentué, une icône, une checkbox et un commentaire binaire ; des compteurs à `Int64.max_int`) sont
+décodés en **UTF-8 strict** puis relus par le module `json` de `python3` sans erreur, et rendent
+bien `["Comment", {"kind": "string", "value": {"b64": "hJWmvQH/"}}]` et
+`"next_ipv6_address_as_int": "9223372036854775807"` — la lisibilité recherchée, le binaire
+**explicitement** désigné comme tel.
+
+### 9.5 Ce que l'épisode 3 ne fait PAS
+
+Rien n'est branché, une troisième fois. `treeview.ml` enregistre toujours par
+`next_identifier_and_content_forest_marshaler#to_file`, `treeview_ifconfig.ml` par
+`counters_marshaler#to_file`, et aucun `.mar` produit n'a changé d'un octet. Le branchement — les
+huit chemins de `state.ml`, la détection de version et la bascule `closing_project_version` — est
+l'ép. 4, et c'est **là** que se posera la question laissée ouverte : `v3` hérite-t-il de
+l'inversion d'ordre des nœuds à chaque cycle (§ 7.5, fait n° 1) ou la corrige-t-on ?
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -604,3 +741,39 @@ désarmé —, faute de quoi on aurait troqué un banc circulaire contre un banc
 Le banc passe de 38 à 53 assertions. Détail au § 8.4.
 
 Livrables : `lib/STRUCTURES/xforest.mli`, `test/xforest_json.ml`, le § 8.4 de ce document.
+
+### 2026-08-09 — Épisode 3 : les codecs des treeviews et des compteurs
+
+Les deux schémas restants (§ 4.2 et § 4.3) sont **figés et implémentés** ; **rien n'est branché**,
+pour la troisième fois. Détail au § 9.
+
+Ce que l'épisode a réellement tranché n'est pas l'écriture des deux codecs — ils ressemblent à
+celui de l'ép. 2 — mais **deux questions de structure**, dont l'une contredit ce document.
+
+**1. Le codec ne pouvait pas aller là où le § 5 le plaçait.** `bin/treeview.ml` est un widget Gtk+
+de l'**exécutable**, et une stanza `(tests)` de dune ne lie que des **bibliothèques** : le codec y
+aurait été privé des tests unitaires versionnés que l'ép. 2 avait justement institués, pour un
+chemin de chargement qui **avale ses erreurs** (`load_counters`). D'où le déménagement de `Row` et
+`Row_item` — la donnée, qui n'a jamais eu besoin de Gtk+ — dans `bin/treeview_row.ml`
+(bibliothèque `marionnet_base`), et des compteurs dans `bin/treeview_counters.ml`. `treeview.ml`
+réexpose les deux modules **sous leurs noms historiques** : aucun des 7 fichiers qui les emploient
+n'a changé d'une ligne.
+
+**2. La plomberie du format allait être écrite trois fois.** Le validateur UTF-8, le repli base64
+et le piège qu'il évite, `Malformed`, `member_of`, le contrôle `format`/`version`, les I/O :
+identiques pour les trois codecs. Ils vivent maintenant dans `lib/STRUCTURES/json_bricks.ml{,i}`,
+et `Xforest` a été refactoré pour s'y adosser (ses 4 fonctions publiques inchangées, ses 38
+assertions toujours vertes). Le prix — `yojson` visible dans **cette** interface — est assumé et
+argumenté au § 9.2 : c'est le module dont le rôle *est* d'être la couche JSON.
+
+**Deux mesures, pas deux suppositions.** D'abord la **discriminance**, remesurée comme à l'ép. 2 :
+repli base64 désarmé, **5 assertions** du nouveau banc tombent — et **tous les round-trips
+passent** ; compteur 64 bits rendu tolérant au nombre JSON, **1 assertion** tombe. Ensuite la
+**non-régression du déménagement** : `Marshal` n'encode pas les chemins de modules, donc les `.mar`
+existants devaient se relire à l'identique — le **banc de l'ép. 1 rejoué le confirme sur les
+8 projets** (41 assertions, 0 échec ; l'ordre des nœuds s'inverse toujours à chaque cycle, comme
+mesuré). Enfin, `dune test` : **134 assertions, 0 échec**, dont 74 neuves.
+
+Un déplacement latéral utile au passage : le validateur UTF-8 indépendant est devenu
+`test/utf_8_reference.ml`, **partagé** par les deux programmes de test — une référence unique pour
+l'invariant qui les rend discriminants, et toujours **pas** le prédicat qu'emploie le codec.

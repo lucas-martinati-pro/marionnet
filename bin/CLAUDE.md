@@ -8,6 +8,10 @@ des stanzas : les modules sans lablgtk partagés entre la bibliothèque `marionn
 `configuration`, `meta` — vivent dans la bibliothèque `marionnet_base` (`wrapped false`,
 ex-`marionnet_common`) ; la GUI prend le reste via `(:standard \ …)`. Toute modification touchant
 ces modules partagés doit respecter cette partition (dune interdit un module dans deux stanzas).
+`marionnet_base` héberge aussi, depuis l'ép. 3 de `migration-marshal-to-text`, la **donnée** d'un
+treeview et ses codecs JSON — `treeview_row` (`Row`, `Row_item`, sortis de `treeview.ml` qui les
+réexpose par alias) et `treeview_counters` : sans Gtk+, donc liables par la stanza `(tests)` de
+`test/dune`, ce qu'un module de l'exécutable ne peut pas être.
 
 Architecture à deux niveaux : `user_level.ml` (modèle OO du réseau vu par l'utilisateur) /
 `simulation_level.ml` (processus Unix réels : UML, vde_switch, slirpvde). Chaque composant
