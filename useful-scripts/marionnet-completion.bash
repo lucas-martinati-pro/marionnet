@@ -162,6 +162,13 @@ _mrn_fields_of() { # $1 = component
   _mrn_ask -q '.fields | keys[]' get "$1" 2>/dev/null
 }
 
+# The startup configurations a component offers: rc-get publishes them itself (episode 12) — the
+# plain field(s) plus, on a router, the seven Quagga keys. Same rule as everywhere in this file:
+# the names come from the live session, never from a table kept here.
+_mrn_rc_fields_of() { # $1 = component
+  _mrn_ask -q '.available[]?' rc-get "$1" 2>/dev/null
+}
+
 # --------------------------------------------------------------------------
 #                            Completion helpers
 # --------------------------------------------------------------------------
@@ -205,10 +212,14 @@ _mrn_complete_placeholder() {  # $1 = placeholder, $2 = verb, $3… = the words 
     '<cow'*)                    _mrn_reply "$(_mrn_cow_files)" ;;
     '<absolute'*|'<path>')      _mrn_reply_files ;;
     '<port>')                   _mrn_reply "$(_mrn_ports_of "${1:-}")" ;;
-    '<field>')
+    # rc-get publishes its field twice in one syntax — positionally *and* through --field — so
+    # its placeholder reads "<field>|--field=<field>". Without this pattern it would fall through
+    # to the enumeration case below and offer the halves of its own spelling.
+    '<field>'|'<field>|--field='*)
       case "$verb" in
         ifconfig-set|defects-set|history-set) _mrn_reply "$(_mrn_slugs_of "${verb%-set}")" ;;
         get|set)                              _mrn_reply "$(_mrn_fields_of "${1:-}")" ;;
+        rc-get)                               _mrn_reply "$(_mrn_rc_fields_of "${1:-}")" ;;
         *)                                    COMPREPLY=() ;;
       esac ;;
     '<'*'|'*'>')
@@ -220,11 +231,13 @@ _mrn_complete_placeholder() {  # $1 = placeholder, $2 = verb, $3… = the words 
 }
 
 # The value of an option, when the syntax names it.
-_mrn_complete_option_value() {  # $1 = "--opt=partial", $2 = verb
-  local opt="${1%%=*}" partial="${1#*=}" verb="$2" syn alts
+_mrn_complete_option_value() {  # $1 = "--opt=partial", $2 = verb, $3 = first positional argument
+  local opt="${1%%=*}" partial="${1#*=}" verb="$2" arg="${3:-}" syn alts
   case "$opt" in
     --kind)    _mrn_cur="$partial"; _mrn_reply "$(_mrn_kinds)" ;;
     --can)     _mrn_cur="$partial"; _mrn_reply "$(_mrn_actions)" ;;
+    # rc-get/rc-set: which startup configuration, asked of the component being edited.
+    --field)   _mrn_cur="$partial"; _mrn_reply "$(_mrn_rc_fields_of "$arg")" ;;
     --from|--grammar|--socket|--file|--ctl) _mrn_reply_files ;;
     --state)
       syn="$(_mrn_syntax "$verb")"
@@ -281,9 +294,15 @@ _marionnet_ctl_completion() {
     esac
   fi
 
-  # From here the line belongs to the channel.
+  # From here the line belongs to the channel. The first positional word already typed is passed
+  # along: an option value may depend on it (--field= asks the component what it offers).
+  local first=""
+  for (( i=verb_index+1; i < COMP_CWORD; i++ )); do
+    [[ ${COMP_WORDS[i]} == --* && ${#COMP_WORDS[i]} -gt 2 ]] && continue
+    first="${COMP_WORDS[i]}"; break
+  done
   case "$_mrn_cur" in
-    --*=*) _mrn_complete_option_value "$_mrn_cur" "$verb"; return 0 ;;
+    --*=*) _mrn_complete_option_value "$_mrn_cur" "$verb" "$first"; return 0 ;;
     --*)   _mrn_reply "$(_mrn_options_of "$verb")"; return 0 ;;
   esac
 

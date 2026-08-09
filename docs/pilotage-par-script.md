@@ -1157,6 +1157,77 @@ désactivé. Le modèle commenté que l'humain voit dans le dialogue est le déf
 prévisible pour un script, mais un humain qui ouvre ensuite le dialogue d'une machine créée par
 script y trouvera un champ vide.
 
+### 4.11.1 Les sept configurations Quagga du routeur
+
+*Livrées à l'**ép. 12** (2026-08-09). L'ép. 4e avait livré **une** des huit variantes annoncées
+au § 9 : le rc UNIX. Les sept autres — une par démon de routage, dont **ZEBRA** — restaient
+muettes.*
+
+```
+rc-get <routeur> --field=zebra
+rc-set <routeur> [<contenu>] [--from=…] [--enable|--disable] [--select|--unselect]
+                 [--terminal|--no-terminal] --field=zebra
+```
+
+**Le champ porteur est une liste d'associations, donc les clés sortent du champ lui-même.** Les
+sept configurations vivent dans **un** attribut du forest, `rc_config_quagga`, marshalé comme
+`(acronyme * (activé, contenu)) list` (`router.ml:1218`). La méthode de l'ép. 4e est poussée d'un
+cran : `rc_assoc_of_marshalled` cherche cette **forme** dans l'`Obj.t` démarshalé (une liste dont
+chaque élément est un couple `(chaîne, (booléen, chaîne))`), si bien que `zebra`, `rip`… sont les
+clés que le composant **publie**, jamais une liste tenue par le serveur — la même règle d'unicité
+qu'aux ép. 6, 9, 10 et 11. Les deux formes ne peuvent pas se confondre : un `(bool * string)`
+porte un **immédiat** en premier champ là où une cellule de liste porte un **bloc**.
+
+**Le défaut ne bouge pas, et c'est la contrainte qui a dicté l'adressage.** Le choix implicite
+(sans `--field`) ne considère que les champs de **premier niveau** : `rc-set r1 …` écrit toujours
+le rc UNIX. Faire des sept clés des candidats au choix implicite aurait transformé une commande
+qui marchait en `several candidates: name the one you mean` — une régression pour un gain nul.
+Une configuration Quagga se **nomme** ; le nom est celui de l'onglet de la GUI (`zebra`), et la
+réponse le rend tel quel : un script n'a jamais à connaître `rc_config_quagga`.
+
+**Deux interrupteurs, parce que le dialogue en a deux.** Un onglet Quagga porte, côte à côte,
+« *X* startup config. » (activée + contenu) et la **case de l'onglet** (`quagga_selected_srvs`).
+Ce n'est pas une redondance : au démarrage, un service **sélectionné** reçoit
+`cat >/etc/quagga/<x>.conf <<EOF …` — avec le contenu de l'utilisateur si la configuration est
+*activée*, celui livré par Marionnet sinon —, tandis qu'un service **non sélectionné** voit son
+fichier **déplacé en `.backup`** (`router.ml:1339-1343`), donc son démon ne démarre pas. D'où la
+règle, qui prolonge celle de l'ép. 4e au second interrupteur : **poser un contenu active *et*
+sélectionne**, sauf `--unselect` explicite. Un scénario qui partirait silencieusement à la
+corbeille est exactement la surprise que ce canal existe pour éviter. Le troisième réglage de
+l'onglet, le terminal telnet CISCO-IOS-like (`show_quagga_terminal`), suit :
+`--terminal`/`--no-terminal`.
+
+**Ici la forme ne suffit plus, et le code le dit.** `quagga_selected_srvs` et
+`show_quagga_terminal` sont **tous deux** une `string list` (`router.ml:1216`, `1219`) : aucune
+inspection ne peut distinguer « quels services démarrent » de « quels terminaux s'ouvrent ». Ils
+sont donc **nommés** dans le serveur — deux constantes, la seule entorse de l'épisode à la
+découverte par la forme. Deux gardes l'empêchent de devenir un mensonge : on ne les regarde que si
+la cible est une **clé** d'un champ d'associations, et leur contenu doit être un **sous-ensemble
+des clés** de ce champ ; sinon les drapeaux sont refusés avec la raison, et l'écriture du contenu
+continue de fonctionner.
+
+**Ce que la réponse gagne.** `rc-get` rend `selected` et `terminal` quand la cible est un service
+(absents sinon — un client teste leur présence pour savoir à quoi il parle), plus **`available`**,
+la liste des noms que ce composant accepte dans `--field` : `rc_config` pour une machine, les huit
+du routeur. C'est le patron de l'ép. 10, « publier ce que le serveur savait déjà » — et c'est de
+là que la **complétion Bash** tire désormais les valeurs de `--field=`, sans table locale.
+`rc-set` rend `selected_before`/`selected` et `terminal_before`/`terminal`, et son `changed`
+couvre les **trois** dimensions : une requête qui ne fait que sélectionner change quelque chose.
+
+**Aucun fichier du modèle n'a été touché.** `#to_tree` publiait déjà les quatre champs et
+`#eval_forest_attribute` les écrivait déjà (`router.ml:1233-1236`) : c'est la troisième fois que
+le patron de l'ép. 4d-2a paie sans qu'on ait à descendre dans `user_level.ml`.
+
+**Preuve** (`rc-bench.sh`, blocs R9 et R10) : **43 assertions neuves** (34 + 9), 0 échec, vert au
+premier run.
+Le discriminant du bloc R9 est l'**égalité stricte** entre `available` et les huit noms que le
+modèle déclare — si le serveur en tenait une copie, elle dériverait. Le **bout en bout** (R10) est
+la vraie mesure de l'épisode : un routeur démarré par le canal, une sonde posée dans son rc UNIX
+(sourcé **avant** les `.conf`, donc elle observe en arrière-plan), et deux faits relus côté hôte —
+`/etc/quagga/zebra.conf` de l'invité porte le contenu posé par le canal, et le service
+désélectionné (`ospf`) a bien vu son fichier devenir `ospfd.conf.backup` **pendant que les six
+autres restaient en place**.
+
 ---
 
 ## 5. Client `marionnet-ctl` (symlink `mrnctl`)
@@ -1624,6 +1695,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **10** | **Complétion Bash** (§ 5.7) : `useful-scripts/marionnet-completion.bash`, **dérivée** de `help` — et les **noms** (composants, ports, états de disque, champs) viennent de la session vivante. Trois ajouts au serveur, tous « publier ce qu'il savait déjà » : `kinds`/`actions`/`beyond_gui` dans `help`, `slugs` dans les treeviews | **fait** (2026-08-09) — 40 assertions (`completion-bench.sh`), **discriminant L18** : égalité stricte des verbes proposés et des verbes publiés |
 | **9** | **`mrn-check`** (§ 5.6) : vérifier un `.mrn` **sans rien envoyer** — le mode lot n'a pas de transaction. Grammaire **demandée au serveur** (`--grammar=` pour l'instantané hors ligne), plus un **modèle rejoué depuis le fichier** (noms, ports, occupation), cru seulement quand le fichier part d'un `new` | **fait** (2026-08-09) — 32 assertions (`check-bench.sh`), **discriminant K4** : même ligne et même motif que l'arrêt réel de `mrnctl -f` |
 | **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
+| **12** | **Les sept configurations Quagga du routeur** (§ 4.11.1) — la moitié de la ligne « 8 variantes pour le routeur » que l'ép. 4e n'avait pas livrée : `--field=zebra`, plus les deux interrupteurs de l'onglet (`--select`/`--unselect`, `--terminal`/`--no-terminal`). Les clés sortent du champ lui-même (liste d'associations), le défaut ne bouge pas, et `available` publie le vocabulaire | **fait** (2026-08-09) — 43 assertions (`rc-bench.sh`, R9/R10), **discriminant R10** : le `.conf` de l'invité porte le contenu posé par le canal, et le service désélectionné a bien vu le sien mis en `.backup` |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
 reviendrait à fabriquer un instrument de mesure faussé.
@@ -3396,3 +3468,74 @@ bout en bout du quoting (`rc-get` rend le contenu **entier, espaces compris**), 
 projet à espaces, le cas des deux projets, et le refus d'émettre (stdout à zéro octet).
 **Non-régression** : `check-bench` 32/32, `completion-bench` 40/40 (assertion mise à jour :
 `--to-bash` s'ajoute aux options complétées de `mrn-check`/`mrn2sh`).
+
+### 2026-08-09 — épisode 12 : les sept configurations que le routeur gardait pour lui
+
+**Livrable** : `rc-get`/`rc-set` atteignent les **sept configurations de départ Quagga** d'un
+routeur (dont **ZEBRA**), plus les deux autres réglages de l'onglet — la sélection du service et
+son terminal. Décisions et mécanique en **§ 4.11.1** ; on ne les répète pas ici.
+
+**L'épisode ne s'est pas décidé sur une intuition : le tableau du § 9 annonçait « 8 variantes
+pour le routeur (unix + 7 protocoles quagga) », et l'ép. 4e n'en avait livré qu'une.** Le constat
+se lisait dans la réponse du canal elle-même : `get r1` servait `null` pour quatre champs et les
+nommait dans `omitted` ; trois y restaient depuis six épisodes. La demande — « piloter le
+comportement des systèmes UML par la configuration de démarrage, et par la configuration de
+départ de ZEBRA pour les routeurs » — désignait exactement ce reliquat. Machines et switchs,
+eux, étaient déjà servis : l'épisode n'avait rien à y ajouter, et ne l'a pas fait.
+
+**Le vrai point de conception n'était pas la reconnaissance de forme, c'était le DÉFAUT.** Étendre
+la découverte implicite aux sept clés aurait rendu `rc-set r1 <contenu>` ambigu — « several
+candidates: name the one you mean » — alors que la commande marchait depuis l'ép. 4e. Une
+extension qui casse l'existant pour un gain d'ergonomie n'en est pas une. D'où la règle retenue :
+le choix implicite ne regarde que les champs de **premier niveau**, une configuration Quagga se
+**nomme**. Et elle se nomme comme l'onglet de la GUI (`--field=zebra`), pas comme le champ interne
+qui la porte : la réponse rend `"field":"zebra"`, si bien que `rc_config_quagga` n'apparaît nulle
+part côté script.
+
+**Le second interrupteur était le piège de l'épisode, et il vient du modèle.** Un onglet Quagga
+n'a pas une case mais deux, et elles ne disent pas la même chose : « activée » choisit *quel*
+contenu part dans le `.conf` (le vôtre ou celui de Marionnet), « sélectionné » décide s'il y a un
+`.conf` **du tout** — un service désélectionné voit son fichier déplacé en `.backup` au boot
+(`router.ml:1339-1343`). Poser une configuration sans sélectionner le service aurait donc produit
+un `ok` parfaitement mensonger : le contenu enregistré, et rien qui le lise jamais. La règle de
+l'ép. 4e (« poser un contenu l'active ») s'applique donc au second interrupteur aussi, et les
+drapeaux permettent de dire le contraire.
+
+**Une entorse assumée à la découverte par la forme, et elle est écrite dans le code.** Les deux
+champs d'appartenance sont **tous deux** une `string list` : la forme ne les distingue pas, on les
+**nomme**. Ce qui empêche cette entorse de mentir, ce sont deux gardes — on ne les lit que si la
+cible est une clé d'un champ d'associations, et leur contenu doit être un sous-ensemble des clés
+de ce champ ; sinon les drapeaux sont refusés **avec la raison**, et l'écriture du contenu, elle,
+continue de marcher. Un outil qui dégrade proprement vaut mieux qu'un outil qui devine.
+
+**Rien n'a été touché dans le modèle.** Ni `user_level.ml`, ni `router.ml` : `#to_tree` publiait
+déjà les quatre champs, `#eval_forest_attribute` les écrivait déjà. Tout l'épisode tient dans
+`bin/control_server.ml` — et c'est la troisième fois que le patron de l'ép. 4d-2a permet
+d'ajouter une capacité sans descendre d'un étage.
+
+**Deux corollaires, tous deux « publier ce qu'on savait déjà ».** La réponse de `rc-get` gagne
+`available`, la liste des noms que ce composant accepte dans `--field` ; la **complétion Bash**
+(ép. 10) en dérive aussitôt les valeurs de `--field=`, sans table locale — et l'occasion a servi à
+corriger un défaut préexistant qu'aucun banc ne voyait : le placeholder de `rc-get`, publié comme
+`[<field>|--field=<field>]`, tombait dans le cas « énumération » de la complétion, qui proposait
+les morceaux de sa propre syntaxe.
+
+**Le guide utilisateur affirmait déjà la fonctionnalité — et il avait tort.** Le § 9 de
+`doc-src/scripting/README.md` disait, depuis l'ép. 8, « the router has one variant per routing
+protocol, selected with `--field=` ». C'était faux : le canal n'y donnait pas accès. C'est le
+mode de défaillance propre à la documentation d'API, déjà rencontré à l'ép. 8 (six affirmations
+fausses écrites de bonne foi) — sauf qu'ici le banc ne l'avait pas attrapé, faute d'exemple
+exécutable sur ce point. Il y en a un désormais (`examples/03-router-daemons.sh`), joué tel quel
+par `doc-bench.sh`.
+
+**Preuve** : `rc-bench.sh`, blocs **R9** (34 assertions) et **R10** (9, le bout en bout), **0 échec,
+vert au premier run** — 98 assertions au total pour ce banc. R9 tient son discriminant de
+l'**égalité stricte** entre `available` et les huit noms du modèle, et vérifie qu'écrire ZEBRA
+laisse le rc UNIX du même routeur **intact à l'octet près**. **R10 est la mesure qui compte** : routeur réellement démarré (image `guignol`,
+noyau `6.12.95-i386` — la seule image de routeur installée ne déclare rien de bootable en
+premier, limite de l'image et non du canal), sonde posée dans le rc UNIX, et deux faits relus côté
+hôte : `/etc/quagga/zebra.conf` de l'invité porte le marqueur posé par le canal, et `ospfd.conf`
+— seul service désélectionné — est devenu `ospfd.conf.backup` pendant que les six autres restaient
+en place. **Non-régression** : `dune build`, `dune test --force` (0 échec), `ctl-bench` 36/36,
+`check-bench` 32/32, `mrn2sh-bench` 32/32, `completion-bench` 48/48 (8 neuves), `doc-bench` 46/46
+(7 neuves).

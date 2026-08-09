@@ -21,6 +21,7 @@ MRNCTL=../../../useful-scripts/mrnctl ./01-build-a-lab.sh
 | `01-build-a-lab.sh` | build a lab from nothing, address it, save it as a `.mar` |
 | `02-run-and-collect.sh` | give a machine a scenario, start it, wait for the guest, read what it wrote |
 | `scenario-ping.sh` | the guest side of `02` — bash the machine runs at the end of its boot |
+| `03-router-daemons.sh` | configure the routing daemons of a router: write ZEBRA's file, leave one daemon out of the boot |
 | `lab.mrn` | the same lab as `01`, in batch form (`mrnctl -f lab.mrn`), and the file `mrn-check lab.mrn` validates |
 
 **On purpose, these scripts source no library** — not even the `bashbricks` vendored in this

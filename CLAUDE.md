@@ -301,11 +301,22 @@ Reprise : appliquer le skill `chantier-long`.
   **précondition** [un fichier fautif ne rend **aucun** script] ; le rendu **n'invente rien** —
   pas de `wait` ajouté — sauf le chemin de projet hissé en `${1:-…}`, et **seulement** si le
   fichier n'en nomme qu'un ; discriminant : **même réseau** que `mrnctl -f`)
+  et **ép. 12** (les **sept configurations Quagga du routeur**, § 4.11.1 : `--field=zebra` et les
+  deux autres réglages de l'onglet [`--select`/`--unselect`, `--terminal`/`--no-terminal`] — la
+  moitié des « 8 variantes » que l'ép. 4e n'avait pas livrée ; les **clés sortent du champ
+  lui-même** [liste d'associations reconnue par sa forme], le **défaut ne bouge pas** [sans
+  `--field`, c'est toujours le rc UNIX : en faire des candidats implicites aurait cassé
+  `rc-set r1 <contenu>`], et **poser un contenu active *et* sélectionne** — un service non
+  sélectionné voit son `.conf` mis en `.backup` au boot, donc son démon ne démarre pas ;
+  **entorse assumée** : les deux champs d'appartenance sont tous deux `string list`, donc
+  **nommés**, sous deux gardes ; **aucun fichier du modèle touché** ; discriminant = **bout en
+  bout** sur un routeur réellement démarré)
   faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6,
-  7, 8, 9, 10 et 11 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
-  **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
-  au script). **Plus aucun défaut connu ouvert**, et la condition posée à la clôture est **levée** :
-  le chantier est **clôturable (MODE C)**, sur décision de l'auteur.
+  7, 8, 9, 10, 11 et 12 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le
+  scripting **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend
+  la main au script ; l'ép. 12 en a soldé le dernier reliquat). **Plus aucun défaut connu ouvert**,
+  et la condition posée à la clôture est **levée** : le chantier est **clôturable (MODE C)**, sur
+  décision de l'auteur.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

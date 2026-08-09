@@ -243,9 +243,14 @@ let arity_of_command : (string * arity) list =
     ("connect",       three_identifiers
                         "connect <cable> <node>:<port> <node>:<port> [--crossover]");
     ("rc-get",        component_and_field "rc-get <component> [<field>|--field=<field>]");
+    (* --select/--unselect and --terminal/--no-terminal (episode 12) apply to a service
+       configuration only — a Quagga tab of a router — and [cmd_rc_set] says so when they do not.
+       --from= keeps its place: it is the first placeholder naming a path, which is what
+       mrn2sh reads (episode 11). *)
     ("rc-set",        component_and_free_text
                         "rc-set <component> [<one-line content>] [--from=<absolute path>] \
-                         [--enable|--disable] [--field=<field>]");
+                         [--enable|--disable] [--select|--unselect] \
+                         [--terminal|--no-terminal] [--field=<field>]");
     (* § 4.6. The optional argument filters the *roots* by their Name column. documents takes
        none: unlike the three others it has no Name column at all (it inherits the bare
        Treeview.t), so there would be nothing to match. *)
@@ -713,6 +718,14 @@ type editable = <
   supported_kernels_if_any : string list option;
   >
 
+(* Episode 12. The two settings a Quagga tab of the router dialog carries beside the startup
+   configuration itself (router.ml:780-870): whether the service is *selected* — selected means
+   its .conf file is written at boot, unselected means the existing one is moved aside
+   (router.ml:1339-1343), so this is what decides whether the daemon runs at all — and whether
+   its telnet terminal is opened. [None] for a plain startup configuration (a machine, a switch,
+   the UNIX rc of a router), which has no such neighbours. *)
+type rc_service = { selected : bool; terminal : bool }
+
 type component_outcome =
   | Co_added     of string * (string * string) list  (* kind, fields read back after creation *)
   | Co_connected of (string * string) list * bool    (* fields read back, polarity is right *)
@@ -721,14 +734,34 @@ type component_outcome =
      (field, old, new) — see [adjust_kernel_after_distrib_change] *)
   | Co_set       of string * string * string * string * (string * string * string) list
   | Co_read      of string * (string * string) list  (* kind, fields (all, or the one asked) *)
-  (* kind, field, (enabled, content), hostfs *)
-  | Co_rc_read   of string * string * (bool * string) * string option
-  (* kind, field, before, after, hostfs *)
-  | Co_rc_set    of string * string * (bool * string) * (bool * string) * string option
+  (* kind, field, (enabled, content), service settings, the rc vocabulary of this component,
+     hostfs *)
+  | Co_rc_read   of string * string * (bool * string) * rc_service option * string list
+                    * string option
+  (* kind, field, before, after (each = the pair plus the service settings), hostfs *)
+  | Co_rc_set    of string * string * ((bool * string) * rc_service option)
+                    * ((bool * string) * rc_service option) * string option
   | Co_no_project
   | Co_unknown
   | Co_forbidden of string * string                  (* past participle, raw state *)
   | Co_bad       of string
+
+(* Present only when the target is a service configuration, and then always the four of them:
+   a client tests the presence of "selected" to know it is talking to a Quagga tab rather than
+   to a plain rc file. [before] is [None] on a read, which serves the two current values only. *)
+let rc_service_fields ~(before : rc_service option) ~(after : rc_service option)
+  : (string * string) list
+  =
+  match after with
+  | None   -> []
+  | Some a ->
+      let pair key was now =
+        match was with
+        | None   -> [ (key, jbool now) ]
+        | Some w -> [ (key ^ "_before", jbool w); (key, jbool now) ]
+      in
+      pair "selected" (Option.map (fun b -> b.selected) before) a.selected
+      @ pair "terminal" (Option.map (fun b -> b.terminal) before) a.terminal
 
 let reply_of_component_outcome ~(name:string) : component_outcome -> string = function
   | Co_added (kind, fields) ->
@@ -781,26 +814,38 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                  ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
   (* The content travels in clear, on one line: json_escape turns its newlines into \n, which
      is what makes a multi-line shell scenario fit the answer format of this channel. *)
-  | Co_rc_read (kind, field, (enabled, content), hostfs) ->
-      reply_ok [ ("component", jstr name);
-                 ("kind",      jstr kind);
-                 ("field",     jstr field);
-                 ("enabled",   jbool enabled);
-                 ("content",   jstr content);
-                 ("bytes",     jint (String.length content));
-                 ("hostfs",    jopt hostfs) ]
+  | Co_rc_read (kind, field, (enabled, content), service, available, hostfs) ->
+      reply_ok ([ ("component", jstr name);
+                  ("kind",      jstr kind);
+                  ("field",     jstr field);
+                  ("enabled",   jbool enabled);
+                  ("content",   jstr content);
+                  ("bytes",     jint (String.length content)) ]
+                @ rc_service_fields ~before:None ~after:service
+                (* Episode 10's pattern, "publish what the server already knew": the names this
+                   component accepts in --field. A completion — and a script that discovers a
+                   router instead of assuming one — derives them from here rather than holding a
+                   second copy of a vocabulary the model owns. *)
+                @ [ ("available", jlist (List.map jstr available));
+                    ("hostfs",    jopt hostfs) ])
   (* Sizes, not the old content: a scenario may be long, and the client that wants it back
      asks rc-get. What matters here is *what changed*, and it is read back from the model. *)
-  | Co_rc_set (kind, field, (was_enabled, was), (enabled, content), hostfs) ->
-      reply_ok [ ("component",      jstr name);
-                 ("kind",           jstr kind);
-                 ("field",          jstr field);
-                 ("enabled_before", jbool was_enabled);
-                 ("enabled",        jbool enabled);
-                 ("old_bytes",      jint (String.length was));
-                 ("bytes",          jint (String.length content));
-                 ("changed",        jbool ((was_enabled, was) <> (enabled, content)));
-                 ("hostfs",         jopt hostfs) ]
+  | Co_rc_set (kind, field, ((was_enabled, was), was_service), ((enabled, content), service),
+               hostfs) ->
+      reply_ok ([ ("component",      jstr name);
+                  ("kind",           jstr kind);
+                  ("field",          jstr field);
+                  ("enabled_before", jbool was_enabled);
+                  ("enabled",        jbool enabled);
+                  ("old_bytes",      jint (String.length was));
+                  ("bytes",          jint (String.length content)) ]
+                @ rc_service_fields ~before:was_service ~after:service
+                  (* Three dimensions now, and [changed] answers for all of them: a request that
+                     only selects a service changes nothing of the content and must not be
+                     reported as a no-op. *)
+                @ [ ("changed", jbool ((was_enabled, was, was_service)
+                                       <> (enabled, content, service)));
+                    ("hostfs",  jopt hostfs) ])
   | Co_no_project ->
       reply_error ~code:"no_active_project" ~detail:"no project is open"
   | Co_unknown ->
@@ -1378,59 +1423,207 @@ let max_rc_bytes = 1024 * 1024
    the exact opposite of an [Obj.magic]: no cast is taken on trust.
 
    The router's three other marshalled fields do not have this shape (an association list and
-   two string lists) and are therefore not offered here; they stay in [omitted]. *)
-let rc_config_of_marshalled (v:string) : (bool * string) option =
+   two string lists); the first is read by [rc_assoc_of_marshalled] below since episode 12, the
+   two others are named there — and none of them is served by [get], they stay in [omitted]. *)
+
+(* The three shape predicates, shared by the readers below. None of them casts: [Obj.obj] is
+   applied by the callers, and only once the shape has matched. *)
+let obj_is_bool   x = Obj.is_int x && (let i : int = Obj.obj x in i = 0 || i = 1)
+let obj_is_string x = Obj.is_block x && Obj.tag x = Obj.string_tag
+let obj_is_pair   x = Obj.is_block x && Obj.tag x = 0 && Obj.size x = 2
+let obj_is_nil    x = Obj.is_int x && (Obj.obj x : int) = 0
+
+let demarshalled (v:string) : Obj.t option =
   if not (is_marshalled v) then None else
-  match (try Some (Marshal.from_string v 0 : Obj.t) with _ -> None) with
+  (try Some (Marshal.from_string v 0 : Obj.t) with _ -> None)
+
+(* A list is walked cell by cell, each element being checked by [element] before it is kept.
+   [Some []] is returned for the empty list: the callers decide what an empty one means. *)
+let obj_list_of ~(element : Obj.t -> bool) (o : Obj.t) : Obj.t list option =
+  let rec walk o acc =
+    if obj_is_nil o then Some (List.rev acc)
+    else if obj_is_pair o && element (Obj.field o 0)
+    then walk (Obj.field o 1) (Obj.field o 0 :: acc)
+    else None
+  in
+  walk o []
+
+let obj_is_rc_pair x = obj_is_pair x && obj_is_bool (Obj.field x 0) && obj_is_string (Obj.field x 1)
+
+let rc_config_of_marshalled (v:string) : (bool * string) option =
+  match demarshalled v with
+  | Some o when obj_is_rc_pair o -> Some (Obj.obj o : bool * string)
+  | _ -> None
+
+(* Episode 12. The router keeps its seven Quagga startup configurations in ONE field, as an
+   association list (router.ml:1218). Same method as above, one notch further down: the shape
+   sought is a list of (acronym, (enabled, content)) pairs, so the seven *keys* come from the
+   field itself — the server holds no copy of a list the model already owns
+   (Const.quagga_alternatives, router.ml:340).
+
+   The two shapes cannot be confused, and not by luck: a [(bool * string)] holds an immediate in
+   its first field where a cons cell holds a block. An empty list is refused on purpose — it
+   carries no key, hence nothing a request could address, and any empty list looks like it. *)
+let rc_assoc_of_marshalled (v:string) : (string * (bool * string)) list option =
+  let is_entry x = obj_is_pair x && obj_is_string (Obj.field x 0) && obj_is_rc_pair (Obj.field x 1) in
+  match demarshalled v with
   | None -> None
   | Some o ->
-      let is_bool x = Obj.is_int x && (let i : int = Obj.obj x in i = 0 || i = 1) in
-      let is_string x = Obj.is_block x && Obj.tag x = Obj.string_tag in
-      if Obj.is_block o && Obj.tag o = 0 && Obj.size o = 2
-         && is_bool (Obj.field o 0) && is_string (Obj.field o 1)
-      then Some (Obj.obj o : bool * string)
-      else None
+      (match obj_list_of ~element:is_entry o with
+       | None | Some [] -> None
+       | Some entries   -> Some (List.map (fun e -> (Obj.obj e : string * (bool * string))) entries))
 
-let rc_fields_of (fields : (string * string) list) : (string * (bool * string)) list =
+let string_list_of_marshalled (v:string) : string list option =
+  match demarshalled v with
+  | None -> None
+  | Some o ->
+      (match obj_list_of ~element:obj_is_string o with
+       | None    -> None
+       | Some xs -> Some (List.map (fun x -> (Obj.obj x : string)) xs))
+
+(* Here the shape stops being enough, and this says so rather than pretending otherwise: the two
+   membership fields of a router are BOTH a [string list] (router.ml:1216, 1219), so no
+   inspection can tell "which services start" from "which terminals open". They are named — and
+   two guards keep the naming from turning into a lie: they are only looked at when the target
+   is a *key* of an association-list field, and their content must be a subset of that field's
+   keys ([rc_service_of]). When either fails, the flags that write them are refused with the
+   reason, and everything else keeps working. *)
+let rc_selected_field = "quagga_selected_srvs"
+let rc_terminal_field = "show_quagga_terminal"
+
+let rc_plain_fields (fields : (string * string) list) : (string * (bool * string)) list =
   List.filter_map
     (fun (k, v) -> match rc_config_of_marshalled v with Some rc -> Some (k, rc) | None -> None)
     fields
 
-(* Naming the field is optional because there is exactly one candidate on each of the three
-   kinds that have one today. The three answers below are all the cases, and none of them is a
-   silence: no candidate, several (a kind that would gain a second one), or a name that is not
-   one. *)
-let rc_field_of ~(kind:string) ~(name:string) ~(field:string option)
-    (fields : (string * string) list) : ((string * (bool * string)), string) result
+let rc_assoc_fields (fields : (string * string) list)
+  : (string * (string * (bool * string)) list) list
   =
-  let candidates = rc_fields_of fields in
-  match field, candidates with
-  | None, [ one ] -> Ok one
-  | None, [] ->
-      Error (Printf.sprintf
-               "%S (kind %s) has no startup configuration: today a machine, a switch and a \
-                router have one" name kind)
-  | None, several ->
-      Error (Printf.sprintf
-               "%S (kind %s) has several startup configuration fields (%s): name the one you \
-                mean" name kind (String.concat ", " (List.map fst several)))
-  | Some f, _ ->
-      (match List.assoc_opt f candidates with
-       | Some rc -> Ok (f, rc)
+  List.filter_map
+    (fun (k, v) -> match rc_assoc_of_marshalled v with Some l -> Some (k, l) | None -> None)
+    fields
+
+(* Everything a request may name in --field on this component: the plain fields under their own
+   name, and the keys of the association-list ones under theirs ("zebra", "rip"…). This is the
+   vocabulary the refusals list and [rc-get] publishes. *)
+let rc_available (fields : (string * string) list) : string list =
+  List.map fst (rc_plain_fields fields)
+  @ List.concat_map (fun (_, l) -> List.map fst l) (rc_assoc_fields fields)
+
+(* Which startup configuration a request aims at. Naming it stays optional, and keeps meaning
+   exactly what it meant before episode 12: the implicit choice considers the *plain* fields
+   only, so [rc-set m1 …] still writes the one field a machine or a switch has, and [rc-set r1 …]
+   still writes the UNIX rc of a router rather than becoming ambiguous the day the router gained
+   seven more. A Quagga configuration is reached by naming it. *)
+type rc_target =
+  | Rc_plain of string           (* the field holds the (enabled, content) pair itself *)
+  | Rc_assoc of string * string  (* the field holds an association list; the key is a service *)
+
+(* What the answer calls the field: what the request named. A script asks for "zebra" and reads
+   back "zebra", never the internal "rc_config_quagga" it does not have to know. *)
+let rc_target_name = function Rc_plain f -> f | Rc_assoc (_, key) -> key
+
+let rc_assoc_field ~(field:string) (fields : (string * string) list)
+  : (string * (bool * string)) list option
+  =
+  Option.bind (List.assoc_opt field fields) rc_assoc_of_marshalled
+
+(* A membership field is read only against the keys it is supposed to name: a list holding
+   anything else is not one of ours, and answering [None] is what turns the two names above into
+   a refusal rather than into a wrong write. *)
+let rc_membership_of ~(keys : string list) ~(field:string) (fields : (string * string) list)
+  : string list option
+  =
+  match Option.bind (List.assoc_opt field fields) string_list_of_marshalled with
+  | Some l when List.for_all (fun x -> List.mem x keys) l -> Some l
+  | _ -> None
+
+(* [None] unless the two membership fields are there and sane. *)
+let rc_service_of ~(keys : string list) ~(key : string) (fields : (string * string) list)
+  : rc_service option
+  =
+  match rc_membership_of ~keys ~field:rc_selected_field fields,
+        rc_membership_of ~keys ~field:rc_terminal_field fields
+  with
+  | Some sel, Some term -> Some { selected = List.mem key sel; terminal = List.mem key term }
+  | _ -> None
+
+(* The keys the target's own field declares — empty for a plain one, which has none. *)
+let rc_keys_of ~(target : rc_target) (fields : (string * string) list) : string list =
+  match target with
+  | Rc_plain _      -> []
+  | Rc_assoc (af, _) ->
+      (match rc_assoc_field ~field:af fields with
+       | Some l -> List.map fst l
+       | None   -> [])
+
+(* The three things both commands read back from the model rather than from what they asked. *)
+let rc_state_of ~(target : rc_target) (fields : (string * string) list)
+  : ((bool * string) * rc_service option) option
+  =
+  match target with
+  | Rc_plain f ->
+      Option.map (fun rc -> (rc, None))
+        (Option.bind (List.assoc_opt f fields) rc_config_of_marshalled)
+  | Rc_assoc (af, key) ->
+      (match rc_assoc_field ~field:af fields with
+       | None   -> None
+       | Some l ->
+           Option.map
+             (fun rc -> (rc, rc_service_of ~keys:(List.map fst l) ~key fields))
+             (List.assoc_opt key l))
+
+(* Naming the field stays optional because there is exactly one *plain* candidate on each of the
+   three kinds that have one today. The answers below are all the cases, and none of them is a
+   silence: no candidate, several (a kind that would gain a second plain one), a key that two
+   fields would share, or a name that is neither. Every refusal ends by listing the vocabulary
+   that would have worked, which is the same list [rc-get] publishes. *)
+let rc_target_of ~(kind:string) ~(name:string) ~(field:string option)
+    (fields : (string * string) list) : ((rc_target * (bool * string)), string) result
+  =
+  let plains = rc_plain_fields fields in
+  let vocabulary () = String.concat ", " (rc_available fields) in
+  match field with
+  | None ->
+      (match plains with
+       | [ (f, rc) ] -> Ok (Rc_plain f, rc)
+       | [] ->
+           Error (Printf.sprintf
+                    "%S (kind %s) has no startup configuration: today a machine, a switch and a \
+                     router have one" name kind)
+       | several ->
+           Error (Printf.sprintf
+                    "%S (kind %s) has several startup configuration fields (%s): name the one \
+                     you mean" name kind (String.concat ", " (List.map fst several))))
+  | Some f ->
+      (match List.assoc_opt f plains with
+       | Some rc -> Ok (Rc_plain f, rc)
        | None ->
-           (match List.assoc_opt f fields with
-            | None ->
-                Error (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
-                         f name kind (field_names fields))
-            | Some _ ->
+           let in_assoc =
+             List.filter_map
+               (fun (af, l) -> Option.map (fun rc -> (af, rc)) (List.assoc_opt f l))
+               (rc_assoc_fields fields)
+           in
+           (match in_assoc with
+            | [ (af, rc) ] -> Ok (Rc_assoc (af, f), rc)
+            | (af1, _) :: (af2, _) :: _ ->
                 Error (Printf.sprintf
-                         "the field %S is not a startup configuration (it does not hold an \
-                          (enabled, content) pair)%s"
-                         f
-                         (match candidates with
-                          | [] -> ""
-                          | l  -> Printf.sprintf "; here it is: %s"
-                                    (String.concat ", " (List.map fst l))))))
+                         "%S is a key of several fields (%s, %s) on %S (kind %s): this channel \
+                          will not choose for you" f af1 af2 name kind)
+            | [] ->
+                (match List.assoc_opt f fields with
+                 | None ->
+                     Error (Printf.sprintf
+                              "no startup configuration %S on %S (kind %s); here they are: %s"
+                              f name kind (vocabulary ()))
+                 | Some _ ->
+                     Error (Printf.sprintf
+                              "the field %S is not a startup configuration (it does not hold an \
+                               (enabled, content) pair)%s"
+                              f
+                              (match rc_available fields with
+                               | [] -> ""
+                               | _  -> Printf.sprintf "; here they are: %s" (vocabulary ()))))))
 
 (* Read in the serving thread, never inside the GTK slot: a file read is I/O, and the GTK main
    loop is not the place for it. The absolute path is required for the reason [open] requires
@@ -1465,12 +1658,17 @@ let cmd_rc_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
   : string
   =
   with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
-    match rc_field_of ~kind ~name ~field (fields_of_tree c#to_tree) with
+    let fields = fields_of_tree c#to_tree in
+    match rc_target_of ~kind ~name ~field fields with
     | Error detail  -> Co_bad detail
-    | Ok (f, rc)    -> Co_rc_read (kind, f, rc, c#hostfs_directory_if_any))
+    | Ok (target, rc) ->
+        let service = match rc_state_of ~target fields with Some (_, s) -> s | None -> None in
+        Co_rc_read (kind, rc_target_name target, rc, service, rc_available fields,
+                    c#hostfs_directory_if_any))
 
 let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
-    ~(from:string option) ~(inline:string option) ~(enable:bool option) : string
+    ~(from:string option) ~(inline:string option) ~(enable:bool option)
+    ~(select:bool option) ~(terminal:bool option) : string
   =
   let asked_content =
     match from, inline with
@@ -1484,9 +1682,9 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
     asked_content >>= function
     (* Neither a content nor a flag: there is nothing this command could do, and answering "ok"
        to a request that changes nothing asked-for would hide a client bug. *)
-    | None when enable = None ->
+    | None when enable = None && select = None && terminal = None ->
         Error "nothing to do: give a content (--from=<file> or an inline one) or a flag \
-               (--enable|--disable)"
+               (--enable|--disable, --select|--unselect, --terminal|--no-terminal)"
     | None        -> Ok None
     | Some c as x -> Result.map (fun () -> x) (rc_content_is_servable c)
   in
@@ -1494,14 +1692,32 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
   | Error detail -> reply_error ~code:"bad_argument" ~detail
   | Ok content ->
   with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
-    match rc_field_of ~kind ~name ~field (fields_of_tree c#to_tree) with
+    let fields = fields_of_tree c#to_tree in
+    match rc_target_of ~kind ~name ~field fields with
     | Error detail -> Co_bad detail
-    | Ok (f, before) ->
+    | Ok (target, before_rc) ->
+        let keys = rc_keys_of ~target fields in
+        let before_service =
+          match rc_state_of ~target fields with Some (_, s) -> s | None -> None
+        in
+        (* The two new flags apply to a service, and only where the two membership fields are
+           there and sane — refusing here is the whole point of having named them. *)
+        (match target, before_service, (select <> None || terminal <> None) with
+         | Rc_plain f, _, true ->
+             Co_bad (Printf.sprintf
+                       "--select/--unselect and --terminal/--no-terminal apply to a service \
+                        startup configuration (a Quagga tab of a router); %S is a plain one" f)
+         | Rc_assoc (_, key), None, true ->
+             Co_bad (Printf.sprintf
+                       "the fields saying which services start and which terminals open are \
+                        missing or malformed on %S (kind %s): this channel will not guess what \
+                        %S should become" name kind key)
+         | _ ->
         (* The same guard the GUI dialog obeys — and here it is more than a rule: the field is
            read when the device is built, so writing it on a running component would change
            nothing the client could observe until the next start. *)
         if not c#can_modify then Co_forbidden ("modified", c#state_as_string) else
-        let (was_enabled, was_content) = before in
+        let (was_enabled, was_content) = before_rc in
         let new_content = match content with Some s -> s | None -> was_content in
         (* Posting a scenario enables it, unless --disable says otherwise: a content that would
            silently never run is the surprise this channel exists to avoid. The flag alone
@@ -1511,31 +1727,80 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
           | Some b -> b
           | None   -> (match content with Some _ -> true | None -> was_enabled)
         in
-        let asked = (new_enabled, new_content) in
-        (* A no-op costs no write: network_change marks the project as modified and redraws the
+        let after_rc = (new_enabled, new_content) in
+        (* Episode 12 applies the very same rule to the second switch a Quagga tab has: posting a
+           content *selects* the service too, unless --unselect says otherwise. An unselected
+           service does not even get its file — the boot moves the existing .conf aside
+           (router.ml:1339-1343) — so a posted configuration would silently go nowhere. *)
+        let after_service =
+          match before_service with
+          | None   -> None
+          | Some s ->
+              Some { selected = (match select with
+                                 | Some b -> b
+                                 | None   -> (match content with
+                                              | Some _ -> true
+                                              | None   -> s.selected));
+                     terminal = (match terminal with Some b -> b | None -> s.terminal) }
+        in
+        (* One write per field that really changes, and all of them in the same GTK slot. A no-op
+           costs no write at all: network_change marks the project as modified and redraws the
            sketch (state.ml:892-903). *)
-        if asked = before then Co_rc_set (kind, f, before, before, c#hostfs_directory_if_any)
+        let writes =
+          (if after_rc = before_rc then [] else
+           match target with
+           | Rc_plain f -> [ (f, Marshal.to_string after_rc []) ]
+           | Rc_assoc (af, key) ->
+               (match rc_assoc_field ~field:af fields with
+                | None   -> []  (* unreachable: the target was just found in it *)
+                | Some l ->
+                    let l = List.map (fun (k, v) -> if k = key then (k, after_rc) else (k, v)) l in
+                    [ (af, Marshal.to_string l []) ]))
+          @ (match target, before_service, after_service with
+             | Rc_assoc (_, key), Some b, Some a ->
+                 let membership ~field ~was ~now =
+                   if was = now then None else
+                   match rc_membership_of ~keys ~field fields with
+                   | None -> None
+                   | Some current ->
+                       (* Rebuilt in the canonical order — that of the keys of the association
+                          list itself, hence of the GUI tabs — rather than appended to. *)
+                       let l =
+                         if now then List.filter (fun x -> List.mem x current || x = key) keys
+                         else List.filter (fun x -> x <> key) current
+                       in
+                       Some (field, Marshal.to_string l [])
+                 in
+                 List.filter_map (fun x -> x)
+                   [ membership ~field:rc_selected_field ~was:b.selected ~now:a.selected;
+                     membership ~field:rc_terminal_field ~was:b.terminal ~now:a.terminal ]
+             | _ -> [])
+        in
+        let before = (before_rc, before_service) in
+        if writes = [] then
+          Co_rc_set (kind, rc_target_name target, before, before, c#hostfs_directory_if_any)
         else
         let failure = ref None in
         let () =
           st#network_change
             (fun () ->
-               try c#eval_forest_attribute (f, Marshal.to_string asked [])
+               try List.iter (fun attribute -> c#eval_forest_attribute attribute) writes
                with e -> failure := Some e)
             ()
         in
         (match !failure with
          | Some e ->
              Co_bad (Printf.sprintf "the model refused the startup configuration %S: %s"
-                       f (Printexc.to_string e))
+                       (rc_target_name target) (Printexc.to_string e))
          | None ->
              (* Read back, never assumed — the rule this file follows everywhere. *)
              let after =
-               match List.assoc_opt f (fields_of_tree c#to_tree) with
-               | Some v -> (match rc_config_of_marshalled v with Some rc -> rc | None -> asked)
-               | None   -> asked
+               match rc_state_of ~target (fields_of_tree c#to_tree) with
+               | Some state -> state
+               | None       -> (after_rc, after_service)
              in
-             Co_rc_set (kind, f, before, after, c#hostfs_directory_if_any)))
+             Co_rc_set (kind, rc_target_name target, before, after,
+                        c#hostfs_directory_if_any))))
 
 (* ---------------------------------------------------------------- *)
 (*                           Transitions                            *)
@@ -3045,7 +3310,8 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | "rc-get" | "rc-set" ->
                 let allowed =
                   if r.verb = "rc-get" then [ "timeout"; "field" ]
-                  else [ "timeout"; "field"; "from"; "enable"; "disable" ]
+                  else [ "timeout"; "field"; "from"; "enable"; "disable";
+                         "select"; "unselect"; "terminal"; "no-terminal" ]
                 in
                 (* rc-get takes the field where [get] takes it, in second position, *and*
                    through --field, so that a script may use the same variable in both
@@ -3085,20 +3351,28 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                      if r.verb = "rc-get" then
                        (cmd_rc_get st ~timeout ~name:(arg0 r) ~field, `Continue)
                      else
-                       (match (option_value r "enable" <> None),
-                              (option_value r "disable" <> None) with
-                        | true, true ->
+                       (* Three pairs of mutually exclusive flags, refused the same way: keeping
+                          one of two contradictory orders is the quiet choice this channel does
+                          not make. *)
+                       let flag ~yes ~no =
+                         match option_value r yes <> None, option_value r no <> None with
+                         | true, true   -> Error (yes, no)
+                         | true, false  -> Ok (Some true)
+                         | false, true  -> Ok (Some false)
+                         | false, false -> Ok None
+                       in
+                       (match flag ~yes:"enable" ~no:"disable",
+                              flag ~yes:"select" ~no:"unselect",
+                              flag ~yes:"terminal" ~no:"no-terminal" with
+                        | Error (a, b), _, _ | _, Error (a, b), _ | _, _, Error (a, b) ->
                             (reply_error ~code:"bad_argument"
-                               ~detail:"--enable and --disable cannot be given together",
+                               ~detail:(Printf.sprintf
+                                          "--%s and --%s cannot be given together" a b),
                              `Continue)
-                        | enabled, disabled ->
-                            let enable =
-                              if enabled then Some true
-                              else if disabled then Some false
-                              else None
-                            in
+                        | Ok enable, Ok select, Ok terminal ->
                             (cmd_rc_set st ~timeout ~name:(arg0 r) ~field
-                               ~from:(option_value r "from") ~inline:(arg_opt r 1) ~enable,
+                               ~from:(option_value r "from") ~inline:(arg_opt r 1) ~enable
+                               ~select ~terminal,
                              `Continue)))
             (* One implementation for the four (§ 4.6): the verb only says which instance to
                read, the shape of the answer being the same. documents gets [None] by its

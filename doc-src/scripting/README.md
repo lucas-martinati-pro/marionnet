@@ -487,9 +487,55 @@ Three things to know:
 * **The content travels in clear**, either inline (`rc-set m1 'echo hello'`) or by file
   (`--from=<absolute path>`). You never manipulate the project file to place it.
 
-Machines, switches and routers have a startup configuration today (the router has one variant
-per routing protocol, selected with `--field=`). Hubs, clouds and the world components do not,
-yet.
+Machines, switches and routers have a startup configuration today. Hubs, clouds and the world
+components do not, yet.
+
+### Inside a router: the routing daemons
+
+A router has more than one. Besides its UNIX one — the one you get when you name no field — it
+carries **one startup configuration per routing daemon**, exactly as the router dialog carries
+one tab per protocol. Ask the router which ones it has; do not assume a list:
+
+```bash
+mrnctl -q '.available | join(" ")' rc-get r1
+# rc_config_unix zebra rip ripng ospf bgp ospf6 isis
+```
+
+Any of those names goes in `--field=`. Naming none keeps meaning what it meant before: the UNIX
+one.
+
+```bash
+cat > /tmp/zebra.conf <<'EOF'
+hostname r1
+password zebra
+interface eth0
+ ip address 10.0.0.254/24
+EOF
+
+mrnctl rc-set r1 --from=/tmp/zebra.conf --field=zebra
+mrnctl rc-get r1 --field=zebra                  # read it back, whole
+```
+
+A daemon's tab has **two** switches, and both matter:
+
+* **enabled** — whether *your* text is used. Disabled, the daemon still gets the stock
+  configuration Marionnet ships.
+* **selected** — whether the daemon is configured **at all**. Unselected, its configuration file
+  is moved aside at boot, so the daemon does not start.
+
+Writing a content sets both, because a configuration that would silently go nowhere is the
+surprise this channel exists to avoid. The flags let you say otherwise, one at a time:
+
+```bash
+mrnctl rc-set r1 --field=ospf  --unselect        # this daemon will not run
+mrnctl rc-set r1 --field=zebra --terminal        # open its CISCO-IOS-like terminal
+mrnctl -q '.selected, .terminal' rc-get r1 --field=zebra
+```
+
+The answer of `rc-set` reports `selected_before`/`selected` and `terminal_before`/`terminal`
+beside `enabled_before`/`enabled`, and `changed` covers all three. On a plain startup
+configuration — a machine, a switch, the UNIX one of a router — those fields are simply absent,
+and the flags are refused.
 
 ---
 
