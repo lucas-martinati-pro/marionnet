@@ -157,6 +157,19 @@ scindée en deux variables, et **chaque canal de diffusion la dérive** :
 | `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils x11-xserver-utils xauth` | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
 | `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
 | `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
+| `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
+
+**Ajout du 2026-08-09 — `yojson` et `base64`**, posés par l'épisode 2 du chantier
+`migration-marshal-to-text` (codec JSON de `lib/STRUCTURES/xforest.ml` ; le repli base64 est ce
+qui rend le fichier de projet réellement lisible par un autre outil). Ils sont **déjà** dans
+`OPAM_PACKAGES`, donc `make dependencies` les couvre sur la voie opam. Ce qui reste à faire
+relève de **chaque canal**, quand il sera construit : les répercuter là où la voie **système**
+remplace opam. Équivalents Debian **vérifiés** : `libyojson-ocaml-dev`, `libbase64-ocaml-dev` ;
+les équivalents RPM restent à vérifier le moment venu.
+
+⚠️ Ce sont des dépendances **de build uniquement** — vérifié : `ldd` sur `marionnet.exe` ne montre
+aucune bibliothèque `yojson` ni `base64`, les bibliothèques OCaml étant liées statiquement. Rien
+à ajouter au `Depends` du `.deb`, au `Requires` du RPM ni à la couche runtime Docker.
 
 Cibles : `apt-build-dependencies`, `apt-runtime-dependencies` (les deux appelées par
 `apt-dependencies`, donc par `make dependencies`) et l'opt-in `apt-runtime-dependencies-i386`.

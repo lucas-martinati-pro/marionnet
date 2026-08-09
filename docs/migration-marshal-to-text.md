@@ -242,8 +242,12 @@ consigné — il est né directement comme chantier.)*
    mesure (ép. 1) et subit un contrecoup (ép. 6). Le chantier est clôturable mais pas clos ; si
    sa clôture intervient avant l'ép. 6, la dette passe ici.
 6. **Interaction avec `modernisation-installation-marionnet`** : `yojson` **et `base64`** deviennent
-   des dépendances de build à déclarer dans les paquets (`lib/dune`, ép. 2). En Debian :
-   `libyojson-ocaml-dev` et `libbase64-ocaml-dev`.
+   des dépendances **de build** (`lib/dune`, ép. 2) — pas d'exécution, les bibliothèques OCaml
+   étant liées statiquement (vérifié par `ldd`). Elles sont **déjà** dans `OPAM_PACKAGES` du
+   `Makefile`, la source de vérité des dépendances (§ 2.4 bis du doc de l'autre chantier), donc
+   `make dependencies` les couvre ; reste à les répercuter là où la voie **système** remplace
+   opam — `Build-Depends` du `.deb`, `BuildRequires` du RPM, image de build Docker. Équivalents
+   Debian vérifiés : `libyojson-ocaml-dev`, `libbase64-ocaml-dev`.
 
 ## 7. Le filet : corpus témoin et banc de non-régression (ép. 1)
 

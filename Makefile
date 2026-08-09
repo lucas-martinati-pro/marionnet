@@ -87,8 +87,13 @@ REQUIRED_PACKAGES_RUNTIME_I386 = libc6:i386
 #  - camlp-streams provides the `Stream' module, dropped from the Stdlib by OCaml 5.0 and still
 #    used by lib/CAMLP4/include_type_definitions_p4.ml
 #  - dune-site is required by i18n/dune (relocatable location of the gettext catalogues)
+#  - yojson and base64 serve the JSON codec of lib/STRUCTURES/xforest.ml, i.e. the textual
+#    format of a project (work-stream `migration-marshal-to-text'): base64 is the fallback
+#    for the strings which are not valid UTF-8, without which the emitted file would not be
+#    valid JSON at all. Debian equivalents, for the packaging channels:
+#    libyojson-ocaml-dev and libbase64-ocaml-dev.
 OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras \
-                lablgtk3-sourceview3 conf-gtksourceview3
+                lablgtk3-sourceview3 conf-gtksourceview3 yojson base64
 
 # `opam' packages for tooling (editor support and documentation, not needed to build):
 OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server
