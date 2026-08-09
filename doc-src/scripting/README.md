@@ -614,6 +614,42 @@ It is a *lint*, not a promise: it catches what can be decided by reading, and le
 channel what only the running model can answer (whether a machine may be started right now,
 whether a value satisfies a treeview constraint).
 
+### Turning a `.mrn` into a shell script
+
+A `.mrn` says **what** a lab is. A shell script says what to **do** with it — wait for a guest,
+capture a result, loop over the machines. `mrn2sh` is the door from one to the other:
+
+```bash
+mrn2sh lab.mrn > lab.sh && chmod +x lab.sh
+./lab.sh                     # same effect as: mrnctl -f lab.mrn
+./lab.sh /tmp/other.mar      # …on another project file
+```
+
+`mrn2sh` is `mrn-check --to-bash` under another name, and that is not packaging: **the check is
+a precondition of the translation.** A file with an error produces no script at all — a script
+built on a faulty source would be faulty too — and the diagnostics go to standard error so the
+script itself stays clean on standard output.
+
+The result is a plain, readable script: a preamble (`set -euo pipefail`, a socket guard, a `ctl`
+helper that echoes each request), your comments where you put them, one `ctl` call per request,
+and the project path hoisted into `PROJECT="${1:-…}"` when the file names exactly one — so the
+script takes an optional `.mar` argument. Nothing else is invented: the translation never adds a
+`wait` you did not ask for.
+
+**Why a tool rather than `sed`.** Because a free-tail argument may hold spaces, and only the
+arity says where it starts:
+
+```
+rc-set m1 echo "hello world" >> /mnt/hostfs/log     # in the .mrn
+```
+```bash
+ctl rc-set m1 'echo "hello world" >> /mnt/hostfs/log'    # what mrn2sh emits
+ctl rc-set m1 echo "hello world" >> /mnt/hostfs/log      # what a sed emits — and it redirects!
+```
+
+The translation is **one-way**. Once you have edited `lab.sh`, it is the source; regenerating
+overwrites it, and the generated header says so.
+
 ---
 
 ## 13. When it does not work

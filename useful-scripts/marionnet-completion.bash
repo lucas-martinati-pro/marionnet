@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Bash completion for marionnet-ctl (mrnctl) and mrn-check.
+# Bash completion for marionnet-ctl (mrnctl), mrn-check and mrn2sh.
 #
 #   . /path/to/marionnet-completion.bash      # or drop it in /etc/bash_completion.d/
 #
@@ -306,7 +306,7 @@ _marionnet_ctl_completion() {
 #                                mrn-check
 # --------------------------------------------------------------------------
 
-_MRN_CHECK_OPTS='-s --socket= -g --grammar= --ctl= -q --quiet -h --help'
+_MRN_CHECK_OPTS='-s --socket= -g --grammar= --ctl= -q --quiet -b --to-bash -h --help'
 
 _mrn_check_completion() {
   _mrn_cur="${COMP_WORDS[COMP_CWORD]}"
@@ -325,4 +325,4 @@ _mrn_check_completion() {
 }
 
 complete -F _marionnet_ctl_completion marionnet-ctl mrnctl
-complete -F _mrn_check_completion mrn-check
+complete -F _mrn_check_completion mrn-check mrn2sh

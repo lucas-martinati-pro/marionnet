@@ -16,7 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# mrn-check — check a .mrn batch file before feeding it to `marionnet-ctl -f`.
+# mrn-check — check a .mrn batch file before feeding it to `marionnet-ctl -f`, and translate it
+# into the shell script it is the declarative half of (--to-bash, also reachable as mrn2sh).
 #
 # A .mrn file is one channel request per line (doc-src/scripting/README.md § 12). Sending it
 # blind means finding the fifth line's mistake after the first four have already changed the
@@ -37,6 +38,16 @@
 # $(PREFIX)/bin next to marionnet-ctl, and nothing installs bashbricks there. A relative source
 # would work in the source tree and break once installed.
 #
+# TRANSLATING TO BASH (--to-bash, or invoked as mrn2sh). A .mrn file says *what* a lab is; a
+# shell script says what to *do* with it — wait for a guest, capture a result, loop over the
+# machines. The translation is the one-way door between the two, and it belongs here for a
+# reason that is not convenience: emitting from a file nobody checked would produce a broken
+# script, so the check is a *precondition* of the translation and nothing is written when the
+# file has an error. It is also why a `sed` would not do — the free-tail argument of a command
+# may hold spaces (`open /a path/lab.mar`, `history-set <cow> comment some text`), and knowing
+# where it starts means knowing the arity, which is exactly what this file already reads from
+# the server.
+#
 # Requires: jq. Optionally (online mode): marionnet-ctl and a running Marionnet.
 
 set -euo pipefail
@@ -49,10 +60,14 @@ readonly EXIT_USAGE=2     # our own fault: no grammar, unreadable file, missing 
 usage() {
   cat <<EOF
 Usage: $PROGNAME [options] <file.mrn>|-
+       mrn2sh [options] <file.mrn>|-        # same thing, with --to-bash implied
 
-Checks a batch file of channel requests without sending anything.
+Checks a batch file of channel requests without sending anything, and optionally translates
+it into the equivalent shell script (on standard output).
 
 Options:
+  -b, --to-bash         print the equivalent bash script instead of a report; nothing is
+                        printed when the file has an error (implied by the name mrn2sh)
   -s, --socket=PATH     control socket of a running Marionnet
                         (default: \$MARIONNET_CONTROL_SOCKET)
   -g, --grammar=FILE    check offline against a snapshot of the vocabulary,
@@ -62,6 +77,9 @@ Options:
   -h, --help            this message
 
 Exit codes: 0 the file is valid · $EXIT_INVALID it has errors · $EXIT_USAGE nothing could be checked.
+With --to-bash, the diagnostics go to standard error and the script to standard output:
+
+  mrn2sh lab.mrn > lab.sh && chmod +x lab.sh
 
 The vocabulary is never written here: it comes from the running Marionnet, which publishes it
 (marionnet-ctl help). A snapshot is a cache, never a second source of truth.
@@ -79,6 +97,8 @@ grammar_file=""
 ctl=""
 quiet=0
 file=""
+# The second name implies the second output, the way mrnctl is a second name of marionnet-ctl.
+to_bash=0; [[ $PROGNAME == mrn2sh ]] && to_bash=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -89,6 +109,7 @@ while [[ $# -gt 0 ]]; do
     --ctl)         [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; ctl="$2"; shift 2 ;;
     --ctl=*)       ctl="${1#*=}"; shift ;;
     -q|--quiet)    quiet=1; shift ;;
+    -b|--to-bash)  to_bash=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     --)            shift; break ;;
     -)             break ;;   # the file, read from standard input — not an option
@@ -178,7 +199,12 @@ authoritative=0
 errors=0
 warnings=0
 
-say() { (( quiet )) || printf '%s\n' "$*"; }
+# In translation mode standard output carries the script, so the report goes to standard error:
+# a diagnostic mixed into the generated file would be a syntax error in it.
+say() {
+  (( quiet )) && return 0
+  if (( to_bash )); then printf '%s\n' "$*" >&2; else printf '%s\n' "$*"; fi
+}
 err()  { errors=$((errors+1));   say "$file:$1: error — $2"; }
 warn() { warnings=$((warnings+1)); say "$file:$1: warning — $2"; }
 
@@ -357,6 +383,132 @@ check_line() {  # $1 = line number, $2… = the tokens of the request
 }
 
 # --------------------------------------------------------------------------
+#                        Translation to bash (--to-bash)
+# --------------------------------------------------------------------------
+
+# One entry per line of the source file: a comment or a blank line as it stands, a request as the
+# `ctl` call it becomes. Kept aside rather than printed as we go, because a file with one error
+# must produce *no* script at all.
+declare -a EMIT=()
+# Parallel to EMIT: the project path a line names, empty when it names none. Kept aside because
+# whether that path becomes a variable is a decision of the *whole* file, not of one line — and a
+# line rendered before the decision would otherwise reference a variable that never gets defined.
+declare -a EMIT_PROJ=()
+
+# The paths a project command names. Hoisted into a variable only when the file names exactly one
+# of them — a rule that is decidable by reading, which is the only kind this tool may apply.
+declare -a PROJECT_PATHS=()
+
+# A token as bash must read it back. The bare form is kept for what needs no quotes, because the
+# point of the exercise is a script a human will edit.
+shquote() {  # $1 = token
+  local s="$1"
+  if [[ $s =~ ^[A-Za-z0-9_@%+=:,./-]+$ ]]; then printf '%s' "$s"; return 0; fi
+  s=${s//"'"/"'\\''"}
+  printf "'%s'" "$s"
+}
+
+# Does this verb take a project path as its FIRST argument? Read from the published syntax, never
+# from a list of verbs written here — and read at the right place: `rc-set` also mentions
+# "<absolute path>", inside its [--from=] option, and hoisting *that* would have turned the
+# component name into the project variable. Measured, not assumed.
+verb_takes_project_path() {  # $1 = verb
+  local rest="${SYNTAX[$1]:-}"
+  rest="${rest#* }"                       # drop the verb itself
+  [[ $rest == '<absolute path>'* ]]
+}
+
+# Answers in RENDERED rather than on standard output, and that is not a style: a command
+# substitution runs in a subshell, where the PROJECT_PATHS this function fills would be lost.
+RENDERED=""
+RENDERED_PROJ=""
+
+# The `ctl` call one request becomes. THIS is what a sed could not do: the surplus tokens of a
+# free-tail command belong to its *last* positional argument, and only the arity says where that
+# argument starts. Positionals first, then options — the very partition the server applies
+# (control_server.ml:342), so the meaning is unchanged and the shape is predictable.
+render_line() {  # $1 = verb, $2… = the tokens after it
+  local verb="$1"; shift
+  local t out="ctl $verb"
+  RENDERED_PROJ=""
+  local -a args=() opts=()
+  for t in "$@"; do
+    if [[ ${#t} -gt 2 && $t == --* ]]; then opts+=("$t"); else args+=("$t"); fi
+  done
+
+  local max="${MAX_ARGS[$verb]:-0}" tail="${FREE_TAIL[$verb]:-false}"
+  local n=${#args[@]}
+  if [[ $tail == true ]] && (( n > max )) && (( max >= 1 )); then
+    local -a head=() rest=()
+    local i
+    for (( i=0; i < max-1; i++ )); do head+=("${args[i]}"); done
+    for (( i=max-1; i < n; i++ )); do rest+=("${args[i]}"); done
+    args=( ${head[@]+"${head[@]}"} "$(printf '%s ' "${rest[@]}")" )
+    args[${#args[@]}-1]="${args[${#args[@]}-1]% }"   # the join adds one trailing space
+  fi
+
+  local first=1
+  for t in ${args[@]+"${args[@]}"}; do
+    if (( first )) && verb_takes_project_path "$verb"; then
+      PROJECT_PATHS+=("$t"); RENDERED_PROJ="$(shquote "$t")"
+    fi
+    out+=" $(shquote "$t")"
+    first=0
+  done
+  for t in ${opts[@]+"${opts[@]}"}; do out+=" $(shquote "$t")"; done
+  RENDERED="$out"
+}
+
+emit_script() {
+  local path="" p uniq=1
+  # Hoist only if every project command names the same path: two different ones would need two
+  # variables, and choosing their names for the user is not this tool's business.
+  if (( ${#PROJECT_PATHS[@]} > 0 )); then
+    path="${PROJECT_PATHS[0]}"
+    for p in "${PROJECT_PATHS[@]}"; do [[ $p == "$path" ]] || uniq=0; done
+  fi
+
+  printf '%s\n' '#!/bin/bash'
+  printf '#\n'
+  printf '# Generated from %s\n' "$file"
+  printf '# by %s. THIS file is the one to edit: the .mrn is the declarative half, and\n' "$PROGNAME"
+  printf '# regenerating overwrites whatever you add here.\n#\n'
+  printf '# It drives a Marionnet started with --control-socket PATH; see\n'
+  printf '# doc-src/scripting/README.md for what the requests below mean.\n\n'
+  printf '%s\n\n' 'set -euo pipefail'
+  printf '%s\n' 'MRNCTL="${MRNCTL:-mrnctl}"'
+  if (( ${#PROJECT_PATHS[@]} > 0 )); then
+    if (( uniq )); then
+      # Inside "${1:-...}" a space is harmless, but a quote, a $ or a backtick would not be.
+      local d="$path"
+      d=${d//\\/\\\\}; d=${d//\"/\\\"}; d=${d//\$/\\\$}; d=${d//\`/\\\`}
+      printf 'PROJECT="${1:-%s}"\n' "$d"
+    else
+      printf '# The source named more than one project file, so the paths stayed literal below.\n'
+    fi
+  fi
+  printf '\n'
+  printf '%s\n' 'command -v "$MRNCTL" >/dev/null ||'
+  printf '%s\n' '  { echo "$0: no mrnctl in PATH: set \$MRNCTL" >&2; exit 2; }'
+  printf '%s\n' '[[ -n ${MARIONNET_CONTROL_SOCKET:-} ]] ||'
+  printf '%s\n' '  { echo "$0: start Marionnet with --control-socket and export \$MARIONNET_CONTROL_SOCKET" >&2; exit 2; }'
+  printf '\n'
+  printf '%s\n' '# Echoes the request, then hands it over. `set -e` is the whole error handling:'
+  printf '%s\n' '# marionnet-ctl exits 1 on a refusal, 3 when nothing answers.'
+  printf '%s\n' 'ctl() { echo "+ $*" >&2; "$MRNCTL" "$@"; }'
+  printf '\n'
+  # The substitution happens here and not in [render_line]: only now is it known that every
+  # project command names the same file. The literal replaced is the one that line rendered, so
+  # nothing else on it can be hit by accident.
+  local i line lit
+  for i in "${!EMIT[@]}"; do
+    line="${EMIT[i]}"; lit="${EMIT_PROJ[i]}"
+    if (( uniq )) && [[ -n $lit ]]; then line="${line/"$lit"/\"\$PROJECT\"}"; fi
+    printf '%s\n' "$line"
+  done
+}
+
+# --------------------------------------------------------------------------
 #                                 Main
 # --------------------------------------------------------------------------
 
@@ -368,12 +520,19 @@ while IFS= read -r raw || [[ -n $raw ]]; do
   lineno=$((lineno+1))
   # A comment is a line whose first non-blank character is '#', exactly as marionnet-ctl reads
   # it: a '#' met in the middle may belong to a label or a path.
-  [[ $raw =~ ^[[:space:]]*(#|$) ]] && continue
+  if [[ $raw =~ ^[[:space:]]*(#|$) ]]; then
+    # A comment belongs to whoever wrote it: it crosses the translation untouched.
+    (( to_bash )) && { EMIT+=("$raw"); EMIT_PROJ+=(""); }
+    continue
+  fi
   statements=$((statements+1))
   # shellcheck disable=SC2086  # deliberate: the line is split into tokens, as the channel does
   set -- $raw
   [[ -n $first_verb ]] || first_verb="$1"
   check_line "$lineno" "$@"
+  if (( to_bash )) && [[ -n ${MIN_ARGS[$1]+set} ]]; then
+    render_line "$@"; EMIT+=("$RENDERED"); EMIT_PROJ+=("$RENDERED_PROJ")
+  fi
 done < <(if [[ $file == "-" ]]; then cat; else cat -- "$file"; fi)
 
 if (( statements == 0 )); then
@@ -388,7 +547,9 @@ fi
 
 if (( errors == 0 )); then
   say "$file: $statements request(s), no error$( (( warnings )) && printf ', %d warning(s)' "$warnings" )"
+  (( to_bash )) && emit_script
   exit 0
 fi
 say "$file: $errors error(s), $warnings warning(s)"
+(( to_bash )) && say "$file: nothing emitted — a script built on a faulty file would be faulty too"
 exit $EXIT_INVALID

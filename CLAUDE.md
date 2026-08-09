@@ -294,8 +294,15 @@ Reprise : appliquer le skill `chantier-long`.
   déjà »** — `help` sans argument rend `kinds`/`actions`/`beyond_gui`, un treeview rend `slugs` ;
   **piège attrapé au banc** : `slugs` doit venir d'`editable_headers`, pas de `columns`, sans quoi
   la complétion propose des champs que le serveur refuse)
+  et **ép. 11** (**`mrn2sh`**, § 5.8 : traduire un `.mrn` en `.sh` pilotant `mrnctl` —
+  `mrn-check --to-bash` sous un second nom, parce que les **deux** raisons qui justifient l'outil
+  pointent le vérificateur : le **quoting** de la queue libre [seule l'arité dit où elle commence ;
+  un `sed` produit un script qui *redirige* au lieu de transmettre] et le contrôle comme
+  **précondition** [un fichier fautif ne rend **aucun** script] ; le rendu **n'invente rien** —
+  pas de `wait` ajouté — sauf le chemin de projet hissé en `${1:-…}`, et **seulement** si le
+  fichier n'en nomme qu'un ; discriminant : **même réseau** que `mrnctl -f`)
   faits → **les épisodes 3, 4 (a, b, c, d, d-2a, d-2b, d-2c, d-3, e, f, g, h), 5 (a, b, c, d), 6,
-  7, 8, 9 et 10 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
+  7, 8, 9, 10 et 11 sont clos** — le § 9 est **entièrement soldé**. La direction du § 10 — le scripting
   **descend dans les composants** — est **ouverte, démontrée et refermée** (l'invité rend la main
   au script). **Plus aucun défaut connu ouvert**, et la condition posée à la clôture est **levée** :
   le chantier est **clôturable (MODE C)**, sur décision de l'auteur.

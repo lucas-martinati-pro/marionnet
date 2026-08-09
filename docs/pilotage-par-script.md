@@ -1382,6 +1382,51 @@ listes triées, pas une inclusion. Sans lui, le banc ne mesurerait que la cohér
 complétion avec elle-même, c'est-à-dire précisément le défaut qu'on veut rendre impossible.
 Mesuré : identiques, 39 verbes.
 
+### 5.8 `mrn2sh` — du `.mrn` au `.sh` (épisode 11)
+
+`mrn-check --to-bash`, également atteignable sous le nom **`mrn2sh`** (symlink versionné, patron
+`mrnctl`/`marionnet-ctl`). L'objectif posé était « étudier et éventuellement construire » ; l'étude
+a conclu **oui**, mais pas pour la raison qu'on croyait.
+
+**La raison n'est PAS la réécriture ligne à ligne.** `ctl <ligne>` répété, c'est un `sed`. Ce
+qu'un `sed` ne peut pas faire, c'est **citer** : la queue libre d'une commande (`free_tail`) peut
+contenir des espaces, et seule l'**arité** dit où elle commence. Sur
+`rc-set m1 echo "hello world" >> /mnt/hostfs/log`, un `sed` produit un script qui **redirige** au
+lieu de transmettre. Le traducteur, lui, connaît l'arité — il la lit déjà du serveur.
+
+**Et la seconde raison, c'est la précondition.** Émettre depuis un fichier que personne n'a
+vérifié produit un script fautif. Le contrôle n'est donc pas *à côté* de la traduction, il en est
+la **condition** : un fichier en erreur ne rend **aucun** script (stdout à zéro octet, sortie 1,
+diagnostics sur **stderr** pour ne pas salir le script). C'est ce qui a tranché la forme :
+**une seule implémentation**, la même passe avec une seconde sortie, et non un outil séparé qui
+rechargerait la grammaire ou appellerait le vérificateur en sous-processus.
+
+**Ce que le rendu contient, et ce qu'il ne contient pas.** Préambule (`set -euo pipefail`,
+résolution de `mrnctl`, garde de socket, fonction `ctl` qui journalise la requête), les
+**commentaires du `.mrn` à leur place**, un `ctl` par requête, et le chemin du projet hissé en
+`PROJECT="${1:-…}"` — **seulement si le fichier n'en nomme qu'un**, règle décidable par lecture.
+S'ils diffèrent, les chemins restent littéraux et le script le dit en commentaire. Rien d'autre
+n'est inventé : pas de `wait` ajouté après un `start`, pas de section « collecte » à trous. La
+ligne que ce chantier ne franchit pas est celle où un outil écrit une commande que l'utilisateur
+n'a pas demandée.
+
+**Trois pièges, tous mesurés :**
+
+- **`verb_takes_project_path` doit lire le PREMIER placeholder, pas la chaîne entière** :
+  `rc-set` mentionne `<absolute path>` **dans son option `--from=`**, si bien que la première
+  version transformait le nom du composant en `"$PROJECT"`.
+- **La décision de hisser appartient au fichier entier, pas à la ligne.** Rendre `"$PROJECT"` au
+  fil de l'eau, puis découvrir en fin de fichier que les chemins diffèrent, laissait un script
+  référençant une variable **jamais définie** — donc mort sous `set -u`. D'où le rendu littéral
+  et une substitution faite à l'émission, quand la décision est prise.
+- **Un tableau rempli dans un `$( … )` est perdu** : la substitution de commande est un
+  sous-shell. `render_line` répond dans `RENDERED`, pas sur la sortie standard.
+
+**Le discriminant du banc** (`mrn2sh-bench.sh`, M4) : le script traduit doit produire **le même
+réseau** que `mrnctl -f` sur le même fichier — empreinte (composants, câbles, ports, adresses)
+comparée des deux côtés. L'**adresse MAC en est exclue**, tirée au hasard à la création : une
+empreinte qui l'inclurait mesurerait le générateur d'aléa, pas la traduction.
+
 ---
 
 ## 6. Architecture C — le décor pré-fabriqué (`-r`)
@@ -1575,6 +1620,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **6** | Client `marionnet-ctl` (symlink `mrnctl`), **sans grammaire** — plus la commande serveur `help` qui publie `arity_of_command`, et `bench-lib.sh` qui retire le préambule recopié dans les huit bancs | **fait** (2026-08-08) — 36 assertions (`ctl-bench.sh`, C1→C8), et `can-bench.sh` converti rend les **16 mêmes** assertions qu'avant |
 | ~~7~~ | ~~Voie C : générateur de `.mar`~~ | **absorbé** (ép. 4g) — le décor se fabrique par le canal et s'enregistre par `save-as` (§ 6) |
 | **7** | La garde d'`open` : le faux négatif intermittent (`internal — flagged as unsaved`) était une **course** — `Cortex` lance un thread par commit `on_commit`, donc la réaction des `dotoptions` restaurées pouvait salir le projet *après* l'enregistrement de son état | **fait** (2026-08-08) — correctif = **retirer** les callbacks pendant la restauration (`Sketch.tuning`), 7/10 → 0/10 au banc `open-bench.sh` sous `taskset -c 0` |
+| **11** | **`mrn2sh`** (§ 5.8) : traduire un `.mrn` en `.sh` pilotant `mrnctl` — `mrn-check --to-bash` sous un second nom, le **contrôle étant la précondition** de la traduction (un fichier fautif ne rend aucun script). Justifié par le **quoting** de la queue libre, qu'un `sed` ne peut pas faire | **fait** (2026-08-09) — 32 assertions (`mrn2sh-bench.sh`), **discriminant M4** : même réseau par les deux routes |
 | **10** | **Complétion Bash** (§ 5.7) : `useful-scripts/marionnet-completion.bash`, **dérivée** de `help` — et les **noms** (composants, ports, états de disque, champs) viennent de la session vivante. Trois ajouts au serveur, tous « publier ce qu'il savait déjà » : `kinds`/`actions`/`beyond_gui` dans `help`, `slugs` dans les treeviews | **fait** (2026-08-09) — 40 assertions (`completion-bench.sh`), **discriminant L18** : égalité stricte des verbes proposés et des verbes publiés |
 | **9** | **`mrn-check`** (§ 5.6) : vérifier un `.mrn` **sans rien envoyer** — le mode lot n'a pas de transaction. Grammaire **demandée au serveur** (`--grammar=` pour l'instantané hors ligne), plus un **modèle rejoué depuis le fichier** (noms, ports, occupation), cru seulement quand le fichier part d'un `new` | **fait** (2026-08-09) — 32 assertions (`check-bench.sh`), **discriminant K4** : même ligne et même motif que l'arrêt réel de `mrnctl -f` |
 | **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
@@ -3305,3 +3351,48 @@ défaut même qu'on veut rendre impossible. **Non-régression** : `dune build`, 
 la syntaxe se cassaient sur `wait <component> (--state=on|off|sleeping | --ready)` (un token qui
 n'est ni une option ni un placeholder) et sur les placeholders à espace (`<absolute path>`,
 `<cow file>`), d'où l'extraction par accumulation entre `<` et `>` plutôt que mot à mot.
+
+---
+
+### 2026-08-09 — épisode 11 : un traducteur qui cite, et qui refuse
+
+**Livrable** : `mrn-check --to-bash` + symlink versionné `useful-scripts/mrn2sh`. Décisions et
+pièges en **§ 5.8** ; on ne les répète pas ici.
+
+**L'objectif disait « étudier et éventuellement construire ». L'étude a d'abord donné tort à
+l'idée évidente.** Traduire un `.mrn` en `.sh`, c'est écrire `ctl <ligne>` autant de fois qu'il y
+a de lignes : un `sed` de quinze caractères. Un outil pour cela ne se justifie pas, et
+`mrnctl -f lab.mrn` fait déjà tourner le fichier.
+
+**Deux faits ont retourné la conclusion.** Le premier est le **quoting** : la queue libre d'une
+commande (`free_tail`) peut contenir des espaces, et **seule l'arité dit où elle commence**. Sur
+`rc-set m1 echo "hello world" >> /mnt/hostfs/log`, un `sed` produit un script qui **redirige** au
+lieu de transmettre — le banc garde le témoin de cette réécriture naïve à côté de la bonne, pour
+que la différence soit lisible. Le second est la **précondition** : émettre depuis un fichier que
+personne n'a vérifié produit un script fautif. Ces deux faits pointent le même endroit — le
+vérificateur, qui lit déjà l'arité et fait déjà le contrôle. D'où la forme : **une seule passe,
+une seconde sortie**, et un second nom (`mrn2sh`) qui implique l'option, comme `mrnctl` est un
+second nom de `marionnet-ctl`.
+
+**Ce que le traducteur s'interdit.** Il n'ajoute pas de `wait` après un `start`, pas de section
+« collecte » à trous, pas de variable pour chaque valeur répétée. Une seule commodité, et elle est
+**décidable par lecture** : le chemin du projet devient `PROJECT="${1:-…}"` *si et seulement si*
+le fichier n'en nomme qu'un ; sinon les chemins restent littéraux et le script le dit. La ligne
+que ce chantier ne franchit pas est celle où un outil écrit une commande que l'utilisateur n'a pas
+demandée — c'était la troisième option proposée, et elle a été écartée pour cela.
+
+**Trois pièges, tous trouvés en exécutant :** `verb_takes_project_path` lisait la chaîne de syntaxe
+entière, si bien que le `<absolute path>` caché dans l'option `--from=` de `rc-set` transformait le
+nom du composant en `"$PROJECT"` ; la décision de hisser appartient au **fichier entier** et non à
+la ligne, si bien qu'un rendu au fil de l'eau laissait, quand les chemins différaient, un script
+référençant une variable **jamais définie** (mort sous `set -u`) ; et un tableau rempli dans un
+`$( … )` est perdu, la substitution de commande étant un sous-shell — d'où `RENDERED`.
+
+**Preuve** : `mrn2sh-bench.sh`, **32 assertions, 0 échec**. Le discriminant est **M4** : le script
+traduit et `mrnctl -f` doivent produire **le même réseau** sur le même fichier, empreinte
+comparée — composants, câbles, ports, adresses. L'**adresse MAC en est exclue**, tirée au hasard à
+la création : une empreinte qui l'inclurait mesurerait le générateur d'aléa. Le reste couvre le
+bout en bout du quoting (`rc-get` rend le contenu **entier, espaces compris**), un chemin de
+projet à espaces, le cas des deux projets, et le refus d'émettre (stdout à zéro octet).
+**Non-régression** : `check-bench` 32/32, `completion-bench` 40/40 (assertion mise à jour :
+`--to-bash` s'ajoute aux options complétées de `mrn-check`/`mrn2sh`).
