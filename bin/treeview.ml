@@ -1225,15 +1225,33 @@ object(self)
     Printf.kfprintf flush stderr "Next identifier: %i\n" next_identifier;
     Forest.print_forest ~string_of_node ~channel:stderr forest
 
+  (* The file this treeview is saved into in a `v3 project: the historical radical (states/ifconfig,
+     states/defects, ...) with a .json suffix. The renaming is what keeps an old binary from
+     reading a new project — see the comment on `legacy_data_files' in state.ml. Work-stream
+     `migration-marshal-to-text'. *)
+  method json_filename = (self#filename) ^ ".json"
+
+  (* Where this treeview is to be read, according to the version of the project being opened.
+     Treeview_ifconfig overrides the choice for `v0 and `v1 (states/ports), and passes the result
+     to super#load explicitly. *)
+  method file_name_of_project_version : [ `v0 | `v1 | `v2 | `v3 ] -> string = function
+  | `v3             -> self#json_filename
+  | `v0 | `v1 | `v2 -> self#filename
+
   method save ?(with_forest_treatment=fun x->x) () =
-    let file_name = self#filename in
+    let file_name = self#json_filename in
     Log.printf1 "Treeview.treeview#save: saving into %s\n" file_name;
     let forest = with_forest_treatment (self#get_complete_forest) in
-    next_identifier_and_content_forest_marshaler#to_file
+    Treeview_row.Json.to_JSON_file
       (self#counter#get_next_fresh_value, forest)
       file_name;
 
-  method load ?(file_name=self#filename) ~(project_version : [ `v0 | `v1 | `v2 ]) () =
+  method load ?file_name ~(project_version : [ `v0 | `v1 | `v2 | `v3 ]) () =
+    let file_name =
+      match file_name with
+      | Some x -> x
+      | None   -> self#file_name_of_project_version (project_version)
+    in
     let () = Log.printf1 "Treeview.treeview#load: about to load the treeview from file %s\n" file_name in
     self#detach_view_in
       (fun () ->
@@ -1242,6 +1260,12 @@ object(self)
         try
           let (next_identifier, complete_forest) =
             match project_version with
+            (* JSON since `v3. A decoding failure is raised, not returned, so that it joins the
+               other failures of this method — which the `with' below still turns into an empty
+               forest and a line in the log. *)
+            | `v3       -> (match Treeview_row.Json.of_JSON_file (file_name) with
+                            | Ok content -> content
+                            | Error msg  -> failwith msg)
             | `v2 | `v1 -> next_identifier_and_content_forest_marshaler#from_file (file_name)
             | `v0       -> Backward_compatibility.load_from_old_file (file_name)
           in

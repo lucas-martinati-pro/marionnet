@@ -729,6 +729,6 @@ class network :
 module Xml :
   sig
     val network_marshaller : Xforest.t Ocamlbricks.Oomarshal.marshaller
-    val load_network       : project_version:[ `v0 | `v1 | `v2 ] -> network -> string -> unit
+    val load_network       : project_version:[ `v0 | `v1 | `v2 | `v3 ] -> network -> string -> unit
     val save_network       : network -> string -> unit
   end

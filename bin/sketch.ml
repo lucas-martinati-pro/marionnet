@@ -249,7 +249,9 @@ class tuning
   method save_to_file (file_name : string) =
     (* we are manually setting the verbosity 3 *)
     (if (Global_options.Debug_level.get ()) >= 3 then Xforest.print_xforest ~channel:stderr network#to_forest);
-    network_marshaller#to_file self#to_forest file_name
+    (* JSON since `v3 (work-stream `migration-marshal-to-text'), the caller providing the name
+       of the file: netmodel/dotoptions.json. *)
+    Xforest.to_JSON_file (self#to_forest) file_name
 
   (** This method is used just for undumping dotoptions, so is not strict.
       For instance, exceptions provoked by bad cable names are simply ignored. *)
@@ -257,9 +259,12 @@ class tuning
     ListExtra.foreach names (fun n -> try (network#reversed_cable_set true n) with _ -> ())
 
   (** Undump the state of [self] from the given file. *)
-  method load_from_file ~(project_version: [`v0|`v1|`v2]) (fname : string) =
+  method load_from_file ~(project_version: [`v0|`v1|`v2|`v3]) (fname : string) =
     let (forest:Xforest.t) =
       match project_version with
+      | `v3       -> (match Xforest.of_JSON_file (fname) with
+                      | Ok forest -> forest
+                      | Error msg -> failwith (Printf.sprintf "dotoptions#load_from_file: %s" msg))
       | `v2 | `v1 -> network_marshaller#from_file (fname)
       | `v0       -> Forest_backward_compatibility.load_from_old_file (fname)
     in

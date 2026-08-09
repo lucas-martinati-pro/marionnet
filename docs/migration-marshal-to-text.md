@@ -610,6 +610,109 @@ huit chemins de `state.ml`, la détection de version et la bascule `closing_proj
 l'ép. 4, et c'est **là** que se posera la question laissée ouverte : `v3` hérite-t-il de
 l'inversion d'ordre des nœuds à chaque cycle (§ 7.5, fait n° 1) ou la corrige-t-on ?
 
+## 10. Le branchement : `v3` écrit et relu (ép. 4)
+
+> **Fait le 2026-08-09.** Depuis cet épisode, **tout `.mar` que Marionnet écrit est du `v3`** :
+> huit fichiers de texte, dont sept en JSON. La lecture `v0`/`v1`/`v2` est intacte, ligne pour
+> ligne — aucun chemin de lecture n'a été retiré.
+
+### 10.1 Les huit chemins, et le seul endroit où la version se décide
+
+Le branchement lui-même est mécanique et tient en quatre gestes, tous commandés par le **type**
+`[ `v0 | `v1 | `v2 | `v3 ]` — c'est lui qui a fait apparaître, à la compilation, les six endroits
+qui décident (`state.ml`, `user_level.ml{,i}`, `sketch.ml{,i}`, `treeview.ml`,
+`treeview_ifconfig.ml`) :
+
+| Où | Ce qui change |
+|---|---|
+| `state.ml` (`project_paths`) | deux chemins neufs, `networkFile_json` et `dotoptionsFile_json` ; les anciens **restent**, ils servent à la lecture d'un vieux projet |
+| `state.ml` | `opening_project_version` reconnaît `"v3"` ; `closing_project_version` **devient** `` `v3 `` ; l'ouverture choisit le fichier selon la version lue |
+| `treeview.ml` | `#json_filename` = radical + `.json` ; `#save` y écrit par `Treeview_row.Json`, `#load` y lit quand le projet est `v3` |
+| `treeview_ifconfig.ml` | `#json_counters_filename`, le repli de détection de version, et le choix du fichier `v0`/`v1`/`v2`/`v3` |
+
+Deux détails que le § 2 ne pouvait pas porter :
+
+- **le fichier de compteurs se nomme d'après le radical**, jamais d'après le fichier de forest :
+  `states/ifconfig-counters.json`, et non `ifconfig.json-counters`. C'est ce que faisait déjà la
+  version `Marshal`, et c'est le nom annoncé au § 2 ;
+- **le repli de détection teste le `.json` en tête** (`try_to_understand_in_which_project_version_we_are`).
+  Sans cela un `.mar` `v3` dont le fichier `version` est absent ou illisible serait rapporté `v2`
+  — deux projets du corpus passent réellement par ce chemin.
+
+### 10.2 Ce que le branchement seul aurait laissé faux : les fichiers `v2` survivants
+
+Un projet ouvert en `v2` conserve ses anciens fichiers dans le **répertoire de travail**, et
+l'archive est faite de ce répertoire. Écrire les `.json` à côté d'eux aurait produit un `.mar`
+portant **les deux formes**, dont l'une périmée — et la décision « compat descendante par
+renommage » (§ 3) serait devenue fausse au moment même où on la mettait en œuvre : un vieux
+binaire lit `version` = `"v3"`, ne comprend pas, **tombe sur son propre repli de détection**,
+trouve `states/ifconfig` et ouvre sans un mot l'état d'**avant**. Silencieusement faux, ce que
+tout ce chantier cherche à supprimer.
+
+D'où, **décision de l'auteur (2026-08-09)** : les fichiers de données `v2` (et `v0`/`v1`) sont
+**supprimés du répertoire de travail** juste avant la construction de l'archive
+(`project_paths#legacy_data_files`, lu par `save_project`). Ce n'est pas un geste nouveau dans ce
+code : `treeview_ifconfig#load` supprime déjà `states/ports` après l'avoir lu.
+
+### 10.3 La question laissée ouverte, tranchée
+
+**L'inversion d'ordre des nœuds est conservée** — décision de l'auteur (2026-08-09). Elle ne vient
+pas du format mais du couple `#to_forest` / `from_tree` du modèle, elle est identique en `v2`, et
+la corriger ici aurait mélangé un changement de comportement du modèle avec le branchement d'un
+format. Le banc, qui mesure sur **deux** cycles, en reste insensible. Le sujet part dans
+`docs/TODO.md`, avec son vrai argument : un fichier de projet **diffable** est une des raisons
+d'être de ce chantier, et un ordre qui alterne rend tout diff illisible.
+
+### 10.4 Deux faits mesurés, dont un qui corrige le § 5
+
+**Les attributs marshalés dans le forest sont HUIT, pas six.** Le § 5 (ép. 5) en annonce six —
+`rc_config` de machine et de switch, quatre champs Quagga du routeur. Le premier `dotoptions.json`
+écrit par le binaire en montre **deux de plus** : `shuffler` et `invertedCables`
+(`sketch.ml:281,288`, encodés par `Xforest.encode`, c'est-à-dire `Marshal`). Ils sont dans le
+**deuxième** fichier, celui que le canal de pilotage ne publie pas — l'angle mort désigné au
+§ 7.4. L'ép. 5 devra donc les traiter, ou dire pourquoi il ne le fait pas.
+
+**L'ép. 6 dépend de l'ép. 5, pas de l'ép. 4.** Le serveur de contrôle reconnaît un champ `rc_config`
+à l'**en-tête magique de `Marshal`** de sa valeur (`control_server.ml:1438`) : cette valeur reste
+marshalée **en mémoire**, seul son transport dans le fichier change (elle y voyage en base64,
+n'étant pas de l'UTF-8 valide). Mesuré, pas supposé : `rc-bench.sh` rejoué **bout en bout** — les
+sept configurations Quagga posées par le canal, un routeur réellement démarré, `/etc/quagga/zebra.conf`
+lu dans l'invité — est **vert sans une ligne touchée au serveur** (102 assertions). C'est la
+désimbrication de l'ép. 5 qui rendra l'ép. 6 nécessaire.
+
+### 10.5 La preuve
+
+- **Le banc de l'ép. 1, vert** : `marshal-bench.sh`, **49 assertions, 0 échec** sur les 8 projets
+  du corpus. Chacun est ouvert en `v2`, converti par `save-as`, puis **relu quatre fois en `v3`** :
+  c'est exactement la fin d'épisode annoncée au § 5 (« ouvrir un `v2` → sauver → rouvrir »), et le
+  round-trip sémantique strict par le canal (jusqu'à 72 requêtes par projet) est **identique** à
+  celui mesuré avant le branchement.
+- **Deux assertions neuves au banc**, parce que le format a changé sous lui : l'inventaire porte
+  désormais sur les huit noms `v3`, et une assertion **inverse** exige qu'**aucun** fichier `v2` ne
+  subsiste dans l'archive (§ 10.2). L'idempotence octet-à-octet, elle, ne pouvait plus se mesurer
+  sur « 4 octets à position fixe » : le champ obsolète est maintenant une ligne de JSON, dont la
+  longueur varie avec la valeur tirée au hasard — la comparaison masque **cette ligne, et elle
+  seule**, dans les deux fichiers, et exige que tout le reste soit identique (assertion inchangée
+  dans son fond, plus forte que « le fichier a changé »).
+- **Preuve externe** : les **112 fichiers `.json`** produits par le binaire pendant le banc sont
+  relus par le module `json` de `python3` en **UTF-8 strict** — 0 invalide. Un projet de TP réel
+  est désormais un texte que n'importe quel outil lit.
+- **Les trois bancs du chantier `marionnet-pilotage-par-script` qui inspectent le `.mar`**, rejoués
+  et verts : `components-bench.sh` (134), `treeview-bench.sh` (160), `rc-bench.sh` (102, **en mode
+  bout en bout**). Ils ont été adaptés aux noms `v3` ; le seul changement de fond est celui décrit
+  au § 10.4 (chercher un `rc_config` dans le `.mar` demande maintenant de décoder son base64).
+- `dune build` et `dune test` (**134 assertions, 0 échec**) inchangés : les codecs n'ont pas bougé.
+
+### 10.6 Ce que l'épisode 4 ne fait PAS
+
+Il ne **désimbrique** rien : les huit attributs binaires du § 10.4 voyagent en base64, donc
+lisibles par un outil mais pas *lisibles par un humain* — c'est l'ép. 5. Il ne touche pas au canal
+(ép. 6), ne prouve pas la compat descendante côté **vieux binaire** (ép. 8 ; ici on prouve
+seulement que le `.mar` ne lui offre plus de piège), et ne convertit rien en lot. Enfin, le
+`try … with _ -> ()` de `load_counters` **reste** un chemin qui avale : il **journalise**
+désormais ce qu'il rattrape, ce qui ne remplace pas les tests unitaires de l'ép. 3 — cela les
+justifie.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -777,3 +880,39 @@ mesuré). Enfin, `dune test` : **134 assertions, 0 échec**, dont 74 neuves.
 Un déplacement latéral utile au passage : le validateur UTF-8 indépendant est devenu
 `test/utf_8_reference.ml`, **partagé** par les deux programmes de test — une référence unique pour
 l'invariant qui les rend discriminants, et toujours **pas** le prédicat qu'emploie le codec.
+
+### 2026-08-09 — Épisode 4 : `v3` branché — un projet est désormais du texte
+
+**Tout `.mar` que Marionnet écrit est du `v3`** : sept fichiers JSON plus `version`. La lecture
+`v0`/`v1`/`v2` est intacte. Détail au § 10.
+
+Le branchement en lui-même n'a rien appris — le type `[ `v0 | `v1 | `v2 | `v3 ]` a désigné à la
+compilation les six endroits qui décident, et les trois codecs de l'ép. 3 s'y sont posés sans une
+retouche. **Ce que l'épisode a réellement tranché tient en deux points**, et aucun des deux
+n'était dans le § 5.
+
+**1. Écrire le `v3` ne suffisait pas : il fallait EFFACER le `v2`.** Un projet ouvert en `v2` garde
+ses anciens fichiers dans le répertoire de travail, dont l'archive est faite. Le `.mar` aurait donc
+porté les deux formes, l'ancienne périmée — et un vieux binaire, ne comprenant pas `"v3"`, serait
+retombé sur **son propre repli de détection**, aurait trouvé `states/ifconfig` et ouvert l'état
+d'avant **sans un mot**. La décision « compat descendante par renommage » (§ 3) aurait été fausse
+au moment même de sa mise en œuvre. D'où la suppression des fichiers de données `v2` juste avant
+l'archivage (§ 10.2), et une assertion **inverse** au banc : aucun nom `v2` ne doit subsister.
+
+**2. La question laissée ouverte est tranchée : l'inversion d'ordre des nœuds reste** (décision de
+l'auteur). Elle vient du modèle, pas du format ; elle est identique en `v2` ; le banc, qui mesure
+sur deux cycles, y est insensible. Elle part dans `docs/TODO.md` avec son vrai argument — un
+fichier diffable, ce qui est une des raisons de ce chantier.
+
+**Deux faits mesurés, dont un corrige ce document.** Le premier `dotoptions.json` écrit montre
+**huit** attributs marshalés dans le forest, et non six : `shuffler` et `invertedCables`
+s'ajoutent à la liste du § 5, dans le fichier même que le canal ne publie pas (§ 7.4). Le second :
+l'**ép. 6 dépend de l'ép. 5, pas de l'ép. 4** — la valeur d'un `rc_config` reste marshalée en
+mémoire, seul son transport change, si bien que `rc-bench.sh` est vert **bout en bout** (routeur
+démarré, `/etc/quagga/zebra.conf` lu dans l'invité) sans une ligne touchée au serveur de contrôle.
+
+**La preuve** (§ 10.5) : banc de l'ép. 1 **vert — 49 assertions, 0 échec** sur les 8 projets, dont
+la conversion `v2` → `v3` puis quatre relectures ; les **112 fichiers JSON** produits relus en
+UTF-8 strict par `python3`, 0 invalide ; les trois bancs du chantier `marionnet-pilotage-par-script`
+qui inspectent le `.mar` rejoués et verts (134 + 160 + 102 assertions) ; `dune test` inchangé
+(134 assertions).

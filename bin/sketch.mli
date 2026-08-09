@@ -55,7 +55,7 @@ class tuning :
     method iconsize_for_dot           : string
     method labeldistance              : float Cortex.t
     method labeldistance_for_dot      : string
-    method load_from_file             : project_version:[ `v0 | `v1 | `v2 ] -> string -> unit
+    method load_from_file             : project_version:[ `v0 | `v1 | `v2 | `v3 ] -> string -> unit
     method nodesep                    : float Cortex.t
     method nodesep_for_dot            : string
     method rankdir                    : string Cortex.t

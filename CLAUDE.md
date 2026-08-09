@@ -367,8 +367,25 @@ Reprise : appliquer le skill `chantier-long`.
   `lib/STRUCTURES/json_bricks.ml{,i}`, sur lequel les trois codecs s'adossent — `yojson` apparaît
   dans **cette** interface, ce qui est assumé (`xforest.mli` n'en parle toujours pas). `dune test`
   = 134 assertions, 0 échec ; discriminance **remesurée** (repli désarmé → 5 assertions du nouveau
-  banc tombent, tous les round-trips passent). **Prochaine étape = ép. 4** (`v3` dans `state.ml`,
-  les 8 chemins + le repli de détection de version).
+  banc tombent, tous les round-trips passent).
+  **Ép. 4 (le branchement) fait le 2026-08-09**, § 10 de la doc : **tout `.mar` que Marionnet
+  écrit est désormais du `v3`** — sept fichiers JSON plus `version`, lecture `v0`/`v1`/`v2`
+  **intacte**. Le branchement lui-même n'a rien appris (le type `[ `v0|`v1|`v2|`v3 ]` a désigné à
+  la compilation les 6 endroits qui décident) ; ce que l'épisode a tranché tient ailleurs :
+  (1) **écrire le `v3` ne suffisait pas, il fallait effacer le `v2`** — un projet ouvert en `v2`
+  garde ses anciens fichiers dans le répertoire de travail dont l'archive est faite, et un vieux
+  binaire, ne comprenant pas `"v3"`, retombe sur **son propre repli de détection**, trouve
+  `states/ifconfig` et ouvre l'état **d'avant**, sans un mot (d'où `legacy_data_files`, supprimés
+  avant l'archivage, et une assertion **inverse** au banc) ; (2) l'**inversion d'ordre des nœuds
+  est conservée** (décision de l'auteur : elle vient du modèle, pas du format → `docs/TODO.md`) ;
+  (3) les attributs marshalés dans le forest sont **HUIT et non six** — `shuffler` et
+  `invertedCables` de `dotoptions` (`sketch.ml:281,288`) s'ajoutent aux 6 du § 5, ce qui **corrige
+  le périmètre de l'ép. 5** ; (4) l'**ép. 6 dépend de l'ép. 5, pas de l'ép. 4** — la valeur d'un
+  `rc_config` reste marshalée *en mémoire*, seul son transport change, si bien que `rc-bench.sh`
+  est vert **bout en bout** sans une ligne touchée au serveur. Preuve : banc de l'ép. 1 **vert
+  (49 assertions)** sur les 8 projets, **112 fichiers JSON** relus en UTF-8 strict par `python3`
+  (0 invalide), les 3 bancs du chantier pilotage qui inspectent le `.mar` rejoués verts.
+  **Prochaine étape = ép. 5** (désimbrication des 8 attributs binaires).
 
 ## Où puiser
 

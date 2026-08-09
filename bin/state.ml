@@ -50,15 +50,21 @@ type filename = string
 /tmp/marionnet-588078453.dir/foo/tmp/sketch.dot
 /tmp/marionnet-588078453.dir/foo/tmp/sketch.png
 /tmp/marionnet-588078453.dir/foo/states
-/tmp/marionnet-588078453.dir/foo/states/states-forest
-/tmp/marionnet-588078453.dir/foo/states/ifconfig-counters   # previously states/ports-counters
-/tmp/marionnet-588078453.dir/foo/states/ifconfig            # previously states/ports
-/tmp/marionnet-588078453.dir/foo/states/defects
-/tmp/marionnet-588078453.dir/foo/states/texts
+/tmp/marionnet-588078453.dir/foo/states/states-forest.json
+/tmp/marionnet-588078453.dir/foo/states/ifconfig-counters.json   # previously states/ports-counters
+/tmp/marionnet-588078453.dir/foo/states/ifconfig.json            # previously states/ports
+/tmp/marionnet-588078453.dir/foo/states/defects.json
+/tmp/marionnet-588078453.dir/foo/states/texts.json
 /tmp/marionnet-588078453.dir/foo/scripts
 /tmp/marionnet-588078453.dir/foo/netmodel
-/tmp/marionnet-588078453.dir/foo/netmodel/dotoptions.marshal
-/tmp/marionnet-588078453.dir/foo/netmodel/network.xml
+/tmp/marionnet-588078453.dir/foo/netmodel/dotoptions.json
+/tmp/marionnet-588078453.dir/foo/netmodel/network.json
+
+The seven data files above are JSON since the project version `v3 (work-stream
+`migration-marshal-to-text', see docs/migration-marshal-to-text.md). A project saved by an older
+binary has the same seven files without the .json suffix, and as Marshal dumps — including
+netmodel/network.xml, which never was XML. Reading them is unchanged; nothing is written that way
+any more.
 /tmp/marionnet-588078453.dir/foo/hostfs
 /tmp/marionnet-588078453.dir/foo/hostfs/2
 /tmp/marionnet-588078453.dir/foo/hostfs/2/boot_parameters
@@ -198,6 +204,14 @@ class project_paths
     method networkFile             = self#netmodelDir       / "network.xml"
     method dotoptionsFile          = self#netmodelDir       / "dotoptions.marshal"
     (* --- *)
+    (* The same two files in a `v3 project (work-stream `migration-marshal-to-text'): the same
+       data as JSON, under a new name. Renaming is what keeps the backward compatibility: an old
+       binary does not *find* these files, hence never hands a text to Marshal.from_file — the
+       very trick already used for v1 -> v2. The historical radical is kept and the two
+       misleading suffixes (.xml for a Marshal dump, .marshal) disappear. *)
+    method networkFile_json        = self#netmodelDir       / "network.json"
+    method dotoptionsFile_json     = self#netmodelDir       / "dotoptions.json"
+    (* --- *)
     method scriptsDir              = self#extract_concat "scripts"
     method patchesDir              = self#extract_concat "states"
     (* --- *)
@@ -206,6 +220,21 @@ class project_paths
     method treeview_ifconfig_file  = self#possibly_concat "states/ifconfig"      (* "ports" for bzr revno <= 460 *)
     method treeview_defects_file   = self#possibly_concat "states/defects"
     method treeview_documents_file = self#possibly_concat "states/texts"
+    (* --- *)
+    (* The data files of a project saved in `v2 or before, as they sit in the working directory.
+       A project opened in `v2 and saved in `v3 would otherwise be archived with *both* forms,
+       and the older one would be stale: an old binary reads "v3" in the version file, does not
+       understand it, falls back on treeview_ifconfig#try_to_understand_..., finds states/ifconfig
+       and silently opens the state of before. Hence they are removed when saving (see
+       save_project below). The two `v0/`v1 names are listed as well, since a project of that age
+       may still carry states/ports next to what its opening produced. *)
+    method legacy_data_files : filename list =
+      let states = self#extract_concat "states" in
+      [ self#networkFile; self#dotoptionsFile;
+        states / "states-forest";
+        states / "ifconfig"; states / "ifconfig-counters";
+        states / "defects";  states / "texts";
+        states / "ports";    states / "ports-counters"; ]
     (* --- *)
     method tmpDir                  = self#extract_concat "tmp"
     method dotSketchFile           = self#tmpDir            / "sketch.dot"
@@ -275,25 +304,29 @@ class globalState = fun () ->
           the treeview `ifconfig' is saved in an incompatible (forest) format in states/ports (as in `v0)
     - `v2 is the version of trunk revno >= 461 and marionnet 1.0;
           the treeview `ifconfig' is saved in an incompatible (forest) format in states/ifconfig, in order to prevent
-          seg-faults of old binaries reading a new project *)
-  method opening_project_version : [ `v0 | `v1 | `v2 ] option = (* None stands for undefined, i.e. failed to identify *)
+          seg-faults of old binaries reading a new project
+    - `v3 is the first version whose data files are text (JSON) instead of Marshal dumps, and are
+          named accordingly (netmodel/network.json, states/ifconfig.json, ...); work-stream
+          `migration-marshal-to-text'. Same trick as above: an old binary does not find them *)
+  method opening_project_version : [ `v0 | `v1 | `v2 | `v3 ] option = (* None stands for undefined, i.e. failed to identify *)
     try
       let version = PervasivesExtra.get_first_line_of_file (self#project_paths#version_file) in
       match version with
       | Some "v0" -> Some `v0   (* marionnet 0.90.x *)
       | Some "v1" -> Some `v1   (* trunk revno >= 445 with ocamlbricks revno >= 387 (2013/11/17) to trunk revno 460 (included) *)
       | Some "v2" -> Some `v2   (* trunk revno >= 461 and marionnet 1.0 *)
+      | Some "v3" -> Some `v3   (* the first version in JSON *)
       | _         -> self#treeview#ifconfig#try_to_understand_in_which_project_version_we_are
     with _ -> None
 
   (* Project are saved anymway in the newest version: *)
-  method closing_project_version : [ `v0 | `v1 | `v2 ] = `v2
+  method closing_project_version : [ `v0 | `v1 | `v2 | `v3 ] = `v3
 
-  method private string_of_project_version : [ `v0 | `v1 | `v2 ] -> string =
-    function `v0 -> "v0" | `v1 -> "v1" | `v2 -> "v2"
+  method private string_of_project_version : [ `v0 | `v1 | `v2 | `v3 ] -> string =
+    function `v0 -> "v0" | `v1 -> "v1" | `v2 -> "v2" | `v3 -> "v3"
 
-  method private project_version_of_string : string -> [ `v0 | `v1 | `v2 ] =
-    function "v0" -> `v0 | "v1" -> `v1 | "v2" -> `v2 | _ -> assert false
+  method private project_version_of_string : string -> [ `v0 | `v1 | `v2 | `v3 ] =
+    function "v0" -> `v0 | "v1" -> `v1 | "v2" -> `v2 | "v3" -> `v3 | _ -> assert false
 
   (** New project which will be saved into the given filename.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
@@ -454,7 +487,7 @@ class globalState = fun () ->
       let () = self#project_paths#make_local_temp_dir in
       (* --- *)
       (* Determine the version of the project we are opening: *)
-      let project_version : [ `v0 | `v1 | `v2 ] =
+      let project_version : [ `v0 | `v1 | `v2 | `v3 ] =
         match self#opening_project_version with
         | Some v -> v
         | None   -> failwith "state#open_project_async: project version cannot be identified"
@@ -481,7 +514,12 @@ class globalState = fun () ->
        self#dotoptions#with_persistence_reaction_suspended (fun () ->
         let () =
 	  try
-	    let () = self#dotoptions#load_from_file ~project_version (self#project_paths#dotoptionsFile) in
+	    let dotoptions_file =
+	      match project_version with
+	      | `v3            -> self#project_paths#dotoptionsFile_json
+	      | `v0 | `v1 | `v2 -> self#project_paths#dotoptionsFile
+	    in
+	    let () = self#dotoptions#load_from_file ~project_version (dotoptions_file) in
 	    Log.printf ("state#open_project_async: dotoptions recovered\n")
 	  with e ->
 	    begin
@@ -517,7 +555,9 @@ class globalState = fun () ->
             ~emergency:(fun () -> self#close_project)
             ~dotAction
             ~project_version
-            self#project_paths#networkFile;
+            (match project_version with
+             | `v3             -> self#project_paths#networkFile_json
+             | `v0 | `v1 | `v2 -> self#project_paths#networkFile);
           (* Old projects may have been adapted at loading time (obsolete kernels or
              absent filesystems remapped, see the remap_*_at_import methods in
              user_level.ml): recapitulate the adjustments to the user, if any: *)
@@ -771,11 +811,11 @@ class globalState = fun () ->
         ~finally:(fun () -> Progress_bar.destroy_progress_bar_dialog (progress_bar))
         (fun () -> begin
           (* --- *)
-          (* Write the network xml file *)
-          User_level.Xml.save_network (self#network) (self#project_paths#networkFile);
+          (* Write the network file (JSON since `v3, hence the new name) *)
+          User_level.Xml.save_network (self#network) (self#project_paths#networkFile_json);
           (* --- *)
           (* Save also dotoptions for drawing image. *)
-          self#dotoptions#save_to_file (self#project_paths#dotoptionsFile);
+          self#dotoptions#save_to_file (self#project_paths#dotoptionsFile_json);
           (* --- *)
           (* Save treeviews (just to play it safe, because treeview files should be automatically)
              re-written at every update): *)
@@ -784,6 +824,20 @@ class globalState = fun () ->
           (* Save the project's version: *)
           let project_version_as_string = self#string_of_project_version (self#closing_project_version) in
           UnixExtra.put (self#project_paths#version_file) (project_version_as_string);
+          (* --- *)
+          (* A project opened in `v2 (or before) still has its old data files in the working
+             directory, and they are now stale: remove them, or the archive built below would
+             carry both forms and an old binary would happily open the older one (see the comment
+             on `legacy_data_files'). Removing an absent file is not an error here — this is the
+             ordinary case of a project which was already `v3. *)
+          List.iter
+            (fun file ->
+               if Sys.file_exists file then begin
+                 Log.printf1 "state#save_project: removing the stale v2 file %s\n" file;
+                 try Unix.unlink file with e ->
+                   Log.printf2 "state#save_project: cannot remove %s: %s\n" file (Printexc.to_string e)
+                 end)
+            (self#project_paths#legacy_data_files);
           (* --- *)
           (* (Re)write the .mar file *)
           let cmd =

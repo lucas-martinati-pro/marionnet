@@ -2159,9 +2159,15 @@ module Xml = struct
 
  (** Parse the file containing an xforest representation of the network.
      The given network is updated during the parsing. *)
- let load_network ~(project_version: [`v0|`v1|`v2]) (net:network) (fname:string) =
+ let load_network ~(project_version: [`v0|`v1|`v2|`v3]) (net:network) (fname:string) =
   let (forest:Xforest.t) =
     match project_version with
+    (* Since `v3 the file is JSON (work-stream `migration-marshal-to-text'). A decoding failure
+       is turned into an exception right here: the caller (state#import_network) already restores
+       the network from its buffers and reports the failure to the user. *)
+    | `v3       -> (match Xforest.of_JSON_file (fname) with
+                    | Ok forest -> forest
+                    | Error msg -> failwith (Printf.sprintf "Netmodel.Xml.load_network: %s" msg))
     | `v2 | `v1 -> network_marshaller#from_file (fname)
     | `v0       -> Forest_backward_compatibility.load_from_old_file (fname)
   in
@@ -2177,7 +2183,8 @@ let save_network (net:network) (fname:string) =
  Log.printf "Netmodel.Xml.save_network: begin\n";
  (* we are manually setting the verbosity 3 *)
  (if (Global_options.Debug_level.get ()) >= 3 then Xforest.print_xforest ~channel:stderr net#to_forest);
- network_marshaller#to_file net#to_forest fname;
+ (* Written as JSON since `v3, under the name the caller provides (netmodel/network.json): *)
+ Xforest.to_JSON_file (net#to_forest) fname;
  Log.printf "Netmodel.Xml.save_network: end (success)\n";;
 
 end;; (* module Netmodel.Xml *)

@@ -305,21 +305,34 @@ object(self)
 
   val counters_marshaler = new Oomarshal.marshaller
 
+  (* The counters of a `v3 project: states/ifconfig-counters.json (work-stream
+     `migration-marshal-to-text'). The name is derived from the radical, as its Marshal
+     predecessor was, and not from self#json_filename — which would give ifconfig.json-counters. *)
+  method json_counters_filename = (self#filename)^"-counters.json"
+
   method! save ?with_forest_treatment () =
     (* Save the forest, as usual: *)
     super#save ?with_forest_treatment ();
     (* ...but also save the counters used for generating fresh addresses: *)
-    let counters_file_name = (self#filename)^"-counters" in
+    let counters_file_name = self#json_counters_filename in
     (* For forward compatibility: *)
     let _OBSOLETE_mac_address_as_int = Random.int (256*256*256) in
-    counters_marshaler#to_file
+    Treeview_counters.to_JSON_file
       (_OBSOLETE_mac_address_as_int, !next_ipv4_address_as_int, !next_ipv6_address_as_int)
       counters_file_name;
 
   (* The treeview `ifconfig' may be used to derive the informations about the project version. This may
      be done inspecting the existence and the content of its related files.
      This method is useful in the class`state' to correctly load the set of all treeviews. *)
-  method try_to_understand_in_which_project_version_we_are : [ `v0 | `v1 | `v2 ] option =
+  method try_to_understand_in_which_project_version_we_are : [ `v0 | `v1 | `v2 | `v3 ] option =
+    (* --- *)
+    (* The JSON file is tested *first*: a `v3 project whose `version' file is absent or unreadable
+       would otherwise be reported as `v2 when it still carries an old states/ifconfig (it should
+       not — see `legacy_data_files' in state.ml — but this method is precisely the fallback for
+       projects whose shape cannot be trusted). Work-stream `migration-marshal-to-text'. *)
+    let json_file_name = (self#json_filename) in  (* states/ifconfig.json *)
+    let () = Log.printf1 "treeview_ifconfig#try_to_understand_in_which_project_version_we_are: json_file_name: %s\n" json_file_name in
+    if (Sys.file_exists json_file_name) then Some `v3 else (* continue: *)
     (* --- *)
     let new_file_name = (self#filename) in  (* states/ifconfig *)
     let () = Log.printf1 "treeview_ifconfig#try_to_understand_in_which_project_version_we_are: new_file_name: %s\n" new_file_name in
@@ -336,36 +349,52 @@ object(self)
     if StrExtra.First.matchingp (Str.regexp regexp_v1) x then Some `v1 else (* continue:*)
     None
 
-  method private load_counters ?(base_name = self#filename) () =
+  (* Note that `base_name' is the *radical* (states/ifconfig, or states/ports for `v0/`v1), never
+     the name of the forest file: the counters have always been named after the radical. *)
+  method private load_counters ?(base_name = self#filename) ~project_version () =
     try
       let counters_file_name = (base_name)^"-counters" in
       (* _OBSOLETE_mac_address_as_int read for backward compatibility: *)
       let _OBSOLETE_mac_address_as_int, the_next_ipv4_address_as_int, the_next_ipv6_address_as_int =
-	counters_marshaler#from_file counters_file_name
+        match project_version with
+        | `v3 ->
+            let counters_file_name = (counters_file_name)^".json" in
+            (match Treeview_counters.of_JSON_file (counters_file_name) with
+             | Ok counters -> counters
+             | Error msg   -> failwith msg)
+        | `v0 | `v1 | `v2 -> counters_marshaler#from_file counters_file_name
       in
       next_ipv4_address_as_int := the_next_ipv4_address_as_int;
       next_ipv6_address_as_int := the_next_ipv6_address_as_int
-    with _ -> ()
+    (* This `with' has always been here, and it is the reason the codec of these three numbers is
+       unit-tested: a conversion failing here would be silent, and the project would go on handing
+       out addresses already in use. At least say so in the log. *)
+    with e ->
+      Log.printf2 "treeview_ifconfig#load_counters: cannot read the counters of %s (%s); keeping the current ones\n"
+        base_name (Printexc.to_string e)
 
   (* Method redefinition, because we have also to load the counters.
      And we have also to understand which is precisely the file to load (according to the project version).
      This treeview was previously saved into states/ports and now is saved into states/ifconfig.
      This choice prevents old binaries from seg-faults reading projects in the new format. *)
   method! load ?file_name ~project_version () =
-    let file_name, apply_changes_automatically_once_loaded =
+    let file_name, counters_base_name, apply_changes_automatically_once_loaded =
       let do_nothing = lazy () in
+      let new_file_name = self#filename in
+      let old_file_name = Filename.concat (Filename.dirname new_file_name) "ports" in
       match file_name with
-      | Some x -> x, (do_nothing)
+      | Some x -> x, new_file_name, (do_nothing)
       | None ->
-         let new_file_name = self#filename in
-         let old_file_name = Filename.concat (Filename.dirname new_file_name) "ports" in
          let file_name =
            match project_version with
            | `v0 | `v1 -> old_file_name (* but the format is different: v1 and v2 files are similar *)
            | `v2       -> new_file_name
+           | `v3       -> self#json_filename
          in
+         (* The counters keep being named after the radical, in every version: *)
+         let counters_base_name = if (file_name = old_file_name) then old_file_name else new_file_name in
          let action = if (file_name = old_file_name) then lazy (Unix.unlink old_file_name) else do_nothing in
-         (file_name, action)
+         (file_name, counters_base_name, action)
     in
     if not (Sys.file_exists file_name) then
       failwith (Printf.sprintf "treeview_ifconfig#load: file %s not found" file_name)
@@ -373,7 +402,7 @@ object(self)
     (* Load the forest, as usual: *)
     let () = super#load ~file_name ~project_version () in
     (* ...but also load the counters used for generating fresh addresses: *)
-    let () = self#load_counters ~base_name:(file_name) () in
+    let () = self#load_counters ~base_name:(counters_base_name) ~project_version () in
     (* Apply necessary changes according to the project version: *)
     let () = Lazy.force apply_changes_automatically_once_loaded in
     ()
