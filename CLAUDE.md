@@ -349,7 +349,12 @@ Reprise : appliquer le skill `chantier-long`.
   l'identique**, donc le repli base64 n'est pas une protection contre la perte de données mais la
   seule façon d'émettre du **JSON valide** ; corollaire : un banc bâti sur le seul aller-retour
   est **vert sur un codec cassé** (vérifié : repli désarmé → 7 assertions tombent, tous les
-  round-trips passent). **Prochaine étape = ép. 3** (codec des treeviews et des compteurs).
+  round-trips passent). **Ép. 2b** : `lib/STRUCTURES/xforest.mli`, qui n'existait pas — les 16 noms
+  de l'implémentation deviennent privés et **`yojson` n'apparaît dans aucune signature** ; surtout,
+  l'écriture de l'interface a révélé que le banc vérifiait « sortie UTF-8 valide » avec **le
+  prédicat même qui décide du repli** (circulaire), d'où un validateur indépendant dans le test et
+  une **remesure** de la discriminance. **Prochaine étape = ép. 3** (codec des treeviews et des
+  compteurs).
 
 ## Où puiser
 
