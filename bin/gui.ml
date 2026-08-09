@@ -60,6 +60,9 @@ class dialog_A_PROPOS ?translation_domain () =
     val label_dialog_A_PROPOS_authors = new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_dialog_A_PROPOS_authors"))
     method label_dialog_A_PROPOS_authors = label_dialog_A_PROPOS_authors
    (* --- *)
+    val label_dialog_A_PROPOS_license_copyright = new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_dialog_A_PROPOS_license_copyright"))
+    method label_dialog_A_PROPOS_license_copyright = label_dialog_A_PROPOS_license_copyright
+   (* --- *)
     val label_dialog_A_PROPOS_license_content = new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_dialog_A_PROPOS_license_content"))
     method label_dialog_A_PROPOS_license_content = label_dialog_A_PROPOS_license_content
    (* --- *)
@@ -72,8 +75,8 @@ class dialog_A_PROPOS ?translation_domain () =
     val label_dialog_A_PROPOS_thanks_content = new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_dialog_A_PROPOS_thanks_content"))
     method label_dialog_A_PROPOS_thanks_content = label_dialog_A_PROPOS_thanks_content
    (* --- *)
-    val hbox2 = new GPack.box (GtkPack.Box.cast (builder#get_object "hbox2"))
-    method hbox2 = hbox2
+    val vbox_sponsors = new GPack.box (GtkPack.Box.cast (builder#get_object "vbox_sponsors"))
+    method vbox_sponsors = vbox_sponsors
    (* --- *)
     val label_dialog_A_PROPOS_thanks_sponsors = new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_dialog_A_PROPOS_thanks_sponsors"))
     method label_dialog_A_PROPOS_thanks_sponsors = label_dialog_A_PROPOS_thanks_sponsors

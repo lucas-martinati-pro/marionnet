@@ -79,7 +79,7 @@ splash#set_title (s_ "Welcome to Marionnet");;
 let event_box = GBin.event_box ~packing:splash#add () in
 (* The spacing separates the four blocks of the splash (image and title, copyright,
    warranty, logos) with one and the same vertical gap: *)
-let box = GPack.vbox ~spacing:18 ~border_width:2 ~packing:event_box#add () in
+let box = GPack.vbox ~spacing:32 ~border_width:2 ~packing:event_box#add () in
 (*let _image = GMisc.pixmap splash_image ~packing:(box#pack ~padding:3) () in*)
 let _image = GMisc.image ~pixbuf:(splash_pixbuf) ~packing:(box#pack ~padding:3) ~show:true () in
 (* --- *)
@@ -87,13 +87,14 @@ let _title =
   let align = GBin.alignment ~xalign:1. ~packing:box#add () in
   let table = GPack.table ~rows:2 ~columns:1 ~row_spacings:0 ~homogeneous:false ~packing:(align#add) () in
   let attach = table#attach ~expand:`X ~fill:`BOTH ~left:0 in
-  let _ = GMisc.label ~markup:text_title ~packing:(attach ~top:0) ~xalign:0.5 ~line_wrap:false () in
+  let _ = GMisc.label ~markup:text_title    ~packing:(attach ~top:0) ~xalign:0.5 ~line_wrap:false () in
   let _ = GMisc.label ~markup:text_subtitle ~packing:(attach ~top:1) ~xalign:0.5 ~line_wrap:false () in
   ()
 in
 let _ = GMisc.label ~markup:text_copyright ~packing:box#add ~line_wrap:false () in
 let _ = GMisc.label ~markup:text_warranty ~justify:`CENTER
           ~packing:box#add ~line_wrap:false () in
+(* --- *)
 (* The logos have different widths (the IUT one is a wide logotype, which has to
    stay readable). The table is therefore NOT homogeneous: each column takes the
    natural width of its logo plus an equal share of the remaining space, which
@@ -125,7 +126,7 @@ let _logo_unif =
    ~xalign:0.5 ~packing:(attach ~left:3) ()
 in
 let _ = event_box#event#connect#button_press ~callback:(handle_click splash) in
-let _ = splash#event#connect#key_press ~callback:(fun ev -> handle_click splash ()) in ()
+let _ = splash#event#connect#key_press       ~callback:(fun ev -> handle_click splash ()) in ()
 ;;
 
 let show_splash ?timeout () =

@@ -119,6 +119,7 @@
                         <property name="label" translatable="yes">About content</property>
                         <property name="use-markup">True</property>
                         <property name="wrap">True</property>
+                        <property name="max-width-chars">80</property>
                       </object>
                     </child>
                     <child type="tab">
@@ -159,16 +160,48 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkLabel" id="label_dialog_A_PROPOS_license_content">
+                      <object class="GtkVBox" id="vbox_license">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="margin-left">10</property>
-                        <property name="margin-right">10</property>
-                        <property name="margin-top">10</property>
-                        <property name="margin-bottom">10</property>
-                        <property name="label" translatable="yes">License content</property>
-                        <property name="use-markup">True</property>
-                        <property name="wrap">True</property>
+                        <property name="homogeneous">False</property>
+                        <child>
+                          <object class="GtkLabel" id="label_dialog_A_PROPOS_license_copyright">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="margin-left">10</property>
+                            <property name="margin-right">10</property>
+                            <property name="margin-top">10</property>
+                            <property name="label" translatable="yes">Copyright</property>
+                            <property name="use-markup">True</property>
+                            <property name="wrap">False</property>
+                            <property name="xalign">0</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label_dialog_A_PROPOS_license_content">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="margin-left">10</property>
+                            <property name="margin-right">10</property>
+                            <property name="margin-top">10</property>
+                            <property name="margin-bottom">10</property>
+                            <property name="label" translatable="yes">License content</property>
+                            <property name="use-markup">True</property>
+                            <property name="wrap">True</property>
+                            <property name="max-width-chars">80</property>
+                            <property name="xalign">0</property>
+                          </object>
+                          <packing>
+                            <property name="expand">True</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </object>
                       <packing>
                         <property name="position">2</property>
@@ -199,6 +232,8 @@
                             <property name="margin-bottom">10</property>
                             <property name="use-markup">True</property>
                             <property name="wrap">True</property>
+                            <property name="max-width-chars">80</property>
+                            <property name="xalign">0</property>
                           </object>
                           <packing>
                             <property name="expand">True</property>
@@ -207,15 +242,19 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkHBox" id="hbox2">
+                          <object class="GtkVBox" id="vbox_sponsors">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
-                            <property name="homogeneous">True</property>
+                            <property name="homogeneous">False</property>
+                            <property name="spacing">10</property>
                             <child>
                               <object class="GtkLabel" id="label_dialog_A_PROPOS_thanks_sponsors">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
-                                <property name="wrap">True</property>
+                                <property name="wrap">False</property>
+                                <property name="justify">center</property>
+                                <property name="margin-left">10</property>
+                                <property name="margin-right">10</property>
                               </object>
                               <packing>
                                 <property name="expand">True</property>
@@ -227,7 +266,7 @@
                               <object class="GtkImage" id="image23">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
-                                <property name="pixbuf">../images/logo.paris13.png</property>
+                                <property name="pixbuf">../images/logo.sponsors.png</property>
                               </object>
                               <packing>
                                 <property name="expand">True</property>
