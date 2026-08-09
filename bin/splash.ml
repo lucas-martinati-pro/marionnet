@@ -1,7 +1,8 @@
 (* This file is part of Marionnet, a virtual network laboratory
    Copyright (C) 2007, 2008, 2009  Luca Saiu
-   Copyright (C) 2010  Jean-Vincent Loddo
-   Copyright (C) 2007, 2008, 2009, 2010  Université Paris 13
+   Copyright (C) 2010-2026  Jean-Vincent Loddo
+   Copyright (C) 2007-2026 Université Sorbonne Paris Nord (USPN)
+   Copyright (C) 2026 Université numérique Île-de-France (UNIF)
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,9 +36,10 @@ let text_subtitle = match Initialization.released with
 ;;
 
 let text =
-"<small>Copyright (C) 2007-2023 Jean-Vincent Loddo
+"<small>Copyright (C) 2007-2026 Jean-Vincent Loddo
 Copyright (C) 2007-2012 Luca Saiu
-Copyright (C) 2007-2023 Université Sorbonne Paris Nord
+Copyright (C) 2007-2026 Université Sorbonne Paris Nord (USPN)
+Copyright (C) 2026 Université numérique Île-de-France (UNIF)
 
 <i>Marionnet comes with <b>absolutely no warranty</b>.
 This is free software, covered by the GNU GPL.
