@@ -58,11 +58,43 @@ let contains ~substring text =
   let rec loop i = (i + n <= m) && ((String.sub text i n = substring) || loop (i+1)) in
   loop 0
 
+(* A UTF-8 validator written here on purpose, rather than the one the codec uses to
+   decide whether a string needs the base64 fallback: checking the output of a codec with
+   the very predicate that drives it would be circular - a wrong predicate would make
+   both the codec and its test wrong, in agreement. This one decodes by hand, and rejects
+   what a naive check usually accepts: overlong encodings, surrogates (U+D800..U+DFFF)
+   and anything beyond U+10FFFF. *)
+let is_valid_utf_8 (s : string) : bool =
+  let n = String.length s in
+  let byte i = Char.code s.[i] in
+  let continuation i = (i < n) && ((byte i) land 0xC0 = 0x80) in
+  let rec loop i =
+    if i >= n then true else
+    let b = byte i in
+    if b < 0x80 then loop (i+1)
+    else if b land 0xE0 = 0xC0 then
+      (continuation (i+1)) &&
+      (let cp = ((b land 0x1F) lsl 6) lor ((byte (i+1)) land 0x3F) in
+       (cp >= 0x80) && (loop (i+2)))
+    else if b land 0xF0 = 0xE0 then
+      (continuation (i+1)) && (continuation (i+2)) &&
+      (let cp = ((b land 0x0F) lsl 12) lor (((byte (i+1)) land 0x3F) lsl 6)
+                lor ((byte (i+2)) land 0x3F) in
+       (cp >= 0x800) && (not ((cp >= 0xD800) && (cp <= 0xDFFF))) && (loop (i+3)))
+    else if b land 0xF8 = 0xF0 then
+      (continuation (i+1)) && (continuation (i+2)) && (continuation (i+3)) &&
+      (let cp = ((b land 0x07) lsl 18) lor (((byte (i+1)) land 0x3F) lsl 12)
+                lor (((byte (i+2)) land 0x3F) lsl 6) lor ((byte (i+3)) land 0x3F) in
+       (cp >= 0x10000) && (cp <= 0x10FFFF) && (loop (i+4)))
+    else false
+  in
+  loop 0
+
 (* The two invariants above, checked together on a given forest: *)
 let round_trip ~name (forest : Xforest.t) =
   let text = Xforest.to_JSON_string forest in
   let () =
-    check ~name:(name ^ " / output is valid UTF-8") (Xforest.is_valid_utf_8 text)
+    check ~name:(name ^ " / output is valid UTF-8") (is_valid_utf_8 text)
       "the emitted text carries raw bytes, so it is not valid JSON for any other tool"
   in
   match Xforest.of_JSON_string text with
@@ -81,6 +113,28 @@ let expect_error ~name ~substring (result : (Xforest.t, string) result) =
 (* -------------------------------------------------------------------------- *)
 (* Round-trips                                                                 *)
 (* -------------------------------------------------------------------------- *)
+
+(* A test whose own instrument is wrong proves nothing, and this instrument is precisely
+   what makes the others discriminant (see the header): so it gets checked first. *)
+let test_the_validator_itself () =
+  let valid   = [""; "abc"; "caf\xc3\xa9"; "\xe2\x82\xac"; "\xf0\x9f\x98\x80"; "\x00\x7f"] in
+  let invalid = [ "\x80";                 (* a lone continuation byte              *)
+                  "\xc3";                 (* truncated two-byte sequence           *)
+                  "\xe2\x82";             (* truncated three-byte sequence         *)
+                  "\xc0\x80";             (* overlong encoding of NUL              *)
+                  "\xe0\x80\x80";         (* overlong encoding again               *)
+                  "\xed\xa0\x80";         (* U+D800, a surrogate                   *)
+                  "\xf5\x80\x80\x80";     (* beyond U+10FFFF                       *)
+                  "\xff"; "\xfe" ]
+  in
+  let () =
+    List.iter
+      (fun s -> check ~name:(Printf.sprintf "validator accepts %S" s) (is_valid_utf_8 s) "")
+      valid
+  in
+  List.iter
+    (fun s -> check ~name:(Printf.sprintf "validator rejects %S" s) (not (is_valid_utf_8 s)) "")
+    invalid
 
 let test_empty_forest () =
   round_trip ~name:"empty forest" Forest.empty
@@ -250,6 +304,7 @@ let test_missing_file () =
 
 let () =
   let () = Printf.printf "Testing the JSON codec of Ocamlbricks.Xforest (episode 2)\n%!" in
+  let () = test_the_validator_itself () in
   let () = test_empty_forest () in
   let () = test_plain_values () in
   let () = test_empty_strings () in

@@ -351,11 +351,10 @@ le nom des ports et le **fichier COW** qui identifie une ligne d'historique.
 ## 8. Le codec du forest (ép. 2)
 
 `lib/STRUCTURES/xforest.ml`, à la suite du couple `encode`/`decode` historique — le codec
-appartient à la structure qu'il sérialise. Il n'y a pas de `xforest.mli` dans la copie *vendored*,
-donc tout est exporté de fait ; la surface **voulue** est celle-ci :
+appartient à la structure qu'il sérialise. Le module gagne au passage l'**interface qui lui
+manquait**, `lib/STRUCTURES/xforest.mli` (§ 8.4) ; la surface publique du codec est :
 
 ```ocaml
-val is_valid_utf_8 : string -> bool
 val to_JSON_string : t -> string
 val of_JSON_string : string -> (t, string) result
 val to_JSON_file   : t -> string -> unit
@@ -416,7 +415,10 @@ banc de l'ép. 1 exige la GUI, un corpus de `.mar` et plusieurs minutes ; ces te
 tiennent en une seconde, exactement comme `test/marionnet.ml` déjà versionné. Un commit d'épisode
 de ce chantier ne porte donc plus seulement `docs/`.
 
-38 assertions : forêt vide, tag/nom/valeur vides, UTF-8 accentué avec guillemets et sauts de
+53 assertions. D'abord **l'instrument lui-même** : le banc porte son **propre** validateur UTF-8,
+écrit à la main, et 15 assertions le mettent à l'épreuve (surlongs, surrogates, séquences
+tronquées, au-delà de U+10FFFF). Ce n'est pas de la coquetterie — voir § 8.4, c'est l'interface
+qui a révélé le défaut. Puis le codec : forêt vide, tag/nom/valeur vides, UTF-8 accentué avec guillemets et sauts de
 ligne, octets bruts en valeur **et** en tag **et** en nom d'attribut, surlong, surrogate, ordre
 des attributs **et doublons de clés**, forêt profonde à plusieurs racines, aller-retour par
 fichier ; puis les échecs, qui doivent être **rapportés** et non devinés : JSON mal formé, racine
@@ -433,7 +435,35 @@ un nom accentué et un `rc_config` marshalé est relu par le module `json` de `p
 `[['name', 'café'], ['rc_config', {'b64': 'hJWmvQE='}]]` — c'est-à-dire la lisibilité recherchée,
 le blob binaire restant **explicitement** désigné comme tel.
 
-### 8.4 Ce que l'épisode 2 ne fait PAS
+### 8.4 L'interface — et la circularité qu'elle a révélée
+
+`lib/STRUCTURES/xforest.mli` n'existait pas : tout le module était exporté de fait. Il existe
+maintenant, et publie exactement ce que le dépôt utilise — les types (transparents : on construit
+un nœud comme un couple), la classe `interpreter`, `print_xforest`, `encode`/`decode` et les
+quatre fonctions du codec. Restent **privés** les seize noms de l'implémentation : `json_format`,
+`json_version`, l'exception `Malformed`, `is_valid_utf_8`, et toutes les fonctions de conversion
+vers et depuis `Yojson.Safe.t`. Vérifié plutôt que supposé : `Xforest.is_valid_utf_8`,
+`Xforest.json_of_string`, `Xforest.forest_of_json` et `Xforest.json_version` sont désormais
+`Unbound value` depuis un appelant.
+
+Le gain d'abstraction se lit dans les signatures : **`yojson` n'y apparaît nulle part**. La
+bibliothèque JSON redevient un détail d'implémentation — un appelant ne manipule jamais de valeur
+JSON, seulement des chaînes et des `result`.
+
+**Écrire l'interface a mis au jour un défaut du banc de l'ép. 2**, que la relecture n'avait pas vu :
+il vérifiait « la sortie est de l'UTF-8 valide » avec `Xforest.is_valid_utf_8`, c'est-à-dire avec
+**le prédicat même qui décide du repli**. Circulaire : un prédicat faux aurait rendu le codec *et*
+son banc faux **d'un même mouvement**, sans qu'aucune assertion ne bronche. Corrigé en écrivant
+dans `test/xforest_json.ml` un validateur **indépendant**, décodant à la main, lui-même éprouvé
+par 15 assertions. La discriminance a été **remesurée** après ce remplacement — repli désarmé, les
+mêmes 7 assertions tombent —, sans quoi on aurait échangé un banc circulaire contre un banc
+laxiste.
+
+Au passage, la question « qu'est-ce qui mérite d'être public ? » a tranché toute seule le sort de
+`is_valid_utf_8` : elle n'avait qu'un seul appelant hors du module, le banc — précisément celui
+qui n'aurait jamais dû s'en servir.
+
+### 8.5 Ce que l'épisode 2 ne fait PAS
 
 Rien n'est branché. `state.ml`, `user_level.ml` et `sketch.ml` écrivent et lisent toujours du
 `Marshal` ; aucun `.mar` produit par ce code n'a changé d'un octet. Le codec est une brique
@@ -549,3 +579,24 @@ sont purs, tiennent en une seconde et n'ont besoin ni de GUI ni de corpus, exact
 
 Livrables : `lib/STRUCTURES/xforest.ml`, `lib/dune`, `test/xforest_json.ml`, `test/dune`, les § 3,
 4, 6 et 8 de ce document.
+
+### 2026-08-09 — Épisode 2 (suite) : l'interface, et la circularité qu'elle a révélée
+
+`lib/STRUCTURES/xforest.mli`, qui n'existait pas : le module publie désormais ce que le dépôt
+utilise réellement et **cache** les seize noms de son implémentation — vérifié, pas supposé
+(`Xforest.is_valid_utf_8` et trois autres internes sont maintenant `Unbound value`). Effet
+d'abstraction notable : **`yojson` n'apparaît dans aucune signature**, la bibliothèque JSON
+redevient un détail d'implémentation.
+
+Le vrai gain n'est pas là. Se demander « qu'est-ce qui mérite d'être public ? » a fait apparaître
+un défaut du banc que la relecture n'avait pas vu : il vérifiait « la sortie est de l'UTF-8
+valide » avec **le prédicat même qui décide du repli**. Un prédicat faux aurait rendu le codec et
+son banc faux **d'un même mouvement**, sans qu'aucune assertion ne bronche — exactement le genre
+de silence que le § 6.2 traque. Le banc porte maintenant son **propre** validateur, décodant à la
+main, éprouvé par 15 assertions (surlongs, surrogates, séquences tronquées, au-delà de U+10FFFF).
+Et la discriminance a été **remesurée** après le remplacement — mêmes 7 assertions à terre, repli
+désarmé —, faute de quoi on aurait troqué un banc circulaire contre un banc laxiste.
+
+Le banc passe de 38 à 53 assertions. Détail au § 8.4.
+
+Livrables : `lib/STRUCTURES/xforest.mli`, `test/xforest_json.ml`, le § 8.4 de ce document.
