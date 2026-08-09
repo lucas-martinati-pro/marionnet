@@ -35,13 +35,16 @@ let text_subtitle = match Initialization.released with
  | false -> "<small><i>Version " ^ Initialization.user_intelligible_version ^ "</i> - " ^ Meta.source_date ^ "</small>"
 ;;
 
-let text =
+let text_copyright =
 "<small>Copyright (C) 2007-2026 Jean-Vincent Loddo
 Copyright (C) 2007-2012 Luca Saiu
 Copyright (C) 2007-2026 Université Sorbonne Paris Nord (USPN)
-Copyright (C) 2026 Université numérique Île-de-France (UNIF)
+Copyright (C) 2026 Université numérique Île-de-France (UNIF)</small>";;
 
-<i>Marionnet comes with <b>absolutely no warranty</b>.
+(* Split from the copyright block above in order to be centered (see the ~justify
+   argument where this label is built), the copyright lines remaining flush left: *)
+let text_warranty =
+"<small><i>Marionnet comes with <b>absolutely no warranty</b>.
 This is free software, covered by the GNU GPL.
 You are welcome to redistribute it under certain
 conditions; see the file `COPYING' for details.</i></small>";;
@@ -74,7 +77,9 @@ let splash =
 
 splash#set_title (s_ "Welcome to Marionnet");;
 let event_box = GBin.event_box ~packing:splash#add () in
-let box = GPack.vbox ~spacing:5 ~border_width:2 ~packing:event_box#add () in
+(* The spacing separates the four blocks of the splash (image and title, copyright,
+   warranty, logos) with one and the same vertical gap: *)
+let box = GPack.vbox ~spacing:18 ~border_width:2 ~packing:event_box#add () in
 (*let _image = GMisc.pixmap splash_image ~packing:(box#pack ~padding:3) () in*)
 let _image = GMisc.image ~pixbuf:(splash_pixbuf) ~packing:(box#pack ~padding:3) ~show:true () in
 (* --- *)
@@ -86,26 +91,38 @@ let _title =
   let _ = GMisc.label ~markup:text_subtitle ~packing:(attach ~top:1) ~xalign:0.5 ~line_wrap:false () in
   ()
 in
-let _ = GMisc.label ~markup:text ~packing:box#add ~line_wrap:false () in
+let _ = GMisc.label ~markup:text_copyright ~packing:box#add ~line_wrap:false () in
+let _ = GMisc.label ~markup:text_warranty ~justify:`CENTER
+          ~packing:box#add ~line_wrap:false () in
+(* The logos have different widths (the IUT one is a wide logotype, which has to
+   stay readable). The table is therefore NOT homogeneous: each column takes the
+   natural width of its logo plus an equal share of the remaining space, which
+   spreads the four logos over the whole width with equal gaps: *)
 let table =
-  GPack.table ~rows:1 ~columns:3 ~col_spacings:20
-    ~homogeneous:true
+  GPack.table ~rows:1 ~columns:4 ~col_spacings:16
+    ~homogeneous:false
     ~packing:box#add ()
 in
-let _logo_paris13 =
+let attach = table#attach ~expand:`X ~fill:`BOTH ~top:0 in
+let _logo_uspn =
  GMisc.image
-   ~file:(Initialization.Path.images^"logo.paris13.96x96.png")
-   ~xalign:0.5 ~packing:(table#attach ~left:0 ~top:0) ()
+   ~file:(Initialization.Path.images^"logo.uspn.png")
+   ~xalign:0.5 ~packing:(attach ~left:0) ()
 in
 let _logo_iutv =
  GMisc.image
-   ~file:(Initialization.Path.images^"logo.iutv.96x96.png")
-   ~xalign:0.5 ~packing:(table#attach ~left:1 ~top:0) ()
+   ~file:(Initialization.Path.images^"logo.iutv.png")
+   ~xalign:0.5 ~packing:(attach ~left:1) ()
 in
 let _logo_lipn =
  GMisc.image
-   ~file:(Initialization.Path.images^"logo.lipn.96x96.png")
-   ~xalign:0.5 ~packing:(table#attach ~left:2 ~top:0) ()
+   ~file:(Initialization.Path.images^"logo.lipn.png")
+   ~xalign:0.5 ~packing:(attach ~left:2) ()
+in
+let _logo_unif =
+ GMisc.image
+   ~file:(Initialization.Path.images^"logo.unif.png")
+   ~xalign:0.5 ~packing:(attach ~left:3) ()
 in
 let _ = event_box#event#connect#button_press ~callback:(handle_click splash) in
 let _ = splash#event#connect#key_press ~callback:(fun ev -> handle_click splash ()) in ()
