@@ -324,6 +324,16 @@ Reprise : appliquer le skill `chantier-long`.
   mémoire `modernisation-installation-marionnet` ;
   `git log --grep="modernisation-installation-marionnet"`. Ép. 0 (autopsie + officialisation)
   fait 2026-07-18.
+- **migration-marshal-to-text** (les **8 fichiers de données d'un `.mar` sont des vidages
+  `Marshal`** — dont `netmodel/network.xml`, qui n'est pas du XML ; format non auto-descriptif,
+  donc fragile au changement de type [segfauts déjà évités par renommage, `state.ml:270-278`],
+  inécrivable hors OCaml, non diffable. Cible : écrire une version de projet **`v3` en JSON**
+  [`yojson`, **pas** `ocf`], **lecture `v0`/`v1`/`v2` intacte**, + conversion en lot) :
+  `docs/migration-marshal-to-text.md` ; mémoire `migration-marshal-to-text` ;
+  `git log --grep="migration-marshal-to-text"`. Ép. 0 (officialisation) fait 2026-08-09 ;
+  **prochaine étape = ép. 1, le banc de non-régression AVANT tout code** (il s'écrit en `.mrn` et
+  se joue par `mrnctl` — l'instrument existe déjà), bloqué tant que le **corpus de `.mar` témoins**
+  n'est pas désigné par l'auteur.
 
 ## Où puiser
 
