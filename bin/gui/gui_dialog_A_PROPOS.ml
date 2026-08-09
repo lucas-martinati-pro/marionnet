@@ -97,14 +97,18 @@ You should have received a copy of the GNU General Public License along with thi
 <tt><u><span color=\"blue\">http://www.gnu.org/licenses/</span></u></tt>.\n
 <b>Logos.</b> The emblems of USPN, of the IUT de Villetaneuse, of the LIPN and of UNIF displayed by this program are the trademarks of these institutions. They are <b>not</b> covered by the GNU GPL and remain the property of their owners: they are reproduced here for the sole purpose of crediting the institutions that support Marionnet, and may not be reused or modified independently of this program. Their origin is recorded in the file <tt>images/LOGOS.md</tt> of the distribution.\n\n";
 
-   set d#label_dialog_A_PROPOS_thanks "Thanks";
-   set d#label_dialog_A_PROPOS_thanks_content "We wish to thank Jeff Dike and the other authors of UML for their nice work, which made Marionnet possible; Renzo Davoli for VDE, the powerful communication infrastructure that we used and modified; the authors of OCaml for their nice language; and of course the whole free software community, of which the GNU and Linux projects remain the foremost contributors.\n
-This beautiful logo was designed by Silviu Barsanu:\n<tt><u><span color=\"blue\">http://www.silviubarsanu.evonet.ro</span></u></tt>";
+   set d#label_dialog_A_PROPOS_thanks (s_ "Thanks");
+   (* Single source line on purpose: the POT extractor (gettext_extract_pot_p4)
+      copies the string lexeme as it stands in the source, so a *literal* newline
+      inside the literal would end up unescaped in the msgid -- which msgcat then
+      rejects. Line breaks must therefore be written `\n', never typed: *)
+   set d#label_dialog_A_PROPOS_thanks_content (s_ "We wish to thank Jeff Dike and the other authors of UML for their nice work, which made Marionnet possible; Renzo Davoli for VDE, the powerful communication infrastructure that we used and modified; the authors of OCaml for their nice language; and of course the whole free software community, of which the GNU and Linux projects remain the foremost contributors.\n\nThis beautiful logo was designed by Silviu Barsanu:\n<tt><u><span color=\"blue\">https://uapcraiova.ro/silviu-barsanu/</span></u></tt>");
    (* The line break is deliberate (the label does not wrap): it balances the two
       lines instead of letting the width of the dialog decide. The second one then
-      carries both institutions in parallel: *)
+      carries both institutions in parallel. Translations are expected to keep a
+      break of their own, at whatever place balances them best: *)
    set d#label_dialog_A_PROPOS_thanks_sponsors
-     "Marionnet has been sponsored as an e-learning project\nby USPN since 2007, and supported by UNIF since 2024";
+     (s_ "Marionnet has been sponsored as an e-learning project\nby USPN since 2007, and supported by UNIF since 2024");
    end
 
    in d
