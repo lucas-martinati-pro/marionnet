@@ -331,9 +331,16 @@ Reprise : appliquer le skill `chantier-long`.
   [`yojson`, **pas** `ocf`], **lecture `v0`/`v1`/`v2` intacte**, + conversion en lot) :
   `docs/migration-marshal-to-text.md` ; mémoire `migration-marshal-to-text` ;
   `git log --grep="migration-marshal-to-text"`. Ép. 0 (officialisation) fait 2026-08-09 ;
-  **prochaine étape = ép. 1, le banc de non-régression AVANT tout code** (il s'écrit en `.mrn` et
-  se joue par `mrnctl` — l'instrument existe déjà), bloqué tant que le **corpus de `.mar` témoins**
-  n'est pas désigné par l'auteur.
+  **ép. 1 (le filet) fait le 2026-08-09** — corpus de 7 `.mar` de TP réels + 1 projet fabriqué par
+  le canal, et banc `_claude-local/bench/marshal-bench.sh` **vert** (hors dépôt, comme les 8 bancs
+  du chantier pilotage : un commit d'épisode ne porte donc que `docs/`). Il mesure **un**
+  invariant, indépendant du format : *ce que le canal dit d'un projet ne change pas au travers
+  d'un cycle sauvegarde → relecture*. Trois faits mesurés en dictent la forme et valent pour
+  quiconque touche au chemin d'enregistrement (§ 7.5 de la doc) : l'**ordre des nœuds s'inverse à
+  chaque cycle** (période 2 — comparer UN cycle échoue sur du `v2` intact), **enregistrer aussitôt
+  après l'ouverture** fige l'état transitoire de la restauration dans `dotoptions.marshal`, et
+  `states/ifconfig-counters` **change à chaque enregistrement** sur les 4 octets d'un champ déclaré
+  obsolète. **Prochaine étape = ép. 2** (`Xforest.to_JSON_*` + `yojson` dans `lib/dune`).
 
 ## Où puiser
 

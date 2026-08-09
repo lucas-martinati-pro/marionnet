@@ -158,16 +158,12 @@ l'endroit pour le retirer.
 **Ép. 0 — Officialisation** *(2026-08-09)* : ce document, la fiche mémoire, le pointeur
 `CLAUDE.md`. Aucun code.
 
-**Ép. 1 — Le filet AVANT le code : corpus témoin et banc de non-régression.**
-Constituer un corpus de `.mar` **réels** : au moins un `v0`, un `v1` et un `v2`, dont un projet
-avec **routeur Quagga configuré**, un avec des **defects**, un avec un **history multi-états**.
-Écrire un banc de comparaison **sémantique** — jamais octet-à-octet : ouvrir → dumper l'état
-**par le canal de pilotage** (`ls`, `get`, `ifconfig`, `defects`, `history`, `rc-get`) → sauver →
-rouvrir → re-dumper → comparer.
-👉 Point d'appui décisif : le chantier `marionnet-pilotage-par-script` a **déjà construit
-l'instrument de mesure** (`useful-scripts/mrnctl`, son épisode 6). Aucun outillage neuf n'est à
-écrire, et le banc s'exprime en `.mrn`.
-*Prérequis bloquant* : l'auteur doit **désigner** où sont ces `.mar` (aucun scan du disque).
+**Ép. 1 — Le filet AVANT le code : corpus témoin et banc de non-régression** *(fait le
+2026-08-09)*. Corpus de `.mar` **réels** désigné par l'auteur, banc de comparaison **sémantique**
+— jamais octet-à-octet sur l'archive : ouvrir → dumper l'état **par le canal de pilotage** →
+sauver → rouvrir → re-dumper → comparer. Point d'appui décisif : le chantier
+`marionnet-pilotage-par-script` avait **déjà construit l'instrument de mesure**
+(`useful-scripts/mrnctl`, son épisode 6). **Livré et vert** ; détail au § 7.
 
 **Ép. 2 — Le codec du forest, dans ocamlbricks.** `to_JSON_string` / `of_JSON_string` /
 `to_JSON_file` / `of_JSON_file` dans `lib/STRUCTURES/xforest.ml`, schéma § 4.1 figé ; `yojson`
@@ -244,6 +240,109 @@ consigné — il est né directement comme chantier.)*
 6. **Interaction avec `modernisation-installation-marionnet`** : `yojson` devient une dépendance
    de build à déclarer dans les paquets.
 
+## 7. Le filet : corpus témoin et banc de non-régression (ép. 1)
+
+### 7.1 Le corpus
+
+Huit projets, dans `_claude-local/examples/` (hors dépôt, comme les bancs). Les neuf chemins
+désignés par l'auteur s'y trouvaient **déjà** ; deux d'entre eux sont md5-identiques — le même
+projet rangé dans deux répertoires de séance —, d'où **sept** projets distincts, plus un huitième
+fabriqué (§ 7.3).
+
+| projet | fichier `version` | ce qu'il apporte au filet |
+|---|---|---|
+| `m1m2m3-dhcpd-conf` | `v2` | le plus gros (649 Ko) |
+| `projet-marionnet` | `v2` | 9 nœuds, `rc_config` de machine |
+| `projet-marionnet-seance-7` | `v2` | 9 nœuds |
+| `tp6c` | `v2` | 10 nœuds, `rc_config` de machine **et** de switch |
+| `tp9` | `v2` | adressage IPv6 |
+| `tp` | *absent* → pré-`v2` | `world_gateway` |
+| `projet-marionnet-pour-seance-06` | *absent* → pré-`v2` | **routeur dont les 7 configurations Quagga sont renseignées et sélectionnées** (440 à 936 octets chacune) ; `cloud` ; defects non nuls |
+| `worst-case` | `v2` (fabriqué) | cf. § 7.3 |
+
+Aucun `v0` étiqueté. Les deux projets sans fichier `version` portent `states/ports` : ils sont donc
+identifiés par le repli `try_to_understand_in_which_project_version_we_are` — précisément le
+chemin que l'ép. 4 devra amender.
+
+Le point le plus utile est que le corpus réel couvre **déjà** le morceau le plus délicat de la
+migration : les six attributs re-marshalés *dans* le forest (ép. 5) sont tous représentés, les
+sept configurations Quagga d'un routeur y compris. Il n'y avait rien à fabriquer de ce côté.
+
+### 7.2 Le banc — `_claude-local/bench/marshal-bench.sh`
+
+Il prouve **un** invariant : *ce que le canal de pilotage dit d'un projet ne change pas au travers
+d'un cycle sauvegarde → relecture*. Il est vrai en `v2` aujourd'hui et devra l'être en `v3`. Il ne
+compare jamais les octets de l'archive : le format a vocation à changer.
+
+Par projet, sur une **copie** (les originaux sont irremplaçables — leur empreinte est relevée
+avant et revérifiée après, c'est une assertion, pas une promesse) :
+
+| phase | séquence | rôle |
+|---|---|---|
+| 0 | `open` → dump jeté → `save` → `close`, **itéré jusqu'au point fixe** | absorber les adaptations d'un vieux projet ; instantané `S0` |
+| A | `open` → **dump A** → `save` → `close` | |
+| B | `open` → **dump B** → `save` → `close` | parité opposée ; instantané `S2` |
+| C | `open` → **dump C** → `close` | retour à la parité de A |
+
+Quatre verdicts : **A == C** (strict, ordre compris) ; **A ≡ B** (au jeu de lignes près, pour
+qu'un seul cycle ne perde aucun contenu) ; **les 8 fichiers** présents et non vides dans le `.mar`
+sauvé ; **S0 == S2 octet à octet** sur les fichiers extraits.
+
+Le dump interroge, dans l'ordre : `status`, `ls`, puis pour chaque composant — nœuds dans l'ordre
+de `ls`, câbles lus dans le treeview `defects`, seul à les recevoir — `can`, `get`, `rc-get` et
+`rc-get --field=<f>` pour chaque champ que la réponse déclare `available`, enfin les quatre
+treeviews. `rc-get` est le **seul** chemin qui voit les six attributs marshalés : `get` les laisse
+dans `omitted` (`control_server.ml:1425-1427`).
+
+Un seul masquage, justifié : `/tmp/marionnet-<n>.dir`, puisqu'un répertoire de session est créé
+par ouverture. **Contrôle de discriminance** : `ARM_DISCRIMINANCE=1` altère un label sans
+l'enregistrer ; le banc échoue alors en nommant `get m1` dans son diff.
+
+### 7.3 Le projet fabriqué — `_claude-local/bench/worst-case.sh`
+
+Il ne refabrique **pas** ce que le corpus couvre déjà. Il ajoute ce qui manquait : la nature
+`world_bridge`, des defects sur un **câble** (`leftward`/`rightward` — les sept n'en ont que sur
+des ports de nœuds), un câble croisé, et du **texte adverse** partout où le canal peut en poser
+(accents, guillemets typographiques et ASCII, contre-obliques, `%s`, accolades, tiret cadratin).
+Il est écrit en shell et non en `.mrn` parce que deux valeurs ne sont connues qu'à l'exécution :
+le nom des ports et le **fichier COW** qui identifie une ligne d'historique.
+
+### 7.4 Ce que le filet ne couvre PAS (à ne pas croire couvert)
+
+1. **`netmodel/dotoptions.marshal`** n'est publié par **aucune** commande du canal : la géométrie
+   du sketch échappe au dump. Elle n'est tenue que par les assertions d'inventaire et d'idempotence
+   octet-à-octet — lesquelles disparaîtront si l'ép. 4 change le format des deux côtés.
+2. **`states/texts`** (treeview `documents`) est **vide dans tout le corpus**, et aucun verbe du
+   canal ne l'alimente (ép. 5d du chantier pilotage : `documents` hors périmètre). Ce fichier
+   migrera donc **sans témoin**.
+3. **L'historique reste à un état par machine** : en créer plusieurs demande de démarrer un invité
+   réel. Manque structurellement mineur — `states/states-forest` a le même type (`Row.t Forest.t`)
+   que `defects`, dont la profondeur 3 est couverte.
+4. **Les octets non-UTF-8 sont inatteignables par le canal** : `rc_content_is_servable`
+   (`control_server.ml:1652`) les refuse, le canal répondant en JSON. **Le repli base64 du § 4.1
+   ne peut donc pas être éprouvé par ce banc** — il faudra un `.mar` fabriqué à la main, ou la GUI.
+
+### 7.5 Trois faits mesurés, qui dictent la forme du banc
+
+1. **L'ordre des nœuds s'inverse à chaque cycle.** `netmodel/network.xml` alterne entre deux
+   empreintes, de période 2, sur les huit projets ; les quatre treeviews, eux, ne bougent pas. Un
+   banc qui comparerait **un** cycle échouerait donc toujours, sur du `v2` intact. D'où la mesure
+   sur **deux** cycles, qui reste intégralement sensible à l'ordre — au lieu de trier, ce qui
+   aurait aveuglé le filet sur une vraie réorganisation. *Conséquence pour l'ép. 4 : `v3` héritera
+   de cette oscillation si rien n'est fait ; la corriger est possible mais ce serait un changement
+   de comportement, à décider explicitement.*
+2. **Enregistrer aussitôt après l'ouverture n'écrit pas la même chose** qu'enregistrer un peu plus
+   tard : `dotoptions.marshal` part alors avec `gui_callbacks_disable = "true"`, c'est-à-dire
+   l'état **transitoire** de la restauration (`Sketch.tuning`, ép. 7 du chantier pilotage), la
+   réaction de persistance n'ayant pas encore été rétablie. Chaque phase du banc rejoue donc
+   exactement la même séquence, dump compris.
+3. **`states/ifconfig-counters` change à chaque enregistrement, sur 4 octets et 4 seulement** :
+   `_OBSOLETE_mac_address_as_int` (`treeview_ifconfig.ml:313-317`) est tiré au hasard. Le banc
+   n'exige donc pas l'égalité du fichier mais que **seuls ces 4 octets** diffèrent — plus fort,
+   puisque cela prouve que les deux compteurs vivants (IPv4, `Int64` IPv6) ont survécu au cycle.
+   Le fichier fait 39 octets : en-tête `Marshal` (20), `0xb0` bloc de 3 champs, `0x02` CODE_INT32,
+   les 4 octets de l'entier, `0x41` (petit entier 1), puis l'`Int64` custom `_j`.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -269,3 +368,53 @@ Sans ce filet, aucun des épisodes suivants ne serait vérifiable autrement qu'�
 
 Livrables : ce document, la fiche mémoire `migration-marshal-to-text`, le pointeur dans
 `CLAUDE.md`. Aucun code touché.
+
+### 2026-08-09 — Épisode 1 : le filet, avant le code
+
+**Aucune ligne de code de production.** Le corpus est constitué, le banc est écrit, et il est vert
+— 41 assertions, 0 échec sur 8 projets (`_claude-local/bench/runs/20260809-215517-1-marshal/`).
+Conception détaillée au § 7 ; ce journal ne retient que ce qui a **changé** par rapport au plan.
+
+**Le prérequis bloquant est tombé sans travail.** Les neuf chemins désignés par l'auteur étaient
+déjà tous dans `_claude-local/examples/` — deux étant md5-identiques, cela fait sept projets
+distincts. Mieux : le corpus réel couvre **déjà** le morceau le plus délicat de la migration, les
+sept configurations Quagga d'un routeur, renseignées et sélectionnées. Le projet à fabriquer s'est
+donc réduit à ce qui manquait vraiment (`world_bridge`, defects de **câble**, câble croisé, texte
+adverse) au lieu du décor complet que l'ép. 0 imaginait.
+
+**Le banc a d'abord échoué sur du `v2` intact, trois fois, et c'est ce qui l'a fait.** Chaque échec
+a été instrumenté plutôt que contourné, et chacun a livré un fait durable (§ 7.5) :
+
+1. comparer **un** cycle est impossible — l'ordre des nœuds s'inverse à chaque enregistrement
+   (période 2). La réponse n'a pas été de **trier** les composants, ce qui aurait aveuglé le filet
+   sur une vraie réorganisation, mais de mesurer **deux** cycles, en gardant l'ordre dans la
+   comparaison ;
+2. `dotoptions.marshal` bougeait entre deux enregistrements. En cause : enregistrer aussitôt après
+   l'ouverture fige `gui_callbacks_disable = "true"`, l'état **transitoire** de la restauration.
+   Chaque phase du banc rejoue donc la même séquence — dump compris, même quand il est jeté ;
+3. `states/ifconfig-counters` change à **chaque** enregistrement, sur 4 octets : un champ déclaré
+   obsolète, tiré au hasard. L'assertion n'a pas été retirée mais **resserrée** — seuls ces 4
+   octets ont le droit de bouger, ce qui prouve la survie des deux compteurs vivants.
+
+**Un quatrième échec n'était pas un artefact de mesure mais un vrai défaut**, hors périmètre :
+un routeur naît avec le noyau `3.2.64-ghost`, que Marionnet lui-même juge inutilisable sur cet
+hôte. Le banc l'a d'abord vu comme une adaptation « résiduelle » à la deuxième ouverture d'un
+projet déjà normalisé, puis l'a **reproduit sur un projet neuf** fabriqué par le canal — ce qui a
+écarté l'hypothèse « vieux fichier » et désigné le constructeur. Analyse et deux voies de
+correction dans `docs/TODO.md`. Le banc, lui, itère sa normalisation **jusqu'au point fixe** et
+rapporte le nombre de passes : le défaut reste visible au lieu d'être noyé dans un « on ouvre deux
+fois ».
+
+**Ce que le filet ne tiendra pas** est écrit noir sur blanc au § 7.4, parce qu'un filet dont on
+croit à tort qu'il couvre tout est pire que pas de filet : `dotoptions.marshal` n'est publié par
+aucune commande du canal, `states/texts` est vide dans tout le corpus et inalimentable, et le
+**repli base64 du § 4.1 ne peut pas être éprouvé ici** — le canal refuse le non-UTF-8. L'ép. 2
+devra donc porter ses propres tests de round-trip sur octets bruts.
+
+Enfin, la discriminance a été vérifiée plutôt que supposée : `ARM_DISCRIMINANCE=1` altère un label
+sans l'enregistrer, et le banc échoue en nommant `get m1` dans son diff.
+
+Livrables : `_claude-local/bench/marshal-bench.sh`, `_claude-local/bench/worst-case.sh` et
+`_claude-local/examples/worst-case.mar` (tous hors dépôt, comme les huit bancs du chantier
+`marionnet-pilotage-par-script` — décision de l'auteur) ; côté versionné, le § 7 de ce document,
+son journal, l'entrée de `docs/TODO.md` et le pointeur de `CLAUDE.md`.
