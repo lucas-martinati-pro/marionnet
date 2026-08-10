@@ -218,10 +218,18 @@ du chantier `marionnet-pilotage-par-script`.
 binaire de conversion séparé — **aucune logique de format dupliquée**, donc rien qui puisse
 diverger du chemin réellement emprunté par l'application.
 
-**Ép. 8 — Compat descendante prouvée et message d'erreur.** Prouver au banc qu'un Marionnet `v2`
-devant un `.mar` `v3` échoue **proprement** (il ne trouve pas ses fichiers, et ne passe donc
-jamais de texte à `Marshal.from_file`) ; et qu'un Marionnet `v3` devant un `.mar` non identifié
-dit quelque chose d'utile — chaîne **gettext**, donc les 12 catalogues sont touchés.
+**Ép. 8 — Compat descendante prouvée et message d'erreur.** Scindé en deux, parce que les deux
+moitiés n'ont ni la même nature ni le même périmètre : la première ne produit **aucun code**, la
+seconde touche `bin/state.ml` **et** les 12 catalogues.
+
+- **Ép. 8a — la preuve** (§ 13) : prouver au banc qu'un Marionnet `v2` devant un `.mar` `v3` échoue
+  **proprement** (il ne trouve pas ses fichiers, et ne passe donc jamais de texte à
+  `Marshal.from_file`). Le témoin n'est pas une simulation : c'est un **vrai binaire** construit
+  depuis `a4055b1`, piloté par le canal. **Fait le 2026-08-10.**
+- **Ép. 8b — le message** : un Marionnet `v3` devant un `.mar` non identifié dit aujourd'hui
+  « Failed loading the project / Please ensure that the file be well-formed » (`state.ml:625`), ce
+  qui est **faux** pour un fichier parfaitement formé mais plus récent. Chaîne **gettext**, donc les
+  12 catalogues sont touchés.
 
 **Ép. 9 — Documentation et clôture.** Tranche « format de projet » de `docs/ARCHITECTURE.md`,
 note de version destinée aux enseignants, puis clôture (MODE C du skill `chantier-long`).
@@ -967,6 +975,91 @@ l'ép. 10 est *dérivée*, et y ajouter une règle sur les noms rétablirait dan
 connaissance qu'on tient hors de lui. Le refus du serveur nomme la commande à employer, ce qui
 enseigne au lieu d'échouer.
 
+## 13. La compat descendante, mesurée (ép. 8a)
+
+Depuis l'ép. 4, ce document répète (§ 3, § 10.6, § 11.5, § 12.5) qu'un vieux binaire mis devant un
+`.mar` `v3` « ne trouve pas ses fichiers, donc ne passe jamais de texte à `Marshal.from_file` ».
+C'était un **raisonnement sur le code**, tenu au sujet d'un binaire que personne n'avait relancé —
+alors que c'est le pire mode de défaillance du chantier : un enseignant qui ouvre un projet `v3`
+avec une installation plus ancienne. L'ép. 8a ne produit **aucun code de production** ; il produit
+la mesure.
+
+### 13.1 Le témoin est un vrai binaire, pas une simulation
+
+`a4055b1` (« ép. 3 — les codecs des treeviews ») est le dernier commit qui écrit encore du `v2`
+**et** qui ignore la chaîne `"v3"` (vérifié : aucune occurrence de `v3` dans son `state.ml`). Il
+porte **déjà** `bin/control_server.ml` : le vieux Marionnet se pilote donc sans un clic humain,
+et `mrnctl` lui parle sans adaptation puisqu'il demande son vocabulaire au serveur (`help`).
+
+```
+git worktree add _claude-local/v2-witness a4055b1
+cd _claude-local/v2-witness && dune build --root .
+```
+
+Le `--root .` n'est pas décoratif : sans lui, dune remonte à la racine du dépôt principal et
+répond `No rule found for alias _claude-local/v2-witness/default`. La même règle joue en notre
+faveur dans l'autre sens — dune ignore tout répertoire dont le nom commence par `_`, si bien que
+le worktree, logé sous `_claude-local`, **ne perturbe pas** le `dune build` du dépôt courant
+(vérifié). Le banc est `_claude-local/bench/backward-bench.sh` : phase 1, le binaire **courant**
+fabrique les `.mar` `v3` (le seul producteur légitime d'un `v3` est Marionnet, ép. 4g) ; phase 2,
+le **témoin** les reçoit. Les deux phases ont leur propre journal, `bench_launch` ouvrant `$LOG`
+en troncature.
+
+### 13.2 Ce que la mesure a corrigé, dès le premier run
+
+L'assertion statique voulait, dans sa première rédaction, que les fichiers du `.mar` `v2` et ceux
+du `.mar` `v3` soient **strictement disjoints** — « un vieux binaire ne peut pas ouvrir ce qu'il ne
+nomme pas ». Elle est tombée immédiatement : les deux archives partagent les
+`hostfs/<n>/boot_parameters` et `hostfs/<n>/GUESTNAME` (douze fichiers pour un projet de six
+machines), qui sont le **canal hôte↔invité** recopié d'un enregistrement à l'autre — du texte que
+le chargement ne lit jamais. Exiger la disjonction, c'était exiger autre chose que ce qui protège.
+
+La rédaction retenue énonce le danger lui-même : **parmi les fichiers présents dans les deux
+archives, aucun ne doit être un vidage `Marshal` côté `v2`** (test de l'en-tête magique
+`0x8495A6BD/BE/BF`). Elle est plus forte que la liste de noms qu'on avait d'abord envisagée — un
+nom oublié dans une liste est un trou dans la preuve, et `marshal-bench.sh` en porte déjà une, ce
+qui aurait fait une seconde source de vérité.
+
+### 13.3 Ce que le vieux binaire fait vraiment
+
+Mesuré sur deux projets (un TP réel à routeur, le projet fabriqué au canal) — **17 assertions,
+0 échec** :
+
+- il **refuse** le `.mar` `v3` : le canal répond `internal`, « loading … did not complete: the
+  project is flagged as unsaved right after opening » ;
+- **aucun composant** n'est visible après le refus (c'est la liste des noms qui tranche, pas le
+  drapeau `active` : un chargement échoué laisse le projet « actif » avec zéro nœud) ;
+- il est **toujours vivant** — ni segfault ni terminaison ;
+- son journal porte le chemin attendu, `project version cannot be identified`, et **aucune** trace
+  de démarshalage raté (`input_value`, `bad object`, `Truncated`, `ill-formed message`) : c'est la
+  forme observable de « aucun texte n'a atteint `Marshal` » ;
+- le `.mar` est **intact** après le refus.
+
+Le dialogue que l'humain voit, lui, se réduit à un titre : « Échec lors du chargement du projet ».
+C'est exactement la matière de l'**ép. 8b** — et le seul endroit où on l'observe, les
+`notifications` de `open` (ép. 3c du chantier pilotage) ne publiant pas le corps du dialogue.
+
+### 13.4 Le contrôle négatif : ce que l'ép. 4 avait évité
+
+`ARM_DISCRIMINANCE=1` donne au témoin un `.mar` **hybride** — le `v3` auquel on a **remis** les
+fichiers du `v2`, `version` restant à `"v3"` (fusion `cp -rn`, les noms étant disjoints rien n'est
+écrasé). C'est le projet qu'on obtenait avant que l'ép. 4 n'ajoute `project_paths#legacy_data_files`.
+**Six assertions tombent** (trois par projet), et ce qui les remplace vaut d'être lu : le vieux
+binaire **ouvre le projet**, ses neuf nœuds compris, affiche « Projet dans un ancien format » et
+**propose de le convertir** — c'est-à-dire de réécrire par-dessus l'état `v2` périmé qu'il vient de
+charger. Le danger que l'ép. 4 avait raisonné est donc réel, et il est désormais **mesuré** ; les
+trois autres assertions (le binaire est vivant, le fichier est intact, les fichiers communs sont
+inoffensifs) restent vertes, ce qui confirme que le désarmement touche ce qu'il prétend toucher.
+
+### 13.5 Ce que l'épisode 8a ne fait PAS
+
+Il ne mesure **qu'un point de l'histoire** : `a4055b1`, c'est-à-dire ce dépôt d'avant le
+branchement, et non un Marionnet 1.0 tel qu'il est installé chez quelqu'un. Le chemin de détection
+de version est le même (`opening_project_version` + le repli de `treeview_ifconfig`), mais un vrai
+1.0 n'a pas de canal : l'échec s'y observerait par le seul dialogue. Il ne touche pas au **message**
+montré à l'utilisateur (ép. 8b), ne convertit rien en lot (ép. 7, abandonné), et ne retire aucune
+lecture.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -1278,3 +1371,37 @@ refus, vocabulaire) reste vert. `dune build` et `dune test` (134 assertions) inc
 (`marshal-bench.sh`) est le second témoin : son `dump` interroge `rc-get` par composant puis par
 champ publié, si bien que le nombre de requêtes — tombé de 72 à 58 pendant que la commande était
 muette — remonte sans qu'une ligne du banc ait été touchée pour cela.
+
+### 2026-08-10 — Épisode 8a : la compat descendante, mesurée au lieu d'être affirmée
+
+**Aucune ligne de code de production.** Conception et résultats au § 13 ; ce journal ne retient que
+ce qui a **changé** par rapport au plan.
+
+Le plan disait « prouver au banc qu'un Marionnet `v2` devant un `.mar` `v3` échoue proprement ».
+Deux façons s'offraient : lire le vieux chemin de chargement et conclure, ou **relancer le vieux
+binaire**. La seconde a été retenue (décision de l'auteur), et elle était moins chère que prévu :
+le commit `a4055b1` porte déjà le canal de contrôle, si bien que le témoin se pilote comme le
+binaire courant — aucun clic, aucune capture d'écran, des assertions.
+
+**Ce que la mesure a corrigé.** L'assertion statique était fausse à la première rédaction : elle
+exigeait des archives aux noms **disjoints**, ce qui a échoué sur les douze `hostfs/<n>/*` que tout
+enregistrement recopie. Reformulée en « aucun fichier commun n'est un vidage `Marshal` », elle dit
+enfin le danger — et elle est plus forte que la liste de noms qu'on avait envisagée, laquelle
+aurait été une seconde source de vérité en face de celle de `marshal-bench.sh`.
+
+**Ce que le contrôle négatif a rendu visible.** Sur le `.mar` **hybride** (le `v3` avec les fichiers
+`v2` remis), le vieux binaire n'échoue pas : il **ouvre** le projet — neuf nœuds — annonce « Projet
+dans un ancien format » et **propose de le convertir**, c'est-à-dire d'écrire par-dessus l'état
+périmé qu'il vient de charger. Le raisonnement de l'ép. 4 (`legacy_data_files`) tenait donc une
+perte de données réelle à distance, et on le sait maintenant par la mesure.
+
+**La preuve.** `backward-bench.sh` : **17 assertions, 0 échec** sur deux projets ; **discriminance
+mesurée** — `ARM_DISCRIMINANCE=1` → **6 assertions tombent** (le refus, l'absence de composants et
+la ligne de journal, pour chacun des deux projets), les autres restent vertes. `dune build` et
+`dune test` (**134 assertions, 0 échec**) inchangés. `marshal-bench.sh` n'a **pas** été rejoué :
+rien n'a changé dans `bin/` ni `lib/`.
+
+**Reste à l'ép. 8b** : le message montré à l'utilisateur. Le vieux binaire, lui, dit « Échec lors du
+chargement du projet » ; le binaire **courant** devant un `.mar` qu'il ne sait pas identifier dit la
+même chose, suivie de « Please ensure that the file be well-formed » — trompeur pour un fichier
+parfaitement formé, mais écrit par une version plus récente.

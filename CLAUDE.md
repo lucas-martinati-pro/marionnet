@@ -423,8 +423,25 @@ Reprise : appliquer le skill `chantier-long`.
   compris (la conf ZEBRA posée par le canal est dans `/etc/quagga/zebra.conf` de l'invité) ;
   **discriminance mesurée** — écriture du contenu désarmée → **17 assertions tombent** ;
   `dune test` (134), `treeview-bench` et `components-bench` (134) inchangés.
-  **Prochaine étape = ép. 8** (compat descendante prouvée + message d'erreur gettext), puis ép. 9
-  (clôture). *(Ép. 7 `mar2v3` abandonné : 3 lignes de `mrnctl`.)*
+  **Ép. 8a (la compat descendante, mesurée) fait le 2026-08-10**, § 13 de la doc, **aucun code de
+  production** : le témoin n'est pas une simulation mais un **vrai binaire** (worktree git sur
+  `a4055b1`, qui porte déjà le canal — donc pilotable par `mrnctl` sans un clic). Mis devant un
+  `.mar` `v3`, il **refuse** (`internal`), reste **vivant**, ne montre **aucun composant**, son
+  journal porte `project version cannot be identified` sans une trace de démarshalage, et le
+  fichier est **intact**. Deux enseignements : (1) l'assertion statique de la première rédaction —
+  « les deux archives ont des noms **disjoints** » — était **fausse**, les
+  `hostfs/<n>/{boot_parameters,GUESTNAME}` étant recopiés d'un enregistrement à l'autre ;
+  reformulée en « **aucun fichier commun n'est un vidage `Marshal`** » (en-tête magique), elle dit
+  le danger *et* évite la liste de noms qui aurait fait une seconde source de vérité face à
+  `marshal-bench.sh` ; (2) le **contrôle négatif** — un `.mar` **hybride**, le `v3` avec les
+  fichiers `v2` remis — montre le vieux binaire **ouvrir** le projet, annoncer « Projet dans un
+  ancien format » et **proposer de le convertir** : la perte de données que `legacy_data_files`
+  (ép. 4) tenait à distance est **réelle**, et désormais mesurée. Preuve : **17 assertions,
+  0 échec**, discriminance **6 assertions tombent**, `dune test` (134) inchangé.
+  **Prochaine étape = ép. 8b** (message d'erreur gettext : `state.ml:493`/`:625` dit « Please
+  ensure that the file be well-formed » à un fichier parfaitement formé mais plus récent ; les
+  12 catalogues sont touchés), puis ép. 9 (clôture).
+  *(Ép. 7 `mar2v3` abandonné : 3 lignes de `mrnctl`.)*
 
 ## Où puiser
 
