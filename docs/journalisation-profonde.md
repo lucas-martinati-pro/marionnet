@@ -148,7 +148,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 |---|---|---|
 | **0** | Officialisation : cette doc, fiche mémoire, pointeurs | — (aucun code) |
 | **1** | **Prologue injecté** : `marionnet-relay.00-journal` déposé par `make_hostfs_content` ; auto-espionnage du `rc_config` (`set -x`, sortie **et** erreur) vers `/mnt/hostfs/rc_config.log`. **Livre aussi son épilogue de fermeture** `marionnet-relay.zz-journal` (cf. § 4.1) | machine trixie démarrée **par le canal**, `rc_config` volontairement fautif : le journal côté hôte porte la trace et le code d'erreur, là où **rien** n'apparaît aujourd'hui — **fait** (2026-08-10) |
-| **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur |
+| **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` (cf. § 4.2) | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur — **fait** (2026-08-10) |
 | **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` |
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien |
 | **5** | **Switch : instantané** par la socket mgmt (`port/print`, `hash/print`, `fstp/print`) rendu en JSON | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre |
@@ -190,6 +190,77 @@ Quatre points que la conception laissait ouverts, tranchés par la mesure :
 
 Le choix de l'embarquement (plutôt qu'un fichier installé) tient en une phrase : un binaire ne peut
 pas se désynchroniser des scripts qu'il dépose, et rien de tout ceci ne dépend d'un `make install`.
+
+### 4.2 Ce que l'épisode 2 a livré (et pourquoi un second fichier)
+
+La collecte est greffée **à la fin de l'épilogue**, comme le § 4.1 l'annonçait : le prologue n'a
+pas bougé d'une ligne. Elle écrit en revanche dans un **second fichier**,
+`/mnt/hostfs/boot.log` :
+
+| Fichier | Répond à |
+|---|---|
+| `rc_config.log` (ép. 1) | « qu'a fait **mon scénario**, et qu'est-ce qui a échoué dedans ? » |
+| `boot.log` (ép. 2) | « cette **image** a-t-elle démarré correctement ? » |
+
+Les fusionner aurait rendu les deux illisibles, et de toute façon la capture du premier est
+**close** quand la collecte commence — c'est précisément ce qui garantit que la collecte ne
+pollue pas le journal du scénario (le banc le vérifie dans les deux sens).
+
+**Le système d'init est détecté dans l'invité, pas reçu de l'hôte.** La détection est celle de
+systemd lui-même (`/run/systemd/system`, `sd_booted(3)`), plus la présence de `journalctl`
+puisque c'est ce dont la branche se sert. L'hôte, lui, ne connaît que ce que le `.conf` du
+filesystem **déclare** (`INIT_SYSTEM`, `disk.ml#init_system_of`). Les deux figurent dans
+l'en-tête — `# init: detected=… declared=…` —, et c'est le seul point de contact OCaml de
+l'épisode : **une ligne** dans `boot_parameters` (`simulation_level.ml`). Motif : cette
+déclaration sélectionne les `boot_quirks` de la ligne de commande noyau
+(`simulation_level.ml:995`) ; un désaccord entre ce que l'hôte croit et ce que l'invité fait
+est donc un diagnostic, pas une curiosité.
+
+Trois règles, toutes imposées par le fait que ce code tourne **à la fin d'un boot** :
+
+- **jamais fatale, jamais bruyante** : tout va dans le fichier, rien sur la console que
+  l'étudiant regarde — y compris sous `-d`, où l'épilogue vient de remettre `xtrace` (la
+  collecte le suspend et le rend) ;
+- **jamais illimitée** : `dmesg` et `journalctl` sont tronqués (400 et 500 lignes), les extraits
+  de `/var/log` à 200, et chaque commande passe sous `timeout 15` quand l'image a `timeout` ;
+- **jamais bloquante** : pas de `systemctl is-system-running --wait`. L'instantané est pris à
+  l'heure du relais et **le dit** dans son en-tête : les services démarrés plus tard n'y sont pas.
+
+Quatre mesures ont corrigé le code ou les attentes :
+
+- **une image Marionnet peut n'avoir aucun syslog** (constaté sur `debian-wheezy-08367`) : la
+  branche sysv se réduisait alors à `dmesg`, sans dire pourquoi. D'où le listing de `/var/log`,
+  **inconditionnel** — une collecte qui dit « il n'y a rien ici » vaut mieux qu'une collecte
+  silencieusement vide ;
+- **le tampon d'un noyau UML n'a pas toujours sa bannière** « Linux version » : présente sur
+  l'invité i686, absente sur le 6.12.95 x86_64, dont le tampon commence par l'échec d'analyse de
+  `console_no=1`. Le banc compte donc les **lignes horodatées par le noyau**, pas une bannière ;
+- **sous systemd, `journalctl -b` rapporte la sortie du relais** — donc nos propres lignes, trace
+  `set -x` et `!! FAILED` comprises. Le témoin de l'épisode 1 (« le journal est le seul fichier
+  du hostfs qui garde trace de l'échec ») a dû s'élargir aux **deux** fichiers du chantier ; en
+  retour, cela mesure que le prologue enrichit aussi le journal système de l'invité, qui n'aurait
+  vu sans lui que le message de `ls`, sans la commande ni son statut ;
+- **l'ordre du glob n'est pas le même sur toutes les images** : le relais de wheezy source
+  `/mnt/hostfs/{marionnet-,$virtualfs_name.}relay*`, l'inverse du relais actuel. Sans conséquence
+  pour nos trois fichiers (tous en `marionnet-`, donc toujours dans l'ordre
+  prologue / `.rcfile` / épilogue), mais le `.relay` **propre à l'image** passe après l'épilogue
+  là où il passe avant le prologue ailleurs : dans les deux cas il n'est **pas** encadré.
+
+**Mesure** (`journal-bench.sh`, hors dépôt, **60 assertions, 0 échec**), trois invités démarrés
+par le canal :
+
+- le **discriminant**, sur trixie : le scénario installe une unit `oneshot` qui échoue, et
+  `boot.log` la montre côté hôte dans sa section `systemctl --failed` — sans qu'aucun xterm n'ait
+  été ouvert ;
+- **l'autre moitié du discriminant**, sur `debian-wheezy-08367` — une image de 2013, sysv, en
+  i686 : même collecte, `detected=sysv declared=sysv`, aucune interrogation de systemd, aucune
+  erreur. **D1 tient sur les vieilles images** : rien n'a été reconstruit ;
+- **D5** : une machine sans le moindre `rc_config` a elle aussi sa collecte, close.
+
+Les deux branches sont en outre rejouées **hors UML**, sur une copie de l'épilogue dont le banc
+prouve que le seul écart avec la source est le chemin du hostfs. La branche sysv y est atteinte
+par un `PATH` réduit d'où `journalctl` est absent — la détection étant un **et**, c'est la seule
+façon de mesurer les deux branches sans dépendre d'une vieille image.
 
 ## 5. Rapports avec les autres chantiers
 
@@ -270,3 +341,31 @@ depuis une fonction — donc `++`, jamais `+`), et surtout la **dépendance invi
 les scripts embarqués (§ 4.1), qui faisait tourner le banc contre un binaire périmé. C'est le banc
 qui a réclamé la comparaison octet à octet du fichier déposé avec sa source ; c'est cette
 comparaison qui garde la synchronisation vérifiée à chaque run.
+
+### 2026-08-10 — Épisode 2 : le collecteur
+
+Greffé à la fin de `marionnet-relay.zz-journal.sh`, comme prévu, sans toucher au prologue ; il
+écrit un **second** fichier, `/mnt/hostfs/boot.log`, parce que « qu'a fait mon scénario ? » et
+« cette image a-t-elle démarré ? » sont deux questions (§ 4.2). Côté OCaml, **une ligne** : la
+liaison `init_system` dans `boot_parameters`, pour que la collecte puisse confronter ce que l'hôte
+**déclare** à ce qu'elle **détecte** — ce même `init_system` sélectionnant les `boot_quirks` du
+noyau, un désaccord vaut d'être vu.
+
+Le chantier voulait « selon `init_system` (déjà connu de Marionnet) » ; l'implémentation a inversé
+la source : c'est l'**invité** qui décide de la branche, par le test de systemd lui-même
+(`/run/systemd/system`), la déclaration de l'hôte n'étant plus qu'un **témoin** journalisé. Un
+fichier qui prétend dire ce que le boot a fait ne peut pas croire l'hôte sur parole.
+
+**60 assertions, 0 échec**, trois invités démarrés par le canal. Le discriminant est tenu des deux
+côtés : sur trixie, une unit `oneshot` installée par le scénario apparaît côté hôte dans
+`systemctl --failed`, sans aucun xterm ; sur `debian-wheezy-08367` — une image de **2013**, sysv,
+i686 — la même collecte s'écrit sans erreur et sans interroger systemd. **D1 est ainsi mesuré, pas
+seulement raisonné** : une image antérieure de treize ans au chantier produit son journal parce que
+l'hôte l'a injecté dans le hostfs, sans que rien ne soit reconstruit.
+
+Quatre choses ont été apprises en mesurant plutôt qu'en lisant : une image Marionnet peut n'avoir
+**aucun syslog** (d'où le listing de `/var/log`, inconditionnel) ; le tampon d'un noyau UML n'a pas
+toujours sa bannière ; sous systemd, `journalctl -b` **rapporte nos propres lignes**, ce qui a
+élargi le témoin de l'épisode 1 et montré au passage que le prologue enrichit aussi le journal
+système de l'invité ; et l'ordre du glob de sourcing est **inversé** dans le relais de wheezy, sans
+conséquence pour nos trois fichiers. Détail des quatre : § 4.2.

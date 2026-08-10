@@ -338,7 +338,16 @@ Reprise : appliquer le skill `chantier-long`.
   un `rc_config` fautif laisse enfin trace, erreur **et statut** dans `/mnt/hostfs/rc_config.log`.
   Piège transverse au dépôt : **dune ne voit pas à travers camlp4** — un `.sh` embarqué doit figurer
   dans les `preprocessor_deps` de `bin/dune`, sans quoi le binaire garde silencieusement la version
-  précédente). Deux faits mesurés qui commandent tout le reste : (1) le relais invité **source déjà**
+  précédente) ; **ép. 2 fait 2026-08-10** (le **collecteur**, greffé à la fin du même épilogue :
+  un **second** fichier `/mnt/hostfs/boot.log` dit ce que le boot a fait **avant** que le relais
+  soit atteint — `dmesg`, puis `systemctl --failed`/`journalctl -b` ou listing + extraits de
+  `/var/log` ; la branche est décidée par l'**invité** — `/run/systemd/system`, le test de systemd
+  lui-même — la déclaration de l'hôte n'étant qu'un **témoin** journalisé, d'où l'unique ligne
+  OCaml de l'épisode : la liaison `init_system` de `boot_parameters`. **D1 est mesuré, plus
+  seulement raisonné** : une `debian-wheezy` de 2013 produit sa collecte sans qu'aucune image ne
+  soit reconstruite. Pièges neufs : une image Marionnet peut n'avoir **aucun syslog**, et sous
+  systemd `journalctl -b` **rapporte nos propres lignes**). Deux faits mesurés qui commandent tout
+  le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
   **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune
   dépendance** envers `marionnet-kernel-rootfs` ; (2) le **mode examen** importe déjà

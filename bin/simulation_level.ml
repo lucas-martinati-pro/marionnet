@@ -1305,6 +1305,11 @@ class uml_process =
            ("host_ipv6_address_eth42", Option.extract_or (get_ipv6_address_of tap_name) (predict_ipv6_link_local_address_of tap_name));
            (* We use a non-standard binding to pass the virtual machine name to the guest: *)
            ("hostname", umid);
+           (* What the filesystem's .conf DECLARES about the guest's init system (bin/disk.ml,
+              `init_system_of'). The guest journal (work-stream `journalisation-profonde',
+              episode 2) detects the real one and reports both: a disagreement is worth seeing,
+              since this very value selects the kernel `boot_quirks' above. *)
+           ("init_system", init_system);
           ])
         (* Architecture C (ghostification="netns"): tell the guest relay the host X
            endpoint it must forward eth42's X11 to (the tap host side, 172.23.0.254 --

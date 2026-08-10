@@ -30,10 +30,10 @@
 #   - let the `tee' see its end of file and wait for it, so that the journal is
 #     complete host-side even if the machine is inspected right away.
 #
-# Episode 2 of the `journalisation-profonde' work-stream will graft the
-# collector (dmesg, journalctl -b, systemctl --failed) at the end of this same
-# file: it belongs here, after the capture is closed, and it needs no change to
-# the prologue.
+# Episode 2 grafts the COLLECTOR at the end of this same file (see the second
+# half below): it belongs here, after the capture is closed -- what it prints
+# has nothing to do with the user's startup configuration -- and it needed no
+# change at all to the prologue.
 #
 # Like its companion: plain Bash (no bashbricks inside a guest), everything
 # guarded, and never fatal to a boot.
@@ -79,5 +79,114 @@ if [[ -n "$__mrn_journal_log" ]]; then
   unset __mrn_journal_ps4 __mrn_journal_err_trap __mrn_journal_tee_pid
   unset __mrn_journal_x_was_on __mrn_journal_E_was_on __mrn_journal_tracing
 fi
+
+# ---------------------------------------------------------------------------
+# COLLECTOR (episode 2).  What the boot did BEFORE the relay was reached.
+#
+# The prologue/epilogue pair above only sees the user's startup configuration:
+# the relay is an init script (`Required-Start: $local_fs $network $syslog'),
+# so the kernel, init and the services all ran before it.  The only way to say
+# anything about them from here is to collect, afterwards, what they left.
+#
+# Written into a SECOND file, /mnt/hostfs/boot.log, on purpose: rc_config.log
+# answers "what did my scenario do?", boot.log answers "did this image boot
+# properly?".  Merging them would make both unreadable, and the capture of the
+# first one is closed by the time we get here anyway.
+#
+# Independent of the block above (its own guard): if the hostfs journal could
+# not even be created, the collection is still worth attempting.
+#
+# Three rules, all of them because this runs at the very end of a boot:
+#   - never fatal, never noisy: everything goes to the file, nothing to the
+#     console the student is looking at;
+#   - never unbounded: every section is truncated, and every command runs
+#     under `timeout' when the image has one;
+#   - never blocking: no `systemctl is-system-running --wait' -- the snapshot
+#     is taken at relay time and says so, services may still be starting.
+# ---------------------------------------------------------------------------
+
+__mrn_journal_boot_log=/mnt/hostfs/boot.log
+
+if { : > "$__mrn_journal_boot_log" ; } 2>/dev/null; then
+
+  # Marionnet's own debug mode (`-d') may have xtrace on at this point (the
+  # block above just put it back): the collection itself has no business being
+  # traced on the console, so we hold it off and restore it at the end.
+  case $- in *x*) __mrn_journal_x_here=yes ;; *) __mrn_journal_x_here=no ;; esac
+  { set +x ; } 2>/dev/null
+
+  # A guest without `timeout' is not impossible (minimal userlands), hence the
+  # lookup rather than a plain call:
+  __mrn_journal_timeout="$(type -p timeout 2>/dev/null)"
+  __mrn_journal_deadline=15
+
+  # $1 = section title, $2 = shell command line (a pipeline is expected).
+  __mrn_journal_run() {
+    echo
+    echo "===== $1 ====="
+    if [[ -n "$__mrn_journal_timeout" ]]; then
+      "$__mrn_journal_timeout" "$__mrn_journal_deadline" bash -c "$2" 2>&1 \
+        || echo "(no output, failed or timed out: status $?)"
+    else
+      eval "$2" 2>&1 || echo "(no output or failed: status $?)"
+    fi
+  }
+
+  # The init system is DETECTED here rather than taken from the host: the point
+  # of this file is to say what the guest really did, and the host only knows
+  # what the filesystem's .conf DECLARES (INIT_SYSTEM, bin/disk.ml).  Both are
+  # reported, precisely so that a disagreement -- which changes the kernel
+  # arguments Marionnet picks (`boot_quirks') -- becomes visible here.
+  # /run/systemd/system is systemd's own test (sd_booted(3)); journalctl is
+  # required too, since it is what the systemd branch below relies on.
+  if [[ -d /run/systemd/system ]] && type -p journalctl >/dev/null 2>&1; then
+    __mrn_journal_init=systemd
+  else
+    __mrn_journal_init=sysv
+  fi
+
+  { echo "# Marionnet guest journal (system collection)"
+    echo "# date: $(date '+%F %T %z' 2>/dev/null)"
+    echo "# guest: $(uname -srm 2>/dev/null)"
+    echo "# uptime:$(uptime 2>/dev/null | sed 's/^ *//')"
+    echo "# init: detected=$__mrn_journal_init declared=${init_system:-unknown}"
+    echo "# taken at the end of the relay: later services are not covered here"
+    echo "# companion: rc_config.log (the startup configuration itself)"
+
+    __mrn_journal_run "dmesg (last 400 lines)" "dmesg | tail -n 400"
+
+    if [[ "$__mrn_journal_init" = systemd ]]; then
+      # `is-system-running' exits non-zero for `degraded'/`starting', which are
+      # answers, not failures -- hence the `|| true':
+      __mrn_journal_run "systemctl is-system-running" \
+        "systemctl is-system-running || true"
+      __mrn_journal_run "systemctl --failed" \
+        "systemctl --failed --no-legend --no-pager || true"
+      __mrn_journal_run "journalctl -b (last 500 lines)" \
+        "journalctl -b --no-pager -n 500"
+    else
+      # No service manager to interrogate: whatever the image's syslog kept.  The
+      # listing comes first and is unconditional -- a Marionnet guest may simply
+      # have no syslog installed (measured on debian-wheezy), and a collection
+      # that says "nothing here" is worth more than a silently empty one.
+      __mrn_journal_run "/var/log (listing)" "ls -la /var/log"
+      for __mrn_journal_f in /var/log/boot /var/log/boot.log /var/log/messages /var/log/syslog; do
+        [[ -f "$__mrn_journal_f" ]] || continue
+        __mrn_journal_run "$__mrn_journal_f (last 200 lines)" \
+          "tail -n 200 '$__mrn_journal_f'"
+      done
+      unset __mrn_journal_f
+    fi
+
+    echo
+    echo "# end of the system collection: $(date '+%F %T %z' 2>/dev/null)"
+  } >> "$__mrn_journal_boot_log" 2>/dev/null
+
+  unset -f __mrn_journal_run 2>/dev/null
+  unset __mrn_journal_timeout __mrn_journal_deadline __mrn_journal_init
+  [[ "$__mrn_journal_x_here" = yes ]] && { set -x ; } 2>/dev/null
+  unset __mrn_journal_x_here
+fi
+unset __mrn_journal_boot_log
 
 :
