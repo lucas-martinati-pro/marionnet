@@ -35,6 +35,16 @@ open Gettext;;
 let commit_suicide signal =
   raise Exit;;
 
+(* Raised when opening a project whose version cannot be honoured. The argument is the raw
+   content of the project's `version' file, when there is one: [Some "v4"] means a tag we do
+   not know (hence, in all likelihood, a project written by a *more recent* Marionnet), while
+   [None] means nothing identifiable at all (no readable tag and no successful fall-back). The
+   two cases deserve different words: a project from the future is perfectly well-formed, and
+   telling its owner to "ensure that the file be well-formed" sends them looking for a
+   corruption that isn't there (work-stream `migration-marshal-to-text', episode 8b). *)
+exception Unsupported_project_version of string option
+;;
+
 type filename = string
  and pathname = string
  and basename = string
@@ -308,9 +318,16 @@ class globalState = fun () ->
     - `v3 is the first version whose data files are text (JSON) instead of Marshal dumps, and are
           named accordingly (netmodel/network.json, states/ifconfig.json, ...); work-stream
           `migration-marshal-to-text'. Same trick as above: an old binary does not find them *)
+  (* The raw content of the project's `version' file, when there is one. This is the only thing
+     that tells a project written by a more recent Marionnet (an unknown tag, say "v4") from a
+     file we cannot identify at all (no tag) — a distinction [opening_project_version] throws
+     away by design, but which the error message needs (episode 8b): *)
+  method private opening_project_version_tag : string option =
+    try PervasivesExtra.get_first_line_of_file (self#project_paths#version_file) with _ -> None
+
   method opening_project_version : [ `v0 | `v1 | `v2 | `v3 ] option = (* None stands for undefined, i.e. failed to identify *)
     try
-      let version = PervasivesExtra.get_first_line_of_file (self#project_paths#version_file) in
+      let version = self#opening_project_version_tag in
       match version with
       | Some "v0" -> Some `v0   (* marionnet 0.90.x *)
       | Some "v1" -> Some `v1   (* trunk revno >= 445 with ocamlbricks revno >= 387 (2013/11/17) to trunk revno 460 (included) *)
@@ -490,7 +507,7 @@ class globalState = fun () ->
       let project_version : [ `v0 | `v1 | `v2 | `v3 ] =
         match self#opening_project_version with
         | Some v -> v
-        | None   -> failwith "state#open_project_async: project version cannot be identified"
+        | None   -> raise (Unsupported_project_version (self#opening_project_version_tag))
       in
       let project_version_as_string = self#string_of_project_version project_version in
       Log.printf1 "state#open_project_async: project version is %s\n" (project_version_as_string);
@@ -614,7 +631,36 @@ class globalState = fun () ->
         (GMain_actor.delegate (fun () ->
 	    try
 	      synchronous_loading ()
-	    with e ->
+	    with
+	    (* A project we cannot open because of its *version* is not a malformed file, and must
+	       not be reported as one. Note that the translated sentences below take no argument:
+	       the file name and the raw tag are concatenated outside of gettext, so that no
+	       translation can break the program by getting a format arity wrong (a failure mode
+	       msgfmt -c does not catch). *)
+	    | Unsupported_project_version tag as e ->
+	      begin
+		Log.printf2 "Failed loading the project `%s': unsupported project version (%s).\n"
+		  filename
+		  (match tag with None -> "no tag" | Some t -> Printf.sprintf "tag `%s'" t);
+		let title, explanation =
+		  match tag with
+		  | Some _ ->
+		      (s_ "Project format not supported"),
+		      (s_ "This project has been written by a more recent version of Marionnet. Please upgrade Marionnet in order to open it.")
+		  | None ->
+		      (s_ "Project format not recognized"),
+		      (s_ "The format of this project could not be identified. The file may be damaged, or it may not be a Marionnet project at all.")
+		in
+		let error_msg =
+		  Printf.sprintf "<tt><small>%s</small></tt>\n\n%s%s"
+		    filename
+		    explanation
+		    (match tag with None -> "" | Some t -> Printf.sprintf "\n\n<tt>version = %s</tt>" t)
+		in
+		Simple_dialogs.error title error_msg ();
+		raise e;
+	      end
+	    | e ->
 	      begin
 		Log.printf1 "Failed loading the project `%s'. The next reported exception is harmless.\n" filename;
 		let error_msg =

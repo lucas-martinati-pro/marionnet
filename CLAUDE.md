@@ -438,9 +438,22 @@ Reprise : appliquer le skill `chantier-long`.
   ancien format » et **proposer de le convertir** : la perte de données que `legacy_data_files`
   (ép. 4) tenait à distance est **réelle**, et désormais mesurée. Preuve : **17 assertions,
   0 échec**, discriminance **6 assertions tombent**, `dune test` (134) inchangé.
-  **Prochaine étape = ép. 8b** (message d'erreur gettext : `state.ml:493`/`:625` dit « Please
-  ensure that the file be well-formed » à un fichier parfaitement formé mais plus récent ; les
-  12 catalogues sont touchés), puis ép. 9 (clôture).
+  **Ép. 8b (le message) fait le 2026-08-10**, § 14 de la doc : le « Please ensure that the file be
+  well-formed » servi à un fichier parfaitement formé mais plus récent est remplacé par **deux**
+  messages, portés par une **exception dédiée** (`Unsupported_project_version of string option`)
+  dont l'argument est le **tag brut** du fichier `version` — `Some "v4"` = projet du futur,
+  `None` = rien d'identifiable ; les 4 chaînes neuves sont **sans format** (`s_`, jamais `f_`), le
+  nom de fichier et le tag voyageant hors gettext, seule protection contre une traduction d'arité
+  fausse (que `msgfmt -c` ne voit pas). Les 12 catalogues sont passés par le **pipeline officiel**,
+  mesuré sans danger (`added=4 changed=0 removed=0` partout). Le point durable est ailleurs : la
+  preuve prévue — rejouer les ouvertures **en français** — s'est révélée **impossible depuis
+  `_build`**, `strace` montrant que le binaire ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`,
+  le catalogue du Marionnet **installé**, et jamais celui du dépôt (2 correctifs essayés,
+  **retirés faute d'effet mesuré** → `docs/TODO.md`) ; le banc prouve donc les 12 catalogues par
+  `dgettext` et **mesure** le catalogue réellement ouvert au lieu de conclure. Preuve : banc
+  **30 assertions, 0 échec**, discriminance **7 tombent**, `dune test` (134) et `backward-bench`
+  (17) inchangés.
+  **Prochaine étape = ép. 9** (documentation et clôture).
   *(Ép. 7 `mar2v3` abandonné : 3 lignes de `mrnctl`.)*
 
 ## Où puiser

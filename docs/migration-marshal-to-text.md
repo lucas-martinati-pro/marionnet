@@ -226,10 +226,10 @@ seconde touche `bin/state.ml` **et** les 12 catalogues.
   **proprement** (il ne trouve pas ses fichiers, et ne passe donc jamais de texte à
   `Marshal.from_file`). Le témoin n'est pas une simulation : c'est un **vrai binaire** construit
   depuis `a4055b1`, piloté par le canal. **Fait le 2026-08-10.**
-- **Ép. 8b — le message** : un Marionnet `v3` devant un `.mar` non identifié dit aujourd'hui
+- **Ép. 8b — le message** (§ 14) : un Marionnet `v3` devant un `.mar` non identifié disait
   « Failed loading the project / Please ensure that the file be well-formed » (`state.ml:625`), ce
-  qui est **faux** pour un fichier parfaitement formé mais plus récent. Chaîne **gettext**, donc les
-  12 catalogues sont touchés.
+  qui est **faux** pour un fichier parfaitement formé mais plus récent. Exception dédiée + deux
+  messages **gettext** distincts, donc les 12 catalogues touchés. **Fait le 2026-08-10.**
 
 **Ép. 9 — Documentation et clôture.** Tranche « format de projet » de `docs/ARCHITECTURE.md`,
 note de version destinée aux enseignants, puis clôture (MODE C du skill `chantier-long`).
@@ -1060,6 +1060,108 @@ de version est le même (`opening_project_version` + le repli de `treeview_ifcon
 montré à l'utilisateur (ép. 8b), ne convertit rien en lot (ép. 7, abandonné), et ne retire aucune
 lecture.
 
+## 14. Le message, et le catalogue qu'un arbre de développement ne lit pas (ép. 8b)
+
+### 14.1 Une exception plutôt qu'un `failwith`, parce que la cause doit voyager
+
+Le point de départ est une phrase : devant un `.mar` qu'il ne sait pas identifier, Marionnet
+affichait « Failed loading the project » puis « **Please ensure that the file be well-formed** ».
+Elle envoie chercher une corruption dans un fichier qui n'en a aucune — un projet écrit par une
+version plus récente est parfaitement formé, il est seulement postérieur. C'est le message que
+lira l'enseignant resté sur son installation pendant qu'un collègue enregistre en `v3`.
+
+Le chemin fautif tenait en une ligne : `state.ml` levait un `failwith` porteur d'un texte
+technique, aussitôt absorbé par le handler **générique** de `synchronous_loading`, qui ne pouvait
+donc rien dire de mieux que la phrase passe-partout. D'où une **exception dédiée**,
+`State.Unsupported_project_version of string option`, dont l'argument porte la seule chose qui
+distingue les deux cas : le **tag brut** du fichier `version`. `Some "v4"` = un tag inconnu, donc
+selon toute vraisemblance un projet du futur ; `None` = rien d'identifiable, ni tag lisible ni
+repli réussi. La lecture de ce tag est extraite dans `opening_project_version_tag`, sur laquelle
+`opening_project_version` s'appuie désormais — une seule lecture, deux méthodes, et la signature
+publique de la seconde inchangée (elle n'a aucun appelant hors de `state.ml`).
+
+Le handler gagne **une branche en tête**, le cas générique restant intact :
+
+| Cas | Titre | Corps |
+|---|---|---|
+| tag inconnu | *Project format not supported* | « écrit par une version plus récente de Marionnet, mettez-le à jour » + `version = v4` |
+| aucun tag | *Project format not recognized* | « format non identifiable ; fichier endommagé, ou pas un projet Marionnet » |
+
+### 14.2 Pourquoi les quatre phrases ne prennent aucun argument
+
+Les quatre chaînes neuves sont des `s_`, jamais des `f_` : le nom du fichier et le tag brut sont
+concaténés **hors** gettext, dans les `<tt>` du corps. Ce n'est pas une commodité mais une
+protection, et elle vient du chantier i18n : une traduction dont l'**arité de format** diffère de
+l'original casse à l'exécution, en silence, et `msgfmt -c` ne la voit pas. Zéro `%s` traduit, zéro
+possibilité de casse — au prix d'un corps composé, ce que le fichier faisait déjà
+(`Printf.sprintf "<tt><small>%s</small></tt>\n\n%s" filename (s_ …)`).
+
+Les 12 catalogues sont passés par le **pipeline officiel** (`make gettext-messages-pot` puis
+`gettext-update-po`) et non par une insertion à la main. La mesure a montré que c'était sans
+danger : le POT regagne **exactement** les 4 entrées neuves, aucun `msgid` n'est perdu, et une
+comparaison entrée par entrée des 12 catalogues (HEAD vs arbre de travail) donne partout
+`added=4 changed=0 removed=0`. Les 3 messages non traduits qui subsistent par langue sont ceux du
+`world_bridge` (chantier `modernisation-world-bridge`), antérieurs et hors périmètre. `ar.po` et
+`zh.po`, hors `LINGUAS`, ne sont pas touchés.
+
+### 14.3 Ce que la mesure a refusé de prouver, et le fait qu'elle a établi à la place
+
+Le banc devait finir par une preuve en deux temps : les mêmes ouvertures en anglais puis en
+français, ce qui aurait prouvé d'un même geste le message **et** le chargement effectif d'un `.mo`
+(le piège du chantier i18n : un catalogue peut être compilé, installé, et jamais lu). La phase
+française a échoué — et c'est elle qui a appris quelque chose.
+
+`strace` sur les seuls `openat` dit que le binaire de `_build` ouvre
+`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`, c'est-à-dire le catalogue du **Marionnet installé
+par le système**, vieux de plusieurs versions — et jamais celui du dépôt, bien que la cascade de
+`bin/gettext.ml` explore le site dune-site (25 `openat` dans
+`_build/install/default/share/marionnet/locale`, dont les catalogues sont des **liens symboliques**
+vers `_build/default/i18n/`). Deux correctifs ont été essayés et **retirés faute d'effet mesuré** :
+forcer `MARIONNET_LOCALEPREFIX`, et ajouter `~follow:()` au `find` de la cascade (l'hypothèse du
+symlink non reconnu par `lstat`). La cause exacte n'est pas établie ; elle sort du périmètre de
+l'épisode et part dans `docs/TODO.md`.
+
+Le désarmement du message a d'ailleurs produit la contre-épreuve : avec le `failwith` d'origine
+rétabli, le titre affiché est « **Échec lors du chargement du projet** » — du français, sorti du
+catalogue système, qui porte l'ancienne chaîne et pas les neuves. Le mécanisme de traduction
+fonctionne donc parfaitement : c'est le **catalogue** qui est le mauvais.
+
+Le banc ne fait donc pas semblant. Il prouve ce qui est prouvable sans installer — que les
+**12 catalogues compilés rendent les 4 phrases**, en les demandant à `dgettext` par `gettext(1)`,
+la fonction même qu'appelle `s_` — puis il **mesure** quel catalogue le binaire ouvre, et ne
+conclut sur l'affichage traduit **que** si c'est celui du dépôt. Sur un poste où Marionnet est
+installé à jour, la même exécution deviendra une preuve complète, sans toucher au banc.
+
+Au passage, une observation de l'ép. 8a est **démentie** : les `notifications` publient bien le
+**corps** du dialogue en plus du titre (`json_of_notification`, `control_server.ml:112-119`).
+`backward-bench.sh` demandait `.text`, un champ qui n'existe pas — d'où l'impression que seul le
+titre voyageait. Les assertions de l'ép. 8b portent donc sur la phrase entière.
+
+### 14.4 La preuve
+
+`version-bench.sh` (hors dépôt, comme les autres) : **30 assertions, 0 échec**. Douze pour les
+catalogues, quatorze pour les deux messages (titre, corps, absence de l'ancienne phrase, présence
+ou absence du tag brut, survie du binaire, `.mar` intact), une pour le contrôle négatif permanent
+(le même projet non trafiqué s'ouvre **sans aucun dialogue d'erreur**), une pour le catalogue
+réellement ouvert, une pour l'intégrité du corpus. Les deux projets mesurés sont fabriqués depuis
+un `v3` écrit par le binaire lui-même : `future.mar` porte un tag `"v4"` **et** son
+`states/ifconfig.json` renommé — les deux, parce que le repli de détection teste ce fichier en
+tête et rouvrirait tranquillement le projet comme un `v3` ; `unknown.mar` n'a plus de fichier
+`version` du tout.
+
+**Discriminance mesurée** : `raise (Unsupported_project_version …)` remplacé par le `failwith`
+d'origine, `dune build`, banc rejoué → **7 assertions tombent** (les deux titres, les deux corps,
+les deux « plus d'invitation à chercher une corruption », le tag brut), toutes les autres restent
+vertes. `dune test` : **134 assertions, 0 échec**, inchangé. `backward-bench.sh` (ép. 8a) rejoué :
+**17 assertions, 0 échec**.
+
+### 14.5 Ce que l'épisode 8b ne fait PAS
+
+Il ne ferme pas le projet en échec (le comportement mesuré à l'ép. 8a — l'application survit,
+aucun composant n'apparaît — est conservé tel quel), ne touche à aucune lecture `v0`/`v1`/`v2`, ne
+corrige pas la localisation des catalogues en arbre de développement (→ `docs/TODO.md`), et ne
+traduit ni `ar.po` ni `zh.po`, hors `LINGUAS`.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -1405,3 +1507,40 @@ rien n'a changé dans `bin/` ni `lib/`.
 chargement du projet » ; le binaire **courant** devant un `.mar` qu'il ne sait pas identifier dit la
 même chose, suivie de « Please ensure that the file be well-formed » — trompeur pour un fichier
 parfaitement formé, mais écrit par une version plus récente.
+
+### 2026-08-10 — Épisode 8b : le message, et le catalogue qu'un arbre de développement ne lit pas
+
+**Ce qui a été fait.** `bin/state.ml` : exception dédiée `Unsupported_project_version of string
+option`, méthode `opening_project_version_tag` dont `opening_project_version` dérive désormais, et
+une branche en tête du handler générique de `synchronous_loading` — deux titres et deux corps
+selon que le fichier `version` porte un tag inconnu ou rien du tout. Les 4 chaînes neuves sont
+sans format (`s_`, jamais `f_`), le nom du fichier et le tag brut voyageant hors gettext : une
+traduction d'arité fausse casserait à l'exécution sans que `msgfmt -c` s'en aperçoive. Les
+12 catalogues sont passés par le pipeline officiel (`gettext-messages-pot` + `gettext-update-po`),
+mesuré sans danger — POT : 4 `msgid` gagnés, aucun perdu ; catalogues : `added=4 changed=0
+removed=0` partout, comparaison entrée par entrée contre HEAD. Restent 3 non-traduits par langue,
+ceux du `world_bridge`, antérieurs et hors périmètre.
+
+**Ce que la mesure a appris.** La preuve prévue — rejouer les ouvertures en français — est
+**impossible depuis un arbre de développement** : `strace` montre que le binaire de `_build` ouvre
+`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`, le catalogue du Marionnet installé par le
+système, et jamais celui du dépôt, bien que la cascade de `bin/gettext.ml` explore le site
+dune-site. Deux correctifs essayés (`MARIONNET_LOCALEPREFIX`, `~follow:()` sur le `find`) n'ont
+**rien changé à la mesure et ont été retirés** ; la cause n'est pas établie et part dans
+`docs/TODO.md`. Le désarmement du message a fourni la contre-épreuve : avec le `failwith`
+d'origine, le titre sort **en français** (« Échec lors du chargement du projet ») — le mécanisme
+de traduction marche, c'est le catalogue qui est le mauvais. Le banc prouve donc ce qui est
+prouvable sans installer (les 12 catalogues compilés rendent les 4 phrases, demandées à
+`dgettext`), puis **mesure** le catalogue réellement ouvert et ne conclut sur l'affichage traduit
+que s'il vient du dépôt. Enfin, une observation de l'ép. 8a est **démentie** : les `notifications`
+publient bien le **corps** en plus du titre — `backward-bench.sh` demandait `.text`, un champ
+inexistant.
+
+**La preuve.** `version-bench.sh` : **30 assertions, 0 échec** (12 catalogues, 14 sur les deux
+messages, contrôle négatif du projet non trafiqué, catalogue ouvert, corpus intact) ;
+**discriminance mesurée** — `failwith` d'origine rétabli → **7 assertions tombent**, les autres
+restent vertes. `dune test` **134 assertions, 0 échec** inchangé ; `backward-bench.sh` (ép. 8a)
+rejoué : **17 assertions, 0 échec**.
+
+**Reste à l'ép. 9** : tranche « format de projet » de `docs/ARCHITECTURE.md`, note de version pour
+les enseignants, puis clôture (MODE C).

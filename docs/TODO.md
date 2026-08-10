@@ -183,3 +183,34 @@ l'utilisateur** et ne doit pas être glissée dans un épisode qui parle d'autre
 *Décision explicite de l'auteur le 2026-08-09 (ép. 4 de `migration-marshal-to-text`) : `v3` hérite
 du comportement, la correction sort du chantier — c'est un changement de comportement du modèle,
 pas du format.*
+
+---
+
+## i18n — en arbre de développement, Marionnet lit le catalogue d'un AUTRE Marionnet
+
+**Constat** (mesuré le 2026-08-10 à l'ép. 8b de `migration-marshal-to-text`, `strace -e openat`).
+Le binaire de `_build` ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo` — le catalogue du
+Marionnet **installé sur la machine**, qui peut avoir plusieurs versions de retard — et jamais
+celui du dépôt, alors même que la cascade de `bin/gettext.ml` explore le site dune-site
+(25 `openat` sous `_build/install/default/share/marionnet/locale`, dont les `.mo` sont des **liens
+symboliques** vers `_build/default/i18n/`). Conséquence : on ne peut **pas** vérifier une
+traduction sans installer, et pire, on croit la vérifier alors qu'on lit le catalogue d'un autre
+binaire — exactement le piège que le chantier i18n clos avait nommé (« preuve du `.mo` réellement
+chargé »).
+
+**Voulu.** Qu'un binaire lancé depuis `_build` lise les catalogues du dépôt, pour que
+`LC_ALL=fr_FR.UTF-8 ./_build/default/bin/marionnet.exe` montre les traductions **qu'on vient
+d'écrire**.
+
+**Ce que l'implémentation devra affronter.** Deux pistes ont été essayées à l'ép. 8b et
+**retirées faute d'effet mesuré** : (a) `MARIONNET_LOCALEPREFIX` — la cascade la place pourtant en
+deuxième position (`gettext.ml:47-52`), mais la fixer ne change pas le fichier ouvert, ce qui
+demande d'abord de vérifier que `Configuration.get_string_variable` lit bien l'environnement pour
+cette variable ; (b) `~follow:()` sur le `find` de la cascade, l'hypothèse étant qu'un lien
+symbolique n'est pas un `'f'` pour `UnixExtra.find` (qui utilise `lstat` sans `~follow`) — sans
+effet non plus. Le diagnostic reste donc **ouvert** : il faudra instrumenter `localeprefix`
+(le `Log.printf` de `gettext.ml:59` est écrit **avant** que le journal ne soit prêt, donc perdu —
+c'est la première chose à corriger pour voir quoi que ce soit) plutôt que de continuer à deviner.
+Le repli final `try_to_infer_localeprefix_searching_marionnet_dot_mo_in_usr` est le suspect
+principal : il cherche dans `/usr` et trouve toujours quelque chose sur un poste où Marionnet est
+installé.
