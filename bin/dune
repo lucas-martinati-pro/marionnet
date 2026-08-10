@@ -174,7 +174,14 @@
       (file ../lib/log_module_loading_p4.cmo)
       (file ../lib/where_p4.cmo)
       (file ../lib/include_type_definitions_p4.cmo)
-      (file ../lib/include_as_string_p4.cmo))
+      (file ../lib/include_as_string_p4.cmo)
+      ;; --- The shell scripts embedded by INCLUDE_AS_STRING. Declared here because dune cannot
+      ;; --- see through camlp4: without these lines, editing one of them leaves the binary
+      ;; --- silently carrying the PREVIOUS version (measured while writing episode 1 of the
+      ;; --- `journalisation-profonde' work-stream, on the two guest journal scripts).
+      (file scripts/marionnet-relay.00-journal.sh)
+      (file scripts/marionnet-relay.zz-journal.sh)
+      (file scripts/can-directory-host-sparse-files.sh))
   (preprocess (action (run camlp4of
       -I ../../../../_build/default/lib/
       %{read-lines:../lib/camlp4of-include.cfg}

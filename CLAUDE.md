@@ -332,7 +332,13 @@ Reprise : appliquer le skill `chantier-long`.
   peut lire ; `-d` n'y répond pas : booléen **global**, trace dans un xterm, rien par composant ni
   en fichier) : `docs/journalisation-profonde.md` ; mémoire `journalisation-profonde` ;
   `git log --grep="journalisation-profonde"`. **Ép. 0 fait 2026-08-10** (officialisation, aucun
-  code). Deux faits mesurés qui commandent tout le reste : (1) le relais invité **source déjà**
+  code) ; **ép. 1 fait 2026-08-10** (le **prologue injecté** : `bin/scripts/marionnet-relay.00-journal.sh`
+  et son épilogue `…zz-journal.sh` — **indissociables**, la redirection fuirait sinon sur la fin du
+  boot — déposés dans le hostfs par `make_hostfs_content` et **embarqués** par `INCLUDE_AS_STRING` ;
+  un `rc_config` fautif laisse enfin trace, erreur **et statut** dans `/mnt/hostfs/rc_config.log`.
+  Piège transverse au dépôt : **dune ne voit pas à travers camlp4** — un `.sh` embarqué doit figurer
+  dans les `preprocessor_deps` de `bin/dune`, sans quoi le binaire garde silencieusement la version
+  précédente). Deux faits mesurés qui commandent tout le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
   **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune
   dépendance** envers `marionnet-kernel-rootfs` ; (2) le **mode examen** importe déjà

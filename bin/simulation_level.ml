@@ -20,6 +20,10 @@
 #load "include_type_definitions_p4.cmo" ;;
 INCLUDE DEFINITIONS "../../../../bin/simulation_level.mli";;
 
+(* --- Guest-side journal scripts, embedded at preprocessing time (see
+       `make_hostfs_content'): they are deposited into the hostfs, not installed. *)
+#load "include_as_string_p4.cmo" ;;
+
 (* --- *)
 module Log = Marionnet_log
 module Option = Ocamlbricks.Option
@@ -1249,6 +1253,27 @@ class uml_process =
            let dest = Filename.concat (hostfs_directory) relay in
            UnixExtra.rewrite dest content)
         (rcfile_content)
+    in
+    (* Frame the user's rcfile with the guest-side journal (work-stream
+       `journalisation-profonde', episode 1). The guest relay sources
+       /mnt/hostfs/marionnet-relay* in alphabetical order, so "00-" is sourced before the
+       user's ".rcfile" and "zz-" after it: what the startup configuration prints, and the
+       status of what fails in it, land in /mnt/hostfs/rc_config.log. Unconditional on
+       purpose (decision D5: a script must find the journal without knowing any flag).
+       The contents are embedded here at preprocessing time, so no installation step is
+       involved and a binary can never disagree with the scripts it deposits: *)
+    let () =
+      List.iter
+        (fun (basename, content) ->
+           let dest = Filename.concat (hostfs_directory) basename in
+           try UnixExtra.rewrite dest content with e ->
+             (* Never fatal: a machine must boot even without its journal. *)
+             Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
+               dest (Printexc.to_string e))
+        [ ("marionnet-relay.00-journal",
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.00-journal.sh");
+          ("marionnet-relay.zz-journal",
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.zz-journal.sh") ]
     in
     (* Create the file `boot_parameters_pathname': *)
     let descriptor =

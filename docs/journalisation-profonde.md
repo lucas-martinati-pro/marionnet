@@ -147,8 +147,8 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | Ép. | Livrable | Discriminant (la preuve qui départage) |
 |---|---|---|
 | **0** | Officialisation : cette doc, fiche mémoire, pointeurs | — (aucun code) |
-| **1** | **Prologue injecté** : `marionnet-relay.00-journal` déposé par `make_hostfs_content` ; auto-espionnage du `rc_config` (`set -x`, sortie **et** erreur) vers `/mnt/hostfs/rc_config.log` | machine trixie démarrée **par le canal**, `rc_config` volontairement fautif : le journal côté hôte porte la trace et le code d'erreur, là où **rien** n'apparaît aujourd'hui |
-| **2** | **Épilogue collecteur** : `marionnet-relay.zz-collect` dépose `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur |
+| **1** | **Prologue injecté** : `marionnet-relay.00-journal` déposé par `make_hostfs_content` ; auto-espionnage du `rc_config` (`set -x`, sortie **et** erreur) vers `/mnt/hostfs/rc_config.log`. **Livre aussi son épilogue de fermeture** `marionnet-relay.zz-journal` (cf. § 4.1) | machine trixie démarrée **par le canal**, `rc_config` volontairement fautif : le journal côté hôte porte la trace et le code d'erreur, là où **rien** n'apparaît aujourd'hui — **fait** (2026-08-10) |
+| **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur |
 | **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` |
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien |
 | **5** | **Switch : instantané** par la socket mgmt (`port/print`, `hash/print`, `fstp/print`) rendu en JSON | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre |
@@ -157,6 +157,39 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **8** | **Documentation + exemples exécutables + banc** `journal-bench.sh` : « tous les services démarrent », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
 | **9** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→8 opérationnels |
 | **10** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+
+### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
+
+Le § 3.1 avait prévu l'encadrement ; l'implémentation a montré qu'il n'est **pas sécable**. Livrer
+le prologue seul aurait laissé la redirection courir sur toute la fin du boot — `clear`,
+`linuxlogo`, la bannière de console seraient partis dans le journal, et la console de l'étudiant se
+serait tue. L'épisode 1 livre donc **le prologue et l'épilogue**, ce dernier réduit à sa fonction de
+**fermeture** ; l'épisode 2 lui ajoutera la collecte, au même endroit, sans toucher au prologue.
+
+| Fichier | Où il vit | Ce qu'il fait |
+|---|---|---|
+| `bin/scripts/marionnet-relay.00-journal.sh` | versionné, **embarqué** dans le binaire | sauve l'état (`xtrace`, `errtrace`, `PS4`, trap `ERR`, descripteurs 1 et 2 rangés en 3 et 4), tronque `/mnt/hostfs/rc_config.log`, capture vers un `tee`, pose `PS4='+ ${BASH_SOURCE##*/}:${LINENO}: '`, `set -x` et un trap `ERR` |
+| `bin/scripts/marionnet-relay.zz-journal.sh` | idem | rend l'état, referme la capture, **attend** le `tee` |
+
+Quatre points que la conception laissait ouverts, tranchés par la mesure :
+
+- **le `tee` en substitution de processus survit** dans l'invité (trixie, bash 5.2) ; le repli sans
+  `tee` (`exec >>` direct) reste écrit pour les images qui n'en auraient pas, et le mode retenu est
+  **annoncé dans l'en-tête du journal** ;
+- **l'ordre du glob ne dépend pas de la locale** — rejoué sous `C` et sous une locale UTF-8 ;
+- **le statut d'échec exige un trap `ERR`** : un fichier *sourcé* n'avorte pas, et le `$?` que
+  l'épilogue verrait est celui du `echo "Source-ing …"` de la boucle du relais, pas celui du
+  `rc_config`. Le trap suspend la trace le temps d'écrire `!! FAILED (status N): <commande>`, sans
+  quoi le journal se documente lui-même plutôt que la panne ;
+- **`dune` ne voit pas à travers camlp4.** `INCLUDE_AS_STRING` lit le `.sh` à la préprocession, mais
+  la dépendance n'existe pour dune que si elle est **déclarée** : sans elle, éditer un script
+  laissait le binaire porter **silencieusement** la version précédente (constaté sur le premier
+  correctif). Les trois scripts embarqués sont désormais dans les `preprocessor_deps` de
+  `bin/dune` — y compris `can-directory-host-sparse-files.sh`, qui traînait le même défaut depuis
+  toujours.
+
+Le choix de l'embarquement (plutôt qu'un fichier installé) tient en une phrase : un binaire ne peut
+pas se désynchroniser des scripts qu'il dépose, et rien de tout ceci ne dépend d'un `make install`.
 
 ## 5. Rapports avec les autres chantiers
 
@@ -201,3 +234,39 @@ hostfs est inscriptible par l'invité, la capture côté hôte ne l'est pas (D2)
 
 Décisions D1 à D7 arrêtées, structure en 8 épisodes + 2 optionnels (§ 4). Aucun fichier de `bin/`,
 `lib/` ou `uml/` touché.
+
+### 2026-08-10 — Épisode 1 : le prologue injecté
+
+`bin/scripts/marionnet-relay.00-journal.sh` et `bin/scripts/marionnet-relay.zz-journal.sh`, déposés
+**inconditionnellement** dans le hostfs par `make_hostfs_content` (`bin/simulation_level.ml`) —
+donc pour les machines **et** les routeurs, `uml_process` étant commune aux deux. Le contenu est
+embarqué à la préprocession par `INCLUDE_AS_STRING`, l'idiome déjà employé par `bin/gui/talking.ml`
+(motif immédiat : `camlp4of` ne parse pas les chaînes `{|…|}`, vérifié ; motif de fond : aucune
+étape d'installation entre le binaire et ce qu'il dépose).
+
+**Mesure** (`journal-bench.sh`, hors dépôt, **26 assertions, 0 échec**) : une trixie ajoutée,
+configurée et démarrée **par le canal**, avec un `rc_config` de trois lignes dont la seconde échoue.
+Le journal côté hôte porte les cinq matières attendues — la sortie standard, la sortie d'erreur, la
+trace des commandes (`PS4` datée du fichier et de la ligne), le **statut** de la commande fautive,
+et la preuve que le scénario a **continué** :
+
+```
+++ marionnet-relay.rcfile:2: ls /journal-bench-no-such-path
+ls: cannot access '/journal-bench-no-such-path': No such file or directory
+!! FAILED (status 2): ls /journal-bench-no-such-path
+++ marionnet-relay.rcfile:3: echo 'journal-bench: apres la panne'
+```
+
+Trois assertions comptent plus que les autres. Le **témoin** : le journal est le **seul** fichier du
+hostfs qui garde une trace de l'échec — c'est la mesure de ce qui n'existait pas. La **non-fuite** :
+la dernière ligne du fichier est celle de l'épilogue, donc rien de la fin du boot n'a été aspiré
+(si la redirection avait survécu, tout ce que le relais affiche ensuite se serait ajouté après
+elle). Et **D5** : une seconde machine, sans aucun `rc_config`, a elle aussi son journal, ouvert et
+clos — un script trouve le journal sans connaître de drapeau.
+
+Le premier run a mis en défaut deux choses, et aucune n'était le mécanisme : une assertion du banc
+(le premier caractère de `PS4` est répété **par niveau d'imbrication**, et le `rcfile` est sourcé
+depuis une fonction — donc `++`, jamais `+`), et surtout la **dépendance invisible** de dune envers
+les scripts embarqués (§ 4.1), qui faisait tourner le banc contre un binaire périmé. C'est le banc
+qui a réclamé la comparaison octet à octet du fichier déposé avec sa source ; c'est cette
+comparaison qui garde la synchronisation vérifiée à chaque run.
