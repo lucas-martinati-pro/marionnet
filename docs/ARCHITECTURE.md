@@ -86,9 +86,18 @@ datagramme depuis les vde_switch patchés.
 Racine d'état unique : `st : State.globalState` (bin/state.ml) — fenêtre, `network`
 (user_level), les 4 treeviews, save/load projet, startup/shutdown everything. Un projet
 `.mar` est une arborescence dézippée (classtest/hostfs/netmodel/scripts/states/tmp) gérée
-par `project_paths`. Le réseau se (dé)sérialise en **Xforest** ; les treeviews et le sketch
-se marshalent (`Oomarshal`) ; `compatibility/forest_backward_compatibility.ml` relit les
-projets v0. Les singletons d'état suivent le patron `Stateful_modules.Variable` ;
+par `project_paths` et estampillée par un fichier `version` : quatre formats se succèdent
+(`v0`…`v3`), et **un seul endroit décide** (`opening_project_version` /
+`closing_project_version`, `state.ml`). Depuis `v3` (chantier `migration-marshal-to-text`,
+2026-08) **tout ce qu'un projet écrit est du JSON** — les deux forests
+(`Xforest.to_JSON_file`), les 4 treeviews (`Treeview_row.Json`) et les compteurs
+(`Treeview_counters`), tous adossés à `lib/STRUCTURES/json_bricks.ml` ; le contenu d'un script
+rc va dans `states/rc_config.*`, jamais dans un attribut. La **lecture** `v0`/`v1`/`v2` est
+intacte (`Oomarshal`, `compatibility/forest_backward_compatibility.ml`) ; la compat descendante
+tient au **renommage** en `.json` **plus** à la suppression des fichiers `v2`
+(`project_paths#legacy_data_files`) avant archivage — sans quoi un vieux binaire rouvrirait
+l'état d'avant sans le dire. Détail : `docs/migration-marshal-to-text.md`.
+Les singletons d'état suivent le patron `Stateful_modules.Variable` ;
 les options runtime vivent sous mutex récursif (`global_options`). Le dessin du réseau
 (`sketch.ml`) est régénéré via Graphviz (lib/DOT) et rafraîchi par thunk global.
 `motherboard_builder` câble réactivement (Cortex) l'état projet ↔ sensibilité des widgets.

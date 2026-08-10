@@ -14,8 +14,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* [Queue.fold] visits the queue in FIFO order, and the accumulator prepends: the intermediate
+   list is thus reversed, and must be put back in order. Without this [List.rev], [to_list] and
+   [of_list] would not be inverse of each other, and a structure saved then reloaded through
+   both would come back upside down (Marionnet's node order did, once per cycle). *)
 let to_list q =
-  Queue.fold (fun xs x -> x::xs) [] q
+  List.rev (Queue.fold (fun xs x -> x::xs) [] q)
 
 let of_list xs =
   let result = Queue.create () in

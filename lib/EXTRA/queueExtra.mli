@@ -26,7 +26,9 @@ val rev_copy    : 'a Queue.t -> 'a Queue.t
 (* The push against discipline (the inserted element will be the first out): *)
 val copush : 'a Queue.t -> 'a -> unit
 
-(* Note that, because of the FIFO discipline, we have the equation:
-   to_list (of_list xs) = List.rev xs *)
+(* Both functions follow the FIFO order of the queue, hence the equations:
+   to_list (of_list xs) = xs   and   of_list (to_list q) is a copy of q
+   (until 2026-08-10 [to_list] returned the reversed list, which made these two functions
+   non-inverse: see the comment in the implementation) *)
 val to_list     : 'a Queue.t -> 'a list
 val of_list     : 'a list -> 'a Queue.t

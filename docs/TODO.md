@@ -157,35 +157,6 @@ reproduite sur un projet **neuf** fabriqué par le canal.*
 
 ---
 
-## Modèle — l'**ordre des nœuds s'inverse** à chaque cycle enregistrement/relecture
-
-**Constat.** Enregistrer un projet, le rouvrir, l'enregistrer à nouveau : la liste des nœuds
-revient à l'endroit, puis à l'envers, puis à l'endroit — une alternance de **période 2**, mesurée
-sur les 8 projets du corpus de `migration-marshal-to-text` (§ 7.5, fait n° 1, et rapportée à
-chaque exécution de son banc). Les quatre treeviews, eux, ne bougent pas. Le comportement est
-antérieur au chantier : il est identique en `v2` et en `v3`.
-
-**Voulu.** Qu'un projet inchangé se réécrive **à l'identique**. L'argument a pris du poids depuis
-que le fichier est du texte (ép. 4 de `migration-marshal-to-text`) : un `netmodel/network.json`
-est désormais **diffable**, ce qui était une des raisons d'être de la migration — et un ordre qui
-alterne rend chaque diff illisible, donc inutilisable pour un enseignant qui versionnerait ses
-sujets de TP.
-
-**Ce que l'implémentation devra affronter.** L'inversion ne vient pas du format mais du couple
-`network#to_forest` / `from_tree` (`user_level.ml`) : la lecture reconstruit la liste en tête, si
-bien que l'écriture suivante la publie retournée. Corriger d'un côté seulement **déplacerait**
-l'alternance sans la supprimer. Deux conséquences à vérifier avant de toucher : (a) le banc
-`marshal-bench.sh` mesure exprès sur **deux** cycles (A vs C) et resterait vert — il faudrait donc
-lui ajouter l'assertion « A == B » pour prouver la correction ; (b) l'ordre de la liste est celui
-que le canal publie (`ls`) et celui que la GUI dessine, donc la correction est **visible par
-l'utilisateur** et ne doit pas être glissée dans un épisode qui parle d'autre chose.
-
-*Décision explicite de l'auteur le 2026-08-09 (ép. 4 de `migration-marshal-to-text`) : `v3` hérite
-du comportement, la correction sort du chantier — c'est un changement de comportement du modèle,
-pas du format.*
-
----
-
 ## i18n — en arbre de développement, Marionnet lit le catalogue d'un AUTRE Marionnet
 
 **Constat** (mesuré le 2026-08-10 à l'ép. 8b de `migration-marshal-to-text`, `strace -e openat`).

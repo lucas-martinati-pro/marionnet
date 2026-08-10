@@ -324,137 +324,6 @@ Reprise : appliquer le skill `chantier-long`.
   mémoire `modernisation-installation-marionnet` ;
   `git log --grep="modernisation-installation-marionnet"`. Ép. 0 (autopsie + officialisation)
   fait 2026-07-18.
-- **migration-marshal-to-text** (les **8 fichiers de données d'un `.mar` sont des vidages
-  `Marshal`** — dont `netmodel/network.xml`, qui n'est pas du XML ; format non auto-descriptif,
-  donc fragile au changement de type [segfauts déjà évités par renommage, `state.ml:270-278`],
-  inécrivable hors OCaml, non diffable. Cible : écrire une version de projet **`v3` en JSON**
-  [`yojson`, **pas** `ocf`], **lecture `v0`/`v1`/`v2` intacte**, + conversion en lot) :
-  `docs/migration-marshal-to-text.md` ; mémoire `migration-marshal-to-text` ;
-  `git log --grep="migration-marshal-to-text"`. Ép. 0 (officialisation) fait 2026-08-09 ;
-  **ép. 1 (le filet) fait le 2026-08-09** — corpus de 7 `.mar` de TP réels + 1 projet fabriqué par
-  le canal, et banc `_claude-local/bench/marshal-bench.sh` **vert** (hors dépôt, comme les 8 bancs
-  du chantier pilotage). Il mesure **un** invariant, indépendant du format : *ce que le canal dit
-  d'un projet ne change pas au travers d'un cycle sauvegarde → relecture*. Trois faits mesurés en
-  dictent la forme et valent pour quiconque touche au chemin d'enregistrement (§ 7.5 de la doc) :
-  l'**ordre des nœuds s'inverse à chaque cycle** (période 2 — comparer UN cycle échoue sur du `v2`
-  intact), **enregistrer aussitôt après l'ouverture** fige l'état transitoire de la restauration
-  dans `dotoptions.marshal`, et `states/ifconfig-counters` **change à chaque enregistrement** sur
-  les 4 octets d'un champ déclaré obsolète.
-  **Ép. 2 (le codec du forest) fait le 2026-08-09**, § 8 de la doc — `Xforest.{to,of}_JSON_{string,file}`
-  dans `lib/STRUCTURES/xforest.ml`, `yojson` **et `base64`** dans `lib/dune`, `test/xforest_json.ml`
-  joué par `dune test` (`test/dune` passe de `test` à `tests`) : les tests **unitaires** sont
-  **versionnés**, contrairement au banc de l'ép. 1 qui, lui, exige la GUI. **Rien n'est branché** :
-  `state.ml` écrit toujours du `Marshal`. Le point durable est que **la mesure a corrigé la
-  conception** — `yojson` 3.0.0 écrit les octets non-UTF-8 **verbatim** et les **relit à
-  l'identique**, donc le repli base64 n'est pas une protection contre la perte de données mais la
-  seule façon d'émettre du **JSON valide** ; corollaire : un banc bâti sur le seul aller-retour
-  est **vert sur un codec cassé** (vérifié : repli désarmé → 7 assertions tombent, tous les
-  round-trips passent). **Ép. 2b** : `lib/STRUCTURES/xforest.mli`, qui n'existait pas — les 16 noms
-  de l'implémentation deviennent privés et **`yojson` n'apparaît dans aucune signature** ; surtout,
-  l'écriture de l'interface a révélé que le banc vérifiait « sortie UTF-8 valide » avec **le
-  prédicat même qui décide du repli** (circulaire), d'où un validateur indépendant dans le test et
-  une **remesure** de la discriminance.
-  **Ép. 3 (codecs des treeviews et des compteurs) fait le 2026-08-09**, § 9 de la doc : les
-  **trois** schémas du § 4 sont désormais **figés et implémentés**, et **rien n'est toujours
-  branché**. Deux décisions de structure, prises parce que le § 5 annonçait le codec « dans
-  `bin/treeview.ml` » et que c'était intenable : (1) une stanza `(tests)` ne lie que des
-  **bibliothèques**, donc la **donnée** d'un treeview (`Row`, `Row_item`) déménage dans
-  `bin/treeview_row.ml` (biblio `marionnet_base`, sans Gtk+) avec son codec, les compteurs dans
-  `bin/treeview_counters.ml` — `treeview.ml` garde les noms historiques par alias, **aucun des
-  7 appelants** ne change, et déplacer un type de somme ne change **pas** son encodage `Marshal`
-  (banc de l'ép. 1 rejoué : 41 assertions vertes sur 8 projets) ; (2) la plomberie JSON (validateur
-  UTF-8, repli base64, `Malformed`, en-tête `format`/`version`, I/O) devient **un** module,
-  `lib/STRUCTURES/json_bricks.ml{,i}`, sur lequel les trois codecs s'adossent — `yojson` apparaît
-  dans **cette** interface, ce qui est assumé (`xforest.mli` n'en parle toujours pas). `dune test`
-  = 134 assertions, 0 échec ; discriminance **remesurée** (repli désarmé → 5 assertions du nouveau
-  banc tombent, tous les round-trips passent).
-  **Ép. 4 (le branchement) fait le 2026-08-09**, § 10 de la doc : **tout `.mar` que Marionnet
-  écrit est désormais du `v3`** — sept fichiers JSON plus `version`, lecture `v0`/`v1`/`v2`
-  **intacte**. Le branchement lui-même n'a rien appris (le type `[ `v0|`v1|`v2|`v3 ]` a désigné à
-  la compilation les 6 endroits qui décident) ; ce que l'épisode a tranché tient ailleurs :
-  (1) **écrire le `v3` ne suffisait pas, il fallait effacer le `v2`** — un projet ouvert en `v2`
-  garde ses anciens fichiers dans le répertoire de travail dont l'archive est faite, et un vieux
-  binaire, ne comprenant pas `"v3"`, retombe sur **son propre repli de détection**, trouve
-  `states/ifconfig` et ouvre l'état **d'avant**, sans un mot (d'où `legacy_data_files`, supprimés
-  avant l'archivage, et une assertion **inverse** au banc) ; (2) l'**inversion d'ordre des nœuds
-  est conservée** (décision de l'auteur : elle vient du modèle, pas du format → `docs/TODO.md`) ;
-  (3) les attributs marshalés dans le forest sont **HUIT et non six** — `shuffler` et
-  `invertedCables` de `dotoptions` (`sketch.ml:281,288`) s'ajoutent aux 6 du § 5, ce qui **corrige
-  le périmètre de l'ép. 5** ; (4) l'**ép. 6 dépend de l'ép. 5, pas de l'ép. 4** — la valeur d'un
-  `rc_config` reste marshalée *en mémoire*, seul son transport change, si bien que `rc-bench.sh`
-  est vert **bout en bout** sans une ligne touchée au serveur. Preuve : banc de l'ép. 1 **vert
-  (49 assertions)** sur les 8 projets, **112 fichiers JSON** relus en UTF-8 strict par `python3`
-  (0 invalide), les 3 bancs du chantier pilotage qui inspectent le `.mar` rejoués verts.
-  **Ép. 5 (la désimbrication) fait le 2026-08-10**, § 11 de la doc : **plus aucun attribut d'un
-  `.mar` écrit par ce binaire n'est un vidage `Marshal`** — « tout scalaire, à plat », le routeur
-  éclaté **par service**, et le **contenu** d'un rc parti dans un fichier `states/rc_config.XXXXXXXXX`
-  (comme `states/document-XXXXXXXXX` de `treeview_documents.ml`) parce qu'un rc est un **script**,
-  pas une valeur : en clair dans l'attribut, c'était un mur de texte échappé devenant un blob base64
-  entier au premier octet non-UTF-8. La contrainte qui a dicté la conception n'est pas le format
-  mais que **`#to_tree` ne peut pas faire d'I/O** — le serveur de contrôle l'appelle à chaque `get`,
-  donc un fichier par requête ; d'où basename alloué sans I/O à la construction, écriture (et
-  **balayage des orphelins**) dans `network#save_rc_files`, que `state.ml` appelle juste avant de
-  sérialiser. L'enseignement est ailleurs : **le filet mesurait ces huit champs par `rc-get`**, que
-  l'épisode rend muet — il serait donc resté **vert en cessant de regarder** (72 → 58 requêtes au
-  dump, sans une assertion qui bronche). Deux assertions neuves hors canal, **corrigées deux fois
-  par la mesure** : la plupart des `.mar` du corpus sont **antérieurs aux champs rc**, si bien que
-  « ce qu'on écrit doit venir de l'original » est faux (les contenus viennent des **défauts du
-  modèle** — ce que l'ép. 1 avait pris pour « 7 configurations Quagga renseignées » était ce que
-  `rc-get` *affichait*), et une chaîne vide peut être la bonne réponse. Preuve : banc **65
-  assertions, 0 échec** (49 avant), discriminance mesurée, `dune test` inchangé (134),
-  `treeview-bench` vert, `components-bench` vert (134) après **retournement** d'une assertion — et
-  **`rc-bench` rouge à dessein** (15), c'est la dette de l'ép. 6.
-  **Ép. 6 (le réaccord du canal) fait le 2026-08-10**, § 12 de la doc : `rc-get`/`rc-set`
-  reconnaissent leur champ à sa **paire de clés** (`<radical>_active` + `<radical>_file`, plus
-  `_selected`/`_terminal` pour un rc **de service**) et non plus à l'en-tête magique de `Marshal`,
-  si bien que **`bin/control_server.ml` ne contient plus un seul `Marshal` ni `Obj`** (~150 lignes
-  d'inspection de forme en moins). La règle de l'ép. 4e survit — aucune liste de noms de champs,
-  les radicaux sortent du forest — et un seul nom subsiste, le préfixe `quagga_`, retiré à la
-  publication pour ne pas changer le vocabulaire `--field=zebra`. Le point dur était ailleurs : le
-  **contenu** ayant quitté le forest, le lire dans `states/<basename>` serait **faux trois fois**
-  (composant fraîchement ajouté, projet ouvert depuis un `v2`, entre deux enregistrements) — il
-  transite donc par le modèle, `component#{rc_contents,set_rc_content}` sans I/O, dont
-  `#save_rc_files`/`#rc_file_basenames` **dérivent** désormais. L'enseignement prolonge celui de
-  l'ép. 5 : **le banc regardait au mauvais endroit** — deux assertions cherchaient le contenu dans
-  `network.json`, où il n'est plus ; réparées en **suivant le lien**, avec pour vrai discriminant
-  « aucune ligne du script dans `network.json` », plus une assertion périmée retournée
-  (`omitted` vide) et un **défaut de banc** (une variable globale renseignée dans un sous-shell
-  rendait un rapport qui ment). Preuve : `rc-bench` **104 assertions, 0 échec**, bout en bout
-  compris (la conf ZEBRA posée par le canal est dans `/etc/quagga/zebra.conf` de l'invité) ;
-  **discriminance mesurée** — écriture du contenu désarmée → **17 assertions tombent** ;
-  `dune test` (134), `treeview-bench` et `components-bench` (134) inchangés.
-  **Ép. 8a (la compat descendante, mesurée) fait le 2026-08-10**, § 13 de la doc, **aucun code de
-  production** : le témoin n'est pas une simulation mais un **vrai binaire** (worktree git sur
-  `a4055b1`, qui porte déjà le canal — donc pilotable par `mrnctl` sans un clic). Mis devant un
-  `.mar` `v3`, il **refuse** (`internal`), reste **vivant**, ne montre **aucun composant**, son
-  journal porte `project version cannot be identified` sans une trace de démarshalage, et le
-  fichier est **intact**. Deux enseignements : (1) l'assertion statique de la première rédaction —
-  « les deux archives ont des noms **disjoints** » — était **fausse**, les
-  `hostfs/<n>/{boot_parameters,GUESTNAME}` étant recopiés d'un enregistrement à l'autre ;
-  reformulée en « **aucun fichier commun n'est un vidage `Marshal`** » (en-tête magique), elle dit
-  le danger *et* évite la liste de noms qui aurait fait une seconde source de vérité face à
-  `marshal-bench.sh` ; (2) le **contrôle négatif** — un `.mar` **hybride**, le `v3` avec les
-  fichiers `v2` remis — montre le vieux binaire **ouvrir** le projet, annoncer « Projet dans un
-  ancien format » et **proposer de le convertir** : la perte de données que `legacy_data_files`
-  (ép. 4) tenait à distance est **réelle**, et désormais mesurée. Preuve : **17 assertions,
-  0 échec**, discriminance **6 assertions tombent**, `dune test` (134) inchangé.
-  **Ép. 8b (le message) fait le 2026-08-10**, § 14 de la doc : le « Please ensure that the file be
-  well-formed » servi à un fichier parfaitement formé mais plus récent est remplacé par **deux**
-  messages, portés par une **exception dédiée** (`Unsupported_project_version of string option`)
-  dont l'argument est le **tag brut** du fichier `version` — `Some "v4"` = projet du futur,
-  `None` = rien d'identifiable ; les 4 chaînes neuves sont **sans format** (`s_`, jamais `f_`), le
-  nom de fichier et le tag voyageant hors gettext, seule protection contre une traduction d'arité
-  fausse (que `msgfmt -c` ne voit pas). Les 12 catalogues sont passés par le **pipeline officiel**,
-  mesuré sans danger (`added=4 changed=0 removed=0` partout). Le point durable est ailleurs : la
-  preuve prévue — rejouer les ouvertures **en français** — s'est révélée **impossible depuis
-  `_build`**, `strace` montrant que le binaire ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`,
-  le catalogue du Marionnet **installé**, et jamais celui du dépôt (2 correctifs essayés,
-  **retirés faute d'effet mesuré** → `docs/TODO.md`) ; le banc prouve donc les 12 catalogues par
-  `dgettext` et **mesure** le catalogue réellement ouvert au lieu de conclure. Preuve : banc
-  **30 assertions, 0 échec**, discriminance **7 tombent**, `dune test` (134) et `backward-bench`
-  (17) inchangés.
-  **Prochaine étape = ép. 9** (documentation et clôture).
-  *(Ép. 7 `mar2v3` abandonné : 3 lignes de `mrnctl`.)*
 
 ## Où puiser
 
@@ -463,7 +332,11 @@ Reprise : appliquer le skill `chantier-long`.
 - **Chantiers clos** (archives durables, à consulter avant de rouvrir un sujet qu'ils couvrent) :
   `docs/refonte-automate-composants.md` (automate d'état des composants **et** discipline des
   appels Gtk+ hors thread principal — 16 épisodes, clos 2026-08-03 ; à lire avant de toucher
-  `user_level.ml`, `treeview*.ml` ou de déléguer un appel GUI), `docs/migration-ocaml5.md`
+  `user_level.ml`, `treeview*.ml` ou de déléguer un appel GUI),
+  `docs/migration-marshal-to-text.md` (**format de projet `v3` en JSON**, clos 2026-08-10 — un
+  `.mar` écrit par ce binaire est du texte, la lecture `v0`/`v1`/`v2` est intacte ; § 17 = index
+  des pièges, à lire avant de toucher `state.ml`, un codec JSON ou le chemin d'enregistrement ;
+  note utilisateur : `doc-src/project-format-v3.md`), `docs/migration-ocaml5.md`
   (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
   `docs/daemon-elimination-study.md` (clos 2026-07-17).
 - **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours

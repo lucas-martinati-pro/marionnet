@@ -1,5 +1,10 @@
 # Chantier : migration-marshal-to-text
 
+> **CHANTIER CLOS le 2026-08-10** (ouvert le 2026-08-09, 12 épisodes). Ce document est
+> désormais une **archive durable** : la fiche mémoire a été supprimée, et le § 17 en tient
+> l'index des pièges. Résultat au § 16. Note destinée aux utilisateurs :
+> `doc-src/project-format-v3.md`.
+>
 > Chantier long, ouvert le 2026-08-09. Cible : le **format des fichiers d'un projet `.mar`**,
 > aujourd'hui huit vidages **`Marshal`** binaires — dont `netmodel/network.xml`, qui n'est pas
 > du XML. Objectif : écrire une nouvelle version de projet **`v3` en JSON auto-descriptif**,
@@ -231,10 +236,19 @@ seconde touche `bin/state.ml` **et** les 12 catalogues.
   qui est **faux** pour un fichier parfaitement formé mais plus récent. Exception dédiée + deux
   messages **gettext** distincts, donc les 12 catalogues touchés. **Fait le 2026-08-10.**
 
-**Ép. 9 — Documentation et clôture.** Tranche « format de projet » de `docs/ARCHITECTURE.md`,
-note de version destinée aux enseignants, puis clôture (MODE C du skill `chantier-long`).
-*(Rien à retirer de `docs/TODO.md` : vérifié le 2026-08-09, le sujet n'y avait jamais été
-consigné — il est né directement comme chantier.)*
+**Ép. 9 — L'ordre des composants** *(fait le 2026-08-10 ; épisode **inséré**, il n'était pas au
+découpage)*. L'ép. 4 avait renvoyé l'inversion d'ordre dans `docs/TODO.md` comme « changement de
+comportement du modèle, pas du format » ; l'auteur l'a rappelée **avant** la clôture, parce qu'un
+fichier texte qu'on ne peut pas *diffe*r ne rapporte que la moitié de ce que la migration
+promettait. La cause racine était dans `QueueExtra.to_list` (`lib/`), et non dans le couple
+`to_forest`/`from_tree` que le TODO accusait. Détail au § 15.
+
+**Ép. 10 — Documentation et clôture.** Tranche « format de projet » de `docs/ARCHITECTURE.md`,
+note de version destinée aux enseignants (`doc-src/project-format-v3.md`, en anglais comme le
+guide de scripting), puis clôture (MODE C du skill `chantier-long`).
+*(L'entrée « ordre des nœuds » de `docs/TODO.md` est retirée par l'ép. 9 ; rien d'autre à en
+retirer : vérifié le 2026-08-09, le sujet du chantier n'y avait jamais été consigné — il est né
+directement comme chantier.)*
 
 ## 6. Points de vigilance transverses
 
@@ -1162,6 +1176,161 @@ aucun composant n'apparaît — est conservé tel quel), ne touche à aucune lec
 corrige pas la localisation des catalogues en arbre de développement (→ `docs/TODO.md`), et ne
 traduit ni `ar.po` ni `zh.po`, hors `LINGUAS`.
 
+## 15. L'ordre des composants (ép. 9)
+
+L'épisode n'était pas au découpage : il vient de `docs/TODO.md`, où l'ép. 4 l'avait renvoyé, et
+l'auteur l'a rappelé **avant** la clôture. La raison est celle qui justifiait la migration :
+un `netmodel/network.json` est fait pour être **diffable**, et un ordre qui alterne à chaque
+enregistrement rend chaque diff illisible. Un projet qu'on n'a pas modifié doit se réécrire à
+l'identique, sinon le texte n'a pas gagné grand-chose sur le binaire.
+
+### 15.1 Ce que la mesure a démenti
+
+Le TODO nommait le coupable : « le couple `network#to_forest` / `from_tree` (`user_level.ml`) »,
+et prévenait que « corriger d'un côté seulement **déplacerait** l'alternance sans la supprimer ».
+Les deux affirmations étaient **fausses**, faute d'avoir suivi le chemin jusqu'au bout : ni
+`to_forest` ni `from_tree` ne renversent quoi que ce soit. La liste vient de
+`network#get_node_list`, c'est-à-dire de `QueueExtra.to_list` (`lib/EXTRA/queueExtra.ml`) :
+
+```ocaml
+let to_list q = Queue.fold (fun xs x -> x::xs) [] q     (* avant *)
+```
+
+`Queue.fold` visite la file dans l'ordre FIFO et l'accumulateur empile en tête : la liste sort
+**à l'envers**. `of_list`, lui, pousse dans l'ordre. Les deux fonctions n'étaient donc pas
+inverses l'une de l'autre — et `queueExtra.mli` le **documentait**, en s'en justifiant mal :
+
+```
+(* Note that, because of the FIFO discipline, we have the equation:
+   to_list (of_list xs) = List.rev xs *)
+```
+
+La discipline FIFO n'impose rien de tel ; c'est le `fold` qui inverse. Une note qui explique un
+défaut le transforme en contrat, et c'est ainsi qu'il a survécu.
+
+Le mécanisme complet tient en trois pas : `#add_node` pousse en **fin** de file (ordre de
+lecture du fichier) → `get_node_list` rend l'**inverse** → `#to_forest` écrit cet inverse. Un
+seul point, donc, et non deux : le corriger supprime l'alternance au lieu de la déplacer.
+
+### 15.2 Le correctif, et ce qu'il change pour l'utilisateur
+
+Une ligne (`List.rev` autour du `fold`), plus la note du `.mli`, remplacée par l'équation vraie
+(`to_list (of_list xs) = xs`). Les six appels sont tous dans `bin/user_level.ml`
+(`get_node_list`, `set_node_list`, les mêmes pour les câbles, et `queue_equality` — insensible à
+l'orientation, puisque ses deux côtés tournent ensemble).
+
+Le changement est **visible**, et il l'est plus que le TODO ne le disait. Mesuré sur une session
+neuve — `add machine m1…m4`, `add switch s1` — le canal publiait :
+
+```
+ordre à la création       : s1 m4 m3 m2 m1        (avant)
+ordre après 1 relecture   : m1 m2 m3 m4 s1
+ordre après 2 relectures  : s1 m4 m3 m2 m1
+```
+
+Autrement dit, l'alternance n'était pas seule en cause : ce que `ls` et la GUI montraient d'un
+projet **jamais enregistré** était l'ordre inverse de la création. Après correctif, les trois
+lignes sont `m1 m2 m3 m4 s1`, et les câbles suivent (`c1 c2` au lieu de `c2 c1`). Décision de
+l'auteur : la cible est l'**ordre de création, stable** — pas « l'ordre actuel, rendu stable ».
+
+Un `.mar` déjà écrit garde le sien : il est relu, puis réécrit tel quel. Seul le **premier**
+enregistrement qui suit la mise à jour peut changer l'ordre d'un projet, et une fois pour toutes.
+
+### 15.3 La preuve
+
+`_claude-local/bench/order-bench.sh` (hors dépôt, comme les autres bancs GUI). Il ne regarde que
+l'ordre, et le regarde **à un seul cycle** — c'est pourquoi il ne pouvait pas être une assertion
+de plus dans `marshal-bench.sh`, dont la comparaison stricte porte sur **deux** cycles (A vs C),
+où l'alternance s'annule, et dont la comparaison à un cycle passe exprès par une vue triée.
+
+Ici, le désarmement n'a pas besoin d'être programmé : le témoin est le **binaire d'avant**.
+Le banc y est **rouge sur ses 8 assertions**, vert sur les 8 après correctif — la discriminance
+est donc totale et mesurée dans les deux sens. Les assertions vont de « le canal publie l'ordre
+de création » à « `netmodel/network.json` est identique d'un enregistrement à l'autre », qui est
+l'énoncé exact de ce que le TODO réclamait.
+
+Le filet du chantier a été **durci** dans le même mouvement : ce que `marshal-bench.sh` ne pouvait
+qu'**afficher** (l'ordre observé, puisqu'il alternait) devient une **assertion** à un cycle,
+une par projet du corpus — l'ajout que `docs/TODO.md` demandait explicitement avant de toucher au
+modèle. Sur un projet du corpus, l'attendu n'est d'ailleurs pas « l'ordre de création », qu'on ne
+connaît pas, mais « le même qu'au cycle précédent » : c'est la seule forme que le corpus autorise.
+
+### 15.4 Ce que l'épisode 9 ne fait PAS
+
+Il ne touche à aucun format ni à aucun chemin de lecture : le `v3` d'avant et celui d'après sont
+le même schéma, seul l'ordre des enfants du forest change. Il ne trie rien — l'ordre publié reste
+celui du modèle, il est simplement rendu **fidèle**. Il ne modifie pas l'ordre des treeviews, qui
+ne bougeait déjà pas.
+
+## 16. Conclusion (ép. 10)
+
+**Ce qui est atteint.** Un projet écrit par Marionnet est intégralement du **texte JSON**,
+auto-descriptif (chaque fichier porte son en-tête `format`/`version`), lisible sans OCaml,
+*diff*able et **stable** : un projet qu'on n'a pas modifié se réécrit à l'identique. Aucun
+attribut n'est plus un vidage `Marshal` — les scripts rc, qui étaient le morceau irréductible,
+vivent dans des fichiers de `states/`. Le canal de pilotage ne contient plus un seul `Marshal`
+ni `Obj`. La lecture des trois formats antérieurs (`v0`, `v1`, `v2`) est **intacte** : aucun
+chemin n'a été retiré. La compat descendante est **mesurée** sur un vrai vieux binaire, et le
+message servi à un projet illisible dit enfin laquelle des deux causes s'applique.
+
+**Le chemin.** Douze épisodes (0, 1, 2, 2b, 3, 4, 5, 6, 8a, 8b, 9, 10), dont **quatre sans une
+ligne de code de production** (0, 1, 8a, 10) et un **abandonné** en cours de route (7, `mar2v3` :
+la conversion en lot tient en trois lignes de `mrnctl`, cf. § 5 de `doc-src/project-format-v3.md`).
+
+**Ce qui reste hors périmètre**, sciemment :
+* le **conteneur** `.mar` (tar.gz) et l'agencement de ses répertoires — inchangés ;
+* la lecture `v0` (`compatibility/forest_backward_compatibility.ml`) — intacte, jamais retouchée ;
+* en arbre de développement, Marionnet lit le catalogue `.mo` d'un **autre** Marionnet
+  (§ 14.3) → `docs/TODO.md` ;
+* `yojson` et `base64` sont deux dépendances **de build** à répercuter là où la voie système
+  remplace opam (`.deb`, RPM, image Docker) → chantier `modernisation-installation-marionnet` ;
+* **Marionnet reste le seul producteur légitime d'un `.mar`** : le chantier n'ajoute aucun outil
+  d'écriture tiers, et n'en veut pas.
+
+**L'enseignement, s'il n'en fallait qu'un.** Le format s'est laissé changer sans drame ; c'est la
+**mesure** qui a coûté. À presque chaque épisode, ce n'est pas le code qui a surpris mais le
+filet : il se vérifiait avec l'outil qu'il testait (ép. 2b), il aurait pu rester vert en cessant
+de regarder (ép. 5), il cherchait le contenu là où il n'était plus (ép. 6), il affirmait une
+disjonction de noms qui était fausse (ép. 8a), il ne pouvait pas prouver ce qu'on croyait qu'il
+prouvait (ép. 8b), et il accusait le mauvais module (ép. 9). Un banc n'est pas un acquis : c'est
+une hypothèse, qui se remesure à chaque fois qu'on déplace ce qu'elle observe.
+
+## 17. Pièges durables — où chacun est écrit
+
+Cet index remplace la fiche mémoire du chantier, supprimée à la clôture. Il **ne recopie rien** :
+chaque piège est déjà écrit à l'endroit qui l'a établi, et une seconde rédaction serait une
+seconde source de vérité — exactement ce que le chantier a refusé quatre fois.
+
+| Piège | Où |
+|---|---|
+| `yojson` écrit et relit les octets non-UTF-8 **verbatim** : un round-trip seul ne discrimine pas | § 8.2 |
+| Le validateur UTF-8 doit être celui de la stdlib (surlongs, surrogates) | § 8.2-8.3 |
+| Un banc ne se vérifie pas avec l'outil qu'il teste | § 8.4 |
+| JSON n'a pas d'échappement d'octet brut : le repli **doit** être base64 | § 4.1 |
+| Déplacer un type de somme ne change pas son encodage `Marshal` (ajouter un constructeur, si) | § 9.1 |
+| Une stanza `(tests)` de dune ne lie que des **bibliothèques** (donc du code sans lablgtk) | § 9.1 |
+| `let*` est interdit dans `lib/` et `bin/` : `camlp4` ne le connaît pas | § 8 |
+| Écrire le `v3` ne suffit pas : il faut **effacer** les fichiers `v2` | § 10.2 |
+| `states/ifconfig-counters` change à **chaque** enregistrement, sur un champ obsolète | § 7.5 |
+| Le fichier de compteurs se nomme d'après le **radical**, pas d'après le fichier de forest | § 10.1 |
+| Le contenu d'un rc n'est plus dans le forest : **suivre le lien** vers `states/` | § 12.2 |
+| `#to_tree` ne peut faire **aucune** I/O (le canal l'appelle à chaque `get`) | § 11.3 |
+| La plupart des `.mar` du corpus sont **antérieurs** aux champs rc : leurs valeurs viennent des défauts du modèle | § 11.4 |
+| Deux `.mar` du même projet ne sont **pas** disjoints en noms (les `hostfs/` sont recopiés) | § 13.2 |
+| En arbre de développement, le binaire lit le catalogue `.mo` d'un **autre** Marionnet | § 14.3 |
+| L'audit d'un `v2` se fait au `grep -a`, motif préfixé de l'octet de longueur ; sur un `v3`, c'est du texte | § 6 |
+| L'ordre des composants venait de `QueueExtra.to_list`, pas de `to_forest`/`from_tree` | § 15.1 |
+
+Deux pièges d'**outillage**, qui n'appartiennent à aucun paragraphe et que les bancs ont payés :
+
+* **Ne jamais faire tourner deux bancs à la fois** : un `save` sans `--timeout` est borné à 5 s
+  côté serveur, et deux bancs concurrents le font expirer — ce qui ressemble à s'y méprendre à
+  une régression (ép. 6).
+* **`grep -q` sous `set -o pipefail` fait échouer un pipeline dont la chaîne est pourtant là** :
+  `grep` sort dès la première ligne trouvée, le producteur en amont reçoit `SIGPIPE`, et
+  `pipefail` rapporte son 141. Lire dans une variable, puis chercher avec `[[ … == *…* ]]`
+  (ép. 8b, sur `msgunfmt … | grep -qF`).
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -1544,3 +1713,69 @@ rejoué : **17 assertions, 0 échec**.
 
 **Reste à l'ép. 9** : tranche « format de projet » de `docs/ARCHITECTURE.md`, note de version pour
 les enseignants, puis clôture (MODE C).
+
+### 2026-08-10 — Épisode 9 : l'ordre des composants, et le module que le TODO n'accusait pas
+
+Épisode **inséré** avant la clôture, à la demande de l'auteur : l'inversion d'ordre était partie
+dans `docs/TODO.md` à l'ép. 4, et clore le chantier en la laissant aurait livré un format texte
+dont les fichiers ne se *diff*ent pas — la moitié du bénéfice annoncé.
+
+**Le TODO se trompait de coupable.** Il désignait « le couple `network#to_forest` / `from_tree` »
+et prévoyait que corriger d'un seul côté **déplacerait** l'alternance. En suivant le chemin
+jusqu'au bout, la liste vient de `network#get_node_list`, donc de `QueueExtra.to_list`
+(`lib/EXTRA/queueExtra.ml`), qui accumulait en tête au fil d'un `Queue.fold` : elle rendait la
+file **à l'envers**, quand `of_list` la reconstruit à l'endroit. Les deux fonctions n'étaient pas
+inverses — et `queueExtra.mli` **documentait** cette inversion en la justifiant par « the FIFO
+discipline », ce qui est faux : c'est le `fold` qui inverse. Une note qui explique un défaut en
+fait un contrat, et c'est ainsi qu'il a duré. Le correctif tient en un `List.rev`, plus l'équation
+rétablie dans le `.mli` ; les six appels sont tous dans `bin/user_level.ml`.
+
+**Ce que la mesure a montré de plus que le TODO.** Sur une session neuve (`add machine m1…m4`,
+`add switch s1`), le canal publiait `s1 m4 m3 m2 m1` : ce n'était donc pas seulement l'alternance,
+c'était l'ordre **inverse de la création** que la GUI et `ls` montraient d'un projet jamais
+enregistré. Décision de l'auteur : la cible est l'ordre de création, **stable** — pas l'ordre
+d'avant rendu stable.
+
+**Preuve.** Banc neuf `_claude-local/bench/order-bench.sh`, qui ne regarde que l'ordre et à **un
+seul** cycle. Discriminance sans artifice : sur le binaire d'avant il est **rouge sur ses 8
+assertions**, sur celui d'après **vert sur les 8**. Le filet `marshal-bench.sh` a été **durci** du
+même coup — sa mesure d'ordre affichée devient une assertion à un cycle (A vs B), ce que
+`docs/TODO.md` réclamait : **73 assertions, 0 échec** (65 avant) sur les 8 projets du corpus, et
+« ordre des nœuds : STABLE » partout. `dune test` inchangé (**134**).
+
+Non-régression sur les bancs voisins, rejoués **un par un** : `treeview-bench` (**160**),
+`components-bench` (**134**) et `rc-bench` (**104**, bout en bout compris) — **0 échec, sans une
+retouche**. C'était l'inconnue de l'épisode : l'ordre publié par `ls` change, et trois bancs
+lisent cette liste. Ils y sont insensibles parce qu'ils la **trient** ou y **cherchent un nom**,
+jamais parce qu'ils comptaient sur son ordre — ce qui n'était pas acquis d'avance.
+
+L'entrée correspondante de `docs/TODO.md` est retirée : elle est traitée.
+
+### 2026-08-10 — Épisode 10 : la documentation, et la clôture
+
+Dernier épisode, **aucun code de production**.
+
+**`docs/ARCHITECTURE.md` § 4** ne disait plus la vérité : « le réseau se (dé)sérialise en Xforest ;
+les treeviews et le sketch se marshalent (`Oomarshal`) » décrivait l'écriture d'avant l'ép. 4. La
+tranche dit maintenant les quatre versions et l'endroit unique qui décide, l'écriture JSON, la
+lecture ancienne intacte, et la double condition de la compat descendante (renommer **et**
+effacer les fichiers `v2`).
+
+**`doc-src/project-format-v3.md`** — note de version pour les enseignants, **en anglais** comme le
+guide de scripting, et pour la même raison : c'est la langue de la documentation utilisateur du
+dépôt. Elle dit ce qui change, ce qui ne change pas, et surtout la **porte à sens unique** —
+enregistrer avec cette version produit un `v3` qu'un Marionnet antérieur refuse (proprement,
+sans abîmer le fichier), d'où la consigne de garder une copie. Chaque commande y a été **jouée
+avant d'être écrite** : la conversion en lot a réellement fait passer deux `.mar` du corpus de
+`v2` à `v3` en laissant leurs `.backup` en `v2`. Trois affirmations en sont sorties corrigées —
+tout n'est pas du JSON (les scripts rc sont des scripts, les `hostfs/` du texte brut),
+« réécrit à l'identique » souffre **une** exception (`states/ifconfig-counters.json`, § 7.5), et
+le délai qui justifie `--timeout=120` est celui du serveur (**5 s**, `control_server.ml:403`), pas
+une supposition sur la taille des projets. La note rappelle aussi que Marionnet **avertit déjà
+lui-même** à l'ouverture d'un vieux projet (« Project in old file format ») : ne pas le dire
+aurait laissé croire qu'aucun garde-fou n'existe.
+
+**Clôture (MODE C).** Le § 16 conclut, le § 17 **indexe** les pièges — un renvoi par piège, aucune
+recopie : la fiche mémoire du chantier est supprimée et son entrée retirée de `MEMORY.md`, le
+pointeur de `CLAUDE.md` (131 lignes relues à chaque session) laisse place à une ligne dans
+« Chantiers clos ». Ce document reste l'archive.
