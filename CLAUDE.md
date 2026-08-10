@@ -327,6 +327,22 @@ Reprise : appliquer le skill `chantier-long`.
   la main au script ; l'ép. 12 en a soldé le dernier reliquat). **Plus aucun défaut connu ouvert**,
   et la condition posée à la clôture est **levée** : le chantier est **clôturable (MODE C)**, sur
   décision de l'auteur.
+- **journalisation-profonde** (pousser la journalisation **au-delà de Marionnet**, jusqu'à
+  l'intérieur des UML — machines, routeurs — et des switchs, sous une forme qu'un script/agent
+  peut lire ; `-d` n'y répond pas : booléen **global**, trace dans un xterm, rien par composant ni
+  en fichier) : `docs/journalisation-profonde.md` ; mémoire `journalisation-profonde` ;
+  `git log --grep="journalisation-profonde"`. **Ép. 0 fait 2026-08-10** (officialisation, aucun
+  code). Deux faits mesurés qui commandent tout le reste : (1) le relais invité **source déjà**
+  `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
+  **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune
+  dépendance** envers `marionnet-kernel-rootfs` ; (2) le **mode examen** importe déjà
+  `report.html`/`bash_history.text` dans le treeview `documents` (donc dans le `.mar`) mais
+  **aucune image ne les produit** — le chantier rend un producteur à une destination vivante.
+  Décisions : hostfs = journal **vivant**, `documents` = **archive** ; console UML capturée parce
+  qu'elle seule échappe à l'invité (notation) ; switch = d'abord **ne plus jeter les réponses** de
+  son rc (`switch.ml:593` : `--rcfile` est mort), puis instantané par la socket mgmt ; collecteur
+  **toujours actif**, enregistrement de session **sur option** — donc **aucun attribut persisté
+  ajouté**, le format v3 n'est pas rouvert.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
