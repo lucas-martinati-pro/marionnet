@@ -1,0 +1,18 @@
+{
+  "name": "marionnet-ocaml-lsp",
+  "description": "OCaml language server (ocamllsp) for .ml/.mli files: types, definitions, references, diagnostics. Uses the ocamllsp found on PATH, i.e. the current opam switch — which must be the one declared by the Makefile (OPAM_SWITCH_TO).",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jean-Vincent Loddo"
+  },
+  "lspServers": {
+    "ocamllsp": {
+      "command": "ocamllsp",
+      "extensionToLanguage": {
+        ".ml": "ocaml",
+        ".mli": "ocaml"
+      },
+      "startupTimeout": 60000
+    }
+  }
+}

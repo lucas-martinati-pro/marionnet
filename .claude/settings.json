@@ -1,4 +1,21 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(dune build)",
+      "Bash(dune build:*)",
+      "Bash(dune runtest:*)",
+      "Bash(dune describe:*)",
+      "Bash(opam search:*)",
+      "Bash(opam show:*)",
+      "Bash(opam list:*)",
+      "Bash(opam info:*)",
+      "Bash(opam var:*)",
+      "Bash(opam switch show)",
+      "Bash(sherlodoc index:*)",
+      "Bash(sherlodoc search:*)",
+      "WebFetch(domain:ocaml.org)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -26,5 +43,16 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "marionnet": {
+      "source": {
+        "source": "directory",
+        "path": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "marionnet-ocaml-lsp@marionnet": true
   }
 }

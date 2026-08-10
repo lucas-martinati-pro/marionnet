@@ -345,4 +345,9 @@ Reprise : appliquer le skill `chantier-long`.
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,
   `marionnet-gui`, `marionnet-pupisto` (`.claude/skills/`).
+- **Code OCaml** (`bin/` + `lib/`, hors `uml/`) : skill `marionnet-ocaml` — outillage
+  (`ocamllsp` via le plugin local `.claude/plugins/ocaml-lsp`, `sherlodoc` pour chercher **par
+  type** dans ocamlbricks, `dune build @doc-private` pour odoc), règles d'écriture et pièges
+  camlp4. **Fait établi** : `ocamlformat` ne parse pas cette syntaxe (`IFDEF`, `where_p4`,
+  `INCLUDE DEFINITIONS`) — aucun formatage automatique tant que `camlp4-to-ppx` n'est pas fait.
 - **Preuve datée** : `docs/audit-marionnet-20260706.md` (rapport d'audit, immuable).

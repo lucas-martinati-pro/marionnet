@@ -96,7 +96,11 @@ OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-ex
                 lablgtk3-sourceview3 conf-gtksourceview3 yojson base64
 
 # `opam' packages for tooling (editor support and documentation, not needed to build):
-OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server
+# `sherlodoc' searches the odoc output BY TYPE (`dune build @doc-private' first), which is how
+# one checks whether `ocamlbricks' already provides a function before writing it again.
+# `ocamlformat' is listed for completeness only: it cannot parse the camlp4 syntax of this
+# source tree (IFDEF, where_p4, INCLUDE DEFINITIONS), so it stays unused until `camlp4-to-ppx'.
+OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server sherlodoc
 
 # ---
 # Verify a list of `apt' packages, calling `sudo apt' only if something is actually missing
