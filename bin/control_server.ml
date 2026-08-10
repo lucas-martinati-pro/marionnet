@@ -643,17 +643,37 @@ let cmd_can (st : State.globalState) ~(timeout:float) ~(name:string) : string =
 (* [#to_tree] is (tag, attributes) * children; components have no children in this version. *)
 let fields_of_tree (((_tag, attrs), _children) : Xforest.tree) : (string * string) list = attrs
 
-(* A value produced by [Marshal.to_string] (rc_config: machine.ml:645, switch.ml:455, and the
-   eight of router.ml) is not text: serving it would put invalid UTF-8 in the middle of a JSON
-   line, and accepting one would mean asking a shell client to forge marshalled bytes. Rather
-   than listing the field names — a list that would rot the day a component adds one — the bytes
-   say it themselves: every marshalled value starts with one of OCaml's three magic numbers
-   (0x8495A6BD/BE/BF). Reading and writing those fields is the business of the dedicated
-   rc-get/rc-set commands (§ 10, episode 4e). *)
-let is_marshalled (v:string) : bool =
-  (String.length v >= 4)
-  && v.[0] = '\x84' && v.[1] = '\x95' && v.[2] = '\xa6'
-  && (match v.[3] with '\xbd' | '\xbe' | '\xbf' -> true | _ -> false)
+(* Work-stream `migration-marshal-to-text', episode 6. Until `v3 a startup configuration was a
+   [Marshal] dump inside its own attribute, and the *bytes* said so: every marshalled value
+   starts with one of OCaml's three magic numbers. That form is gone — the model now publishes
+   plain scalars (episode 5) — so the recognition moves from the bytes to the *keys*: a startup
+   configuration is a pair of attributes "<stem>_active" and "<stem>_file", and a per-service one
+   carries two more, "<stem>_selected" and "<stem>_terminal" (one per Quagga tab, router.ml).
+   Nothing is listed here either — the stems come from the forest, exactly as the seven Quagga
+   keys used to come from the field itself (episode 12 of `pilotage-par-script'). *)
+let rc_active_suffix   = "_active"
+let rc_file_suffix     = "_file"
+let rc_selected_suffix = "_selected"
+let rc_terminal_suffix = "_terminal"
+
+(* The stems this component publishes, in the order [#to_tree] wrote them, each with a flag
+   saying whether it is a per-service one. *)
+let rc_stems (fields : (string * string) list) : (string * bool) list =
+  List.filter_map
+    (fun (k, _) ->
+       if not (String.ends_with ~suffix:rc_active_suffix k) then None else
+       let stem = String.sub k 0 ((String.length k) - (String.length rc_active_suffix)) in
+       let has suffix = List.mem_assoc (stem ^ suffix) fields in
+       if not (has rc_file_suffix) then None else
+       Some (stem, (has rc_selected_suffix) && (has rc_terminal_suffix)))
+    fields
+
+(* The attributes naming a script file — the ones [set] and [add] must refuse. Writing one is not
+   "setting a field": [#eval_forest_attribute] *reads* the file that name designates
+   (machine.ml:693), so a rebinding would silently replace the script by the content of another
+   file, or by nothing at all. The content is written by rc-set, through the model. *)
+let rc_file_fields (fields : (string * string) list) : string list =
+  List.map (fun (stem, _) -> stem ^ rc_file_suffix) (rc_stems fields)
 
 (* Changing one of these two is not "setting a field": renaming a component also renames its
    defects rows and — for a virtual machine — its ifconfig and history rows and its hostfs
@@ -685,13 +705,16 @@ type structural = {
 (* The options that are *not* fields: they belong to the command itself. *)
 let reserved_options = [ "timeout"; "ports" ]
 
+(* Every attribute is served as a string since episode 5: none of them is a marshalled value any
+   more, hence none is served as [null]. *)
 let json_of_fields (fields : (string * string) list) : string =
-  jobj (List.map (fun (k, v) -> (k, if is_marshalled v then jnull else jstr v)) fields)
+  jobj (List.map (fun (k, v) -> (k, jstr v)) fields)
 
-(* Named, not silently dropped: a client must see that the field exists and that this channel
-   does not serve it. *)
-let marshalled_field_names (fields : (string * string) list) : string list =
-  List.filter_map (fun (k, v) -> if is_marshalled v then Some k else None) fields
+(* What [get] does not serve, named rather than silently dropped. Empty since episode 5 of
+   `migration-marshal-to-text' — nothing is omitted any more — and kept in the answer rather than
+   removed from it: a client which reads the field keeps working, and the day a component
+   publishes something this channel cannot put on a JSON line, this is where it will be said. *)
+let omitted_field_names (_fields : (string * string) list) : string list = []
 
 let field_names (fields : (string * string) list) : string = String.concat ", " (List.map fst fields)
 
@@ -716,6 +739,15 @@ type editable = <
      supported (SUPPORTED_KERNELS), in the same order as the GUI combo. Read by the two guards
      of episode 4f — the model itself still accepts any installed kernel. *)
   supported_kernels_if_any : string list option;
+  (* The startup configurations this component owns, as (basename, content) pairs, and the way
+     to replace one of them (user_level.ml). Since episode 5 of `migration-marshal-to-text' the
+     *content* of a script is no longer an attribute of the forest — the forest carries the
+     basename of a file of states/ — so these two are the only path rc-get/rc-set have to it.
+     Reading that file here instead would be wrong: it does not exist yet on a component just
+     added, nor on a project opened from a `v2 .mar, where the content was demarshalled into
+     memory at load time. *)
+  rc_contents    : (string * string) list;
+  set_rc_content : basename:string -> content:string -> bool;
   >
 
 (* Episode 12. The two settings a Quagga tab of the router dialog carries beside the startup
@@ -771,7 +803,7 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                  (* Read back from the network, never assumed: try_to_add_* fails silently
                     (machine.ml:545) and the lesson holds for any creation path. *)
                  ("fields",    json_of_fields fields);
-                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+                 ("omitted",   jlist (List.map jstr (omitted_field_names fields))) ]
   (* Same shape as [Co_added] — a client adds components and connects them with one reading
      routine — plus the one field a cable has and a node has not. *)
   | Co_connected (fields, correct) ->
@@ -779,7 +811,7 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
                  ("kind",      jstr "cable");
                  ("added",     jbool true);
                  ("fields",    json_of_fields fields);
-                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields)));
+                 ("omitted",   jlist (List.map jstr (omitted_field_names fields)));
                  (* False is not an error: the cable exists and is plugged in, but its polarity
                     does not suit the two nodes it joins (cable.ml:674). *)
                  ("correct",   jbool correct) ]
@@ -811,7 +843,7 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
       reply_ok [ ("component", jstr name);
                  ("kind",      jstr kind);
                  ("fields",    json_of_fields fields);
-                 ("omitted",   jlist (List.map jstr (marshalled_field_names fields))) ]
+                 ("omitted",   jlist (List.map jstr (omitted_field_names fields))) ]
   (* The content travels in clear, on one line: json_escape turns its newlines into \n, which
      is what makes a multi-line shell scenario fit the answer format of this channel. *)
   | Co_rc_read (kind, field, (enabled, content), service, available, hostfs) ->
@@ -1061,10 +1093,12 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
     | None ->
         Co_bad (Printf.sprintf "no field %S on %S (kind %s); known fields: %s"
                   field name kind (field_names fields))
-    | Some old when is_marshalled old ->
+    | Some _ when List.mem field (rc_file_fields fields) ->
         Co_bad (Printf.sprintf
-                  "the field %S holds a marshalled value; it is served by the dedicated \
-                   rc-get/rc-set commands (episode 4e), not by get/set" field)
+                  "the field %S names the file holding a startup configuration: writing it would \
+                   replace the script by the content of another file. The script itself is \
+                   written by rc-set; the neighbouring booleans (%s…) are ordinary fields"
+                  field rc_active_suffix)
     | Some _ when not c#can_modify -> Co_forbidden ("modified", c#state_as_string)
     | Some old when List.mem field structural_fields ->
         (match structural with
@@ -1235,10 +1269,10 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                       rollback (Printf.sprintf
                                   "the field %S cannot be set here: the name is the second \
                                    argument of add, and the number of ports is --ports" k)
-                  | (k, _) :: _ when is_marshalled (List.assoc k fields) ->
+                  | (k, _) :: _ when List.mem k (rc_file_fields fields) ->
                       rollback (Printf.sprintf
-                                  "the field %S holds a marshalled value; use rc-set \
-                                   (episode 4e)" k)
+                                  "the field %S names the file holding a startup configuration; \
+                                   the script itself is written by rc-set" k)
                   | (k, v) :: rest ->
                       (* Same guard as [set]: a kernel the filesystem does not declare builds a
                          component that never boots (episode 4f). *)
@@ -1403,227 +1437,143 @@ let cmd_connect (st : State.globalState) ~(timeout:float) ~(name:string)
       a scenario is posted *before* [start], and posting one on a running component is refused
       here exactly as the GUI refuses to edit it ([can_modify], § 4.10).
 
-   2. In the forest the field is *marshalled* (machine.ml:645), which is why get/set serve it
-      as null and name it in [omitted] since episode 4d-2a. The channel could not ask a shell
-      client to forge marshalled bytes — so the content travels in clear and *the server
-      marshals it itself*, on the way in as on the way out. That single decision is what keeps
-      these two commands free of any per-kind dispatch: they go through the same uniform
-      [#eval_forest_attribute] as [set]. *)
+   2. The content is no longer in the forest (episode 6 of `migration-marshal-to-text'). The
+      flags of a startup configuration are ordinary attributes — "<stem>_active", plus
+      "<stem>_selected" and "<stem>_terminal" for a service — while the *content* lives in a file
+      of states/ whose basename the forest carries. So these two commands write in two ways, and
+      each is the only right one here: the flags through the same uniform
+      [#eval_forest_attribute] as [set], the content through [#set_rc_content], the model's own
+      field. Neither goes near the file: it does not exist yet on a component just added, nor on
+      a project opened from a `v2 .mar, where the content was demarshalled into memory at load
+      time. What has not changed is what the client sees: the content still travels in clear, on
+      one line, and this file still holds no list of component kinds. *)
 
 (* A scenario is a shell script, not an image. The bound exists so that a mistyped --from does
    not load a filesystem into the project file. *)
 let max_rc_bytes = 1024 * 1024
 
-(* A startup configuration is a marshalled [(bool * string)] = (enabled, content): machine and
-   switch call the field "rc_config" (machine.ml:614, switch.ml:411), a router calls its own
-   "rc_config_unix" (router.ml:1100). Rather than keeping that list of names — which
-   [is_marshalled] above deliberately refuses to keep, "the day a component adds one" — the
-   value is asked what it is: it is demarshalled into [Obj.t], which assumes *no* type at all,
-   and its shape is then inspected. [Obj.obj] is applied only once the shape matches, which is
-   the exact opposite of an [Obj.magic]: no cast is taken on trust.
+(* The model names a service "quagga_<srv>" (router.ml:1302-1310), but a request has named it
+   "zebra", "rip"… since episode 12 of `pilotage-par-script', and a change of storage format is
+   no reason to change a vocabulary scripts already use — so the prefix is dropped here. This is
+   the one thing this file still knows by name, in the spirit of the two membership fields
+   episode 12 had to name; and it is guarded, below: a shortened name another stem already
+   answers to is kept whole, since a request must never be ambiguous. *)
+let rc_service_prefix = "quagga_"
 
-   The router's three other marshalled fields do not have this shape (an association list and
-   two string lists); the first is read by [rc_assoc_of_marshalled] below since episode 12, the
-   two others are named there — and none of them is served by [get], they stay in [omitted]. *)
+(* Which startup configuration a request aims at: the stem the forest uses ("rc_config",
+   "rc_config_unix", "quagga_zebra"), the name the client uses ("zebra"), and whether it carries
+   the two per-service booleans. *)
+type rc_target = {
+  rc_stem    : string;
+  rc_public  : string;
+  rc_service : bool;
+  }
 
-(* The three shape predicates, shared by the readers below. None of them casts: [Obj.obj] is
-   applied by the callers, and only once the shape has matched. *)
-let obj_is_bool   x = Obj.is_int x && (let i : int = Obj.obj x in i = 0 || i = 1)
-let obj_is_string x = Obj.is_block x && Obj.tag x = Obj.string_tag
-let obj_is_pair   x = Obj.is_block x && Obj.tag x = 0 && Obj.size x = 2
-let obj_is_nil    x = Obj.is_int x && (Obj.obj x : int) = 0
-
-let demarshalled (v:string) : Obj.t option =
-  if not (is_marshalled v) then None else
-  (try Some (Marshal.from_string v 0 : Obj.t) with _ -> None)
-
-(* A list is walked cell by cell, each element being checked by [element] before it is kept.
-   [Some []] is returned for the empty list: the callers decide what an empty one means. *)
-let obj_list_of ~(element : Obj.t -> bool) (o : Obj.t) : Obj.t list option =
-  let rec walk o acc =
-    if obj_is_nil o then Some (List.rev acc)
-    else if obj_is_pair o && element (Obj.field o 0)
-    then walk (Obj.field o 1) (Obj.field o 0 :: acc)
-    else None
+let rc_targets (fields : (string * string) list) : rc_target list =
+  let stems = rc_stems fields in
+  let shorten (stem, service) =
+    if service && String.starts_with ~prefix:rc_service_prefix stem
+    then String.sub stem
+           (String.length rc_service_prefix)
+           ((String.length stem) - (String.length rc_service_prefix))
+    else stem
   in
-  walk o []
+  List.map
+    (fun ((stem, service) as s) ->
+       let short = shorten s in
+       let public =
+         if short = stem then stem else
+         if (List.mem_assoc short stems)
+            || (List.length (List.filter (fun s' -> shorten s' = short) stems)) > 1
+         then stem
+         else short
+       in
+       { rc_stem = stem; rc_public = public; rc_service = service })
+    stems
 
-let obj_is_rc_pair x = obj_is_pair x && obj_is_bool (Obj.field x 0) && obj_is_string (Obj.field x 1)
-
-let rc_config_of_marshalled (v:string) : (bool * string) option =
-  match demarshalled v with
-  | Some o when obj_is_rc_pair o -> Some (Obj.obj o : bool * string)
-  | _ -> None
-
-(* Episode 12. The router keeps its seven Quagga startup configurations in ONE field, as an
-   association list (router.ml:1218). Same method as above, one notch further down: the shape
-   sought is a list of (acronym, (enabled, content)) pairs, so the seven *keys* come from the
-   field itself — the server holds no copy of a list the model already owns
-   (Const.quagga_alternatives, router.ml:340).
-
-   The two shapes cannot be confused, and not by luck: a [(bool * string)] holds an immediate in
-   its first field where a cons cell holds a block. An empty list is refused on purpose — it
-   carries no key, hence nothing a request could address, and any empty list looks like it. *)
-let rc_assoc_of_marshalled (v:string) : (string * (bool * string)) list option =
-  let is_entry x = obj_is_pair x && obj_is_string (Obj.field x 0) && obj_is_rc_pair (Obj.field x 1) in
-  match demarshalled v with
-  | None -> None
-  | Some o ->
-      (match obj_list_of ~element:is_entry o with
-       | None | Some [] -> None
-       | Some entries   -> Some (List.map (fun e -> (Obj.obj e : string * (bool * string))) entries))
-
-let string_list_of_marshalled (v:string) : string list option =
-  match demarshalled v with
-  | None -> None
-  | Some o ->
-      (match obj_list_of ~element:obj_is_string o with
-       | None    -> None
-       | Some xs -> Some (List.map (fun x -> (Obj.obj x : string)) xs))
-
-(* Here the shape stops being enough, and this says so rather than pretending otherwise: the two
-   membership fields of a router are BOTH a [string list] (router.ml:1216, 1219), so no
-   inspection can tell "which services start" from "which terminals open". They are named — and
-   two guards keep the naming from turning into a lie: they are only looked at when the target
-   is a *key* of an association-list field, and their content must be a subset of that field's
-   keys ([rc_service_of]). When either fails, the flags that write them are refused with the
-   reason, and everything else keeps working. *)
-let rc_selected_field = "quagga_selected_srvs"
-let rc_terminal_field = "show_quagga_terminal"
-
-let rc_plain_fields (fields : (string * string) list) : (string * (bool * string)) list =
-  List.filter_map
-    (fun (k, v) -> match rc_config_of_marshalled v with Some rc -> Some (k, rc) | None -> None)
-    fields
-
-let rc_assoc_fields (fields : (string * string) list)
-  : (string * (string * (bool * string)) list) list
-  =
-  List.filter_map
-    (fun (k, v) -> match rc_assoc_of_marshalled v with Some l -> Some (k, l) | None -> None)
-    fields
-
-(* Everything a request may name in --field on this component: the plain fields under their own
-   name, and the keys of the association-list ones under theirs ("zebra", "rip"…). This is the
-   vocabulary the refusals list and [rc-get] publishes. *)
+(* Everything a request may name in --field on this component: this is the vocabulary the
+   refusals list and [rc-get] publishes. *)
 let rc_available (fields : (string * string) list) : string list =
-  List.map fst (rc_plain_fields fields)
-  @ List.concat_map (fun (_, l) -> List.map fst l) (rc_assoc_fields fields)
+  List.map (fun t -> t.rc_public) (rc_targets fields)
 
-(* Which startup configuration a request aims at. Naming it stays optional, and keeps meaning
-   exactly what it meant before episode 12: the implicit choice considers the *plain* fields
-   only, so [rc-set m1 …] still writes the one field a machine or a switch has, and [rc-set r1 …]
-   still writes the UNIX rc of a router rather than becoming ambiguous the day the router gained
-   seven more. A Quagga configuration is reached by naming it. *)
-type rc_target =
-  | Rc_plain of string           (* the field holds the (enabled, content) pair itself *)
-  | Rc_assoc of string * string  (* the field holds an association list; the key is a service *)
+(* A boolean attribute of the forest; [false] when absent or unreadable. The flags of a startup
+   configuration are written by the model itself ([string_of_bool], machine.ml:671), so anything
+   else would be a forest this binary did not produce. *)
+let rc_bool (fields : (string * string) list) ~(key:string) : bool =
+  match List.assoc_opt key fields with
+  | Some v -> (try bool_of_string v with _ -> false)
+  | None   -> false
 
-(* What the answer calls the field: what the request named. A script asks for "zebra" and reads
-   back "zebra", never the internal "rc_config_quagga" it does not have to know. *)
-let rc_target_name = function Rc_plain f -> f | Rc_assoc (_, key) -> key
+(* The basename of the file holding the script: what the forest publishes, and the address
+   [#set_rc_content] answers to. *)
+let rc_basename_of ~(target : rc_target) (fields : (string * string) list) : string option =
+  List.assoc_opt (target.rc_stem ^ rc_file_suffix) fields
 
-let rc_assoc_field ~(field:string) (fields : (string * string) list)
-  : (string * (bool * string)) list option
+(* The state both commands read back from the model rather than from what they asked: the pair
+   (enabled, content), and the two booleans of a service. The content comes from [#rc_contents],
+   the forest holding only the basename which indexes it — an unknown basename yields the empty
+   string, which is exactly what a fresh component would carry. *)
+let rc_state_of ~(target : rc_target) ~(contents : (string * string) list)
+    (fields : (string * string) list) : (bool * string) * rc_service option
   =
-  Option.bind (List.assoc_opt field fields) rc_assoc_of_marshalled
+  let enabled = rc_bool fields ~key:(target.rc_stem ^ rc_active_suffix) in
+  let content =
+    match rc_basename_of ~target fields with
+    | None          -> ""
+    | Some basename -> (match List.assoc_opt basename contents with Some c -> c | None -> "")
+  in
+  let service =
+    if not target.rc_service then None else
+    Some { selected = rc_bool fields ~key:(target.rc_stem ^ rc_selected_suffix);
+           terminal = rc_bool fields ~key:(target.rc_stem ^ rc_terminal_suffix) }
+  in
+  ((enabled, content), service)
 
-(* A membership field is read only against the keys it is supposed to name: a list holding
-   anything else is not one of ours, and answering [None] is what turns the two names above into
-   a refusal rather than into a wrong write. *)
-let rc_membership_of ~(keys : string list) ~(field:string) (fields : (string * string) list)
-  : string list option
-  =
-  match Option.bind (List.assoc_opt field fields) string_list_of_marshalled with
-  | Some l when List.for_all (fun x -> List.mem x keys) l -> Some l
-  | _ -> None
-
-(* [None] unless the two membership fields are there and sane. *)
-let rc_service_of ~(keys : string list) ~(key : string) (fields : (string * string) list)
-  : rc_service option
-  =
-  match rc_membership_of ~keys ~field:rc_selected_field fields,
-        rc_membership_of ~keys ~field:rc_terminal_field fields
-  with
-  | Some sel, Some term -> Some { selected = List.mem key sel; terminal = List.mem key term }
-  | _ -> None
-
-(* The keys the target's own field declares — empty for a plain one, which has none. *)
-let rc_keys_of ~(target : rc_target) (fields : (string * string) list) : string list =
-  match target with
-  | Rc_plain _      -> []
-  | Rc_assoc (af, _) ->
-      (match rc_assoc_field ~field:af fields with
-       | Some l -> List.map fst l
-       | None   -> [])
-
-(* The three things both commands read back from the model rather than from what they asked. *)
-let rc_state_of ~(target : rc_target) (fields : (string * string) list)
-  : ((bool * string) * rc_service option) option
-  =
-  match target with
-  | Rc_plain f ->
-      Option.map (fun rc -> (rc, None))
-        (Option.bind (List.assoc_opt f fields) rc_config_of_marshalled)
-  | Rc_assoc (af, key) ->
-      (match rc_assoc_field ~field:af fields with
-       | None   -> None
-       | Some l ->
-           Option.map
-             (fun rc -> (rc, rc_service_of ~keys:(List.map fst l) ~key fields))
-             (List.assoc_opt key l))
-
-(* Naming the field stays optional because there is exactly one *plain* candidate on each of the
-   three kinds that have one today. The answers below are all the cases, and none of them is a
-   silence: no candidate, several (a kind that would gain a second plain one), a key that two
-   fields would share, or a name that is neither. Every refusal ends by listing the vocabulary
-   that would have worked, which is the same list [rc-get] publishes. *)
+(* Naming the field stays optional, and keeps meaning exactly what it meant before episode 12:
+   the implicit choice considers the *plain* targets only, so [rc-set m1 …] still writes the one
+   configuration a machine or a switch has, and [rc-set r1 …] still writes the UNIX rc of a
+   router rather than becoming ambiguous the day the router gained seven more. A Quagga
+   configuration is reached by naming it — under its short name or under its stem, both being
+   unambiguous. The answers below are all the cases, and none of them is a silence; every refusal
+   ends by listing the vocabulary that would have worked, which is the same list [rc-get]
+   publishes. *)
 let rc_target_of ~(kind:string) ~(name:string) ~(field:string option)
-    (fields : (string * string) list) : ((rc_target * (bool * string)), string) result
+    (fields : (string * string) list) : (rc_target, string) result
   =
-  let plains = rc_plain_fields fields in
-  let vocabulary () = String.concat ", " (rc_available fields) in
+  let targets = rc_targets fields in
+  let vocabulary () = String.concat ", " (List.map (fun t -> t.rc_public) targets) in
+  let with_vocabulary () =
+    match targets with [] -> "" | _ -> Printf.sprintf "; here they are: %s" (vocabulary ())
+  in
   match field with
   | None ->
-      (match plains with
-       | [ (f, rc) ] -> Ok (Rc_plain f, rc)
-       | [] ->
+      (match List.filter (fun t -> not t.rc_service) targets with
+       | [ t ] -> Ok t
+       | []    ->
            Error (Printf.sprintf
                     "%S (kind %s) has no startup configuration: today a machine, a switch and a \
-                     router have one" name kind)
+                     router have one%s" name kind (with_vocabulary ()))
        | several ->
            Error (Printf.sprintf
                     "%S (kind %s) has several startup configuration fields (%s): name the one \
-                     you mean" name kind (String.concat ", " (List.map fst several))))
+                     you mean" name kind
+                    (String.concat ", " (List.map (fun t -> t.rc_public) several))))
   | Some f ->
-      (match List.assoc_opt f plains with
-       | Some rc -> Ok (Rc_plain f, rc)
+      (match List.find_opt (fun t -> t.rc_public = f || t.rc_stem = f) targets with
+       | Some t -> Ok t
        | None ->
-           let in_assoc =
-             List.filter_map
-               (fun (af, l) -> Option.map (fun rc -> (af, rc)) (List.assoc_opt f l))
-               (rc_assoc_fields fields)
-           in
-           (match in_assoc with
-            | [ (af, rc) ] -> Ok (Rc_assoc (af, f), rc)
-            | (af1, _) :: (af2, _) :: _ ->
+           (match List.assoc_opt f fields with
+            | None ->
                 Error (Printf.sprintf
-                         "%S is a key of several fields (%s, %s) on %S (kind %s): this channel \
-                          will not choose for you" f af1 af2 name kind)
-            | [] ->
-                (match List.assoc_opt f fields with
-                 | None ->
-                     Error (Printf.sprintf
-                              "no startup configuration %S on %S (kind %s); here they are: %s"
-                              f name kind (vocabulary ()))
-                 | Some _ ->
-                     Error (Printf.sprintf
-                              "the field %S is not a startup configuration (it does not hold an \
-                               (enabled, content) pair)%s"
-                              f
-                              (match rc_available fields with
-                               | [] -> ""
-                               | _  -> Printf.sprintf "; here they are: %s" (vocabulary ()))))))
+                         "no startup configuration %S on %S (kind %s)%s"
+                         f name kind (with_vocabulary ()))
+            | Some _ ->
+                (* The name is a field of the forest, just not one of ours: since episode 6 a
+                   startup configuration is recognized by its pair of keys, so saying which one
+                   is missing says more than "it is not one". *)
+                Error (Printf.sprintf
+                         "the field %S is not a startup configuration (no %S beside it)%s"
+                         f (f ^ rc_file_suffix) (with_vocabulary ()))))
 
 (* Read in the serving thread, never inside the GTK slot: a file read is I/O, and the GTK main
    loop is not the place for it. The absolute path is required for the reason [open] requires
@@ -1661,9 +1611,9 @@ let cmd_rc_get (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
     let fields = fields_of_tree c#to_tree in
     match rc_target_of ~kind ~name ~field fields with
     | Error detail  -> Co_bad detail
-    | Ok (target, rc) ->
-        let service = match rc_state_of ~target fields with Some (_, s) -> s | None -> None in
-        Co_rc_read (kind, rc_target_name target, rc, service, rc_available fields,
+    | Ok target ->
+        let (rc, service) = rc_state_of ~target ~contents:(c#rc_contents) fields in
+        Co_rc_read (kind, target.rc_public, rc, service, rc_available fields,
                     c#hostfs_directory_if_any))
 
 let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string option)
@@ -1695,24 +1645,17 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
     let fields = fields_of_tree c#to_tree in
     match rc_target_of ~kind ~name ~field fields with
     | Error detail -> Co_bad detail
-    | Ok (target, before_rc) ->
-        let keys = rc_keys_of ~target fields in
-        let before_service =
-          match rc_state_of ~target fields with Some (_, s) -> s | None -> None
+    | Ok target ->
+        let ((before_rc, before_service) as before) =
+          rc_state_of ~target ~contents:(c#rc_contents) fields
         in
-        (* The two new flags apply to a service, and only where the two membership fields are
-           there and sane — refusing here is the whole point of having named them. *)
-        (match target, before_service, (select <> None || terminal <> None) with
-         | Rc_plain f, _, true ->
-             Co_bad (Printf.sprintf
-                       "--select/--unselect and --terminal/--no-terminal apply to a service \
-                        startup configuration (a Quagga tab of a router); %S is a plain one" f)
-         | Rc_assoc (_, key), None, true ->
-             Co_bad (Printf.sprintf
-                       "the fields saying which services start and which terminals open are \
-                        missing or malformed on %S (kind %s): this channel will not guess what \
-                        %S should become" name kind key)
-         | _ ->
+        (* The two flags of episode 12 apply to a service, and the shape says which targets are
+           one: a plain configuration has no such neighbours to write. *)
+        if (not target.rc_service) && (select <> None || terminal <> None) then
+          Co_bad (Printf.sprintf
+                    "--select/--unselect and --terminal/--no-terminal apply to a service startup \
+                     configuration (a Quagga tab of a router); %S is a plain one" target.rc_public)
+        else
         (* The same guard the GUI dialog obeys — and here it is more than a rule: the field is
            read when the device is built, so writing it on a running component would change
            nothing the client could observe until the next start. *)
@@ -1727,7 +1670,6 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
           | Some b -> b
           | None   -> (match content with Some _ -> true | None -> was_enabled)
         in
-        let after_rc = (new_enabled, new_content) in
         (* Episode 12 applies the very same rule to the second switch a Quagga tab has: posting a
            content *selects* the service too, unless --unselect says otherwise. An unselected
            service does not even get its file — the boot moves the existing .conf aside
@@ -1743,64 +1685,57 @@ let cmd_rc_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:
                                               | None   -> s.selected));
                      terminal = (match terminal with Some b -> b | None -> s.terminal) }
         in
-        (* One write per field that really changes, and all of them in the same GTK slot. A no-op
+        (* One write per thing that really changes, and all of them in the same GTK slot. A no-op
            costs no write at all: network_change marks the project as modified and redraws the
-           sketch (state.ml:892-903). *)
+           sketch (state.ml:892-903). The booleans are ordinary attributes since episode 5, so
+           the canonical order of the two membership lists is no longer rebuilt here: the model
+           keeps it itself, one service at a time (router.ml, update_quagga_membership). *)
+        let flag key was now = if was = now then [] else [ (target.rc_stem ^ key,
+                                                            string_of_bool now) ] in
         let writes =
-          (if after_rc = before_rc then [] else
-           match target with
-           | Rc_plain f -> [ (f, Marshal.to_string after_rc []) ]
-           | Rc_assoc (af, key) ->
-               (match rc_assoc_field ~field:af fields with
-                | None   -> []  (* unreachable: the target was just found in it *)
-                | Some l ->
-                    let l = List.map (fun (k, v) -> if k = key then (k, after_rc) else (k, v)) l in
-                    [ (af, Marshal.to_string l []) ]))
-          @ (match target, before_service, after_service with
-             | Rc_assoc (_, key), Some b, Some a ->
-                 let membership ~field ~was ~now =
-                   if was = now then None else
-                   match rc_membership_of ~keys ~field fields with
-                   | None -> None
-                   | Some current ->
-                       (* Rebuilt in the canonical order — that of the keys of the association
-                          list itself, hence of the GUI tabs — rather than appended to. *)
-                       let l =
-                         if now then List.filter (fun x -> List.mem x current || x = key) keys
-                         else List.filter (fun x -> x <> key) current
-                       in
-                       Some (field, Marshal.to_string l [])
-                 in
-                 List.filter_map (fun x -> x)
-                   [ membership ~field:rc_selected_field ~was:b.selected ~now:a.selected;
-                     membership ~field:rc_terminal_field ~was:b.terminal ~now:a.terminal ]
+          (flag rc_active_suffix was_enabled new_enabled)
+          @ (match before_service, after_service with
+             | Some b, Some a ->
+                 (flag rc_selected_suffix b.selected a.selected)
+                 @ (flag rc_terminal_suffix b.terminal a.terminal)
              | _ -> [])
         in
-        let before = (before_rc, before_service) in
-        if writes = [] then
-          Co_rc_set (kind, rc_target_name target, before, before, c#hostfs_directory_if_any)
+        (* The content does not travel as an attribute: it lives in a file of states/ since
+           episode 5, and the model owns it. A basename the component does not know would mean
+           this server and that model disagree about the forest — said, never swallowed. *)
+        let content_write =
+          if new_content = was_content then None else rc_basename_of ~target fields
+        in
+        if writes = [] && content_write = None then
+          Co_rc_set (kind, target.rc_public, before, before, c#hostfs_directory_if_any)
         else
         let failure = ref None in
         let () =
           st#network_change
             (fun () ->
-               try List.iter (fun attribute -> c#eval_forest_attribute attribute) writes
+               try
+                 let () = List.iter (fun attribute -> c#eval_forest_attribute attribute) writes in
+                 match content_write with
+                 | None          -> ()
+                 | Some basename ->
+                     if not (c#set_rc_content ~basename ~content:new_content) then
+                       failure :=
+                         Some (Failure (Printf.sprintf
+                                          "the component does not own the file %S the forest \
+                                           attributes to it" basename))
                with e -> failure := Some e)
             ()
         in
         (match !failure with
          | Some e ->
              Co_bad (Printf.sprintf "the model refused the startup configuration %S: %s"
-                       (rc_target_name target) (Printexc.to_string e))
+                       target.rc_public (Printexc.to_string e))
          | None ->
              (* Read back, never assumed — the rule this file follows everywhere. *)
              let after =
-               match rc_state_of ~target (fields_of_tree c#to_tree) with
-               | Some state -> state
-               | None       -> (after_rc, after_service)
+               rc_state_of ~target ~contents:(c#rc_contents) (fields_of_tree c#to_tree)
              in
-             Co_rc_set (kind, rc_target_name target, before, after,
-                        c#hostfs_directory_if_any))))
+             Co_rc_set (kind, target.rc_public, before, after, c#hostfs_directory_if_any)))
 
 (* ---------------------------------------------------------------- *)
 (*                           Transitions                            *)

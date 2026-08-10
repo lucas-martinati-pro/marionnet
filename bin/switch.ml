@@ -419,13 +419,12 @@ class switch =
   val mutable rc_config_file : string = User_level.Rc_files.fresh_basename ()
   method get_rc_config_file = rc_config_file
 
-  method! save_rc_files =
-    User_level.Rc_files.write
-      ~states_directory:(self#states_directory)
-      ~basename:(rc_config_file)
-      ~content:(snd rc_config)
+  method! rc_contents = [ (rc_config_file, snd rc_config) ]
 
-  method! rc_file_basenames = [rc_config_file]
+  method! set_rc_content ~basename ~content =
+    if basename <> rc_config_file then false else
+    let () = self#set_rc_config ((fst rc_config), content) in
+    true
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in

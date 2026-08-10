@@ -682,13 +682,34 @@ fun ~(network:< .. >)
   method states_directory : string =
     Filename.concat (network#project_root_pathname) "states"
 
-  (* Write the rc files this component owns. Nothing to do for the kinds which have none, hence
-     the empty default; REDEFINED in machine.ml, switch.ml and router.ml. Called by
-     [network#save_rc_files] just before the forest is serialized, never by [#to_tree]. *)
-  method save_rc_files : unit = ()
+  (* The rc scripts this component owns, as (basename, content) pairs: the basename is what the
+     forest publishes, the content is what lives in the model. Nothing to do for the kinds which
+     have none, hence the empty default; REDEFINED in machine.ml, switch.ml and router.ml, with
+     [#set_rc_content] below — the two others derive from this one, so the files a component
+     WRITES and the basenames it PUBLISHES can no longer come from two separate walks and drift
+     apart. No I/O here: [#to_tree] and the control server both call it (episode 6 of
+     `migration-marshal-to-text'), the latter on every rc-get. *)
+  method rc_contents : (string * string) list = []
+
+  (* Replace the content of one of them, addressed by the basename the forest publishes. Answers
+     [false] when the basename is none of this component's: a caller which asked for a write must
+     be able to tell that nothing happened, where a [unit] would have lost the refusal. This is
+     how the control server writes a startup configuration since episode 6 — the content is no
+     longer an attribute, so [#eval_forest_attribute] cannot carry it. REDEFINED alongside
+     [#rc_contents]. *)
+  method set_rc_content ~(basename:string) ~(content:string) : bool =
+    let _ = (basename, content) in false
+
+  (* Write the rc files this component owns. Called by [network#save_rc_files] just before the
+     forest is serialized, never by [#to_tree]. *)
+  method save_rc_files : unit =
+    List.iter
+      (fun (basename, content) ->
+         Rc_files.write ~states_directory:(self#states_directory) ~basename ~content)
+      self#rc_contents
 
   (* The basenames [#save_rc_files] has just written, i.e. the files states/ must keep. *)
-  method rc_file_basenames : string list = []
+  method rc_file_basenames : string list = List.map fst self#rc_contents
 
 end;;
 

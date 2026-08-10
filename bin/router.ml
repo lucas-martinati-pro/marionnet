@@ -1148,20 +1148,28 @@ class router
         let () = rc_config_quagga_files <- rc_config_quagga_files @ [(acronym, basename)] in
         basename
 
-  method! save_rc_files =
-    let states_directory = self#states_directory in
-    let () =
-      User_level.Rc_files.write ~states_directory
-        ~basename:(rc_config_unix_file) ~content:(snd rc_config_unix)
-    in
-    List.iter
-      (fun (acronym, (_active, content)) ->
-         User_level.Rc_files.write ~states_directory
-           ~basename:(self#quagga_file_of acronym) ~content)
-      rc_config_quagga
+  (* The eight scripts of a router — the UNIX one and one per Quagga service — in the canonical
+     order, that of the association list, hence of the GUI tabs. [#save_rc_files] and
+     [#rc_file_basenames] derive from it (user_level.ml), and the control server reads and writes
+     a startup configuration through this pair since episode 6. *)
+  method! rc_contents =
+    (rc_config_unix_file, snd rc_config_unix) ::
+    (List.map
+       (fun (acronym, (_active, content)) -> (self#quagga_file_of acronym, content))
+       rc_config_quagga)
 
-  method! rc_file_basenames =
-    rc_config_unix_file :: (List.map (fun (acronym, _) -> self#quagga_file_of acronym) rc_config_quagga)
+  method! set_rc_content ~basename ~content =
+    if basename = rc_config_unix_file then
+      let () = self#set_rc_config_unix ((fst rc_config_unix), content) in
+      true
+    else
+    match List.find_opt (fun (acronym, _) -> (self#quagga_file_of acronym) = basename)
+            rc_config_quagga
+    with
+    | None -> false
+    | Some (acronym, _) ->
+        let () = self#update_quagga_rc acronym (fun (active, _) -> (active, content)) in
+        true
 
   (* The three per-service fields are scattered over three OCaml fields — the association list
      of rc configurations, and the two membership lists. Reading a `v3 attribute therefore means

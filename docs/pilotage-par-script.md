@@ -1099,6 +1099,16 @@ machines. Le mécanisme était déjà complet — contenu déposé dans `hostfs/
 (`simulation_level.ml:1244-1251`), **sourcé** en fin de `start()` du relais invité
 (`marionnet-relay.trixie:486-494`) — seul l'accès programmatique manquait.
 
+> ⚠️ **Périmé depuis le 2026-08-10 sur un point, et un seul : la façon dont le champ est
+> reconnu.** Les deux paragraphes qui suivent décrivent l'implémentation `v2`, où le champ était
+> un vidage `Marshal` reconnu à son en-tête. Depuis l'ép. 5 du chantier
+> `migration-marshal-to-text` un `.mar` ne contient plus de `Marshal`, et l'ép. 6 a réaccordé ces
+> deux commandes : un rc se reconnaît désormais à sa **paire de clés** (`<radical>_active` +
+> `<radical>_file`), le **contenu** vit dans `states/rc_config.XXXXXXXXX` et transite par le
+> modèle (`#rc_contents` / `#set_rc_content`), et `omitted` est vide. **Pour le client, rien ne
+> change** : mêmes commandes, même vocabulaire (`--field=zebra`), même contenu en clair. Voir le
+> § 12 de `docs/migration-marshal-to-text.md`.
+
 **Le serveur marshale, le client écrit du texte.** Dans le forest, le champ est un
 `Marshal.to_string (activé, contenu)` (`machine.ml:645`) : c'est pour cela que `get`/`set` le
 servent `null` et le **nomment** dans `omitted` depuis l'ép. 4d-2a. Demander à un client bash de
@@ -1116,6 +1126,11 @@ switch (`rc_config`) comme routeur (`rc_config_unix`) sont trouvés sans être n
 trois autres champs marshalés du routeur (`rc_config_quagga`, `quagga_selected_srvs`,
 `show_quagga_terminal`) n'ont pas cette forme et restent dans `omitted`. Nommer le champ ne sert
 qu'à lever une ambiguïté future : zéro candidat, ou plusieurs, sont deux refus motivés.
+
+**La règle qui a survécu au changement de format** (ép. 6 de `migration-marshal-to-text`) : le
+champ n'est **toujours pas nommé**, il est reconnu — mais par ses clés au lieu de ses octets, et la
+distinction « simple / par service » se lit maintenant à la présence des deux booléens
+`_selected` / `_terminal` au lieu d'une différence de type OCaml.
 
 **Deux voies pour le contenu, une par usage.** `--from=<chemin absolu>` est la voie du multi-ligne
 (§ 4.1) : le fichier est lu **dans le thread serveur**, jamais dans le créneau GTK, et l'absolu est

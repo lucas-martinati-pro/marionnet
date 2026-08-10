@@ -140,9 +140,17 @@ class virtual component :
     (* [None] unless the component has a filesystem (machines and routers do): the kernels its
        .conf declares as supported (SUPPORTED_KERNELS), in the GUI combo's order. *)
     method supported_kernels_if_any : string list option
-    (* --- Run-commands files (work-stream `migration-marshal-to-text', episode 5) --- *)
+    (* --- Run-commands files (work-stream `migration-marshal-to-text', episodes 5 and 6) --- *)
     (* The states/ subdirectory of the project, where the rc scripts live. *)
     method states_directory : string
+    (* The rc scripts this component owns, as (basename, content) pairs; the empty list for the
+       kinds which have none. The single method a kind redefines — the two below are derived
+       from it — and the one the control server reads a startup configuration through, the
+       content being no longer an attribute of the forest. Does no I/O. *)
+    method rc_contents : (string * string) list
+    (* Replace the content of the script held under [basename]; [false] if that basename is
+       none of this component's, so that a lost write cannot pass for a done one. *)
+    method set_rc_content : basename:string -> content:string -> bool
     (* Write the rc scripts this component owns; nothing for the kinds which have none.
        Called by [network#save_rc_files] only, just before the forest is serialized —
        never by [#to_tree], which must stay free of I/O (see [Rc_files]). *)
@@ -251,8 +259,10 @@ class virtual node_with_ports_card :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
-    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
+    method rc_contents       : (string * string) list
+    method set_rc_content    : basename:string -> content:string -> bool
     method save_rc_files     : unit
     method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
@@ -371,8 +381,10 @@ class virtual node_with_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
-    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
+    method rc_contents       : (string * string) list
+    method set_rc_content    : basename:string -> content:string -> bool
     method save_rc_files     : unit
     method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
@@ -481,8 +493,10 @@ class virtual node_with_ledgrid_and_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
-    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
+    method rc_contents       : (string * string) list
+    method set_rc_content    : basename:string -> content:string -> bool
     method save_rc_files     : unit
     method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
@@ -645,8 +659,10 @@ class type virtual cable =
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
-    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
+    method rc_contents       : (string * string) list
+    method set_rc_content    : basename:string -> content:string -> bool
     method save_rc_files     : unit
     method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process

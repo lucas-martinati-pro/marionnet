@@ -404,7 +404,27 @@ Reprise : appliquer le skill `chantier-long`.
   assertions, 0 échec** (49 avant), discriminance mesurée, `dune test` inchangé (134),
   `treeview-bench` vert, `components-bench` vert (134) après **retournement** d'une assertion — et
   **`rc-bench` rouge à dessein** (15), c'est la dette de l'ép. 6.
-  **Prochaine étape = ép. 6** (réaccorder `rc-get`/`rc-set` dans `bin/control_server.ml`).
+  **Ép. 6 (le réaccord du canal) fait le 2026-08-10**, § 12 de la doc : `rc-get`/`rc-set`
+  reconnaissent leur champ à sa **paire de clés** (`<radical>_active` + `<radical>_file`, plus
+  `_selected`/`_terminal` pour un rc **de service**) et non plus à l'en-tête magique de `Marshal`,
+  si bien que **`bin/control_server.ml` ne contient plus un seul `Marshal` ni `Obj`** (~150 lignes
+  d'inspection de forme en moins). La règle de l'ép. 4e survit — aucune liste de noms de champs,
+  les radicaux sortent du forest — et un seul nom subsiste, le préfixe `quagga_`, retiré à la
+  publication pour ne pas changer le vocabulaire `--field=zebra`. Le point dur était ailleurs : le
+  **contenu** ayant quitté le forest, le lire dans `states/<basename>` serait **faux trois fois**
+  (composant fraîchement ajouté, projet ouvert depuis un `v2`, entre deux enregistrements) — il
+  transite donc par le modèle, `component#{rc_contents,set_rc_content}` sans I/O, dont
+  `#save_rc_files`/`#rc_file_basenames` **dérivent** désormais. L'enseignement prolonge celui de
+  l'ép. 5 : **le banc regardait au mauvais endroit** — deux assertions cherchaient le contenu dans
+  `network.json`, où il n'est plus ; réparées en **suivant le lien**, avec pour vrai discriminant
+  « aucune ligne du script dans `network.json` », plus une assertion périmée retournée
+  (`omitted` vide) et un **défaut de banc** (une variable globale renseignée dans un sous-shell
+  rendait un rapport qui ment). Preuve : `rc-bench` **104 assertions, 0 échec**, bout en bout
+  compris (la conf ZEBRA posée par le canal est dans `/etc/quagga/zebra.conf` de l'invité) ;
+  **discriminance mesurée** — écriture du contenu désarmée → **17 assertions tombent** ;
+  `dune test` (134), `treeview-bench` et `components-bench` (134) inchangés.
+  **Prochaine étape = ép. 8** (compat descendante prouvée + message d'erreur gettext), puis ép. 9
+  (clôture). *(Ép. 7 `mar2v3` abandonné : 3 lignes de `mrnctl`.)*
 
 ## Où puiser
 

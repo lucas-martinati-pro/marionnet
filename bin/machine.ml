@@ -631,13 +631,15 @@ class machine
   val mutable rc_config_file : string = User_level.Rc_files.fresh_basename ()
   method get_rc_config_file = rc_config_file
 
-  method! save_rc_files =
-    User_level.Rc_files.write
-      ~states_directory:(self#states_directory)
-      ~basename:(rc_config_file)
-      ~content:(snd rc_config)
+  (* The one script a machine owns. [#save_rc_files] and [#rc_file_basenames] derive from it
+     (user_level.ml), and the control server reads and writes the content through this pair
+     since episode 6 — the forest carries the basename only. *)
+  method! rc_contents = [ (rc_config_file, snd rc_config) ]
 
-  method! rc_file_basenames = [rc_config_file]
+  method! set_rc_content ~basename ~content =
+    if basename <> rc_config_file then false else
+    let () = self#set_rc_config ((fst rc_config), content) in
+    true
 
   val mutable console_no : int = console_no
   initializer ignore (self#check_console_no console_no)

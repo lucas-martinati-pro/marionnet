@@ -830,6 +830,143 @@ donne pas aux fichiers rc un nom **parlant** (`rc_config.m1`) : un composant se 
 fichier ne suivrait pas, et l'on retomberait sur le problème que `treeview_documents.ml` avait
 déjà tranché en faveur d'un nom opaque.
 
+## 12. Le réaccord du canal de pilotage (ép. 6)
+
+Depuis l'ép. 5 un `.mar` ne contient plus un octet de `Marshal`, mais `rc-get`/`rc-set`
+reconnaissaient leur champ à l'**en-tête magique** de `Marshal` : ces deux commandes ne trouvaient
+plus rien, et `rc-bench.sh` était rouge à dessein. Cet épisode les remet en marche sur la forme
+`v3`. Il ne touche **aucun** fichier de format : le contenu d'une configuration de démarrage
+n'a pas changé de place, seul le chemin qui y mène a changé.
+
+### 12.1 La reconnaissance change de nature : des octets aux clés
+
+L'ép. 4e avait posé une règle qui a bien servi : le serveur ne garde **aucune liste de noms de
+champs**, « une liste qui pourrirait le jour où un composant en ajoute un » — c'est la *valeur* qui
+dit ce qu'elle est, et un vidage `Marshal` commence par l'un des trois nombres magiques d'OCaml.
+Cette forme n'existe plus. La règle, elle, survit : ce sont désormais les **clés** qui disent ce
+qu'elles sont.
+
+| Ce qui est reconnu | Forme `v2` (jusqu'à l'ép. 5) | Forme `v3` (depuis l'ép. 6) |
+|---|---|---|
+| une configuration de démarrage | valeur marshalée `(bool * string)` | la paire d'attributs `<radical>_active` + `<radical>_file` |
+| une configuration **de service** | valeur marshalée `(clé * (bool * string)) list` | les deux clés ci-dessus **plus** `<radical>_selected` et `<radical>_terminal` |
+| les deux réglages d'un service | deux champs `string list`, reconnus **par leur nom** | deux attributs booléens du radical lui-même |
+
+Les radicaux sortent du forest, exactement comme les sept acronymes Quagga sortaient du champ
+lui-même à l'ép. 12 de `pilotage-par-script`. La distinction « simple / par service » y gagne même
+en franchise : elle reposait sur une différence de **type OCaml** (un couple contre une liste
+d'associations), elle repose maintenant sur ce qui la définit vraiment côté GUI — un onglet Quagga
+porte une case « sélectionné » et une case « terminal », le rc UNIX n'en porte pas.
+
+**Le seul nom qui reste est un préfixe**, `quagga_`. Le modèle nomme ses clés `quagga_zebra_active`
+et consorts, donc le radical est `quagga_zebra` ; mais un script écrit `--field=zebra` depuis
+l'ép. 12, et un changement de format de stockage n'est pas une raison de changer un vocabulaire
+publié. Le préfixe est donc retiré à la publication — sous garde : un nom court qui serait déjà
+celui d'un autre radical est **gardé entier**, une requête ne devant jamais être ambiguë. C'est la
+même entorse assumée qu'à l'ép. 12, en plus petite : un préfixe au lieu de deux noms de champs.
+
+### 12.2 Le contenu ne vient plus du forest — et il ne peut pas venir du fichier
+
+C'est le point dur de l'épisode, et il ne se voit pas dans le découpage du § 5. Les *drapeaux*
+d'une configuration sont des attributs ordinaires : le serveur les lit dans `#to_tree` et les écrit
+par `#eval_forest_attribute`, comme `set`. Le **contenu**, lui, a quitté le forest pour
+`states/rc_config.XXXXXXXXX` (§ 11.2). Le lire dans ce fichier serait la solution évidente, et elle
+est **fausse** — trois fois :
+
+1. sur un composant qu'on vient d'`add`, le basename est alloué sans I/O et **le fichier n'existe
+   pas encore**, alors que le modèle porte déjà le contenu par défaut
+   (`Const.initial_content_for_rcfiles`) ;
+2. sur un projet ouvert depuis un `.mar` `v0`/`v1`/`v2`, le contenu a été **démarshalé en mémoire**
+   au chargement et aucun fichier n'a été écrit ;
+3. entre deux enregistrements, le fichier porte l'état du dernier `save`, pas celui du modèle.
+
+Le contenu passe donc par le modèle, par deux méthodes neuves de `User_level.component` :
+
+```
+method rc_contents    : (string * string) list                        (* basename -> contenu *)
+method set_rc_content : basename:string -> content:string -> bool
+```
+
+Ni l'une ni l'autre ne fait d'I/O — la contrainte du § 11.3 vaut ici aussi, le serveur appelant
+`#rc_contents` à chaque `rc-get`. **`#save_rc_files` et `#rc_file_basenames` en dérivent** dans la
+classe mère, et machine, switch et routeur ne redéfinissent plus qu'`#rc_contents` et
+`#set_rc_content`. Ce n'est pas un compte de méthodes : jusqu'ici deux parcours indépendants
+donnaient les fichiers **écrits** et les basenames **publiés**, et un routeur les parcourait deux
+fois ; ils ne peuvent plus diverger.
+
+`#set_rc_content` rend un **booléen** plutôt que `unit` : un basename que le composant ne reconnaît
+pas signifierait que le serveur et le modèle ne sont pas d'accord sur le forest. Le serveur le dit
+au client, au lieu de rapporter une écriture qui n'a pas eu lieu.
+
+### 12.3 Ce que l'épisode retire, et la garde qu'il déplace
+
+`bin/control_server.ml` ne contient plus **un seul** `Marshal` ni `Obj` (mesuré au `grep`) : les
+quatre prédicats de forme sur `Obj.t`, le marcheur de listes, les trois lecteurs
+`*_of_marshalled`, `is_marshalled` et `marshalled_field_names` s'en vont — environ 150 lignes. Avec
+eux disparaît la reconstruction de l'**ordre canonique** des deux listes d'appartenance : le modèle
+la tient lui-même depuis l'ép. 5, un service à la fois (`update_quagga_membership`, `router.ml`).
+
+Le champ `omitted` **reste** dans les réponses de `get`, `add` et `connect`, désormais toujours
+vide (décision de l'auteur, 2026-08-10) : un client qui le lit continue de fonctionner, et c'est là
+que se dira le jour où un composant publiera quelque chose que ce canal ne peut pas mettre sur une
+ligne JSON.
+
+Une garde, en revanche, n'est pas supprimée mais **déplacée, et pour un motif plus fort qu'avant** :
+`set` et `add` refusaient un champ marshalé ; ils refusent maintenant les champs `<radical>_file`.
+Écrire un tel champ n'est pas « poser une valeur » — `#eval_forest_attribute` **lit le fichier** que
+ce nom désigne (`machine.ml:693`), si bien qu'un `set m1 rc_config_file …` remplacerait le script
+par le contenu d'un autre fichier, ou par rien. Le refus nomme la commande qui écrit vraiment.
+
+### 12.4 La preuve, et les trois assertions que la mesure a corrigées
+
+`rc-bench.sh` (le banc de l'ép. 4e du chantier `pilotage-par-script`) est passé de **15 échecs à
+0**. Mais il n'est pas redevenu vert tout seul, et ce qu'il a fallu corriger est instructif :
+
+- **deux assertions cherchaient le contenu dans `netmodel/network.json`.** Il n'y est plus depuis
+  l'ép. 5 — elles étaient donc *fausses*, pas trop strictes. Les réparer en balayant `states/`
+  aurait produit un banc plus faible ; elles **suivent le lien** : le forest cite un basename pour
+  ce composant *et pour ce radical*, ce basename existe dans `states/`, et c'est **ce fichier-là**
+  qui porte ce que le canal a posé. Deux assertions neuves viennent avec, dont le vrai
+  discriminant : **aucune ligne du script ne doit se trouver dans `network.json`** — sans elle, un
+  serveur qui aurait continué d'écrire le contenu dans l'attribut passerait le reste sans qu'on le
+  voie ; et deux radicaux d'un même routeur (le rc UNIX et `zebra`) doivent pointer **deux fichiers
+  distincts** ;
+- **une assertion était périmée**, la même qu'à l'ép. 5 dans `components-bench.sh` : elle exigeait
+  que `get` *masque* `rc_config` et le **nomme** dans `omitted`. Retournée : `get` publie les deux
+  moitiés, `omitted` est vide, et le basename est vérifié **par sa forme** (`rc_config.` suivi de
+  chiffres) — une chaîne vide ou un bout de script y échoueraient.
+
+**Un défaut du banc attrapé au passage**, qui vaut d'être noté parce qu'il produit un rapport qui
+ment : une fonction qui renseignait une variable globale, appelée dans un `$(…)` ou avant un `|`,
+s'exécute dans un **sous-shell** — la variable revenait vide et le message affichait `states/` sans
+basename, tandis qu'une comparaison entre deux basenames vides passait pour une différence. Deux
+fonctions, l'une rendant le basename, l'autre le contenu.
+
+`marshal-bench.sh`, le filet du chantier, est le second témoin, et pour une raison précise : son
+`dump` interroge `rc-get` pour chaque composant puis pour chaque champ que `available` publie. Ce
+nombre de requêtes est tombé de **72 à 58** pendant que `rc-get` était muet (§ 11.4) ; il est
+**revenu à 72** sur les deux projets qui portent un routeur, sans qu'une ligne du banc ait été
+touchée pour cela. Le filet est vert : **65 assertions, 0 échec** sur les 8 projets.
+
+Un dernier fait, qui n'est pas un défaut du code mais mérite d'être su : un `save` demandé sans
+`--timeout` est borné à **5 s** côté serveur, et un projet de neuf nœuds les dépasse quand deux
+bancs tournent en même temps. Le run fautif l'a fait croire à une régression ; rejoué seul, le
+même projet passe. **Ne pas faire tourner deux bancs à la fois** — ils se mesurent l'un l'autre.
+
+### 12.5 Ce que l'épisode 6 ne fait PAS
+
+Il ne retire **aucune** lecture : le modèle interprète toujours les huit anciennes clés marshalées,
+et le fera jusqu'à la clôture (§ 6.3). Il ne prouve pas la compatibilité descendante côté vieux
+binaire (ép. 8), et ne convertit rien en lot (ép. 7, abandonné à l'ép. 4g). Il ne change pas la
+documentation utilisateur `doc-src/scripting/` : elle ne nomme aucun champ interne — le vocabulaire
+vient de `rc-get … available`, qui rend exactement la même liste qu'avant.
+
+Il ne filtre pas non plus la **complétion Bash**, qui propose pour `set` toutes les clés que `get`
+publie, `rc_config_file` compris — que `set` refuse. Laisser passer est un choix : la complétion de
+l'ép. 10 est *dérivée*, et y ajouter une règle sur les noms rétablirait dans le client la
+connaissance qu'on tient hors de lui. Le refus du serveur nomme la commande à employer, ce qui
+enseigne au lieu d'échouer.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -1085,3 +1222,59 @@ inspectent le `.mar` : `treeview-bench.sh` **vert sans retouche**, `components-b
 `get` *masque* `rc_config` dans `omitted`, elle exige maintenant qu'il publie les deux clés en
 clair —, et **`rc-bench.sh` rouge (15 assertions), délibérément** : il mesure `rc-get`/`rc-set`,
 c'est la dette de l'ép. 6, et le laisser rouge est ce qui la rend visible.
+
+### 2026-08-10 — Épisode 6 : le réaccord du canal, et le banc qui regardait au mauvais endroit
+
+**`rc-get`/`rc-set` parlent de nouveau, sur la forme `v3`.** Ils reconnaissaient leur champ à
+l'en-tête magique de `Marshal` ; ils le reconnaissent maintenant à sa **paire de clés**
+(`<radical>_active` + `<radical>_file`), un rc **de service** en portant deux de plus
+(`_selected`, `_terminal`). Détail au § 12. Pour un client, **rien ne change** : mêmes commandes,
+même vocabulaire (`--field=zebra`), même contenu en clair sur une ligne.
+
+**La règle de l'ép. 4e a survécu au changement de format** : le serveur ne tient toujours aucune
+liste de noms de champs — les radicaux sortent du forest. La distinction « simple / par service »
+y gagne : elle reposait sur une différence de **type OCaml**, elle repose désormais sur la
+présence des deux booléens, c'est-à-dire sur ce qui la définit côté GUI. Un seul nom subsiste, le
+préfixe `quagga_`, retiré à la publication pour ne pas changer un vocabulaire que des scripts
+utilisent déjà — sous garde d'ambiguïté.
+
+**Le point dur n'était pas la reconnaissance, c'était le contenu.** Il a quitté le forest pour
+`states/rc_config.XXXXXXXXX`, et le lire dans ce fichier serait **faux trois fois** : sur un
+composant qu'on vient d'ajouter le fichier n'existe pas encore, sur un projet ouvert depuis un
+`.mar` `v2` il n'a jamais été écrit, et entre deux enregistrements il porte l'état du dernier
+`save`. Le contenu passe donc par le modèle — `component#rc_contents` et `#set_rc_content`, sans
+I/O — et **`#save_rc_files` / `#rc_file_basenames` en dérivent** : les fichiers écrits et les
+basenames publiés ne peuvent plus venir de deux parcours qui divergent. `#set_rc_content` rend un
+**booléen** : une écriture perdue ne peut pas passer pour faite.
+
+**Ce que l'épisode retire.** `bin/control_server.ml` ne contient plus **un seul** `Marshal` ni
+`Obj` (mesuré au `grep`) : ~150 lignes d'inspection de forme s'en vont, et avec elles la
+reconstruction de l'ordre canonique des deux listes d'appartenance — le modèle la tient lui-même
+depuis l'ép. 5. Le champ `omitted` **reste**, toujours vide (décision de l'auteur). Une garde est
+**déplacée, pas supprimée** : `set`/`add` refusaient un champ marshalé, ils refusent les champs
+`<radical>_file` — et le motif est plus fort, puisque `#eval_forest_attribute` **lit le fichier**
+que ce nom désigne.
+
+**L'enseignement est encore côté banc, et il prolonge exactement celui de l'ép. 5.** `rc-bench.sh`
+n'est pas redevenu vert tout seul : deux de ses assertions cherchaient le contenu dans
+`netmodel/network.json`, où il n'est plus depuis l'ép. 5 — elles étaient **fausses**, pas trop
+strictes. Les réparer en balayant `states/` aurait donné un banc plus faible ; elles **suivent le
+lien** (le forest cite un basename pour ce composant *et* pour ce radical, le fichier existe,
+c'est lui qui porte ce que le canal a posé), et deux assertions neuves viennent avec, dont le vrai
+discriminant : **aucune ligne du script ne doit se trouver dans `network.json`**. Une troisième
+assertion était périmée, la même qu'à l'ép. 5 dans `components-bench` (`get` devait *masquer*
+`rc_config` dans `omitted`) : retournée, avec le basename vérifié **par sa forme**. Et un défaut
+de banc attrapé au passage, qui produisait un rapport **qui ment** : une fonction renseignant une
+variable globale, appelée dans un `$(…)` ou avant un `|`, s'exécute dans un **sous-shell** — le
+basename revenait vide, et deux basenames vides passaient pour deux fichiers distincts.
+
+**La preuve.** `rc-bench.sh` **104 assertions, 0 échec**, bout en bout compris — la configuration
+ZEBRA posée par le canal se lit dans `/etc/quagga/zebra.conf` de l'invité (réponse en 12 s) et le
+service désélectionné voit son `.conf` mis en `.backup`. **Discriminance mesurée** : écriture du
+contenu désarmée → **17 assertions tombent** et tout le reste (drapeaux, sélection, terminal,
+refus, vocabulaire) reste vert. `dune build` et `dune test` (134 assertions) inchangés ;
+`treeview-bench`, `components-bench` (134), `doc-bench` (46, bout en bout invité compris),
+`completion-bench` (48) et `check-bench` (32) verts **sans retouche**. Le filet du chantier
+(`marshal-bench.sh`) est le second témoin : son `dump` interroge `rc-get` par composant puis par
+champ publié, si bien que le nombre de requêtes — tombé de 72 à 58 pendant que la commande était
+muette — remonte sans qu'une ligne du banc ait été touchée pour cela.
