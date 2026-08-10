@@ -85,6 +85,9 @@ _mrn_jq() {  # $1 = filter, reads the grammar
 _mrn_verbs()   { _mrn_jq '.commands[].verb'; }
 _mrn_kinds()   { _mrn_jq '.kinds[]?'; }
 _mrn_actions() { _mrn_jq '.actions[]?'; }
+# The journals `log' serves (episode 3 of `journalisation-profonde'): their short names come from
+# the server too, never from a list held here.
+_mrn_logs()    { _mrn_jq '.logs[]?'; }
 
 # The published syntax of one verb — the string every derivation below reads.
 _mrn_syntax() { # $1 = verb
@@ -222,6 +225,9 @@ _mrn_complete_placeholder() {  # $1 = placeholder, $2 = verb, $3… = the words 
         rc-get)                               _mrn_reply "$(_mrn_rc_fields_of "${1:-}")" ;;
         *)                                    COMPREPLY=() ;;
       esac ;;
+    # Same doubled spelling for `log <component> [<file>|--file=<file>]', and the same reason to
+    # catch it here: "<file>" means a journal of the guest, not a path of this host.
+    '<file>'|'<file>|--file='*) _mrn_reply "$(_mrn_logs)" ;;
     '<'*'|'*'>')
       # An enumeration published in the syntax itself: <inward|outward>, <leftward|rightward>.
       local alts="${ph#<}"; alts="${alts%>}"
@@ -238,7 +244,12 @@ _mrn_complete_option_value() {  # $1 = "--opt=partial", $2 = verb, $3 = first po
     --can)     _mrn_cur="$partial"; _mrn_reply "$(_mrn_actions)" ;;
     # rc-get/rc-set: which startup configuration, asked of the component being edited.
     --field)   _mrn_cur="$partial"; _mrn_reply "$(_mrn_rc_fields_of "$arg")" ;;
-    --from|--grammar|--socket|--file|--ctl) _mrn_reply_files ;;
+    # --file is a path everywhere it comes from the *client* (mrnctl -f, mrn-check), and a journal
+    # of the guest when it comes from the channel: only `log' publishes it in its syntax.
+    --file)
+      if [[ $verb == log ]]; then _mrn_cur="$partial"; _mrn_reply "$(_mrn_logs)"
+      else _mrn_reply_files; fi ;;
+    --from|--grammar|--socket|--ctl) _mrn_reply_files ;;
     --state)
       syn="$(_mrn_syntax "$verb")"
       alts="$(grep -o -- '--state=[a-z|]*' <<<"$syn" | head -1)"; alts="${alts#--state=}"

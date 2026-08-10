@@ -149,7 +149,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **0** | Officialisation : cette doc, fiche mémoire, pointeurs | — (aucun code) |
 | **1** | **Prologue injecté** : `marionnet-relay.00-journal` déposé par `make_hostfs_content` ; auto-espionnage du `rc_config` (`set -x`, sortie **et** erreur) vers `/mnt/hostfs/rc_config.log`. **Livre aussi son épilogue de fermeture** `marionnet-relay.zz-journal` (cf. § 4.1) | machine trixie démarrée **par le canal**, `rc_config` volontairement fautif : le journal côté hôte porte la trace et le code d'erreur, là où **rien** n'apparaît aujourd'hui — **fait** (2026-08-10) |
 | **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` (cf. § 4.2) | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur — **fait** (2026-08-10) |
-| **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` |
+| **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) — **deux** journaux à servir, pas un (cf. § 4.3) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` — **fait** (2026-08-11) |
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien |
 | **5** | **Switch : instantané** par la socket mgmt (`port/print`, `hash/print`, `fstp/print`) rendu en JSON | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre |
 | **6** | **Capture de console** (sur option, implicite en `--exam`). Trois pistes à départager : `fd:` sur un descripteur ouvert avant `exec`, `tty:` sur un pty, ou l'xterm lancé sous `script(1)` | une image dont l'`init` est volontairement cassé laisse une trace côté hôte, là où le hostfs reste **vide** |
@@ -262,6 +262,56 @@ prouve que le seul écart avec la source est le chemin du hostfs. La branche sys
 par un `PATH` réduit d'où `journalctl` est absent — la détection étant un **et**, c'est la seule
 façon de mesurer les deux branches sans dépendre d'une vieille image.
 
+### 4.3 Ce que l'épisode 3 a livré (et pourquoi le verbe ressemble à `rc-get`)
+
+Le canal savait déjà **écrire** dans le hostfs (`rc-set`) et **attendre** un signal qui y est
+écrit (`wait --ready`) ; il ne savait pas **lire** ce que l'invité y laisse. Le verbe `log` est le
+frère de `wait --ready` — l'un attend le signal, l'autre sert la matière — et il en reprend les
+deux traits : le créneau GTK n'achète que la localisation du composant (`find_hostfs`, extraite de
+`cmd_wait_ready` et désormais partagée), la lecture se faisant dans le thread appelant, parce
+qu'un `stat` ou un `open_in` n'a rien à faire dans la boucle principale.
+
+```
+log <component> [<file>|--file=<file>] [--tail=<n>]      file ∈ {rc_config, boot}
+```
+
+Quatre choix, et un seul est arbitraire :
+
+- **la forme est celle de `rc-get`** (`[<field>|--field=<field>]`), jusqu'au refus quand les deux
+  sont donnés : c'est le même geste — nommer l'une des rares choses qu'un composant garde à côté
+  de ses champs — et un client qui sait épeler l'un sait épeler l'autre ;
+- **le défaut est `rc_config`** (le seul choix arbitraire) : la première question d'un script est
+  ce que **son** scénario a fait ; douter de l'**image** vient après ;
+- **deux plafonds, pas un**. Celui des lignes est celui de la réponse : 400 par défaut, l'ordre de
+  grandeur que le collecteur s'impose déjà, si bien qu'un `rc_config.log` passe entier et qu'un
+  `boot.log` (711 lignes mesurées) est coupé **en le disant** (`truncated`, `total_lines`). Celui
+  des octets est celui du **lecteur** : le fichier est écrit par un invité, donc par personne que
+  nous contrôlions, et un scénario qui boucle sur une erreur peut le faire grossir sans limite —
+  seule la queue est lue (2 Mio), ce qui borne la mémoire de ce thread quoi que l'invité ait fait ;
+- **une ligne non-UTF-8 est écartée et comptée** (`dropped_lines`), jamais servie : la réponse est
+  une ligne JSON (la raison de `rc_content_is_servable`), et un journal qui perdrait une ligne en
+  silence serait pire qu'un journal qui dit combien il n'a pas pu porter.
+
+Les refus disent tous quoi faire ensuite : un switch reçoit le décalque de celui de `wait --ready`
+(« aucun système invité, donc aucun hostfs ») ; un fichier pas encore écrit renvoie **vers
+`wait --ready`**, parce que c'est le cas normal — le composant n'a pas encore démarré, ou son
+invité n'a pas atteint la fin de son boot.
+
+**La 5ᵉ application de la règle d'unicité** ne tient pas à ce que `help` publie la syntaxe (elle le
+fait pour tous les verbes) mais à ce qu'il publie **la paire de noms** (`"logs"`), comme il publie
+déjà `kinds` et `actions` : la complétion Bash les **demande** au serveur au lieu d'en tenir une
+copie. Le piège de l'épisode est là : `--file` appartenait déjà au **client** (`mrnctl -f`, où il
+désigne un chemin de l'hôte). Les deux cohabitent — la boucle d'options de `mrnctl` s'arrête au
+premier non-option, donc `mrnctl log m1 --file=boot` part bien au serveur — mais la complétion, elle,
+devait apprendre à distinguer : chemins partout, journaux après `log`.
+
+**Mesure** (`journal-bench.sh`, **84 assertions, 0 échec**, les trois invités des épisodes
+précédents ; `completion-bench.sh`, **53 assertions, 0 échec**). Le discriminant est tenu sur une
+trixie **encore allumée** — décision D3, le hostfs est un journal *vivant* : `log m1 --tail=20`
+rend, ligne pour ligne, ce que `tail -n 20` rend côté hôte ; sans `--tail`, le fichier entier ;
+`log m1 boot` et `log m1 --file=boot` rendent la même chose ; et après `poweroff`, le journal est
+toujours servi — il vit dans le hostfs, pas dans le processus.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -369,3 +419,28 @@ toujours sa bannière ; sous systemd, `journalctl -b` **rapporte nos propres lig
 élargi le témoin de l'épisode 1 et montré au passage que le prologue enrichit aussi le journal
 système de l'invité ; et l'ordre du glob de sourcing est **inversé** dans le relais de wheezy, sans
 conséquence pour nos trois fichiers. Détail des quatre : § 4.2.
+
+### 2026-08-11 — Épisode 3 : le canal lit
+
+Verbe `log` dans `bin/control_server.ml` : le canal sert désormais les **deux** fichiers que les
+épisodes 1 et 2 ont fait écrire, sans qu'un script ait à connaître le chemin d'un hostfs. La forme
+est celle de `rc-get`, le défaut est le journal du scénario, et les deux plafonds — 400 lignes pour
+la réponse, 2 Mio pour le lecteur — n'ont pas la même raison d'être (§ 4.3). Rien de neuf n'a été
+inventé côté résolution : la recherche du hostfs de `wait --ready` a été **extraite** (`find_hostfs`)
+et partagée par les deux verbes, avec sa discipline — le créneau GTK pour trouver le composant, le
+thread appelant pour l'I/O.
+
+L'épisode n'a mis en défaut ni le mécanisme ni une attente : le premier run a échoué sur trois
+assertions **du banc**, qui vérifiaient le texte d'un refus avec `expect_ok` — lequel exige
+`.ok == true`, donc ne peut rien dire d'un refus. D'où `expect_detail`, qui ne regarde que
+`.detail` ; les refus, eux, disaient déjà ce qu'il fallait.
+
+Le seul piège réel était côté client : `--file` appartenait déjà à `mrnctl` (le mode batch), où il
+désigne un chemin. La cohabitation est sans danger dans la ligne de commande (les options du client
+s'arrêtent au verbe), mais la complétion proposait des fichiers de l'hôte là où le canal attend un
+journal ; elle a appris la distinction — et, comme aux épisodes 10 et 12 du chantier frère, elle
+**demande** les deux noms au serveur (`help` publie `logs`) plutôt que d'en tenir une copie.
+
+**84 assertions, 0 échec** au banc du chantier (dont le discriminant sur une machine encore
+allumée), **53** au banc de complétion. `doc-src/scripting/` n'a pas été touché : la documentation
+utilisateur du chantier est l'épisode 8.

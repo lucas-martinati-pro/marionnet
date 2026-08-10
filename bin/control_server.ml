@@ -218,6 +218,20 @@ let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "power
    absent on purpose: it takes two endpoints, hence its own command (§ 4.5). *)
 let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "world_gateway" ]
 
+(* Episode 3 of `journalisation-profonde'. The two journals a guest leaves in its hostfs
+   directory, as (what [log] calls them, what the guest named them):
+
+     rc_config.log  what *the scenario* did, and what failed in it (the trace and the status);
+     boot.log       what the boot did before the relay was reached (dmesg, and the services).
+
+   The basenames are the decision of the two scripts which write them
+   (bin/scripts/marionnet-relay.{00,zz}-journal.sh); the server only reads them, and publishes the
+   short names so that no client holds a copy of this pair. The default is the first question a
+   script asks — what its own scenario did; doubting the *image* comes later. *)
+let journal_files = [ ("rc_config", "rc_config.log"); ("boot", "boot.log") ]
+let journal_file_names = List.map fst journal_files
+let default_journal_file = "rc_config"
+
 (* Declared here, above [cmd_help], and not beside their first user further down: episode 10
    made [help] publish them, so a Bash completion derives the values of [--kind=] and [--can=]
    instead of holding a third copy of lists the refusals already name. *)
@@ -279,6 +293,11 @@ let arity_of_command : (string * arity) list =
     ("save-as",       one_path "save-as <absolute path>");
     ("close",         no_arg "close [--save|--no-save]");
     ("notifications", no_arg "notifications [--since=<n>] [--clear]");
+    (* Episode 3 of `journalisation-profonde'. Spelled like rc-get — the file positionally *or*
+       through an option — because it is the same gesture: naming one of the few things a
+       component keeps beside its fields. Which files there are is published by [help]. *)
+    ("log",           component_and_field
+                        "log <component> [<file>|--file=<file>] [--tail=<n>]");
     ("wait",          one_component
                         "wait <component> (--state=on|off|sleeping | --ready) [--timeout=<s>]");
     ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
@@ -324,17 +343,18 @@ let cmd_help ~(verb:string option) : string =
   match selected with
   | Error v       -> unknown_command_reply ~verb:v
   | Ok commands   ->
-      (* The three closed vocabularies a syntax mentions without spelling out: "<kind>" in [add]
-         and [ls --kind=], "<action>" in [ls --can=], and the actions no per-component menu
-         offers. Published only by the *whole* listing — [help <verb>] answers about one command
-         and nothing else — and read by the Bash completion (episode 10), which would otherwise
-         hold a third copy of lists the refusals of [add] and [ls] already name. *)
+      (* The closed vocabularies a syntax mentions without spelling out: "<kind>" in [add] and
+         [ls --kind=], "<action>" in [ls --can=], the actions no per-component menu offers, and
+         "<file>" in [log]. Published only by the *whole* listing — [help <verb>] answers about
+         one command and nothing else — and read by the Bash completion (episode 10), which would
+         otherwise hold a third copy of lists the refusals of [add], [ls] and [log] already name. *)
       let vocabularies =
         match verb with
         | Some _ -> []
         | None   -> [ ("kinds",      jlist (List.map jstr known_kinds));
                       ("actions",    jlist (List.map jstr known_actions));
-                      ("beyond_gui", jlist (List.map jstr beyond_gui_actions)) ]
+                      ("beyond_gui", jlist (List.map jstr beyond_gui_actions));
+                      ("logs",       jlist (List.map jstr journal_file_names)) ]
       in
       reply_ok ([ ("count",    jint (List.length commands));
                   ("commands", jlist (List.map json_of_command commands)) ] @ vocabularies)
@@ -2050,6 +2070,20 @@ let first_line_of (path:string) : string option =
       let line = String.trim line in
       if line = "" || not (String.is_valid_utf_8 line) then None else Some line
 
+(* Where the guest of [name] writes, as far as the model knows: [None] if no component bears that
+   name, [Some None] if it bears it but runs no guest of its own (a switch, a hub, a cable),
+   [Some (Some dir)] otherwise. Reads the network, hence the GTK slot — and *only* this: the
+   observation itself ([stat], [open_in]) is I/O and belongs to the calling thread. Shared by
+   [wait --ready], which repolls it, and by [log] (episode 3 of `journalisation-profonde'), which
+   asks it once. *)
+let find_hostfs (st : State.globalState) ~(name:string) : string option option =
+  match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+  | Some n -> Some (n#hostfs_directory_if_any)
+  | None ->
+  match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+  | Some _ -> Some None
+  | None   -> None
+
 let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
                    ~(name:string) : string
   =
@@ -2061,16 +2095,7 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
      reading where its guest writes. The observation itself is a [stat]: I/O, hence run in this
      thread, never in the GTK main loop. *)
   let observe () =
-    match
-      ask ~timeout:gtk_timeout
-        (fun () ->
-           match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
-           | Some n -> Some (n#hostfs_directory_if_any)
-           | None ->
-           match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
-           | Some _ -> Some None
-           | None   -> None)
-    with
+    match ask ~timeout:gtk_timeout (fun () -> find_hostfs st ~name) with
     | Failed e         -> Failed e
     | Timed_out t      -> Timed_out t
     | Done None        -> Done (Rp_gone)
@@ -2128,6 +2153,156 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
          | _ -> assert false (* [reached] said otherwise *)
        in
        reply_error ~code:"timeout" ~detail)
+
+(* --- log: the two journals the guest writes ---------------------- *)
+
+(* Episode 3 of `journalisation-profonde'. The sibling of [wait --ready]: that one waits for the
+   signal the guest writes, this one serves what it *wrote*. Since episodes 1 and 2 every machine
+   and every router leaves two files in its hostfs directory, written by the prologue and the
+   epilogue Marionnet drops there at every start (bin/scripts/marionnet-relay.00-journal.sh and
+   marionnet-relay.zz-journal.sh, deposited by make_hostfs_content):
+
+     rc_config.log  what *the scenario* did, and what failed in it (the trace and the status);
+     boot.log       what the boot did before the relay was reached (dmesg, and the services).
+
+   The basenames belong to those two scripts (__mrn_journal_log, __mrn_journal_boot_log). They are
+   named once, with the other closed vocabularies, above [cmd_help] — which publishes them.
+
+   Two bounds, and they are not the same bound. The line one is the answer's: 400 is the order of
+   magnitude the collector already imposes on itself (dmesg 400, journalctl 500), so a whole
+   journal normally passes untouched. The byte one is the *reader's*: the file is written by a
+   guest, hence by nobody we control, and a scenario looping on an error can make it as large as
+   it likes. Reading only the tail keeps this thread's memory bounded whatever the guest did. *)
+let max_journal_lines = 400
+let max_journal_bytes = 2 * 1024 * 1024
+
+type journal_read = {
+  jr_content   : string;  (* the lines served, newline-terminated as [tail] would leave them *)
+  jr_lines     : int;     (* how many were served *)
+  jr_total     : int;     (* how many were read, and could be served, from the file *)
+  jr_dropped   : int;     (* lines this channel could not carry (see below) *)
+  jr_truncated : bool;    (* the file held more than what is served *)
+  jr_bytes     : int;     (* the file itself, as the channel found it *)
+  jr_mtime     : float;
+  }
+
+(* A line the guest wrote in something which is not UTF-8 is *dropped and counted*, not served:
+   the answer is one JSON line (the reason of [rc_content_is_servable] and of [first_line_of]).
+   Counting it matters more than it looks — a journal silently missing a line would be worse than
+   one which says how many it could not carry. *)
+let read_journal_tail ~(path:string) ~(tail:int) : (journal_read, string) result =
+  let stat = try Some (Unix.stat path) with _ -> None in
+  match stat with
+  | None -> Error "not found"
+  | Some s when s.Unix.st_kind <> Unix.S_REG ->
+      Error (Printf.sprintf "%S is not a regular file" path)
+  | Some s ->
+      let read () =
+        let ic = open_in_bin path in
+        Fun.protect ~finally:(fun () -> close_in_noerr ic)
+          (fun () ->
+             let len     = in_channel_length ic in
+             let skipped = max 0 (len - max_journal_bytes) in
+             let ()      = seek_in ic skipped in
+             (len, skipped > 0, really_input_string ic (len - skipped)))
+      in
+      (match (try Some (read ()) with _ -> None) with
+       | None -> Error (Printf.sprintf "%S could not be read" path)
+       | Some (len, skipped, raw) ->
+           let lines = String.split_on_char '\n' raw in
+           (* The last element of the split is what follows the final newline: empty on a file
+              which ends with one, which is what a journal does. The first is a *partial* line
+              when we started in the middle of the file: dropped, for the same reason its bytes
+              were. *)
+           let lines =
+             match List.rev lines with "" :: rest -> List.rev rest | _ -> lines in
+           let lines = match skipped, lines with true, _ :: rest -> rest | _, l -> l in
+           let (kept, unservable) = List.partition String.is_valid_utf_8 lines in
+           let total  = List.length kept in
+           let served =
+             if total <= tail then kept
+             else List.filteri (fun i _ -> i >= total - tail) kept
+           in
+           let content =
+             match served with [] -> "" | _ -> String.concat "\n" served ^ "\n" in
+           Ok { jr_content   = content;
+                jr_lines     = List.length served;
+                jr_total     = total;
+                jr_dropped   = List.length unservable;
+                jr_truncated = skipped || total > tail;
+                jr_bytes     = len;
+                jr_mtime     = s.Unix.st_mtime })
+
+let journal_file_of (file : string option) : (string * string, string) result =
+  let key = match file with None -> default_journal_file | Some f -> f in
+  match List.assoc_opt key journal_files with
+  | Some basename -> Ok (key, basename)
+  | None ->
+      Error (Printf.sprintf
+               "no journal named %S; this channel serves %s — the two files the guest writes in \
+                its hostfs directory (help publishes them as \"logs\")"
+               key (String.concat ", " journal_file_names))
+
+let journal_tail_of (tail : string option) : (int, string) result =
+  match tail with
+  | None   -> Ok max_journal_lines
+  | Some s ->
+      (match int_of_string_opt s with
+       | Some n when n > 0 -> Ok n
+       | _ -> Error (Printf.sprintf "--tail expects a positive number of lines, got %S" s))
+
+let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:string option)
+            ~(tail:string option) : string
+  =
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"log expects the name of a component"
+  else
+  match journal_file_of file with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok (key, basename) ->
+  match journal_tail_of tail with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok tail ->
+      (* The GTK slot buys the hostfs directory and nothing else; the reading happens here, in
+         this thread, like the [stat] of [wait --ready]. *)
+      reply_of_outcome
+        (function
+         | None ->
+             reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+         | Some None ->
+             reply_error ~code:"bad_argument"
+               ~detail:(Printf.sprintf
+                          "%S runs no guest system of its own, hence has no hostfs directory: log \
+                           applies to a machine or a router" name)
+         | Some (Some dir) ->
+             let path = Filename.concat dir basename in
+             (match read_journal_tail ~path ~tail with
+              | Error "not found" ->
+                  reply_error ~code:"bad_argument"
+                    ~detail:(Printf.sprintf
+                               "%S has written no %s yet (%s): it has not been started since this \
+                                project was opened, or its guest has not reached the end of its \
+                                boot — see wait --ready"
+                               name basename path)
+              | Error detail -> reply_error ~code:"bad_argument" ~detail
+              | Ok r ->
+                  reply_ok [ ("component",     jstr name);
+                             ("file",          jstr key);
+                             ("path",          jstr path);
+                             (* In clear, on one line: json_escape turns the newlines into \n,
+                                exactly as it does for the content of rc-get. *)
+                             ("content",       jstr r.jr_content);
+                             ("lines",         jint r.jr_lines);
+                             ("total_lines",   jint r.jr_total);
+                             ("dropped_lines", jint r.jr_dropped);
+                             ("truncated",     jbool r.jr_truncated);
+                             ("bytes",         jint (String.length r.jr_content));
+                             ("file_bytes",    jint r.jr_bytes);
+                             ("mtime",         jfloat r.jr_mtime);
+                             (* Episode 10's pattern again: the vocabulary of --file, published
+                                by the answer as well as by help. *)
+                             ("available",     jlist (List.map jstr journal_file_names)) ]))
+        (ask ~timeout (fun () -> find_hostfs st ~name))
 
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole
@@ -3365,6 +3540,34 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                 (cmd_transition st ~timeout ~action:verb ~name:(arg0 r), `Continue)
             | verb when List.mem verb transition_all_commands ->
                 (cmd_transition_all st ~timeout ~action:verb, `Continue)
+            (* Episode 3 of `journalisation-profonde'. Two refusals, both for the same reason a
+               journal is asked for at all — to find out what went wrong: a mistyped --tial= would
+               serve 400 lines while the client believed it asked for 20, and a file given twice
+               would have one of the two answers chosen in silence. *)
+            | "log" ->
+                (match List.filter
+                         (fun (k, _) -> not (List.mem k [ "timeout"; "file"; "tail" ])) r.opts
+                 with
+                 | (k, _) :: _ ->
+                     (reply_error ~code:"bad_argument"
+                        ~detail:(Printf.sprintf
+                                   "no option --%s here; syntax: %s" k
+                                   (match List.assoc_opt "log" arity_of_command with
+                                    | Some a -> a.syntax
+                                    | None   -> "log")),
+                      `Continue)
+                 | [] ->
+                     (match option_value r "file", arg_opt r 1 with
+                      | Some _, Some _ ->
+                          (reply_error ~code:"bad_argument"
+                             ~detail:"the journal is given twice (positional argument and \
+                                      --file): give it once",
+                           `Continue)
+                      | opt, pos ->
+                          (cmd_log st ~timeout ~name:(arg0 r)
+                             ~file:(match opt with None -> pos | some -> some)
+                             ~tail:(option_value r "tail"),
+                           `Continue)))
             (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
                it bounds the wait, not the round trip to the GTK main thread. Hence the
                distinct default, and hence [timeout] being reused only when the client did
