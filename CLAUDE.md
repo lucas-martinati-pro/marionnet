@@ -88,7 +88,17 @@ l'**install** et le **RPM**.
   automatiquement — suivre le style déjà en place dans le fichier ; ne le charger que sur
   demande explicite.
 - **Code neuf** : les préférences modernes s'appliquent (`Result`, bash robuste) ; en revanche
-  `.mli` **sélectifs** comme l'existant (modules « bibliothèque » oui, composants/écrans non).
+  `.mli` **sélectifs**, jamais systématiques. Critère **mesuré** (2026-08-10) : un `.mli` se
+  justifie quand la **surface externe est petite devant l'implémentation** *et* que le module
+  **ne publie pas de type de classe** — un `.mli` sur du code objet exige la transcription
+  intégrale des méthodes (`user_level.mli` = 806 l. pour 2312, à maintenir en double), et un
+  `.mli` « transparent » qui recopie tout n'apporte que de la doc à faire vieillir. Donc :
+  oui aux modules « bibliothèque » et aux modules à point d'entrée unique (`control_server.mli`
+  = **1 `val` pour 3541 lignes**) ; non aux 12 modules porteurs de classes (`treeview`, `state`,
+  les 8 composants, les 4 `treeview_*`), aux écrans `bin/gui/`, aux modules d'exécutable
+  (`marionnet.ml`, `initialization.ml`) et à `marionnet_log.ml` (`include` d'un foncteur).
+  Quand un `.mli` est écrit, la doc d'**interface** y **déménage** (source unique) ; le `.ml`
+  ne garde que les notes d'implémentation.
 - `Obj.magic` (25×, jointures user/simulation level) : dette tolérée, **à réduire à l'occasion**
   quand on touche ces fichiers — pas de campagne dédiée.
 - GTK depuis le SEUL thread principal ; tout appel GUI depuis un autre thread passe par

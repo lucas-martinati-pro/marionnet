@@ -15,28 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-(** Script mode: what becomes of the windows Marionnet opens by itself when nobody is
-    sitting in front of it.
-
-    A driven session (control_server.ml, [--control-socket]) keeps the GUI alive and
-    observable — that is the whole point of the architecture chosen for this work-stream —
-    but Marionnet pops up windows on its own: the splash screen at startup, an information
-    dialog when loading an old project had to adapt it (Mandriva images remapped to Trixie,
-    kernels substituted...), a warning when a component dies. Left alone they pile up on
-    the screen, and, worse, what they *say* is lost to the script: at episode 3a a failed
-    [open] was found to report its cause in a non-modal dialog and nowhere else.
-
-    So the answer is not merely "close them": it is *capture, then close*. Every message
-    Marionnet would have shown is pushed here, with a monotonic sequence number, and the
-    control server serves it as JSON (command [notifications], and inline in the answer to
-    [open]). Closing without capturing would have thrown away exactly the information a
-    script wants — the list of adaptations being the archetype.
-
-    This module deliberately depends on nothing but Marionnet_log. It is used by
-    bin/gui/simple_dialogs.ml, and initialization.ml transitively depends on user_level.ml,
-    which depends on simple_dialogs.ml: reading the command line from here would close that
-    cycle. Hence [configure], called by marionnet.ml (the root) before anything may show a
-    window. *)
+(* Script mode: capture-then-close of the windows Marionnet opens by itself. The contract,
+   the rationale and the thread discipline are documented in script_mode.mli. *)
 
 (* --- *)
 module Log = Marionnet_log

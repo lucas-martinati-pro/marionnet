@@ -18,16 +18,13 @@
 
 (* open PreludeExtra.Prelude;; *) (* We want synchronous terminal output *)
 
-(** A general-purpose polymorphic graph data structure, written in imperative
-    style.
-    Nodes are identified by automatically-assigned unique ids, which are used
-    also to recognize endpoints, for each edge.
-    The implementation should be reasonably efficient, but remove_node can be
-    optimized. remove_edge is difficult to make better because of a (gratuitous,
-    in my opinion) restriction in Hashtbl: it's not allowed to remove a pair
-    <key, value>, but only to blindly remove the "current" binding of key.
-    So I have to get all bindings, filter them out, remove all bindings from the
-    table, and reinsert the surviving ones. *)
+(* Implementation notes — the interface and its contract are in graph.mli.
+   The implementation should be reasonably efficient, but remove_node can be
+   optimized. remove_edge is difficult to make better because of a (gratuitous,
+   in my opinion) restriction in Hashtbl: it's not allowed to remove a pair
+   <key, value>, but only to blindly remove the "current" binding of key.
+   So I have to get all bindings, filter them out, remove all bindings from the
+   table, and reinsert the surviving ones. *)
 
 (* --- *)
 module Log = Marionnet_log

@@ -15,25 +15,21 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-(** Script control server: a line-oriented control channel on a unix socket, served
-    in-process by a dedicated thread, so that Marionnet may be driven by a script (or by
-    an agent) while its GUI stays alive and observable. Opt-in: without the option
-    [--control-socket PATH] no socket exists, hence no attack surface.
+(* Script control server. The contract, the invariants and the reason why this module
+   exports a single value are documented in control_server.mli. Implementation note: we
+   only ever *emit* JSON and never parse it, so no dependency is added to the project.
 
-    A request is a plain text line; an answer is exactly one JSON line. We only ever
-    *emit* JSON and never parse it, so no dependency is added to the project.
-
-    Design constraints inherited from the audit of [Ocamlbricks.Network]
-    (docs/pilotage-par-script.md § 7.5), each honoured below:
-    - N7  : on the line channel, use *only* #input_line / #output_line (the stdlib buffer
-            and Unix.recv would not see the same bytes);
-    - N9  : a peer closing its end is a normal end of session, not an error;
-    - N10 : bound the number of concurrent sessions (each one costs a thread);
-    - N12 : a stale socket file left behind by a brutal exit must not prevent a restart;
-    - N16 : never use fresh_socketname (TOCTOU); the parent directory is ours, mode 0700;
-    - N17 : never #peek.
-    N18 (SIGPIPE) is neutralised in marionnet.ml: a global signal disposition belongs to
-    the program, not to a module. *)
+   Design constraints inherited from the audit of [Ocamlbricks.Network]
+   (docs/pilotage-par-script.md § 7.5), each honoured below:
+   - N7  : on the line channel, use *only* #input_line / #output_line (the stdlib buffer
+           and Unix.recv would not see the same bytes);
+   - N9  : a peer closing its end is a normal end of session, not an error;
+   - N10 : bound the number of concurrent sessions (each one costs a thread);
+   - N12 : a stale socket file left behind by a brutal exit must not prevent a restart;
+   - N16 : never use fresh_socketname (TOCTOU); the parent directory is ours, mode 0700;
+   - N17 : never #peek.
+   N18 (SIGPIPE) is neutralised in marionnet.ml: a global signal disposition belongs to
+   the program, not to a module. *)
 
 (* --- *)
 module Log = Marionnet_log
