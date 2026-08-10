@@ -127,6 +127,13 @@ module User_level_machine : sig
       (* --- *)
       method get_rc_config                   : bool * string
       method set_rc_config                   : bool * string -> unit
+      (* Where the *content* of the rc file is stored since `v3: states/rc_config.XXXXXXXXX
+         (work-stream `migration-marshal-to-text', episode 5). The forest carries the basename;
+         the three methods below are the ones [User_level.component] declares. *)
+      method get_rc_config_file              : string
+      method states_directory                : string
+      method save_rc_files                   : unit
+      method rc_file_basenames               : string list
       (* --- *)
       method get_terminal                    : string
       method set_terminal                    : string -> unit

@@ -385,7 +385,26 @@ Reprise : appliquer le skill `chantier-long`.
   est vert **bout en bout** sans une ligne touchée au serveur. Preuve : banc de l'ép. 1 **vert
   (49 assertions)** sur les 8 projets, **112 fichiers JSON** relus en UTF-8 strict par `python3`
   (0 invalide), les 3 bancs du chantier pilotage qui inspectent le `.mar` rejoués verts.
-  **Prochaine étape = ép. 5** (désimbrication des 8 attributs binaires).
+  **Ép. 5 (la désimbrication) fait le 2026-08-10**, § 11 de la doc : **plus aucun attribut d'un
+  `.mar` écrit par ce binaire n'est un vidage `Marshal`** — « tout scalaire, à plat », le routeur
+  éclaté **par service**, et le **contenu** d'un rc parti dans un fichier `states/rc_config.XXXXXXXXX`
+  (comme `states/document-XXXXXXXXX` de `treeview_documents.ml`) parce qu'un rc est un **script**,
+  pas une valeur : en clair dans l'attribut, c'était un mur de texte échappé devenant un blob base64
+  entier au premier octet non-UTF-8. La contrainte qui a dicté la conception n'est pas le format
+  mais que **`#to_tree` ne peut pas faire d'I/O** — le serveur de contrôle l'appelle à chaque `get`,
+  donc un fichier par requête ; d'où basename alloué sans I/O à la construction, écriture (et
+  **balayage des orphelins**) dans `network#save_rc_files`, que `state.ml` appelle juste avant de
+  sérialiser. L'enseignement est ailleurs : **le filet mesurait ces huit champs par `rc-get`**, que
+  l'épisode rend muet — il serait donc resté **vert en cessant de regarder** (72 → 58 requêtes au
+  dump, sans une assertion qui bronche). Deux assertions neuves hors canal, **corrigées deux fois
+  par la mesure** : la plupart des `.mar` du corpus sont **antérieurs aux champs rc**, si bien que
+  « ce qu'on écrit doit venir de l'original » est faux (les contenus viennent des **défauts du
+  modèle** — ce que l'ép. 1 avait pris pour « 7 configurations Quagga renseignées » était ce que
+  `rc-get` *affichait*), et une chaîne vide peut être la bonne réponse. Preuve : banc **65
+  assertions, 0 échec** (49 avant), discriminance mesurée, `dune test` inchangé (134),
+  `treeview-bench` vert, `components-bench` vert (134) après **retournement** d'une assertion — et
+  **`rc-bench` rouge à dessein** (15), c'est la dette de l'ép. 6.
+  **Prochaine étape = ép. 6** (réaccorder `rc-get`/`rc-set` dans `bin/control_server.ml`).
 
 ## Où puiser
 

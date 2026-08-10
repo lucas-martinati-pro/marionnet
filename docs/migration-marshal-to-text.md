@@ -198,7 +198,8 @@ des `.json` en tête**, faute de quoi un `.mar` `v3` sans fichier `version` sera
 `None` — « failed to identify ».
 *Fin d'épisode* = banc de l'ép. 1 vert sur « ouvrir un `v2` → sauver → rouvrir ».
 
-**Ép. 5 — Désimbriquer les six attributs binaires.** Aujourd'hui, six attributs sont
+**Ép. 5 — Désimbriquer les huit attributs binaires** *(fait le 2026-08-10 ; **six** annoncés ici,
+**huit** mesurés à l'ép. 4 — cf. § 10.4 et § 11)*. Aujourd'hui, six attributs sont
 re-marshalés **à l'intérieur** du forest, parce qu'un attribut `Xforest` est un `string` :
 `rc_config` (`machine.ml:654`, `switch.ml:456`) et les quatre champs Quagga du routeur
 (`router.ml:1216-1219`). `#to_tree` publiera des clés en clair ; `#eval_forest_attribute` devra
@@ -713,6 +714,122 @@ seulement que le `.mar` ne lui offre plus de piège), et ne convertit rien en lo
 désormais ce qu'il rattrape, ce qui ne remplace pas les tests unitaires de l'ép. 3 — cela les
 justifie.
 
+## 11. La désimbrication des huit attributs (ép. 5)
+
+Depuis l'ép. 4 un `.mar` est du texte, mais huit de ses attributs restaient des vidages `Marshal`
+*à l'intérieur* du forest, transportés en base64 : lisibles par un outil, illisibles par un
+humain. Cet épisode les défait. **Aucun attribut d'un `.mar` écrit par ce binaire n'est plus
+marshalé** ; la lecture des huit anciennes clés est **intacte**, et reste écrite en premier dans
+chaque `#eval_forest_attribute`.
+
+### 11.1 Les huit attributs, et la forme retenue
+
+| Où | Ancienne clé (`v0`/`v1`/`v2`) | Type OCaml | Clés `v3` |
+|---|---|---|---|
+| `machine.ml` | `rc_config` | `bool * string` | `rc_config_active`, `rc_config_file` |
+| `switch.ml` | `rc_config` | `bool * string` | `rc_config_active`, `rc_config_file` |
+| `router.ml` | `rc_config_unix` | `bool * string` | `rc_config_unix_active`, `rc_config_unix_file` |
+| `router.ml` | `rc_config_quagga` | `(acronyme * (bool * string)) list` | `quagga_<srv>_active`, `quagga_<srv>_file` |
+| `router.ml` | `quagga_selected_srvs` | `acronyme list` | `quagga_<srv>_selected` |
+| `router.ml` | `show_quagga_terminal` | `acronyme list` | `quagga_<srv>_terminal` |
+| `sketch.ml` | `shuffler` | `int list` | `shuffler_indexes` |
+| `sketch.ml` | `invertedCables` | `string list` | `inverted_cable_names` |
+
+**Tout scalaire, à plat** (décision de l'auteur, 2026-08-10). Une clé par donnée atomique, jamais
+un JSON encodé dans la chaîne d'un attribut — qui aurait rendu au fichier le double échappement
+qu'on venait de lui retirer. Les deux listes de `sketch.ml` restent des listes, séparées par des
+espaces : une permutation d'entiers d'un côté, des **noms de câbles** de l'autre, et un nom est un
+identifiant (`check_new_name`, `user_level.ml`), donc sans espace — c'est ce fait, et lui seul,
+qui rend le séparateur sûr.
+
+**Le routeur est éclaté par service, pas par champ.** Ses quatre champs marshalés sont trois
+listes et une liste d'associations, toutes indexées par le même acronyme Quagga ; les rendre
+service par service donne au fichier la forme de l'onglet de la GUI — `quagga_zebra_selected`,
+`_terminal`, `_active`, `_file` côte à côte — au lieu de quatre listes parallèles qu'il faudrait
+recroiser de tête. Corollaire à la lecture : les attributs arrivent **un à la fois**, chacun
+mettant à jour *sa* moitié du champ OCaml correspondant, dans n'importe quel ordre.
+
+### 11.2 Pourquoi le contenu d'un rc part dans un fichier, et pas dans l'attribut
+
+Le point n'allait pas de soi, et il **change la forme du `.mar`** : un contenu de rc n'est pas une
+valeur, c'est un **script shell** — arbitraire, souvent long, multi-ligne. Le mettre en clair dans
+l'attribut aurait troqué une opacité contre une autre : un mur de texte échappé, et surtout un
+**blob base64 pour le script entier** dès qu'un seul de ses octets n'est pas de l'UTF-8 (§ 8.2).
+
+Le contenu va donc dans un fichier à lui sous `states/`, nommé `rc_config.XXXXXXXXX`, **exactement
+comme les documents de `treeview_documents.ml`** (`states/document-XXXXXXXXX`) — un mécanisme déjà
+en place, déjà archivé dans le `.mar`, déjà compris. Le forest ne porte que le **basename**. Ce que
+l'enseignant a écrit reste un fichier que n'importe quel éditeur ouvre, que `diff` compare ligne à
+ligne et que `grep` trouve, ce qui est le but même du chantier. Un routeur en a jusqu'à huit (le rc
+UNIX plus les sept services).
+
+### 11.3 La contrainte qui a dicté la conception : `#to_tree` ne doit pas faire d'I/O
+
+`#to_tree` n'est pas seulement le sérialiseur : c'est aussi **ce que le serveur de contrôle
+interroge à chaque `get`** (`control_server.ml:892`, ép. 4d-2a de `pilotage-par-script`). Un
+`#to_tree` qui aurait créé le fichier au moment de publier son nom aurait donc fabriqué un fichier
+**par requête**. D'où la découpe en trois temps, dans `User_level.Rc_files` :
+
+1. le **basename** est alloué à la construction du composant, sans la moindre I/O ;
+2. l'**écriture** a lieu une fois par enregistrement, dans `network#save_rc_files`, que `state.ml`
+   appelle **juste avant** de sérialiser le forest — donc les basenames que le forest publie sont
+   ceux que cette passe vient d'écrire ;
+3. la même passe **balaie les orphelins** : un composant détruit depuis le dernier enregistrement
+   laisserait sinon son script dans `states/`, et l'archive est faite du répertoire tel qu'il est.
+
+La **lecture**, elle, se fait bien dans `#eval_forest_attribute` : lire un fichier au moment de
+désérialiser n'a aucun des inconvénients d'y écrire.
+
+### 11.4 Ce que le canal gagne, et ce qu'il perd jusqu'à l'ép. 6
+
+Gagné : les **onze booléens** d'un routeur (quatre par service, plus le rc UNIX) et le drapeau
+d'une machine ou d'un switch étaient dans `omitted` — ils sont désormais des attributs ordinaires,
+donc servis par `get` et écrivables par `set`, sans une ligne ajoutée au serveur.
+
+Perdu, temporairement : `rc-get`/`rc-set` reconnaissent leur champ à l'**en-tête magique de
+`Marshal`** (`control_server.ml:1438`). Cette forme n'existe plus — ces deux commandes ne trouvent
+donc plus rien, sur les projets neufs comme sur les anciens (le champ est démarshalé *en mémoire*
+dès l'ouverture). C'est l'objet de l'**ép. 6**, et c'est assumé : mêler le réaccord du canal au
+point de non-régression du format aurait rendu l'épisode illisible.
+
+**Conséquence sur le filet, qui ne va pas de soi.** Le banc de l'ép. 1 mesurait précisément ces
+huit champs *par `rc-get`* — le seul chemin qui les voyait (§ 7.2). Ce chemin étant muet, le banc
+serait resté **vert en cessant de regarder** exactement là où l'épisode agit : le piège de l'ép. 2,
+« un banc vert sur un codec cassé ». D'où deux assertions neuves, **hors canal**, sur les
+instantanés extraits :
+
+- **référentielle, dans les deux sens** : tout basename que le forest cite existe dans `states/`,
+  et tout `states/rc_config.*` est cité par le forest (donc pas d'orphelin — c'est le balayage
+  du § 11.3 qui est mesuré ici) ;
+- **de fidélité** : toute ligne non vide d'un script produit vient **du `.mar` d'origine**, où le
+  contenu marshalé apparaît en clair (`grep -a`, § 6.4), **ou** des contenus **par défaut** du
+  binaire, collectés en début de banc en fabriquant un projet neuf par le canal. Rien ne vient de
+  nulle part. Et un compte **nul** est un échec : des fichiers cités mais tous vides, c'est
+  exactement ce qu'on verrait si la migration avait perdu le contenu.
+
+**Un fait mesuré, qui corrige le § 7.1.** La seconde assertion a d'abord échoué — 147 lignes sur
+174 introuvables dans l'original, sur le projet le plus fourni du corpus. Vérification faite au
+`grep -a`, ce `.mar` ne porte **aucune** des clés `rc_config`, `rc_config_quagga` ou
+`quagga_selected_srvs` : il est **antérieur à ces champs**. Ce que l'ép. 1 avait pris pour « les
+sept configurations Quagga d'un routeur, renseignées » était ce que `rc-get` **affichait** — donc
+ce que le *modèle* fabrique par défaut au chargement, et non ce que le projet contient. Le corpus
+ne couvre donc **pas** de contenu Quagga saisi par un enseignant ; c'est le projet fabriqué
+(`worst-case.sh`) qui pourra le faire, si l'ép. 6 en a besoin.
+
+**Discriminance mesurée** (2026-08-10) : l'écriture des fichiers rc désarmée, les deux assertions
+neuves tombent — 14 basenames cités mais absents, contenu perdu — et **les sept autres restent
+vertes**, round-trip par le canal et inventaire des huit fichiers compris. C'est le trou qu'elles
+bouchent, mesuré plutôt que supposé.
+
+### 11.5 Ce que l'épisode 5 ne fait PAS
+
+Il ne touche **pas** au serveur de contrôle (ép. 6), ne prouve pas la compat descendante côté
+vieux binaire (ép. 8), ne convertit rien en lot. Il ne **supprime** aucune lecture : les huit
+anciennes clés restent interprétées, et le resteront jusqu'à la clôture (§ 6.3). Enfin, il ne
+donne pas aux fichiers rc un nom **parlant** (`rc_config.m1`) : un composant se renomme, le nom du
+fichier ne suivrait pas, et l'on retomberait sur le problème que `treeview_documents.ml` avait
+déjà tranché en faveur d'un nom opaque.
+
 ## Journal d'avancement
 
 ### 2026-08-09 — Épisode 0 : officialisation
@@ -916,3 +1033,55 @@ la conversion `v2` → `v3` puis quatre relectures ; les **112 fichiers JSON** p
 UTF-8 strict par `python3`, 0 invalide ; les trois bancs du chantier `marionnet-pilotage-par-script`
 qui inspectent le `.mar` rejoués et verts (134 + 160 + 102 assertions) ; `dune test` inchangé
 (134 assertions).
+
+### 2026-08-10 — Épisode 5 : la désimbrication — plus aucun attribut marshalé
+
+**Aucun attribut d'un `.mar` écrit par ce binaire n'est plus un vidage `Marshal`.** Les huit
+derniers (§ 11.1) sont défaits ; la lecture des huit anciennes clés est intacte. Détail au § 11.
+
+**La forme retenue est « tout scalaire, à plat »** (décision de l'auteur) : une clé par donnée
+atomique, jamais un JSON encodé dans la chaîne d'un attribut — qui aurait rendu au fichier le
+double échappement qu'on venait de lui retirer. Le routeur est éclaté **par service**, ce qui donne
+au fichier la forme de l'onglet de la GUI plutôt que quatre listes parallèles à recroiser de tête.
+
+**Le point qui a réellement dicté la conception n'est pas le format, c'est que le contenu d'un rc
+est un script.** Le mettre en clair dans l'attribut aurait troqué une opacité contre une autre : un
+mur de texte échappé, devenant un **blob base64 pour le script entier** au premier octet non-UTF-8.
+Il part donc dans un fichier à lui sous `states/` — `rc_config.XXXXXXXXX`, exactement comme les
+documents de `treeview_documents.ml` —, le forest ne portant que le basename. Corollaire non
+évident : **`#to_tree` ne peut pas écrire ce fichier**, puisque le serveur de contrôle l'appelle à
+chaque `get` et qu'un fichier serait créé par requête. D'où les trois temps du § 11.3 — basename
+alloué sans I/O à la construction, écriture une fois par enregistrement dans
+`network#save_rc_files`, et **balayage des orphelins** dans la même passe.
+
+**Ce que le canal gagne et perd.** Les onze booléens d'un routeur, plus celui d'une machine ou d'un
+switch, étaient dans `omitted` : ils sont désormais servis par `get` et écrits par `set`, sans une
+ligne ajoutée au serveur. En revanche `rc-get`/`rc-set`, qui reconnaissent leur champ à l'en-tête
+magique de `Marshal`, ne trouvent plus rien — c'est l'**ép. 6**, et c'est assumé.
+
+**Le filet a dû être réparé avant de servir, et c'est l'enseignement de l'épisode.** Le banc
+mesurait ces huit champs *par `rc-get`* — le seul chemin qui les voyait. Ce chemin devenu muet, il
+serait resté **vert en cessant de regarder** exactement là où l'épisode agit : le nombre de requêtes
+du dump est d'ailleurs tombé de 72 à 58 sans qu'aucune assertion bronche. D'où deux assertions
+neuves, hors canal (§ 11.4), et **deux corrections que seule la mesure a apportées** :
+
+1. l'assertion de fidélité, écrite comme « toute ligne vient du `.mar` d'origine », a **échoué** —
+   147 lignes sur 174. Vérification au `grep -a` : ce projet ne porte **aucune** clé `rc_config*`,
+   il est antérieur à ces champs. Ce que l'ép. 1 avait pris pour « les sept configurations Quagga
+   renseignées » était ce que `rc-get` *affichait*, c'est-à-dire ce que le **modèle** fabrique par
+   défaut au chargement. D'où la collecte des contenus par défaut, en fabriquant un projet neuf par
+   le canal (88 lignes distinctes), et une assertion « origine **ou** défaut, jamais nulle part » ;
+2. le garde-fou « des fichiers cités mais tous vides = contenu perdu » a **échoué** sur deux autres
+   projets, pour la même raison de fond : sans le champ dans l'original, la chaîne vide est la
+   bonne réponse. Il est devenu une **implication** — si l'original porte un `rc_config`, la
+   migration doit produire du texte.
+
+**La preuve.** Banc de l'ép. 1 **vert : 65 assertions, 0 échec** sur les 8 projets (49 avant
+l'épisode, 16 neuves) ; **discriminance mesurée** — écriture des fichiers rc désarmée, les deux
+assertions neuves tombent et **les sept autres restent vertes** ; `dune build` et `dune test`
+(134 assertions) inchangés. Des trois bancs du chantier `marionnet-pilotage-par-script` qui
+inspectent le `.mar` : `treeview-bench.sh` **vert sans retouche**, `components-bench.sh` vert
+(**134 assertions**) après **retournement** d'une assertion devenue fausse — elle exigeait que
+`get` *masque* `rc_config` dans `omitted`, elle exige maintenant qu'il publie les deux clés en
+clair —, et **`rc-bench.sh` rouge (15 assertions), délibérément** : il mesure `rc-get`/`rc-set`,
+c'est la dette de l'ép. 6, et le laisser rouge est ce qui la rend visible.

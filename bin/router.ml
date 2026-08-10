@@ -1118,6 +1118,94 @@ class router
   method get_quagga_selected_srvs = quagga_selected_srvs
   method set_quagga_selected_srvs x = quagga_selected_srvs <- x
 
+  (* ---------------------------------------------------------------------------------------
+     Work-stream `migration-marshal-to-text', episode 5: the eight rc files of a router.
+
+     A router has one UNIX rc file plus one per Quagga service, and since `v3 each of them is a
+     file of its own under states/ (see User_level.Rc_files), the forest carrying its basename.
+     Basenames are allocated here, without any I/O: the services are known from construction
+     time, [rc_config_quagga] being initialized with Const.quagga_alternatives#rc_config_-
+     initialization. [quagga_file_of] covers the remaining case — a service which appears later,
+     e.g. read from a project made by another version — by memoizing a fresh basename.
+     --------------------------------------------------------------------------------------- *)
+
+  val mutable rc_config_unix_file : string = User_level.Rc_files.fresh_basename ()
+  method get_rc_config_unix_file = rc_config_unix_file
+
+  (* Filled on demand by [quagga_file_of] below, one entry per service. Empty here rather than
+     initialized from [rc_config_quagga]: an instance variable cannot be read while another one
+     is being initialized, and memoization covers the case anyway. *)
+  val mutable rc_config_quagga_files : (Const.quagga_lowercase_acronym * string) list = []
+
+  method get_rc_config_quagga_files = rc_config_quagga_files
+
+  (* Memoizing, hence mutating — but never doing I/O, which is what [#to_tree] requires. *)
+  method private quagga_file_of (acronym : Const.quagga_lowercase_acronym) : string =
+    match List.assoc_opt acronym rc_config_quagga_files with
+    | Some basename -> basename
+    | None ->
+        let basename = User_level.Rc_files.fresh_basename () in
+        let () = rc_config_quagga_files <- rc_config_quagga_files @ [(acronym, basename)] in
+        basename
+
+  method! save_rc_files =
+    let states_directory = self#states_directory in
+    let () =
+      User_level.Rc_files.write ~states_directory
+        ~basename:(rc_config_unix_file) ~content:(snd rc_config_unix)
+    in
+    List.iter
+      (fun (acronym, (_active, content)) ->
+         User_level.Rc_files.write ~states_directory
+           ~basename:(self#quagga_file_of acronym) ~content)
+      rc_config_quagga
+
+  method! rc_file_basenames =
+    rc_config_unix_file :: (List.map (fun (acronym, _) -> self#quagga_file_of acronym) rc_config_quagga)
+
+  (* The three per-service fields are scattered over three OCaml fields — the association list
+     of rc configurations, and the two membership lists. Reading a `v3 attribute therefore means
+     updating one of them in place, the attributes arriving one at a time and in any order. *)
+
+  method private update_quagga_rc (acronym : Const.quagga_lowercase_acronym) f =
+    let l = rc_config_quagga in
+    let l =
+      if List.mem_assoc acronym l
+      then List.map (fun (k, v) -> if k = acronym then (k, f v) else (k, v)) l
+      else l @ [(acronym, f (false, ""))]
+    in
+    self#set_rc_config_quagga l
+
+  (* Appending rather than prepending keeps the canonical order — that of the association list,
+     hence of the GUI tabs — since the attributes are read in the order [#to_tree] wrote them. *)
+  method private update_quagga_membership ~(current : Const.quagga_lowercase_acronym list)
+                                          (acronym : Const.quagga_lowercase_acronym) (b : bool)
+                                          : Const.quagga_lowercase_acronym list =
+    if b
+    then (if List.mem acronym current then current else current @ [acronym])
+    else List.filter (fun x -> x <> acronym) current
+
+  (* "quagga_zebra_active" -> Some ("zebra", "active"). The four suffixes are fixed, so the
+     acronym is whatever sits between them and the prefix. Note that the *old* keys
+     "quagga_selected_srvs" and "show_quagga_terminal" cannot be mistaken for one of these:
+     neither ends with any of the four — and both are matched literally before, anyway. *)
+  method private parse_quagga_key (key : string) : (string * string) option =
+    let prefix = "quagga_" in
+    if not (String.starts_with ~prefix key) then None else
+    let rec search = function
+    | [] -> None
+    | field :: rest ->
+        let suffix = "_" ^ field in
+        if String.ends_with ~suffix key
+        then begin
+          let start  = String.length prefix in
+          let length = (String.length key) - start - (String.length suffix) in
+          if length <= 0 then None else Some ((String.sub key start length), field)
+          end
+        else search rest
+    in
+    search ["selected"; "terminal"; "active"; "file"]
+
   (** Create the simulated device *)
   method private make_simulated_device =
     let id = self#id in
@@ -1206,20 +1294,35 @@ class router
     self#destroy_right_now
 
   method to_tree =
-   Forest.tree_of_leaf ("router", [
-      ("name"     ,  self#get_name );
-      ("label"   ,   self#get_label);
-      ("distrib"  ,  self#get_epithet  );
-      ("variant"  ,  self#get_variant_as_string);
-      ("kernel"   ,  self#get_kernel   );
-      ("show_unix_terminal"  , string_of_bool (self#get_show_unix_terminal));
-      ("show_quagga_terminal", Marshal.to_string (self#get_show_quagga_terminal) []);
-      ("rc_config_unix",       Marshal.to_string self#get_rc_config_unix []);
-      ("rc_config_quagga" ,    Marshal.to_string self#get_rc_config_quagga []);
-      ("quagga_selected_srvs", Marshal.to_string self#get_quagga_selected_srvs []);
-      ("terminal" ,  self#get_terminal );
-      ("port_no"  ,  (string_of_int self#get_port_no))  ;
-      ])
+   (* Since `v3 the four marshalled fields are undone (episode 5 of
+      `migration-marshal-to-text'), and they are undone *by service*: the three per-service
+      booleans of the GUI tab — is it selected, does it open a terminal, is its rc file active —
+      side by side with the basename of the file holding its configuration. The four old keys
+      are still *read* below. *)
+   let quagga_attributes =
+     List.concat_map
+       (fun (acronym, (active, _content)) ->
+          [ (Printf.sprintf "quagga_%s_selected" acronym,
+             string_of_bool (List.mem acronym self#get_quagga_selected_srvs));
+            (Printf.sprintf "quagga_%s_terminal" acronym,
+             string_of_bool (List.mem acronym self#get_show_quagga_terminal));
+            (Printf.sprintf "quagga_%s_active"   acronym, string_of_bool active);
+            (Printf.sprintf "quagga_%s_file"     acronym, self#quagga_file_of acronym); ])
+       self#get_rc_config_quagga
+   in
+   Forest.tree_of_leaf ("router",
+     List.append
+      [ ("name"     ,  self#get_name );
+        ("label"   ,   self#get_label);
+        ("distrib"  ,  self#get_epithet  );
+        ("variant"  ,  self#get_variant_as_string);
+        ("kernel"   ,  self#get_kernel   );
+        ("show_unix_terminal"  , string_of_bool (self#get_show_unix_terminal));
+        ("rc_config_unix_active", string_of_bool (fst self#get_rc_config_unix));
+        ("rc_config_unix_file"  , rc_config_unix_file);
+        ("terminal" ,  self#get_terminal );
+        ("port_no"  ,  (string_of_int self#get_port_no))  ; ]
+      quagga_attributes)
 
  (** A machine has just attributes (no children) in this version. *)
  method! eval_forest_attribute = function
@@ -1230,13 +1333,43 @@ class router
   | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
   | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
   | ("show_unix_terminal", x )   -> self#set_show_unix_terminal   (bool_of_string x)
+  (* `v0/`v1/`v2: the four fields, marshalled into their attribute. Kept, and kept first. *)
   | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (Marshal.from_string x 0)
   | ("rc_config_unix", x )       -> self#set_rc_config_unix (Marshal.from_string x 0)
   | ("rc_config_quagga", x )     -> self#set_rc_config_quagga (Marshal.from_string x 0)
   | ("quagga_selected_srvs", x ) -> self#set_quagga_selected_srvs (Marshal.from_string x 0)
+  (* `v3: the UNIX rc file, in two halves (episode 5). *)
+  | ("rc_config_unix_active", x ) -> self#set_rc_config_unix ((bool_of_string x), (snd rc_config_unix))
+  | ("rc_config_unix_file"  , x ) ->
+      let () = rc_config_unix_file <- x in
+      let content =
+        User_level.Rc_files.read ~states_directory:(self#states_directory) ~basename:x
+      in
+      self#set_rc_config_unix ((fst rc_config_unix), content)
   | ("terminal" , x ) -> self#set_terminal x
   | ("port_no"  , x ) -> self#set_port_no  (int_of_string x)
-  | _ -> () (* Forward-comp. *)
+  (* `v3: the per-service attributes, one field at a time and in any order (episode 5). *)
+  | (key, x) ->
+      (match self#parse_quagga_key key with
+       | None -> () (* Forward-comp. *)
+       | Some (acronym, "selected") ->
+           self#set_quagga_selected_srvs
+             (self#update_quagga_membership ~current:quagga_selected_srvs acronym (bool_of_string x))
+       | Some (acronym, "terminal") ->
+           self#set_show_quagga_terminal
+             (self#update_quagga_membership ~current:show_quagga_terminal acronym (bool_of_string x))
+       | Some (acronym, "active") ->
+           self#update_quagga_rc acronym (fun (_, content) -> ((bool_of_string x), content))
+       | Some (acronym, "file") ->
+           let () = rc_config_quagga_files <-
+             (acronym, x) :: (List.remove_assoc acronym rc_config_quagga_files)
+           in
+           let content =
+             User_level.Rc_files.read ~states_directory:(self#states_directory) ~basename:x
+           in
+           self#update_quagga_rc acronym (fun (active, _) -> (active, content))
+       | Some (_, _) -> () (* unreachable: parse_quagga_key returns one of the four *)
+       )
 
  method private get_assoc_list_from_ifconfig ~key =
    List.map

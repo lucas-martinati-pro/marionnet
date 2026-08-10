@@ -278,14 +278,18 @@ class tuning
   method to_tree : (string * (string * string) list) Forest.tree =
    Forest.tree_of_leaf ("dotoptions", [
      ("iconsize"      , (Cortex.get iconsize)          );
-     ("shuffler"      , (Xforest.encode (Cortex.get shuffler)) );
+     (* Since `v3 the permutation is written in clear, space-separated (episode 5 of
+        `migration-marshal-to-text'); the marshalled "shuffler" is still read below. *)
+     ("shuffler_indexes", (String.concat " " (List.map string_of_int (Cortex.get shuffler))));
      ("rankdir"       , (Cortex.get rankdir)           );
      ("curved_lines"  , (string_of_bool (Cortex.get curved_lines)));
      ("nodesep"       , (string_of_float (Cortex.get nodesep))     );
      ("labeldistance" , (string_of_float (Cortex.get labeldistance)));
      ("extrasize"     , (string_of_float (Cortex.get extrasize))   );
      ("gui_callbacks_disable", (string_of_bool gui_callbacks_disable));
-     ("invertedCables", (Xforest.encode network#reversed_cables));
+     (* Idem. A cable name is an identifier — no space in it (check_new_name, user_level.ml) —
+        which is what makes the space a safe separator here. *)
+     ("inverted_cable_names", (String.concat " " network#reversed_cables));
      ])
 
  (** A Dotoption.network has just attributes (no children) in this version.
@@ -293,7 +297,13 @@ class tuning
      order to have significant cable names (reversed_cables). *)
  method! eval_forest_attribute = function
   | ("iconsize"             , x ) -> (Cortex.set self#iconsize x)
+  (* `v0/`v1/`v2: marshalled. Kept. *)
   | ("shuffler"             , x ) -> (Cortex.set self#shuffler (Xforest.decode x))
+  (* `v3: in clear (episode 5). A malformed index is dropped rather than raising: this method
+     is called while restoring a project, where a failure would abort the whole opening. *)
+  | ("shuffler_indexes"     , x ) ->
+      let indexes = List.filter_map int_of_string_opt (String.split_on_char ' ' x) in
+      (Cortex.set self#shuffler indexes)
   | ("rankdir"              , x ) -> (Cortex.set self#rankdir x)
   | ("curved_lines"         , x ) -> (Cortex.set self#curved_lines (bool_of_string x))
   | ("nodesep"              , x ) -> (Cortex.set self#nodesep (float_of_string x))
@@ -301,6 +311,9 @@ class tuning
   | ("extrasize"            , x ) -> (Cortex.set self#extrasize     (float_of_string x))
   | ("gui_callbacks_disable", x ) -> self#set_gui_callbacks_disable (bool_of_string x)
   | ("invertedCables"       , x ) -> self#set_reversed_cables (Xforest.decode x)
+  | ("inverted_cable_names" , x ) ->
+      let names = List.filter (fun s -> s <> "") (String.split_on_char ' ' x) in
+      self#set_reversed_cables names
   | _ -> () (* Forward-comp. *)
 
 end (* class tuning *)

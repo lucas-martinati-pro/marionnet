@@ -624,6 +624,21 @@ class machine
   method get_rc_config = rc_config
   method set_rc_config x = rc_config <- x
 
+  (* Where the *content* of the rc file is stored since `v3 (work-stream
+     `migration-marshal-to-text', episode 5): states/rc_config.XXXXXXXXX, whose basename is
+     what the forest carries. Allocated here, with no I/O — see User_level.Rc_files — and
+     replaced by the one read from the project when a `v3 .mar is opened. *)
+  val mutable rc_config_file : string = User_level.Rc_files.fresh_basename ()
+  method get_rc_config_file = rc_config_file
+
+  method! save_rc_files =
+    User_level.Rc_files.write
+      ~states_directory:(self#states_directory)
+      ~basename:(rc_config_file)
+      ~content:(snd rc_config)
+
+  method! rc_file_basenames = [rc_config_file]
+
   val mutable console_no : int = console_no
   initializer ignore (self#check_console_no console_no)
   method get_console_no = console_no
@@ -651,7 +666,10 @@ class machine
       ("distrib"  ,  self#get_epithet  );
       ("variant"  ,  self#get_variant_as_string);
       ("kernel"   ,  self#get_kernel   );
-      ("rc_config",  Marshal.to_string self#get_rc_config []);
+      (* Since `v3 the pair is undone: the flag in clear, the script in its own file (episode 5
+         of `migration-marshal-to-text'). The old, marshalled "rc_config" is still *read* below. *)
+      ("rc_config_active", string_of_bool (fst self#get_rc_config));
+      ("rc_config_file",   rc_config_file);
       ("console_no", (string_of_int self#get_console_no));
       ("terminal" ,  self#get_terminal );
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
@@ -667,7 +685,16 @@ class machine
   | ("variant"  , "" )-> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
   | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
+  (* `v0/`v1/`v2: the pair, marshalled into the attribute. Kept, and kept first. *)
   | ("rc_config", x ) -> self#set_rc_config (Marshal.from_string x 0)
+  (* `v3: the two halves, independently and in any order (episode 5). *)
+  | ("rc_config_active", x ) -> self#set_rc_config ((bool_of_string x), (snd rc_config))
+  | ("rc_config_file"  , x ) ->
+      let () = rc_config_file <- x in
+      let content =
+        User_level.Rc_files.read ~states_directory:(self#states_directory) ~basename:x
+      in
+      self#set_rc_config ((fst rc_config), content)
   | ("console_no" , x ) -> self#set_console_no (int_of_string x)
   | ("terminal" , x ) -> self#set_terminal x
   | ("eth"      , x ) (* backward-compatibility *)

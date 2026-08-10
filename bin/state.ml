@@ -811,6 +811,11 @@ class globalState = fun () ->
         ~finally:(fun () -> Progress_bar.destroy_progress_bar_dialog (progress_bar))
         (fun () -> begin
           (* --- *)
+          (* Write the rc scripts of the components into states/, and sweep the ones no
+             component claims any more. BEFORE the network file, which carries their basenames
+             (work-stream `migration-marshal-to-text', episode 5; see User_level.Rc_files). *)
+          self#network#save_rc_files;
+          (* --- *)
           (* Write the network file (JSON since `v3, hence the new name) *)
           User_level.Xml.save_network (self#network) (self#project_paths#networkFile_json);
           (* --- *)

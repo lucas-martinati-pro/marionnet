@@ -555,6 +555,79 @@ end;;
         class component
  * *************************** *)
 
+(* *************************** *
+      Run-commands (rc) files
+ * *************************** *)
+
+(** Work-stream `migration-marshal-to-text', episode 5.
+
+    The startup configuration of a machine, a switch or a router — its "rc" file — is a shell
+    script: arbitrary bytes, frequently long and multi-line. Until `v3 the field travelled
+    [Marshal]ed *inside* a forest attribute, because an attribute is a [string] while the field
+    is a pair. Undoing that nesting by putting the script itself in the attribute would only
+    trade one opacity for another: a wall of escaped text, turning into a base64 blob for the
+    *whole* script as soon as one byte is not UTF-8.
+
+    So the script goes to a file of its own under states/, exactly as the documents of
+    treeview_documents.ml do (states/document-XXXXXXXXX), and the forest carries its basename
+    next to the boolean. What the user wrote stays readable, diffable and editable with an
+    ordinary text editor, which is the point of the whole work-stream.
+
+    Two properties this module exists to hold:
+
+    - the basename is allocated at *construction* time and without any I/O, because [#to_tree]
+      must stay pure: the control server calls it on every [get] (control_server.ml:892), and a
+      [to_tree] that created a file would leak one per query;
+    - writing therefore happens once per save, in [network#save_rc_files], which the caller runs
+      just before serializing the forest. That same pass sweeps the files no live component
+      claims any more — a component destroyed since the last save would otherwise leave its
+      script behind, and the .mar is built from the working directory as it stands. *)
+module Rc_files = struct
+
+ let prefix = "rc_config."
+
+ (* Unique within the process, which is all that is needed: a project is written by a single
+    Marionnet, and [remove_orphans] below sweeps whatever another one may have left. *)
+ let fresh_basename : unit -> string =
+   let counter = ref 0 in
+   fun () ->
+     let () = incr counter in
+     Printf.sprintf "%s%05d%04d" prefix (Random.int 100000) !counter
+
+ let pathname ~states_directory ~basename = Filename.concat (states_directory) (basename)
+
+ (* Failures are logged, not raised: a save must not be aborted by one unwritable script, and
+    the caller (a [#save_rc_files]) has nothing better to do with the exception. The loss is
+    visible — an empty or missing file — where a raised exception would abort the whole save. *)
+ let write ~states_directory ~basename ~content =
+   let file = pathname ~states_directory ~basename in
+   try UnixExtra.put file content with e ->
+     Log.printf2 "Rc_files.write: cannot write %s: %s\n" file (Printexc.to_string e)
+
+ (* The empty string on failure, for the same reason and with the same visibility: the field
+    keeps the value a fresh component would have. *)
+ let read ~states_directory ~basename =
+   let file = pathname ~states_directory ~basename in
+   try UnixExtra.cat file with e ->
+     let () = Log.printf2 "Rc_files.read: cannot read %s: %s\n" file (Printexc.to_string e) in
+     ""
+
+ let remove_orphans ~states_directory ~(alive : string list) =
+   try
+     Array.iter
+       (fun basename ->
+          if (String.starts_with ~prefix basename) && not (List.mem basename alive) then begin
+            let file = pathname ~states_directory ~basename in
+            let () = Log.printf1 "Rc_files.remove_orphans: removing %s\n" file in
+            try Unix.unlink file with _ -> ()
+            end)
+       (Sys.readdir states_directory)
+   with e ->
+     Log.printf1 "Rc_files.remove_orphans: %s\n" (Printexc.to_string e)
+
+end (* module Rc_files *)
+
+
 (** A component may be a node (machine or device) or a cable (direct, crossover or nullmodem).
     It's simply a thing with a name and an associated (mutable) label. *)
 class virtual component =
@@ -601,6 +674,22 @@ fun ~(network:< .. >)
      tightening the setter would make such a project unloadable. The refusal lives in the control
      server, which owns the message; this method is what lets it speak. *)
   method supported_kernels_if_any : string list option = None
+
+  (* Where this component's rc files live (see [Rc_files] above): the states/ subdirectory of
+     the project, the very one treeview_documents.ml writes its documents into. Taken from the
+     network rather than from [Treeview_history], which only machines and routers reach — a
+     switch has an rc file too. *)
+  method states_directory : string =
+    Filename.concat (network#project_root_pathname) "states"
+
+  (* Write the rc files this component owns. Nothing to do for the kinds which have none, hence
+     the empty default; REDEFINED in machine.ml, switch.ml and router.ml. Called by
+     [network#save_rc_files] just before the forest is serialized, never by [#to_tree]. *)
+  method save_rc_files : unit = ()
+
+  (* The basenames [#save_rc_files] has just written, i.e. the files states/ must keep. *)
+  method rc_file_basenames : string list = []
+
 end;;
 
 
@@ -1789,6 +1878,18 @@ class network
    nodes_buffer  <- self#get_node_list;
    cables_buffer <- self#get_cable_list;
   end
+
+ (* Work-stream `migration-marshal-to-text', episode 5. Write the rc scripts of every component
+    into states/, then remove the ones no component claims any more. To be called just before
+    [#to_tree] / [#to_forest], and only from there: the basenames [#to_tree] publishes are the
+    ones this pass has just written. See [Rc_files]. *)
+ method save_rc_files : unit =
+   let components = self#components in
+   let () = List.iter (fun c -> c#save_rc_files) components in
+   let alive = List.concat_map (fun c -> c#rc_file_basenames) components in
+   Rc_files.remove_orphans
+     ~states_directory:(Filename.concat (self#project_root_pathname) "states")
+     ~alive
 
  method to_tree =
    let l = List.map (fun x->x#to_tree) self#components in

@@ -95,8 +95,27 @@ class id_name_label :
     method set_name  : string -> unit
   end
 
+(** The rc (run-commands) scripts of the components, stored since project version `v3 as plain
+    files under states/ — one per script — instead of being [Marshal]ed inside a forest
+    attribute. The forest carries only the basename. Work-stream `migration-marshal-to-text',
+    episode 5; the rationale is in the implementation, next to the module. *)
+module Rc_files : sig
+  (** The common prefix of those basenames, ["rc_config."]. *)
+  val prefix : string
+  (** A basename which no other component uses. Allocates no file and does no I/O: [#to_tree]
+      is called by the control server on every query and must not touch the disk. *)
+  val fresh_basename : unit -> string
+  (** Write / read the content of one script. Both log their failures instead of raising: a
+      save must not be aborted by a single unwritable script, and [read] answers [""], which
+      is the value a fresh component would have. *)
+  val write : states_directory:string -> basename:string -> content:string -> unit
+  val read  : states_directory:string -> basename:string -> string
+  (** Remove the [prefix]-ed files of [states_directory] which are not in [alive]. *)
+  val remove_orphans : states_directory:string -> alive:string list -> unit
+end
+
 class virtual component :
-  network:(< .. > as 'a) ->
+  network:(< project_root_pathname : string; .. > as 'a) ->
   ?name:string ->
   ?label:string ->
   unit ->
@@ -121,6 +140,15 @@ class virtual component :
     (* [None] unless the component has a filesystem (machines and routers do): the kernels its
        .conf declares as supported (SUPPORTED_KERNELS), in the GUI combo's order. *)
     method supported_kernels_if_any : string list option
+    (* --- Run-commands files (work-stream `migration-marshal-to-text', episode 5) --- *)
+    (* The states/ subdirectory of the project, where the rc scripts live. *)
+    method states_directory : string
+    (* Write the rc scripts this component owns; nothing for the kinds which have none.
+       Called by [network#save_rc_files] only, just before the forest is serialized —
+       never by [#to_tree], which must stay free of I/O (see [Rc_files]). *)
+    method save_rc_files : unit
+    (* The basenames [#save_rc_files] writes, i.e. the files states/ must keep. *)
+    method rc_file_basenames : string list
   end
 
 class port :
@@ -175,6 +203,8 @@ class virtual node_with_ports_card :
                                                     increment_alive_endpoint_no : unit;
                                                     show : string -> string;
                                                     .. >) list;
+             (* Since episode 5 of `migration-marshal-to-text': [component#states_directory]. *)
+             project_root_pathname : string;
              .. >
            as 'b) ->
   name:string ->
@@ -221,6 +251,10 @@ class virtual node_with_ports_card :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    method states_directory  : string
+    method save_rc_files     : unit
+    method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -286,6 +320,8 @@ class virtual node_with_defects :
                              increment_alive_endpoint_no : unit;
                              show : string -> string; .. >) list;
              name_exists : string -> bool;
+             (* Since episode 5 of `migration-marshal-to-text': [component#states_directory]. *)
+             project_root_pathname : string;
              .. >
            as 'b) ->
   name:string ->
@@ -335,6 +371,10 @@ class virtual node_with_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    method states_directory  : string
+    method save_rc_files     : unit
+    method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -388,7 +428,9 @@ class virtual node_with_ledgrid_and_defects :
                                                 show : string -> string; .. >
                                               list;
              ledgrid_manager : Ledgrid_manager.ledgrid_manager;
-             name_exists : string -> bool; .. >
+             name_exists : string -> bool;
+             (* Since episode 5 of `migration-marshal-to-text': [component#states_directory]. *)
+             project_root_pathname : string; .. >
            as 'b) ->
   name:string ->
   ?label:string ->
@@ -439,6 +481,10 @@ class virtual node_with_ledgrid_and_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    method states_directory  : string
+    method save_rc_files     : unit
+    method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_name : string
@@ -572,7 +618,9 @@ class type virtual cable =
     val mutable label : string
     val mutex : Recursive_mutex.t
     val mutable name : string
-    val network : < .. >
+    (* [project_root_pathname] since episode 5 of `migration-marshal-to-text':
+       [component#states_directory] reads it. *)
+    val network : < project_root_pathname : string; .. >
     method (*private*) virtual add_destroy_callback : unit lazy_t -> unit
     method state_as_string : string
     method can_destroy : bool
@@ -597,6 +645,10 @@ class type virtual cable =
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method supported_kernels_if_any : string list option
+    (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5). *)
+    method states_directory  : string
+    method save_rc_files     : unit
+    method rc_file_basenames : string list
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
     method get_label : string
     method get_left : endpoint
@@ -718,6 +770,10 @@ class network :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method reset : ?scheduled:bool -> unit -> unit
     method restore_from_buffers : unit
+    (* Write the rc scripts of every component into states/, then remove the orphans. To be
+       called just before [#to_tree] / [#to_forest]: the basenames the forest publishes are the
+       ones this pass has written (work-stream `migration-marshal-to-text', episode 5). *)
+    method save_rc_files : unit
     method save_to_buffers : unit
     method show : unit
     method subscribe_a_try_to_add_procedure : ('a -> Xforest.tree -> bool) -> unit

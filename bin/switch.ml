@@ -412,6 +412,21 @@ class switch =
   method get_rc_config = rc_config
   method set_rc_config x = rc_config <- x
 
+  (* Same as in machine.ml: since `v3 the content lives in states/rc_config.XXXXXXXXX and the
+     forest carries only its basename (work-stream `migration-marshal-to-text', episode 5).
+     A switch's rc file is a set of vdeterm commands (simulation_level.ml:398-409), which makes
+     it just as much a script as a machine's. *)
+  val mutable rc_config_file : string = User_level.Rc_files.fresh_basename ()
+  method get_rc_config_file = rc_config_file
+
+  method! save_rc_files =
+    User_level.Rc_files.write
+      ~states_directory:(self#states_directory)
+      ~basename:(rc_config_file)
+      ~content:(snd rc_config)
+
+  method! rc_file_basenames = [rc_config_file]
+
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.switch."^(self#icon_suffix_of_state)^"."^iconsize^".png")
@@ -453,7 +468,9 @@ class switch =
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
       ("show_vde_terminal" , string_of_bool (self#get_show_vde_terminal));
       ("activate_fstp"     , string_of_bool (self#get_activate_fstp));
-      ("rc_config"         , Marshal.to_string self#get_rc_config []);
+      (* Since `v3: the flag in clear, the script in its own file (episode 5). *)
+      ("rc_config_active"  , string_of_bool (fst self#get_rc_config));
+      ("rc_config_file"    , rc_config_file);
       ])
 
   method! eval_forest_attribute = function
@@ -462,7 +479,16 @@ class switch =
   | ("port_no"  , x ) -> self#set_port_no (int_of_string x)
   | ("show_vde_terminal", x ) -> self#set_show_vde_terminal (bool_of_string x)
   | ("activate_fstp", x )     -> self#set_activate_fstp (bool_of_string x)
+  (* `v0/`v1/`v2: the pair, marshalled into the attribute. Kept, and kept first. *)
   | ("rc_config", x )         -> self#set_rc_config (Marshal.from_string x 0)
+  (* `v3: the two halves, independently and in any order (episode 5). *)
+  | ("rc_config_active", x )  -> self#set_rc_config ((bool_of_string x), (snd rc_config))
+  | ("rc_config_file"  , x )  ->
+      let () = rc_config_file <- x in
+      let content =
+        User_level.Rc_files.read ~states_directory:(self#states_directory) ~basename:x
+      in
+      self#set_rc_config ((fst rc_config), content)
   | _ -> () (* Forward-comp. *)
 
 end (* class switch *)
