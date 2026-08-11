@@ -144,8 +144,21 @@ object(self)
       Filename.check_suffix pathname ".HTML" ||
       Filename.check_suffix pathname ".HTM" then
       "html"
+    else if Filename.check_suffix pathname ".md" ||
+      Filename.check_suffix pathname ".MD" ||
+      Filename.check_suffix pathname ".markdown" then
+      (* Deep logging, episode 7: the end-of-session report of a guest is Markdown, because its
+         producer is plain Bash inside a minimal guest (an unescaped '<' would silently break an
+         HTML page, a fenced block cannot break). Mapped onto the EXISTING "text" format on
+         purpose: no new format value reaches a .mar file, and [format_to_reader] keeps its five
+         cases. Reading it as rendered Markdown from the GUI is a work-stream episode of its own. *)
+      "text"
     else if Filename.check_suffix pathname ".text" ||
       Filename.check_suffix pathname ".txt" ||
+      (* Deep logging, episode 7: the console journal Marionnet records for a guest is
+         <name>-console.log, and the exam mode archives it. Text it is. *)
+      Filename.check_suffix pathname ".log" ||
+      Filename.check_suffix pathname ".LOG" ||
       Filename.check_suffix pathname "readme" ||
       Filename.check_suffix pathname "lisezmoi" ||
       Filename.check_suffix pathname ".TEXT" ||
@@ -227,6 +240,48 @@ object(self)
     self#set_row_author  row_id "-";
     self#set_row_type    row_id (s_ "History");
     self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+
+  (* Deep logging, episode 7. COPIED, not moved, unlike its two siblings: the console journal is
+     a file of the HOST (<project>/<name>-console.log, simulation_level.ml), and the channel keeps
+     serving it under `log <c> console' after the machine is off (episode 6). The other two live
+     in the hostfs, which the next boot overwrites anyway. *)
+  method import_console ~machine_or_router_name ~pathname () =
+    let title = (s_ "Console of ") ^ machine_or_router_name in
+    let row_id = self#import_document ~move:false pathname in
+    self#set_row_title   row_id title;
+    self#set_row_author  row_id "-";
+    self#set_row_type    row_id (s_ "Console");
+    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+
+  (* THE single gesture of the exam mode, called by machine.ml AND router.ml (deep logging,
+     episode 7). Before this episode each of them spelled its own imports out, and they disagreed:
+     a machine imported the report and the history, a router only the report -- an asymmetry with
+     no technical motive, since a router has a shell too.
+
+     Every import is guarded by the existence of the file, and that guard is the point: without
+     it, shutting a machine down in exam mode raises inside [import_file] and pops up an error
+     dialog, which is exactly what happened for years -- the importer was alive, the producer was
+     not. A journal that a given guest does not produce (an old image whose shutdown sequence
+     never runs, a session recording no console) must cost nothing at shutdown. *)
+  method import_exam_documents ~machine_or_router_name ~hostfs_directory ~console_pathname () =
+    let import what pathname =
+      if Sys.file_exists pathname then
+        try what ~machine_or_router_name ~pathname () with e ->
+          Log.printf2 "Treeview_documents: exam mode: importing %s failed: %s\n"
+            pathname (Printexc.to_string e)
+      else
+        Log.printf2 "Treeview_documents: exam mode: %s has no %s to import\n"
+          machine_or_router_name pathname
+    in
+    (* The listing is worth its line: this archiving runs at the very end of a shutdown, when the
+       project directory may already be on its way out, and "no report to import" then means two
+       very different things — the guest wrote none, or there is no directory left to look into. *)
+    Log.printf2 "Treeview_documents: exam mode: %s: hostfs holds [%s]\n" machine_or_router_name
+      (try String.concat " " (Array.to_list (Sys.readdir hostfs_directory))
+       with e -> "unreadable: " ^ (Printexc.to_string e));
+    import (self#import_report)  (Filename.concat hostfs_directory "report.md");
+    import (self#import_history) (Filename.concat hostfs_directory "bash_history.text");
+    import (self#import_console) (console_pathname);
 
   method import_document ?(move=false) user_path_name =
     let internal_file_name, format = self#import_file user_path_name in

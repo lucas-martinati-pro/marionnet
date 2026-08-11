@@ -237,9 +237,21 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    Episode 6 added a third, of a third nature: [console] is written by *Marionnet* for a guest —
    what its kernel says before its relay exists, hence the only journal that survives a boot
    which never reaches it (decision D2). Which of the three a given component actually has is
-   the business of [journals_of] below; this list is only the vocabulary. *)
+   the business of [journals_of] below; this list is only the vocabulary.
+
+   Episode 7 added a fourth, [commands]: what the student TYPED, one line per command, each one
+   preceded by its date (Bash writes a `#<epoch>' line when HISTTIMEFORMAT is set). Written by the
+   guest into its hostfs at every prompt — not grabbed at shutdown, since an interactive Bash
+   killed during a shutdown writes nothing — so it can be read while the machine runs, and it is
+   already there when the exam mode archives it.
+
+   It is NOT called `history', although that is the name of the file (bash_history.text) and the
+   word Bash uses: `history' is already a VERB of this grammar (the treeview of saved states,
+   § 4.6), and one word must not mean two things in one grammar. Same lesson as `--file' at
+   episode 3, where the name was already taken on the client side. *)
 let journal_files =
-  [ ("rc_config", "rc_config.log"); ("boot", "boot.log"); ("console", "console.log") ]
+  [ ("rc_config", "rc_config.log"); ("boot", "boot.log");
+    ("commands", "bash_history.text"); ("console", "console.log") ]
 let journal_file_names = List.map fst journal_files
 let default_journal_file = "rc_config"
 
@@ -2176,7 +2188,7 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
        in
        reply_error ~code:"timeout" ~detail)
 
-(* --- log: the guest's two journals, and the switch's one --------- *)
+(* --- log: the journals of a guest, and the switch's one ------------- *)
 
 (* Episode 3 of `journalisation-profonde'. The sibling of [wait --ready]: that one waits for the
    signal the guest writes, this one serves what it *wrote*. Since episodes 1 and 2 every machine
@@ -2320,6 +2332,9 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
           "this session does not record consoles: restart Marionnet with --console-log \
            (implied by --exam)" }
   in
+  (* One sentence per journal, and they do not say the same thing: the two written by the relay
+     mean "wait for the boot", whereas [commands] means "nobody has typed anything yet" — a
+     machine can be perfectly ready and have no command history at all (episode 7). *)
   let hostfs_entries dir =
     List.filter_map
       (fun (key, basename) ->
@@ -2327,8 +2342,12 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
          Some { jn_key  = key;
                 jn_path = Filename.concat dir basename;
                 jn_missing =
-                  "it has not been started since this project was opened, or its guest has not \
-                   reached the end of its boot — see wait --ready" })
+                  (if key = "commands" then
+                     "no interactive shell of this guest has typed a command yet: the history is \
+                      appended at every prompt, so it appears with the first one"
+                   else
+                     "it has not been started since this project was opened, or its guest has not \
+                      reached the end of its boot — see wait --ready") })
       journal_files
   in
   match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with

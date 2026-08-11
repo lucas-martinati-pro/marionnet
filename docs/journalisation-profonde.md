@@ -112,6 +112,12 @@ aujourd'hui des fichiers que personne n'écrit.
 Ce chantier ne crée donc pas une destination durable : il **rend un producteur** à une destination
 qui attend depuis longtemps.
 
+> **Corrigé à l'épisode 7** (2026-08-11), qui a mesuré ce paragraphe : le consommateur était
+> vivant, mais **pas fonctionnel**. `import_file` lève sur un fichier absent, en ouvrant un
+> dialogue d'erreur — l'extinction d'une machine en mode examen produisait donc une exception, pas
+> un import. L'asymétrie machine/routeur est tranchée du même coup (un seul geste pour les deux,
+> § 4.7), et le nom `report.html` est remplacé par `report.md`.
+
 ## 3. Décisions
 
 Prises avec l'auteur le 2026-08-10, après interrogatoire (`grill`) et sous l'échelle `lazy-senior`.
@@ -153,10 +159,11 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`). Le journal est écrit **par Marionnet**, dans le répertoire de travail du projet, et servi par le verbe `log` de l'ép. 3 (cf. § 4.4) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien — **fait** (2026-08-11) |
 | **5** | **Switch : instantané** par la socket mgmt, rendu en JSON — quatre tables et non trois, `vlan/print` ayant rejoint `port/print`, `hash/print` et `fstp/print` (cf. § 4.5) | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre — **fait** (2026-08-11) |
 | **6** | **Capture de console** (option `--console-log`, implicite en `--exam`) : la sortie du processus UML est enregistrée dans `<projet>/<nom>-console.log`, servie par le verbe `log` sous le nom `console` (cf. § 4.6). Des trois pistes, `fd:` — et encore, seulement là où un `console=` explicite éteint la console par défaut | un démarrage qui n'atteint **jamais** le relais (courant coupé en plein boot) laisse une trace côté hôte, là où le hostfs reste **vide** — **fait** (2026-08-11) |
-| **7** | **Réanimer le mode examen** : le prologue produit `bash_history.text` (et `report.html`) ; l'import déjà câblé du § 2.4 cesse d'être mort ; le journal de console rejoint les documents | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` |
+| **7** | **Réanimer le mode examen** : le prologue pose l'historique **horodaté** dans le hostfs (`bash_history.text`, 4ᵉ journal du verbe `log` sous le nom `commands`), l'épilogue accroche à l'**arrêt** un producteur de rapport **Markdown** (`report.md`, section pare-feu comprise), et l'import du § 2.4 — enfin gardé, enfin symétrique — archive rapport, historique **et** console (cf. § 4.7) | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` — **fait** (2026-08-11) |
 | **8** | **Documentation + exemples exécutables + banc** `journal-bench.sh` : « tous les services démarrent », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
-| **9** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→8 opérationnels |
-| **10** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+| **9** | **Lire un rapport Markdown depuis la GUI** : un `.md` s'ouvre aujourd'hui dans `MARIONNET_TEXT_EDITOR` ; il lui faut un vrai geste de lecture (conversion vers HTML par un convertisseur présent puis navigateur, ou lecteur dédié avec repli) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** |
+| **10** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→8 opérationnels |
+| **11** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -558,6 +565,88 @@ de l'image est refusé net. Le banc coupe donc **le courant en plein boot** (`po
 console, elle, porte tout le démarrage — la propriété que l'épisode voulait montrer, obtenue à
 coup sûr.
 
+### 4.7 Ce que l'épisode 7 a livré (et les deux fois où le mécanisme était mort)
+
+Le § 2.4 disait que le mode examen faisait « déjà la moitié du travail ». La mesure a corrigé :
+il n'en faisait **rien du tout**, et pour deux raisons superposées, dont la seconde n'a été vue
+qu'en instrumentant.
+
+1. **Personne n'écrivait** `report.html` ni `bash_history.text` (§ 2.4).
+2. **Et personne ne pouvait les lire** : `import_file` **lève** sur un fichier absent, en
+   affichant un dialogue d'erreur. Éteindre une machine en mode examen produisait donc une
+   exception, à chaque fois, depuis des années. D'où le garde par existence dans le geste
+   d'import, qui n'est pas une précaution mais la condition pour qu'un journal qu'un invité
+   donné ne produit pas ne coûte rien à l'extinction.
+
+**L'historique n'est pas capturé à l'arrêt : il est écrit en continu.** Le producteur historique
+(`uml/startup.old/marionnet_grab_config`) copiait `/root/.bash_history` depuis un script d'arrêt ;
+c'était fragile deux fois — un Bash interactif tué pendant un shutdown n'écrit rien, et l'outil
+qu'il appelait (`cfg2html`) n'existe plus dans les images modernes. À la place, le **prologue**
+dépose dans l'invité un `/etc/profile.d/marionnet-journal.sh` (accroché aussi en fin de
+`/root/.bashrc`, pour les shells non-login) qui met le `HISTFILE` **dans le hostfs** et ajoute
+`history -a` au `PROMPT_COMMAND` : le fichier est à jour à chaque invite. Il se lit donc **à
+chaud**, il est là au moment de l'archivage, et il ne dépend d'aucune séquence d'arrêt.
+
+**Il est horodaté, et c'est ce qui le rend utile à un correcteur.** `HISTTIMEFORMAT` fait écrire
+à Bash une ligne `#<epoch>` avant chaque commande : les séances de `m1`, `m2`, `r1` **se
+fusionnent** en une chronologie unique, lisible par un agent sans rien deviner. Le `PS1`, lui,
+n'est **pas** touché : une horloge dans l'invite ferait croire à l'étudiant que sa vitesse est
+mesurée (elle ne l'est pas), et elle n'atteindrait de toute façon aucun fichier — le journal de
+console de l'épisode 6 enregistre la sortie du *processus* UML, tandis que la session de
+l'étudiant vit sur un device UML séparé (`con0`), capturé nulle part.
+
+Côté canal, c'est un **quatrième** journal, nommé `commands` — et **pas** `history`, qui est déjà
+un **verbe** de la grammaire (le treeview des états sauvegardés). Un mot, un sens : même leçon
+qu'à l'épisode 3 avec `--file`, déjà pris côté client. Son refus ne dit pas la même chose que
+celui des trois autres : il ne renvoie pas vers `wait --ready`, parce qu'une machine parfaitement
+prête peut n'avoir aucune commande tapée.
+
+**Le rapport est en Markdown, et c'est une décision de producteur, pas de goût.** Le producteur
+est du Bash dans un invité minimal : en HTML il faudrait échapper `&`, `<`, `>` sur **chaque**
+sortie de commande, et un seul `<` oublié casse la page en silence ; en Markdown la sortie entre
+telle quelle dans un bloc clôturé — clôturé à **quatre** backticks, pour qu'une sortie qui en
+contient trois reste dans son bloc. Un agent le lit sans traverser de balises, et en GUI il tombe
+sur l'éditeur de texte plutôt que sur le défaut historique du format HTML (`galeon`, mort depuis
+2010). Le prix est une ligne dans `file_to_format` : `.md` (et `.log`, pour la console) sont
+rendus au format **`text`** existant — aucun format nouveau ne descend dans un `.mar`. Le lire
+*rendu* depuis la GUI est l'épisode 9.
+
+**L'unité systemd est toute la difficulté du hook d'arrêt, et il a fallu deux mesures.**
+
+- `Conflicts=shutdown.target` est ce qui fait **arrêter** l'unité — donc jouer son `ExecStop` —
+  pendant l'extinction. Écrite avec `DefaultDependencies=no` et sans ce `Conflicts`, l'unité
+  n'est jamais arrêtée : elle est tuée à la fin, et rien n'est écrit. Mesuré : témoin absent.
+- Mais la forme implicite (dépendances par défaut, qui portent ce `Conflicts`) ne suffit pas non
+  plus : l'`ExecStop` n'est alors ordonné contre rien, le reste de l'arrêt court en parallèle, et
+  l'invité **s'éteint au milieu du rapport**. Mesuré : un rapport coupé net en pleine commande.
+  D'où la forme explicite — `DefaultDependencies=no` + `Conflicts=shutdown.target` +
+  `Before=shutdown.target umount.target` + `After=network.target` — qui met notre `ExecStop`
+  **en premier** et fait attendre tout le reste. Rapport complet, 19 sections.
+
+**Limite mesurée, et elle ne vient pas de nous : les vieilles images SysV n'ont pas de séquence
+d'arrêt.** Marionnet éteint un invité par `uml_mconsole cad`, et l'`inittab` de ces images répond
+`ca:12345:ctrlaltdel:/sbin/halt` — un contournement Marionnet délibéré (un `-r` faisait planter
+les noyaux 3.2.x, cf. le wrapper `/sbin/shutdown` de ces images) qui **court-circuite
+`/etc/rc0.d`**. Le lien `K01` que l'épilogue y pose est donc correct mais ne se déclenche que
+lorsque l'arrêt est demandé **depuis** l'invité. Ces images gardent leur historique et leurs deux
+journaux de boot, qui ne dépendent d'aucun arrêt.
+
+**Et le routeur ?** La symétrie du § 2.4 est tranchée : machine et routeur appellent désormais le
+**même** geste (`import_exam_documents`), donc le routeur gagne l'historique et la console qui lui
+manquaient. Mais elle n'est mesurable qu'à moitié : la seule image de routeur installée
+(`router-guignol-18474`, un lien vers une image de 2014, i386/SysV) **n'atteint pas son relais**
+sur cet hôte — hostfs sans aucun journal après 240 s. Le banc le dit et poursuit ; le jour où une
+image de routeur moderne existera, ses assertions se joueront sans être touchées. Ce qui marche
+déjà pour lui : sa **console** est archivée (elle ne dépend pas de l'invité), et on la voit dans
+le treeview.
+
+**Le piège de l'épisode est ailleurs que dans le code : `stop` rend la main avant la fin.** La
+tâche « Stopping m1 » vit dans la file de Marionnet, et l'archivage est la **dernière** chose que
+fait l'extinction. Un script (ou un banc) qui lit `documents` juste après `stop` lit un treeview
+encore vide — et s'il enchaîne sur `close`, il ferme le projet sous les pieds de l'archivage, qui
+ne trouve alors même plus le répertoire. D'où le `wait <c> --state=off` avant de lire, qui est de
+toute façon ce qu'un script doit faire.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -577,6 +666,21 @@ coup sûr.
   signaler à `kernel-rootfs-refresh` s'il reconstruit le relais.
 - Les **hubs** n'ont pas de socket de management (`~management_socket:()` n'apparaît que dans
   `switch.ml`) : leur observabilité n'est pas au programme et coûterait de l'ajouter.
+- Un **rapport plus riche** que celui de l'épisode 7 (successeur libre de `cfg2html`, à chercher
+  et évaluer parmi les outils empaquetables) : sujet à part entière, éventuellement précédé d'une
+  recherche. Ce que l'épisode livre est un rapport **sobre et sûr**, et l'endroit où un rapport
+  plus riche viendra se brancher.
+- Le **rapport de fin de session sur les images SysV** : impossible tant que leur `inittab`
+  répond au ctrl-alt-del par `/sbin/halt` (§ 4.7). Le remède serait d'envelopper `/sbin/halt`
+  dans le COW — le motif que ces images utilisent déjà pour `/sbin/shutdown` — mais toucher au
+  binaire d'arrêt d'un invité pour un journal n'a pas paru un bon marché ; à rouvrir seulement si
+  un TP doit être noté sur une vieille image.
+- Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7) ; le code, lui,
+  est symétrique depuis l'épisode 7.
+- **Constaté à l'épisode 7, hors périmètre** : sur une `debian-wheezy`, `rc_config.log` ne porte
+  que son en-tête — la capture du prologue (épisode 1) n'y attrape rien, alors que le `set -x`
+  fonctionne (mesuré : la trace part bien dans un fichier que le scénario redirige lui-même). Le
+  collecteur (`boot.log`), lui, est complet sur la même image. À instruire.
 
 ## Journal d'avancement
 
@@ -800,3 +904,58 @@ porte **aucun** journal, la console porte tout le démarrage.
 96 dans une session lancée **sans** `--console-log` pour mesurer l'autre refus), et **59** au banc
 de complétion. Trois machines trixie ont booté dans ce run avec les trois arguments ajoutés : ni
 attente, ni unité en échec, ni régression des épisodes 1-3.
+
+### 2026-08-11 — Épisode 7 : le mode examen réanimé
+
+Le § 2.4 promettait que « la moitié du travail » était faite. La mesure l'a démenti deux fois :
+personne n'écrivait `report.html` ni `bash_history.text` — c'était su — **et** l'importateur
+lui-même ne pouvait pas fonctionner, puisque `import_file` **lève** sur un fichier absent, en
+ouvrant un dialogue d'erreur. Depuis des années, éteindre une machine en mode examen produisait
+une exception. Le geste d'import est donc gardé par l'existence de chaque fichier, et il est
+**unique** : `machine.ml` et `router.ml` appellent le même, ce qui tranche du même coup
+l'asymétrie du § 2.4 (le routeur gagne l'historique et la console).
+
+**L'historique s'écrit en continu, pas à l'arrêt.** Le producteur historique copiait
+`/root/.bash_history` depuis un script d'arrêt : un Bash interactif tué pendant un shutdown
+n'écrit rien, et l'outil qu'il appelait (`cfg2html`) a disparu des images. À la place, le
+prologue dépose `/etc/profile.d/marionnet-journal.sh` (et l'accroche en fin de `/root/.bashrc`),
+qui met le `HISTFILE` **dans le hostfs** et ajoute `history -a` au `PROMPT_COMMAND`. Le journal
+est à jour à chaque invite, donc lisible **à chaud** — quatrième journal du verbe `log`, nommé
+`commands` et non `history`, ce mot étant déjà un **verbe** de la grammaire (huitième application
+de la règle d'unicité : la complétion l'a reçu sans être touchée).
+
+**Il est horodaté** (`HISTTIMEFORMAT` → une ligne `#<epoch>` avant chaque commande), et c'est ce
+qui permet de fusionner les séances de plusieurs composants en une chronologie. Le `PS1` n'est
+pas touché : décision de l'auteur — une horloge dans l'invite ferait croire à l'étudiant que sa
+vitesse compte — et de toute façon il n'atteindrait aucun fichier, la session de l'étudiant vivant
+sur un device UML que rien ne capture.
+
+**Le rapport est du Markdown**, produit par un script déposé dans le hostfs et accroché à l'arrêt.
+Le choix n'est pas cosmétique : en HTML, chaque sortie de commande demanderait un échappement, et
+un seul `<` casserait la page ; en Markdown la sortie entre telle quelle dans un bloc à quatre
+backticks. Il porte, entre autres, la **section pare-feu** demandée (`iptables -L -vv`, la table
+NAT, la forme rejouable `iptables-save`, IPv6, `nft list ruleset`).
+
+**Deux mesures ont été nécessaires pour l'unité systemd**, et chacune a corrigé un plan écrit de
+bonne foi : sans `Conflicts=shutdown.target` l'unité n'est jamais arrêtée (donc pas d'`ExecStop`,
+donc pas de rapport) ; avec les dépendances **par défaut**, elle est arrêtée mais sans ordre, et
+l'invité s'éteint **au milieu** du rapport (mesuré : un fichier coupé net en pleine commande). La
+forme qui marche est explicite : `DefaultDependencies=no` + `Conflicts=shutdown.target` +
+`Before=shutdown.target umount.target` + `After=network.target`. Rapport complet, 19 sections.
+
+**Deux limites, toutes deux mesurées et toutes deux extérieures à l'épisode.** Les vieilles images
+SysV n'ont pas de séquence d'arrêt du tout : leur `inittab` répond au ctrl-alt-del par
+`/sbin/halt`, contournement Marionnet délibéré qui court-circuite `/etc/rc0.d` — elles gardent
+l'historique et les deux journaux de boot, pas le rapport. Et la seule image de routeur installée
+(guignol, 2014, i386/SysV) n'atteint pas son relais sur cet hôte : le bout en bout du routeur est
+donc sauté par le banc, qui le dit, tandis que sa console est bel et bien archivée.
+
+**Le piège de l'épisode n'était pas dans le code : `stop` rend la main avant la fin.** L'archivage
+est la dernière chose que fait l'extinction ; lire `documents` juste après `stop` donne un
+treeview vide, et enchaîner sur `close` ferme le projet sous les pieds de l'archivage — qui ne
+trouve alors même plus son répertoire (le premier diagnostic, obtenu en journalisant le listing du
+hostfs au moment de l'import). D'où le `wait <c> --state=off`, qui est de toute façon ce qu'un
+script doit faire.
+
+**57 assertions, 0 échec** au nouveau banc `exam-bench.sh` (dont 30 sans aucun UML), **165 et 0**
+au banc du chantier et **59 et 0** au banc de complétion, après mise à jour des listes de journaux.

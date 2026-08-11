@@ -225,14 +225,35 @@ Reprise : appliquer le skill `chantier-long`.
   composant, ou relancer Marionnet avec l'option ; la complétion reçoit le 3ᵉ nom **sans être
   touchée**. Piège neuf : on ne peut **plus** fabriquer par le canal un couple kernel/image qui ne
   boote pas — remap auto, puis refus `SUPPORTED_KERNELS` — donc un démarrage qui n'aboutit pas se
-  mesure en coupant le courant en plein boot). Deux faits
+  mesure en coupant le courant en plein boot) ; **ép. 7 fait 2026-08-11** (le **mode examen
+  réanimé** : le § 2.4 était mort **deux fois** — personne n'écrivait `report.html`/
+  `bash_history.text`, **et** `import_file` **lève** sur un fichier absent en ouvrant un dialogue,
+  si bien qu'éteindre une machine en `--exam` produisait une exception depuis des années. Livré :
+  l'**historique horodaté**, écrit **en continu** par un fragment que le prologue pose dans
+  `/etc/profile.d` (`HISTFILE` dans le hostfs, `HISTTIMEFORMAT` → une ligne `#<epoch>` par
+  commande, `history -a` au `PROMPT_COMMAND`) — 4ᵉ journal du verbe `log`, nommé **`commands`** et
+  non `history`, ce mot étant déjà un **verbe** de la grammaire ; le **rapport Markdown**
+  `report.md` (`bin/scripts/marionnet-report.sh`, déposé dans le hostfs, accroché à l'**arrêt** par
+  l'épilogue), **section pare-feu** comprise, en Markdown parce qu'en HTML chaque sortie de commande
+  demanderait un échappement qu'un script d'invité rate tôt ou tard ; et l'**import unique et
+  gardé** (`import_exam_documents`), appelé par `machine.ml` **et** `router.ml` — l'asymétrie du
+  § 2.4 est tranchée — qui archive rapport, historique **et console**, cette dernière **copiée** et
+  non déplacée pour que `log … console` continue de répondre. Quatre corrections **par la mesure** :
+  `bash -ic "cmd"` n'écrit aucun historique ; une unité systemd sans `Conflicts=shutdown.target`
+  n'est **jamais arrêtée** ; avec les dépendances **par défaut** elle l'est mais sans ordre, et
+  l'invité s'éteint **au milieu** du rapport ; et `stop` **rend la main avant la fin** — l'archivage
+  est le dernier geste de l'extinction, d'où `wait <c> --state=off` avant de lire `documents`.
+  Limites mesurées, toutes deux extérieures à l'épisode : les vieilles images SysV n'ont **pas** de
+  séquence d'arrêt (leur `inittab` répond au ctrl-alt-del par `/sbin/halt`), et l'unique image de
+  routeur installée — guignol, 2014 — n'atteint pas son relais). Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
   **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune
   dépendance** envers `marionnet-kernel-rootfs` ; (2) le **mode examen** importe déjà
   `report.html`/`bash_history.text` dans le treeview `documents` (donc dans le `.mar`) mais
-  **aucune image ne les produit** — le chantier rend un producteur à une destination vivante.
+  **aucune image ne les produit** — le chantier rend un producteur à une destination vivante
+  (ép. 7 : et cette destination, elle-même, ne fonctionnait pas).
   Décisions : hostfs = journal **vivant**, `documents` = **archive** ; console UML capturée parce
   qu'elle seule échappe à l'invité (notation) ; switch = d'abord **ne plus jeter les réponses** de
   son rc (`switch.ml:593` : `--rcfile` est mort), puis instantané par la socket mgmt ; collecteur

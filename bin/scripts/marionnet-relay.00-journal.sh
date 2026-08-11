@@ -104,4 +104,76 @@ if [[ -n "$__mrn_journal_log" ]]; then
   set -x
 fi
 
+# ---------------------------------------------------------------------------
+# COMMAND HISTORY (episode 7).  What the student typed, host-side and dated.
+#
+# The exam mode imports <hostfs>/bash_history.text at shutdown (machine.ml,
+# router.ml) and NOBODY was writing it: the historical producer copied
+# /root/.bash_history from a shutdown script (uml/startup.old), which is
+# fragile -- an interactive Bash killed during shutdown writes nothing at all.
+#
+# So the history is written CONTINUOUSLY instead of being grabbed at the end:
+# the history file *is* the one in the hostfs, and every prompt appends to it.
+# Three consequences: no shutdown hook is needed for it, the file can be read
+# WHILE the machine runs (the channel serves it under the name `history'), and
+# it is already there when the exam mode imports it.
+#
+# It is dated, and that is the point: with HISTTIMEFORMAT set, Bash writes a
+# `#<epoch>' line before every command, so the sessions of m1, m2, r1... merge
+# into one chronology -- which is what a corrector (human or agent) needs. The
+# PROMPT (PS1) is deliberately NOT touched: a clock in the prompt would suggest
+# to the student that speed is being measured, and it is not.
+#
+# Deposited in two places because a shell reads only one of them: /etc/profile.d
+# for login shells, and appended to the guest's bashrc for the others. Both are
+# in the COW file, so no image is modified (decision D1). Independent of the
+# capture above -- its own guard -- because a journal that could not be created
+# is no reason to lose the history too.
+# ---------------------------------------------------------------------------
+
+__mrn_history_snippet=/etc/profile.d/marionnet-journal.sh
+
+if mkdir -p /etc/profile.d 2>/dev/null && [[ -d /mnt/hostfs ]]; then
+
+  if ! cat > "$__mrn_history_snippet" 2>/dev/null <<'__MRN_HISTORY__'
+# Marionnet, deep logging (journalisation-profonde, episode 7).  Deposited at
+# every boot by the host into the guest's COW file: this file belongs to no
+# image, and editing it here has no effect beyond the current session.
+#
+# Keeps this guest's command history on the HOST side, timestamped, and up to
+# date at every prompt rather than at the death of the shell.
+if [ -n "${BASH_VERSION:-}" ] && [ -d /mnt/hostfs ]; then
+  HISTFILE=/mnt/hostfs/bash_history.text
+  HISTTIMEFORMAT='%F %T '
+  HISTSIZE=10000
+  HISTFILESIZE=100000
+  shopt -s histappend 2>/dev/null
+  # `history -a' appends only what THIS shell typed, so several consoles on the
+  # same guest cannot overwrite each other.  Prepended, and only once:
+  case ";${PROMPT_COMMAND:-};" in
+    *";history -a;"*) : ;;
+    *) PROMPT_COMMAND="history -a${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+  esac
+fi
+__MRN_HISTORY__
+  then
+    __mrn_history_snippet=""
+  fi
+
+  # A login shell reads /etc/profile.d; an interactive non-login shell (the
+  # usual case under a Marionnet xterm) reads a bashrc only.  Appended at the
+  # END so that whatever the image's own bashrc does is done first:
+  if [[ -n "$__mrn_history_snippet" ]]; then
+    for __mrn_history_rc in /root/.bashrc /etc/bash.bashrc; do
+      [[ -f "$__mrn_history_rc" ]] || continue
+      grep -q 'marionnet-journal[.]sh' "$__mrn_history_rc" 2>/dev/null && continue
+      printf '\n# Marionnet deep logging (episode 7):\n. %s\n' \
+        "$__mrn_history_snippet" >> "$__mrn_history_rc" 2>/dev/null
+    done
+    unset __mrn_history_rc
+  fi
+
+fi
+unset __mrn_history_snippet
+
 :

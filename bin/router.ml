@@ -39,6 +39,13 @@ let lowercase  = String.lowercase_ascii
 let uppercase  = String.uppercase_ascii
 ENDIF
 
+(* Deep logging, episode 7: the exam mode archives the console journal, whose path has a single
+   expression, in the TOP-LEVEL Simulation_level. It has to be captured here, before the local
+   module of the same name -- defined at the end of the file and moved up by `where_p4' -- shadows
+   it over the whole body below. *)
+let console_journal_path = Simulation_level.console_journal_path
+;;
+
 (** Gui-related stuff for the user-level component "router". *)
 
 (* The module containing the add/update dialog is defined later,
@@ -1279,15 +1286,21 @@ class router
     Log.printf1 "Calling hostfs_directory on %s...\n" self#name;
     let hostfs_directory = self#get_hostfs_directory () in
     Log.printf "Ok, we're still alive\n";
-    (* If we're in exam mode then make the report available in the texts treeview: *)
+    (* If we're in exam mode then archive what this session left behind (deep logging, episode 7).
+       A router used to get only the report, where a machine got the report AND the history: an
+       asymmetry with no technical motive -- a router has a shell too, and its Quagga session is
+       precisely what a corrector wants to read. Same gesture as machine.ml now, console included. *)
     (if Initialization.are_we_in_exam_mode then begin
       let treeview_documents = Treeview_documents.extract () in
-      Log.printf1 "Adding the report on %s to the texts interface\n" self#name;
-      treeview_documents#import_report
+      Log.printf1 "Adding the exam documents of %s to the texts interface\n" self#name;
+      treeview_documents#import_exam_documents
 	~machine_or_router_name:self#name
-	~pathname:(hostfs_directory ^ "/report.html")
+	~hostfs_directory
+	~console_pathname:
+	  (console_journal_path
+	     ~working_directory:(network#project_working_directory) ~name:self#name)
 	();
-      Log.printf1 "Added the report on %s to the texts interface\n" self#name;
+      Log.printf1 "Added the exam documents of %s to the texts interface\n" self#name;
     end);
     (* ...And destroy, so that the next time we have to re-create the process command line
 	can use a new cow file (see the make_simulated_device method) *)

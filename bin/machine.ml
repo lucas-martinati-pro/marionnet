@@ -44,6 +44,13 @@ module Xforest = Ocamlbricks.Xforest
 open Gettext
 let spr fmt = Printf.sprintf fmt
 
+(* Deep logging, episode 7: the exam mode archives the console journal, whose path has a single
+   expression, in the TOP-LEVEL Simulation_level. It has to be captured here, before the local
+   module of the same name -- defined at the end of the file and moved up by `where_p4' -- shadows
+   it over the whole body below. *)
+let console_journal_path = Simulation_level.console_journal_path
+;;
+
 type filename = string
 (* type pid = int *)
 
@@ -757,21 +764,20 @@ class machine
     Log.printf "Ok, we're still alive\n";
     (* Do as usual... *)
     self_as_node_with_defects#gracefully_shutdown_right_now;
-    (* If we're in exam mode then make the report available in the texts treeview: *)
+    (* If we're in exam mode then archive what this session left behind (deep logging, episode 7):
+       the end-of-session report and the command history, both written guest-side into the hostfs,
+       plus the console Marionnet recorded host-side. One gesture, shared with router.ml. *)
     (if Initialization.are_we_in_exam_mode then begin
       let treeview_documents = Treeview_documents.extract () in
-      Log.printf1 "Adding the report on %s to the texts interface\n" self#name;
-      treeview_documents#import_report
+      Log.printf1 "Adding the exam documents of %s to the texts interface\n" self#name;
+      treeview_documents#import_exam_documents
         ~machine_or_router_name:self#name
-        ~pathname:(hostfs_directory ^ "/report.html")
+        ~hostfs_directory
+        ~console_pathname:
+          (console_journal_path
+             ~working_directory:(network#project_working_directory) ~name:self#name)
         ();
-      Log.printf1 "Added the report on %s to the texts interface\n" self#name;
-      Log.printf1 "Adding the history on %s to the texts interface\n" self#name;
-      treeview_documents#import_history
-        ~machine_or_router_name:self#name
-        ~pathname:(hostfs_directory ^ "/bash_history.text")
-        ();
-      Log.printf1 "Added the history on %s to the texts interface\n" self#name;
+      Log.printf1 "Added the exam documents of %s to the texts interface\n" self#name;
     end);
     (* ...And destroy, so that the next time we have to re-create the process command line
        can use a new cow file (see the make_simulated_device method) *)

@@ -1331,7 +1331,12 @@ class uml_process =
         [ ("marionnet-relay.00-journal",
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.00-journal.sh");
           ("marionnet-relay.zz-journal",
-           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.zz-journal.sh") ]
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.zz-journal.sh");
+          (* Episode 7: the end-of-session report. Its name deliberately does NOT match the
+             relay's glob on the "marionnet-relay" prefix: this one must not be sourced at
+             boot. The epilogue above hooks it to the SHUTDOWN of the guest instead. *)
+          ("marionnet-report",
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report.sh") ]
     in
     (* Create the file `boot_parameters_pathname': *)
     let descriptor =

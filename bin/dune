@@ -181,6 +181,7 @@
       ;; --- `journalisation-profonde' work-stream, on the two guest journal scripts).
       (file scripts/marionnet-relay.00-journal.sh)
       (file scripts/marionnet-relay.zz-journal.sh)
+      (file scripts/marionnet-report.sh)
       (file scripts/can-directory-host-sparse-files.sh))
   (preprocess (action (run camlp4of
       -I ../../../../_build/default/lib/
