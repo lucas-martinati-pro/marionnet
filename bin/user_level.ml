@@ -664,6 +664,18 @@ fun ~(network:< .. >)
      warning 7, an error in this build. Two explicit [method!] cost less than silencing it. *)
   method hostfs_directory_if_any : string option = None
 
+  (* Where *Marionnet itself* writes what it did with the rc of this component, for the kinds
+     which have an rc but no guest to write it down. Episode 4 of `journalisation-profonde': a
+     switch's rc is a set of vdeterm commands sent to vde_switch over its management socket, and
+     until that episode the answers were thrown away — a faulty VLAN command failed in complete
+     silence. Now they are journalled, and since a switch has no hostfs the file has to live
+     somewhere else: the project's working directory (see switch.ml, [rc_journal_path]).
+     [None] here means "this kind writes no such journal", which is an answer, not a hole: the
+     control server ([log]) asks any component without knowing its kind, exactly as it does for
+     [hostfs_directory_if_any] above. The two are mutually exclusive by construction — a machine
+     has a guest which writes its own journal, a switch has us. REDEFINED in switch.ml only. *)
+  method rc_journal_file_if_any : string option = None
+
   (* Which kernels the component's filesystem declares as supported (SUPPORTED_KERNELS in its
      .conf, read by Disk.virtual_machine_installations#supported_kernels_of). Only machines and
      routers have a filesystem, hence the option — [None] means "this kind has no kernel", which

@@ -116,6 +116,8 @@ module User_level_machine : sig
       method get_hostfs_directory            : ?name   :string (* self#get_name *) -> unit -> string
       (* [Some] of the above: the return channel of a startup configuration (rc-get/rc-set). *)
       method hostfs_directory_if_any         : string option
+      (* [None]: a machine has a guest, which writes its own journals in the hostfs above. *)
+      method rc_journal_file_if_any          : string option
       (* --- *)
       (* The kernels declared as supported by this machine's filesystem (SUPPORTED_KERNELS). *)
       method supported_kernels_if_any        : string list option

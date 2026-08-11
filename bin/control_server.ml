@@ -227,7 +227,12 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    The basenames are the decision of the two scripts which write them
    (bin/scripts/marionnet-relay.{00,zz}-journal.sh); the server only reads them, and publishes the
    short names so that no client holds a copy of this pair. The default is the first question a
-   script asks — what its own scenario did; doubting the *image* comes later. *)
+   script asks — what its own scenario did; doubting the *image* comes later.
+
+   Episode 4 gave the first of the two a second writer and a second home: a switch has no guest,
+   so Marionnet itself journals what its rc did (switch.ml), in the project's working directory.
+   The pair of names does not change — a switch simply has only one of them, which is why the
+   answer of [log] carries an [available] field of its own. *)
 let journal_files = [ ("rc_config", "rc_config.log"); ("boot", "boot.log") ]
 let journal_file_names = List.map fst journal_files
 let default_journal_file = "rc_config"
@@ -2154,7 +2159,7 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
        in
        reply_error ~code:"timeout" ~detail)
 
-(* --- log: the two journals the guest writes ---------------------- *)
+(* --- log: the guest's two journals, and the switch's one --------- *)
 
 (* Episode 3 of `journalisation-profonde'. The sibling of [wait --ready]: that one waits for the
    signal the guest writes, this one serves what it *wrote*. Since episodes 1 and 2 every machine
@@ -2167,6 +2172,11 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
 
    The basenames belong to those two scripts (__mrn_journal_log, __mrn_journal_boot_log). They are
    named once, with the other closed vocabularies, above [cmd_help] — which publishes them.
+
+   Episode 4 added a third writer, and it is not a guest: a switch's rc is a set of commands sent
+   to vde_switch over its management socket, and Marionnet, who sends them, is the only one in a
+   position to write down what came back. Hence a source which is a *file* and not a directory,
+   and a component which has [rc_config] but no [boot] — see [journal_source] below.
 
    Two bounds, and they are not the same bound. The line one is the answer's: 400 is the order of
    magnitude the collector already imposes on itself (dmesg 400, journalctl 500), so a whole
@@ -2239,8 +2249,9 @@ let journal_file_of (file : string option) : (string * string, string) result =
   | Some basename -> Ok (key, basename)
   | None ->
       Error (Printf.sprintf
-               "no journal named %S; this channel serves %s — the two files the guest writes in \
-                its hostfs directory (help publishes them as \"logs\")"
+               "no journal named %S; this channel serves %s — the two files a guest writes in its \
+                hostfs directory, the first of which a switch has too (help publishes them as \
+                \"logs\")"
                key (String.concat ", " journal_file_names))
 
 let journal_tail_of (tail : string option) : (int, string) result =
@@ -2250,6 +2261,57 @@ let journal_tail_of (tail : string option) : (int, string) result =
       (match int_of_string_opt s with
        | Some n when n > 0 -> Ok n
        | _ -> Error (Printf.sprintf "--tail expects a positive number of lines, got %S" s))
+
+(* Where the journals of a component are to be found. Episode 4 of `journalisation-profonde'
+   broadened the answer: until then a journal was necessarily a *guest's*, hence a pair of files
+   in a hostfs directory; a switch has no guest, but since that episode Marionnet writes down
+   what it said to vde_switch and what came back — one file, in the project's working directory
+   (switch.ml, [rc_journal_path]). Reads the network, hence the GTK slot, and only that: the
+   reading itself belongs to the calling thread, exactly as in [find_hostfs]. *)
+type journal_source =
+  | Js_hostfs of string   (* a machine or a router: the two files its guest writes *)
+  | Js_file   of string   (* a switch: the one file Marionnet writes for it *)
+  | Js_none               (* a hub, a cable: nobody writes anything *)
+
+let find_journal_source (st : State.globalState) ~(name:string) : journal_source option =
+  match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+  | Some n ->
+      (match n#hostfs_directory_if_any, n#rc_journal_file_if_any with
+       | Some dir, _    -> Some (Js_hostfs dir)
+       | None, Some file -> Some (Js_file file)
+       | None, None      -> Some Js_none)
+  | None ->
+  match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+  | Some _ -> Some Js_none
+  | None   -> None
+
+(* The reading and the answer, shared by the two kinds of source: what differs between them is
+   the path, the vocabulary the component actually has, and what to do when the file is not there
+   yet — for a guest, waiting is the normal case, hence the pointer to [wait --ready]. *)
+let serve_journal ~(name:string) ~(key:string) ~(path:string) ~(tail:int)
+                  ~(available:string list) ~(not_found_detail:string) : string
+  =
+  match read_journal_tail ~path ~tail with
+  | Error "not found" -> reply_error ~code:"bad_argument" ~detail:not_found_detail
+  | Error detail      -> reply_error ~code:"bad_argument" ~detail
+  | Ok r ->
+      reply_ok [ ("component",     jstr name);
+                 ("file",          jstr key);
+                 ("path",          jstr path);
+                 (* In clear, on one line: json_escape turns the newlines into \n,
+                    exactly as it does for the content of rc-get. *)
+                 ("content",       jstr r.jr_content);
+                 ("lines",         jint r.jr_lines);
+                 ("total_lines",   jint r.jr_total);
+                 ("dropped_lines", jint r.jr_dropped);
+                 ("truncated",     jbool r.jr_truncated);
+                 ("bytes",         jint (String.length r.jr_content));
+                 ("file_bytes",    jint r.jr_bytes);
+                 ("mtime",         jfloat r.jr_mtime);
+                 (* Episode 10's pattern again: the vocabulary of --file, published by the answer
+                    as well as by help — and, since episode 4, the vocabulary of *this*
+                    component, which is not the same for a switch as for a guest. *)
+                 ("available",     jlist (List.map jstr available)) ]
 
 let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:string option)
             ~(tail:string option) : string
@@ -2263,46 +2325,41 @@ let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:stri
   match journal_tail_of tail with
   | Error detail -> reply_error ~code:"bad_argument" ~detail
   | Ok tail ->
-      (* The GTK slot buys the hostfs directory and nothing else; the reading happens here, in
-         this thread, like the [stat] of [wait --ready]. *)
+      (* The GTK slot buys the location and nothing else; the reading happens here, in this
+         thread, like the [stat] of [wait --ready]. *)
       reply_of_outcome
         (function
          | None ->
              reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
-         | Some None ->
+         | Some Js_none ->
              reply_error ~code:"bad_argument"
                ~detail:(Printf.sprintf
-                          "%S runs no guest system of its own, hence has no hostfs directory: log \
-                           applies to a machine or a router" name)
-         | Some (Some dir) ->
+                          "%S runs no guest system of its own and has no startup configuration \
+                           either, hence no journal at all: log applies to a machine, a router or \
+                           a switch" name)
+         | Some (Js_file _) when key <> default_journal_file ->
+             (* A switch boots nothing: the collector of episode 2 has no counterpart here. *)
+             reply_error ~code:"bad_argument"
+               ~detail:(Printf.sprintf
+                          "%S runs no guest system of its own, hence writes no %s; the only \
+                           journal it has is %S, which Marionnet writes itself: what it sent to \
+                           vde_switch as a startup configuration, and what vde_switch answered"
+                          name basename default_journal_file)
+         | Some (Js_file path) ->
+             serve_journal ~name ~key ~path ~tail ~available:[default_journal_file]
+               ~not_found_detail:
+                 (Printf.sprintf
+                    "%S has written no %s journal yet (%s): it has not been started since this \
+                     project was opened" name key path)
+         | Some (Js_hostfs dir) ->
              let path = Filename.concat dir basename in
-             (match read_journal_tail ~path ~tail with
-              | Error "not found" ->
-                  reply_error ~code:"bad_argument"
-                    ~detail:(Printf.sprintf
-                               "%S has written no %s yet (%s): it has not been started since this \
-                                project was opened, or its guest has not reached the end of its \
-                                boot — see wait --ready"
-                               name basename path)
-              | Error detail -> reply_error ~code:"bad_argument" ~detail
-              | Ok r ->
-                  reply_ok [ ("component",     jstr name);
-                             ("file",          jstr key);
-                             ("path",          jstr path);
-                             (* In clear, on one line: json_escape turns the newlines into \n,
-                                exactly as it does for the content of rc-get. *)
-                             ("content",       jstr r.jr_content);
-                             ("lines",         jint r.jr_lines);
-                             ("total_lines",   jint r.jr_total);
-                             ("dropped_lines", jint r.jr_dropped);
-                             ("truncated",     jbool r.jr_truncated);
-                             ("bytes",         jint (String.length r.jr_content));
-                             ("file_bytes",    jint r.jr_bytes);
-                             ("mtime",         jfloat r.jr_mtime);
-                             (* Episode 10's pattern again: the vocabulary of --file, published
-                                by the answer as well as by help. *)
-                             ("available",     jlist (List.map jstr journal_file_names)) ]))
-        (ask ~timeout (fun () -> find_hostfs st ~name))
+             serve_journal ~name ~key ~path ~tail ~available:journal_file_names
+               ~not_found_detail:
+                 (Printf.sprintf
+                    "%S has written no %s yet (%s): it has not been started since this project \
+                     was opened, or its guest has not reached the end of its boot — see \
+                     wait --ready" name basename path))
+        (ask ~timeout (fun () -> find_journal_source st ~name))
 
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole

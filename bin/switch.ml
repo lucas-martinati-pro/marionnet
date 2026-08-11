@@ -421,6 +421,16 @@ class switch =
 
   method! rc_contents = [ (rc_config_file, snd rc_config) ]
 
+  (* Episode 4 of `journalisation-profonde'. A switch has no guest, hence no hostfs, hence nobody
+     inside to write what its rc did; Marionnet is the one who talks to vde_switch, so Marionnet
+     is the one who writes it down. The path does not depend on the simulation being up — the
+     journal is read after the switch was stopped, exactly like a guest's — and it is the same
+     expression the simulation level uses to write it. *)
+  method! rc_journal_file_if_any =
+    Some (Simulation_level_switch.rc_journal_path
+            ~working_directory:(network#project_working_directory)
+            ~name:(self#get_name))
+
   method! set_rc_content ~basename ~content =
     if basename <> rc_config_file then false else
     let () = self#set_rc_config ((fst rc_config), content) in
@@ -534,53 +544,173 @@ let get_lines_removing_comments (commands:string) : string list =
   let result = StringExtra.Text.grep (Str.regexp "^[^#]") t in
   result
 
-(* Currently unused, but useful for testing: *)
-let get_vde_switch_boolean_answer (ch:Network.stream_channel) : bool =
-  let ignore2 _ _ = () in
-  let rec loop () =
-    Log.printf "Waiting for an answer...\n";
-    let answer = ch#input_line () in
-    Log.printf1 "Received answer `%s'\n" answer;
-    try (Scanf.sscanf answer "vde$ 1000 Success" ()); true with _ ->
-    try (Scanf.sscanf answer "vde$ %d %s" ignore2); false with _ ->
-    loop ()
-  in
-  loop ()
+(* --------------------------------------------------------------------------------------- *)
+(* Episode 4 of `journalisation-profonde': the rc of a switch stops failing in silence.       *)
+(* --------------------------------------------------------------------------------------- *)
 
-(* Currently unused, but useful for testing: *)
-let send_commands_to_vde_switch_and_get_answers ~socketfile ~commands ()
-  : (exn, (string * bool) list) Either.t
-  =
+(* What a `vde_switch' 2.3.2 answers on its management socket. Measured — not read — before this
+   parser was written, by talking to a real switch:
+
+     vde$ 0000 DATA END WITH '.'      <- optional: an answer which carries data opens with this
+     VLAN 0000                        <- ... the data lines ...
+     .                                <- ... closed by a lone dot
+     1000 Success                     <- the status line: always, and always last
+                                      <- an empty line
+     vde$                             <- the prompt, WITHOUT a trailing newline
+
+   Status codes met while probing: 1000 Success, 1022 Invalid argument (vlan/create 4999),
+   1006 No such device or address (a port which does not exist), 1038 Function not implemented
+   (a command which does not exist). A failure is therefore anything but 1000, and it comes with
+   the switch's own words — which is all the journal below has to carry.
+
+   Two consequences for a line-oriented reader, and together they are why the boolean reader this
+   replaces ([get_vde_switch_boolean_answer], "currently unused, but useful for testing") could
+   not have worked in production: the prompt has no newline of its own, so it is *prepended* to
+   the first line of the next answer ("vde$ 1000 Success") — every line has to be read modulo that
+   prefix; and the status line of an answer which carries data is *not* prefixed, so a reader
+   which only knows "vde$ 1000 Success" walks straight past the terminator of every command that
+   prints something, and swallows the next answer looking for it. *)
+
+type vde_answer = {
+  va_data    : string list;  (* the data lines, if the command printed any *)
+  va_code    : int;          (* 1000 is the only success *)
+  va_message : string;       (* the switch's own words *)
+  }
+
+let vde_prompt = "vde$ "
+let vde_data_header = "0000 DATA END WITH '.'"
+let vde_status_line = Str.regexp "^\\([0-9][0-9][0-9][0-9]\\) \\(.*\\)$"
+
+(* The prompt is a prefix, not a line: strip as many as have piled up. *)
+let rec strip_vde_prompt line =
+  let n = String.length vde_prompt in
+  if String.starts_with ~prefix:vde_prompt line
+  then strip_vde_prompt (String.sub line n (String.length line - n))
+  else line
+
+(* Bounded in lines, for the same reason the control server bounds its reader: what arrives here
+   is written by a process we do not control. The receive timeout set by the caller bounds the
+   *time*; this bounds the *memory*. *)
+let max_vde_answer_lines = 4096
+
+let read_vde_switch_answer (ch:Network.stream_channel) : vde_answer =
+  let rec loop n data =
+    if n > max_vde_answer_lines then
+      { va_data = List.rev data; va_code = (-1);
+        va_message = Printf.sprintf "answer longer than %d lines, giving up" max_vde_answer_lines }
+    else
+    let line = strip_vde_prompt (ch#input_line ()) in
+    if line = vde_data_header then read_data (n+1) data else
+    if Str.string_match vde_status_line line 0 then
+      match int_of_string_opt (Str.matched_group 1 line) with
+      | Some code -> { va_data = List.rev data; va_code = code;
+                       va_message = Str.matched_group 2 line }
+      | None      -> loop (n+1) data
+    else
+      (* The greeting of the connection, and the empty line which precedes each prompt. *)
+      loop (n+1) data
+  and read_data n data =
+    if n > max_vde_answer_lines then loop n data else
+    let line = ch#input_line () in
+    if String.trim line = "." then loop (n+1) data else read_data (n+1) (line :: data)
+  in
+  loop 0 []
+
+(* Long enough that a switch busy allocating ports still answers, short enough that a switch which
+   never will does not keep this thread (and its connection) forever. *)
+let vde_answer_timeout = 5.0
+
+let rc_journal_basename_suffix = "-rc_config.log"
+
+(* Where the journal of a switch's rc lives. Not in a hostfs — a switch has no guest to mount one
+   — but in the project's working directory, which is what makes it a *living* journal in the
+   sense of decision D3: it outlives the process (a script reads it after the switch was stopped)
+   and it goes away with the project. Computed from the name, hence usable at user level, where
+   the control server asks for it, as well as here (bin/user_level.ml, [rc_journal_file_if_any]). *)
+let rc_journal_path ~working_directory ~name =
+  Filename.concat working_directory (name ^ rc_journal_basename_suffix)
+
+let journal_header ~(name:string) ~(commands:int) : string =
+  let t = Unix.localtime (Unix.time ()) in
+  Printf.sprintf
+    "# marionnet: journal of the rc of switch %S (journalisation-profonde, episode 4)\n\
+     # date: %04d-%02d-%02d %02d:%02d:%02d\n\
+     # what follows is what marionnet said to vde_switch, and what vde_switch answered\n\
+     # %d command(s) to send\n"
+    name (t.Unix.tm_year + 1900) (t.Unix.tm_mon + 1) t.Unix.tm_mday
+    t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec commands
+
+(* Never raises: this runs at spawning time, in a thread nobody joins. A journal which cannot be
+   written is a line in Marionnet's own log, not a failed start. *)
+let with_journal ~(journal:string) (f : out_channel -> unit) : unit =
+  match (try Some (open_out journal) with e -> Log.print_exn ~prefix:"switch journal: " e; None) with
+  | None    -> ()
+  | Some oc -> (try Fun.protect ~finally:(fun () -> close_out_noerr oc) (fun () -> f oc)
+                with e -> Log.print_exn ~prefix:"switch journal: " e)
+
+(* A switch with no rc has a journal too, and it says so. Same reason as decision D5 on the guest
+   side: a script must find the journal of a component without knowing whether anyone configured
+   it — an empty journal is an answer ("this switch ran, it had nothing to say"), a missing file
+   is a question. *)
+let write_rc_journal_without_rc ~(journal:string) ~(name:string) () : unit =
+  with_journal ~journal
+    (fun oc ->
+       output_string oc (journal_header ~name ~commands:0);
+       output_string oc "# no rc: this switch has no startup configuration to send\n")
+
+(* The former [send_commands_to_vde_switch_ignoring_answers], which the name said it all about:
+   it spawned a thread whose only job was to read the answers and drop them, and paced the sending
+   with a 1/100 s delay. Reading the answer *is* the pacing — it is the proof that the previous
+   command was consumed — so the delay goes with the dropping. *)
+let send_commands_to_vde_switch_and_journal ~socketfile ~commands ~name ~journal () : unit =
   let lines = get_lines_removing_comments commands in
-  Log.printf1 "Sending commands to a switch:\n---\n%s\n---\n" commands;
-  let protocol (ch:Network.stream_channel) =
-    List.map
-       (fun line ->
-          Log.printf1 "Sending line: %s\n" line;
-          ch#output_line line;
-          let answer = get_vde_switch_boolean_answer ch in
-          Log.printf1 "Received boolean answer: %b\n" (answer);
-          (line, answer))
-       lines
-  in
-  Network.stream_client ~target:(`unix socketfile) ~protocol ()
-
-let rec repeat_until_exception f x =
- try ignore (f x); repeat_until_exception f x with _ -> ()
-
-let send_commands_to_vde_switch_ignoring_answers ~socketfile ~commands () =
-  let lines = get_lines_removing_comments commands in
-  let protocol (ch:Network.stream_channel) =
-    ignore (Thread.create (repeat_until_exception ch#input_line) ());
-    List.iter
-       (fun line ->
-          Log.printf1 "Sending line: %s\n" line;
-          ch#output_line line;
-          Thread.delay 0.01;
-          ())
-       lines
-  in
-  Network.stream_client ~target:(`unix socketfile) ~protocol ()
+  with_journal ~journal
+    (fun oc ->
+       output_string oc (journal_header ~name ~commands:(List.length lines));
+       flush oc;
+       let failed = ref 0 in
+       let sent   = ref 0 in
+       let protocol (ch:Network.stream_channel) =
+         (* A blocking read on a switch which never answers would hold this thread and this
+            connection for the whole life of the project. SO_RCVTIMEO turns that into an
+            exception, which the journal then reports as such. *)
+         let (fd, _) = ch#get_IO_file_descriptors in
+         let () = try Unix.setsockopt_float fd Unix.SO_RCVTIMEO vde_answer_timeout with _ -> () in
+         List.iter
+           (fun line ->
+              Log.printf1 "Sending line to a switch: %s\n" line;
+              Printf.fprintf oc "> %s\n" line;
+              ch#output_line line;
+              incr sent;
+              match (try Ok (read_vde_switch_answer ch) with e -> Error e) with
+              | Error e ->
+                  incr failed;
+                  Printf.fprintf oc "!! FAILED (no answer within %.1fs): %s\n" vde_answer_timeout line;
+                  Printf.fprintf oc "#  %s\n" (Printexc.to_string e);
+                  flush oc;
+                  (* Resynchronising on a stream we have lost track of would only produce a
+                     journal of fiction: stop here, and say so. *)
+                  raise e
+              | Ok a ->
+                  List.iter (fun l -> Printf.fprintf oc "%s\n" l) a.va_data;
+                  Printf.fprintf oc "%d %s\n" a.va_code a.va_message;
+                  (if a.va_code <> 1000 then begin
+                     incr failed;
+                     (* The same shape as the guest-side journals of episodes 1 and 2, so that one
+                        grep on "^!! FAILED" answers "what went wrong in my scenario?" for a
+                        machine, a router and a switch alike. *)
+                     Printf.fprintf oc "!! FAILED (status %d): %s\n" a.va_code line
+                     end);
+                  flush oc)
+           lines
+       in
+       let outcome = Network.stream_client ~target:(`unix socketfile) ~protocol () in
+       (match outcome with
+        | Either.Right () -> ()
+        | Either.Left e ->
+            Printf.fprintf oc "# the exchange with vde_switch was interrupted: %s\n"
+              (Printexc.to_string e));
+       Printf.fprintf oc "# done: %d command(s) sent, %d failed\n" !sent !failed)
 
 
 (** A switch: just a [hub_or_switch] with [hub = false] *)
@@ -610,9 +740,16 @@ object(self)
       as super
   method device_type = "switch"
 
+  (* Episode 4: where what we say to vde_switch is written down. The path is the one the user
+     level publishes to the control server, and it is computed from the name on both sides. *)
+  method private rc_journal =
+    rc_journal_path ~working_directory ~name:(parent#get_name)
+
   method! spawn_internal_cables =
     match show_vde_terminal || (rcfile_content <> None) with
-    | false -> super#spawn_internal_cables
+    | false ->
+        write_rc_journal_without_rc ~journal:(self#rc_journal) ~name:(parent#get_name) ();
+        super#spawn_internal_cables
     | true ->
         (* If the user want to configure VLANs etc, we must be sure that
            the port numbering will be the same for marionnet and vde_switch: *)
@@ -640,13 +777,16 @@ object(self)
 	       Log.printf2 "Ok, the vde_switch %s has now %d allocated ports.\n" name !numports;
 	       end
  	     self#get_internal_cable_processes);
- 	(* Now send rc commands to the switch: *)
+ 	(* Now send rc commands to the switch, and write down what it answers (episode 4 of
+	   `journalisation-profonde'): the exchange still happens in a thread of its own, because
+	   it must not delay the spawning, but its answers are no longer dropped. *)
+        let journal = self#rc_journal in
         match rcfile_content with
-        | None -> ()
+        | None -> write_rc_journal_without_rc ~journal ~name ()
         | Some commands ->
             ignore
               (Thread.create
-                 (send_commands_to_vde_switch_ignoring_answers ~socketfile ~commands)              ())
+                 (send_commands_to_vde_switch_and_journal ~socketfile ~commands ~name ~journal) ())
 
 
   initializer

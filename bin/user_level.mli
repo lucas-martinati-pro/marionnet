@@ -137,6 +137,10 @@ class virtual component :
     (* [None] unless the component has a hostfs directory (machines and routers do), i.e. a host
        directory the guest sees as /mnt/hostfs: the return channel of a startup configuration. *)
     method hostfs_directory_if_any : string option
+    (* [None] unless Marionnet itself journals what this component's rc did (a switch does: its
+       rc is a set of commands sent to vde_switch, and there is no guest inside to write down
+       what came back). Exclusive with the method above by construction. *)
+    method rc_journal_file_if_any : string option
     (* [None] unless the component has a filesystem (machines and routers do): the kernels its
        .conf declares as supported (SUPPORTED_KERNELS), in the GUI combo's order. *)
     method supported_kernels_if_any : string list option
@@ -258,6 +262,7 @@ class virtual node_with_ports_card :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method rc_journal_file_if_any : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -380,6 +385,7 @@ class virtual node_with_defects :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method rc_journal_file_if_any : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -492,6 +498,7 @@ class virtual node_with_ledgrid_and_defects :
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method rc_journal_file_if_any : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -658,6 +665,7 @@ class type virtual cable =
     method eval_forest_child : Xforest.tree -> unit
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
+    method rc_journal_file_if_any : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string

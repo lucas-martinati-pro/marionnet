@@ -150,7 +150,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **1** | **Prologue injecté** : `marionnet-relay.00-journal` déposé par `make_hostfs_content` ; auto-espionnage du `rc_config` (`set -x`, sortie **et** erreur) vers `/mnt/hostfs/rc_config.log`. **Livre aussi son épilogue de fermeture** `marionnet-relay.zz-journal` (cf. § 4.1) | machine trixie démarrée **par le canal**, `rc_config` volontairement fautif : le journal côté hôte porte la trace et le code d'erreur, là où **rien** n'apparaît aujourd'hui — **fait** (2026-08-10) |
 | **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` (cf. § 4.2) | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur — **fait** (2026-08-10) |
 | **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) — **deux** journaux à servir, pas un (cf. § 4.3) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` — **fait** (2026-08-11) |
-| **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien |
+| **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`). Le journal est écrit **par Marionnet**, dans le répertoire de travail du projet, et servi par le verbe `log` de l'ép. 3 (cf. § 4.4) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien — **fait** (2026-08-11) |
 | **5** | **Switch : instantané** par la socket mgmt (`port/print`, `hash/print`, `fstp/print`) rendu en JSON | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre |
 | **6** | **Capture de console** (sur option, implicite en `--exam`). Trois pistes à départager : `fd:` sur un descripteur ouvert avant `exec`, `tty:` sur un pty, ou l'xterm lancé sous `script(1)` | une image dont l'`init` est volontairement cassé laisse une trace côté hôte, là où le hostfs reste **vide** |
 | **7** | **Réanimer le mode examen** : le prologue produit `bash_history.text` (et `report.html`) ; l'import déjà câblé du § 2.4 cesse d'être mort ; le journal de console rejoint les documents | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` |
@@ -312,6 +312,94 @@ rend, ligne pour ligne, ce que `tail -n 20` rend côté hôte ; sans `--tail`, l
 `log m1 boot` et `log m1 --file=boot` rendent la même chose ; et après `poweroff`, le journal est
 toujours servi — il vit dans le hostfs, pas dans le processus.
 
+### 4.4 Ce que l'épisode 4 a livré (et pourquoi le journal d'un switch n'est pas dans un hostfs)
+
+Le défaut tenait en un nom : `send_commands_to_vde_switch_ignoring_answers`. Il lançait un thread
+dont l'unique travail était de lire les réponses **pour les jeter**, et cadençait l'envoi par un
+`Thread.delay 0.01`. Or **lire la réponse *est* le cadencement** — c'est la preuve que la commande
+précédente a été consommée : le délai s'en va avec le rejet, il ne le remplace pas.
+
+**Le protocole a été mesuré, pas lu.** Interrogé avant d'écrire une ligne d'analyseur, un
+`vde_switch 2.3.2` réel répond ceci :
+
+```
+vde$ 0000 DATA END WITH '.'      <- optionnel : ouvre une réponse qui porte des données
+VLAN 0005                        <- ... les lignes de données ...
+.                                <- ... closes par un point seul
+1000 Success                     <- la ligne de statut : toujours, et toujours en dernier
+                                 <- une ligne vide
+vde$                             <- l'invite, SANS saut de ligne
+```
+
+Codes rencontrés : `1000 Success`, `1022 Invalid argument` (`vlan/create 4999`), `1006 No such
+device or address` (un port qui n'existe pas), `1038 Function not implemented` (une commande qui
+n'existe pas). Un échec est donc **tout ce qui n'est pas 1000**, et il arrive avec **les mots du
+switch** — c'est tout ce que le journal a à porter.
+
+Deux traits de ce protocole condamnent le lecteur booléen que le fichier gardait « currently
+unused, but useful for testing » : l'invite n'ayant pas de saut de ligne à elle, elle **préfixe**
+la première ligne de la réponse suivante (`vde$ 1000 Success`) — tout se lit modulo ce préfixe ;
+et la ligne de statut d'une réponse **qui porte des données** n'est, elle, **pas** préfixée. Un
+lecteur qui ne connaît que `"vde$ 1000 Success"` passe donc devant le terminateur de toute
+commande qui affiche quelque chose, et avale la réponse d'après. Il a été **supprimé** plutôt que
+gardé : un outil de test qui ne peut pas fonctionner en production n'est pas un outil de test.
+
+**Le journal d'un switch ne peut pas vivre dans un hostfs, puisqu'un switch n'a pas d'invité.** Il
+est écrit par Marionnet — le seul en position de savoir ce qui est revenu — dans le répertoire de
+travail du projet : `<project_working_directory>/<nom>-rc_config.log`. C'est bien un journal
+*vivant* au sens de **D3** : il survit à l'extinction du composant (mesuré) et disparaît avec le
+projet. Côté modèle, une méthode neuve sur l'ancêtre commun, `rc_journal_file_if_any`, jumelle de
+`hostfs_directory_if_any` et **exclusive** d'elle par construction : ou bien un invité écrit son
+journal, ou bien c'est nous.
+
+Le verbe `log` de l'épisode 3 n'a donc pas eu besoin d'un frère : il a eu besoin d'une **source**.
+`find_hostfs` reste ce qu'il était (et `wait --ready` avec lui, qui doit continuer de refuser sur
+un switch : il n'y a rien à attendre) ; `log` interroge désormais `find_journal_source`, à trois
+cas — un répertoire (les deux fichiers d'un invité), un fichier (le seul d'un switch), rien du
+tout (un hub, un câble). D'où **trois refus qui ne disent pas la même chose**, ce qui est le
+critère du chantier depuis l'épisode 3 : un hub s'entend dire que `log` s'applique à une machine,
+un routeur **ou un switch** ; un switch à qui l'on demande `boot` s'entend dire qu'il ne boote
+pas et qu'il n'a que `rc_config` ; un switch jamais démarré s'entend dire qu'il n'a pas démarré —
+**sans** le renvoi vers `wait --ready`, qui n'aurait aucun sens pour lui. Et le champ `available`
+de la réponse publie le vocabulaire **de ce composant** (`["rc_config"]` pour un switch), là où
+`help` publie celui du canal.
+
+La ligne d'échec est **de la même forme qu'aux épisodes 1 et 2** :
+
+```
+> vlan/create 4999
+1022 Invalid argument
+!! FAILED (status 1022): vlan/create 4999
+```
+
+Un seul `grep '^!! FAILED'` répond donc à « qu'est-ce qui a échoué dans mon scénario ? » pour une
+machine, un routeur **et** un switch. C'est l'invariant de forme du chantier, et il ne coûte rien.
+
+Deux bornes, imposées par le fait qu'on lit un processus qu'on ne contrôle pas : un **délai de
+réception** de 5 s (`SO_RCVTIMEO` sur le descripteur de la connexion) — sans quoi une lecture
+bloquante sur un switch qui ne répondra jamais retiendrait ce thread **et** cette connexion pour
+toute la vie du projet — et un plafond de 4096 lignes par réponse. Un dépassement est journalisé
+et **arrête** l'échange : se resynchroniser sur un flux dont on a perdu le fil ne produirait qu'un
+journal de fiction.
+
+**D5 vaut aussi pour les switchs** : un switch sans rc a son journal quand même, qui dit qu'il n'y
+avait rien à envoyer. Un fichier vide est une réponse ; un fichier absent est une question.
+
+**Mesure** (`journal-bench.sh` § J10, **67 assertions, 0 échec** avec `E2E=0` — un switch n'a pas
+d'invité, donc ce bout en bout ne démarre **aucune** machine UML). Le rc de mesure tient en trois
+commandes, et chacune mesure autre chose : `vlan/create 5` réussit (le journal ne doit pas dire
+que tout a raté), `vlan/create 4999` **échoue** — le discriminant, cette erreur n'existait nulle
+part avant — et `vlan/print` **rend des données**, ce que l'ancien lecteur ne savait pas lire. Les
+lignes de cette dernière prouvent au passage que la première commande a réellement pris effet
+**dans** le switch : le journal n'est pas une fiction écrite côté hôte. Le canal sert ce fichier
+comme celui d'un invité, `--tail` compris, et continue de le servir après `poweroff` (D3).
+
+*Limite connue, assumée :* le chemin se calcule à partir du **nom**. Un switch renommé entre deux
+démarrages laisse donc derrière lui le journal de son ancien nom, et le canal répond, sous le
+nouveau, « jamais démarré » jusqu'au prochain lancement. Corriger cela demanderait la machinerie
+de renommage que seuls machines et routeurs ont (pour leur hostfs) ; le prix n'en vaut pas la
+peine tant que le journal est vivant et refait à chaque démarrage.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -444,3 +532,32 @@ journal ; elle a appris la distinction — et, comme aux épisodes 10 et 12 du c
 **84 assertions, 0 échec** au banc du chantier (dont le discriminant sur une machine encore
 allumée), **53** au banc de complétion. `doc-src/scripting/` n'a pas été touché : la documentation
 utilisateur du chantier est l'épisode 8.
+
+### 2026-08-11 — Épisode 4 : le switch cesse de jeter les réponses de son rc
+
+Le nom disait le défaut : `send_commands_to_vde_switch_ignoring_answers` lançait un thread dont
+l'unique travail était de lire les réponses **pour les jeter**, et cadençait l'envoi par un délai
+de 1/100 s. Une configuration VLAN fautive échouait donc en silence total — ni fichier, ni GUI,
+ni canal. Depuis cet épisode, Marionnet écrit ce qu'il a dit à `vde_switch` et ce que `vde_switch`
+a répondu, dans `<répertoire de travail du projet>/<nom>-rc_config.log`, servi par le verbe `log`
+de l'épisode 3. Le délai a disparu avec le rejet : **lire la réponse *est* le cadencement**.
+
+Le protocole a été **mesuré avant** d'être analysé (interrogatoire d'un `vde_switch 2.3.2` réel),
+et la mesure a condamné le lecteur booléen que le fichier gardait « useful for testing » : il ne
+connaît que `vde$ 1000 Success`, or la ligne de statut d'une réponse **qui porte des données**
+n'est pas préfixée par l'invite — il passait devant le terminateur de toute commande qui affiche
+quelque chose. Supprimé, remplacé par un lecteur qui sait les deux formes (§ 4.4).
+
+Le point de conception était **où mettre le journal** : un switch n'a pas d'invité, donc pas de
+hostfs. Il est écrit par l'hôte, dans le répertoire de travail du projet — journal *vivant* au
+sens de D3 —, et le verbe `log` n'a pas eu besoin d'un frère mais d'une **source** à trois cas
+(un répertoire, un fichier, rien), d'où trois refus qui ne disent pas la même chose. Côté modèle,
+une méthode jumelle de `hostfs_directory_if_any` sur l'ancêtre commun, exclusive d'elle par
+construction.
+
+**67 assertions, 0 échec** (`journal-bench.sh` § J10), et ce bout en bout ne démarre **aucune**
+machine UML : un switch n'a pas d'invité, donc le discriminant du chantier se mesure ici en
+quelques secondes. Trois commandes suffisent à le tenir — une qui réussit, une commande VLAN
+fautive, une qui rend des données —, et les lignes de la troisième prouvent que la première a
+réellement pris effet **dans** le switch. La ligne d'échec reprend la forme des épisodes 1 et 2
+(`^!! FAILED`) : un seul `grep` répond désormais pour une machine, un routeur et un switch.

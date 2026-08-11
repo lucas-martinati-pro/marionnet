@@ -191,7 +191,18 @@ Reprise : appliquer le skill `chantier-long`.
   400 lignes pour la réponse, 2 Mio pour le lecteur, parce que le fichier est écrit par l'invité ;
   une ligne non-UTF-8 est **écartée et comptée**, la réponse restant une ligne JSON. 5ᵉ application
   de la règle d'unicité : `help` publie la paire de noms (`logs`), que la complétion **demande** —
-  piège de l'épisode, `--file` appartenait déjà au **client** `mrnctl`). Deux faits mesurés qui commandent tout
+  piège de l'épisode, `--file` appartenait déjà au **client** `mrnctl`) ; **ép. 4 fait 2026-08-11**
+  (le **switch** cesse de jeter les réponses de son rc : le protocole de la socket mgmt a été
+  **mesuré** avant d'être analysé — l'invite `vde$ ` n'a pas de saut de ligne et préfixe donc la
+  réponse suivante, mais **pas** la ligne de statut d'une réponse **à données**, ce qui condamnait
+  le lecteur booléen gardé « useful for testing », supprimé ; le journal est écrit **par
+  Marionnet** dans `<working_directory du projet>/<nom>-rc_config.log`, servi par le **même** verbe
+  `log` grâce à une **source** à trois cas — un répertoire, un fichier, rien — d'où trois refus qui
+  ne disent pas la même chose ; la ligne `!! FAILED (status N)` reprend la forme des ép. 1-2, donc
+  un seul `grep` répond pour machine, routeur **et** switch. Pièges neufs : **lire la réponse *est*
+  le cadencement** de l'envoi — l'ancien code jetait et compensait par un délai — et une lecture
+  sur cette socket doit être bornée en temps, sinon un switch muet retient thread et connexion pour
+  la vie du projet). Deux faits mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
   **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune
