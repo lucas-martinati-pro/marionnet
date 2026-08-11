@@ -151,7 +151,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **2** | **Épilogue collecteur** : la collecte se greffe **à la fin de `marionnet-relay.zz-journal`** (le nom `zz-collect` de l'ép. 0 est caduc : un second fichier en `zz-c…` serait sourcé *avant* le `zz-j…`, donc *dans* la fenêtre de capture) — `dmesg` et, selon `init_system` (déjà connu de Marionnet, `simulation_level.ml:826`), `journalctl -b` + `systemctl --failed`, sinon un extrait de `/var/log/` (cf. § 4.2) | un `systemctl --failed` non vide devient visible côté hôte **sans ouvrir un xterm** ; **et** le même scénario sur une image sysv produit l'équivalent sans erreur — **fait** (2026-08-10) |
 | **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) — **deux** journaux à servir, pas un (cf. § 4.3) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` — **fait** (2026-08-11) |
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`). Le journal est écrit **par Marionnet**, dans le répertoire de travail du projet, et servi par le verbe `log` de l'ép. 3 (cf. § 4.4) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien — **fait** (2026-08-11) |
-| **5** | **Switch : instantané** par la socket mgmt (`port/print`, `hash/print`, `fstp/print`) rendu en JSON | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre |
+| **5** | **Switch : instantané** par la socket mgmt, rendu en JSON — quatre tables et non trois, `vlan/print` ayant rejoint `port/print`, `hash/print` et `fstp/print` (cf. § 4.5) | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre — **fait** (2026-08-11) |
 | **6** | **Capture de console** (sur option, implicite en `--exam`). Trois pistes à départager : `fd:` sur un descripteur ouvert avant `exec`, `tty:` sur un pty, ou l'xterm lancé sous `script(1)` | une image dont l'`init` est volontairement cassé laisse une trace côté hôte, là où le hostfs reste **vide** |
 | **7** | **Réanimer le mode examen** : le prologue produit `bash_history.text` (et `report.html`) ; l'import déjà câblé du § 2.4 cesse d'être mort ; le journal de console rejoint les documents | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` |
 | **8** | **Documentation + exemples exécutables + banc** `journal-bench.sh` : « tous les services démarrent », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
@@ -400,6 +400,98 @@ nouveau, « jamais démarré » jusqu'au prochain lancement. Corriger cela deman
 de renommage que seuls machines et routeurs ont (pour leur hostfs) ; le prix n'en vaut pas la
 peine tant que le journal est vivant et refait à chaque démarrage.
 
+### 4.5 Ce que l'épisode 5 a livré (et pourquoi la méthode ne vit pas où on l'attendait)
+
+Le verbe `switch-info` est le **miroir** de `log`, et c'est ce qui décide de tout le reste : `log`
+sert ce qu'un composant a **écrit** — un fichier, qui lui survit —, `switch-info` demande ce qu'un
+switch **sait**, qui n'est écrit nulle part et n'existe que dans le processus vivant. D'où deux
+verbes et non un, d'où la même orthographe (`switch-info <switch> [<table>|--table=<table>]`,
+décalquée de `log` et de `rc-get`), et d'où le refus, quand le switch est éteint, qui renvoie
+vers `log` : des deux, un seul survit à l'extinction.
+
+**Le protocole a de nouveau été mesuré avant d'être analysé**, sur le même `vde_switch 2.3.2`
+qu'à l'épisode 4, et c'est la mesure qui a fixé le nombre de tables :
+
+| Nom (le nôtre) | Commande (celle de vde) | Ce qu'elle répond |
+|---|---|---|
+| `ports` | `port/print` | qui est branché où, et combien est passé — un port porte ses compteurs et ses *endpoints* |
+| `macs` | `hash/print` | quelle MAC apprise sur quel port, et depuis combien de temps |
+| `vlans` | `vlan/print` | quel VLAN existe, et quel port lui appartient (taggé ou non) |
+| `fstp` | `fstp/print` | l'arbre couvrant — **ou le fait qu'il est désactivé**, que la mesure a montré caché en fin de la ligne d'en-tête (`FST DATA VLAN 0000 ROOTSWITCH FSTP IS DISABLED`) |
+
+`vlan/print` ne figurait pas dans D4 ; il y a été ajouté parce que c'est **la table qui répond à
+l'épisode 4** : un rc de switch configure des VLAN, et rien jusqu'ici ne permettait de vérifier
+que la configuration avait pris — le banc le mesure maintenant en recoupant les deux épisodes
+(le VLAN 5 créé par le rc apparaît dans l'instantané). Sans nom d'aucune sorte, les quatre
+tables partent en **un seul aller-retour** : c'est la première question d'un agent (« tout sur
+`sw1` »), et la lui faire payer d'une boucle sur une liste qu'il devrait connaître serait la
+punir de ne pas connaître la grammaire.
+
+**Chaque table porte les deux moitiés** : `entries`, les lignes analysées en objets JSON, et
+`lines`, les mots du switch tels quels. Les premières sont ce qui rend le discriminant écrivable
+(`select(.mac == …)` plutôt qu'une expression rationnelle dans une chaîne échappée) ; les
+secondes sont ce qui empêche notre analyseur d'être une perte : si vde change une colonne, le
+canal continue de servir ce que le switch a dit. Les analyseurs lisent des **mots**, jamais des
+regexps — `Str` garde son dernier appariement dans un global, ce sur quoi un lecteur qui tourne
+dans le thread d'une connexion n'a rien à parier —, et la moitié des champs sont déjà écrits
+`clé=valeur` par vde lui-même. Une table que le switch **refuse** porte son code et ses mots,
+et aucune entrée : publier une liste vide là où la vérité est « il a dit non » serait un mensonge.
+
+**Le point de conception de l'épisode ne s'est pas révélé où on l'attendait.** Le plan disait :
+une méthode `management_socket_if_any` sur l'ancêtre commun du niveau utilisateur, redéfinie dans
+`switch.ml`, jumelle de `rc_journal_file_if_any` (épisode 4). C'est faux, et le compilateur l'a
+dit tout de suite : la valeur d'instance `state` — l'automate qui **porte** le device simulé —
+n'est pas dans l'interface (`user_level.mli` ne déclare que des méthodes), donc **aucune
+sous-classe d'un autre module ne peut la lire**. La méthode ne peut donc pas vivre dans
+`component`, où vivent ses deux cousines : elle vit dans `simulated_device`, là où l'état est.
+
+Et une fois là, elle n'a plus besoin d'être redéfinie **nulle part** : `get_management_socket_name`,
+ajoutée à la classe `device` du niveau simulation avec `None` pour défaut, répond déjà pour tous
+les autres genres — un hub compris, qui fait tourner le **même** `vde_switch` mais que Marionnet
+lance sans socket de management. Une définition, aucun cas particulier. Le nom porte la seconde
+moitié de la leçon : `management_socket_if_running`, pas `_if_any`, parce que le device existe
+aussi quand le composant est **éteint** (il est créé avant d'être lancé) et quand il est
+**suspendu** — et un switch suspendu par SIGSTOP ne répondrait pas : il ferait expirer le délai
+de lecture. Ce que la méthode refuse de dire, le serveur le dit en mots, puisqu'il lit l'état de
+toute façon.
+
+**Quatre refus, quatre nouvelles différentes** — le critère du chantier depuis l'épisode 3 : un
+composant inconnu ; une **machine** ou un routeur, à qui l'on rappelle qu'ils répondent en
+écrivant (`log`) ; un **hub**, à qui l'on dit qu'il fait tourner le même programme sans la socket
+qui permettrait de l'interroger ; un switch **arrêté ou suspendu**, à qui l'on dit que ces tables
+sont la mémoire d'un processus, et que ce qu'il a dit à son démarrage, lui, se lit encore. Le
+quatrième cas — le switch qui ne répond pas dans le délai — est le seul à ne pas être un
+`bad_argument` : c'est un `timeout`, et il nomme la socket.
+
+**6ᵉ application de la règle d'unicité** : `help` publie `switch_tables`, la complétion Bash le
+**demande** au lieu d'en tenir copie, et les noms de switchs qu'elle propose viennent de la
+session vivante (`ls`, filtré sur le genre) — parce que le verbe ne s'applique qu'à eux. Les deux
+refus de forme que `switch-info` partage avec `log` (option mal tapée, choix donné deux fois) ont
+été **sortis** des deux clauses d'aiguillage : ils sont maintenant écrits une fois
+(`optional_choice_of`), de sorte qu'un troisième verbe de la même forme ne puisse pas en dériver.
+
+Les deux bornes de l'épisode 4 valent telles quelles, et pour la même raison : on lit un processus
+qu'on ne contrôle pas (5 s de délai de réception, 4096 lignes par réponse). Rien n'est écrit sur
+disque — un instantané, c'est **maintenant** —, et le flux `debug/add` reste en réserve (D4).
+
+**Mesure** : `journal-bench.sh` § J11 — **22 assertions sans démarrer une seule UML** (la
+grammaire, les refus, les quatre tables, le recoupement avec l'épisode 4 ; banc entier en `E2E=0` :
+**89 assertions, 0 échec**), puis **9 de plus** pour le discriminant en bout en bout (banc entier
+en `E2E=0 E2E_SNAP=1` : **98 assertions, 0 échec**) : une machine trixie câblée à `sw1`, démarrée,
+dont la MAC lue dans le treeview `ifconfig` apparaît dans la table `macs` de `sw1` **avec son port
+et son âge** — et **pas** dans celle de `sw2`, allumé au même moment, sans câble. Le témoin est ce
+qui fait la preuve : sans lui, une table pleine ne dirait pas de quel switch elle parle. Complétion :
+`completion-bench.sh` § L22, **58 assertions** (53 avant), dont le discriminant historique du § L18
+— les verbes proposés sont **exactement** ceux que `help` publie.
+
+Le premier passage du bout en bout a échoué, et **pas** sur le mécanisme : la machine de mesure
+avait été créée **sans configuration de démarrage**. Or le marqueur `marionnet-guest-ready`
+n'est écrit par personne d'autre que le scénario, et un invité qui n'a rien à faire peut n'émettre
+**aucune trame** — donc `wait --ready` expirait, et la table des MAC était légitimement vide
+pendant que celle des **ports** montrait déjà l'endpoint du câble. Le scénario de mesure fait
+maintenant les deux : un `ping` vers un voisin **inexistant** (la requête ARP part en diffusion
+avec notre MAC en source, sans qu'aucun pair n'ait à répondre), puis le marqueur.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -561,3 +653,40 @@ quelques secondes. Trois commandes suffisent à le tenir — une qui réussit, u
 fautive, une qui rend des données —, et les lignes de la troisième prouvent que la première a
 réellement pris effet **dans** le switch. La ligne d'échec reprend la forme des épisodes 1 et 2
 (`^!! FAILED`) : un seul `grep` répond désormais pour une machine, un routeur et un switch.
+
+### 2026-08-11 — Épisode 5 : l'instantané du switch
+
+Le verbe `switch-info` est le **miroir** de `log` : celui-ci sert ce qu'un composant a **écrit**,
+celui-là demande ce qu'un switch **sait** — quatre tables (`ports`, `macs`, `vlans`, `fstp`) qui
+n'existent que dans le processus vivant et que rien n'écrit nulle part. D'où le refus, quand le
+switch est éteint, qui renvoie vers `log` : des deux, un seul survit à l'extinction. Le protocole
+a de nouveau été **mesuré avant** d'être analysé, et la mesure a ajouté une quatrième table à
+celles que D4 prévoyait : `vlan/print` est la table qui **répond à l'épisode 4** — un rc de switch
+configure des VLAN, et rien ne permettait jusqu'ici de vérifier que la configuration avait pris.
+
+Chaque table porte les **deux moitiés** : `entries` analysées en objets JSON (ce qui rend le
+discriminant écrivable) et `lines`, les mots du switch tels quels (ce qui empêche notre analyseur
+d'être une perte). Les analyseurs lisent des **mots**, pas des expressions rationnelles : `Str`
+garde son dernier appariement dans un global, ce sur quoi un lecteur qui tourne dans le thread
+d'une connexion n'a rien à parier.
+
+Le point de conception ne s'est **pas** révélé où on l'attendait. Le plan calquait l'épisode 4 —
+une méthode sur l'ancêtre du niveau utilisateur, redéfinie dans `switch.ml` — et c'était faux : la
+valeur d'instance `state`, qui porte le device simulé, n'est pas dans `user_level.mli`, donc
+**aucune sous-classe d'un autre module ne peut la lire**. La méthode vit donc dans
+`simulated_device`, là où l'état est ; et une fois là, elle n'est redéfinie **nulle part**, parce
+que `get_management_socket_name` (ajoutée à la classe `device` avec `None` pour défaut) répond
+déjà pour tous les autres genres — un **hub** compris, qui fait tourner le même `vde_switch` sans
+socket de management. Le nom dit le reste : `management_socket_if_running`, parce que le device
+existe aussi **éteint** (créé avant d'être lancé) et **suspendu** (SIGSTOP : il ferait expirer le
+délai de lecture). Ce que la méthode refuse de dire, le serveur le dit en mots (§ 4.5).
+
+**22 assertions sans UML** (`journal-bench.sh` § J11 ; banc entier `E2E=0` : 89, 0 échec) et **9
+de plus** pour le discriminant, qui demande une vraie machine (banc entier `E2E=0 E2E_SNAP=1` :
+98, 0 échec) : la MAC de `m5` est apprise par `sw1`, avec son **port** et son **âge**, et `sw2` —
+allumé au même moment, sans câble — ne la connaît pas. Le seul échec du premier passage était
+dans le **banc** : une machine sans rc n'écrit pas le marqueur de `wait --ready` et peut n'émettre
+aucune trame ; le scénario de mesure émet maintenant une requête ARP vers un voisin inexistant,
+puis signale. La complétion Bash demande le nouveau vocabulaire au serveur (6ᵉ application de la
+règle d'unicité) et ne propose que des **switchs** après ce verbe : `completion-bench.sh` § L22,
+58 assertions.

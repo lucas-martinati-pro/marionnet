@@ -303,6 +303,11 @@ let arity_of_command : (string * arity) list =
        component keeps beside its fields. Which files there are is published by [help]. *)
     ("log",           component_and_field
                         "log <component> [<file>|--file=<file>] [--tail=<n>]");
+    (* Episode 5. Same shape as [log], one letter of grammar apart, because it is the same
+       gesture on the other side of the mirror: [log] serves what a component *wrote*, this
+       serves what a switch *knows*. Which tables there are is published by [help]. *)
+    ("switch-info",   component_and_field
+                        "switch-info <switch> [<table>|--table=<table>]");
     ("wait",          one_component
                         "wait <component> (--state=on|off|sleeping | --ready) [--timeout=<s>]");
     ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
@@ -359,7 +364,13 @@ let cmd_help ~(verb:string option) : string =
         | None   -> [ ("kinds",      jlist (List.map jstr known_kinds));
                       ("actions",    jlist (List.map jstr known_actions));
                       ("beyond_gui", jlist (List.map jstr beyond_gui_actions));
-                      ("logs",       jlist (List.map jstr journal_file_names)) ]
+                      ("logs",       jlist (List.map jstr journal_file_names));
+                      (* Episode 5 of `journalisation-profonde', 6th application of the same
+                         rule: the tables of [switch-info] are named by switch.ml, which knows
+                         the vde commands behind them, and published here — nowhere else. *)
+                      ("switch_tables",
+                         jlist (List.map jstr
+                                  Switch.Simulation_level_switch.snapshot_table_names)) ]
       in
       reply_ok ([ ("count",    jint (List.length commands));
                   ("commands", jlist (List.map json_of_command commands)) ] @ vocabularies)
@@ -2361,6 +2372,151 @@ let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:stri
                      wait --ready" name basename path))
         (ask ~timeout (fun () -> find_journal_source st ~name))
 
+(* --- switch-info: what a switch knows *now* ---------------------- *)
+
+(* Episode 5 of `journalisation-profonde'. The verb next to [log], and its opposite: [log] serves
+   what was *written* — a file, which outlives the component — while this one asks what the
+   switch *knows*, which exists only inside a running vde_switch and is written down nowhere.
+   Hence a component which has both (a switch answers [log] after its poweroff, and [switch-info]
+   only before it), and hence the refusal below naming the other verb when the switch is down.
+
+   Spelled like [log] and [rc-get] — the table positionally *or* through an option — because it
+   is the same gesture: naming one of the few things a component keeps beside its fields. The
+   names of the tables, and the vde commands behind them, belong to switch.ml: this file renders
+   JSON, it does not know what a hash table looks like. *)
+let switch_tables_of (table : string option) : (string list, string) result =
+  let known = Switch.Simulation_level_switch.snapshot_table_names in
+  match table with
+  (* No table named: all of them, in one round trip. Asking a running switch four questions
+     costs four lines on a socket, and a script which wants "everything about sw1" — the first
+     thing an agent asks — would otherwise have to know the list to loop over it. *)
+  | None -> Ok known
+  | Some t when List.mem t known -> Ok [ t ]
+  | Some t ->
+      Error (Printf.sprintf
+               "no table named %S; a switch answers about %s (help publishes them as \
+                \"switch_tables\")" t (String.concat ", " known))
+
+(* What [switch-info] is aiming at, as the GTK slot finds it. Four cases and not two, because
+   the three ways of failing are three different pieces of news for the script which is going to
+   read them — the criterion of this work-stream since episode 3. *)
+type switch_target =
+  | Sw_absent                (* no component of that name at all *)
+  | Sw_other  of string      (* a component, but not a switch: its kind *)
+  | Sw_idle   of string      (* a switch which cannot answer: its state, in script words *)
+  | Sw_socket of string      (* a running switch: the path of its management socket *)
+
+let find_switch (st : State.globalState) ~(name:string) : switch_target =
+  match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+  | Some n when n#string_of_devkind <> "switch" -> Sw_other n#string_of_devkind
+  | Some n ->
+      (match n#management_socket_if_running with
+       | Some socketfile -> Sw_socket socketfile
+       | None            -> Sw_idle (script_state_of_raw n#state_as_string))
+  | None ->
+  match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+  | Some _ -> Sw_other "cable"
+  | None   -> Sw_absent
+
+let rec json_of_vde_value (v : Switch.Simulation_level_switch.vde_value) : string =
+  let open Switch.Simulation_level_switch in
+  match v with
+  | Vstr  s  -> jstr s
+  | Vint  i  -> jint i
+  | Vbool b  -> jbool b
+  | Vobj  fs -> jobj  (List.map (fun (k, v) -> (k, json_of_vde_value v)) fs)
+  | Vlist l  -> jlist (List.map json_of_vde_value l)
+
+(* Both halves of what the switch answered: [entries] for a script which knows what it wants
+   (jq selects a MAC by its address), [lines] because they are the switch's own words and no
+   parser of ours is a reason to lose them. A table which the switch refused carries its code
+   and its message, and no entries at all — see [ask_vde_switch_snapshot]. *)
+let json_of_vde_table (t : Switch.Simulation_level_switch.vde_table) : string =
+  let open Switch.Simulation_level_switch in
+  jobj [ ("name",    jstr t.vt_name);
+         ("command", jstr t.vt_command);
+         ("ok",      jbool (t.vt_code = 1000));
+         ("code",    jint t.vt_code);
+         ("message", jstr t.vt_message);
+         ("count",   jint (List.length t.vt_entries));
+         ("entries", jlist (List.map
+                              (fun row -> jobj (List.map
+                                                  (fun (k, v) -> (k, json_of_vde_value v)) row))
+                              t.vt_entries));
+         ("lines",   jlist (List.map jstr t.vt_lines)) ]
+
+let cmd_switch_info (st : State.globalState) ~(timeout:float) ~(name:string)
+                    ~(table:string option) : string
+  =
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"switch-info expects the name of a switch"
+  else
+  match switch_tables_of table with
+  | Error detail -> reply_error ~code:"bad_argument" ~detail
+  | Ok tables ->
+      (* The GTK slot buys the location, and only that: the exchange with vde_switch happens in
+         this thread, exactly as the reading of a journal does. It has to — four commands, each
+         of which may wait up to the receive timeout, is not something to run in the thread which
+         draws the network. *)
+      reply_of_outcome
+        (function
+         | Sw_absent ->
+             reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+         | Sw_other kind ->
+             reply_error ~code:"bad_argument"
+               ~detail:(Printf.sprintf
+                          "%S is a %s: switch-info applies to a switch, the only kind Marionnet \
+                           gives a management socket — a hub runs the very same vde_switch \
+                           without one, and a machine or a router answers by writing (see log)"
+                          name kind)
+         | Sw_idle state ->
+             reply_error ~code:"bad_argument"
+               ~detail:(Printf.sprintf
+                          "%S is %s: these tables are the memory of a running vde_switch and \
+                           exist nowhere else — start it (or resume it) and ask again. What it \
+                           did say at startup outlives it, though: see log %s" name state name)
+         | Sw_socket socketfile ->
+             (match Switch.Simulation_level_switch.ask_vde_switch_snapshot ~socketfile ~tables with
+              | Error (Unix.Unix_error ((Unix.EAGAIN | Unix.EWOULDBLOCK | Unix.ETIMEDOUT), _, _)) ->
+                  reply_error ~code:"timeout"
+                    ~detail:(Printf.sprintf
+                               "%S did not answer on its management socket (%s) within %.1fs"
+                               name socketfile
+                               Switch.Simulation_level_switch.vde_answer_timeout)
+              | Error e ->
+                  reply_error ~code:"internal"
+                    ~detail:(Printf.sprintf "the exchange with the vde_switch of %S (%s) failed: %s"
+                               name socketfile (Printexc.to_string e))
+              | Ok answered ->
+                  reply_ok [ ("component", jstr name);
+                             ("socket",    jstr socketfile);
+                             ("tables",    jlist (List.map json_of_vde_table answered));
+                             (* The vocabulary of this component, as [log] publishes its own. *)
+                             ("available", jlist (List.map jstr
+                                                    Switch.Simulation_level_switch.snapshot_table_names)) ]))
+        (ask ~timeout (fun () -> find_switch st ~name))
+
+(* The two refusals [log] (episode 3) and [switch-info] (episode 5) share, because they share a
+   shape: one optional choice, spelled positionally or as an option. A mistyped --tial= would
+   serve 400 lines while the client believed it asked for 20, and a choice given twice would
+   have one of its two answers picked in silence. Written once so that a third verb of the same
+   shape cannot drift from them. *)
+let optional_choice_of (r : request) ~(verb:string) ~(option_name:string) ~(what:string)
+                       ~(other_options:string list) : (string option, string) result
+  =
+  let syntax () =
+    match List.assoc_opt verb arity_of_command with Some a -> a.syntax | None -> verb in
+  match List.filter (fun (k, _) -> not (List.mem k (option_name :: other_options))) r.opts with
+  | (k, _) :: _ ->
+      Error (Printf.sprintf "no option --%s here; syntax: %s" k (syntax ()))
+  | [] ->
+      (match option_value r option_name, arg_opt r 1 with
+       | Some _, Some _ ->
+           Error (Printf.sprintf
+                    "the %s is given twice (positional argument and --%s): give it once"
+                    what option_name)
+       | opt, pos -> Ok (match opt with None -> pos | some -> some))
+
 (* Opening a project is *not* delegated to the GTK main thread, and this is deliberate:
    called from a thread which is not gtk_main, [open_project_async] performs the whole
    loading in the calling thread (state.ml:594-596) — the very case that test provides
@@ -3598,33 +3754,22 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | verb when List.mem verb transition_all_commands ->
                 (cmd_transition_all st ~timeout ~action:verb, `Continue)
             (* Episode 3 of `journalisation-profonde'. Two refusals, both for the same reason a
-               journal is asked for at all — to find out what went wrong: a mistyped --tial= would
-               serve 400 lines while the client believed it asked for 20, and a file given twice
-               would have one of the two answers chosen in silence. *)
+               journal is asked for at all — to find out what went wrong; episode 5 gave them to
+               [switch-info] too, hence [optional_choice_of], where they are now written. *)
             | "log" ->
-                (match List.filter
-                         (fun (k, _) -> not (List.mem k [ "timeout"; "file"; "tail" ])) r.opts
-                 with
-                 | (k, _) :: _ ->
-                     (reply_error ~code:"bad_argument"
-                        ~detail:(Printf.sprintf
-                                   "no option --%s here; syntax: %s" k
-                                   (match List.assoc_opt "log" arity_of_command with
-                                    | Some a -> a.syntax
-                                    | None   -> "log")),
-                      `Continue)
-                 | [] ->
-                     (match option_value r "file", arg_opt r 1 with
-                      | Some _, Some _ ->
-                          (reply_error ~code:"bad_argument"
-                             ~detail:"the journal is given twice (positional argument and \
-                                      --file): give it once",
-                           `Continue)
-                      | opt, pos ->
-                          (cmd_log st ~timeout ~name:(arg0 r)
-                             ~file:(match opt with None -> pos | some -> some)
-                             ~tail:(option_value r "tail"),
-                           `Continue)))
+                ((match optional_choice_of r ~verb:"log" ~option_name:"file" ~what:"journal"
+                          ~other_options:[ "timeout"; "tail" ] with
+                  | Error detail -> reply_error ~code:"bad_argument" ~detail
+                  | Ok file      -> cmd_log st ~timeout ~name:(arg0 r) ~file
+                                      ~tail:(option_value r "tail")),
+                 `Continue)
+            (* Episode 5: what the switch knows now, as opposed to what it wrote down. *)
+            | "switch-info" ->
+                ((match optional_choice_of r ~verb:"switch-info" ~option_name:"table"
+                          ~what:"table" ~other_options:[ "timeout" ] with
+                  | Error detail -> reply_error ~code:"bad_argument" ~detail
+                  | Ok table     -> cmd_switch_info st ~timeout ~name:(arg0 r) ~table),
+                 `Continue)
             (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
                it bounds the wait, not the round trip to the GTK main thread. Hence the
                distinct default, and hence [timeout] being reused only when the client did

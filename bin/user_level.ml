@@ -158,6 +158,26 @@ class virtual ['parent] simulated_device () = object(self)
     | Some (sd) -> sd#get_hublet_process_of_port index
     | None      -> failwith "looking for a hublet when its device is non-existing"
 
+  (* Where a script can ask this component what it knows *now*, as opposed to what it wrote down
+     ([hostfs_directory_if_any] and [rc_journal_file_if_any] on [component] below). Episode 5 of
+     `journalisation-profonde': a switch keeps tables no file ever receives — which ports are up,
+     which MAC it learnt on which one, which VLAN is forwarding — and vde_switch publishes them
+     on its management socket. Every other kind answers [None], and so does a switch in every
+     state but [On]: the socket exists only while the process runs, and a suspended one
+     (SIGSTOP'ed) would not answer at all — the reader would simply time out. Hence the name,
+     [_if_running] rather than [_if_any], and hence the match on the state rather than on
+     [Simulated_device.device_opt]: the device object is there while the component is Off too.
+     It lives here, and not on [component] where its two cousins are, because *here* is where
+     the state is: [component] does not inherit this class, and the instance variable is not
+     part of the interface (user_level.mli), so no subclass in another module could read it.
+     No kind redefines it: [get_management_socket_name] already answers [None] for all of them
+     but the switch (simulation_level.ml). *)
+  method management_socket_if_running : string option =
+    let open Simulated_device in
+    match !state with
+    | On d -> d#get_management_socket_name
+    | No_device | Off _ | Sleeping _ -> None
+
   (** Create a new simulated device according to the current status *)
   method virtual make_simulated_device : 'parent Simulation_level.device
 

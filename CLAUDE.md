@@ -202,7 +202,17 @@ Reprise : appliquer le skill `chantier-long`.
   un seul `grep` répond pour machine, routeur **et** switch. Pièges neufs : **lire la réponse *est*
   le cadencement** de l'envoi — l'ancien code jetait et compensait par un délai — et une lecture
   sur cette socket doit être bornée en temps, sinon un switch muet retient thread et connexion pour
-  la vie du projet). Deux faits mesurés qui commandent tout
+  la vie du projet) ; **ép. 5 fait 2026-08-11** (l'**instantané** : verbe `switch-info <switch>
+  [<table>|--table=<table>]`, **miroir** de `log` — l'un sert ce qui a été *écrit* et survit à
+  l'extinction, l'autre demande ce que le switch *sait*, qui n'existe que pendant la marche ;
+  **quatre** tables (`ports`, `macs`, `vlans`, `fstp`), `vlan/print` ayant rejoint les trois de D4
+  parce que c'est elle qui **répond à l'épisode 4** ; chaque table porte `entries` (analysé) *et*
+  `lines` (les mots du switch), et les analyseurs lisent des **mots** — `Str` n'est pas réentrant.
+  Piège neuf, structurel : une **valeur d'instance n'est pas dans l'interface**, donc `val state`
+  est invisible depuis une sous-classe d'un autre module — la méthode a déménagé dans
+  `simulated_device`, où elle n'est redéfinie *nulle part*, `get_management_socket_name` sur la
+  classe `device` répondant déjà `None` pour tous les autres genres, hub compris). Deux faits
+  mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
   **épilogue** s'injectent depuis l'hôte **sans reconstruire aucune image** — d'où **aucune

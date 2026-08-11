@@ -431,6 +431,13 @@ class switch =
             ~working_directory:(network#project_working_directory)
             ~name:(self#get_name))
 
+  (* Episode 5 of `journalisation-profonde' asks the counterpart of the journal above, and its
+     opposite in every respect: that one is a file, written once, readable long after the switch
+     was stopped; the tables of vde_switch live on a socket, and only while it runs. No method
+     is redefined here for them — [management_socket_if_running] (user_level.ml) is written once,
+     where the automaton state is, and [get_management_socket_name] (simulation_level.ml) already
+     answers [None] for every kind but this one. *)
+
   method! set_rc_content ~basename ~content =
     if basename <> rc_config_file then false else
     let () = self#set_rc_config ((fst rc_config), content) in
@@ -711,6 +718,301 @@ let send_commands_to_vde_switch_and_journal ~socketfile ~commands ~name ~journal
             Printf.fprintf oc "# the exchange with vde_switch was interrupted: %s\n"
               (Printexc.to_string e));
        Printf.fprintf oc "# done: %d command(s) sent, %d failed\n" !sent !failed)
+
+
+(* --------------------------------------------------------------------------------------- *)
+(* Episode 5 of `journalisation-profonde': what the switch knows *now*.                      *)
+(* --------------------------------------------------------------------------------------- *)
+
+(* Same socket, same reader, same two bounds as the episode above — what changes is the
+   direction. A journal says what *we* did; these tables say what the switch *learnt*, and no
+   file anywhere receives them: they exist only while it runs, and only inside it.
+
+   The four tables, and the question each one answers:
+
+     ports  port/print  who is plugged where, and how much went through
+     macs   hash/print  which MAC was learnt on which port — "is m1 seen where it is cabled?"
+     vlans  vlan/print  which VLAN exists, and which port belongs to it (tagged or not)
+     fstp   fstp/print  the spanning tree — or the plain fact that it is disabled
+
+   The short names are ours (they are what [help] publishes and what a client types), the
+   commands are vde's. The pairing is stated here, and only here, because this is the only place
+   which speaks both languages: the control server owns the JSON, this file owns the protocol. *)
+let snapshot_tables = [
+  ("ports", "port/print");
+  ("macs",  "hash/print");
+  ("vlans", "vlan/print");
+  ("fstp",  "fstp/print");
+  ]
+
+let snapshot_table_names = List.map fst snapshot_tables
+
+(* A parsed row, in the only shape the two sides have to agree upon. Deliberately not a JSON
+   type: this file would then have to know how a string is escaped, which is the control
+   server's business — and the control server would have to know what a vde table looks like,
+   which is this file's. Five constructors are the whole contract. *)
+type vde_value =
+  | Vstr  of string
+  | Vint  of int
+  | Vbool of bool
+  | Vobj  of (string * vde_value) list
+  | Vlist of vde_value list
+
+type vde_table = {
+  vt_name    : string;                          (* ours: "macs" *)
+  vt_command : string;                          (* vde's: "hash/print" *)
+  vt_code    : int;                             (* 1000, or what the switch refused with *)
+  vt_message : string;                          (* the switch's own words *)
+  vt_lines   : string list;                     (* what it said, word for word *)
+  vt_entries : (string * vde_value) list list;  (* ... and what we could make of it *)
+  }
+
+(* The parsers below read *tokens*, not regexps, and that is not a matter of taste: Str keeps
+   its last match in a global, which a reader running in a connection's own thread has no
+   business relying on. Every line of these tables is a sequence of words, half of them already
+   spelled "key=value" by vde itself. *)
+let split_on_blanks (s:string) : string list =
+  let s = String.map (function '\t' -> ' ' | c -> c) s in
+  List.filter (fun t -> t <> "") (String.split_on_char ' ' s)
+
+(* Numbers arrive zero-padded ("VLAN 0000", "port: 001"): [int_of_string] reads them as decimal,
+   and what is not a number (a MAC, a role) stays a string. *)
+let vde_value_of_string (s:string) : vde_value =
+  match int_of_string_opt s with Some i -> Vint i | None -> Vstr s
+
+(* "tagged=0" -> ("tagged", Vint 0). [None] on a token which is not a field at all. *)
+let field_of_token (t:string) : (string * vde_value) option =
+  match String.index_opt t '=' with
+  | None   -> None
+  | Some 0 -> None
+  | Some i ->
+      Some (String.sub t 0 i,
+            vde_value_of_string (String.sub t (i+1) (String.length t - i - 1)))
+
+(* vde spells its flags 0/1; a script reading JSON expects true/false. The keys are named
+   because only the keys can tell: nothing in "tagged=0" says it is a flag. *)
+let boolean_keys = [ "tagged"; "active" ]
+
+let booleanise (fields : (string * vde_value) list) : (string * vde_value) list =
+  List.map
+    (function
+     | (k, Vint n) when List.mem k boolean_keys -> (k, Vbool (n <> 0))
+     | field -> field)
+    fields
+
+(* "... age 3 secs" -> the value which follows the word [key]. *)
+let value_after (key:string) (tokens:string list) : vde_value option =
+  let rec loop = function
+    | k :: v :: _ when k = key -> Some (vde_value_of_string v)
+    | _ :: rest                -> loop rest
+    | []                       -> None
+  in
+  loop tokens
+
+(* "rootport 0000 cost 0 age 48 bonusport 0000 bonuscost 0": key, value, key, value... *)
+let rec pairs_of_tokens = function
+  | k :: v :: rest -> (k, vde_value_of_string v) :: pairs_of_tokens rest
+  | _              -> []
+
+(* port/print — one entry per port, spread over several lines:
+
+     Port 0001 untagged_vlan=0000 ACTIVE - Unnamed Allocatable
+      Current User: jean Access Control: (User: NONE - Group: NONE)
+      IN:  pkts          3          bytes                  180
+      OUT: pkts          2          bytes                  106
+       -- endpoint ID 0003 module unix prog   : vdeplug: user=jean pid=1793216
+
+   The [Current User] line is left to [lines]: it says who owns the *host* process, which is not
+   a question anyone asks a switch. The endpoints are the interesting part — that is where the
+   cable of a running machine shows up. *)
+let parse_ports (lines : string list) : (string * vde_value) list list =
+  let entries = ref [] and fields = ref [] and endpoints = ref [] in
+  let flush () =
+    (match !fields with
+     | [] -> ()
+     | fs -> entries := (fs @ [ ("endpoints", Vlist (List.rev !endpoints)) ]) :: !entries);
+    fields := []; endpoints := []
+  in
+  let counters prefix tokens =
+    List.filter_map
+      (fun key ->
+         match value_after key tokens with
+         | Some v -> Some (prefix ^ "_" ^ key, v)
+         | None   -> None)
+      [ "pkts"; "bytes" ]
+  in
+  (* "ID 0003 module unix prog   : vdeplug: user=jean pid=1793216" *)
+  let endpoint_of tokens =
+    let rec after_colon = function
+      | ":" :: rest -> Some (String.concat " " rest)
+      | _   :: rest -> after_colon rest
+      | []          -> None
+    in
+    let field k = match value_after k tokens with Some v -> [ (String.lowercase_ascii k, v) ] | None -> [] in
+    Vobj ((field "ID") @ (field "module")
+          @ (match after_colon tokens with Some d -> [ ("description", Vstr d) ] | None -> []))
+  in
+  List.iter
+    (fun line ->
+       match split_on_blanks line with
+       | "Port" :: n :: tail ->
+           flush ();
+           (* Whatever is neither a field nor the separator is a flag: ACTIVE, Unnamed,
+              Allocatable. Kept as they are — a list we do not interpret cannot go stale. *)
+           let flags = List.filter (fun t -> t <> "-" && field_of_token t = None) tail in
+           fields :=
+             [ ("port",   vde_value_of_string n);
+               ("active", Vbool (List.mem "ACTIVE" flags)) ]
+             @ (List.filter_map field_of_token tail)
+             @ [ ("flags", Vlist (List.map (fun f -> Vstr f) flags)) ]
+       | "IN:"  :: tail -> fields := !fields @ (counters "in"  tail)
+       | "OUT:" :: tail -> fields := !fields @ (counters "out" tail)
+       | "--" :: "endpoint" :: tail -> endpoints := (endpoint_of tail) :: !endpoints
+       | _ -> ())
+    lines;
+  flush ();
+  List.rev !entries
+
+(* hash/print — one line per learnt address, and this is the table the episode is about:
+
+     Hash: 0086 Addr: 02:00:00:00:00:11 VLAN 0000 to port: 001  age 3 secs
+
+   The bucket number is dropped: it is an implementation detail of the hash table, and keeping
+   it would invite a script to believe it means something. *)
+let parse_macs (lines : string list) : (string * vde_value) list list =
+  List.filter_map
+    (fun line ->
+       let tokens = split_on_blanks line in
+       match tokens with
+       | "Hash:" :: _ ->
+           (match value_after "Addr:" tokens with
+            | None     -> None
+            | Some mac ->
+                let field name key =
+                  match value_after key tokens with Some v -> [ (name, v) ] | None -> []
+                in
+                Some ([ ("mac", mac) ] @ (field "vlan" "VLAN") @ (field "port" "port:")
+                      @ (field "age" "age")))
+       | _ -> None)
+    lines
+
+(* vlan/print — the VLANs which exist, and the ports which belong to them:
+
+     VLAN 0000
+      -- Port 0001 tagged=0 active=1 status=Forwarding
+
+   This is the table which says whether the rc of episode 4 took effect: `vlan/create 5' shows
+   up here, and so does every port the scenario added to it. *)
+let parse_vlans (lines : string list) : (string * vde_value) list list =
+  let entries = ref [] and fields = ref [] and ports = ref [] in
+  let flush () =
+    (match !fields with
+     | [] -> ()
+     | fs -> entries := (fs @ [ ("ports", Vlist (List.rev !ports)) ]) :: !entries);
+    fields := []; ports := []
+  in
+  List.iter
+    (fun line ->
+       match split_on_blanks line with
+       | "VLAN" :: n :: _ ->
+           flush ();
+           fields := [ ("vlan", vde_value_of_string n) ]
+       | "--" :: "Port" :: n :: tail ->
+           ports := Vobj ([ ("port", vde_value_of_string n) ]
+                          @ (booleanise (List.filter_map field_of_token tail))) :: !ports
+       | _ -> ())
+    lines;
+  flush ();
+  List.rev !entries
+
+(* fstp/print — the spanning tree, per VLAN:
+
+     FST DATA VLAN 0000 ROOTSWITCH [FSTP IS DISABLED]
+      ++ root 80:00:00:ff:0b:14:0f:3e
+      ++ designated ff:ff:ff:ff:ff:ff:ff:ff
+      ++ rootport 0000 cost 0 age 48 bonusport 0000 bonuscost 0
+      -- Port 0001 tagged=0 portcost=20000000 role=Designated
+
+   The header carries two facts a script would otherwise have to guess: whether this switch is
+   the root, and whether the protocol is running at all — measured, that second one only shows
+   up as the words FSTP IS DISABLED at the end of the very same line. The [++] lines are plain
+   key/value sequences, which is why they need no parser of their own. *)
+let parse_fstp (lines : string list) : (string * vde_value) list list =
+  let entries = ref [] and fields = ref [] and ports = ref [] in
+  let flush () =
+    (match !fields with
+     | [] -> ()
+     | fs -> entries := (fs @ [ ("ports", Vlist (List.rev !ports)) ]) :: !entries);
+    fields := []; ports := []
+  in
+  List.iter
+    (fun line ->
+       match split_on_blanks line with
+       | "FST" :: "DATA" :: "VLAN" :: n :: flags ->
+           flush ();
+           fields := [ ("vlan",         vde_value_of_string n);
+                       ("rootswitch",   Vbool (List.mem "ROOTSWITCH" flags));
+                       ("fstp_enabled", Vbool (not (List.mem "DISABLED" flags))) ]
+       | "++" :: tail ->
+           fields := !fields @ (pairs_of_tokens tail)
+       | "--" :: "Port" :: n :: tail ->
+           ports := Vobj ([ ("port", vde_value_of_string n) ]
+                          @ (booleanise (List.filter_map field_of_token tail))) :: !ports
+       | _ -> ())
+    lines;
+  flush ();
+  List.rev !entries
+
+let snapshot_parser (table:string) : string list -> (string * vde_value) list list =
+  match table with
+  | "ports" -> parse_ports
+  | "macs"  -> parse_macs
+  | "vlans" -> parse_vlans
+  | "fstp"  -> parse_fstp
+  | _       -> (fun _ -> [])   (* an unknown name never gets here: the server checks it first *)
+
+(* Asks the switch, and keeps both what it said and what we made of it. Nothing is written to
+   disk: a snapshot is *now* — the living journal decision D3 speaks of is the file the previous
+   episode writes, and it is a different thing.
+
+   An interrupted exchange is [Error], not a shorter list: the answers of vde are only
+   separable by their status lines, so having lost track of one is having lost track of all the
+   ones after it. Same reason the journal of episode 4 stops instead of resynchronising. *)
+let ask_vde_switch_snapshot ~(socketfile:string) ~(tables : string list)
+  : (vde_table list, exn) result
+  =
+  let commands =
+    List.filter_map
+      (fun name ->
+         match List.assoc_opt name snapshot_tables with
+         | Some command -> Some (name, command)
+         | None         -> None)
+      tables
+  in
+  let collected = ref [] in
+  let protocol (ch:Network.stream_channel) =
+    let (fd, _) = ch#get_IO_file_descriptors in
+    let () = try Unix.setsockopt_float fd Unix.SO_RCVTIMEO vde_answer_timeout with _ -> () in
+    List.iter
+      (fun (name, command) ->
+         Log.printf1 "Asking a switch for its %s\n" command;
+         ch#output_line command;
+         let a = read_vde_switch_answer ch in
+         collected :=
+           { vt_name    = name;
+             vt_command = command;
+             vt_code    = a.va_code;
+             vt_message = a.va_message;
+             vt_lines   = a.va_data;
+             (* A refusal has no table to parse — and pretending otherwise would publish an
+                empty list where the truth is "the switch said no". *)
+             vt_entries = (if a.va_code = 1000 then (snapshot_parser name) a.va_data else []) }
+           :: !collected)
+      commands
+  in
+  match Network.stream_client ~target:(`unix socketfile) ~protocol () with
+  | Either.Right () -> Ok (List.rev !collected)
+  | Either.Left e   -> Error e
 
 
 (** A switch: just a [hub_or_switch] with [hub = false] *)

@@ -1411,6 +1411,17 @@ class virtual ['parent] device
   method get_hublet_process_of_port port_index (* 0-based *) =
     Array.get hublet_process_array port_index
 
+  (* Episode 5 of `journalisation-profonde'. What a script needs, to ask a switch what it knows
+     *now* (which ports are up, which MAC it has learnt on which one), is the path of that
+     switch's management socket — and the only object which knows it is the process created
+     below. Declared here, on the common ancestor, for the same reason [hostfs_directory_if_any]
+     is declared on the user-level one (user_level.ml): the control server asks a component
+     without knowing its kind, and [None] is an answer, not a hole. It is the answer of every
+     kind but the switch — hubs included, which Marionnet spawns with the same [vde_switch] but
+     without a management socket (~management_socket:() appears in switch.ml only).
+     REDEFINED in [hub_or_switch], the only class instantiated with that argument. *)
+  method get_management_socket_name : string option = None
+
 
   method private make_and_spawn_the_hublet_process_array =
     hublet_process_array <-
@@ -1722,7 +1733,7 @@ class virtual ['parent] hub_or_switch =
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback
               ())
 
-  method get_management_socket_name =
+  method! get_management_socket_name =
     (Option.extract main_process)#get_management_socket_name
 
 end;;

@@ -88,6 +88,9 @@ _mrn_actions() { _mrn_jq '.actions[]?'; }
 # The journals `log' serves (episode 3 of `journalisation-profonde'): their short names come from
 # the server too, never from a list held here.
 _mrn_logs()    { _mrn_jq '.logs[]?'; }
+# The tables `switch-info' serves (episode 5): named by switch.ml, published by the server, and
+# read here — 6th application of the rule that the grammar has one source of truth.
+_mrn_switch_tables() { _mrn_jq '.switch_tables[]?'; }
 
 # The published syntax of one verb — the string every derivation below reads.
 _mrn_syntax() { # $1 = verb
@@ -141,6 +144,9 @@ _mrn_placeholders_of() {  # $1 = verb
 # Every component of the open project, cables included: `can` is the view that covers them all.
 _mrn_components() { _mrn_ask -q '.components[].name' can 2>/dev/null; }
 _mrn_nodes()      { _mrn_ask -q '.nodes[].name' ls 2>/dev/null; }
+# Only a switch has a management socket, so `switch-info' offers switches and nothing else. The
+# kind comes from the live session, exactly as the names do.
+_mrn_switches()   { _mrn_ask -q '.nodes[] | select(.kind=="switch") | .name' ls 2>/dev/null; }
 
 # The ports of a node, by their user-visible names. The defects treeview is the one that receives
 # every component, and its second level is the ports.
@@ -210,6 +216,7 @@ _mrn_complete_placeholder() {  # $1 = placeholder, $2 = verb, $3… = the words 
     *'<node>:<port>'*)          _mrn_complete_endpoint ;;
     '<component>'|'<node>'|'<cable>')
                                 _mrn_reply "$(_mrn_components)" ;;
+    '<switch>')                 _mrn_reply "$(_mrn_switches)" ;;
     '<kind>')                   _mrn_reply "$(_mrn_kinds)" ;;
     '<command>')                _mrn_reply "$(_mrn_verbs)" ;;
     '<cow'*)                    _mrn_reply "$(_mrn_cow_files)" ;;
@@ -228,6 +235,8 @@ _mrn_complete_placeholder() {  # $1 = placeholder, $2 = verb, $3… = the words 
     # Same doubled spelling for `log <component> [<file>|--file=<file>]', and the same reason to
     # catch it here: "<file>" means a journal of the guest, not a path of this host.
     '<file>'|'<file>|--file='*) _mrn_reply "$(_mrn_logs)" ;;
+    # And again for `switch-info <switch> [<table>|--table=<table>]' (episode 5).
+    '<table>'|'<table>|--table='*) _mrn_reply "$(_mrn_switch_tables)" ;;
     '<'*'|'*'>')
       # An enumeration published in the syntax itself: <inward|outward>, <leftward|rightward>.
       local alts="${ph#<}"; alts="${alts%>}"
@@ -249,6 +258,8 @@ _mrn_complete_option_value() {  # $1 = "--opt=partial", $2 = verb, $3 = first po
     --file)
       if [[ $verb == log ]]; then _mrn_cur="$partial"; _mrn_reply "$(_mrn_logs)"
       else _mrn_reply_files; fi ;;
+    # --table belongs to the channel alone (switch-info): no client option is spelled that way.
+    --table)   _mrn_cur="$partial"; _mrn_reply "$(_mrn_switch_tables)" ;;
     --from|--grammar|--socket|--ctl) _mrn_reply_files ;;
     --state)
       syn="$(_mrn_syntax "$verb")"

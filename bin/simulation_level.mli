@@ -275,6 +275,9 @@ class virtual ['parent] device :
     method get_hublet_process_list    : hublet_process list
     method get_hublet_process_of_port : int -> hublet_process
     (* --- *)
+    (* [None] on every kind but the switch (episode 5 of `journalisation-profonde'). *)
+    method get_management_socket_name : string option
+    (* --- *)
     method startup             : unit
     method suspend             : unit
     method resume              : unit

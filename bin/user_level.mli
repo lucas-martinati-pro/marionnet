@@ -66,6 +66,10 @@ class virtual ['a] simulated_device :
     method destroy_my_simulated_device : unit
     method destroy_right_now : unit
     method get_hublet_process_of_port : int -> Simulation_level.hublet_process
+    (* [None] unless the component can be *asked* what it knows right now — a switch, and only
+       while it runs: the path of the management socket of its vde_switch (episode 5 of
+       `journalisation-profonde'). *)
+    method management_socket_if_running : string option
     method gracefully_restart : unit
     method gracefully_shutdown : unit
     method gracefully_shutdown_right_now : unit
@@ -263,6 +267,7 @@ class virtual node_with_ports_card :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method rc_journal_file_if_any : string option
+    method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -386,6 +391,7 @@ class virtual node_with_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method rc_journal_file_if_any : string option
+    method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -499,6 +505,7 @@ class virtual node_with_ledgrid_and_defects :
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method rc_journal_file_if_any : string option
+    method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
@@ -666,6 +673,7 @@ class type virtual cable =
     method from_tree : Xforest.node -> Xforest.forest -> unit
     method hostfs_directory_if_any : string option
     method rc_journal_file_if_any : string option
+    method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string

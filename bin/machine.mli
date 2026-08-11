@@ -118,6 +118,8 @@ module User_level_machine : sig
       method hostfs_directory_if_any         : string option
       (* [None]: a machine has a guest, which writes its own journals in the hostfs above. *)
       method rc_journal_file_if_any          : string option
+      (* [None]: nothing to ask a guest through a socket — it answers by writing (episode 5). *)
+      method management_socket_if_running    : string option
       (* --- *)
       (* The kernels declared as supported by this machine's filesystem (SUPPORTED_KERNELS). *)
       method supported_kernels_if_any        : string list option
@@ -269,6 +271,8 @@ module (*Machine.*)Simulation_level : sig
       method destroy : unit
       method device_type : string
       (* --- *)
+      (* [None]: a machine has no management socket (episode 5 of `journalisation-profonde'). *)
+      method get_management_socket_name : string option
       method get_hublet_no : int
       method get_hublet_process_list    : Simulation_level.hublet_process list
       method get_hublet_process_of_port : int -> Simulation_level.hublet_process
