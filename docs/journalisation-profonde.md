@@ -152,7 +152,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **3** | **Le canal lit** : verbe `log` dans `control_server.ml`, publié par `help` (5ᵉ application de la règle d'unicité) — **deux** journaux à servir, pas un (cf. § 4.3) | `mrnctl log m1 --tail=20` rend ce que `tail` rend côté hôte ; un nœud sans hostfs reçoit un `bad_argument`, par symétrie avec `wait --ready` — **fait** (2026-08-11) |
 | **4** | **Switch : ne plus jeter les réponses** du rc (`send_commands_to_vde_switch_ignoring_answers`). Le journal est écrit **par Marionnet**, dans le répertoire de travail du projet, et servi par le verbe `log` de l'ép. 3 (cf. § 4.4) | un rc de switch avec une commande VLAN fautive produit une erreur **lisible**, là où il ne produit rien — **fait** (2026-08-11) |
 | **5** | **Switch : instantané** par la socket mgmt, rendu en JSON — quatre tables et non trois, `vlan/print` ayant rejoint `port/print`, `hash/print` et `fstp/print` (cf. § 4.5) | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre — **fait** (2026-08-11) |
-| **6** | **Capture de console** (sur option, implicite en `--exam`). Trois pistes à départager : `fd:` sur un descripteur ouvert avant `exec`, `tty:` sur un pty, ou l'xterm lancé sous `script(1)` | une image dont l'`init` est volontairement cassé laisse une trace côté hôte, là où le hostfs reste **vide** |
+| **6** | **Capture de console** (option `--console-log`, implicite en `--exam`) : la sortie du processus UML est enregistrée dans `<projet>/<nom>-console.log`, servie par le verbe `log` sous le nom `console` (cf. § 4.6). Des trois pistes, `fd:` — et encore, seulement là où un `console=` explicite éteint la console par défaut | un démarrage qui n'atteint **jamais** le relais (courant coupé en plein boot) laisse une trace côté hôte, là où le hostfs reste **vide** — **fait** (2026-08-11) |
 | **7** | **Réanimer le mode examen** : le prologue produit `bash_history.text` (et `report.html`) ; l'import déjà câblé du § 2.4 cesse d'être mort ; le journal de console rejoint les documents | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` |
 | **8** | **Documentation + exemples exécutables + banc** `journal-bench.sh` : « tous les services démarrent », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
 | **9** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→8 opérationnels |
@@ -492,6 +492,72 @@ pendant que celle des **ports** montrait déjà l'endpoint du câble. Le scénar
 maintenant les deux : un `ping` vers un voisin **inexistant** (la requête ARP part en diffusion
 avec notre MAC en source, sans qu'aucun pair n'ait à répondre), puis le marqueur.
 
+### 4.6 Ce que l'épisode 6 a livré (et pourquoi il n'ajoute presque aucun argument)
+
+La console est la sonde de la décision **D2** : la seule qui voie un démarrage **qui n'atteint
+jamais le relais**, et la seule que l'invité ne puisse pas récrire — les deux journaux des
+épisodes 1-2 vivent dans un hostfs que l'étudiant peut réécrire, celui-ci est un fichier de
+l'hôte, `<répertoire de travail du projet>/<nom>-console.log`, à côté du journal d'un switch
+(épisode 4). Enregistrement **sur option** (`--console-log`), **implicite en `--exam`**, et
+aucun attribut persisté : c'est une propriété de la **session**, pas du projet (D5).
+
+**La mesure a réduit le mécanisme à presque rien.** Les trois pistes du plan (`fd:` sur un
+descripteur, `tty:` sur un pty, l'xterm sous `script(1)`) supposaient toutes qu'il fallait
+*ajouter* une console. Or un UML en a déjà une :
+
+- **sans aucun argument `console=`, le noyau écrit sur la console `stderr0`**, c'est-à-dire sur
+  la **sortie d'erreur du processus UML** — jusqu'ici `/dev/null`. Rediriger la sortie standard
+  et la sortie d'erreur du processus suffit donc, et **aucun argument noyau n'est ajouté** ;
+- **le premier `console=` explicite l'éteint** (`printk: legacy console [stderr0] disabled`).
+  Marionnet en pose un pour le couple 6.12/systemd (`console=tty0`, *boot quirk*) : là, et là
+  seulement, il faut rendre une ligne à la place — `ssl0=null,fd:1` (la ligne série sort sur la
+  sortie standard héritée ; entrée `null`, le fichier étant ouvert en écriture seule) et
+  `console=ttyS0` placé **en tête**, de sorte que le **dernier** `console=` reste celui qui
+  était là : `/dev/console`, donc l'xterm de l'étudiant et son *getty*, ne bougent pas.
+
+**Le piège de l'épisode est systemd, et il coûte 90 secondes.** Une console série active apparaît
+dans `/sys/class/tty/console/active`, où `systemd-getty-generator` la lit pour instancier
+`serial-getty@ttyS0.service` — lequel `BindsTo` un `dev-ttyS0.device` que UML ne crée jamais.
+Mesuré : le boot attend `Job dev-ttyS0.device/start running (…/1min 30s)`, puis échoue — ce qui
+en prime aurait pollué le `systemctl --failed` du collecteur de l'épisode 2. D'où
+`systemd.mask=serial-getty@ttyS0.service`, ajouté **seulement** quand l'invité est déclaré
+systemd. Sous SysV il n'y a rien à faire : l'`inittab` de Debian a sa ligne `ttyS0` en commentaire
+(vérifié dans l'image wheezy sans la monter, par `debugfs`).
+
+Le descripteur est ouvert à la construction du `uml_process` et **fermé dans le parent juste
+après `spawn`** : l'enfant en a reçu sa copie au `fork`, et une session longue ne fuit pas un
+descripteur par machine démarrée. La sortie standard **de UML lui-même** est enregistrée aussi,
+délibérément : un UML qui refuse de démarrer se plaint là, et cela partait dans `/dev/null`.
+
+**Côté canal, le troisième journal n'a pas coûté un troisième cas.** La source à trois cas de
+l'épisode 4 (`Js_hostfs` / `Js_file` / `Js_none`) est devenue une **liste** `(nom, chemin,
+pourquoi-il-manque)` : ce qu'un composant sert est désormais une propriété du composant, et
+chaque entrée porte **la phrase à dire quand le fichier n'est pas là** — parce que cette phrase
+est ce qui apprend à un script s'il doit *attendre*, *démarrer* quelque chose, ou *relancer
+Marionnet autrement*. Elle n'est jamais la même :
+
+| Demande | Ce que le refus dit |
+|---|---|
+| `log m1` (rc_config), invité pas encore prêt | « … or its guest has not reached the end of its boot — see `wait --ready` » |
+| `log m1 console`, session sans enregistrement | « this session does not record consoles: restart Marionnet with `--console-log` (implied by `--exam`) » |
+| `log m1 console`, session enregistrante, machine jamais démarrée | « it has not been started since this project was opened » — et **pas** de renvoi vers `wait --ready` : ce journal-là ne dépend pas de l'invité |
+| `log sw1 console` | « a switch runs no guest system of its own: it boots nothing and has no console … (it serves rc_config) » |
+
+Aucune méthode nouvelle n'a été ajoutée aux classes : le chemin de la console est une fonction du
+projet et du nom, tous deux déjà connus du serveur — contrairement à l'épisode 5, où l'état du
+composant était indispensable. Et la complétion Bash n'a pas été touchée : `help` publie `logs`,
+qui en compte maintenant trois. Septième application de la règle d'unicité, et la première qui ne
+coûte rien.
+
+**Le discriminant a dû être changé, et ce qui l'a empêché est une bonne nouvelle.** Le plan
+voulait « une image dont l'`init` est cassé ». Fabriquer un tel couple **par le canal** n'est plus
+possible : le remap automatique de `marionnet-retro-compat-kernels-images` corrige un vieux noyau
+inutilisable (`3.2.64-ghost` → `6.12.95-i386`, mesuré), et un noyau hors des `SUPPORTED_KERNELS`
+de l'image est refusé net. Le banc coupe donc **le courant en plein boot** (`poweroff` 8 s après
+`start`) : le relais n'a pas eu le temps d'exister, le hostfs ne porte **aucun** journal, et la
+console, elle, porte tout le démarrage — la propriété que l'épisode voulait montrer, obtenue à
+coup sûr.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -690,3 +756,47 @@ aucune trame ; le scénario de mesure émet maintenant une requête ARP vers un 
 puis signale. La complétion Bash demande le nouveau vocabulaire au serveur (6ᵉ application de la
 règle d'unicité) et ne propose que des **switchs** après ce verbe : `completion-bench.sh` § L22,
 58 assertions.
+
+### 2026-08-11 — Épisode 6 : la console enregistrée
+
+La sonde de **D2** : la seule qui voie un démarrage **qui n'atteint jamais le relais**, et la
+seule que l'invité ne puisse pas récrire. Sur option (`--console-log`, implicite en `--exam`), la
+sortie du processus UML est enregistrée dans `<projet>/<nom>-console.log` — à côté du journal
+d'un switch, servie par le **même** verbe `log`, sous le nom `console`.
+
+**La mesure a réduit le mécanisme à presque rien**, en retournant la question. Les trois pistes du
+plan supposaient qu'il fallait *ajouter* une console ; un UML en a déjà une : sans argument
+`console=`, le noyau écrit sur `stderr0`, c'est-à-dire sur la **sortie d'erreur du processus** —
+jusqu'ici `/dev/null`. Rediriger stdout et stderr suffit donc, et **aucun argument n'est ajouté**.
+Le premier `console=` explicite, lui, l'éteint (`printk: legacy console [stderr0] disabled`) :
+là — et là seulement, c'est-à-dire pour le couple 6.12/systemd qui reçoit un `console=tty0` —
+on rend une ligne à la place (`ssl0=null,fd:1` + `console=ttyS0` **en tête**, pour que le dernier
+`console=` reste celui qui était là, donc l'xterm de l'étudiant intact).
+
+**Le piège de l'épisode coûte 90 secondes de boot**, et il a été payé en mesure avant de l'être en
+production : `systemd-getty-generator` instancie un `serial-getty@ttyS0` sur toute console série
+active, lequel `BindsTo` un `dev-ttyS0.device` que UML ne crée jamais — le boot attend
+`Job dev-ttyS0.device/start running (…/1min 30s)` puis échoue, ce qui aurait en prime pollué le
+`systemctl --failed` du collecteur de l'épisode 2. D'où `systemd.mask=serial-getty@ttyS0.service`,
+posé seulement quand l'invité est déclaré systemd ; sous SysV, l'`inittab` de Debian a sa ligne
+`ttyS0` commentée (vérifié dans l'image wheezy **sans la monter**, par `debugfs`).
+
+Côté canal, le troisième journal n'a pas coûté un troisième cas : la source à trois cas de
+l'épisode 4 est devenue une **liste** portant, pour chaque journal, **la phrase à dire quand le
+fichier n'est pas là** — et cette phrase n'est jamais la même (attendre l'invité, démarrer le
+composant, ou relancer Marionnet avec l'option ; § 4.6). Aucune méthode nouvelle sur les classes :
+le chemin est une fonction du projet et du nom, tous deux déjà connus du serveur. La complétion
+Bash n'a **pas** été touchée — `help` publie `logs`, qui en compte maintenant trois : septième
+application de la règle d'unicité, la première qui ne coûte rien.
+
+**Le discriminant a dû être changé, et ce qui l'a empêché est une bonne nouvelle** : fabriquer un
+couple kernel/image qui ne boote pas n'est plus possible **par le canal** — le remap automatique
+de `marionnet-retro-compat-kernels-images` corrige un vieux noyau inutilisable, et un noyau hors
+`SUPPORTED_KERNELS` est refusé net (les deux mesurés dans un run qui a échoué exprès). Le banc
+coupe donc le courant **en plein boot** : le relais n'a pas eu le temps d'exister, le hostfs ne
+porte **aucun** journal, la console porte tout le démarrage.
+
+**165 assertions, 0 échec** au banc complet (`journal-bench.sh`, dont § J12 ; 97 sans UML,
+96 dans une session lancée **sans** `--console-log` pour mesurer l'autre refus), et **59** au banc
+de complétion. Trois machines trixie ont booté dans ce run avec les trois arguments ajoutés : ni
+attente, ni unité en échec, ni régression des épisodes 1-3.

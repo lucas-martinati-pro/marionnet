@@ -232,8 +232,14 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    Episode 4 gave the first of the two a second writer and a second home: a switch has no guest,
    so Marionnet itself journals what its rc did (switch.ml), in the project's working directory.
    The pair of names does not change — a switch simply has only one of them, which is why the
-   answer of [log] carries an [available] field of its own. *)
-let journal_files = [ ("rc_config", "rc_config.log"); ("boot", "boot.log") ]
+   answer of [log] carries an [available] field of its own.
+
+   Episode 6 added a third, of a third nature: [console] is written by *Marionnet* for a guest —
+   what its kernel says before its relay exists, hence the only journal that survives a boot
+   which never reaches it (decision D2). Which of the three a given component actually has is
+   the business of [journals_of] below; this list is only the vocabulary. *)
+let journal_files =
+  [ ("rc_config", "rc_config.log"); ("boot", "boot.log"); ("console", "console.log") ]
 let journal_file_names = List.map fst journal_files
 let default_journal_file = "rc_config"
 
@@ -2261,8 +2267,8 @@ let journal_file_of (file : string option) : (string * string, string) result =
   | None ->
       Error (Printf.sprintf
                "no journal named %S; this channel serves %s — the two files a guest writes in its \
-                hostfs directory, the first of which a switch has too (help publishes them as \
-                \"logs\")"
+                hostfs directory (the first of which a switch has too), and the console Marionnet \
+                records for a guest (help publishes them as \"logs\")"
                key (String.concat ", " journal_file_names))
 
 let journal_tail_of (tail : string option) : (int, string) result =
@@ -2273,28 +2279,87 @@ let journal_tail_of (tail : string option) : (int, string) result =
        | Some n when n > 0 -> Ok n
        | _ -> Error (Printf.sprintf "--tail expects a positive number of lines, got %S" s))
 
-(* Where the journals of a component are to be found. Episode 4 of `journalisation-profonde'
-   broadened the answer: until then a journal was necessarily a *guest's*, hence a pair of files
-   in a hostfs directory; a switch has no guest, but since that episode Marionnet writes down
-   what it said to vde_switch and what came back — one file, in the project's working directory
-   (switch.ml, [rc_journal_path]). Reads the network, hence the GTK slot, and only that: the
-   reading itself belongs to the calling thread, exactly as in [find_hostfs]. *)
-type journal_source =
-  | Js_hostfs of string   (* a machine or a router: the two files its guest writes *)
-  | Js_file   of string   (* a switch: the one file Marionnet writes for it *)
-  | Js_none               (* a hub, a cable: nobody writes anything *)
+(* Where the journals of a component are to be found. The answer has broadened twice. Until
+   episode 4 a journal was necessarily a *guest's*, hence a pair of files in a hostfs directory;
+   a switch has no guest, but Marionnet writes down what it said to vde_switch and what came back
+   — one file, in the project's working directory (switch.ml, [rc_journal_path]). Episode 6 then
+   gave a guest a *third* file, of a third nature: its console, recorded by Marionnet, again in
+   the project's working directory (simulation_level.ml, [console_journal_path]).
 
-let find_journal_source (st : State.globalState) ~(name:string) : journal_source option =
+   Hence a list rather than a sum: what a component serves is now a property of the component,
+   and the same code answers "this one has three, that one has one, this other none". Each entry
+   also carries the sentence to say when the file is not there yet, because that sentence is
+   what tells a script whether to wait, to start something, or to restart Marionnet — and it is
+   never the same one twice.
+
+   Reads the network, hence the GTK slot, and only that: the reading itself belongs to the
+   calling thread, exactly as in [find_hostfs]. *)
+type journal_entry = {
+  jn_key     : string;  (* the name a script uses: rc_config, boot, console *)
+  jn_path    : string;
+  jn_missing : string;  (* why it is not there yet, in this component's own terms *)
+}
+
+type component_journals = {
+  cj_entries : journal_entry list;
+  cj_note    : string;  (* what this component is, so that a refusal makes sense *)
+}
+
+let journals_of (st : State.globalState) ~(name:string) : component_journals option =
+  let working_directory = st#network#project_working_directory in
+  (* The console is Marionnet's to write, so the channel knows where it is without asking the
+     component: the path is a function of the project and of the name (episode 6). Whether the
+     file exists is another matter — and the session may simply not be recording. *)
+  let console_entry () =
+    { jn_key  = "console";
+      jn_path = Simulation_level.console_journal_path ~working_directory ~name;
+      jn_missing =
+        if Initialization.are_we_recording_consoles then
+          "it has not been started since this project was opened"
+        else
+          "this session does not record consoles: restart Marionnet with --console-log \
+           (implied by --exam)" }
+  in
+  let hostfs_entries dir =
+    List.filter_map
+      (fun (key, basename) ->
+         if key = "console" then None else
+         Some { jn_key  = key;
+                jn_path = Filename.concat dir basename;
+                jn_missing =
+                  "it has not been started since this project was opened, or its guest has not \
+                   reached the end of its boot — see wait --ready" })
+      journal_files
+  in
   match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
   | Some n ->
       (match n#hostfs_directory_if_any, n#rc_journal_file_if_any with
-       | Some dir, _    -> Some (Js_hostfs dir)
-       | None, Some file -> Some (Js_file file)
-       | None, None      -> Some Js_none)
+       | Some dir, _ ->
+           Some { cj_entries = hostfs_entries dir @ [ console_entry () ];
+                  cj_note    = "a machine or a router serves the two files its guest writes in \
+                                its hostfs directory, plus the console Marionnet records for it" }
+       | None, Some file ->
+           Some { cj_entries =
+                    [ { jn_key  = default_journal_file;
+                        jn_path = file;
+                        jn_missing =
+                          "it has not been started since this project was opened" } ];
+                  cj_note    = "a switch runs no guest system of its own: it boots nothing and \
+                                has no console, so the only journal it has is what Marionnet \
+                                sent to vde_switch as a startup configuration, and what \
+                                vde_switch answered" }
+       | None, None ->
+           Some { cj_entries = [];
+                  cj_note    = "it runs no guest system of its own and has no startup \
+                                configuration either, hence no journal at all: log applies to a \
+                                machine, a router or a switch" })
   | None ->
   match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
-  | Some _ -> Some Js_none
-  | None   -> None
+  | Some _ ->
+      Some { cj_entries = [];
+             cj_note    = "a cable runs no process of its own, hence writes no journal: log \
+                           applies to a machine, a router or a switch" }
+  | None -> None
 
 (* The reading and the answer, shared by the two kinds of source: what differs between them is
    the path, the vocabulary the component actually has, and what to do when the file is not there
@@ -2332,7 +2397,7 @@ let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:stri
   else
   match journal_file_of file with
   | Error detail -> reply_error ~code:"bad_argument" ~detail
-  | Ok (key, basename) ->
+  | Ok (key, _basename) ->
   match journal_tail_of tail with
   | Error detail -> reply_error ~code:"bad_argument" ~detail
   | Ok tail ->
@@ -2342,35 +2407,24 @@ let cmd_log (st : State.globalState) ~(timeout:float) ~(name:string) ~(file:stri
         (function
          | None ->
              reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
-         | Some Js_none ->
+         | Some { cj_entries = []; cj_note } ->
              reply_error ~code:"bad_argument"
-               ~detail:(Printf.sprintf
-                          "%S runs no guest system of its own and has no startup configuration \
-                           either, hence no journal at all: log applies to a machine, a router or \
-                           a switch" name)
-         | Some (Js_file _) when key <> default_journal_file ->
-             (* A switch boots nothing: the collector of episode 2 has no counterpart here. *)
-             reply_error ~code:"bad_argument"
-               ~detail:(Printf.sprintf
-                          "%S runs no guest system of its own, hence writes no %s; the only \
-                           journal it has is %S, which Marionnet writes itself: what it sent to \
-                           vde_switch as a startup configuration, and what vde_switch answered"
-                          name basename default_journal_file)
-         | Some (Js_file path) ->
-             serve_journal ~name ~key ~path ~tail ~available:[default_journal_file]
-               ~not_found_detail:
-                 (Printf.sprintf
-                    "%S has written no %s journal yet (%s): it has not been started since this \
-                     project was opened" name key path)
-         | Some (Js_hostfs dir) ->
-             let path = Filename.concat dir basename in
-             serve_journal ~name ~key ~path ~tail ~available:journal_file_names
-               ~not_found_detail:
-                 (Printf.sprintf
-                    "%S has written no %s yet (%s): it has not been started since this project \
-                     was opened, or its guest has not reached the end of its boot — see \
-                     wait --ready" name basename path))
-        (ask ~timeout (fun () -> find_journal_source st ~name))
+               ~detail:(Printf.sprintf "%S %s" name cj_note)
+         | Some { cj_entries; cj_note } ->
+             let available = List.map (fun e -> e.jn_key) cj_entries in
+             (match List.find_opt (fun e -> e.jn_key = key) cj_entries with
+              | None ->
+                  (* The name exists in the channel's vocabulary, but not for *this* component. *)
+                  reply_error ~code:"bad_argument"
+                    ~detail:(Printf.sprintf
+                               "%S has no journal named %S: %s (it serves %s)"
+                               name key cj_note (String.concat ", " available))
+              | Some e ->
+                  serve_journal ~name ~key ~path:e.jn_path ~tail ~available
+                    ~not_found_detail:
+                      (Printf.sprintf "%S has written no %s journal yet (%s): %s"
+                         name key e.jn_path e.jn_missing)))
+        (ask ~timeout (fun () -> journals_of st ~name))
 
 (* --- switch-info: what a switch knows *now* ---------------------- *)
 

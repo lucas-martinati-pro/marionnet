@@ -211,7 +211,21 @@ Reprise : appliquer le skill `chantier-long`.
   Piège neuf, structurel : une **valeur d'instance n'est pas dans l'interface**, donc `val state`
   est invisible depuis une sous-classe d'un autre module — la méthode a déménagé dans
   `simulated_device`, où elle n'est redéfinie *nulle part*, `get_management_socket_name` sur la
-  classe `device` répondant déjà `None` pour tous les autres genres, hub compris). Deux faits
+  classe `device` répondant déjà `None` pour tous les autres genres, hub compris) ; **ép. 6 fait
+  2026-08-11** (la **console enregistrée** : option `--console-log`, implicite en `--exam` — la
+  sortie du processus UML va dans `<projet>/<nom>-console.log`, servie par le **même** verbe `log`
+  sous le nom `console`. La mesure a retourné la question : un UML écrit **déjà** sur la sortie
+  d'erreur de son processus tant qu'aucun `console=` n'est passé, donc rediriger stdout/stderr
+  suffit ; on n'ajoute une ligne série — `ssl0=null,fd:1` + `console=ttyS0` **en tête**, pour que
+  le dernier `console=` reste celui qui était là — que là où un `console=` explicite a éteint la
+  console par défaut, et alors **il faut** masquer le `serial-getty@ttyS0` que
+  `systemd-getty-generator` instancie, sans quoi le boot attend 90 s un `dev-ttyS0.device` que UML
+  ne crée jamais. Côté canal, la source à trois cas de l'ép. 4 devient une **liste** portant, pour
+  chaque journal, la phrase à dire quand le fichier manque — attendre l'invité, démarrer le
+  composant, ou relancer Marionnet avec l'option ; la complétion reçoit le 3ᵉ nom **sans être
+  touchée**. Piège neuf : on ne peut **plus** fabriquer par le canal un couple kernel/image qui ne
+  boote pas — remap auto, puis refus `SUPPORTED_KERNELS` — donc un démarrage qui n'aboutit pas se
+  mesure en coupant le courant en plein boot). Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un

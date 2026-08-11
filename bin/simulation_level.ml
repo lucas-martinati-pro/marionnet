@@ -216,6 +216,19 @@ end;;
 let dev_null_in  = Unix.descr_of_in_channel  (open_in  "/dev/null");;
 let dev_null_out = Unix.descr_of_out_channel (open_out "/dev/null");;
 
+(* --- The console journal of a guest (journalisation-profonde, episode 6) --- *)
+
+let console_journal_basename_suffix = "-console.log";;
+
+(** Where the console recording of a machine or a router lives. Not in its hostfs — the point of
+    this probe is precisely to be out of the guest's reach (decision D2) — but in the project's
+    working directory, next to the rc journal a switch gets there (switch.ml, [rc_journal_path]);
+    same reason as decision D3: it outlives the process and it goes away with the project.
+    Computed from the name alone, hence usable both here, where the file is written, and at user
+    level, where the control server serves it: ONE expression of the path, never two. *)
+let console_journal_path ~working_directory ~name =
+  Filename.concat working_directory (name ^ console_journal_basename_suffix);;
+
 (** {2 Example of low-level interaction} *)
 
 (* Play with xeyes for ten seconds, then terminate it:
@@ -998,16 +1011,61 @@ class uml_process =
     then console_related_arguments @ extra
     else console_related_arguments
   in
+  (* --- Console recording (journalisation-profonde, episode 6) ---
+     The probe the guest cannot touch: what the kernel says before the relay exists (a panic, a
+     broken init) goes to a file on the host side, opened here and inherited by the UML process.
+     Measured, and this is what dictates the shape below:
+       - with NO `console=' argument the kernel writes on the "stderr0" console, i.e. on the
+         *standard error of the UML process* — so redirecting stdout and stderr is enough, and no
+         kernel argument is added at all;
+       - the first explicit `console=' DISABLES stderr0 ("legacy console [stderr0] disabled"), so
+         where Marionnet adds one (the boot quirk above), a line of our own must be added back:
+         `ssl0=null,fd:1' sends ttyS0 to the inherited standard output (input `null', since the
+         file is opened write-only), and `console=ttyS0' put FIRST leaves the last `console='
+         untouched — hence /dev/console, hence the student's xterm and its getty, unchanged;
+       - under systemd that ttyS0 must be masked: systemd-getty-generator instantiates
+         serial-getty@ttyS0, which BindsTo dev-ttyS0.device, a device UML never creates — measured
+         cost of not masking it: 90 seconds of boot waiting for a job that then fails. Under SysV
+         nothing is needed (Debian's inittab has its ttyS0 line commented out).
+     Marionnet's own stdout/stderr are recorded too, on purpose: a UML which refuses to start
+     complains there, and until now that went to /dev/null. *)
+  let console_journal_descriptor =
+    if not Initialization.are_we_recording_consoles then None else
+    let path = console_journal_path ~working_directory ~name:umid in
+    try
+      Some (Unix.openfile path [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o600)
+    with e ->
+      Log.printf2 "Simulation_level: uml_process: cannot record the console into %s: %s\n"
+        path (Printexc.to_string e);
+      None
+  in
+  let console_related_arguments =
+    match console_journal_descriptor with
+    | None -> console_related_arguments
+    | Some _ ->
+        if List.exists (StrExtra.First.matchingp (Str.regexp "^console=")) console_related_arguments
+        then
+          (* An explicit `console=' has silenced stderr0: give the kernel a line of our own. *)
+          "ssl0=null,fd:1" :: "console=ttyS0" ::
+          (if init_system = "systemd" then ["systemd.mask=serial-getty@ttyS0.service"] else []) @
+          console_related_arguments
+        else
+          (* The default console already writes on the standard error we are recording. *)
+          console_related_arguments
+  in
   let command_line_arguments =
     command_line_arguments @ console_related_arguments
+  in
+  let console_journal_output =
+    match console_journal_descriptor with Some fd -> fd | None -> dev_null_out
   in
   object(self)
   inherit process
       kernel_file_name
       command_line_arguments
       ~stdin:dev_null_in
-      ~stdout:dev_null_out
-      ~stderr:dev_null_out
+      ~stdout:console_journal_output
+      ~stderr:console_journal_output
       ~unexpected_death_callback
       () as super
 
@@ -1356,7 +1414,13 @@ class uml_process =
     self#copy_cow_file_if_needed;
     self#grant_host_x_server_access;
     self#create_swap_file;
-    super#spawn
+    super#spawn;
+    (* The child inherited its own copy of the recording descriptor at fork time, so the parent
+       has no further use for it. Closing it here rather than never is what keeps a long session
+       from leaking one descriptor per machine started. *)
+    (match console_journal_descriptor with
+     | None    -> ()
+     | Some fd -> (try Unix.close fd with _ -> ()))
 
   initializer
     self#make_hostfs_content

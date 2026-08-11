@@ -62,6 +62,12 @@ let option_debug  = Argv.register_unit_option "d" ~aliases:["-debug"]   ~doc:"ac
 let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash message and exit" () ;;
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
 let option_paths  = Argv.register_unit_option "-paths"  ~doc:"print paths (filesystems, kernels, ..) and exit" () ;;
+(* Console recording (journalisation-profonde, episode 6): opt-in, and implied by --exam.
+   Recording a session in silence outside an exam would be surveillance (decision D5). *)
+let option_console_log =
+  Argv.register_unit_option "-console-log"
+    ~doc:"record each virtual machine's console into <project>/<name>-console.log (implied by --exam)"
+    () ;;
 let option_r      = Argv.register_unit_option "r" ~aliases:["-run"] ~doc:"immediately run the specified project (if any)" () ;;
 (* Opt-in scripting channel (control_server.ml): without this option no socket is created. *)
 let option_control_socket =
@@ -204,6 +210,17 @@ let window_title = match are_we_in_exam_mode with
  | false -> "Marionnet"
  | true  -> "Marionnet (EXAM)"
 ;;
+
+(* Console recording (journalisation-profonde, episode 6). The only probe out of the guest's
+   reach: the two journals of episodes 1-2 live in a hostfs the student may rewrite, whereas
+   this one is written by the host, and it is the only one that sees a boot which never reaches
+   the relay (a panic, a broken init). Hence: opt-in, but implied by the exam mode, whose whole
+   point is a defensible record. No persisted attribute is involved (decision D5): this is a
+   property of the *session*, not of the project. *)
+let are_we_recording_consoles =
+  (!option_console_log = Some ()) || are_we_in_exam_mode
+;;
+let () = Log.printf1 "Console recording: %b\n" are_we_recording_consoles ;;
 
 (* Used as continuation (~k) calling `extract_string_variable_or': *)
 let append_slash x = x ^ "/" ;;

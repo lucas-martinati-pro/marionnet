@@ -213,6 +213,12 @@ val ethernet_interface_to_uml_command_line_argument :
 
 val random_mac_address : unit -> string
 
+(** Where the console recording of a machine or a router lives, in the project's working
+    directory: [console_journal_path ~working_directory ~name]. The single expression of that
+    path — the class below writes the file, the control server serves it under the name
+    ["console"] (journalisation-profonde, episode 6). *)
+val console_journal_path : working_directory:string -> name:string -> string
+
 class uml_process :
   kernel_file_name:process_name ->
   ?kernel_console_arguments:string ->
