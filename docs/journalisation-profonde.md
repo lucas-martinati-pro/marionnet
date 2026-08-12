@@ -160,10 +160,11 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **5** | **Switch : instantané** par la socket mgmt, rendu en JSON — quatre tables et non trois, `vlan/print` ayant rejoint `port/print`, `hash/print` et `fstp/print` (cf. § 4.5) | la MAC d'une machine réellement démarrée apparaît dans la table du switch auquel elle est câblée — **et pas** dans celle d'un autre — **fait** (2026-08-11) |
 | **6** | **Capture de console** (option `--console-log`, implicite en `--exam`) : la sortie du processus UML est enregistrée dans `<projet>/<nom>-console.log`, servie par le verbe `log` sous le nom `console` (cf. § 4.6). Des trois pistes, `fd:` — et encore, seulement là où un `console=` explicite éteint la console par défaut | un démarrage qui n'atteint **jamais** le relais (courant coupé en plein boot) laisse une trace côté hôte, là où le hostfs reste **vide** — **fait** (2026-08-11) |
 | **7** | **Réanimer le mode examen** : le prologue pose l'historique **horodaté** dans le hostfs (`bash_history.text`, 4ᵉ journal du verbe `log` sous le nom `commands`), l'épilogue accroche à l'**arrêt** un producteur de rapport **Markdown** (`report.md`, section pare-feu comprise), et l'import du § 2.4 — enfin gardé, enfin symétrique — archive rapport, historique **et** console (cf. § 4.7) | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` — **fait** (2026-08-11) |
-| **8** | **Documentation + exemples exécutables + banc** `journal-bench.sh` : « tous les services démarrent », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
-| **9** | **Lire un rapport Markdown depuis la GUI** : un `.md` s'ouvre aujourd'hui dans `MARIONNET_TEXT_EDITOR` ; il lui faut un vrai geste de lecture (conversion vers HTML par un convertisseur présent puis navigateur, ou lecteur dédié avec repli) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** |
-| **10** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→8 opérationnels |
-| **11** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+| **8** | **Le terminal de l'étudiant, enregistré** (option `--terminal-log`, implicite en `--exam`) : Marionnet substitue son enregistreur au premier champ de `xterm=` et `script(1)` capture ce qui traverse la fenêtre ; 5ᵉ journal du verbe `log`, nommé `terminal`, archivé **nettoyé** dans `documents` (cf. § 4.8) | un témoin écrit sur `/dev/tty0` apparaît dans `log … terminal` et **pas** dans `log … console` — **fait** (2026-08-12) |
+| **9** | **Documentation + exemples exécutables + banc** : le guide `doc-src/scripting/` ignore encore les cinq journaux et le mode examen ; exemples type « aucun service n'a échoué », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
+| **10** | **Lire un rapport Markdown depuis la GUI** : un `.md` s'ouvre aujourd'hui dans `MARIONNET_TEXT_EDITOR` ; il lui faut un vrai geste de lecture (conversion vers HTML par un convertisseur présent puis navigateur, ou lecteur dédié avec repli) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** |
+| **11** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→9 opérationnels |
+| **12** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -647,6 +648,77 @@ encore vide — et s'il enchaîne sur `close`, il ferme le projet sous les pieds
 ne trouve alors même plus le répertoire. D'où le `wait <c> --state=off` avant de lire, qui est de
 toute façon ce qu'un script doit faire.
 
+### 4.8 Ce que l'épisode 8 a livré (et le crochet que le noyau n'offre pas)
+
+L'épisode 7 laisse un correcteur avec les **commandes** (`commands`) et les **messages du noyau**
+(`console`), mais pas avec **ce que l'étudiant a vu** : une commande sans sa sortie ne dit pas si
+elle a marché. Ce qui manquait est le contenu de la **fenêtre** — et cette fenêtre, ce n'est pas
+Marionnet qui l'ouvre : c'est le noyau UML, à qui l'on passe `xterm=<émulateur>,-T,-e`
+(`simulation_level.ml`, valeur `MARIONNET_TERMINAL`).
+
+**Trois mesures ont décidé de la forme, dont deux ont tué la piste qui paraissait la bonne.**
+
+1. **`UML_PORT_HELPER` n'est pas lu par le canal `xterm`.** La variable existe bien dans le noyau
+   6.12.95 (elle y figure avec son message d'erreur, `strings`), mais elle appartient à
+   `port_connection` — le canal `port:`. Mesuré deux fois, dont une avec la variable **présente
+   dans l'environnement du processus UML** : le noyau a lancé `/usr/lib//uml/port-helper`, en dur.
+   La piste « vendorer un port-helper modifié » tombe donc, faute de crochet.
+2. **Le port-helper ne voit passer aucun octet.** Ses seuls appels libc sont
+   `socket/connect/bind/sendmsg/ioctl/pause` : il passe le **descripteur** de son terminal au
+   noyau (SCM_RIGHTS) et dort. Il n'y a rien à intercepter *dedans* — l'enregistrer supposerait de
+   lui faire jouer un rôle qu'il n'a pas (un pty intermédiaire, c'est-à-dire un `script(1)`
+   réécrit). Le vendoring aurait donc coûté ~150-200 lignes de C **sans** supprimer la dépendance
+   `uml-utilities`, qui reste de toute façon requise par `uml_mconsole` (extinction gracieuse,
+   `bin/serial.ml`).
+3. **Substituer l'émulateur marche, et l'argv est trivial.** Le noyau lance
+   `<émulateur> -T "Virtual Console #0 (m1)" -e /usr/lib//uml/port-helper -uml-socket /tmp/xterm-pipeXXX`.
+   Un enregistreur mis à la place du premier champ isole ce qui suit l'*exec switch* et le relance
+   sous `script(1)` — qui, lui, met le pty qu'il faut. `script` vient de `bsdutils`
+   (**`Essential: yes`**) : aucune dépendance à déclarer.
+
+**Le mécanisme.** `bin/scripts/marionnet-terminal-record.sh` est embarqué (`INCLUDE_AS_STRING`,
+donc déclaré dans les `preprocessor_deps`) et déposé **exécutable** dans le répertoire de travail
+du projet. Marionnet ne remplace que le **premier** champ de `xterm=` — les deux switches restent
+ceux de la configuration de l'utilisateur, que l'enregistreur réutilise pour relancer le vrai
+émulateur. Les trois valeurs dont il a besoin (l'émulateur, l'exec switch, le chemin du journal)
+arrivent par **l'environnement du processus UML**, ce qui a demandé un `?environment` sur la
+classe `process` (`Unix.create_process_env`) : un `putenv` global aurait couru entre deux
+démarrages, puisque le chemin dépend du composant. Repli à chaque étape — variable manquante,
+`script` absent, argv inattendu, journal impossible à créer : on `exec` l'émulateur intact. **Une
+fenêtre doit toujours s'ouvrir** ; l'enregistrement est un supplément, jamais une condition.
+
+**Le journal s'appelle `terminal`, et il n'est pas fusionné dans `console`.** Deux flux, deux
+écrivains, deux fichiers : la console est ce que le noyau écrit sur la sortie d'erreur du
+processus (ttyS0 en mode enregistré, épisode 6), le terminal est ce qui traverse `con0`. Les
+mélanger dans un fichier écrit par deux processus produirait des lignes entrelacées, et perdrait
+la distinction qui fait tout l'intérêt. C'est aussi le **discriminant** de l'épisode : un témoin
+écrit par le scénario sur `/dev/tty0` apparaît dans `terminal` et **jamais** dans `console`.
+
+**Ce qui est archivé n'est pas ce qui est servi.** Un typescript porte les échappements d'un vrai
+terminal (131 lignes en portent, sur un simple boot) : rejoué par `scriptreplay(1)` c'est la
+séance, ouvert dans un éditeur c'est illisible. Donc le brut **et** son fichier de timing restent
+dans le répertoire du projet, servis par `log … terminal`, tandis que le mode examen archive une
+copie **nettoyée** (`Terminal_recording.strip`, un automate sans dépendance). Ce filtre
+**n'applique pas** les effacements : une ligne que l'étudiant a retapée apparaît deux fois plutôt
+qu'une. Reconstituer l'écran final demanderait d'émuler un terminal, et **supprimerait**
+silencieusement ce qu'un correcteur veut peut-être voir.
+
+**Défaut trouvé en mesurant, antérieur à l'épisode** : `Treeview_documents#import_document`
+acceptait un `~move` et ne le transmettait **jamais** à `import_file`. Tous les imports étaient
+donc des copies, y compris les deux de l'épisode 7 qui demandent un déplacement. Corrigé — et les
+intentions revues du même coup, car honorer le drapeau change ce que font les appelants : rapport
+et historique sont désormais **explicitement** copiés (le hostfs est recréé au boot suivant, et
+déplacer `bash_history.text` ferait taire `log … commands` après une extinction), seule la copie
+nettoyée du terminal est déplacée, puisqu'elle n'existe que pour l'archive.
+
+**Limites, toutes mesurées.** Le noyau `linux-3.2.64-ghost` des vieux couples ne connaît pas la
+substitution telle qu'on l'emploie ici — l'enregistrement n'y est simplement pas disponible, et le
+canal le dit. Ne sont pas vus non plus : un **X NEST** (la console UML est alors `none`), un `ssh`
+ouvert depuis une autre machine, un terminal lancé dans un invité graphique. Les couvrir
+demanderait `script(1)` **dans** l'invité — falsifiable par l'étudiant, donc un autre arbitrage
+que D2. Les **routeurs** démarrent avec `~console:"none"` : rien à enregistrer tant que ce choix
+tient, le code étant symétrique.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -959,3 +1031,49 @@ script doit faire.
 
 **57 assertions, 0 échec** au nouveau banc `exam-bench.sh` (dont 30 sans aucun UML), **165 et 0**
 au banc du chantier et **59 et 0** au banc de complétion, après mise à jour des listes de journaux.
+
+### 2026-08-12 — Épisode 8 : le terminal de l'étudiant, enregistré
+
+Question posée : peut-on avoir, en mode examen, **le rendu du terminal** — les commandes *et* leurs
+résultats, tels que l'étudiant les voit ? Oui, et le § 4.8 dit par quel bout, après que **trois
+mesures** ont écarté la piste qui semblait la meilleure.
+
+La conception a changé **deux fois** sous la mesure, jamais sous le raisonnement :
+
+1. Le plan visait `UML_PORT_HELPER` (la variable existe dans le noyau 6.12.95). Sonde : la
+   variable **est** dans l'environnement du processus UML, et le noyau lance quand même
+   `/usr/lib//uml/port-helper` en dur — elle appartient au canal `port:`, pas au canal `xterm`.
+2. Le repli envisagé était de **vendorer** ce port-helper modifié (`port-helper/` à la racine),
+   ce qui aurait aussi, croyait-on, allégé la dépendance `uml-utilities`. Deux mesures ont réglé
+   la question : le port-helper ne voit passer **aucun octet** (`objdump -T` : `sendmsg`, `pause`,
+   ni `read` ni `write`), donc l'enregistrer supposait de réécrire un `script(1)` en C ; et
+   `uml_mconsole` garde de toute façon la dépendance vivante. Le nom retenu au passage,
+   `marionnet-port-helper`, est devenu faux et a été refait : `marionnet-terminal-record`.
+
+Ce qui est livré tient dans un script d'une centaine de lignes, deux ajouts OCaml minces et un
+filtre : substitution du **premier champ** de `xterm=`, `script(1)` autour du port-helper, trois
+valeurs passées par l'environnement du processus UML (d'où le `?environment` de la classe
+`process`), 5ᵉ journal `terminal` publié par `help`, et une copie **nettoyée** archivée dans
+`documents`.
+
+**Un défaut antérieur est tombé en mesurant** : `import_document` acceptait `~move` sans jamais le
+transmettre à `import_file` — tous les imports du mode examen étaient des copies, y compris ceux
+de l'épisode 7 qui demandent un déplacement. Corrigé, et les intentions revues explicitement
+(rapport et historique **copiés**, pour ne pas faire taire `log … commands` après une extinction ;
+seule la copie nettoyée du terminal est déplacée).
+
+Le discriminant est celui qui était prévu, et il tient sans humain pour taper : un témoin écrit
+par le scénario sur `/dev/tty0` se retrouve dans `log … terminal` — avec le prompt `login:` que
+personne n'a demandé et 131 lignes portant des séquences ANSI — et **jamais** dans
+`log … console`, qui porte ttyS0.
+
+**73 assertions, 0 échec** au banc `exam-bench.sh` (section E5 ajoutée), **165 et 0** au banc du
+chantier, **60 et 0** au banc de complétion — où le cinquième nom arrive **sans que la complétion soit touchée**, 8ᵉ application de
+la règle d'unicité. Deux corrections ont porté sur le **banc**, pas sur le mécanisme : un
+commentaire à backquotes dans un heredoc **non quoté** déformait le scénario de mesure, et l'on
+n'exige plus une extinction *gracieuse* du routeur qui n'a jamais booté — mesuré isolément, cette
+image répond au ctrl-alt-del en 30 s si on la laisse démarrer, mais plus après 240 s d'attente
+d'un relais qu'elle n'atteint jamais ; on lui coupe donc le courant, ce qui est le geste juste
+pour un invité sans init vivant. Une troisième, dans `journal-bench.sh` : le discriminant de
+l'épisode 6 coupe le courant « en plein boot », et 8 s ne l'étaient plus assez sur cette machine —
+le relais avait le temps d'écrire. Ramené à 5 s.

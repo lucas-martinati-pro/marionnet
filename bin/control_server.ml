@@ -251,7 +251,12 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    episode 3, where the name was already taken on the client side. *)
 let journal_files =
   [ ("rc_config", "rc_config.log"); ("boot", "boot.log");
-    ("commands", "bash_history.text"); ("console", "console.log") ]
+    ("commands", "bash_history.text"); ("console", "console.log");
+    ("terminal", "terminal.log") ]
+(* The two Marionnet writes itself, in the project's working directory rather than in a hostfs
+   the student may rewrite (episodes 6 and 8): their basename above is only there to keep the
+   list uniform — the path comes from simulation_level.ml. *)
+let host_side_journals = [ "console"; "terminal" ]
 let journal_file_names = List.map fst journal_files
 let default_journal_file = "rc_config"
 
@@ -2278,9 +2283,10 @@ let journal_file_of (file : string option) : (string * string, string) result =
   | Some basename -> Ok (key, basename)
   | None ->
       Error (Printf.sprintf
-               "no journal named %S; this channel serves %s — the two files a guest writes in its \
-                hostfs directory (the first of which a switch has too), and the console Marionnet \
-                records for a guest (help publishes them as \"logs\")"
+               "no journal named %S; this channel serves %s — the files a guest writes in its \
+                hostfs directory (the first of which a switch has too), and the two Marionnet \
+                records host-side for a guest, its console and its terminal session (help \
+                publishes them as \"logs\")"
                key (String.concat ", " journal_file_names))
 
 let journal_tail_of (tail : string option) : (int, string) result =
@@ -2332,13 +2338,27 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
           "this session does not record consoles: restart Marionnet with --console-log \
            (implied by --exam)" }
   in
+  (* Same shape, a different stream and a third reason to be missing: a guest whose terminal is
+     not the one the UML kernel opens (an Xnest, or no console at all) has nothing to record —
+     the channel says so rather than promising a file that will never come (episode 8). *)
+  let terminal_entry () =
+    { jn_key  = "terminal";
+      jn_path = Simulation_level.terminal_journal_path ~working_directory ~name;
+      jn_missing =
+        if Initialization.are_we_recording_terminals then
+          "it has not been started since this project was opened, or its console is not the one \
+           the UML kernel opens (an Xnest, or a terminal set to none)"
+        else
+          "this session does not record terminals: restart Marionnet with --terminal-log \
+           (implied by --exam)" }
+  in
   (* One sentence per journal, and they do not say the same thing: the two written by the relay
      mean "wait for the boot", whereas [commands] means "nobody has typed anything yet" — a
      machine can be perfectly ready and have no command history at all (episode 7). *)
   let hostfs_entries dir =
     List.filter_map
       (fun (key, basename) ->
-         if key = "console" then None else
+         if List.mem key host_side_journals then None else
          Some { jn_key  = key;
                 jn_path = Filename.concat dir basename;
                 jn_missing =
@@ -2354,9 +2374,10 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
   | Some n ->
       (match n#hostfs_directory_if_any, n#rc_journal_file_if_any with
        | Some dir, _ ->
-           Some { cj_entries = hostfs_entries dir @ [ console_entry () ];
-                  cj_note    = "a machine or a router serves the two files its guest writes in \
-                                its hostfs directory, plus the console Marionnet records for it" }
+           Some { cj_entries = hostfs_entries dir @ [ console_entry (); terminal_entry () ];
+                  cj_note    = "a machine or a router serves the files its guest writes in its \
+                                hostfs directory, plus the console and the terminal session \
+                                Marionnet records for it" }
        | None, Some file ->
            Some { cj_entries =
                     [ { jn_key  = default_journal_file;

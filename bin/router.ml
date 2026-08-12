@@ -45,6 +45,9 @@ ENDIF
    it over the whole body below. *)
 let console_journal_path = Simulation_level.console_journal_path
 ;;
+(* Same capture, same reason (episode 8): the terminal recording of this guest. *)
+let terminal_journal_path = Simulation_level.terminal_journal_path
+;;
 
 (** Gui-related stuff for the user-level component "router". *)
 
@@ -1298,6 +1301,9 @@ class router
 	~hostfs_directory
 	~console_pathname:
 	  (console_journal_path
+	     ~working_directory:(network#project_working_directory) ~name:self#name)
+	~terminal_pathname:
+	  (terminal_journal_path
 	     ~working_directory:(network#project_working_directory) ~name:self#name)
 	();
       Log.printf1 "Added the exam documents of %s to the texts interface\n" self#name;

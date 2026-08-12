@@ -245,7 +245,27 @@ Reprise : appliquer le skill `chantier-long`.
   est le dernier geste de l'extinction, d'où `wait <c> --state=off` avant de lire `documents`.
   Limites mesurées, toutes deux extérieures à l'épisode : les vieilles images SysV n'ont **pas** de
   séquence d'arrêt (leur `inittab` répond au ctrl-alt-del par `/sbin/halt`), et l'unique image de
-  routeur installée — guignol, 2014 — n'atteint pas son relais). Deux faits
+  routeur installée — guignol, 2014 — n'atteint pas son relais) ; **ép. 8 fait 2026-08-12** (le
+  **terminal de l'étudiant enregistré** : option `--terminal-log`, implicite en `--exam`, pour
+  avoir les commandes **avec leurs sorties**, telles qu'il les voit. Le seul crochet que le noyau
+  offre est le **premier champ** de `xterm=<émulateur>,-T,-e` — `UML_PORT_HELPER`, mesuré deux
+  fois, n'est lu que par le canal `port:` — et il n'y a rien à intercepter dans le port-helper,
+  qui passe le **descripteur** de son terminal au noyau puis dort (donc le vendorer aurait voulu
+  dire réécrire `script(1)` en C, sans même libérer de `uml-utilities`, que `uml_mconsole` retient).
+  Livré : `bin/scripts/marionnet-terminal-record.sh`, déposé exécutable dans le répertoire du
+  projet, qui relance le vrai émulateur avec `script(1)` autour du port-helper — repli sur
+  l'émulateur intact dès que quelque chose manque, **une fenêtre doit toujours s'ouvrir** ; les
+  trois valeurs dont il a besoin passent par l'**environnement du processus UML**, d'où un
+  `?environment` sur la classe `process`. 5ᵉ journal du verbe `log`, nommé `terminal` et jamais
+  fusionné dans `console` — deux flux, deux écrivains, deux fichiers, et c'est le discriminant
+  (un témoin écrit sur `/dev/tty0` est dans l'un et **jamais** dans l'autre). Le brut et son
+  fichier de timing restent servis par le canal (rejouables par `scriptreplay`), le mode examen
+  archivant une copie **nettoyée** des séquences ANSI — filtre qui **n'applique pas** les
+  effacements, pour ne rien supprimer de ce qu'un correcteur veut voir. Défaut antérieur tombé
+  en mesurant : `Treeview_documents#import_document` acceptait un `~move` et ne le transmettait
+  **jamais** à `import_file`, si bien que tout import était une copie ; corrigé, intentions
+  rendues explicites — rapport et historique **copiés** (déplacer `bash_history.text` ferait taire
+  `log … commands` après une extinction), seule la copie nettoyée du terminal déplacée). Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un

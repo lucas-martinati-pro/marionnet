@@ -26,6 +26,7 @@ class virtual process :
   ?stdin:Unix.file_descr ->
   ?stdout:Unix.file_descr ->
   ?stderr:Unix.file_descr ->
+  ?environment:string array ->
   unexpected_death_callback:(int -> string -> unit) ->
   unit ->
   object
@@ -218,6 +219,13 @@ val random_mac_address : unit -> string
     path — the class below writes the file, the control server serves it under the name
     ["console"] (journalisation-profonde, episode 6). *)
 val console_journal_path : working_directory:string -> name:string -> string
+
+(** Where the recording of the student's terminal lives, in the project's working directory:
+    [terminal_journal_path ~working_directory ~name]. Sibling of {!console_journal_path} and,
+    like it, the single expression of the path — but a different stream: the console is what the
+    kernel prints on the process's standard error, this one is what crosses the window the UML
+    kernel opens (journalisation-profonde, episode 8). *)
+val terminal_journal_path : working_directory:string -> name:string -> string
 
 class uml_process :
   kernel_file_name:process_name ->

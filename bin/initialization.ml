@@ -68,6 +68,13 @@ let option_console_log =
   Argv.register_unit_option "-console-log"
     ~doc:"record each virtual machine's console into <project>/<name>-console.log (implied by --exam)"
     () ;;
+(* Terminal recording (journalisation-profonde, episode 8): a distinct option, not a mode of the
+   one above, because the two streams are distinct and so are their stakes — the console carries
+   what the kernel says, this one carries what a person types. *)
+let option_terminal_log =
+  Argv.register_unit_option "-terminal-log"
+    ~doc:"record each virtual machine's terminal into <project>/<name>-terminal.log (implied by --exam)"
+    () ;;
 let option_r      = Argv.register_unit_option "r" ~aliases:["-run"] ~doc:"immediately run the specified project (if any)" () ;;
 (* Opt-in scripting channel (control_server.ml): without this option no socket is created. *)
 let option_control_socket =
@@ -221,6 +228,15 @@ let are_we_recording_consoles =
   (!option_console_log = Some ()) || are_we_in_exam_mode
 ;;
 let () = Log.printf1 "Console recording: %b\n" are_we_recording_consoles ;;
+
+(* Terminal recording (journalisation-profonde, episode 8). The console above is what the kernel
+   prints; this is what crosses the window a student works in — their commands AND the answers,
+   as they saw them. Recorded host-side, hence out of the guest's reach (decision D2), and never
+   in silence: opt-in, implied by the exam mode alone. *)
+let are_we_recording_terminals =
+  (!option_terminal_log = Some ()) || are_we_in_exam_mode
+;;
+let () = Log.printf1 "Terminal recording: %b\n" are_we_recording_terminals ;;
 
 (* Used as continuation (~k) calling `extract_string_variable_or': *)
 let append_slash x = x ^ "/" ;;

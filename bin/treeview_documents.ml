@@ -44,6 +44,67 @@ let get_full_user_name () : string option =
   | _ -> None
 (* --- *)
 
+(* Deep logging, episode 8: turning a typescript into something a corrector can read.
+
+   What script(1) records is what the terminal RECEIVED, escape sequences included: colours,
+   cursor moves, the erasures a shell performs while the student edits a line. Replayed by
+   scriptreplay(1) it is exactly the session; opened in a text editor it is unreadable. So the
+   raw file stays where it is — the channel serves it, and the timing file beside it makes the
+   replay possible — and what the exam mode archives is this filtered copy.
+
+   Deliberately a filter and not a terminal emulator: erasures are NOT applied (a line the
+   student retyped appears twice rather than once). Reconstructing the final screen would mean
+   emulating a terminal, and would silently delete what a corrector may precisely want to see. *)
+module Terminal_recording = struct
+
+  (* ESC [ ... <final byte in 0x40..0x7e> (CSI), ESC ] ... BEL|ST (OSC), and the two-character
+     escapes. A lone '\r' becomes a newline (progress bars), the '\r' of a "\r\n" pair goes. *)
+  let strip (s : string) : string =
+    let n = String.length s in
+    let b = Buffer.create n in
+    let i = ref 0 in
+    while !i < n do
+      let c = s.[!i] in
+      if c = '\027' && !i + 1 < n then begin
+        match s.[!i + 1] with
+        | '[' ->
+            let j = ref (!i + 2) in
+            while !j < n && (s.[!j] < '\064' || s.[!j] > '\126') do incr j done;
+            i := (if !j < n then !j + 1 else n)
+        | ']' ->
+            let j = ref (!i + 2) in
+            let stop = ref false in
+            while not !stop && !j < n do
+              if s.[!j] = '\007' then (incr j; stop := true)
+              else if s.[!j] = '\027' && !j + 1 < n && s.[!j + 1] = '\\' then (j := !j + 2; stop := true)
+              else incr j
+            done;
+            i := !j
+        | _ -> i := !i + 2
+      end
+      else if c = '\r' then begin
+        if !i + 1 < n && s.[!i + 1] = '\n' then incr i    (* the CR of a CRLF pair *)
+        else (Buffer.add_char b '\n'; incr i)
+      end
+      else (Buffer.add_char b c; incr i)
+    done;
+    Buffer.contents b
+
+  (* The readable copy sits beside the raw file, with the extension the documents treeview knows
+     (`.text'). Returning the raw path on failure is on purpose: archiving an unreadable session
+     beats archiving nothing at all, and the exam mode must never raise at shutdown. *)
+  let readable_copy_of ~(pathname:string) : string =
+    let destination = (Filename.remove_extension pathname) ^ ".text" in
+    try
+      UnixExtra.rewrite destination (strip (UnixExtra.cat pathname));
+      destination
+    with e ->
+      Log.printf2 "Treeview_documents: cannot make a readable copy of %s: %s\n"
+        pathname (Printexc.to_string e);
+      pathname
+
+end (* module Terminal_recording *)
+
 class t =
 fun ~packing
     ~method_directory
@@ -225,9 +286,25 @@ object(self)
       raise e (* Re-raise *)
     end
 
+  (* Deep logging, episode 8. Copied like the console, and for the same reason (the channel keeps
+     serving the raw file under `log <c> terminal'), but through a filter: what is archived is a
+     READABLE version of the session. The raw typescript, and the timing file beside it, stay in
+     the project directory for scriptreplay(1). *)
+  method import_terminal ~machine_or_router_name ~pathname () =
+    let title = (s_ "Terminal of ") ^ machine_or_router_name in
+    let readable = Terminal_recording.readable_copy_of ~pathname in
+    let row_id = self#import_document ~move:true readable in
+    self#set_row_title   row_id title;
+    self#set_row_author  row_id "-";
+    self#set_row_type    row_id (s_ "Terminal");
+    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+
+  (* COPIED, not moved (episode 8, once [move] started working): the file lives in a hostfs the
+     next boot recreates anyway, and taking it away would make `log <c> rc_config' — or, below,
+     `log <c> commands' — answer nothing at all after a graceful shutdown in exam mode. *)
   method import_report ~machine_or_router_name ~pathname () =
     let title = (s_ "Report on ") ^ machine_or_router_name in
-    let row_id = self#import_document ~move:true pathname in
+    let row_id = self#import_document ~move:false pathname in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
     self#set_row_type    row_id (s_ "Report");
@@ -235,7 +312,7 @@ object(self)
 
   method import_history ~machine_or_router_name ~pathname () =
     let title = (s_ "History of ") ^ machine_or_router_name in
-    let row_id = self#import_document ~move:true pathname in
+    let row_id = self#import_document ~move:false pathname in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
     self#set_row_type    row_id (s_ "History");
@@ -263,7 +340,8 @@ object(self)
      dialog, which is exactly what happened for years -- the importer was alive, the producer was
      not. A journal that a given guest does not produce (an old image whose shutdown sequence
      never runs, a session recording no console) must cost nothing at shutdown. *)
-  method import_exam_documents ~machine_or_router_name ~hostfs_directory ~console_pathname () =
+  method import_exam_documents ~machine_or_router_name ~hostfs_directory ~console_pathname
+                               ~terminal_pathname () =
     let import what pathname =
       if Sys.file_exists pathname then
         try what ~machine_or_router_name ~pathname () with e ->
@@ -282,9 +360,15 @@ object(self)
     import (self#import_report)  (Filename.concat hostfs_directory "report.md");
     import (self#import_history) (Filename.concat hostfs_directory "bash_history.text");
     import (self#import_console) (console_pathname);
+    import (self#import_terminal) (terminal_pathname);
 
+  (* [move] was accepted here and DROPPED on the way down since it exists: [import_file] has the
+     parameter that does the work, and this method never passed it, so every import has always
+     been a copy — including the two of episode 7 which ask for a move. Fixed while measuring
+     episode 8; the intentions of the callers were revised at the same time, since honouring the
+     flag changes what they do (see [import_report] and its siblings). *)
   method import_document ?(move=false) user_path_name =
-    let internal_file_name, format = self#import_file user_path_name in
+    let internal_file_name, format = self#import_file ~move user_path_name in
     let row_id =
       self#add_row
         [ filename_header, Row_item.String internal_file_name;

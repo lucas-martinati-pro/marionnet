@@ -70,6 +70,11 @@ fun program
     ?stdin:(stdin=Unix.stdin)
     ?stdout:(stdout=Unix.stdout)
     ?stderr:(stderr=Unix.stderr)
+    (* The environment of the spawned process, when it must differ from ours. Introduced by
+       episode 8 of `journalisation-profonde': the terminal recorder is told which emulator to
+       relaunch and where to write THIS guest's session, and those values differ per process —
+       a global Unix.putenv would race between two starts. *)
+    ?environment:(environment : string array option)
     ~unexpected_death_callback
     ()
   ->
@@ -102,7 +107,12 @@ fun program
             (StringExtra.fmt ~tab:2 ~width:60 cmdline)
         in
         (* --- *)
-        let new_pid = Unix.create_process (program) (Array.of_list (program :: arguments)) (stdin) (stdout) (stderr) in
+        let new_pid =
+          let argv = Array.of_list (program :: arguments) in
+          match environment with
+          | None     -> Unix.create_process (program) argv (stdin) (stdout) (stderr)
+          | Some env -> Unix.create_process_env (program) argv (env) (stdin) (stdout) (stderr)
+        in
         (* --- *)
         pid := (Some new_pid);
         self#start_thread_waiting ~current_pid:new_pid;
@@ -228,6 +238,46 @@ let console_journal_basename_suffix = "-console.log";;
     level, where the control server serves it: ONE expression of the path, never two. *)
 let console_journal_path ~working_directory ~name =
   Filename.concat working_directory (name ^ console_journal_basename_suffix);;
+
+(* --- The terminal recording of a guest (journalisation-profonde, episode 8) --- *)
+
+let terminal_journal_basename_suffix = "-terminal.log";;
+
+(** Where the recording of the student's terminal lives. Same place and same reason as the
+    console above (out of the guest's reach, decision D2), a different stream: the console is
+    what the kernel writes on the process's standard error, this is what crosses the window the
+    kernel opens — the guest's output AND the student's keystrokes, echoed. *)
+let terminal_journal_path ~working_directory ~name =
+  Filename.concat working_directory (name ^ terminal_journal_basename_suffix);;
+
+(* The recorder is deposited once per project, next to the journals it produces. Embedded here
+   at preprocessing time, as the guest-side scripts of episodes 1-2-7 are, so that a binary can
+   never disagree with the script it deposits (mind `preprocessor_deps' in bin/dune). *)
+let terminal_recorder_basename = "marionnet-terminal-record";;
+
+let deposit_terminal_recorder ~working_directory =
+  let dest = Filename.concat working_directory terminal_recorder_basename in
+  try
+    UnixExtra.rewrite dest
+      (INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-terminal-record.sh");
+    Unix.chmod dest 0o755;
+    Some dest
+  with e ->
+    (* Never fatal: a machine must start even without its terminal recording. *)
+    Log.printf2 "Simulation_level: cannot deposit the terminal recorder into %s: %s\n"
+      dest (Printexc.to_string e);
+    None
+;;
+
+(** The three comma-separated fields of MARIONNET_TERMINAL ("xterm,-T,-e"): the emulator, its
+    title switch, its exec switch. The UML kernel expects exactly three, and the recorder needs
+    to know the last two in order to relaunch the first one. [None] if the configuration says
+    something else — in which case nothing is recorded, and nothing is broken either. *)
+let split_terminal_specification specification =
+  match StringExtra.split ~d:',' specification with
+  | [ binary; title_switch; exec_switch ] -> Some (binary, title_switch, exec_switch)
+  | _ -> None
+;;
 
 (** {2 Example of low-level interaction} *)
 
@@ -881,6 +931,46 @@ class uml_process =
         Some xnest_display_number -> "none"
       | None -> console
   in
+  (* Terminal recording (journalisation-profonde, episode 8). Three conditions, and the third
+     one is not a detail: without a console managed by the kernel (`none', or an Xnest) there is
+     no window to record, and saying so here is what keeps the refusal of the control channel
+     honest. The hook is the FIRST field of `xterm=' — the emulator itself — because the kernel
+     offers no other: UML_PORT_HELPER, measured twice, is read by the `port:' channel only, and
+     the `xterm' one runs /usr/lib//uml/port-helper hardcoded. *)
+  let terminal_recording =
+    if not Initialization.are_we_recording_terminals then None else
+    if console <> "xterm" then None else
+    match split_terminal_specification Initialization.marionnet_terminal with
+    | None ->
+        Log.printf1
+          "Simulation_level: uml_process: no terminal recording: MARIONNET_TERMINAL is %S, which \
+           is not a triple <emulator>,<title switch>,<exec switch>\n"
+          Initialization.marionnet_terminal;
+        None
+    | Some (binary, title_switch, exec_switch) ->
+        (match deposit_terminal_recorder ~working_directory with
+         | None -> None
+         | Some recorder ->
+             let log = terminal_journal_path ~working_directory ~name:umid in
+             Some (recorder, title_switch, exec_switch,
+                   [| "MARIONNET_TERMINAL_RECORD_BINARY=" ^ binary;
+                      "MARIONNET_TERMINAL_RECORD_EXEC_SWITCH=" ^ exec_switch;
+                      "MARIONNET_TERMINAL_RECORD_LOG=" ^ log |]))
+  in
+  (* The emulator the kernel will run: ours when recording, the configured one otherwise. The
+     two switches are left untouched — they belong to the user's MARIONNET_TERMINAL, and the
+     recorder relaunches the real emulator with them. *)
+  let terminal_specification =
+    match terminal_recording with
+    | None -> Initialization.marionnet_terminal
+    | Some (recorder, title_switch, exec_switch, _) ->
+        String.concat "," [ recorder; title_switch; exec_switch ]
+  in
+  let terminal_environment =
+    match terminal_recording with
+    | None -> None
+    | Some (_, _, _, bindings) -> Some (Array.append (Unix.environment ()) bindings)
+  in
   let boot_parameters_pathname =
     Printf.sprintf "%s/boot_parameters" hostfs_directory
   in
@@ -913,7 +1003,7 @@ class uml_process =
        "hostfs=" ^ (Shell.escaped_filename hostfs_directory);
        "hostname="^umid;
        "guestkind="^guestkind;
-       "xterm="^Initialization.marionnet_terminal;
+       "xterm="^terminal_specification;
        (* Ghost interface configuration. The IP address is relative to a *host* tap: *)
        "eth42=tuntap,"^tap_name^","^(eth42_mac_address)^",172.23.0.254";
        "debug_mode="^(if Global_options.Debug_level.are_we_debugging () then "true" else "");
@@ -1066,6 +1156,7 @@ class uml_process =
       ~stdin:dev_null_in
       ~stdout:console_journal_output
       ~stderr:console_journal_output
+      ?environment:terminal_environment
       ~unexpected_death_callback
       () as super
 
