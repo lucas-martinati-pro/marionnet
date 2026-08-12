@@ -364,6 +364,13 @@ POTGEN_TMPDIR=_build/pot/pot/default
 POTGEN_MOVE_BACK=../../../..
 gettext-all-ml-pot-files:
 	dune build lib/gettext_extract_pot_p4.cmo
+	# The snapshot below is made of HARD LINKS, and `cp -l' FAILS when the target
+	# already exists: without this wipe a second run silently re-extracts the
+	# PREVIOUS snapshot (measured 2026-08-12: messages.pot came back unchanged
+	# while bin/ had grown seven new strings). Wiping the whole directory also
+	# drops the .pot of a module that no longer exists, which msgcat would
+	# otherwise still concatenate.
+	@rm -rf $(POTGEN_TMPDIR)
 	@(mkdir -p $(POTGEN_TMPDIR)/bin; cd $(POTGEN_TMPDIR)/bin; \
 	  for i in $(shell find _build/default/bin/ -name "*.ml" -o -name "*.mli" | grep -v "[.]pp[.]ml"); do \
 	    cp -l ../$(POTGEN_MOVE_BACK)/$$i ./; \

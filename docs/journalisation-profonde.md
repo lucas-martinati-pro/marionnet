@@ -933,6 +933,45 @@ le treeview le passe quand `Initialization.are_we_in_exam_mode`. L'entrée de me
 conséquence (« Show the source » / « Show and edit the source ») : le libellé dit ce que le geste
 fait **ici**. Hors examen — l'enseignant, un script, un agent qui rouvre le projet — rien ne change.
 
+### 4.13 Ce que l'épisode 13 a livré (les mots du chantier, dans les douze langues)
+
+Le § 6 signalait un défaut visible : l'entrée de menu de l'épisode 10 s'affichait **en anglais au
+milieu d'un menu français**. Le code n'était pas en cause — il appelle `s_` depuis le premier jour ;
+c'est le **catalogue** qui ne connaissait pas ces mots. Sept `msgid` exactement, tous introduits par
+ce chantier : `Console`, `Console of `, `Terminal`, `Terminal of ` (les colonnes *Type* et les
+titres des documents archivés aux épisodes 6-8), `Source of ` et les **deux** libellés de menu de
+l'épisode 12 — deux, parce que le libellé dit ce que le geste fait *ici* (lecture seule sous
+`--exam`, ou édition).
+
+**Le défaut qui a failli faire croire à un épisode sans objet.** La première régénération du POT n'a
+produit **aucun diff**, alors que sept chaînes manquaient. La cible `gettext-all-ml-pot-files`
+prend un instantané des sources par **liens durs** (`cp -l`) dans `_build/pot/…` — et `cp -l`
+**échoue** quand la cible existe déjà. Le second passage extrayait donc, en silence, l'instantané du
+passage précédent : ici, une copie de `treeview_documents.ml` datée du 9 août (13 808 octets contre
+44 093). Le `Makefile` **efface** désormais ce répertoire avant de le refaire — ce qui règle du même
+coup le `.pot` d'un module supprimé, que `msgcat` aurait continué de concaténer. C'est la
+même famille de piège que « dune ne voit pas à travers camlp4 » (épisode 1) : un outil qui garde
+l'ancien résultat **sans rien dire**.
+
+**Ce qui a guidé les traductions.** Les chaînes sœurs du même treeview étaient déjà traduites
+partout (`Report`, `Report on `, `History`, `History of `, `Display this document`) : elles donnent
+le registre langue par langue — l'infinitif et le point final en allemand, la nominalisation en
+grec, le génitif en roumain. Deux écarts assumés :
+
+- **Le turc prend la forme « X : »** (`Konsol: `, `Terminal: `, `Kaynak: `). Le turc est
+  postpositionnel — *« la console de m1 »* s'y dit `m1 konsolu` — et le code **concatène un
+  préfixe** ; aucune traduction préfixée n'y est grammaticale. Les traductions historiques s'en
+  tirent par des périphrases bancales (`History of ` → `Tarihçesi alınan kayıt `) ; le deux-points
+  est honnête, court et lisible.
+- **`es`/`pt`/`pt_BR` disent « code source »**, pas « fuente/fonte » seul, qui désigne aussi une
+  **police de caractères**. Le document rendu est un `report.md` : c'est bien une source.
+
+**Ce que l'épisode ne fait pas.** Les **trois** chaînes non traduites qui restent dans les douze
+catalogues sont les longs textes d'aide de `world_bridge` : elles appartiennent à
+`modernisation-world-bridge`, qui les a introduites, et y sont renvoyées. L'invariant « on ne
+supporte que des catalogues complets » n'est donc pas encore rétabli — mais il ne l'était pas non
+plus avant cet épisode, et plus une seule des chaînes manquantes n'est de notre fait.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -966,10 +1005,10 @@ fait **ici**. Hors examen — l'enseignant, un script, un agent qui rouvre le pr
 - **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
   recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
   document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
-- **L'entrée de menu de l'épisode 10 n'est pas traduite** (« Show and edit the source of this
-  document » apparaît en anglais au milieu d'un menu français), non plus que « Source of ». Les
-  douze catalogues sont également dépourvus des deux chaînes : c'est une passe i18n
-  (`gettext-messages-pot` puis `msgmerge`), pas un correctif de ce chantier.
+- **Les trois chaînes non traduites qui restent** dans les douze catalogues (mesuré à l'épisode 13 :
+  382 traduites, 3 non traduites, 0 *fuzzy*) sont les longs textes d'aide de `world_bridge` —
+  environ 250 mots, introduits par `modernisation-world-bridge`, à traduire par ce chantier-là.
+  Toutes les chaînes de **celui-ci** sont traduites dans les douze langues depuis l'épisode 13.
 - **Constaté à l'épisode 7, hors périmètre** : sur une `debian-wheezy`, `rc_config.log` ne porte
   que son en-tête — la capture du prologue (épisode 1) n'y attrape rien, alors que le `set -x`
   fonctionne (mesuré : la trace part bien dans un fichier que le scénario redirige lui-même). Le
@@ -1459,3 +1498,30 @@ quoi le geste existe.
 banc ne reproduit pas la course (les deux archivages tombent à ~5 s d'écart ; il passe aussi sans
 le correctif, vérifié en le désactivant). Le déclencheur réel est « Tout arrêter » dans la GUI, qui
 éteint tout d'un coup ; le banc vaut comme non-régression, pas comme discriminant.
+
+### 2026-08-12 — Épisode 13 : les mots du chantier, dans les douze langues
+
+**Le dernier défaut visible du § 6** (détail : § 4.13). Le code appelait `s_` ; c'est le catalogue
+qui ignorait sept `msgid` — les quatre étiquettes des documents archivés (`Console`, `Console of `,
+`Terminal`, `Terminal of `), le titre `Source of ` et les **deux** libellés de menu de l'épisode 12.
+Aucun `.ml` n'a été touché.
+
+**Le piège de l'épisode a été l'outil, pas la langue.** La première régénération du POT n'a produit
+**aucun diff** alors que sept chaînes manquaient : `gettext-all-ml-pot-files` fabrique un instantané
+des sources par **liens durs**, et `cp -l` échoue quand la cible existe — le second passage
+ré-extrayait donc, en silence, l'instantané du 9 août. Le `Makefile` efface maintenant
+`_build/pot/…` avant de le refaire. Sans cette mesure, l'épisode aurait conclu « rien à faire ».
+
+**Traductions.** Registre calqué, langue par langue, sur les chaînes sœurs déjà traduites du même
+treeview. Deux écarts assumés et consignés : le **turc** prend la forme « X : » (langue
+postpositionnelle, code qui concatène un préfixe), et **es/pt/pt_BR** disent « code source » —
+« fuente/fonte » seul désignant aussi une police de caractères.
+
+**Mesures.** POT : 379 → **386** entrées, **7 ajoutées, 0 retirée**. `msgmerge
+--no-fuzzy-matching` (donc aucune traduction devinée) : les douze catalogues passent de
+*375 traduites / 3 non traduites* à **382 / 3**, **0 *fuzzy***, `msgfmt -c` propre sur les douze —
+et **aucune entrée obsolète nouvelle** (2 avant, 2 après). `dune build` : succès, douze `.mo`
+recompilés. Preuve que ce sont bien les **catalogues compilés** qui portent les mots, et non les
+seuls `.po` : `msgunfmt` sur `fr.mo`, `it.mo`, `ru.mo`, `tr.mo` rend les sept chaînes, espaces
+finaux compris (`Console de `, `Konsol: `). Les **3** non traduites restantes sont celles de
+`world_bridge`, hors périmètre par décision de l'auteur.

@@ -319,7 +319,17 @@ Reprise : appliquer le skill `chantier-long`.
   vérifié), le déclencheur réel étant « Tout arrêter » dans la GUI. (b) **droit d'écrire** : la
   fenêtre source de l'ép. 10 est **en lecture seule sous `--exam`** — c'est l'étudiant qui est
   devant l'écran — et éditable quand l'enseignant ou un agent rouvre le projet sans `--exam` ;
-  `Gui_source_editing.window` a gagné un `?read_only`, et le libellé du menu change avec lui).
+  `Gui_source_editing.window` a gagné un `?read_only`, et le libellé du menu change avec lui) ;
+  **ép. 13 fait 2026-08-12** (la **passe i18n** : les 7 `msgid` introduits par le chantier —
+  `Console`, `Console of `, `Terminal`, `Terminal of `, `Source of ` et les **deux** libellés de
+  menu de l'ép. 12 — traduits dans les **12** langues, catalogues 375/3 → **382 traduites /
+  3 non traduites, 0 fuzzy** ; **aucun `.ml` touché** : le code appelait `s_` depuis le début.
+  Piège de l'épisode, et défaut **corrigé** au `Makefile` : l'extraction du POT fabrique son
+  instantané des sources par **liens durs** et `cp -l` **échoue** sur une cible existante, si bien
+  qu'un second `make gettext-messages-pot` ré-extrayait **en silence** l'instantané précédent —
+  POT inchangé, de quoi conclure « rien à traduire » ; la cible efface désormais `_build/pot/…`
+  d'abord. Les **3** chaînes non traduites qui restent sont les textes d'aide de `world_bridge`,
+  renvoyées à `modernisation-world-bridge`).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

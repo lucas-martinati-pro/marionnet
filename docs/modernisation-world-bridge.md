@@ -122,6 +122,11 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
 - **Messages de commit en anglais** (règle dépôt) ; tag/scope = `modernisation-world-bridge`.
 - **i18n** : toute modification de `s_`/`f_` déclenche un refresh POT/PO ×12 — regrouper (cf.
   invariant « on ne supporte que des catalogues complets », mémoire `marionnet-i18n`).
+  **Dette ouverte, à solder par ce chantier** (constaté le 2026-08-12, épisode 13 de
+  `journalisation-profonde`) : les **3 seules** chaînes non traduites des douze catalogues sont
+  les longs textes d'aide introduits par l'épisode 1 d'ici — `msgid` de `world_bridge.ml:63`,
+  `:196` et `:220`. Elles sont dans le POT et attendent leur `msgstr` dans les 12 langues ;
+  tant qu'elles y sont, l'invariant reste faux **du fait de ce chantier seul**.
 - **Sécurité** : ne pas élargir le motif sudoers au-delà du nécessaire ; garde `owner_pid`
   sur les `at_exit` (piège `daemon-elimination` ép. 6).
 - **Ne pas régresser** le lab distribué multi-machines (usage 2) ni la surface plus étroite
