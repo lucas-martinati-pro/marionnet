@@ -167,8 +167,9 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **12** | **La course de l'extinction, et le droit d'écrire** : deux machines qui s'éteignent en même temps écrivaient dans le même treeview depuis deux threads (des champs retombaient sur le défaut de leur colonne, « Please edit this ») ; et la source d'un document était éditable **pendant** l'examen. L'import passe par l'acteur, et la fenêtre source est **en lecture seule** sous `--exam` (cf. § 4.12) | l'onglet Documents après extinction de deux machines ne porte plus aucun champ par défaut ; et sous `--exam` la fenêtre source n'a plus de bouton pour valider — **fait** (2026-08-12) |
 | **13** | **Les mots du chantier, dans les douze langues** : les 7 `msgid` introduits depuis l'épisode 6 traduits partout, aucun `.ml` touché — et le `Makefile` corrigé, dont l'extraction du POT re-servait en silence l'instantané précédent (cf. § 4.13) | catalogues 375/3 → **382 traduites / 3 non traduites, 0 fuzzy**, et `msgunfmt` rend les 7 chaînes dans les `.mo` installés — **fait** (2026-08-12) |
 | **14** | **La capture qui n'attrapait rien sur wheezy** : sur une image de 2013, `rc_config.log` ne portait que son en-tête — le `tee` du prologue passe par une substitution de processus, que bash ouvre par `/dev/fd`, absent au **runtime** sur cette image. Le prologue répare `/dev/fd`, **mesure** la substitution au lieu de la supposer, et se rabat en le disant (cf. § 4.14) | le même scénario fautif que sur trixie laisse, **sur l'image de 2013**, sa trace, sa sortie et son `!! FAILED (status 2)` dans `rc_config.log` — **fait** (2026-08-12) |
-| **15** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→14 opérationnels |
-| **16** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+| **15** | **Le corpus des TP, et ce que le canal ne sait pas encore prouver** : cinq TP — dont les séances 7 (iptables/NAT) et 10b (IPv6) de l'auteur — écrits en affirmations, puis **mesurés** verbe par verbe sur une session vivante. Aucune fonctionnalité : la spécification de l'épisode 16 (cf. § 7) | chaque affirmation « prouvable » est rejouée par le banc, et chaque « non observable » est accompagnée de la commande qui **échoue** à la prouver — **fait** (2026-08-12) |
+| **16** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check`. Ses primitives ne sont plus à inventer : § 7.5 les fixe, § 7.6 chiffre ce qu'il faut ajouter au canal | à concevoir sur le § 7, pas en chambre |
+| **17** *(opt.)* | Skill de conception/vérification de TP pour agent | après 16 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1085,6 +1086,133 @@ option, et ne crée que le lien `/dev/fd` **manquant** — pas `/dev/stdin`, `/d
   donc la substitution de processus du `tee` ne s'ouvre pas et l'`exec` échoue en entier, en
   silence. Le prologue répare `/dev/fd` et **mesure** la substitution au lieu de la supposer.
 
+## 7. Vers le vérificateur : ce qu'un TP demande de prouver (épisode 15)
+
+**D6** dit que le vérificateur à l'exécution et le skill de conception de TP sont des épisodes
+*optionnels de fin*, et il dit *pourquoi* : « on ne conçoit pas une couche de verdict avant qu'un
+journal ait tourné une seule fois ». Cet épisode est la sonde qui manquait entre les deux. Il ne
+livre aucune fonctionnalité : il prend des TP **réels**, écrit ce qu'un corrigé doit pouvoir
+**affirmer**, et **mesure** — verbe par verbe, sur une session vivante — ce que le canal sait déjà
+prouver et ce qu'il ne sait pas dire. Son résultat utile est la liste des **manques**.
+
+Renumérotation : **15** = cet épisode, **16** = le vérificateur, **17** = le skill.
+
+### 7.1 Le corpus
+
+| # | TP | Origine | Ce qu'il sollicite |
+|---|---|---|---|
+| C1 | VLAN sur un switch | synthétique | `switch-info` (`vlans`, `macs`), journal du rc de switch (ép. 4) |
+| C2 | Routage entre deux LAN | synthétique | table de routage et `ip_forward` **dans** l'invité |
+| C3 | Adressage / sous-réseaux | synthétique | adresses réelles, cache ARP, `ping` |
+| C4 | Routage + filtrage + SNAT/DNAT | séance 7 de l'auteur (`tp-marionnet-7.tex`, `projet-marionnet-seance-7.mar`) | `iptables` filter **et** nat, services HTTP/SSH, `tcpdump` |
+| C5 | IPv6 : autoconf, routage, filtrage | séance 10b de l'auteur (`tp-marionnet-10b.tex`, `my_firewall.sh`) | `radvd`, `ip -6`, `ip6tables`, `ssh` |
+
+C4 et C5 sont ceux qui comptent : de vrais énoncés, avec un corrigé que l'auteur a écrit —
+`my_firewall.sh` **est** le corrigé du pare-feu, et le banc le **lit** au lieu de le réécrire. La
+maquette mesurée est réduite à ce qui produit les faits à prouver : `m1 — h1 — r1(3 ports) — h3 —
+intrus`, images `debian-trixie-47362` (dont le userland porte `iptables`, `ip6tables`, `radvd`,
+`nginx`, `sshd`, `tcpdump` — vérifié par `debugfs`, sans monter les images).
+
+### 7.2 Ce que le canal prouve déjà
+
+| Affirmation d'un corrigé | Source | Verdict |
+|---|---|---|
+| « la topologie est celle de l'énoncé » | `ls`, `get`, treeview des câbles | **prouvable** |
+| « le routeur a trois interfaces » | `get r1` → `.fields.port_no` | **prouvable** |
+| « les VLAN 5 et 6 existent, le port 3 est dans le 6 » | `switch-info sw1 vlans` | **prouvable** |
+| « la configuration du switch s'est exécutée sans erreur » | `log sw1`, absence de `!! FAILED` | **prouvable** |
+| « aucune commande du corrigé n'a échoué dans l'invité » | `log r1`, absence de `!! FAILED` | **prouvable** |
+| « la règle de SNAT a été posée » | `log r1` (trace `set -x`) | **indirecte** (au boot seulement) |
+| « m1 a l'adresse 192.168.1.1 » | treeview `ifconfig` | **indirecte** : le treeview porte le **déclaré** |
+| « `ip_forward` vaut 1 » | — | **non observable** en marche |
+| « la règle `MASQUERADE` est active maintenant » | — | **non observable** en marche |
+| « m1 joint intrus » | — | **non observable** (rien n'exécute dans un invité) |
+| « `radvd` tourne sur r1 » | — | **non observable** |
+| « l'adresse IPv6 de m1 est … » | — | **non observable** : fabriquée dans l'invité |
+
+### 7.3 Les manques
+
+- **M1 — l'état d'un invité à l'instant *t*.** Les cinq journaux sont des **traces** (ce qui s'est
+  dit), `switch-info` est le seul **état** — et c'est celui d'un switch. Mesure : `switch-info r1`
+  refuse, en le disant (« a machine: switch-info applies to a switch »).
+- **M2 — faire faire quelque chose à un invité.** Aucun des 41 verbes publiés n'exécute, ne lit ni
+  n'interroge quoi que ce soit dans une machine. Donc aucun `ping` à la demande, donc aucune
+  affirmation de **connectivité** — le cœur de C2, C3 et de la partie « Test » de C4.
+- **M3 — le producteur d'état existe déjà, mais il n'est ni déclenchable ni servi.**
+  `marionnet-report.sh` (ép. 7) écrit un rapport qui porte **exactement** ce que M1 réclame :
+  interfaces réelles, tables de routage v4 **et** v6, voisinage, `net.ipv4.ip_forward`, et le
+  pare-feu sous forme **rejouable** (`iptables-save`). Mesuré : rien dans le hostfs tant que la
+  machine tourne ; le rapport apparaît **à l'arrêt** (432 lignes) ; et `log r1 report` **refuse** —
+  la liste des journaux est fermée à cinq.
+- **M4 — une adresse fabriquée dans l'invité n'est nulle part côté hôte.** Le treeview `ifconfig` a
+  bien une colonne « IPv6 address », mais elle porte le **déclaré** et ne s'alimente jamais depuis
+  l'invité. Un correcteur ne peut donc même pas **nommer** la cible d'un `ping6`.
+
+### 7.4 Les pièges mesurés (ils condamnent les raccourcis évidents)
+
+- **`set -x` ne trace pas les redirections.** `echo 1 > /proc/sys/net/ipv4/ip_forward` ne laisse
+  dans le journal que `echo 1` : un correcteur qui cherche `ip_forward` dans la trace ne le trouvera
+  **jamais**, alors que la commande a bien tourné (le rapport de fin dit `net.ipv4.ip_forward = 1`).
+  « La trace prouve la configuration » est donc **faux**, même quand tout passe par le `rc_config`.
+- **`|| true` rend le journal muet.** Idiome courant d'un rc (`radvd || /etc/init.d/radvd start ||
+  true`) : le trap `ERR` de l'épisode 1 ne se déclenche pas à gauche d'un `||`. Un échec **absorbé**
+  ne laisse aucune trace — mesuré sur `radvd`, qui démarrait sans annoncer.
+- **`rc-set` est refusé sur une machine allumée** (`forbidden_transition`) : on ne peut pas même
+  **poser** une sonde en marche, et *a fortiori* pas la rejouer.
+- **`log` ne sert que les cinq journaux nommés** : un fichier arbitraire écrit par l'invité dans le
+  hostfs n'est pas servi (mesuré, avec le refus qui nomme les cinq).
+- **`wait --ready` remonte UNE ligne libre écrite par l'invité** — donc un verdict *est* déjà
+  remontable, mais une seule fois, au boot, et à l'initiative de l'invité seul.
+- **Les ports ne se comptent pas pareil des deux côtés** : Marionnet nomme `port1…portN`, `vde` les
+  numérote `0001…` — `port/setvlan 0 5` échoue en 1006. Une assertion sur « le port 2 » doit dire
+  de quelle numérotation elle parle.
+- **`iptables -L -vv` est illisible avec le backend `nft`** (pseudo-bytecode : `[ cmp eq reg 1
+  0x32687465 ]`). Le rapport porte heureusement aussi `iptables-save` : c'est **cette** section
+  qu'un vérificateur doit lire. Les sections `-L -vv` gardent leur intérêt sur un backend *legacy*
+  (compteurs) — rien à corriger, mais à savoir.
+- **Limite d'environnement** : `radvd` démarre dans l'invité, lit sa configuration, et n'émet
+  **aucun** RA sur cet hôte (`sendmsg: Invalid argument`). L'autoconfiguration **globale** du § 2 de
+  C5 n'est donc pas jouable ici — comme le `wireshark` live, c'est une limite à porter au chantier
+  `marionnet-kernel-rootfs`, pas au vérificateur. Le § 1 de C5 (adresses **lien-local**) suffit à
+  établir M4.
+
+### 7.5 Les primitives que l'épisode 16 doit offrir
+
+Aucune n'est inventée : chacune vient d'une affirmation d'un des cinq TP.
+
+| Primitive | Verbe qui la sert | Statut |
+|---|---|---|
+| `state <c> == on\|off\|sleeping` | `ls` | disponible |
+| `model <c>.<champ> == <v>` | `get` | disponible |
+| `<c>:<if>` câblé à `<c2>:<port>` | treeview des câbles | disponible |
+| `switch <sw> <table>` contient … | `switch-info` | disponible |
+| `journal <c> <j>` contient / ne contient pas … | `log` | disponible |
+| `journal <c> <j>` sans échec (`!! FAILED`) | `log` | disponible |
+| `documents <c>` porte rapport / historique / terminal | `documents` | disponible |
+| **état de l'invité** (adresses, routes, `ip_forward`, pare-feu) | **manquant** | **M1/M3** |
+| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2** |
+
+### 7.6 Ce qu'il faudra ajouter, et à quel prix
+
+Trois voies, du moins cher au plus intrusif :
+
+1. **Rapport à la demande** (*recommandé*) : le producteur existe et son format est déjà lisible ;
+   ce qui manque est un **déclencheur**. Le hostfs étant le seul chemin de retour, il faudrait que
+   le prologue de l'épisode 1 laisse dans l'invité une petite boucle qui exécute
+   `marionnet-report` quand un fichier-drapeau apparaît, plus un 6ᵉ nom au verbe `log`. Coût :
+   ~30 lignes de bash côté invité, une entrée de liste côté canal. Verdicts gagnés : M1, M3 et
+   M4 en entier.
+2. **Exécution à la demande** (`exec <c> <commande>`) : même mécanique, mais générique — elle
+   apporterait **M2** (donc la connectivité). Elle change en revanche la nature du canal, qui
+   cesserait d'observer pour commander l'intérieur des invités ; à trancher explicitement.
+3. **Ne rien ajouter** : le vérificateur se limite alors au modèle, aux traces et au rapport de
+   fin. Il sait dire « la configuration a été tapée sans erreur » et « à l'arrêt, voici l'état »,
+   jamais « à cet instant, m1 joint intrus ». Pour un mode examen c'est peut-être assez ; pour la
+   mise au point d'un TP, non.
+
+**Banc** : `_claude-local/bench/lab-pilot-bench.sh` rejoue toutes les lignes ci-dessus (dont chaque
+« non observable », par la commande qui **échoue** à prouver).
+
 ## Journal d'avancement
 
 ### 2026-08-10 — Épisode 0 : officialisation
@@ -1630,3 +1758,57 @@ fichier touché, `bin/scripts/marionnet-relay.00-journal.sh` ; l'épilogue est i
 **171 assertions, 0 échec** (165 + 6 neuves dans le bloc J8) ; `exam-bench.sh` : **74 assertions,
 0 échec**, inchangé. Le tableau du § 4, qui avait sauté la ligne de l'épisode 13, est remis
 d'aplomb (les deux épisodes optionnels deviennent 15 et 16).
+
+### 2026-08-12 — Épisode 15 : le corpus des TP, et ce que le canal ne sait pas encore prouver
+
+**Pourquoi cet épisode existe** (détail : § 7). L'auteur veut le skill de conception de TP et ne
+compte pas y renoncer. Or D6 dit *pourquoi* il est optionnel et **de fin** : sans couche de verdict
+vérifiable, un skill n'émet que du bash généré — invérifiable, non rejouable, différent à chaque
+génération. Et inventer les assertions du vérificateur en chambre serait exactement la faute que
+`lazy-senior` interdit. D'où cet épisode intercalé : une **sonde** qui spécifie le vérificateur à
+partir de TP **réels**, et qui mesure au lieu de raisonner. Renumérotation : 16 = le vérificateur,
+17 = le skill.
+
+**Le corpus.** Cinq TP, dont **deux vrais** : la séance 7 de l'auteur (routage, filtrage,
+SNAT/DNAT) et la séance 10b (IPv6 : autoconf, routage, filtrage). Leur corrigé de pare-feu,
+`my_firewall.sh`, n'est pas réécrit : le banc le **lit** et le pose comme `rc_config` du routeur,
+avec la seule adaptation de la cible du DNAT à une maquette réduite (`m1 — h1 — r1(3 ports) — h3 —
+intrus`). Le risque « userland » annoncé au plan est tombé avant d'être couru : `debugfs` sur les
+images, sans les monter, montre `iptables`, `ip6tables`, `radvd`, `nginx`, `sshd`, `tcpdump` — tout
+est là, y compris sur la wheezy de 2013.
+
+**Ce que la mesure a retourné.** Trois fois, et jamais dans le sens attendu :
+
+1. **`set -x` ne trace pas les redirections.** Le plan tenait « la trace du rc prouve la
+   configuration » pour une preuve indirecte mais solide. Elle ne l'est pas : `echo 1 >
+   /proc/sys/net/ipv4/ip_forward` ne laisse dans le journal que `echo 1`. Un correcteur qui cherche
+   `ip_forward` ne le trouvera **jamais**, alors que le rapport de fin dit `net.ipv4.ip_forward =
+   1`. La trace prouve ce qui a été **appelé**, pas ce qui a été **écrit**.
+2. **`rc-set` est refusé sur une machine allumée** (`forbidden_transition`) — le banc attendait un
+   succès sans effet. Conséquence plus dure que prévu : on ne peut pas même **poser** une sonde en
+   marche.
+3. **Le producteur d'état existe déjà et il est bon.** `marionnet-report.sh` (ép. 7) porte les
+   interfaces réelles, les tables de routage v4 **et** v6, le voisinage, `ip_forward`, et le
+   pare-feu sous forme **rejouable** (`iptables-save` — les sections `-L -vv`, elles, rendent du
+   pseudo-bytecode `nft` illisible). Il ne manque donc pas un producteur : il manque un
+   **déclencheur** (le rapport n'apparaît qu'à l'arrêt) et un **service** (`log r1 report` refuse,
+   la liste des journaux est fermée à cinq).
+
+**Résultat.** Le § 7 tient les cinq tableaux d'affirmations, les quatre **manques** (M1 l'état d'un
+invité, M2 l'exécution dans un invité, M3 le rapport ni déclenchable ni servi, M4 l'adresse
+fabriquée dans l'invité que le treeview ignore), les sept **pièges** qui condamnent les raccourcis,
+la liste **fermée** des primitives de l'épisode 16 — aucune inventée — et les trois voies chiffrées
+pour combler les manques. La recommandation est la moins intrusive : **rapport à la demande**
+(~30 lignes de bash côté invité, une entrée de liste côté canal), qui donne M1, M3 et M4 sans faire
+du canal un exécuteur de commandes dans les invités (ce que serait `exec`, seul chemin vers M2).
+
+**Limite d'environnement, mesurée deux fois** : `radvd` démarre, lit sa configuration, et n'émet
+aucun RA (`sendmsg: Invalid argument`). L'autoconfiguration **globale** du § 2 de C5 n'est pas
+jouable sur cet hôte — à porter à `marionnet-kernel-rootfs`, comme le `wireshark` live. Le § 1 du
+même TP (adresses **lien-local**) suffit à établir M4, et il est même plus fidèle à l'énoncé.
+
+**Mesures.** Banc neuf `_claude-local/bench/lab-pilot-bench.sh` : **75 assertions, 0 échec**
+(38 sans UML avec `E2E=0`). Les trois premiers passages ont mis en défaut le **banc** — jamais le
+canal : filtres `jq` sur `.entries` au lieu de `.tables[].entries`, ports `vde` numérotés à partir
+de 1, champ `port_no` et non `ports`, et les trois attentes fausses ci-dessus. Aucun fichier du
+dépôt n'a été modifié en dehors de cette documentation.

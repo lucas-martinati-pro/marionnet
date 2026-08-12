@@ -342,7 +342,20 @@ Reprise : appliquer le skill `chantier-long`.
   et sa branche de repli **nomme sa raison** : `type -p tee` testait un **moyen** — `tee` est bien
   là — et non la **capacité**. Piège de mesure : sur ces images la console de l'invité part dans un
   **xterm**, donc ce qui échappe à la capture n'est **nulle part**, pas même dans le journal de
-  console de l'ép. 6 — la sonde doit écrire par redirection **explicite** dans le hostfs).
+  console de l'ép. 6 — la sonde doit écrire par redirection **explicite** dans le hostfs) ;
+  **ép. 15 fait 2026-08-12** (le **corpus des TP**, sonde de spécification et non fonctionnalité :
+  l'auteur veut le skill de conception de TP — devenu **ép. 17** — et D6 interdit de concevoir une
+  couche de verdict en chambre. Cinq TP écrits en affirmations, dont **deux réels** (séances **7**
+  et **10b** de l'auteur, dont le corrigé `my_firewall.sh` est **lu**, pas réécrit), puis mesurés
+  verbe par verbe sur une maquette vivante. § 7 neuf : ce qui est prouvable (le **modèle**, les
+  tables de switch, l'absence de `!! FAILED`), quatre **manques** — l'état d'un invité à l'instant
+  *t*, l'exécution dans un invité (donc **aucune** affirmation de connectivité), le rapport de
+  l'ép. 7 qui porte pourtant déjà tout l'état mais n'est **ni déclenchable ni servi**, et l'adresse
+  fabriquée dans l'invité que le treeview `ifconfig` ignore —, sept pièges dont **`set -x` ne trace
+  pas les redirections** (`echo 1 > …/ip_forward` ne laisse que `echo 1` : la trace prouve ce qui a
+  été *appelé*, pas ce qui a été *écrit*), la liste **fermée** des primitives de l'**ép. 16** et
+  trois voies chiffrées, la recommandée étant le **rapport à la demande**. Banc neuf
+  `lab-pilot-bench.sh`, 75 assertions, 0 échec ; aucun code applicatif touché).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
