@@ -165,8 +165,10 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **10** | **Lire un rapport Markdown depuis la GUI** : conversion **interne** (cmarkit, `~safe:true`) puis navigateur au double-clic, et la **source** à un geste — menu contextuel, fenêtre GtkSourceView éditable. Deux défauts antérieurs tombent avec : l'extension perdue à l'import et le lecteur HTML mort (`galeon`), sans quoi le rendu n'irait nulle part (cf. § 4.10) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** — **fait** (2026-08-12) |
 | **11** | **La page que le navigateur ne pouvait pas lire** : le rendu de l'épisode 10 était écrit dans `/tmp`, invisible d'un navigateur **confiné** (le Firefox snap d'Ubuntu a un `/tmp` privé, et son profil AppArmor exclut les fichiers **cachés** du home). La page n'est plus écrite nulle part : elle est **servie** sur la boucle locale, sous une URL à jeton, le temps qu'un navigateur la prenne (cf. § 4.11) | le double-clic **affiche** le rapport, mesuré fenêtre à l'appui, là où la même page rendait « Erreur de chargement » — **fait** (2026-08-12) |
 | **12** | **La course de l'extinction, et le droit d'écrire** : deux machines qui s'éteignent en même temps écrivaient dans le même treeview depuis deux threads (des champs retombaient sur le défaut de leur colonne, « Please edit this ») ; et la source d'un document était éditable **pendant** l'examen. L'import passe par l'acteur, et la fenêtre source est **en lecture seule** sous `--exam` (cf. § 4.12) | l'onglet Documents après extinction de deux machines ne porte plus aucun champ par défaut ; et sous `--exam` la fenêtre source n'a plus de bouton pour valider — **fait** (2026-08-12) |
-| **13** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→12 opérationnels |
-| **14** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+| **13** | **Les mots du chantier, dans les douze langues** : les 7 `msgid` introduits depuis l'épisode 6 traduits partout, aucun `.ml` touché — et le `Makefile` corrigé, dont l'extraction du POT re-servait en silence l'instantané précédent (cf. § 4.13) | catalogues 375/3 → **382 traduites / 3 non traduites, 0 fuzzy**, et `msgunfmt` rend les 7 chaînes dans les `.mo` installés — **fait** (2026-08-12) |
+| **14** | **La capture qui n'attrapait rien sur wheezy** : sur une image de 2013, `rc_config.log` ne portait que son en-tête — le `tee` du prologue passe par une substitution de processus, que bash ouvre par `/dev/fd`, absent au **runtime** sur cette image. Le prologue répare `/dev/fd`, **mesure** la substitution au lieu de la supposer, et se rabat en le disant (cf. § 4.14) | le même scénario fautif que sur trixie laisse, **sur l'image de 2013**, sa trace, sa sortie et son `!! FAILED (status 2)` dans `rc_config.log` — **fait** (2026-08-12) |
+| **15** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→14 opérationnels |
+| **16** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -972,6 +974,75 @@ catalogues sont les longs textes d'aide de `world_bridge` : elles appartiennent 
 supporte que des catalogues complets » n'est donc pas encore rétabli — mais il ne l'était pas non
 plus avant cet épisode, et plus une seule des chaînes manquantes n'est de notre fait.
 
+### 4.14 Ce que l'épisode 14 a livré (et l'`exec` qui échouait en silence)
+
+Le § 6 portait, depuis l'épisode 7, une ligne « à instruire » : sur `debian-wheezy-08367`,
+`rc_config.log` ne portait **que ses trois lignes d'en-tête**, alors que `boot.log` — écrit par le
+même épilogue, sur la même image — était complet. Un trou dans le livrable de l'épisode 1, sur la
+seule vieille image qui boote encore.
+
+**Le symptôme découpait le prologue en deux**, et c'est ce découpage qui a servi de sonde :
+l'en-tête est écrit par une redirection **explicite** (`>> "$log"`), tout le reste dépend de la
+redirection **globale** posée juste après. Ce qui manquait était exactement ce qui vient après
+cette ligne — y compris la ligne `# capture:` qu'elle fait suivre.
+
+**Mesure.** Une sonde a été posée dans le `rc_config` du scénario — pas dans un fichier du dépôt —
+et surtout **écrite par redirection explicite vers un fichier à nous** : sur cette image la console
+de l'invité part dans un xterm et non dans le processus UML, si bien que « ce qui n'est pas
+capturé » ne se retrouve **nulle part**, pas même dans le journal de console de l'épisode 6. Ce
+détour est ce qui a rendu la panne visible. Elle a rendu, d'un seul boot :
+
+```
+PROBE: bash=[4.2.37(1)-release] flags=[hxBE]     <- set -x EST actif : le prologue est allé au bout
+PROBE: journal=[/mnt/hostfs/rc_config.log] teepid=[1102]
+PROBE: fd1 -> pipe:[756]                          <- DEUX pipes distincts : le 2>&1 n'a pas eu lieu
+PROBE: fd2 -> pipe:[760]
+PROBE: /dev/fd -> /dev/fd ; ls: cannot access /dev/fd: No such file or directory
+udev on /dev type tmpfs (rw,mode=0755)
+PROBE: procsub KO (… line 13: /dev/fd/62: No such file or directory)
+```
+
+**Cause racine.** `tee` est atteint par une **substitution de processus**, et bash implémente
+celle-ci en ouvrant `/dev/fd/<n>` **dans le shell appelant**. Or l'image de 2013 n'a pas `/dev/fd`
+quand elle **tourne** : le lien symbolique livré *dans* l'image (vérifié par `debugfs`, sans la
+monter) est **masqué** par le tmpfs monté sur `/dev` au boot, et l'init de cette image ne le remet
+pas (Debian le fait dans `mountdevsubfs.sh`). Donc `exec > >(tee -a "$log") 2>&1` **échoue** — et il
+échoue **en entier**, `2>&1` compris, les redirections s'appliquant de gauche à droite : le shell
+garde ses descripteurs d'origine et **poursuit**. D'où les trois symptômes réunis : le `set -x`
+« fonctionne » (il trace, mais vers l'ancien descripteur), les deux pipes sont **distincts**, et le
+journal ne garde que ce qui a été écrit avant.
+
+Corollaire de méthode : la garde `type -p tee` **ne posait pas la bonne question**. `tee` est bien
+là (`/usr/bin/tee`) ; c'est la substitution qui ne s'ouvre pas. Une garde qui teste un **moyen**
+plutôt que la **capacité** ne garde rien.
+
+**Correctif** (un seul fichier, `bin/scripts/marionnet-relay.00-journal.sh`), dans l'ordre :
+
+1. **remettre `/dev/fd`** s'il manque (`ln -s /proc/self/fd /dev/fd`, gardé par `[[ ! -e /dev/fd ]]`
+   et par l'existence de `/proc/self/fd`) — `/dev` est un **tmpfs**, donc aucune image, ni même le
+   COW, n'est écrite, et ce n'est que la remise en place d'un élément standard du boot que cet init
+   saute ;
+2. **mesurer** la substitution au lieu de la supposer : `( exec 9> >(cat >/dev/null) )` dans un
+   sous-shell. C'est cette mesure qui est la vraie garde — elle couvre toutes les causes, pas
+   seulement celle-ci ;
+3. **le dire** : la branche de repli nomme sa raison (`# capture: journal only (no usable /dev/fd
+   in this image), the console keeps nothing`), au lieu du `no tee in this image` unique et parfois
+   faux.
+
+L'épilogue n'a **pas** bougé : son contrat (`__mrn_journal_tee_pid` vide ou non) est inchangé.
+
+**Mesuré après correctif**, sur la même image et par le même scénario fautif : `# capture: tee
+(console and journal)` — la réparation suffit, on ne se rabat pas —, un journal de **39 lignes** au
+lieu de 3, la trace `set -x` du scénario, sa sortie standard, et
+`!! FAILED (status 2): ls /journal-bench-no-such-path`. Le banc `journal-bench.sh` passe de 165 à
+**171 assertions, 0 échec** (les 6 neuves sont dans le bloc J8, celui de l'image sysv réelle) ;
+`exam-bench.sh` reste à **74 assertions, 0 échec** — le prologue porte aussi l'historique de
+l'épisode 7.
+
+**Ce que l'épisode ne fait pas.** Il ne touche à aucune image, n'ajoute ni verbe, ni journal, ni
+option, et ne crée que le lien `/dev/fd` **manquant** — pas `/dev/stdin`, `/dev/stdout`,
+`/dev/stderr`, dont personne ici n'a besoin.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1009,10 +1080,10 @@ plus avant cet épisode, et plus une seule des chaînes manquantes n'est de notr
   382 traduites, 3 non traduites, 0 *fuzzy*) sont les longs textes d'aide de `world_bridge` —
   environ 250 mots, introduits par `modernisation-world-bridge`, à traduire par ce chantier-là.
   Toutes les chaînes de **celui-ci** sont traduites dans les douze langues depuis l'épisode 13.
-- **Constaté à l'épisode 7, hors périmètre** : sur une `debian-wheezy`, `rc_config.log` ne porte
-  que son en-tête — la capture du prologue (épisode 1) n'y attrape rien, alors que le `set -x`
-  fonctionne (mesuré : la trace part bien dans un fichier que le scénario redirige lui-même). Le
-  collecteur (`boot.log`), lui, est complet sur la même image. À instruire.
+- ~~Constaté à l'épisode 7 : sur une `debian-wheezy`, `rc_config.log` ne porte que son en-tête.~~
+  **Instruit et corrigé à l'épisode 14** (§ 4.14) : `/dev/fd` manque au *runtime* sur cette image,
+  donc la substitution de processus du `tee` ne s'ouvre pas et l'`exec` échoue en entier, en
+  silence. Le prologue répare `/dev/fd` et **mesure** la substitution au lieu de la supposer.
 
 ## Journal d'avancement
 
@@ -1525,3 +1596,37 @@ recompilés. Preuve que ce sont bien les **catalogues compilés** qui portent le
 seuls `.po` : `msgunfmt` sur `fr.mo`, `it.mo`, `ru.mo`, `tr.mo` rend les sept chaînes, espaces
 finaux compris (`Console de `, `Konsol: `). Les **3** non traduites restantes sont celles de
 `world_bridge`, hors périmètre par décision de l'auteur.
+
+### 2026-08-12 — Épisode 14 : la capture qui n'attrapait rien sur wheezy
+
+**Le dernier point d'ombre du § 6** (détail : § 4.14) : depuis l'épisode 7, on savait que
+`rc_config.log` ne portait, sur `debian-wheezy-08367`, que ses trois lignes d'en-tête — sans savoir
+pourquoi, alors que `boot.log` était complet sur la même image. Clore le chantier sur cette
+inconnue n'était pas possible : c'est le livrable de l'**épisode 1** qui était troué.
+
+**La sonde a dû sortir du chemin qu'elle mesurait.** Sur cette image, la console de l'invité part
+dans un xterm et non dans le processus UML : ce qui échappe à la capture ne se retrouve donc nulle
+part, pas même dans le journal de console de l'épisode 6. La sonde a été posée dans le `rc_config`
+du scénario (aucun fichier du dépôt modifié) et **redirigée explicitement** vers un fichier du
+hostfs. Un seul boot a suffi.
+
+**Cause racine.** `tee` est atteint par une **substitution de processus**, que bash ouvre par
+`/dev/fd/<n>` **dans le shell appelant**. L'image de 2013 n'a pas `/dev/fd` quand elle tourne : son
+lien symbolique est masqué par le tmpfs monté sur `/dev`, et son init ne le remet pas. L'`exec`
+échouait donc **en entier** — `2>&1` compris, les redirections s'appliquant de gauche à droite —,
+le shell gardant ses descripteurs d'origine et poursuivant sans rien dire. Ce qui explique enfin
+les trois symptômes ensemble : le `set -x` « fonctionnait » (vers l'ancien descripteur), les deux
+descripteurs pointaient sur **deux pipes distincts**, et le journal s'arrêtait à ce qui avait été
+écrit avant.
+
+**La garde ne posait pas la bonne question.** `type -p tee` répond `/usr/bin/tee` : `tee` est là,
+c'est la substitution qui ne s'ouvre pas. Le prologue **répare** `/dev/fd` s'il manque (un tmpfs :
+aucune image, ni même le COW, n'est écrite) puis **mesure** la substitution — `( exec 9> >(cat
+>/dev/null) )` — au lieu de la supposer ; et la branche de repli **nomme sa raison**. Un seul
+fichier touché, `bin/scripts/marionnet-relay.00-journal.sh` ; l'épilogue est inchangé.
+
+**Mesures.** Même image, même scénario fautif : `# capture: tee (console and journal)`, journal de
+**39 lignes** au lieu de 3, avec la trace, la sortie et `!! FAILED (status 2)`. `journal-bench.sh` :
+**171 assertions, 0 échec** (165 + 6 neuves dans le bloc J8) ; `exam-bench.sh` : **74 assertions,
+0 échec**, inchangé. Le tableau du § 4, qui avait sauté la ligne de l'épisode 13, est remis
+d'aplomb (les deux épisodes optionnels deviennent 15 et 16).

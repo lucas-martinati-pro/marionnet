@@ -329,7 +329,20 @@ Reprise : appliquer le skill `chantier-long`.
   qu'un second `make gettext-messages-pot` ré-extrayait **en silence** l'instantané précédent —
   POT inchangé, de quoi conclure « rien à traduire » ; la cible efface désormais `_build/pot/…`
   d'abord. Les **3** chaînes non traduites qui restent sont les textes d'aide de `world_bridge`,
-  renvoyées à `modernisation-world-bridge`).
+  renvoyées à `modernisation-world-bridge`) ; **ép. 14 fait 2026-08-12** (la **capture qui
+  n'attrapait rien sur wheezy**, dernier point d'ombre du § 6 : sur une image de 2013,
+  `rc_config.log` ne portait que ses trois lignes d'en-tête. `tee` est atteint par une
+  **substitution de processus**, que bash ouvre par `/dev/fd/<n>` **dans le shell appelant**, et
+  cette image n'a pas `/dev/fd` quand elle **tourne** — le lien livré dans l'image est masqué par
+  le tmpfs monté sur `/dev`, et son init ne le remet pas (Debian le fait dans
+  `mountdevsubfs.sh`) ; l'`exec` échouait donc **en entier**, `2>&1` compris — les redirections
+  s'appliquent de gauche à droite — **sans arrêter** le fichier sourcé, d'où un `set -x` qui
+  « fonctionne » vers l'ancien descripteur. Le prologue **remet `/dev/fd`** s'il manque (un tmpfs :
+  aucune image, ni même le COW, n'est écrite), **mesure** la substitution au lieu de la supposer,
+  et sa branche de repli **nomme sa raison** : `type -p tee` testait un **moyen** — `tee` est bien
+  là — et non la **capacité**. Piège de mesure : sur ces images la console de l'invité part dans un
+  **xterm**, donc ce qui échappe à la capture n'est **nulle part**, pas même dans le journal de
+  console de l'ép. 6 — la sonde doit écrire par redirection **explicite** dans le hostfs).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

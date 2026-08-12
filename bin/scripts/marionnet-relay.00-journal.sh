@@ -75,15 +75,40 @@ if [[ -n "$__mrn_journal_log" ]]; then
   #     student keeps seeing the boot on the console; without it, the journal
   #     wins over the console (and says so):
   exec 3>&1 4>&2
-  if type -p tee >/dev/null 2>&1; then
+
+  # `tee' is reached through a PROCESS SUBSTITUTION, and bash implements that one
+  # by opening /dev/fd/<n> IN THIS SHELL.  A 2013 image does not necessarily have
+  # /dev/fd when it runs: the symlink shipped in the image is masked by the tmpfs
+  # mounted over /dev at boot, and its init never puts it back (Debian does that
+  # in mountdevsubfs.sh).  Measured on debian-wheezy-08367, episode 14: the `exec'
+  # below then FAILS -- silently, and as a whole, `2>&1' included -- the shell
+  # carries on with its original descriptors, and the journal keeps nothing but
+  # the header written above.  `type -p tee' never was the right question: tee is
+  # there, it is the substitution that cannot be opened.
+  #
+  # So, in order: put /dev/fd back if it is missing (a tmpfs: no image, not even
+  # the COW, is written to), then MEASURE whether the substitution works, and
+  # only then choose -- the measure covers every cause, not just this one.
+  if [[ ! -e /dev/fd && -d /proc/self/fd ]]; then
+    ln -s /proc/self/fd /dev/fd 2>/dev/null
+  fi
+  if ! type -p tee >/dev/null 2>&1; then
+    __mrn_journal_why="no tee in this image"
+  elif ! ( exec 9> >(cat >/dev/null) ) 2>/dev/null; then
+    __mrn_journal_why="no usable /dev/fd in this image"
+  else
+    __mrn_journal_why=""
+  fi
+  if [[ -z "$__mrn_journal_why" ]]; then
     exec > >(tee -a "$__mrn_journal_log") 2>&1
     __mrn_journal_tee_pid=$!
     echo "# capture: tee (console and journal)"
   else
     exec >> "$__mrn_journal_log" 2>&1
     __mrn_journal_tee_pid=""
-    echo "# capture: journal only (no tee in this image)"
+    echo "# capture: journal only ($__mrn_journal_why), the console keeps nothing"
   fi
+  unset __mrn_journal_why
 
   # --- A sourced file does not abort on error: the exit status of a failing
   #     command would be lost.  This trap is what makes it visible.  `errtrace'
