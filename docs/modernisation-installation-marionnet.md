@@ -200,6 +200,70 @@ couples (chantier `marionnet-retro-compat-kernels-images`), et son installation 
 `dpkg --add-architecture i386` sur l'hôte. D'où la cible opt-in, hors de `make dependencies` ;
 côté `.deb`, il relève au mieux d'un `Recommends`, à trancher quand le canal sera construit.
 
+### 2.4 ter Ce que l'installation ne pose pas : les clients du canal (constat 2026-08-12)
+
+**Constat mesuré** (`grep -rn 'useful-scripts' Makefile Makefile.d/*.mk` : aucun résultat) :
+**aucun** client du canal de contrôle n'est installé, par aucune cible. `install-final-as-root`
+fait `dune install --prefix` puis copie `$(SHARE_DIR)/scripts/*` dans `$(PREFIX_INSTALL)/bin/` —
+ce sont les scripts **invités** (`bin/scripts/`), pas ceux de `useful-scripts/`. Aujourd'hui, les
+outils ne sont donc utilisables que **depuis un clone du dépôt**.
+
+C'est un défaut, et pas seulement une commodité manquante, pour trois raisons vérifiables :
+
+1. **La documentation utilisateur les appelle par leur nom nu.** `doc-src/scripting/README.md`
+   écrit `mrnctl help`, `mrn-check lab.mrn`, `mrn-verify lab.mrv` — donc en supposant le `$PATH`.
+   Idem `doc-src/exam-mode.md` et les exemples versionnés.
+2. **Les scripts eux-mêmes le supposent.** `find_ctl` (dans `mrn-check` comme dans `mrn-verify`)
+   cherche `marionnet-ctl` **à côté du script**, puis dans `$PATH` ; et le commentaire d'en-tête
+   des deux justifie l'absence de `bashbricks` par une phrase qui est aujourd'hui **fausse** :
+   « this script is meant to sit in `$(PREFIX)/bin` next to `marionnet-ctl` ». Le raisonnement
+   reste bon (une bibliothèque sourcée par chemin relatif casserait une fois installée) ; c'est
+   l'installation qui manque.
+3. **Un binaire installé sans ses clients n'est pas pilotable par script**, ce qui est exactement
+   ce que les chantiers `marionnet-pilotage-par-script` et `journalisation-profonde` ont construit.
+
+**À installer** (nommer chacun, l'inventaire n'est pas déductible du dossier — cf. § 2.5, où tout
+est ignoré sauf une liste) :
+
+| Fichier | Destination | Remarque |
+|---|---|---|
+| `useful-scripts/marionnet-ctl` | `$(PREFIX)/bin/` | le client |
+| `useful-scripts/mrnctl` | `$(PREFIX)/bin/` | **lien** vers le précédent — nom court |
+| `useful-scripts/mrn-check` | `$(PREFIX)/bin/` | vérificateur d'un `.mrn` |
+| `useful-scripts/mrn2sh` | `$(PREFIX)/bin/` | **lien** vers `mrn-check` : le **nom implique `--to-bash`** |
+| `useful-scripts/mrn-verify` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
+| `useful-scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert `marionnet-ctl`, `mrnctl`, `mrn-check`, `mrn2sh`, `mrn-verify` |
+
+⚠️ **Les liens ne sont pas décoratifs** : `mrn2sh` est `mrn-check` sous un autre nom, et le script
+lit `$0` pour en déduire son mode (`mrn2sh` ⇒ `--to-bash` implicite) ; `mrnctl` est le nom court
+de `marionnet-ctl`. Une installation qui les **copie sous un autre nom**, ou qui n'en pose qu'un
+seul, change le comportement. Poser des liens (symboliques ou durs), jamais renommer.
+
+Pour la complétion, un seul fichier dessert les cinq noms (il finit par autant de `complete -F`) :
+l'installer une fois et, si la distribution l'exige, créer des liens par nom de commande.
+
+**Deux dépendances runtime en découlent**, et elles corrigent le § 2.4 bis :
+
+- **`socat` redevient une dépendance HÔTE** s'il faut installer les clients : `marionnet-ctl` en a
+  besoin pour parler à la socket unix (`command -v socat || die`, `marionnet-ctl:130`). Le § 2.4
+  bis l'avait écarté au motif — exact — qu'il est une dépendance **invité** ; il l'est **aussi**
+  côté hôte dès que le canal est utilisé depuis la ligne de commande. À trancher au moment du
+  paquet : `Depends` si les clients sont dans le paquet principal, `Recommends` s'ils partent dans
+  un paquet séparé (p. ex. `marionnet-cli`).
+- **`jq`** est requis par `mrn-check` et `mrn-verify` (et optionnel pour `marionnet-ctl` :
+  `--query`, `--pretty`). Même arbitrage.
+
+**Voie d'implémentation** (à trancher à l'épisode qui construira l'install) : soit une stanza
+`install` de dune (les clients deviennent des `(files …)` d'une section `bin`, ce qui les fait
+suivre `dune install --prefix` et donc tous les canaux), soit une copie explicite dans
+`install-final-as-root`, sur le modèle de la boucle existante des scripts invités. La première a
+la préférence de principe (un seul mécanisme d'installation), sous réserve que dune sache poser
+des **liens** — sinon, les deux liens se font à la main dans la cible.
+
+> Contrainte entrante enregistrée le 2026-08-12, au sortir de l'épisode 17 de
+> `journalisation-profonde` (`docs/journalisation-profonde.md` § 4.16), qui a ajouté le cinquième
+> exécutable de la famille.
+
 ### 2.5 Satellites de `useful-scripts/` (strates historiques)
 
 - `marionnet_from_scratch.{VDI,2018.02.04,orig,NEW,up-to-0.94.sh,*.backup}` : versions
@@ -353,3 +417,15 @@ clôture des enfants.
   auditant les appels du code, pas le script historique : `uml-utilities` conservé mais pour
   `uml_mconsole` (et non `uml_switch`, mort), `xauth` ajouté (cookie X11 lu par `bin/x.ml`),
   `socat` écarté (dépendance invité). Aucun code applicatif touché.
+- **2026-08-12 — contrainte entrante : l'installation ne pose aucun client du canal** (§ 2.4 ter,
+  neuf). Constat mesuré au sortir de l'épisode 17 de `journalisation-profonde` : aucune cible
+  n'installe `useful-scripts/` — ni `marionnet-ctl`/`mrnctl`, ni `mrn-check`/`mrn2sh`, ni le
+  `mrn-verify` que cet épisode vient d'ajouter, ni la complétion bash. Or la documentation
+  utilisateur les appelle par leur nom nu, et les scripts eux-mêmes se déclarent destinés à
+  `$(PREFIX)/bin` — c'est même la justification écrite de leur refus de `bashbricks`. Le § 2.4 ter
+  nomme les six fichiers, insiste sur les **deux liens** dont le nom change le comportement
+  (`mrn2sh` = `mrn-check --to-bash`, `mrnctl` = `marionnet-ctl`) et corrige le § 2.4 bis sur deux
+  dépendances : **`socat`** — écarté le 2026-07-27 comme dépendance *invité*, mais exigé par
+  `marionnet-ctl` côté **hôte** — et **`jq`**, requis par les deux vérificateurs. Voie
+  d'implémentation à trancher (stanza `install` de dune, ou copie dans `install-final-as-root`).
+  Aucun code touché.
