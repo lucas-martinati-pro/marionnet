@@ -194,6 +194,12 @@ let component_field_and_value syntax = { min_args = 3; max_args = 3; free_tail =
 (* A component and, optionally, a free text: the one-line form of rc-set. Which field it writes
    is said by --field, the second position being taken by the content itself. *)
 let component_and_free_text   syntax = { min_args = 1; max_args = 2; free_tail = true;  syntax }
+(* A component and a command line, the latter REQUIRED (episode 18): [exec] with nothing to run
+   is not an abbreviation of anything, unlike rc-set above, where the empty content has a
+   meaning. The tail is free because a command line is made of spaces — and it is passed to the
+   guest's shell exactly as it was received, quoting included: interpreting it here would mean
+   holding a second, worse copy of a shell's grammar. *)
+let component_and_command     syntax = { min_args = 2; max_args = 2; free_tail = true;  syntax }
 (* A treeview cell: node, port, field, and the value — which is *optional*, because that is how a
    cell is emptied, the way a human clears it in the GUI (every ifconfig column predicate accepts
    the empty string, treeview_ifconfig.ml:407-468). Free tail all the same: an address never holds
@@ -259,11 +265,20 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    It shares its name with the VERB which produces it, on purpose and against the rule that
    settled [commands] above: there [history] was already a verb meaning something *else* (the
    treeview of saved states), whereas here the verb and the journal name one thing — [report]
-   asks the guest to write it, [log … report] serves what was written. *)
+   asks the guest to write it, [log … report] serves what was written.
+
+   Episode 18 added a seventh, [exec], and its reason is MARKING rather than diagnosis. The verb
+   [exec] runs a command inside a guest; without a trace of its own, what the channel injected
+   would be indistinguishable from what the student did — worse, it would land in [commands],
+   which is precisely the file a corrector reads as the student's work. Two writers, two files:
+   the rule this work-stream has applied since episode 8 (console and terminal are never merged
+   for the same reason). It holds the command, its date and its status, never its output: the
+   output is served in the answer of [exec] itself, and one thing is served in one place. *)
 let journal_files =
   [ ("rc_config", "rc_config.log"); ("boot", "boot.log");
     ("commands", "bash_history.text"); ("console", "console.log");
-    ("terminal", "terminal.log"); ("report", "report.md") ]
+    ("terminal", "terminal.log"); ("report", "report.md");
+    ("exec", "exec.log") ]
 (* The two Marionnet writes itself, in the project's working directory rather than in a hostfs
    the student may rewrite (episodes 6 and 8): their basename above is only there to keep the
    list uniform — the path comes from simulation_level.ml. *)
@@ -346,6 +361,18 @@ let arity_of_command : (string * arity) list =
        switch what it knows, this asks a running machine or router the same. It answers *that*
        the report was taken — its content is a journal, hence [log <component> report]. *)
     ("report",        one_component "report <component> [--timeout=<s>]");
+    (* Episode 18, and the verb which changes what this channel is: the eight above observe, this
+       one COMMANDS the inside of a guest. It was left out of episode 16 on purpose and decided
+       for itself, because it is the only way to answer "does m1 reach h3 *now*" — a report
+       describes a state, never an accessibility. What it runs is journalled apart (see the
+       seventh entry of [journal_files]) so that a corrector can always tell what the channel
+       injected from what the student typed. *)
+    (* `<command-line>' and not `<command>': the latter is already a placeholder of THIS grammar
+       (help [<command>]), and the Bash completion derives what it offers from these very words —
+       it would have offered the channel's own verbs where a guest's command line is expected.
+       The same one-word-one-meaning rule which named the journal [commands] at episode 7. *)
+    ("exec",          component_and_command
+                        "exec <component> <command-line> [--timeout=<s>]");
     ("wait",          one_component
                         "wait <component> (--state=on|off|sleeping | --ready) [--timeout=<s>]");
     ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
@@ -437,14 +464,30 @@ let check_arity ~(verb:string) (args:string list) : (string list, string) result
         Error (Printf.sprintf "%s accepts at most %d positional argument%s, got %d — usage: %s"
                  verb a.max_args (plural a.max_args) n a.syntax)
 
-(* [None] is the empty line; [Some (Error detail)] a request whose shape is already wrong. *)
+(* [None] is the empty line; [Some (Error detail)] a request whose shape is already wrong.
+
+   The bare `--' ends the options, as it does in every Unix tool, and episode 18 is what made it
+   necessary: options are recognised WHEREVER they stand in the line (rc-set puts its --field
+   after the content), so `exec m1 ls --all' would have handed --all to this parser and the guest
+   would have run `ls'. Silently. A command line is the one argument which may legitimately hold
+   options meant for somebody else, hence the separator — and the refusal of an unknown option
+   (see [exec] in the dispatch), which is what makes the separator discoverable. *)
 let parse_request (line:string) : (request, string) result option =
   let tokens = List.filter (fun s -> s <> "") (String.split_on_char ' ' (String.trim line)) in
   match tokens with
   | [] -> None
   | verb :: rest ->
       let is_option t = (String.length t > 2) && (String.sub t 0 2 = "--") in
-      let option_tokens, argument_tokens = List.partition is_option rest in
+      (* Everything after the first bare `--' is an argument, whatever it looks like. The
+         separator itself is dropped, and a second one is an ordinary argument. *)
+      let before, after =
+        match List.find_index (fun t -> t = "--") rest with
+        | None   -> rest, []
+        | Some i -> List.filteri (fun j _ -> j < i) rest,
+                    List.filteri (fun j _ -> j > i) rest
+      in
+      let option_tokens, argument_tokens = List.partition is_option before in
+      let argument_tokens = argument_tokens @ after in
       let parse_option t =
         let t = String.sub t 2 (String.length t - 2) in
         match String.index_opt t '=' with
@@ -2385,6 +2428,12 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
                         asked for, hence a sentence which names the verb rather than a wait. *)
                      "nobody has asked this guest for its state yet: run report on it, or let it \
                       shut down gracefully — the same producer also runs at the end of a session"
+                   else if key = "exec" then
+                     (* Same nature as [report] — nothing writes it until the channel is asked to
+                        — and the sentence says the one thing this journal proves: that it is
+                        empty because *nobody used the channel to run anything here*. *)
+                     "nothing has been run in this guest through the channel: this journal is \
+                      written by exec, and by nothing else"
                    else
                      "it has not been started since this project was opened, or its guest has not \
                       reached the end of its boot — see wait --ready") })
@@ -2627,7 +2676,7 @@ let cmd_switch_info (st : State.globalState) ~(timeout:float) ~(name:string)
 
    The exchange is a file protocol, because the hostfs is the only way back into a guest (D1: no
    image is rebuilt, ever). Host: remove [report.done], then write [report.request]. Guest (the
-   watcher of marionnet-report-watch.sh): consume the request, produce, rename onto report.md,
+   watcher of marionnet-watch.sh): consume the request, produce, rename onto report.md,
    write report.done. The removal is what makes the answer PROVABLY fresh: a done file which
    reappears was written after the request. *)
 let report_request_basename = "report.request"
@@ -2638,66 +2687,76 @@ let report_done_basename    = "report.done"
    5'; and the watcher itself may not be up yet. Under systemd it is started by a job which
    systemd only runs once the boot is OVER, whereas [wait --ready] answers as soon as the startup
    configuration writes its marker — measured on a trixie, two minutes apart. A request posted in
-   that window is not lost (the watcher serves it when it wakes up, see marionnet-report-watch.sh)
+   that window is not lost (the watcher serves it when it wakes up, see marionnet-watch.sh)
    but it is *waited for*, hence this default. *)
 let default_report_timeout = 180.0
 
 (* What a request is aiming at. The three refusals are three different pieces of news, as
    everywhere in this work-stream since episode 3: a switch has no guest to ask, a machine which
    is off cannot answer *now* (but its last report, if any, is still served by [log]), and a
-   suspended one is frozen mid-instruction — the watcher included. *)
-type report_target =
-  | Rt_absent
-  | Rt_no_guest of string            (* a component, but of a kind which runs no guest: its kind *)
-  | Rt_idle     of string            (* a guest which is not running: its state, in script words *)
-  | Rt_hostfs   of string            (* a running guest: its hostfs directory *)
+   suspended one is frozen mid-instruction — the watcher included.
 
-let find_report_target (st : State.globalState) ~(name:string) : report_target =
+   Named after the guest and not after the report since episode 18: [exec] aims at exactly the
+   same thing, refuses for exactly the same three reasons, and only the sentences differ — they
+   are said by each verb, which is where they belong. *)
+type guest_target =
+  | Gt_absent
+  | Gt_no_guest of string            (* a component, but of a kind which runs no guest: its kind *)
+  | Gt_idle     of string            (* a guest which is not running: its state, in script words *)
+  | Gt_hostfs   of string            (* a running guest: its hostfs directory *)
+
+let find_guest_target (st : State.globalState) ~(name:string) : guest_target =
   match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
   | Some n ->
       (match n#hostfs_directory_if_any with
-       | None     -> Rt_no_guest n#string_of_devkind
+       | None     -> Gt_no_guest n#string_of_devkind
        | Some dir ->
            (match script_state_of_raw n#state_as_string with
-            | "on" -> Rt_hostfs dir
-            | s    -> Rt_idle s))
+            | "on" -> Gt_hostfs dir
+            | s    -> Gt_idle s))
   | None ->
   match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
-  | Some _ -> Rt_no_guest "cable"
-  | None   -> Rt_absent
+  | Some _ -> Gt_no_guest "cable"
+  | None   -> Gt_absent
 
 (* One request at a time per component. Two clients asking together would each remove the other's
    done file and read the other's answer — the very freshness the protocol buys. Per name rather
    than global: asking m1 and r1 at the same time is the normal way to take a snapshot of a whole
-   network, and it must stay parallel. *)
-let report_locks : (string, Mutex.t) Hashtbl.t = Hashtbl.create 8
-let report_locks_guard = Mutex.create ()
+   network, and it must stay parallel.
 
-let report_lock_of (name:string) : Mutex.t =
-  Mutex.lock report_locks_guard;
+   Shared by [report] and [exec] rather than one table per verb, although their files do not
+   collide: the guest serves the two requests in ONE loop (marionnet-watch.sh), so two overlapping
+   questions to the same guest would queue there anyway — better to make the wait explicit here
+   than to have a command run in the middle of a report being taken. *)
+let guest_locks : (string, Mutex.t) Hashtbl.t = Hashtbl.create 8
+let guest_locks_guard = Mutex.create ()
+
+let guest_lock_of (name:string) : Mutex.t =
+  Mutex.lock guest_locks_guard;
   let m =
-    match Hashtbl.find_opt report_locks name with
+    match Hashtbl.find_opt guest_locks name with
     | Some m -> m
-    | None   -> let m = Mutex.create () in Hashtbl.add report_locks name m; m
+    | None   -> let m = Mutex.create () in Hashtbl.add guest_locks name m; m
   in
-  Mutex.unlock report_locks_guard;
+  Mutex.unlock guest_locks_guard;
   m
 
 (* `status=0 epoch=1786000000 lines=432', as the watcher prints it. Read as WORDS, not with a
    regexp: [Str] is not reentrant and this runs in a connection thread (the lesson of episode 5).
    An unreadable done file is not an error of the guest's making — a truncated line means we
    caught it mid-write — hence [None] rather than a refusal. *)
+let done_field (line : string) (key : string) : string option =
+  List.find_map
+    (fun word ->
+       let prefix = key ^ "=" in
+       let n = String.length prefix in
+       if String.length word > n && String.sub word 0 n = prefix then
+         Some (String.sub word n (String.length word - n))
+       else None)
+    (String.split_on_char ' ' (String.trim line))
+
 let parse_report_done (line : string) : (int * float * int) option =
-  let field key =
-    List.find_map
-      (fun word ->
-         let prefix = key ^ "=" in
-         let n = String.length prefix in
-         if String.length word > n && String.sub word 0 n = prefix then
-           Some (String.sub word n (String.length word - n))
-         else None)
-      (String.split_on_char ' ' (String.trim line))
-  in
+  let field = done_field line in
   match field "status", field "epoch", field "lines" with
   | Some s, Some e, Some l ->
       (try Some (int_of_string s, float_of_string e, int_of_string l) with _ -> None)
@@ -2717,12 +2776,12 @@ let cmd_report (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:floa
   (* One round trip to the GTK thread, exactly as [log] and [switch-info] spend theirs: to find
      the component and where its guest writes. Everything after this is I/O, and belongs to this
      thread. *)
-  match ask ~timeout:gtk_timeout (fun () -> find_report_target st ~name) with
+  match ask ~timeout:gtk_timeout (fun () -> find_guest_target st ~name) with
   | Failed e    -> reply_error ~code:"internal" ~detail:(Printexc.to_string e)
   | Timed_out t -> reply_error ~code:"timeout" ~detail:(gtk_busy_detail t)
-  | Done Rt_absent ->
+  | Done Gt_absent ->
       reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
-  | Done (Rt_no_guest kind) ->
+  | Done (Gt_no_guest kind) ->
       reply_error ~code:"bad_argument"
         ~detail:(Printf.sprintf
                    "%S is a %s: report applies to a machine or a router, the only kinds which run \
@@ -2735,14 +2794,14 @@ let cmd_report (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:floa
                    (if kind = "switch" || kind = "hub" then
                       " — what a switch knows is asked with switch-info"
                     else ""))
-  | Done (Rt_idle state) ->
+  | Done (Gt_idle state) ->
       reply_error ~code:"bad_argument"
         ~detail:(Printf.sprintf
                    "%S is %s: a report is taken *inside* a running guest, so there is nobody to \
                     take it — start it (or resume it) and ask again. The report of its last \
                     session, if it had one, outlives it: see log %s report" name state name)
-  | Done (Rt_hostfs dir) ->
-      let lock = report_lock_of name in
+  | Done (Gt_hostfs dir) ->
+      let lock = guest_lock_of name in
       let () = Mutex.lock lock in
       Fun.protect ~finally:(fun () -> Mutex.unlock lock)
         (fun () ->
@@ -2814,6 +2873,197 @@ let cmd_report (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:floa
                                   Marionnet, or one whose boot never reached its relay, has none \
                                   (see log %s boot)"
                                  name elapsed name)))
+
+(* ---------------------------------------------------------------------------------------------
+   [exec]: run a command INSIDE a guest — episode 18, and M2 of § 7.3.
+
+   The one manque episode 16 left open, and it was left open on purpose: every other verb of this
+   channel observes, this one commands. What it buys is the only thing a report cannot give — a
+   report describes a state at an instant, it never says whether m1 REACHES h3 — and three of the
+   five labs of the corpus (§ 7.1) are built on exactly that question.
+
+   Same file protocol as [report], with one addition it cannot do without: an ID. Taking a report
+   twice costs a report; running a command twice is a side effect, so an answer must be provably
+   the answer to *this* request, not merely a fresh-looking one. The host names each request, the
+   guest repeats the name, and an answer carrying another one is not an answer at all (it is a
+   [Ex_waiting], i.e. keep looking).
+
+   The output comes back HERE, unlike the report, whose content is served by [log <c> report].
+   The two are not the same kind of thing: a report is a document a corrector reads whole and
+   which outlives the request, an output is the value of a question just asked. What does end up
+   in a journal is the COMMAND and its status — the seventh journal, [exec] — because a corrector
+   must be able to tell what the channel injected from what the student typed.
+
+   What this verb does NOT add is power: whoever runs the channel can already open a root terminal
+   on the guest with a double click. What it adds is that the gesture is scriptable, and — through
+   that journal — traceable, which the terminal is not. The honest limit is the one the whole
+   work-stream carries: the hostfs is writable by the guest, so a determined student can forge an
+   answer here just as they can forge three of the journals. Only the console (D2) escapes them. *)
+let exec_request_basename = "exec.request"
+let exec_done_basename    = "exec.done"
+let exec_output_basename  = "exec.out"
+
+(* Same default as [report], and for the same measured reason: the watcher which serves this is
+   the very same one, started by a systemd job which only runs once the boot is over — well after
+   the marker [wait --ready] answers on. A request posted in that window waits, it is not lost. *)
+let default_exec_timeout = 180.0
+
+(* Half the journals' bound, and deliberately: an output is read by whoever asked, on one line of
+   JSON, whereas a journal is read to be searched. The byte bound is the journals' own
+   ([max_journal_bytes], applied by [read_journal_tail]): the file is written by the guest, so a
+   command looping on an error must not be able to size this thread's memory. *)
+let max_exec_lines = 200
+
+(* [--timeout] bounds the COMMAND, inside the guest; this channel waits a little longer than
+   that. Measured need, not caution: bounding both with the same value means the wait expires at
+   the very instant the guest kills the command, so a timed-out command could only ever be
+   reported as "no answer" — the one thing the client already knows. With the grace, the guest
+   has time to write its `done', and the answer says `timed_out: true' and carries whatever the
+   command had produced before being killed. *)
+let exec_grace = 15.0
+
+(* Why an id at all is said above; why THIS id: the pid tells two Marionnets apart, the clock
+   tells two sessions of one apart, and the counter tells two requests of one session apart. No
+   secrecy is claimed — the guest writes in the same directory, so a guest which wants to lie
+   about its own execution can. *)
+let exec_counter = Atomic.make 0
+
+let fresh_exec_id () : string =
+  Printf.sprintf "%d.%.0f.%d"
+    (Unix.getpid ()) (Unix.gettimeofday () *. 1000.) (Atomic.fetch_and_add exec_counter 1)
+
+type exec_progress =
+  | Ex_waiting                          (* no answer yet, or not the answer to our request *)
+  | Ex_done     of int * float * int    (* status, epoch, seconds spent in the guest *)
+  | Ex_unusable of string               (* the hostfs itself is gone: nothing will ever come *)
+
+let parse_exec_done ~(id:string) (line : string) : exec_progress =
+  let field = done_field line in
+  match field "id" with
+  | None -> Ex_waiting                            (* caught mid-write, or a done of episode 16 *)
+  | Some answered when answered <> id -> Ex_waiting          (* an older request's answer: skip *)
+  | Some _ ->
+      (match field "status", field "epoch", field "seconds" with
+       | Some s, Some e, Some sec ->
+           (try Ex_done (int_of_string s, float_of_string e, int_of_string sec)
+            with _ -> Ex_waiting)
+       | _ -> Ex_waiting)
+
+(* [command_timeout] is what the guest is told to bound the command with; the wait is that plus
+   [exec_grace], for the reason written there. *)
+let cmd_exec (st : State.globalState) ~(gtk_timeout:float) ~(command_timeout:float)
+             ~(name:string) ~(command:string) : string
+  =
+  let wait_timeout = command_timeout +. exec_grace in
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"exec expects the name of a component"
+  else if String.trim command = "" then
+    reply_error ~code:"bad_argument"
+      ~detail:"exec expects something to run: exec <component> <command>"
+  else
+  match ask ~timeout:gtk_timeout (fun () -> find_guest_target st ~name) with
+  | Failed e    -> reply_error ~code:"internal" ~detail:(Printexc.to_string e)
+  | Timed_out t -> reply_error ~code:"timeout" ~detail:(gtk_busy_detail t)
+  | Done Gt_absent ->
+      reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+  | Done (Gt_no_guest kind) ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf
+                   "%S is a %s: exec runs a command inside a guest system, which only a machine \
+                    or a router has%s"
+                   name kind
+                   (if kind = "switch" || kind = "hub" then
+                      " — what a switch knows is asked with switch-info"
+                    else ""))
+  | Done (Gt_idle state) ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf
+                   "%S is %s: a command runs *inside* a running guest, so there is nobody to run \
+                    it — start it (or resume it) and ask again" name state)
+  | Done (Gt_hostfs dir) ->
+      let lock = guest_lock_of name in
+      let () = Mutex.lock lock in
+      Fun.protect ~finally:(fun () -> Mutex.unlock lock)
+        (fun () ->
+           let id      = fresh_exec_id () in
+           let request = Filename.concat dir exec_request_basename in
+           let answer  = Filename.concat dir exec_done_basename in
+           let output  = Filename.concat dir exec_output_basename in
+           let () = (try Sys.remove answer with _ -> ()) in
+           match
+             (try
+                let out = open_out request in
+                (* One header line, then the command AS RECEIVED — quoting included. Parsing it
+                   here would mean holding a second copy of a shell's grammar, and a worse one:
+                   the guest has a shell, and it is the one which must read this. *)
+                output_string out
+                  (Printf.sprintf "id=%s timeout=%.0f\n%s\n" id command_timeout command);
+                close_out out; None
+              with e -> Some (Printexc.to_string e))
+           with
+           | Some why ->
+               reply_error ~code:"internal"
+                 ~detail:(Printf.sprintf
+                            "could not ask %S to run a command: writing %s failed (%s)"
+                            name request why)
+           | None ->
+               let observe () =
+                 Done
+                   (if not (Sys.file_exists dir) then
+                      Ex_unusable
+                        (Printf.sprintf "the hostfs directory of %S (%s) has disappeared" name dir)
+                    else
+                      match first_line_of answer with
+                      | None      -> Ex_waiting
+                      | Some line -> parse_exec_done ~id line)
+               in
+               poll_until ~wait_timeout ~observe
+                 ~reached:(function Ex_waiting -> false | _ -> true)
+                 ~on_reached:(fun v elapsed ->
+                    match v with
+                    | Ex_unusable why -> reply_error ~code:"internal" ~detail:why
+                    | Ex_waiting      -> assert false (* [reached] said otherwise *)
+                    | Ex_done (status, epoch, seconds) ->
+                        (* An unreadable output file is not a failure of the command: the guest
+                           may have been unable to write it (a full COW), and the status is still
+                           the truth about what ran. Hence an empty output rather than a refusal,
+                           and the fields which say how much was served. *)
+                        let (content, lines, total, dropped, truncated) =
+                          match read_journal_tail ~path:output ~tail:max_exec_lines with
+                          | Ok r    -> (r.jr_content, r.jr_lines, r.jr_total, r.jr_dropped,
+                                        r.jr_truncated)
+                          | Error _ -> ("", 0, 0, 0, false)
+                        in
+                        reply_ok [ ("component",     jstr name);
+                                   ("command",       jstr command);
+                                   ("status",        jint status);
+                                   (* 124 is what `timeout' returns, and what this channel's own
+                                      fallback returns in its place when the image has no
+                                      `timeout' (marionnet-watch.sh): one thing to look at. *)
+                                   ("timed_out",     jbool (status = 124));
+                                   ("output",        jstr content);
+                                   ("lines",         jint lines);
+                                   ("total_lines",   jint total);
+                                   ("dropped_lines", jint dropped);
+                                   ("truncated",     jbool truncated);
+                                   ("seconds",       jint seconds);
+                                   ("epoch",         jfloat epoch);
+                                   ("waited",        jfloat elapsed);
+                                   (* Published rather than spelled by the client, as everywhere
+                                      since episode 3: what was run is kept, and this is where. *)
+                                   ("journal",       jstr "exec") ])
+                 ~on_expiry:(fun _ elapsed ->
+                    reply_error ~code:"timeout"
+                      ~detail:(Printf.sprintf
+                                 "%S did not answer the request to run a command within %.1fs. \
+                                  The command itself was bounded by a shorter delay inside the \
+                                  guest, so it has been killed there if it was still running — \
+                                  log %s exec says which. Its guest may also still be booting \
+                                  (see wait --ready): the watcher is started at the very end of \
+                                  the boot, later than the marker --ready waits for. Or it runs \
+                                  no watcher at all: a guest booted by an older Marionnet, or one \
+                                  whose boot never reached its relay, has none (see log %s boot)"
+                                 name elapsed name name)))
 
 (* The two refusals [log] (episode 3) and [switch-info] (episode 5) share, because they share a
    shape: one optional choice, spelled positionally or as an option. A mistyped --tial= would
@@ -4099,6 +4349,35 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                   | Some _ -> timeout
                 in
                 (cmd_report st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r),
+                 `Continue)
+            (* Episode 18: same reading of --timeout again, and here it bounds two things at once
+               — the wait for the answer, and the command itself inside the guest. One option
+               rather than two because they are the same promise from the client's side: "do not
+               keep me longer than this", and a command still running when we stop waiting would
+               be a process nobody owns. *)
+            | "exec" ->
+                let command_timeout =
+                  match option_value r "timeout" with
+                  | None   -> default_exec_timeout
+                  | Some _ -> timeout
+                in
+                (* The one verb which MUST refuse an unknown option instead of ignoring it: an
+                   option is recognised wherever it stands, so `exec m1 ls --all' would otherwise
+                   run `ls' and say nothing about the --all it swallowed. The refusal is also
+                   where the separator is taught — a message nobody reads is a message nobody
+                   needed. *)
+                ((match List.filter (fun (k, _) -> k <> "timeout") r.opts with
+                  | (k, _) :: _ ->
+                      reply_error ~code:"bad_argument"
+                        ~detail:(Printf.sprintf
+                                   "no option --%s here: exec takes only --timeout=<s>. An option \
+                                    meant for the command itself must come after a bare --, as in \
+                                    `exec %s -- ls --all'; without it, this channel would take \
+                                    --%s for its own and run a mutilated command"
+                                   k (arg0 r) k)
+                  | [] ->
+                      cmd_exec st ~gtk_timeout:default_timeout ~command_timeout ~name:(arg0 r)
+                        ~command:(match arg_opt r 1 with Some c -> c | None -> "")),
                  `Continue)
             (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
                it bounds the wait, not the round trip to the GTK main thread. Hence the

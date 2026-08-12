@@ -585,7 +585,7 @@ A journal is a **file**, and that is the difference with everything else in this
 outlives what it describes. A machine which has been powered off still answers `log`, and a
 switch answers about a `vde_switch` which is long gone.
 
-Six journals, of two natures — four written by the guest itself, in the hostfs directory of
+Seven journals, of two natures — five written by the guest itself, in the hostfs directory of
 § 9, and two written by Marionnet on the host side:
 
 | Journal | Written by | Holds |
@@ -596,15 +596,16 @@ Six journals, of two natures — four written by the guest itself, in the hostfs
 | `console` | Marionnet, host side | the console of the UML process itself, which shows a boot that never reaches the relay at all |
 | `terminal` | Marionnet, host side | the recorded terminal session: the commands **and** their output, as the student saw them |
 | `report` | the guest, **when asked** | the *state* of the guest at one instant: its real interfaces, its routing tables, its neighbours, `ip_forward`, and its firewall in replayable form. See `report` below |
+| `exec` | the guest, **when the channel runs something** | what *this channel* was asked to run inside the guest: the command, its date and its status — never its output. It is what tells a corrector apart from a student. See `exec` below |
 
 The three first ones are always there. `console` and `terminal` exist only if the session was
 started for it (`--console-log`, `--terminal-log`, both implied by `--exam` — see below),
-because recording a session in silence would be surveillance rather than teaching. And
-`report` is there once somebody has asked for it, or once the guest has been shut down
-gracefully.
+because recording a session in silence would be surveillance rather than teaching. And the last
+two are there once somebody has asked for them: `report` once it has been asked for (or once the
+guest has been shut down gracefully), `exec` once the channel has run something in that guest.
 
 That list lives in the running Marionnet, not on this page: `help` publishes it under `logs`,
-and every answer repeats, under `available`, the journals **this** component has — six for a
+and every answer repeats, under `available`, the journals **this** component has — seven for a
 machine or a router, one for a switch, none for a cable.
 
 Because the failing line has the same shape wherever it comes from, one `grep` covers a
@@ -664,7 +665,7 @@ outlives it, and that is `log`.
 
 ### What a guest is doing right now
 
-The five other journals above are **traces**: they say what was *said* — a command was called, a
+The other journals above are **traces**: they say what was *said* — a command was called, a
 service printed something. A trace cannot say what *is*. The classic trap is a redirection:
 `echo 1 > /proc/sys/net/ipv4/ip_forward` leaves `echo 1` in the trace, and nothing else, so
 looking for `ip_forward` there finds nothing although forwarding is on.
@@ -697,6 +698,60 @@ shutdown` instead of `taken: on-demand` — which of the two you are reading is 
 sent to `switch-info` (it knows things, but it runs no guest), and a machine which is off is
 sent to `log … report` — the report of its last session outlives it. `--timeout=<s>` bounds
 the wait, which is a wait on the *guest*: a machine still booting has nobody to answer yet.
+
+### Making a guest do something
+
+Everything above **observes**. `exec` is the one verb that **commands**: it runs a command line
+inside a running machine or router, and answers with its status and its output.
+
+```bash
+mrnctl exec m1 uname -r
+# {"ok":true,"component":"m1","command":"uname -r","status":0,"timed_out":false,
+#  "output":"6.12.95\n","lines":1,…,"journal":"exec"}
+
+mrnctl -q .output exec m1 -- ping -c 1 -W 2 10.16.16.3
+```
+
+Two things about that second line are worth reading twice.
+
+The bare `--` **ends the options of the channel**. Options are recognised wherever they stand in
+a request (`rc-set m1 <content> --field=zebra` puts one last), so without the separator, the
+`-W 2` would be fine but a `--all` would be taken by the channel for one of its own and the guest
+would run a mutilated command. Rather than doing that silently, `exec` refuses an option it does
+not know, and the refusal names the separator.
+
+And the command is handed to the guest's shell **as it was received**, quoting included — what
+this channel never does is parse the line itself. But *received* is the operative word: a request
+is one line of text, so the quoting has to survive **your own shell** first. Pass a composite
+command as a single argument:
+
+```bash
+mrnctl exec m1 "sh -c 'exit 7'"     # status 7 — the guest's shell reads the quotes
+mrnctl exec m1 -- sh -c 'exit 7'    # status 0 — your shell ate them, the guest ran `exit'
+```
+
+The rule is the same one batch files rest on (§ 13): the tail of the line is free text, and
+nothing between you and the guest re-quotes it for you.
+
+`--timeout=<s>` bounds the command *inside the guest*: when it expires, the command is killed
+there and the answer says so (`status: 124`, `timed_out: true`) with whatever output it had
+produced — rather than the channel giving up on an answer that would never come. The output is
+capped at 200 lines (`truncated`, `total_lines`), because an output is a value, not a document.
+
+Whatever is run this way is written to the `exec` journal, and that is its reason to exist: what
+the **channel** injected must never be mistaken for what the **student** typed (which is the
+`commands` journal). Two writers, two files:
+
+```bash
+mrnctl -q .content log m1 exec
+# ## exec 39821.1786564002293.0 (2026-08-12T19:46:43Z): ping -c 1 -W 2 10.16.16.3
+# ## 5 line(s) of output in 0s
+```
+
+The honest limit is the same one the hostfs journals carry: this exchange goes through the
+hostfs directory, which the guest can write, so a determined student could forge an answer. Only
+the console (and the terminal recording) are out of the guest's reach. For marking, that is the
+difference between an observation and a proof.
 
 ### Recording a session
 
@@ -886,19 +941,33 @@ means).
 | `FAIL` | the channel answered, and its answer contradicts the assertion |
 | `SKIP` | the channel offers **no way to know** — and the reason says which |
 
-The distinction is the point of the tool. `reaches m1 m2` — the connectivity assertion three of
-the five labs behind this design need — is answered by nobody today: no verb runs a command
-inside a guest. A verifier that returned `FAIL` there would fail a student for a limit of the
-tool. It returns:
+The distinction is the point of the tool, and `reaches` is where it was born. That assertion —
+the connectivity three of the five labs behind this design need — was written before anything
+could answer it, and refused **by name**: a verifier that returned `FAIL` there would have failed
+a student for a limit of the tool. Against a Marionnet which does not publish `exec`, that is
+still what happens, and the reason is named:
 
 ```
 SKIP  reaches m1 m2
       this Marionnet publishes no `exec' verb: the channel offers no way to know
 ```
 
-That sentence is not a fixed string: the tool looks the verb up in what `help` publishes, so the
-day the channel learns to execute inside a guest, the same file starts being answered. Use
-`--strict` when you want a lab that is *entirely* provable — a `SKIP` then counts as a failure.
+That sentence is not a fixed string: the tool looks the verb up in what `help` publishes. Since
+the channel learned to run a command inside a guest, the same file is *answered* — `reaches`
+pings from inside the first component, and the target may be another component (whose address is
+then read from its own report, the only place a real address exists) or an address written out:
+
+```
+PASS  reaches m1 h3
+FAIL  reaches m1 10.16.16.99
+      m1 -> 10.16.16.99: 1 packets transmitted, 0 received, 100% packet loss
+SKIP  reaches m1 h3
+      cannot ask h3 where it lives: "h3" is off: a report is taken *inside* a running guest…
+```
+
+The third line is the same assertion as the first, with `h3` powered off: not knowing where to
+ping is a limit of what can be observed, never a false network. Use `--strict` when you want a
+lab that is *entirely* provable — a `SKIP` then counts as a failure.
 
 Exit codes: `0` everything holds, `1` at least one `FAIL` (or the file has an error), `2` nothing
 could be checked. `--json` prints one object per assertion, with its line and its reason — the

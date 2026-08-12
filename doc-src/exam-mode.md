@@ -90,6 +90,12 @@ inside the virtual machine can reach them, and the terminal recording holds the 
 together with their output. That is the piece of evidence a mark can rest on — and the reason
 the exam mode records the terminal at all.
 
+One journal is neither the student's nor evidence about them: `exec` holds what **the channel**
+was made to run inside a guest — by you, or by a script correcting the lab. It is kept in a file
+of its own precisely so that it never lands in the student's history, and it is **not** archived
+into the project: what a corrector injected is not the work being marked. It is read while the
+session is alive, with `marionnet-ctl log <machine> exec`.
+
 ## 4. Limits, measured rather than assumed
 
 * **Old SysV guest images have no shutdown sequence** (their `inittab` answers Marionnet's

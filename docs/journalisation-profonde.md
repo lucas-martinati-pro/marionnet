@@ -170,8 +170,8 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **15** | **Le corpus des TP, et ce que le canal ne sait pas encore prouver** : cinq TP — dont les séances 7 (iptables/NAT) et 10b (IPv6) de l'auteur — écrits en affirmations, puis **mesurés** verbe par verbe sur une session vivante. Aucune fonctionnalité : la spécification de l'épisode 16 (cf. § 7) | chaque affirmation « prouvable » est rejouée par le banc, et chaque « non observable » est accompagnée de la commande qui **échoue** à la prouver — **fait** (2026-08-12) |
 | **16** | **Le rapport à la demande** (voie 1 du § 7.6) : le producteur de l'épisode 7 n'attendait qu'un **déclencheur** et un **service** — veilleur déposé dans le hostfs, protocole à trois fichiers, verbe `report`, 6ᵉ journal du même nom. M1, M3 et M4 comblés ; M2 laissé ouvert (cf. § 4.15) | sur la même machine, au même instant, `log m1 rc_config` ne contient **pas** `ip_forward` et `log m1 report` dit `net.ipv4.ip_forward = 1` — **fait** (2026-08-12) |
 | **17** | **Le vérificateur déclaratif** `useful-scripts/mrn-verify` : un fichier d'assertions (`.mrv`) contrôlé puis joué contre une session vivante, trois verdicts dont le troisième compte (`SKIP` ≠ `FAIL`), et des **capacités lues dans la grammaire** — compagnon de `mrn-check`, comme un `.mrv` est le pendant d'un `.mrn` (cf. § 4.16) | deux lignes du même fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward` **échoue** et `report m1 says … ip_forward = 1` **passe** — **fait** (2026-08-12) |
-| **18** | **M2 — exécuter dans un invité** (`exec <c> <cmd>`, voie 2 du § 7.6) : le seul chemin vers les affirmations de **connectivité**. Décidé par l'auteur à la reprise de l'épisode 17 ; le vérificateur l'attend déjà (`reaches` y est écrit, refusé par nom) | `reaches m1 intrus` cesse d'être `SKIP` **sans qu'une ligne de `mrn-verify` change** : la capacité se déduit de `help` |
-| **19** *(opt.)* | Skill de conception/vérification de TP pour agent | après 17 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
+| **18** | **M2 — exécuter dans un invité** : verbe `exec <composant> <ligne de commande> [--timeout=<s>]` (voie 2 du § 7.6), servi par le veilleur de l'épisode 16 **généralisé** ; **7ᵉ journal** `exec` (ce que le canal a injecté, tenu à part de ce que l'étudiant a tapé) ; et la famille `reaches` de `mrn-verify` devient vivante (cf. § 4.17) | sur la même session, au même instant : `reaches m1 h3` **PASS**, puis h3 éteinte **FAIL**, alors que le rapport de m1 n'a pas bougé — un rapport décrit un **état**, jamais une **accessibilité** — **fait** (2026-08-12) |
+| **19** *(opt.)* | Skill de conception/vérification de TP pour agent | après 17 et 18 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1201,6 +1201,92 @@ au canal — `bin/` n'est pas touché. La seule requête qu'il émet et qui ne s
 est `report`, parce qu'un instantané ne vaut que ce que dit sa date ; `--refresh=never` lit le
 dernier rapport pris, ce qui est exactement ce que veut dire *corriger une séance déjà terminée*.
 
+### 4.17 Ce que l'épisode 18 a livré (et le verbe qui change la nature du canal)
+
+M2 — « faire faire quelque chose à un invité » — est le seul des quatre manques du § 7.3 que
+l'épisode 16 a laissé ouvert, et il l'a laissé ouvert **exprès** : les huit verbes qui le
+précèdent observent, celui-ci **commande**. Le § 7.6 le chiffrait comme la voie 2, « même
+mécanique, mais générique », et ajoutait : *à trancher explicitement*. L'auteur a tranché.
+
+**Ce qu'il apporte, et que rien d'autre ne pouvait apporter.** Un rapport décrit un **état** —
+les adresses, les routes, le pare-feu — et l'épisode 16 en a fait un instantané à la demande.
+Mais « m1 joint h3 » n'est pas un état de m1 : c'est une propriété du **chemin**, qui dépend de
+h3, du switch, des câbles, des règles des deux côtés, et qui change sans que rien ne bouge dans
+le rapport de personne. Le banc le mesure de la façon la plus directe qui soit : on éteint h3, et
+le rapport de m1 est **le même** alors que la réponse a changé.
+
+**La mécanique est celle de l'épisode 16, à une addition près.** Le hostfs reste le seul chemin de
+retour (D1), donc le protocole est le même — l'hôte efface le `.done`, pose la requête, l'invité
+consomme, produit, publie par un `mv`, écrit le `.done`. L'addition est un **identifiant** : un
+rapport est idempotent, donc servir deux fois une vieille requête ne coûtait qu'un rapport, alors
+qu'exécuter deux fois une commande est un **effet**. L'hôte nomme chaque requête, l'invité répète
+le nom, et une réponse qui en porte un autre n'est pas une réponse.
+
+**Un seul veilleur, d'où un renommage.** `marionnet-report-watch.sh` est devenu
+`bin/scripts/marionnet-watch.sh` et sert les deux requêtes dans **une** boucle. Le § 6 consignait
+déjà le prix du sondage — un réveil par seconde et par invité, faute de toute notification dans un
+hostfs — et un second veilleur l'aurait doublé pour rien. Le renommage coûte quatre points
+d'accroche mécaniques (`INCLUDE_AS_STRING`, `preprocessor_deps` de `bin/dune`,
+`make_hostfs_content`, l'unité systemd écrite par l'épilogue) et rend au fichier un nom qui ne
+ment pas.
+
+**Le 7ᵉ journal, et pourquoi il n'est pas facultatif.** Ce que le canal exécute est écrit dans
+`exec.log` : la commande, sa date, son statut — jamais sa sortie, qui est servie dans la réponse
+(une chose est servie à un seul endroit). Sa raison d'être est la **notation** : sans lui, ce que
+le correcteur a injecté serait indiscernable de ce que l'étudiant a fait, et pire, un `exec` qui
+passerait par un shell interactif polluerait `commands`, le fichier même que l'on lit comme le
+travail de l'étudiant. Deux écrivains, deux fichiers : la règle appliquée depuis l'épisode 8
+(console et terminal ne sont jamais fusionnés, pour la même raison).
+
+**Deux pièges mesurés, tous deux dans le transport de la ligne de commande.**
+
+1. **Les options sont reconnues où qu'elles soient** dans une requête — `rc-set m1 <contenu>
+   --field=zebra` place la sienne en dernier —, donc `exec m1 ls --all` aurait exécuté `ls` et
+   **avalé** `--all` en silence. Deux corrections, indissociables : `parse_request` reconnaît
+   désormais le séparateur `--` (tout ce qui suit est un argument, comme dans tout outil Unix), et
+   `exec` **refuse** une option qu'il ne connaît pas — c'est le refus qui rend le séparateur
+   découvrable, un message que personne ne lit étant un message dont personne n'avait besoin.
+2. **Le quoting ne survit pas au shell de l'appelant.** Le canal est orienté ligne : les quotes
+   qui **arrivent** au serveur sont transmises telles quelles au bash de l'invité, mais celles que
+   le shell du client a mangées avant d'appeler `mrnctl` n'arrivent jamais. Mesuré au banc de
+   documentation, sur exactement cette paire : `mrnctl exec m1 -- sh -c 'exit 7'` rend **0** (le
+   shell appelant a retiré les quotes, l'invité a exécuté `exit`), là où
+   `mrnctl exec m1 "sh -c 'exit 7'"` rend **7**. La règle — passer une commande composée comme
+   **un seul argument** — est celle des queues libres depuis toujours ; elle est maintenant écrite
+   dans le guide, avec la mesure qui la justifie.
+
+**La borne, et pourquoi elle est double.** `--timeout=<s>` borne la commande **dans l'invité**, et
+le canal attend un peu plus longtemps (15 s de grâce). Ce n'est pas de la prudence : borner les
+deux avec la même valeur ferait expirer l'attente à l'instant même où l'invité tue la commande, si
+bien qu'un dépassement n'aurait jamais pu être **rapporté** — le client n'aurait appris que ce
+qu'il savait déjà (pas de réponse). Avec la grâce, la réponse dit `timed_out: true`, porte le
+statut 124 et la sortie produite avant l'arrêt, et le journal `exec` en garde la ligne.
+
+**Le vérificateur, sans rouvrir sa grammaire.** L'épisode 17 avait écrit `reaches` et l'avait
+refusée **par nom**, en cherchant dans `help` le verbe qui la porterait. Ce mécanisme a fonctionné
+tel quel : le jour où `exec` est publié, la famille cesse d'être sautée. Ce qui a dû être écrit,
+en revanche, c'est son **corps** — l'annonce de la fiche mémoire (« sans rouvrir le fichier »)
+était inexacte, et la mesure l'a dit tout de suite : après le test de capacité, `mrn-verify`
+rendait un `SKIP` inconditionnel. Le corps résout l'adresse de la cible **par son rapport** (le
+seul endroit où une adresse réellement configurée existe, M4), puis joue un `ping` par `exec`. Le
+troisième verdict garde tout son sens : une cible éteinte, ou qui ne publie aucune adresse, donne
+un `SKIP` qui **nomme** ce qui manque — l'adresse, pas la connectivité. La grammaire s'ouvre au
+passage à une **adresse écrite**, pour les cibles qu'un projet ne modélise pas.
+
+**Ce que l'épisode n'ajoute pas.** Aucun pouvoir : qui pilote le canal peut déjà ouvrir un terminal
+root sur un invité d'un double-clic. Ce qui change, c'est que le geste devient **scriptable** —
+et, par le 7ᵉ journal, **traçable**, ce que le terminal n'est pas. La limite est celle de tout le
+chantier et elle est écrite dans le guide : l'échange passe par le hostfs, que l'invité peut
+écrire, donc un étudiant déterminé peut forger une réponse comme il peut forger trois des
+journaux. Seule la console (D2) lui échappe.
+
+**Mesures.** `_claude-local/bench/exec-bench.sh` : **60 assertions, 0 échec** (30 sans UML).
+Bancs existants mis à jour et rejoués : documentation **66/0** (dont l'exemple neuf `07-exec.sh`,
+joué tel quel), vérificateur **84/0**, journal **171/0**, complétion **60/0** —
+et la complétion n'a **pas** été touchée : le 7ᵉ journal y arrive parce qu'elle demande la liste à
+`help`, et le placeholder du nouveau verbe s'appelle `<command-line>` et non `<command>`, ce
+dernier désignant déjà un verbe **du canal** dans cette grammaire.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1245,11 +1331,12 @@ dernier rapport pris, ce qui est exactement ce que veut dire *corriger une séan
   donc la substitution de processus du `tee` ne s'ouvre pas et l'`exec` échoue en entier, en
   silence. Le prologue répare `/dev/fd` et **mesure** la substitution au lieu de la supposer.
 
-- **M2 — exécuter dans un invité** (voie 2 du § 7.6, `exec <c> <cmd>`) : laissé ouvert par
-  l'épisode 16, **délibérément**. C'est le seul chemin vers les affirmations de **connectivité**
-  (« m1 joint intrus »), et c'est aussi celui qui fait cesser le canal d'observer pour commander
-  l'intérieur des invités. À trancher pour lui-même, jamais en passant. Le banc de l'épisode 16
-  mesure ce manque en creux, pour qu'il ne tombe pas par effet de bord.
+- ~~**M2 — exécuter dans un invité** (voie 2 du § 7.6, `exec <c> <cmd>`) : laissé ouvert par
+  l'épisode 16, **délibérément**.~~ **Tranché et livré à l'épisode 18** (§ 4.17) : le verbe existe,
+  le canal a cessé d'observer pour commander l'intérieur des invités, et la décision a été prise
+  pour elle-même. Ce qui reste de la précaution de l'épisode 16 est mesuré à l'envers par le banc :
+  le verbe qui exécute est `exec` **et lui seul** (ni `run`, ni `shell`, ni `ssh` n'ont été ajoutés
+  en passant).
 - **Un `rc-set` sur un switch n'est pris en compte qu'au premier démarrage** (mesuré à
   l'épisode 17, en fabriquant son banc). Le contenu du rc est capturé à la **création du device
   simulé** (`switch.ml:464-467`, `make_simulated_device`), et ce device **survit à un `poweroff`** :
@@ -1260,10 +1347,16 @@ dernier rapport pris, ce qui est exactement ce que veut dire *corriger une séan
   device simulé quand le rc change), tous deux dans `switch.ml` ; à trancher avec l'automate
   d'état en tête (chantier clos `marionnet-automate-composants`). En attendant, tout banc ou TP
   qui veut deux rc différents utilise **deux switchs**.
-- Le **veilleur du rapport à la demande** interroge son fichier-drapeau toutes les secondes
-  (épisode 16). C'est le prix d'un hostfs qui n'offre aucune notification : négligeable sur un
-  UML, mais c'est bien un réveil par seconde et par invité, et non zéro. Un `inotify` côté invité
-  supposerait qu'il soit disponible dans toutes les images, ce que rien ne garantit.
+- Le **veilleur** interroge ses fichiers-drapeaux toutes les secondes (épisode 16). C'est le prix
+  d'un hostfs qui n'offre aucune notification : négligeable sur un UML, mais c'est bien un réveil
+  par seconde et par invité, et non zéro. Un `inotify` côté invité supposerait qu'il soit
+  disponible dans toutes les images, ce que rien ne garantit. C'est **ce coût-là** qui a décidé
+  l'épisode 18 à faire servir `exec` par la **même** boucle plutôt que par un second veilleur —
+  d'où le renommage en `marionnet-watch.sh` (§ 4.17).
+- Le **quoting d'une commande passée à `exec`** ne survit pas au shell de l'appelant : une
+  commande composée doit être passée comme **un seul argument** (§ 4.17, mesuré). Rien à corriger
+  dans le canal — il est orienté ligne par construction, comme les queues libres de `rc-set` — mais
+  c'est la première chose qui surprendra celui qui écrit un corrigé.
 
 ## 7. Vers le vérificateur : ce qu'un TP demande de prouver (épisode 15)
 
@@ -1325,10 +1418,10 @@ intrus`, images `debian-trixie-47362` (dont le userland porte `iptables`, `ip6ta
 - **M2 — faire faire quelque chose à un invité.** Aucun des 41 verbes publiés n'exécute, ne lit ni
   n'interroge quoi que ce soit dans une machine. Donc aucun `ping` à la demande, donc aucune
   affirmation de **connectivité** — le cœur de C2, C3 et de la partie « Test » de C4.
-  **Toujours ouvert après l'ép. 16**, et c'est une décision : la voie 2 (`exec`) ferait du canal
-  un exécuteur à l'intérieur des invités. Le banc de l'ép. 16 mesure ce manque **en creux** —
-  aucun verbe publié ne s'appelle `exec`, `run`, `shell` ni `ssh` — pour qu'il ne tombe jamais
-  par effet de bord.
+  **Comblé (ép. 18)**, après avoir été laissé ouvert par l'ép. 16 et tranché pour lui-même :
+  `exec <composant> <ligne de commande>` fait du canal un exécuteur à l'intérieur des invités, ce
+  que le 7ᵉ journal rend traçable. La mesure en creux de l'ép. 16 a été **retournée** plutôt que
+  supprimée : le banc vérifie que le verbe qui exécute est `exec` et lui seul.
 - **M3 — le producteur d'état existe déjà, mais il n'est ni déclenchable ni servi.**
   `marionnet-report.sh` (ép. 7) écrit un rapport qui porte **exactement** ce que M1 réclame :
   interfaces réelles, tables de routage v4 **et** v6, voisinage, `net.ipv4.ip_forward`, et le
@@ -1386,7 +1479,7 @@ Aucune n'est inventée : chacune vient d'une affirmation d'un des cinq TP.
 | `journal <c> <j>` sans échec (`!! FAILED`) | `log` | disponible |
 | `documents <c>` porte rapport / historique / terminal | `documents` | disponible |
 | **état de l'invité** (adresses, routes, `ip_forward`, pare-feu) | `report`, puis `log <c> report` | disponible **depuis l'ép. 16** |
-| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2**, décidé (**ép. 18**) — déjà écrite comme `reaches`, refusée par nom |
+| **connectivité** (`ping`, `ssh`, un port ouvert) | `exec`, et `reaches` dans `mrn-verify` | disponible **depuis l'ép. 18** — écrite d'avance à l'ép. 17, rendue vivante par la capacité lue dans `help` |
 
 > **Depuis l'épisode 17**, ces primitives ne sont plus seulement *disponibles*, elles sont
 > **écrites** : chaque ligne du tableau est une famille d'assertions de `mrn-verify` (§ 4.16), et
@@ -1403,8 +1496,11 @@ Trois voies, du moins cher au plus intrusif :
    ~30 lignes de bash côté invité, une entrée de liste côté canal. Verdicts gagnés : M1, M3 et
    M4 en entier.
 2. **Exécution à la demande** (`exec <c> <commande>`) : même mécanique, mais générique — elle
-   apporterait **M2** (donc la connectivité). Elle change en revanche la nature du canal, qui
-   cesserait d'observer pour commander l'intérieur des invités ; à trancher explicitement.
+   apporte **M2** (donc la connectivité). Elle change en revanche la nature du canal, qui cesse
+   d'observer pour commander l'intérieur des invités ; à trancher explicitement. **Tranchée, et
+   livrée par l'épisode 18** (§ 4.17), le coût mesuré ayant été celui annoncé : la même mécanique,
+   un veilleur généralisé plutôt qu'un second, et un journal de plus pour que ce que le canal
+   injecte ne se confonde jamais avec le travail de l'étudiant.
 3. **Ne rien ajouter** : le vérificateur se limite alors au modèle, aux traces et au rapport de
    fin. Il sait dire « la configuration a été tapée sans erreur » et « à l'arrêt, voici l'état »,
    jamais « à cet instant, m1 joint intrus ». Pour un mode examen c'est peut-être assez ; pour la
@@ -2123,3 +2219,73 @@ que les trois bancs de l'épisode 16 et qui lui avait échappé : cinq journaux 
 portait encore la trace du même oubli — « the five journals above are traces », alors que son
 tableau en cite six depuis l'épisode 16 : ce sont les **cinq autres**, `report` étant un état et
 non une trace, ce que la phrase dit désormais.
+
+
+### 2026-08-12 — Épisode 18 : le canal exécute, et ce que cela seul peut prouver
+
+**Ce que l'épisode livre.** Le verbe `exec <composant> <ligne de commande> [--timeout=<s>]`, M2 du
+§ 7.3 — le dernier manque, laissé ouvert par l'épisode 16 et tranché ici pour lui-même. Détail
+complet au § 4.17 ; l'essentiel tient en une phrase : les huit verbes qui le précèdent
+**observent**, celui-ci **commande** l'intérieur d'un invité, et c'est le seul chemin vers une
+affirmation de **connectivité**.
+
+**La conception n'a rien inventé.** Le protocole de fichiers de l'épisode 16 a été repris tel
+quel (le hostfs est le seul chemin de retour, D1), le veilleur a été **généralisé** au lieu d'être
+dupliqué — d'où le renommage `marionnet-report-watch.sh` → **`marionnet-watch.sh`**, parce que le
+§ 6 chiffrait déjà le prix du sondage : un réveil par seconde et par invité —, et la seule
+addition au protocole est un **identifiant** de requête : un rapport est idempotent, une commande
+ne l'est pas.
+
+**Trois virages par la mesure, tous dans le transport de la ligne de commande.**
+
+1. **Les options sont reconnues où qu'elles soient** dans une requête. `exec m1 ls --all` aurait
+   donc exécuté `ls` et avalé `--all` **en silence**. Deux corrections indissociables :
+   `parse_request` reconnaît le séparateur `--` (comme tout outil Unix), et `exec` **refuse** une
+   option inconnue — le refus est ce qui rend le séparateur découvrable.
+2. **Le quoting ne survit pas au shell de l'appelant** — mesuré au banc de documentation, sur la
+   paire la plus courte possible : `mrnctl exec m1 -- sh -c 'exit 7'` rend **0** (le shell du
+   client a mangé les quotes, l'invité a exécuté `exit`), `mrnctl exec m1 "sh -c 'exit 7'"` rend
+   **7**. Le canal est orienté ligne : une commande composée se passe comme **un seul argument**.
+   Écrit dans le guide, avec la mesure.
+3. **Borner la commande et l'attente avec la même valeur rend le dépassement irrapportable** :
+   l'attente expirerait à l'instant où l'invité tue la commande, et le client n'apprendrait que ce
+   qu'il sait déjà (pas de réponse). D'où 15 s de grâce, et une réponse qui porte `timed_out:
+   true`, le statut 124 et ce que la commande avait produit avant d'être tuée.
+
+**Un défaut de la fiche mémoire, corrigé par la mesure.** Elle annonçait que l'épisode 18 rendrait
+`reaches` vivante « sans rouvrir `mrn-verify` ». Le **mécanisme de capacité** de l'épisode 17 a
+bien fonctionné seul (le verbe est cherché dans `help`), mais le **corps** de la famille n'était
+pas écrit : après le test de capacité, l'outil rendait un `SKIP` inconditionnel. Le corps a donc
+été écrit — il résout l'adresse de la cible par son **rapport** (M4 : le seul endroit où une
+adresse réellement configurée existe), puis joue un `ping` par `exec` — et la grammaire s'ouvre à
+une **adresse écrite**, pour une cible que le projet ne modélise pas. Le troisième verdict garde
+son sens : une cible éteinte donne un `SKIP` qui nomme ce qui manque — l'adresse, pas le réseau.
+
+**Le 7ᵉ journal** `exec` porte ce que le canal a fait exécuter (commande, date, statut ; jamais la
+sortie, servie dans la réponse). Sa raison est la **notation** : ce que le correcteur injecte ne
+doit jamais se confondre avec ce que l'étudiant a tapé (`commands`). Deux écrivains, deux
+fichiers — la règle de l'épisode 8.
+
+**Le discriminant, sur la même session au même instant.** `reaches m1 h3` → **PASS** ; on éteint
+h3 ; `reaches m1 h3` → **FAIL** — et entre les deux, le rapport de m1 est **inchangé**. Un rapport
+décrit un état, jamais une accessibilité : c'est précisément ce que l'épisode 16 ne pouvait pas
+combler.
+
+**Mesures.** `exec-bench.sh` neuf : **60 assertions, 0 échec** (30 sans UML). Bancs existants mis
+à jour et rejoués : `doc-bench.sh` **66/0** (dont l'exemple neuf `07-exec.sh`, joué tel quel),
+`verify-bench.sh` **84/0** (complet, avec UML), `journal-bench.sh` **171/0** (complet),
+`completion-bench.sh` **60/0**, `report-bench.sh` **25/0** sans UML, `exam-bench.sh` **74/0**,
+et les trois bancs des clients (`check` **32/0**, `mrn2sh` **32/0**, `ctl` **36/0**) — ces derniers
+parce que le séparateur `--` touche `parse_request`, donc **toute** la grammaire, et non le seul
+verbe neuf. Erreur de conduite à retenir : `exam-bench.sh` a d'abord rendu **3 échecs**, tous sur
+le rapport de fin, parce qu'il tournait **en parallèle** d'un autre banc à UML — l'invité s'éteint
+alors au milieu du rapport, le piège n°3 de l'épisode 7. Rejoué seul : 74/0. Deux bancs à UML ne
+se lancent pas en même temps. La complétion n'a **pas** été
+touchée : le 7ᵉ journal y arrive parce qu'elle demande sa liste à `help` (12ᵉ application de la
+règle d'unicité), et le placeholder du verbe s'appelle `<command-line>` — `<command>` désigne déjà
+un verbe **du canal** dans cette grammaire, et la complétion aurait proposé les verbes du canal là
+où on attend une commande d'invité. Deux assertions de l'épisode 17 ont été **retournées** plutôt
+que supprimées (la connectivité n'est plus annoncée non tranchable ; le `SKIP` de `reaches` a une
+autre raison), et une **erreur de banc** préexistante a été corrigée au passage : en `E2E=0`,
+`verify-bench.sh` jouait `lab.mrv` — qui affirme `state s1 is off` — après avoir démarré ce switch
+pour lire ses tables.

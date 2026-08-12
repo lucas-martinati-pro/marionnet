@@ -182,7 +182,7 @@
       (file scripts/marionnet-relay.00-journal.sh)
       (file scripts/marionnet-relay.zz-journal.sh)
       (file scripts/marionnet-report.sh)
-      (file scripts/marionnet-report-watch.sh)
+      (file scripts/marionnet-watch.sh)
       (file scripts/marionnet-terminal-record.sh)
       (file scripts/can-directory-host-sparse-files.sh))
   (preprocess (action (run camlp4of

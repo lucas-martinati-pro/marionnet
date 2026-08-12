@@ -381,15 +381,38 @@ Reprise : appliquer le skill `chantier-long`.
   inventée** (§ 7.5 de la doc), dont `reaches` **écrite d'avance** et refusée **par nom** puisque
   l'auteur a tranché M2 (→ ép. 18). L'invariant d'unicité s'étend : ce n'est plus seulement le
   **vocabulaire** qu'on demande au serveur, c'est la **capacité** — le verbe porteur d'une famille
-  est cherché dans `help`, donc l'ép. 18 rendra `reaches` vivante **sans rouvrir le fichier**, et
-  ça se mesure **sans UML** en amputant l'instantané de `help`. Discriminant en deux lignes du même
+  est cherché dans `help`, donc l'ép. 18 a rendu `reaches` **jouable sans toucher au mécanisme**
+  (son **corps**, lui, restait à écrire — cf. ép. 18), et ça se mesure **sans UML** en amputant
+  l'instantané de `help`. Discriminant en deux lignes du même
   fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward`
   **échoue** et `report m1 says ~ ip_forward *= *1` **passe** — la configuration a tourné, c'est la
   trace qui ne peut pas le dire. Pièges neufs : sous `set -e`, un analyseur de lignes qui rend le
   statut de sa dernière garde **arrête tout en silence** (le rapport paraît seulement plus court) ;
   les entrées d'une table de switch ne sont **pas plates** (d'où `ports.port=3`) ; et un `rc-set`
   sur un **switch** n'est pris en compte qu'au **premier** démarrage — défaut du dépôt consigné au
-  § 6, non corrigé. **Aucun `.ml` touché**).
+  § 6, non corrigé. **Aucun `.ml` touché**) ; **ép. 18 fait 2026-08-12** (**M2 comblé** : verbe
+  `exec <composant> <ligne de commande> [--timeout=<s>]` — les huit verbes précédents observent,
+  celui-ci **commande** l'intérieur d'un invité, seul chemin vers une affirmation de
+  **connectivité** (un rapport décrit un **état**, jamais une **accessibilité** : le discriminant
+  éteint h3 et montre le rapport de m1 **inchangé** pendant que `reaches` bascule). Mécanique de
+  l'ép. 16 reprise telle quelle, **une** addition — un **identifiant** de requête, parce qu'un
+  rapport est idempotent et qu'une commande ne l'est pas — et le veilleur **généralisé** plutôt
+  que dupliqué, d'où le renommage `marionnet-report-watch.sh` → **`marionnet-watch.sh`** (le § 6
+  chiffrait déjà le prix du sondage : un réveil/s/invité). **7ᵉ journal `exec`**, qui existe pour
+  la **notation** : ce que le canal injecte ne doit jamais se confondre avec ce que l'étudiant a
+  tapé (`commands`) — deux écrivains, deux fichiers, la règle de l'ép. 8. La famille `reaches` de
+  `mrn-verify` devient **vivante** : le mécanisme de capacité de l'ép. 17 a fonctionné seul, mais
+  son **corps** restait à écrire (l'annonce « sans rouvrir le fichier » était inexacte, mesuré) ;
+  il lit l'adresse de la cible dans son **rapport** (M4) puis joue un `ping` par `exec`, et un
+  `SKIP` nomme désormais ce qui manque — l'adresse, pas le réseau. Trois pièges neufs, tous dans
+  le **transport de la ligne de commande** : les options sont reconnues **où qu'elles soient**
+  (donc `exec m1 ls --all` aurait exécuté `ls` en silence → séparateur `--` dans `parse_request`
+  **et** refus d'option inconnue, seul moyen de rendre le séparateur découvrable) ; le **quoting
+  ne survit pas au shell de l'appelant** (`exec m1 -- sh -c 'exit 7'` rend **0**,
+  `exec m1 "sh -c 'exit 7'"` rend **7** — une commande composée se passe comme **un seul
+  argument**) ; et borner la commande et l'attente avec la **même** valeur rend le dépassement
+  **irrapportable**, d'où 15 s de grâce et une réponse qui porte `timed_out`, le statut 124 et la
+  sortie produite avant l'arrêt).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

@@ -25,6 +25,7 @@ MRNCTL=../../../useful-scripts/mrnctl ./01-build-a-lab.sh
 | `04-journals.sh` | read what happened inside: the journals of a machine, and what a switch knows right now |
 | `05-exam-session.sh` | an exam session: let the student work, shut down properly, collect what it left in the project |
 | `06-assert-a-lab.sh` | assert a lab instead of eyeballing it: the model from `lab.mrv`, then the guest — what it left, and what it is |
+| `07-exec.sh` | make the guest run something: the separator `--`, the status as an answer, the bound, and the journal that keeps the channel's commands apart from the student's |
 | `lab.mrn` | the same lab as `01`, in batch form (`mrnctl -f lab.mrn`), and the file `mrn-check lab.mrn` validates |
 | `lab.mrv` | the same lab, asserted (`mrn-verify lab.mrv`): the model only, so it needs nothing running |
 

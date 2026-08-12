@@ -292,7 +292,7 @@ fi
 unset __mrn_journal_hook
 
 # ---------------------------------------------------------------------------
-# ON-DEMAND REPORT (episode 16).  What the session is doing RIGHT NOW.
+# ON-DEMAND WATCHER (episodes 16 and 18).  What the session is doing RIGHT NOW.
 #
 # The hook above answers "what did the session end with?".  Episode 15 showed
 # that a corrector needs the other question too -- "what is true at this
@@ -302,7 +302,9 @@ unset __mrn_journal_hook
 # The producer is the very same `marionnet-report'; all that is added here is a
 # watcher which runs it when the host drops a flag file in the hostfs.  Started
 # in the background, at the end of the boot, so that a machine answers `report'
-# as soon as it is up.
+# as soon as it is up.  Since episode 18 the same watcher also serves `exec',
+# the verb which runs a command inside the guest -- one loop, because watching
+# a hostfs costs a wakeup per second and per guest.
 #
 # Two branches, decided by the GUEST as everywhere else in this file, and for
 # ONE reason -- the watcher must outlive the relay:
@@ -317,10 +319,10 @@ unset __mrn_journal_hook
 #      rest -- a non-interactive shell sends no SIGHUP when it ends.
 #
 # Never fatal, never noisy: a guest that refuses the watcher simply answers
-# `report' with a timeout, and its shutdown report is untouched.
+# `report' and `exec' with a timeout, and its shutdown report is untouched.
 # ---------------------------------------------------------------------------
 
-__mrn_journal_watch=/mnt/hostfs/marionnet-report-watch
+__mrn_journal_watch=/mnt/hostfs/marionnet-watch
 
 if [[ -r "$__mrn_journal_watch" ]]; then
 
@@ -329,9 +331,9 @@ if [[ -r "$__mrn_journal_watch" ]]; then
 
   if [[ -d /run/systemd/system ]] && type -p systemctl >/dev/null 2>&1; then
     {
-      cat > /run/systemd/system/marionnet-report-watch.service <<UNIT
+      cat > /run/systemd/system/marionnet-watch.service <<UNIT
 [Unit]
-Description=Marionnet: on-demand report watcher (journalisation-profonde)
+Description=Marionnet: on-demand report and exec watcher (journalisation-profonde)
 DefaultDependencies=no
 Conflicts=shutdown.target
 Before=shutdown.target
@@ -353,7 +355,7 @@ UNIT
       # `Conflicts=shutdown.target' brings back the one thing `DefaultDependencies=no' removes
       # and which we do want: being stopped when the guest shuts down, so that the watcher is
       # gone before the end-of-session report is taken (episode 7's hook).
-      systemctl start --no-block marionnet-report-watch.service
+      systemctl start --no-block marionnet-watch.service
     } >/dev/null 2>&1
   else
     # The redirections are NOT decoration: without them the watcher inherits the

@@ -51,8 +51,10 @@
 # kinds are read from the running Marionnet, which publishes them (`marionnet-ctl help'), exactly
 # as mrn-check does and for the same reason: a second copy of the grammar is the one that drifts.
 # This file goes one step further and reads its own *capabilities* there — an assertion whose verb
-# the server does not publish is SKIP, never FAIL. So the day the channel learns to execute inside
-# a guest, `reaches' starts answering without a line of this file changing.
+# the server does not publish is SKIP, never FAIL. That is how `reaches' came alive: it was
+# written and refused by name (episode 17) at a time when nothing could run a command inside a
+# guest; when episode 18 published `exec', the mechanism started answering it, and an older
+# Marionnet still gets a SKIP that names its own reason rather than a wrong verdict.
 #
 # NO bashbricks HERE, for the reason already written in mrn-check: this script is meant to sit in
 # $(PREFIX)/bin next to marionnet-ctl, and nothing installs bashbricks there.
@@ -104,10 +106,14 @@ Assertions (one per line; # comments and blank lines are ignored):
   journal <component> <journal> ok
   documents <component> has <pattern>
   report <component> says|lacks <pattern>
-  reaches <component> <component>
+  reaches <component> <component>|<address>
 
 A <pattern> is a literal string; write \`~ <regexp>' for an extended regular expression. The
 patterns and values run to the end of the line, so they may contain spaces and need no quoting.
+
+\`reaches' pings from inside the first component. Its target may be another component -- whose
+address is then read from its own report, the only place a real address exists -- or an address
+written out, for a target this project does not model.
 
 In a switch assertion a <key> may be a path into the entry, written with dots and no indices, as
 in \`ports.port=3'. The keys are the ones the switch itself uses: a key nobody has is reported
@@ -239,6 +245,11 @@ pack() { local IFS=$'\t'; printf '%s' "$*"; }
 
 is_identifier() { [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
 
+# Deliberately loose: what is written here is not validated, it is *told apart* from a component
+# name (which always starts with a letter or an underscore). Whether the thing is a real address
+# is the guest's business -- `ping' says so far better than a regexp would.
+is_address() { [[ $1 =~ ^[0-9] || $1 == *:* ]]; }
+
 check_component() {  # $1 = line, $2 = name; a name is an identifier — the whole grammar rests on it
   is_identifier "$2" && return 0
   err "$1" "\"$2\" is not a component name (letters, digits, _)"
@@ -320,10 +331,15 @@ parse_line() {  # $1 = line number, $2 = the raw line, $3… = its tokens
       local comp="$1" verb="$2"; shift 2
       record "$ln" "$raw" "report_$verb" "$comp" "$*" ;;
 
-    reaches)  # reaches <c1> <c2> — the assertion this channel cannot make (yet)
-      (( n == 2 )) || { err "$ln" "reaches takes: reaches <component> <component>"; return; }
+    reaches)  # reaches <c1> <c2>|<address> — connectivity, answered since episode 18
+      (( n == 2 )) || { err "$ln" "reaches takes: reaches <component> <component>|<address>"; return; }
       check_component "$ln" "$1" || return 0
-      check_component "$ln" "$2" || return 0
+      # The target is either a component of this project or an address written out: a lab may
+      # well have to reach something the project does not model (a gateway, a host of the
+      # outside world). Which of the two it is, is decided when the assertion runs, not here.
+      if ! is_identifier "$2" && ! is_address "$2"; then
+        err "$ln" "\"$2\" is neither a component name nor an address"; return 0
+      fi
       record "$ln" "$raw" reaches "$1" "$2" ;;
 
     *) err "$ln" "\"$head\" is not an assertion (state, field, cable, switch, journal, documents, report, reaches)" ;;
@@ -478,6 +494,56 @@ take_report() {  # $1 = component; prints nothing, returns non-zero with a reaso
     printf '%s' "$(refusal_of "$answer")"
     return 1
   fi
+  return 0
+}
+
+# --- connectivity (episode 18) ---------------------------------------------
+
+# How a ping is spelled here. Short on purpose: an assertion which cannot be answered in a few
+# seconds is not one a lab wants -- and a target which needs more than two seconds to answer is
+# telling us something anyway.
+reach_count=1
+reach_wait=2
+reach_timeout=20
+
+# Where the ping goes. An address written out is used as it stands; a component is asked for its
+# REPORT, because that is the only place a real address exists (M4, § 7.3: the ifconfig treeview
+# holds what was declared, and a guest configures whatever it likes).
+address_of() {  # $1 = component or address; prints the address, or a reason and returns non-zero
+  local target="$1" answer content addr why
+
+  if is_address "$target"; then printf '%s' "$target"; return 0; fi
+
+  if ! why="$(take_report "$target")"; then
+    printf '%s' "cannot ask $target where it lives: $why"
+    return 1
+  fi
+  answer="$(journal_content "$target" report)"
+  if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+    printf '%s' "cannot read the report of $target: $(refusal_of "$answer")"
+    return 1
+  fi
+  content="$(jq -r '.content // ""' <<<"$answer")"
+
+  # The report writes `ip -o addr show' as it comes. The first global IPv4 which is not the
+  # loopback, then a global IPv6 -- never a fe80:: one, which cannot be pinged without naming the
+  # interface it lives on, and the interface of the SENDER at that.
+  # The `|| true' are the trap of episode 17 in another guise: under `set -e', an assignment from
+  # a substitution takes the status of the pipeline, and a grep that finds nothing would end the
+  # run in silence.
+  addr="$(grep -oE 'inet [0-9]+(\.[0-9]+){3}' <<<"$content" | awk '{print $2}' |
+          grep -v '^127\.' | head -1 || true)"
+  if [[ -z $addr ]]; then
+    addr="$(grep -oE 'inet6 [0-9a-fA-F:]+' <<<"$content" | awk '{print $2}' |
+            grep -viE '^(::1|fe80)' | head -1 || true)"
+  fi
+
+  if [[ -z $addr ]]; then
+    printf '%s' "$target has no address to be reached at: its report shows none outside the \
+loopback and the link-local ones"
+    return 1
+  fi
+  printf '%s' "$addr"
   return 0
 }
 
@@ -640,11 +706,33 @@ for (( i = 0; i < ${#A_KIND[@]}; i++ )); do
       fi ;;
 
     reaches)
-      # The assertion three of the five labs of § 7.1 need, and the one this channel cannot make:
-      # nothing runs a command inside a guest (M2, § 7.3). Written here, refused by name, so that
-      # a lab can already say what it means — and start being answered the day the verb exists.
+      # The assertion three of the five labs of § 7.1 need. It was written here before anything
+      # could answer it (episode 17) and refused BY NAME, so that a lab could already say what it
+      # means; episode 18 gave the channel the verb it rests on, and the line below is all that
+      # changed — the capability itself is read from `help', as for every other family.
       verb_missing "$i" exec && continue
-      verdict "$i" SKIP "connectivity is not asserted by this version of $PROGNAME" ;;
+      if ! why="$(address_of "${arg[1]}")"; then
+        # SKIP, never FAIL: not knowing where to ping is a limit of what can be observed, not a
+        # broken network. The whole file turns on this distinction.
+        verdict "$i" SKIP "$why"; continue
+      fi
+      address="$why"
+      # The bare `--' is not decoration: an option of the command would otherwise be taken by the
+      # channel for one of its own, and the command would run mutilated (episode 18).
+      answer="$(ask exec "${arg[0]}" "--timeout=$reach_timeout" -- \
+                    ping -c "$reach_count" -W "$reach_wait" "$address")"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      if [[ $(jq -r '.status // 1' <<<"$answer") == 0 ]]; then
+        verdict "$i" PASS
+      else
+        # The output of ping is what a human wants here ("Network is unreachable" and "100%
+        # packet loss" are two different diagnoses), so the reason carries its last line.
+        verdict "$i" FAIL "$(jq -r '.output // ""' <<<"$answer" |
+                             grep -v '^$' | tail -1 |
+                             sed "s|^|${arg[0]} -> $address: |")"
+      fi ;;
   esac
 done
 

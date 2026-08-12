@@ -55,7 +55,7 @@ ctl wait "$SWITCH" --state=on --timeout=60
 ctl wait "$NODE" --ready --timeout=300 || echo "  (no ready marker: this machine has no scenario)"
 
 # WHICH JOURNALS THIS COMPONENT HAS — asked, never assumed, exactly like the configurations of
-# example 3. A machine has five, a switch one, a cable none.
+# example 3. A machine has seven, a switch one, a cable none.
 echo
 echo "journals of $NODE:  $("$MRNCTL" -q '.available|join(" ")' log "$NODE")"
 echo "journals of $SWITCH: $("$MRNCTL" -q '.available|join(" ")' log "$SWITCH")"

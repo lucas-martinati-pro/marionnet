@@ -1430,9 +1430,12 @@ class uml_process =
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report.sh");
           (* Episode 16: the watcher that runs the report above ON REQUEST, so that the
              state of a running guest becomes observable at all. Same naming rule as the
-             producer (not sourced at boot); the epilogue starts it in the background. *)
-          ("marionnet-report-watch",
-           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report-watch.sh") ]
+             producer (not sourced at boot); the epilogue starts it in the background.
+             Episode 18 gave it a second request to serve -- [exec] -- hence its name,
+             which no longer says `report': one loop for the two, because watching a
+             hostfs costs a wakeup per second and per guest. *)
+          ("marionnet-watch",
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-watch.sh") ]
     in
     (* Create the file `boot_parameters_pathname': *)
     let descriptor =
