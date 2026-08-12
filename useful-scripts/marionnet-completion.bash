@@ -365,5 +365,37 @@ _mrn_check_completion() {
   return 0
 }
 
+# --------------------------------------------------------------------------
+#                                mrn-verify
+# --------------------------------------------------------------------------
+
+# Same shape as above, and the same reason for the difference: what is completed here belongs to
+# the *client* (its options), never to the grammar — the assertion names are published by nobody,
+# they are this tool's own vocabulary, and its --help is where they are written once.
+
+_MRN_VERIFY_OPTS='-s --socket= -g --grammar= --ctl= -c --check-only --refresh= --timeout= -j --json -q --quiet --strict -h --help'
+
+_mrn_verify_completion() {
+  _mrn_cur="${COMP_WORDS[COMP_CWORD]}"
+  COMPREPLY=()
+  local prev="${COMP_WORDS[COMP_CWORD-1]}"
+  case "$prev" in
+    -s|--socket|-g|--grammar|--ctl) _mrn_reply_files; return 0 ;;
+    --refresh) _mrn_reply 'auto never always'; return 0 ;;
+  esac
+  case "$_mrn_cur" in
+    --refresh=*)
+      local i
+      _mrn_cur="${_mrn_cur#--refresh=}"; _mrn_reply 'auto never always'
+      for i in "${!COMPREPLY[@]}"; do COMPREPLY[i]="--refresh=${COMPREPLY[i]}"; done
+      return 0 ;;
+    -*) _mrn_reply "$_MRN_VERIFY_OPTS"; return 0 ;;
+  esac
+  # A .mrv file, or "-" for standard input.
+  _mrn_reply_files
+  return 0
+}
+
 complete -F _marionnet_ctl_completion marionnet-ctl mrnctl
 complete -F _mrn_check_completion mrn-check mrn2sh
+complete -F _mrn_verify_completion mrn-verify

@@ -92,6 +92,9 @@ useful-scripts/*
 # Vérificateur de fichiers .mrn (§ 5.6) et son second nom, qui implique --to-bash (§ 5.8).
 !useful-scripts/mrn-check
 !useful-scripts/mrn2sh
+# Vérificateur déclaratif d'un labo qui tourne : lit un .mrv (docs/journalisation-profonde.md
+# § 4.16, doc-src/scripting/README.md § 14).
+!useful-scripts/mrn-verify
 # Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
 !useful-scripts/marionnet-completion.bash
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

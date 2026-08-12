@@ -168,8 +168,10 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **13** | **Les mots du chantier, dans les douze langues** : les 7 `msgid` introduits depuis l'épisode 6 traduits partout, aucun `.ml` touché — et le `Makefile` corrigé, dont l'extraction du POT re-servait en silence l'instantané précédent (cf. § 4.13) | catalogues 375/3 → **382 traduites / 3 non traduites, 0 fuzzy**, et `msgunfmt` rend les 7 chaînes dans les `.mo` installés — **fait** (2026-08-12) |
 | **14** | **La capture qui n'attrapait rien sur wheezy** : sur une image de 2013, `rc_config.log` ne portait que son en-tête — le `tee` du prologue passe par une substitution de processus, que bash ouvre par `/dev/fd`, absent au **runtime** sur cette image. Le prologue répare `/dev/fd`, **mesure** la substitution au lieu de la supposer, et se rabat en le disant (cf. § 4.14) | le même scénario fautif que sur trixie laisse, **sur l'image de 2013**, sa trace, sa sortie et son `!! FAILED (status 2)` dans `rc_config.log` — **fait** (2026-08-12) |
 | **15** | **Le corpus des TP, et ce que le canal ne sait pas encore prouver** : cinq TP — dont les séances 7 (iptables/NAT) et 10b (IPv6) de l'auteur — écrits en affirmations, puis **mesurés** verbe par verbe sur une session vivante. Aucune fonctionnalité : la spécification de l'épisode 16 (cf. § 7) | chaque affirmation « prouvable » est rejouée par le banc, et chaque « non observable » est accompagnée de la commande qui **échoue** à la prouver — **fait** (2026-08-12) |
-| **16** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check`. Ses primitives ne sont plus à inventer : § 7.5 les fixe, § 7.6 chiffre ce qu'il faut ajouter au canal | à concevoir sur le § 7, pas en chambre |
-| **17** *(opt.)* | Skill de conception/vérification de TP pour agent | après 16 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
+| **16** | **Le rapport à la demande** (voie 1 du § 7.6) : le producteur de l'épisode 7 n'attendait qu'un **déclencheur** et un **service** — veilleur déposé dans le hostfs, protocole à trois fichiers, verbe `report`, 6ᵉ journal du même nom. M1, M3 et M4 comblés ; M2 laissé ouvert (cf. § 4.15) | sur la même machine, au même instant, `log m1 rc_config` ne contient **pas** `ip_forward` et `log m1 report` dit `net.ipv4.ip_forward = 1` — **fait** (2026-08-12) |
+| **17** | **Le vérificateur déclaratif** `useful-scripts/mrn-verify` : un fichier d'assertions (`.mrv`) contrôlé puis joué contre une session vivante, trois verdicts dont le troisième compte (`SKIP` ≠ `FAIL`), et des **capacités lues dans la grammaire** — compagnon de `mrn-check`, comme un `.mrv` est le pendant d'un `.mrn` (cf. § 4.16) | deux lignes du même fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward` **échoue** et `report m1 says … ip_forward = 1` **passe** — **fait** (2026-08-12) |
+| **18** | **M2 — exécuter dans un invité** (`exec <c> <cmd>`, voie 2 du § 7.6) : le seul chemin vers les affirmations de **connectivité**. Décidé par l'auteur à la reprise de l'épisode 17 ; le vérificateur l'attend déjà (`reaches` y est écrit, refusé par nom) | `reaches m1 intrus` cesse d'être `SKIP` **sans qu'une ligne de `mrn-verify` change** : la capacité se déduit de `help` |
+| **19** *(opt.)* | Skill de conception/vérification de TP pour agent | après 17 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1121,6 +1123,84 @@ les vieilles images **SysV**, dont le § 4.7 disait qu'elles n'ont pas de séque
 `inittab` répond au ctrl-alt-del par `/sbin/halt`). La limite reste entière pour le rapport *de
 fin* ; elle tombe pour le rapport *à la demande*.
 
+### 4.16 Ce que l'épisode 17 a livré (et le verdict qu'il fallait ne pas rendre)
+
+L'épisode 15 avait écrit cinq TP en affirmations ; l'épisode 16 avait donné à ces affirmations la
+matière qui leur manquait. Restait à les **écrire quelque part** — et le tableau du § 4 réservait
+cette case au vérificateur, que l'épisode 16 a occupée en livrant autre chose. C'est cet épisode.
+
+**Pourquoi un fichier, et pas un script.** Un corrigé écrit en bash marche une fois, pour un TP,
+et personne ne le relit. Surtout, il rejoue à chaque fois les deux pièges que le § 7.4 a mesurés :
+la trace `set -x` **ne porte pas les redirections** (donc chercher `ip_forward` dans un journal de
+démarrage ne prouve rien), et un échec absorbé par `|| true` **ne laisse aucune trace**. Un fichier
+d'assertions les fige une fois pour toutes : `journal … contains` et `report … says` sont deux
+assertions **différentes**, et l'outil qui les sert sait laquelle prouve quoi.
+
+`useful-scripts/mrn-verify` est donc au `.mrv` ce que `mrn-check` est au `.mrn`, avec la même
+mécanique et pour les mêmes raisons : il **contrôle d'abord, joue ensuite** (un fichier avec une
+faute de frappe en ligne 12 ne doit pas avoir produit onze verdicts et un rapport qu'on lira comme
+complet), et il ne détient **aucune** copie de la grammaire.
+
+**Trois verdicts, et c'est le troisième qui compte.** `PASS` et `FAIL` vont de soi ; `SKIP` dit que
+le canal **n'a aucun moyen de savoir**, et nomme lequel. La distinction n'est pas du zèle : un
+vérificateur qui répond « faux » là où il devrait répondre « je ne sais pas » recale un étudiant
+pour une limite de l'outil. `reaches m1 intrus` — l'affirmation dont trois des cinq TP du § 7.1 ont
+besoin — n'est servie par personne aujourd'hui (M2), et c'est ce qu'elle répond :
+
+    SKIP  reaches m1 intrus
+          this Marionnet publishes no `exec' verb: the channel offers no way to know
+
+**La capacité vient de la grammaire.** C'est la 10ᵉ application de la règle d'unicité du chantier
+frère, sous une forme neuve : jusqu'ici on demandait au serveur son **vocabulaire** (les verbes,
+les journaux, les tables) ; ici on lui demande ce que l'outil **sait faire**. Une famille
+d'assertions déclare le verbe qui la porte, et ce verbe est cherché dans ce que `help` publie —
+d'où deux conséquences. La phrase ci-dessus n'est pas une constante : le jour où l'épisode 18
+publiera `exec`, le même fichier commencera à être répondu **sans qu'une ligne de `mrn-verify`
+change**. Et c'est mesurable **sans UML** : le même `.mrv`, contrôlé contre l'instantané complet de
+`help` puis contre le même instantané amputé du verbe `report`, ne dit pas la même chose.
+
+**Le langage est fermé, et aucune de ses neuf familles n'est inventée** : chacune vient d'une ligne
+du § 7.5, donc d'une affirmation d'un TP réel. `reaches` y est écrite **d'avance** — l'auteur a
+tranché M2 en rouvrant l'épisode — plutôt que d'être ajoutée après coup : un TP peut déjà dire ce
+qu'il veut dire, quitte à ce que la ligne soit sautée en attendant. `--strict` fait de tout `SKIP`
+un échec, pour qui veut un TP **entièrement** prouvable.
+
+**Quatre corrections par la mesure**, dont trois ont mis en défaut le plan ou le banc, jamais le
+mécanisme :
+
+1. **Sous `set -e`, une fonction d'analyse qui rend le statut de sa dernière garde arrête tout** —
+   en silence. Une ligne fautive (`cable c1 m1eth0 …`) faisait `return` avec un statut non nul,
+   la boucle de lecture appelant cette fonction comme une commande simple : le fichier n'était
+   plus lu au-delà, et le rapport paraissait seulement **plus court**. Le banc l'a vu parce qu'il
+   compte les erreurs attendues ; un humain aurait lu quatre diagnostics sur cinq sans sourciller.
+   Même famille que les pièges de l'épisode 14 : ce n'est pas le mécanisme qui ment, c'est
+   l'absence qui ne se voit pas.
+2. **Les entrées d'une table de switch ne sont pas plates** : les ports d'un VLAN sont une *liste
+   d'objets*. D'où des clés atteintes par **chemin pointé** (`ports.port=3`), obtenues en aplatissant
+   l'entrée — les index de liste tombent, les noms restent. Aucun nom de champ n'est écrit dans
+   l'outil, et une clé que le switch n'a pas est rendue **avec la liste de celles qu'il a** : le
+   message apprend le vocabulaire au lieu de le faire deviner.
+3. **Les titres du treeview `documents` passent par gettext** (piège déjà connu) : l'assertion
+   `documents <c> has <motif>` s'appuie donc sur le **nom du composant**, qui n'est pas traduit.
+4. **Un `rc-set` sur un switch déjà démarré une fois est ignoré au démarrage suivant** — défaut du
+   dépôt, découvert en fabriquant le banc, consigné au § 6 et laissé là : il ne concerne pas le
+   vérificateur, et le corriger en passant aurait mélangé deux mesures.
+
+**Le discriminant** est en deux lignes du même fichier, sur la même machine, au même instant :
+
+    journal m1 rc_config contains ip_forward     → FAIL
+    report  m1 says ~ net[.]ipv4[.]ip_forward *= *1  → PASS
+
+La configuration a bien tourné ; c'est la **trace** qui ne peut pas le dire. Un corrigé écrit sur
+la première ligne recalerait un étudiant qui a tout juste — et c'est très exactement l'erreur que
+le § 7 existait pour éviter.
+
+**Ce que l'épisode ne fait pas.** Il ne note pas (aucun barème, aucune pondération : un verdict par
+assertion, et le correcteur décide), il n'exécute rien dans un invité, et il n'ajoute **aucun** verbe
+au canal — `bin/` n'est pas touché. La seule requête qu'il émet et qui ne soit pas une pure lecture
+est `report`, parce qu'un instantané ne vaut que ce que dit sa date ; `--refresh=never` lit le
+dernier rapport pris, ce qui est exactement ce que veut dire *corriger une séance déjà terminée*.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1170,6 +1250,16 @@ fin* ; elle tombe pour le rapport *à la demande*.
   (« m1 joint intrus »), et c'est aussi celui qui fait cesser le canal d'observer pour commander
   l'intérieur des invités. À trancher pour lui-même, jamais en passant. Le banc de l'épisode 16
   mesure ce manque en creux, pour qu'il ne tombe pas par effet de bord.
+- **Un `rc-set` sur un switch n'est pris en compte qu'au premier démarrage** (mesuré à
+  l'épisode 17, en fabriquant son banc). Le contenu du rc est capturé à la **création du device
+  simulé** (`switch.ml:464-467`, `make_simulated_device`), et ce device **survit à un `poweroff`** :
+  un `rc-set` ultérieur est accepté (`changed: true`), `rc-get` rend bien le nouveau contenu, et
+  le démarrage suivant rejoue **l'ancien** — sans que rien ne le signale. Pour une machine le
+  problème n'existe pas : son rc est un fichier du hostfs, relu à chaque boot. Deux remèdes
+  possibles (passer une *fonction* plutôt qu'une valeur au constructeur du device, ou détruire le
+  device simulé quand le rc change), tous deux dans `switch.ml` ; à trancher avec l'automate
+  d'état en tête (chantier clos `marionnet-automate-composants`). En attendant, tout banc ou TP
+  qui veut deux rc différents utilise **deux switchs**.
 - Le **veilleur du rapport à la demande** interroge son fichier-drapeau toutes les secondes
   (épisode 16). C'est le prix d'un hostfs qui n'offre aucune notification : négligeable sur un
   UML, mais c'est bien un réveil par seconde et par invité, et non zéro. Un `inotify` côté invité
@@ -1296,7 +1386,11 @@ Aucune n'est inventée : chacune vient d'une affirmation d'un des cinq TP.
 | `journal <c> <j>` sans échec (`!! FAILED`) | `log` | disponible |
 | `documents <c>` porte rapport / historique / terminal | `documents` | disponible |
 | **état de l'invité** (adresses, routes, `ip_forward`, pare-feu) | `report`, puis `log <c> report` | disponible **depuis l'ép. 16** |
-| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2**, laissé ouvert (§ 4.15) |
+| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2**, décidé (**ép. 18**) — déjà écrite comme `reaches`, refusée par nom |
+
+> **Depuis l'épisode 17**, ces primitives ne sont plus seulement *disponibles*, elles sont
+> **écrites** : chaque ligne du tableau est une famille d'assertions de `mrn-verify` (§ 4.16), et
+> la dernière y figure aussi — sautée tant que le canal ne publie pas le verbe qui la porterait.
 
 ### 7.6 Ce qu'il faudra ajouter, et à quel prix
 
@@ -1967,3 +2061,65 @@ ont demandé la **même** correction, et une seule : la liste des journaux, pass
 C'est la règle d'unicité qui joue à plein — le **code** de la complétion n'a pas été touché du
 tout (12ᵉ application), seul son *banc* codifiait la liste ; ce sont les bancs qui portaient une
 copie, jamais les clients.
+
+### 2026-08-12 — Épisode 17 : le vérificateur déclaratif, et le verdict qu'il fallait ne pas rendre
+
+**Point de départ, et une numérotation à remettre d'aplomb.** Le tableau du § 4 réservait la case
+16 au vérificateur ; l'épisode 16 y a livré le rapport à la demande, qui n'était pas prévu là. La
+case a donc été rendue à son contenu réel, et la suite renumérotée : **17** ce vérificateur, **18**
+`exec` (M2, que l'auteur a tranché en rouvrant le chantier), **19** le skill de conception de TP.
+Écrire le skill avant le vérificateur l'aurait fait émettre du bash `mrnctl` + `jq` — c'est-à-dire
+un corrigé par TP, invérifiable et non rejouable : exactement ce que la ligne 172 déconseillait
+depuis l'épisode 15.
+
+**Ce qui est livré.** `useful-scripts/mrn-verify` (neuf, ~560 lignes de bash, installable à côté de
+`mrn-check`), la complétion (`_mrn_verify_completion` — les options du **client**, la seule chose
+qui lui appartienne), le § 14 neuf du guide `doc-src/scripting/README.md` (« Asserting a lab »,
+d'où une renumérotation 14→15, 15→16), deux exemples versionnés — `examples/lab.mrv`, le pendant
+assertionnel de `lab.mrn`, et `examples/06-assert-a-lab.sh` — et le banc neuf
+`_claude-local/bench/verify-bench.sh`. **Aucun `.ml` touché** : l'épisode n'ajoute pas un verbe au
+canal, il écrit ce que le canal sait déjà répondre. Détail de conception : § 4.16.
+
+**Quatre corrections par la mesure.** La première seule aurait suffi à justifier le banc :
+
+1. **Sous `set -e`, l'analyseur de lignes arrêtait tout, en silence.** `parse_line` rendait le
+   statut de sa dernière garde (`check_endpoint … || return`), et la boucle de lecture l'appelle
+   comme une commande simple : une ligne fautive terminait le processus. Le rapport paraissait
+   seulement **plus court** — quatre diagnostics au lieu de cinq, et pas de ligne de résumé. Ce
+   n'est pas le mécanisme qui mentait, c'est une **absence** qui ne se voit pas : le banc l'a vue
+   parce qu'il **compte** les erreurs attendues au lieu de les lire.
+2. **Les entrées d'une table de switch ne sont pas plates** : les ports d'un VLAN sont une liste
+   d'objets, donc `select(.port == 3)` sur l'entrée ne trouve rien. D'où l'aplatissement en paires
+   `chemin=valeur` (index de liste supprimés) et la notation `ports.port=3` — et, quand une clé
+   n'existe nulle part, la liste de celles qui existent, prise **dans la réponse**.
+3. **Un `rc-set` sur un switch déjà démarré une fois est ignoré au démarrage suivant.** Défaut du
+   dépôt, pas de l'épisode : le contenu du rc est capturé à la création du device simulé, qui
+   survit au `poweroff` ; `rc-get` rend pourtant le nouveau contenu. Consigné au § 6 ; le banc
+   utilise **deux switchs** plutôt que de mélanger deux mesures.
+4. **Les titres du treeview `documents` passent par gettext** (piège déjà connu, réappliqué) :
+   l'assertion s'appuie sur le **nom du composant**, qui n'est jamais traduit.
+
+**Le discriminant, en deux lignes du même fichier.** Sur la même machine, au même instant :
+`journal m1 rc_config contains ip_forward` → **FAIL**, `report m1 says ~ net[.]ipv4[.]ip_forward
+*= *1` → **PASS**. La configuration a bien tourné : c'est la trace qui ne peut pas le dire (§ 7.4).
+Un corrigé écrit sur la première ligne recalerait un étudiant qui a tout juste.
+
+**Le second discriminant se mesure sans UML** : le même `.mrv`, contrôlé contre l'instantané
+complet de `help` puis contre le même instantané **amputé** du verbe `report`, ne dit pas la même
+chose — la capacité de l'outil vient de la grammaire, pas d'une table écrite dedans. C'est ce qui
+garantit que l'épisode 18 rendra `reaches` vivante **sans** rouvrir ce fichier.
+
+**Mesures.** `verify-bench.sh` : **84 assertions, 0 échec** (63 sans UML), dont le § V6 où la doc
+est vérifiée par l'outil lui-même — le `.mrv` **cité** par le guide est extrait du Markdown et
+contrôlé, l'exemple versionné est joué **tel quel** sur la session du banc, et `06-assert-a-lab.sh`
+est exécuté tel quel (11ᵉ application de la règle d'unicité, sous la forme établie à l'épisode 9 :
+citer, et faire vérifier la citation).
+
+**Non-régression** : `dune build` vert (aucun `.ml` n'a bougé, on le prouve), banc de complétion
+**60**, `doc-bench.sh` **62**, `journal-bench.sh` **97**, `report-bench.sh` **25**,
+`exam-bench.sh` **33** — 0 échec partout, les trois derniers en `E2E=0` (rien de ce qu'ils
+mesurent avec une UML n'est touché par l'épisode). `doc-bench.sh` a demandé la **même** correction
+que les trois bancs de l'épisode 16 et qui lui avait échappé : cinq journaux → six. Le guide, lui,
+portait encore la trace du même oubli — « the five journals above are traces », alors que son
+tableau en cite six depuis l'épisode 16 : ce sont les **cinq autres**, `report` étant un état et
+non une trace, ce que la phrase dit désormais.

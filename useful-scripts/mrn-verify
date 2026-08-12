@@ -1,0 +1,670 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2026  Jean-Vincent Loddo
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# mrn-verify — check what a running lab *is*, against a file of assertions (.mrv).
+#
+# mrn-check reads a .mrn and says whether it can be sent; this reads a .mrv and says whether the
+# lab it describes holds. The two are the halves of the same idea: a lab is built declaratively,
+# so it should be asserted declaratively — and a teacher marking a session, or an agent designing
+# one, then has something rejouable instead of a shell script written once per lab.
+#
+# WHY NOT A SHELL SCRIPT WITH mrnctl AND jq. Because two things measured in this workstream
+# (docs/journalisation-profonde.md § 7.4) are traps that everybody rewrites badly:
+#
+#   · `set -x' does NOT trace redirections. `echo 1 > /proc/sys/net/ipv4/ip_forward' leaves only
+#     `echo 1' in the journal, so grepping a startup journal for "ip_forward" proves nothing —
+#     although the command did run. What proves it is the report (`report <c>'), taken inside the
+#     guest. Here, `journal ... contains' and `report ... says' are two different assertions, and
+#     the difference is the point;
+#   · a failing command absorbed by `|| true' leaves no trace at all, so "the journal has no
+#     failure" (`journal <c> <j> ok') is a weaker statement than it looks. It is worth making, and
+#     worth making the same way every time.
+#
+# WHAT A VERDICT MEANS — the distinction the whole file is built around:
+#
+#   PASS  the channel was asked, and it says the assertion holds;
+#   FAIL  the channel was asked, and what it answered contradicts the assertion (or the thing
+#         asserted about does not exist in this session);
+#   SKIP  the channel offers no way to know. Not a failure: another Marionnet — or the same one
+#         with the component started — could answer. Every SKIP names its reason, and --strict
+#         turns them into failures for whoever wants a lab that is *entirely* provable.
+#
+# A verifier that answers "false" where it should answer "I cannot know" is worse than no verifier
+# at all when a mark depends on it. That is why the two are never conflated here.
+#
+# WHERE THE VOCABULARY COMES FROM. Not from this file. Verbs, journal names, switch tables and
+# kinds are read from the running Marionnet, which publishes them (`marionnet-ctl help'), exactly
+# as mrn-check does and for the same reason: a second copy of the grammar is the one that drifts.
+# This file goes one step further and reads its own *capabilities* there — an assertion whose verb
+# the server does not publish is SKIP, never FAIL. So the day the channel learns to execute inside
+# a guest, `reaches' starts answering without a line of this file changing.
+#
+# NO bashbricks HERE, for the reason already written in mrn-check: this script is meant to sit in
+# $(PREFIX)/bin next to marionnet-ctl, and nothing installs bashbricks there.
+#
+# Requires: jq. Online mode also needs marionnet-ctl and a running Marionnet.
+
+set -euo pipefail
+
+readonly PROGNAME="${0##*/}"
+
+readonly EXIT_FAILED=1    # at least one assertion failed, or the file has an error
+readonly EXIT_USAGE=2     # our own fault: no grammar, unreadable file, missing tool
+
+usage() {
+  cat <<EOF
+Usage: $PROGNAME [options] <file.mrv>|-
+
+Checks a running lab against a file of assertions, one per line. Nothing in the project is
+modified: the only request that is not a pure read is \`report', which asks a *guest* to describe
+itself (see --refresh).
+
+Options:
+  -s, --socket=PATH     control socket of a running Marionnet
+                        (default: \$MARIONNET_CONTROL_SOCKET)
+  -g, --grammar=FILE    read the vocabulary from a snapshot instead of a running Marionnet;
+                        implies --check-only, since nothing can be asked offline
+                        (snapshot taken with:  marionnet-ctl help > FILE)
+      --ctl=PATH        the marionnet-ctl to ask (default: beside this script, then \$PATH)
+  -c, --check-only      check that the file is well formed, ask nothing
+      --refresh=WHEN    auto (default) | never | always — whether \`report' assertions ask the
+                        guest for a fresh report: auto takes one per component per run, never
+                        reads the last one taken (a session already over), always retakes it
+      --timeout=N       seconds allowed to a guest to produce its report (default 60)
+  -j, --json            print one JSON object with every verdict, instead of lines
+  -q, --quiet           print nothing, only set the exit code
+      --strict          a SKIP counts as a failure
+  -h, --help            this message
+
+Exit codes: 0 everything asserted holds · $EXIT_FAILED at least one FAIL (or the file has an error)
+· $EXIT_USAGE nothing could be checked.
+
+Assertions (one per line; # comments and blank lines are ignored):
+
+  state <component> is on|off|sleeping
+  field <component> <field> is <value>
+  cable <cable> <node>:<port> <node>:<port>
+  switch <switch> <table> has <key>=<value> [<key>=<value>]…
+  journal <component> <journal> contains|lacks <pattern>
+  journal <component> <journal> ok
+  documents <component> has <pattern>
+  report <component> says|lacks <pattern>
+  reaches <component> <component>
+
+A <pattern> is a literal string; write \`~ <regexp>' for an extended regular expression. The
+patterns and values run to the end of the line, so they may contain spaces and need no quoting.
+
+In a switch assertion a <key> may be a path into the entry, written with dots and no indices, as
+in \`ports.port=3'. The keys are the ones the switch itself uses: a key nobody has is reported
+with the list of those that exist, and \`marionnet-ctl switch-info <switch> <table>' shows them.
+EOF
+}
+
+die() { local code="$1"; shift; printf '%s: %s\n' "$PROGNAME" "$*" >&2; exit "$code"; }
+
+# --------------------------------------------------------------------------
+#                             Options
+# --------------------------------------------------------------------------
+
+socket="${MARIONNET_CONTROL_SOCKET:-}"
+grammar_file=""
+ctl=""
+quiet=0
+json=0
+strict=0
+check_only=0
+refresh="auto"
+timeout=60
+file=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s|--socket)   [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; socket="$2"; shift 2 ;;
+    --socket=*)    socket="${1#*=}"; shift ;;
+    -g|--grammar)  [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; grammar_file="$2"; shift 2 ;;
+    --grammar=*)   grammar_file="${1#*=}"; shift ;;
+    --ctl)         [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; ctl="$2"; shift 2 ;;
+    --ctl=*)       ctl="${1#*=}"; shift ;;
+    --refresh)     [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; refresh="$2"; shift 2 ;;
+    --refresh=*)   refresh="${1#*=}"; shift ;;
+    --timeout)     [[ $# -ge 2 ]] || die $EXIT_USAGE "$1 needs a value"; timeout="$2"; shift 2 ;;
+    --timeout=*)   timeout="${1#*=}"; shift ;;
+    -c|--check-only) check_only=1; shift ;;
+    -j|--json)     json=1; shift ;;
+    -q|--quiet)    quiet=1; shift ;;
+    --strict)      strict=1; shift ;;
+    -h|--help)     usage; exit 0 ;;
+    --)            shift; break ;;
+    -)             break ;;   # the file, read from standard input — not an option
+    -*)            die $EXIT_USAGE "unknown option $1 (try --help)" ;;
+    *)             break ;;
+  esac
+done
+
+[[ $# -ge 1 ]] || { usage >&2; exit $EXIT_USAGE; }
+file="$1"; shift
+[[ $# -eq 0 ]] || die $EXIT_USAGE "one file at a time, got $(( $# + 1 ))"
+
+case "$refresh" in auto|never|always) ;; *) die $EXIT_USAGE "--refresh takes auto, never or always, not \"$refresh\"" ;; esac
+[[ $timeout =~ ^[0-9]+$ ]] || die $EXIT_USAGE "--timeout takes a number of seconds, not \"$timeout\""
+
+command -v jq >/dev/null 2>&1 || die $EXIT_USAGE "jq is required (apt install jq)"
+[[ $file == "-" || -r $file ]] || die $EXIT_USAGE "cannot read $file"
+
+# --------------------------------------------------------------------------
+#                            The vocabulary
+# --------------------------------------------------------------------------
+
+# Filled from the grammar, never from a table written here.
+declare -A HAS_VERB=()
+declare -a JOURNALS=() SWITCH_TABLES=()
+
+load_grammar() {  # $1 = the JSON answer of `help`
+  local json_answer="$1" verb
+  [[ $(jq -r '.ok // false' <<<"$json_answer") == true ]] ||
+    die $EXIT_USAGE "the vocabulary could not be read: $json_answer"
+  while IFS= read -r verb; do HAS_VERB["$verb"]=1; done \
+    < <(jq -r '.commands[].verb' <<<"$json_answer")
+  mapfile -t JOURNALS      < <(jq -r '(.logs // [])[]'          <<<"$json_answer")
+  mapfile -t SWITCH_TABLES < <(jq -r '(.switch_tables // [])[]' <<<"$json_answer")
+  (( ${#HAS_VERB[@]} > 0 )) || die $EXIT_USAGE "the vocabulary is empty"
+}
+
+find_ctl() {
+  local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -n $ctl ]]; then printf '%s' "$ctl"; return 0; fi
+  if [[ -x "$here/marionnet-ctl" ]]; then printf '%s' "$here/marionnet-ctl"; return 0; fi
+  command -v marionnet-ctl 2>/dev/null && return 0
+  return 1
+}
+
+CTL=""
+if [[ -n $grammar_file ]]; then
+  # A snapshot tells what the vocabulary *was*; it cannot answer a question about a lab. So the
+  # offline mode is the checking half only, and says so rather than pretending to verify.
+  [[ -r $grammar_file ]] || die $EXIT_USAGE "cannot read the grammar snapshot $grammar_file"
+  load_grammar "$(cat -- "$grammar_file")"
+  check_only=1
+else
+  CTL="$(find_ctl)" ||
+    die $EXIT_USAGE "no marionnet-ctl found: pass --ctl=PATH, or check the file offline with --grammar=FILE"
+  [[ -n $socket ]] ||
+    die $EXIT_USAGE "no control socket: pass --socket=PATH, set \$MARIONNET_CONTROL_SOCKET,
+or check the file offline against a snapshot:  marionnet-ctl help > grammar.json && $PROGNAME --grammar=grammar.json $file"
+  answer="$("$CTL" --socket="$socket" help 2>/dev/null)" ||
+    die $EXIT_USAGE "no vocabulary published on $socket: is Marionnet running with --control-socket?
+Otherwise check the file offline:  marionnet-ctl help > grammar.json && $PROGNAME --grammar=grammar.json $file"
+  load_grammar "$answer"
+fi
+
+# The channel, with the same convention as everywhere in this workstream: a refusal is an answer
+# (ok:false with a detail that says why), not a failure of the tool.
+ask() { "$CTL" --socket="$socket" "$@" 2>/dev/null || true ; }
+
+joined() { local out; out="$(printf '%s, ' "$@")"; printf '%s' "${out%, }"; }
+
+# --------------------------------------------------------------------------
+#                         Reading the file
+# --------------------------------------------------------------------------
+
+# Two passes, and the first one sends nothing: a file with a typo on line 12 must not have
+# produced eleven verdicts and a report someone will read as complete. This is the same reason
+# mrn-check refuses to translate a file it could not check.
+
+declare -a A_LINE=() A_TEXT=() A_KIND=() A_ARGS=()   # A_ARGS: one packed line per assertion
+errors=0
+
+say() { (( quiet )) && return 0; printf '%s\n' "$*"; }
+err() { errors=$((errors+1)); (( quiet )) || printf '%s:%s: error — %s\n' "$file" "$1" "$2" >&2; }
+
+# The tail of an assertion is free text (a pattern, a label, an address): it runs to the end of
+# the line. Assertions are therefore packed as TAB-separated fields, TAB being the one character
+# a shell word cannot smuggle in from the file (the file is read, never evaluated).
+pack() { local IFS=$'\t'; printf '%s' "$*"; }
+
+is_identifier() { [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
+
+check_component() {  # $1 = line, $2 = name; a name is an identifier — the whole grammar rests on it
+  is_identifier "$2" && return 0
+  err "$1" "\"$2\" is not a component name (letters, digits, _)"
+  return 1
+}
+
+check_endpoint() {  # $1 = line, $2 = "<node>:<port>"
+  [[ $2 == *:* && ${2%%:*} != "" && ${2#*:} != "" ]] && return 0
+  err "$1" "\"$2\" is not an endpoint: expected <node>:<port>, as in m1:eth0"
+  return 1
+}
+
+record() { A_LINE+=("$1"); A_TEXT+=("$2"); A_KIND+=("$3"); shift 3; A_ARGS+=("$(pack "$@")"); }
+
+parse_line() {  # $1 = line number, $2 = the raw line, $3… = its tokens
+  local ln="$1" raw="$2"; shift 2
+  local head="$1"; shift
+  local n=$#
+
+  case "$head" in
+
+    state)  # state <c> is on|off|sleeping
+      (( n == 3 )) || { err "$ln" "state takes: state <component> is <state>"; return; }
+      [[ $2 == is ]] || { err "$ln" "state <component> **is** <state>, not \"$2\""; return; }
+      check_component "$ln" "$1" || return 0
+      record "$ln" "$raw" state "$1" "$3" ;;
+
+    field)  # field <c> <field> is <value…>
+      (( n >= 4 )) || { err "$ln" "field takes: field <component> <field> is <value>"; return; }
+      [[ $3 == is ]] || { err "$ln" "field <component> <field> **is** <value>, not \"$3\""; return; }
+      check_component "$ln" "$1" || return 0
+      local comp="$1" what="$2"; shift 3
+      record "$ln" "$raw" field "$comp" "$what" "$*" ;;
+
+    cable)  # cable <name> <a>:<p> <b>:<q>
+      (( n == 3 )) || { err "$ln" "cable takes: cable <cable> <node>:<port> <node>:<port>"; return; }
+      check_component "$ln" "$1" || return 0
+      check_endpoint  "$ln" "$2" || return 0
+      check_endpoint  "$ln" "$3" || return 0
+      record "$ln" "$raw" cable "$1" "$2" "$3" ;;
+
+    switch)  # switch <sw> <table> has <k>=<v>…
+      (( n >= 4 )) || { err "$ln" "switch takes: switch <switch> <table> has <key>=<value>…"; return; }
+      [[ $3 == has ]] || { err "$ln" "switch <switch> <table> **has** <key>=<value>, not \"$3\""; return; }
+      check_component "$ln" "$1" || return 0
+      local sw="$1" table="$2"; shift 3
+      local pair
+      for pair in "$@"; do
+        [[ $pair == *=* && ${pair%%=*} != "" ]] ||
+          { err "$ln" "\"$pair\" is not a <key>=<value> pair"; return; }
+      done
+      record "$ln" "$raw" switch "$sw" "$table" "$@" ;;
+
+    journal)  # journal <c> <j> contains|lacks <pattern…>  |  journal <c> <j> ok
+      (( n >= 3 )) || { err "$ln" "journal takes: journal <component> <journal> contains|lacks <pattern>, or … ok"; return; }
+      check_component "$ln" "$1" || return 0
+      local comp="$1" jname="$2" verb="$3"
+      case "$verb" in
+        ok)     (( n == 3 )) || { err "$ln" "journal <component> <journal> ok takes nothing more"; return; }
+                record "$ln" "$raw" journal_ok "$comp" "$jname" ;;
+        contains|lacks)
+                (( n >= 4 )) || { err "$ln" "journal <component> <journal> $verb <pattern>"; return; }
+                shift 3
+                record "$ln" "$raw" "journal_$verb" "$comp" "$jname" "$*" ;;
+        *)      err "$ln" "journal <component> <journal> **contains|lacks|ok**, not \"$verb\"" ;;
+      esac ;;
+
+    documents)  # documents <c> has <pattern…>
+      (( n >= 3 )) || { err "$ln" "documents takes: documents <component> has <pattern>"; return; }
+      [[ $2 == has ]] || { err "$ln" "documents <component> **has** <pattern>, not \"$2\""; return; }
+      check_component "$ln" "$1" || return 0
+      local comp="$1"; shift 2
+      record "$ln" "$raw" documents "$comp" "$*" ;;
+
+    report)  # report <c> says|lacks <pattern…>
+      (( n >= 3 )) || { err "$ln" "report takes: report <component> says|lacks <pattern>"; return; }
+      [[ $2 == says || $2 == lacks ]] || { err "$ln" "report <component> **says|lacks** <pattern>, not \"$2\""; return; }
+      check_component "$ln" "$1" || return 0
+      local comp="$1" verb="$2"; shift 2
+      record "$ln" "$raw" "report_$verb" "$comp" "$*" ;;
+
+    reaches)  # reaches <c1> <c2> — the assertion this channel cannot make (yet)
+      (( n == 2 )) || { err "$ln" "reaches takes: reaches <component> <component>"; return; }
+      check_component "$ln" "$1" || return 0
+      check_component "$ln" "$2" || return 0
+      record "$ln" "$raw" reaches "$1" "$2" ;;
+
+    *) err "$ln" "\"$head\" is not an assertion (state, field, cable, switch, journal, documents, report, reaches)" ;;
+  esac
+  # Always zero. Under `set -e' a parse function that returns the status of its last check is a
+  # trap: the loop below calls it as a simple command, so one malformed line would end the run —
+  # silently, with the report looking merely shorter. Measured, not imagined (episode 17).
+  return 0
+}
+
+lineno=0
+while IFS= read -r raw || [[ -n $raw ]]; do
+  lineno=$((lineno+1))
+  line="${raw%%#*}"                       # a comment runs to the end of the line
+  [[ $line =~ ^[[:space:]]*$ ]] && continue
+  # The line is split on blanks, and never evaluated: no globbing, no expansion, no eval.
+  read -r -a tokens <<<"$line"
+  parse_line "$lineno" "${line#"${line%%[![:space:]]*}"}" "${tokens[@]}"
+done < <(if [[ $file == "-" ]]; then cat; else cat -- "$file"; fi)
+
+(( ${#A_KIND[@]} > 0 || errors > 0 )) || die $EXIT_USAGE "$file holds no assertion"
+(( errors == 0 )) || {
+  (( quiet )) || printf '%s: %d error(s); nothing was asked.\n' "$file" "$errors" >&2
+  exit $EXIT_FAILED
+}
+
+if (( check_only )); then
+  # Checking a file offline cannot say whether the lab holds, but it can say what this vocabulary
+  # would not be able to answer — which is exactly what someone writing a .mrv (or generating one)
+  # wants to hear early. Online, the same information is the SKIP verdict, so it is not said twice.
+  declare -A NOTED=()
+  note() { [[ -n ${NOTED[$1]+set} ]] && return 0; NOTED["$1"]=1; (( quiet )) || printf '%s: note — %s\n' "$file" "$2" >&2; }
+  for (( i = 0; i < ${#A_KIND[@]}; i++ )); do
+    IFS=$'\t' read -r -a arg <<<"${A_ARGS[$i]}"
+    case "${A_KIND[$i]}" in
+      journal_*|report_*)
+        jname="report"; [[ ${A_KIND[$i]} == journal_* ]] && jname="${arg[1]}"
+        known=0; for j in "${JOURNALS[@]}"; do [[ $j == "$jname" ]] && known=1; done
+        (( known )) || note "log/$jname" \
+          "no journal named \"$jname\" in this vocabulary (it has: $(joined "${JOURNALS[@]}")): such assertions would be skipped" ;;
+      switch)
+        known=0; for t in "${SWITCH_TABLES[@]}"; do [[ $t == "${arg[1]}" ]] && known=1; done
+        (( known )) || note "table/${arg[1]}" \
+          "no switch table named \"${arg[1]}\" in this vocabulary (it has: $(joined "${SWITCH_TABLES[@]}")): such assertions would be skipped" ;;
+      reaches)
+        [[ -n ${HAS_VERB[exec]+set} ]] || note verb/exec \
+          "connectivity needs a channel that can run a command inside a guest, and this vocabulary publishes no \`exec' verb: such assertions would be skipped" ;;
+    esac
+    case "${A_KIND[$i]}" in
+      report_*) [[ -n ${HAS_VERB[report]+set} ]] || note verb/report \
+          "this vocabulary publishes no \`report' verb: such assertions would be skipped" ;;
+    esac
+  done
+  (( quiet )) || printf '%s: %d assertion(s), well formed.\n' "$file" "${#A_KIND[@]}"
+  exit 0
+fi
+
+# --------------------------------------------------------------------------
+#                    Asking the channel, once per question
+# --------------------------------------------------------------------------
+
+# A file of forty assertions must not send forty requests: the answers are cached per question,
+# not per assertion. `report' is cached too, which is what --refresh=auto means — one fresh
+# report per component per run, since a snapshot is only worth what its date says.
+
+declare -A CACHE=()
+
+cached() {  # $1 = cache key, $2… = the request; prints the answer
+  local key="$1"; shift
+  [[ -n ${CACHE[$key]+set} ]] || CACHE["$key"]="$(ask "$@")"
+  printf '%s' "${CACHE[$key]}"
+}
+
+# --------------------------------------------------------------------------
+#                              Verdicts
+# --------------------------------------------------------------------------
+
+passed=0; failed=0; skipped=0
+declare -a RESULTS=()   # one JSON object per assertion, in file order
+
+verdict() {  # $1 = index, $2 = PASS|FAIL|SKIP, $3 = reason (may be empty)
+  local i="$1" v="$2" why="${3:-}"
+  case "$v" in
+    PASS) passed=$((passed+1)) ;;
+    FAIL) failed=$((failed+1)) ;;
+    SKIP) skipped=$((skipped+1)) ;;
+  esac
+  if (( json )); then
+    RESULTS+=("$(jq -nc --arg f "$file" --argjson l "${A_LINE[$i]}" --arg a "${A_TEXT[$i]}" \
+                        --arg v "$v" --arg w "$why" \
+                 '{file:$f,line:$l,assertion:$a,verdict:$v}
+                  + (if $w == "" then {} else {reason:$w} end)')")
+  else
+    if [[ -n $why ]]; then
+      say "$v  ${A_TEXT[$i]}"
+      say "      $why"
+    else
+      say "$v  ${A_TEXT[$i]}"
+    fi
+  fi
+}
+
+# A pattern is literal unless it opens with `~'. Two greps rather than one because a correction
+# key written by a teacher is a string ("MASQUERADE", "192.168.1.1/24"), and a string that happens
+# to hold a dot or a bracket must not silently become a regular expression.
+matches() {  # $1 = text, $2 = pattern
+  local text="$1" pat="$2"
+  if [[ $pat == "~" || $pat == "~ "* ]]; then
+    pat="${pat#\~}"; pat="${pat# }"
+    grep -qE -- "$pat" <<<"$text"
+  else
+    grep -qF -- "$pat" <<<"$text"
+  fi
+}
+
+# Every family declares the verb it rests on. This is the whole capability mechanism: the verb is
+# looked up in what the server published, so a missing one is a SKIP that names itself.
+verb_missing() {  # $1 = index, $2 = verb  -> 0 (and a SKIP) when the server does not publish it
+  [[ -n ${HAS_VERB[$2]+set} ]] && return 1
+  verdict "$1" SKIP "this Marionnet publishes no \`$2' verb: the channel offers no way to know"
+  return 0
+}
+
+refusal_of() { jq -r 'if (.ok // false) then empty else (.detail // .error // "refused") end' <<<"$1"; }
+
+# --- the journals ---------------------------------------------------------
+
+journal_content() {  # $1 = component, $2 = journal; prints the answer of `log'
+  cached "log/$1/$2" log "$1" "$2"
+}
+
+known_journal() {  # $1 = index, $2 = journal name
+  local j
+  for j in "${JOURNALS[@]}"; do [[ $j == "$2" ]] && return 0; done
+  verdict "$1" SKIP "this Marionnet serves no journal named \"$2\" (it serves: $(joined "${JOURNALS[@]}"))"
+  return 1
+}
+
+# --- the report -----------------------------------------------------------
+
+# `report' is the one request here that is not a pure read: it asks the guest to describe itself.
+# It is taken once per component (--refresh=auto), never (--refresh=never: read the last one, which
+# is what marking an archived session means), or once per assertion (--refresh=always).
+take_report() {  # $1 = component; prints nothing, returns non-zero with a reason on stdout
+  local comp="$1" answer
+  case "$refresh" in
+    never)  return 0 ;;
+    always) unset 'CACHE[report/'"$comp"']' ;;
+  esac
+  answer="$(cached "report/$comp" report "$comp" "--timeout=$timeout")"
+  if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+    printf '%s' "$(refusal_of "$answer")"
+    return 1
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------------------
+#                            The main loop
+# --------------------------------------------------------------------------
+
+for (( i = 0; i < ${#A_KIND[@]}; i++ )); do
+  IFS=$'\t' read -r -a arg <<<"${A_ARGS[$i]}"
+  case "${A_KIND[$i]}" in
+
+    state)
+      verb_missing "$i" ls && continue
+      answer="$(cached ls ls)"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      got="$(jq -r --arg n "${arg[0]}" '(.nodes[]|select(.name==$n)|.state) // ""' <<<"$answer")"
+      if [[ -z $got ]]; then
+        verdict "$i" FAIL "no component named \"${arg[0]}\" in this project"
+      elif [[ $got == "${arg[1]}" ]]; then
+        verdict "$i" PASS
+      else
+        verdict "$i" FAIL "${arg[0]} is $got"
+      fi ;;
+
+    field)
+      verb_missing "$i" get && continue
+      answer="$(cached "get/${arg[0]}" get "${arg[0]}")"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      if [[ $(jq -r --arg f "${arg[1]}" '.fields|has($f)' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "\"${arg[0]}\" has no field \"${arg[1]}\" (it has: $(jq -r '.fields|keys|join(", ")' <<<"$answer"))"
+        continue
+      fi
+      got="$(jq -r --arg f "${arg[1]}" '.fields[$f]' <<<"$answer")"
+      if [[ $got == "${arg[2]}" ]]; then verdict "$i" PASS
+      else verdict "$i" FAIL "${arg[0]}.${arg[1]} is \"$got\""; fi ;;
+
+    cable)
+      verb_missing "$i" get && continue
+      answer="$(cached "get/${arg[0]}" get "${arg[0]}")"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      if [[ $(jq -r '.kind // ""' <<<"$answer") != cable ]]; then
+        verdict "$i" FAIL "\"${arg[0]}\" is a $(jq -r '.kind // "?"' <<<"$answer"), not a cable"; continue
+      fi
+      left="$(jq -r '.fields.leftnodename + ":" + .fields.leftreceptname' <<<"$answer")"
+      right="$(jq -r '.fields.rightnodename + ":" + .fields.rightreceptname' <<<"$answer")"
+      # A cable has no direction — plugging A into B is plugging B into A — so both orders hold.
+      if [[ ( $left == "${arg[1]}" && $right == "${arg[2]}" ) || \
+            ( $left == "${arg[2]}" && $right == "${arg[1]}" ) ]]; then
+        verdict "$i" PASS
+      else
+        verdict "$i" FAIL "${arg[0]} joins $left to $right"
+      fi ;;
+
+    switch)
+      verb_missing "$i" switch-info && continue
+      table="${arg[1]}"
+      known=0; for t in "${SWITCH_TABLES[@]}"; do [[ $t == "$table" ]] && known=1; done
+      if (( ! known )); then
+        verdict "$i" SKIP "this Marionnet knows no switch table named \"$table\" (it knows: $(joined "${SWITCH_TABLES[@]}"))"
+        continue
+      fi
+      answer="$(cached "switch/${arg[0]}/$table" switch-info "${arg[0]}" "$table")"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      # An entry is flattened into <path>=<value> pairs, array indices dropped, so that a key
+      # sitting inside a list is written the way one would say it: the ports of a vlan entry are
+      # `ports.port'. Nothing about the shape of a table is written here — the server names its
+      # own fields, and a key nobody has is reported *with the ones that exist*, so the message
+      # teaches the vocabulary instead of leaving it to be guessed.
+      pairs=("${arg[@]:2}")
+      pairs_json="$(printf '%s\n' "${pairs[@]}" |
+        jq -R -s -c 'split("\n")|map(select(length>0))|map({k:.[0:index("=")], v:.[index("=")+1:]})')"
+      flatten='def pairs: [paths(scalars) as $p | {k: ($p|map(select(type=="string"))|join(".")), v: (getpath($p)|tostring)}];'
+      entries="$flatten"' [.tables[]|select(.name==$t)|.entries[]]'
+      keys="$(jq -r --arg t "$table" "$entries"'|map(pairs[].k)|unique|join(", ")' <<<"$answer")"
+      missing="$(jq -r --arg t "$table" --argjson want "$pairs_json" \
+        "$entries"'as $es | [$want[].k] - ([$es[]|pairs[].k]|unique) | first // ""' <<<"$answer")"
+      if [[ -n $missing ]]; then
+        verdict "$i" FAIL "no entry of table \"$table\" has a key named \"$missing\" (keys: ${keys:-none})"
+        continue
+      fi
+      if jq -e --arg t "$table" --argjson want "$pairs_json" \
+           "$entries"'|map(pairs)|any(. as $e | $want|all(. as $w | $e|any(.k == $w.k and .v == $w.v)))' \
+           <<<"$answer" >/dev/null; then
+        verdict "$i" PASS
+      else
+        verdict "$i" FAIL "table \"$table\" of ${arg[0]} has no such entry ($(jq -r --arg t "$table" "$entries"'|length' <<<"$answer") entries, keys: ${keys:-none})"
+      fi ;;
+
+    journal_ok|journal_contains|journal_lacks)
+      verb_missing "$i" log && continue
+      known_journal "$i" "${arg[1]}" || continue
+      answer="$(journal_content "${arg[0]}" "${arg[1]}")"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      content="$(jq -r '.content // ""' <<<"$answer")"
+      case "${A_KIND[$i]}" in
+        journal_ok)
+          # The form `!! FAILED (status N)' is written by the guest prologue (episode 1) and by
+          # Marionnet itself for a switch (episode 4): one shape, three kinds of component.
+          if line="$(grep -m1 '^!! FAILED' <<<"$content")"; then
+            verdict "$i" FAIL "$line"
+          else
+            verdict "$i" PASS
+          fi ;;
+        journal_contains)
+          if matches "$content" "${arg[2]}"; then verdict "$i" PASS
+          else verdict "$i" FAIL "not in the $(jq -r '.lines // 0' <<<"$answer") line(s) of ${arg[0]}'s ${arg[1]} journal"; fi ;;
+        journal_lacks)
+          if matches "$content" "${arg[2]}"; then
+            verdict "$i" FAIL "found: $(grep -m1 -F -- "${arg[2]}" <<<"$content" || grep -m1 -E -- "${arg[2]#\~ }" <<<"$content" || true)"
+          else verdict "$i" PASS; fi ;;
+      esac ;;
+
+    documents)
+      verb_missing "$i" documents && continue
+      answer="$(cached documents documents)"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      # A row is matched as a whole line of text: the treeview names its columns, and which one
+      # carries the component is not something to hard-code here. Beware that the titles go
+      # through gettext ("Report on m1" is translated): a locale-proof assertion leans on the
+      # component name, which is not.
+      rows="$(jq -r --arg n "${arg[0]}" \
+                '.rows[]|[.[]|tostring]|join(" ")|select(test("\\b" + $n + "\\b"))' <<<"$answer")"
+      if [[ -z $rows ]]; then
+        verdict "$i" FAIL "the documents treeview holds no row naming ${arg[0]} ($(jq -r '.count // 0' <<<"$answer") row(s))"
+      elif matches "$rows" "${arg[1]}"; then
+        verdict "$i" PASS
+      else
+        verdict "$i" FAIL "rows naming ${arg[0]}: $(tr '\n' ';' <<<"$rows")"
+      fi ;;
+
+    report_says|report_lacks)
+      verb_missing "$i" report && continue
+      known_journal "$i" report || continue
+      if ! why="$(take_report "${arg[0]}")"; then
+        verdict "$i" FAIL "$why"; continue
+      fi
+      answer="$(journal_content "${arg[0]}" report)"
+      if [[ $(jq -r '.ok // false' <<<"$answer") != true ]]; then
+        verdict "$i" FAIL "$(refusal_of "$answer")"; continue
+      fi
+      content="$(jq -r '.content // ""' <<<"$answer")"
+      if [[ ${A_KIND[$i]} == report_says ]]; then
+        if matches "$content" "${arg[1]}"; then verdict "$i" PASS
+        else verdict "$i" FAIL "not in the report of ${arg[0]} ($(jq -r '.lines // 0' <<<"$answer") lines)"; fi
+      else
+        if matches "$content" "${arg[1]}"; then verdict "$i" FAIL "found in the report of ${arg[0]}"
+        else verdict "$i" PASS; fi
+      fi ;;
+
+    reaches)
+      # The assertion three of the five labs of § 7.1 need, and the one this channel cannot make:
+      # nothing runs a command inside a guest (M2, § 7.3). Written here, refused by name, so that
+      # a lab can already say what it means — and start being answered the day the verb exists.
+      verb_missing "$i" exec && continue
+      verdict "$i" SKIP "connectivity is not asserted by this version of $PROGNAME" ;;
+  esac
+done
+
+# --------------------------------------------------------------------------
+#                              The summary
+# --------------------------------------------------------------------------
+
+failures=$failed
+(( strict )) && failures=$((failed + skipped))
+
+if (( json )); then
+  if (( ${#RESULTS[@]} > 0 )); then rs="$(printf '%s\n' "${RESULTS[@]}" | jq -sc '.')"; else rs='[]'; fi
+  (( quiet )) || jq -n --argjson rs "$rs" \
+        --argjson p "$passed" --argjson f "$failed" --argjson s "$skipped" \
+        --argjson ok "$(( failures == 0 ))" \
+        '{ok:($ok==1),passed:$p,failed:$f,skipped:$s,assertions:$rs}'
+else
+  say ""
+  say "$passed passed, $failed failed, $skipped skipped."
+fi
+
+(( failures == 0 )) || exit $EXIT_FAILED
+exit 0

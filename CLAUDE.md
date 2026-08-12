@@ -372,7 +372,24 @@ Reprise : appliquer le skill `chantier-long`.
   et un `start` bloquant elle ne tourne **pas du tout**, et même corrigée son job n'est exécuté
   qu'**à la fin du boot**, ~2 min après le marqueur de `wait --ready` — d'où un veilleur qui ne
   jette une requête « d'un boot précédent » qu'après **comparaison avec `boot_parameters`** ;
-  et le marqueur de `wait --ready` est écrit **par le scénario**, jamais par le relais).
+  et le marqueur de `wait --ready` est écrit **par le scénario**, jamais par le relais) ;
+  **ép. 17 fait 2026-08-12** (le **vérificateur déclaratif** `useful-scripts/mrn-verify` : un
+  fichier d'assertions `.mrv` **contrôlé d'abord, joué ensuite** contre une session vivante — il
+  est au `.mrv` ce que `mrn-check` est au `.mrn`. **Trois verdicts**, et c'est le troisième qui
+  porte la valeur : `SKIP` ≠ `FAIL`, « le canal n'a aucun moyen de savoir » n'est pas « c'est
+  faux » — sinon on recale un étudiant pour une limite de l'outil. **Neuf familles, aucune
+  inventée** (§ 7.5 de la doc), dont `reaches` **écrite d'avance** et refusée **par nom** puisque
+  l'auteur a tranché M2 (→ ép. 18). L'invariant d'unicité s'étend : ce n'est plus seulement le
+  **vocabulaire** qu'on demande au serveur, c'est la **capacité** — le verbe porteur d'une famille
+  est cherché dans `help`, donc l'ép. 18 rendra `reaches` vivante **sans rouvrir le fichier**, et
+  ça se mesure **sans UML** en amputant l'instantané de `help`. Discriminant en deux lignes du même
+  fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward`
+  **échoue** et `report m1 says ~ ip_forward *= *1` **passe** — la configuration a tourné, c'est la
+  trace qui ne peut pas le dire. Pièges neufs : sous `set -e`, un analyseur de lignes qui rend le
+  statut de sa dernière garde **arrête tout en silence** (le rapport paraît seulement plus court) ;
+  les entrées d'une table de switch ne sont **pas plates** (d'où `ports.port=3`) ; et un `rc-set`
+  sur un **switch** n'est pris en compte qu'au **premier** démarrage — défaut du dépôt consigné au
+  § 6, non corrigé. **Aucun `.ml` touché**).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

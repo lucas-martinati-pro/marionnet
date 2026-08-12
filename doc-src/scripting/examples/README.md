@@ -24,7 +24,9 @@ MRNCTL=../../../useful-scripts/mrnctl ./01-build-a-lab.sh
 | `03-router-daemons.sh` | configure the routing daemons of a router: write ZEBRA's file, leave one daemon out of the boot |
 | `04-journals.sh` | read what happened inside: the journals of a machine, and what a switch knows right now |
 | `05-exam-session.sh` | an exam session: let the student work, shut down properly, collect what it left in the project |
+| `06-assert-a-lab.sh` | assert a lab instead of eyeballing it: the model from `lab.mrv`, then the guest — what it left, and what it is |
 | `lab.mrn` | the same lab as `01`, in batch form (`mrnctl -f lab.mrn`), and the file `mrn-check lab.mrn` validates |
+| `lab.mrv` | the same lab, asserted (`mrn-verify lab.mrv`): the model only, so it needs nothing running |
 
 `05-exam-session.sh` is the one exception to the line above: recording is a property of the
 launch, so it wants a Marionnet started with `--exam` (or at least `--console-log`). It says so

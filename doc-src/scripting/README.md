@@ -664,7 +664,7 @@ outlives it, and that is `log`.
 
 ### What a guest is doing right now
 
-The five journals above are **traces**: they say what was *said* — a command was called, a
+The five other journals above are **traces**: they say what was *said* — a command was called, a
 service printed something. A trace cannot say what *is*. The classic trap is a redirection:
 `echo 1 > /proc/sys/net/ipv4/ip_forward` leaves `echo 1` in the trace, and nothing else, so
 looking for `ip_forward` there finds nothing although forwarding is on.
@@ -848,7 +848,94 @@ overwrites it, and the generated header says so.
 
 ---
 
-## 14. When it does not work
+## 14. Asserting a lab
+
+A `.mrn` says what a lab **is built of**. A `.mrv` says what must be **true of it** — and
+`mrn-verify` reads one against a running session:
+
+```bash
+cat > lab.mrv <<'EOF'
+# the lab of § 13, once it runs
+state m1 is on
+field s1 port_no is 4
+cable c1 m1:eth0 s1:port1
+switch s1 vlans has vlan=6 ports.port=3
+journal m1 rc_config ok
+report m1 says ~ net[.]ipv4[.]ip_forward *= *1
+EOF
+
+mrn-verify lab.mrv
+# PASS  state m1 is on
+# FAIL  field s1 port_no is 4
+#       s1.port_no is "8"
+# …
+# 5 passed, 1 failed, 0 skipped.
+```
+
+`mrn-verify --help` lists the assertions it understands — nine families, no more: they are the
+ones the channel can serve, and each came from a real lab. Nothing in the project is modified;
+the only request that is not a pure read is `report`, which asks a *guest* to describe itself
+(`--refresh=never` reads the last report instead, which is what marking a session already over
+means).
+
+### Three verdicts, and why the third one matters
+
+| Verdict | Meaning |
+|---|---|
+| `PASS` | the channel was asked, and it says the assertion holds |
+| `FAIL` | the channel answered, and its answer contradicts the assertion |
+| `SKIP` | the channel offers **no way to know** — and the reason says which |
+
+The distinction is the point of the tool. `reaches m1 m2` — the connectivity assertion three of
+the five labs behind this design need — is answered by nobody today: no verb runs a command
+inside a guest. A verifier that returned `FAIL` there would fail a student for a limit of the
+tool. It returns:
+
+```
+SKIP  reaches m1 m2
+      this Marionnet publishes no `exec' verb: the channel offers no way to know
+```
+
+That sentence is not a fixed string: the tool looks the verb up in what `help` publishes, so the
+day the channel learns to execute inside a guest, the same file starts being answered. Use
+`--strict` when you want a lab that is *entirely* provable — a `SKIP` then counts as a failure.
+
+Exit codes: `0` everything holds, `1` at least one `FAIL` (or the file has an error), `2` nothing
+could be checked. `--json` prints one object per assertion, with its line and its reason — the
+form to consume from a script or an agent.
+
+### The assertion that looks the same and is not
+
+Two of these lines seem to say the same thing about a machine, and they do not:
+
+```
+journal m1 rc_config contains ip_forward
+report  m1 says     ~ net[.]ipv4[.]ip_forward *= *1
+```
+
+The first reads the **trace** of the startup configuration, the second the **state** of the guest.
+A configuration written the ordinary way — `echo 1 > /proc/sys/net/ipv4/ip_forward` — leaves only
+`echo 1` in the trace, because `set -x` does not trace redirections. So on a machine where
+forwarding *is* enabled, the first assertion fails and the second passes. A correction key built
+on the first would be wrong; use the trace to prove that a command was **called** (and `journal
+… ok` that none failed), and the report to prove what **is**.
+
+### Before there is anything to ask
+
+The file itself can be checked without a session, against a snapshot of the vocabulary:
+
+```bash
+mrnctl help > grammar.json
+mrn-verify --grammar=grammar.json lab.mrv     # checks the file, asks nothing
+```
+
+Offline it also names what this vocabulary could not answer (a journal it does not serve, a
+switch table it does not know, connectivity) — the same information that would come back as a
+`SKIP`, said early enough to fix the file.
+
+---
+
+## 15. When it does not work
 
 | Symptom | Cause and cure |
 |---|---|
@@ -867,11 +954,12 @@ never have to configure both.
 
 ---
 
-## 15. Going further
+## 16. Going further
 
 * `mrnctl help` — the vocabulary, always current.
 * `mrnctl --help` — the client's own options.
 * `mrn-check --help` — checking a `.mrn` before sending it (§ 13).
+* `mrn-verify --help` — the assertions of a `.mrv`, and what each one rests on (§ 14).
 * `doc-src/exam-mode.md` — the exam mode: what a session records, and what ends up in the
   project file (for the teacher, with or without this channel).
 * `docs/pilotage-par-script.md` — the design of the channel, its rationale, and the journal of

@@ -1,0 +1,16 @@
+# The lab of 01-build-a-lab.sh (and of lab.mrn), asserted:  mrn-verify lab.mrv
+#
+# One assertion per line, comments and blank lines ignored. Everything here is about the MODEL —
+# what Marionnet knows by construction — so it holds whether or not anything is running, and
+# needs no guest. The assertions that need a running guest (journals, reports) are in
+# 06-assert-a-lab.sh, which starts a machine first.
+
+state m1 is off
+state m2 is off
+state s1 is off
+
+field m1 port_no is 2
+field s1 port_no is 8
+
+cable c1 m1:eth0 s1:port1
+cable c2 m2:eth0 s1:port2
