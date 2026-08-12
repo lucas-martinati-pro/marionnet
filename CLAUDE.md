@@ -355,7 +355,24 @@ Reprise : appliquer le skill `chantier-long`.
   pas les redirections** (`echo 1 > …/ip_forward` ne laisse que `echo 1` : la trace prouve ce qui a
   été *appelé*, pas ce qui a été *écrit*), la liste **fermée** des primitives de l'**ép. 16** et
   trois voies chiffrées, la recommandée étant le **rapport à la demande**. Banc neuf
-  `lab-pilot-bench.sh`, 75 assertions, 0 échec ; aucun code applicatif touché).
+  `lab-pilot-bench.sh`, 75 assertions, 0 échec ; aucun code applicatif touché) ; **ép. 16 fait
+  2026-08-12** (le **rapport à la demande** — voie 1 du § 7.6, choisie parce qu'il ne manquait
+  **ni producteur ni format** : le rapport de l'ép. 7 porte déjà l'état utile, il lui manquait un
+  **déclencheur** et un **service**. Livrés : `bin/scripts/marionnet-report-watch.sh` (veilleur
+  déposé dans le hostfs, démarré par l'épilogue), un protocole à trois fichiers — l'hôte pose
+  `report.request` après avoir **effacé** `report.done`, l'invité publie `report.md` par un `mv`
+  puis écrit `report.done` : c'est l'effacement préalable qui rend la réponse **prouvablement
+  fraîche** —, le verbe `report <c> [--timeout=<s>]` (miroir de `switch-info` du côté des invités)
+  et le **6ᵉ journal** `report`, servi par `log`. **M1, M3 et M4 comblés ; M2 — exécuter dans un
+  invité, donc toute affirmation de connectivité — laissé ouvert par décision**, et mesuré **en
+  creux** par le banc. Discriminant en une ligne : sur la même machine, au même instant,
+  `log m1 rc_config` ne contient **pas** `ip_forward` (la trace saute les redirections, § 7.4) et
+  `log m1 report` dit `net.ipv4.ip_forward = 1`. Pièges neufs, tous mesurés : une **unité systemd
+  démarrée depuis le relais** n'est pas démarrée tout de suite — avec les dépendances par défaut
+  et un `start` bloquant elle ne tourne **pas du tout**, et même corrigée son job n'est exécuté
+  qu'**à la fin du boot**, ~2 min après le marqueur de `wait --ready` — d'où un veilleur qui ne
+  jette une requête « d'un boot précédent » qu'après **comparaison avec `boot_parameters`** ;
+  et le marqueur de `wait --ready` est écrit **par le scénario**, jamais par le relais).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

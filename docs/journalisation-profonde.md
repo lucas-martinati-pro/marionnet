@@ -1044,6 +1044,83 @@ l'épisode 7.
 option, et ne crée que le lien `/dev/fd` **manquant** — pas `/dev/stdin`, `/dev/stdout`,
 `/dev/stderr`, dont personne ici n'a besoin.
 
+### 4.15 Ce que l'épisode 16 a livré (et le producteur qui n'attendait qu'un déclencheur)
+
+L'épisode 15 avait rendu quatre manques (§ 7.3) et trois voies chiffrées pour les combler
+(§ 7.6). Celui-ci joue la **voie 1**, la moins intrusive, et son argument est entier dans le
+constat de l'épisode précédent : **il ne manquait ni producteur ni format**. `marionnet-report.sh`,
+écrit à l'épisode 7, porte déjà exactement ce qu'un correcteur veut lire — interfaces réelles,
+tables de routage v4 *et* v6, voisinage, `ip_forward`, pare-feu sous forme rejouable. Il lui
+manquait un **déclencheur** (il ne s'exécutait qu'à l'arrêt) et un **service** (`log … report`
+refusait, la liste des journaux était fermée à cinq). L'épisode ajoute l'un et l'autre, et rien
+de plus : aucune ligne de rapport n'est réécrite.
+
+**Le veilleur, et le protocole à trois fichiers.** `bin/scripts/marionnet-report-watch.sh` est
+déposé dans le hostfs comme ses aînés, et l'épilogue le démarre en arrière-plan à la fin du boot.
+Il attend un fichier-drapeau, produit, publie, et répond — le hostfs restant le seul chemin de
+retour (D1 : aucune image reconstruite) :
+
+| Fichier | Écrit par | Effacé par |
+|---|---|---|
+| `report.request` | l'**hôte** (verbe `report`) | l'**invité**, dès qu'il le voit |
+| `report.md` | l'**invité**, en **renommant** `.report.md.part` | personne |
+| `report.done` | l'**invité**, après le renommage (`status=… epoch=… lines=…`) | l'**hôte**, avant de poser une requête |
+
+Deux détails de ce tableau ne sont pas du zèle. Le **renommage** : le canal sert `report.md`
+*pendant* que l'invité tourne, donc un lecteur ne doit jamais pouvoir tomber sur un rapport à
+moitié écrit — d'où un fichier temporaire et un `mv`. Et l'**effacement préalable** de
+`report.done` par l'hôte : c'est lui, et lui seul, qui rend la réponse **prouvablement fraîche**
+— un fichier qui réapparaît a été écrit après la requête. L'invité l'efface **aussi**, avant de
+produire, pour le cas où un client mort aurait laissé le sien.
+
+**Pourquoi l'épilogue, et pas le prologue.** Le veilleur doit **survivre au relais**, et les deux
+systèmes d'init ne l'entendent pas de la même façon : sous systemd le relais est un script LSB
+lancé par une unité générée, et un enfant en arrière-plan meurt avec le groupe de contrôle de
+l'unité. D'où deux branches, décidées par l'**invité** comme partout dans ce fichier depuis
+l'épisode 2 — une unité `marionnet-report-watch.service` écrite dans `/run` (le motif déjà
+éprouvé du crochet d'arrêt), ou `setsid … &`. Et d'où le placement : à la fin de l'épilogue,
+**après** que la capture de l'épisode 1 a été refermée. Un veilleur lancé plus tôt hériterait des
+descripteurs redirigés vers le `tee` et **retiendrait le tuyau ouvert pour la vie de la machine** ;
+il hériterait aussi du `set -x` et du trap `ERR`, qu'il dépose donc explicitement en tête.
+
+**Le verbe, et le nom qu'il partage avec le journal.** `report <component> [--timeout=<s>]` est le
+troisième d'une famille : `log` sert ce qui a été **écrit**, `switch-info` demande à un switch ce
+qu'il **sait**, `report` demande la même chose à un **invité**. Sa réponse dit *que* le rapport a
+été pris — jamais son contenu, qui est un journal et se lit par `log <c> report` : une chose est
+servie à un seul endroit. Le verbe et le journal portent le **même mot**, ce qui semble contredire
+la règle qui avait imposé `commands` plutôt que `history` à l'épisode 7 — mais la règle disait
+« un mot, un sens » : `history` était déjà un verbe désignant **autre chose** (le treeview des
+états), alors qu'ici le verbe et le journal nomment **une seule et même chose**, l'un la
+produisant, l'autre la servant.
+
+**Le producteur dit désormais *quand* il a été pris.** Deux variables d'environnement, toutes deux
+avec le défaut de l'épisode 7 : `MARIONNET_REPORT_OUT` (le fichier temporaire du veilleur) et
+`MARIONNET_REPORT_WHEN`, qui change le titre et l'encart — `on-demand` ou `shutdown`. Ce n'est pas
+cosmétique : un **instantané ne vaut que ce que dit sa date**, et un correcteur qui lit une archive
+doit savoir s'il regarde l'état d'une session en cours ou celui qu'elle a laissé en mourant.
+
+**Les discriminants**, tous deux venus des pièges que l'épisode 15 avait mesurés :
+
+1. le rc du banc met `ip_forward` à 1 **par une redirection**. La **trace** ne porte que `echo 1`
+   — `set -x` ne trace pas les redirections (§ 7.4) — et le **rapport** porte
+   `net.ipv4.ip_forward = 1`. Les deux réponses viennent du même verbe `log`, sur la même machine,
+   au même instant : c'est la démonstration en une ligne de ce que l'épisode ajoute. Une trace
+   prouve ce qui a été **appelé**, un rapport ce qui **est** ;
+2. le rapport porte une adresse `fe80::` **fabriquée dans l'invité**, que le treeview `ifconfig`
+   ignore et doit continuer d'ignorer (il porte le *déclaré*) — M4, sur la mesure même qui l'avait
+   établi.
+
+**Ce que l'épisode ne fait pas, et le dit.** **M2 reste ouvert** : rien n'exécute de commande dans
+un invité, donc aucune affirmation de **connectivité** n'est prouvable. C'était la voie 2 du
+§ 7.6 (`exec <c> <cmd>`), qui ferait du canal un exécuteur à l'intérieur des invités — un
+changement de nature, à trancher pour lui-même. Le banc mesure ce manque **en creux** (aucun verbe
+publié nommé `exec`, `run`, `shell`, `ssh`), pour qu'il ne puisse pas tomber par inadvertance.
+
+**Bénéfice de bord.** Le rapport ne dépend plus de l'extinction, donc il redevient atteignable sur
+les vieilles images **SysV**, dont le § 4.7 disait qu'elles n'ont pas de séquence d'arrêt (leur
+`inittab` répond au ctrl-alt-del par `/sbin/halt`). La limite reste entière pour le rapport *de
+fin* ; elle tombe pour le rapport *à la demande*.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1068,7 +1145,9 @@ option, et ne crée que le lien `/dev/fd` **manquant** — pas `/dev/stdin`, `/d
   recherche. Ce que l'épisode livre est un rapport **sobre et sûr**, et l'endroit où un rapport
   plus riche viendra se brancher.
 - Le **rapport de fin de session sur les images SysV** : impossible tant que leur `inittab`
-  répond au ctrl-alt-del par `/sbin/halt` (§ 4.7). Le remède serait d'envelopper `/sbin/halt`
+  répond au ctrl-alt-del par `/sbin/halt` (§ 4.7). **Nuance depuis l'épisode 16** : le rapport
+  *à la demande*, lui, ne dépend d'aucune séquence d'arrêt — sur ces images il est donc le seul
+  des deux à répondre, et il suffit à un correcteur qui prend son instantané avant d'éteindre. Le remède serait d'envelopper `/sbin/halt`
   dans le COW — le motif que ces images utilisent déjà pour `/sbin/shutdown` — mais toucher au
   binaire d'arrêt d'un invité pour un journal n'a pas paru un bon marché ; à rouvrir seulement si
   un TP doit être noté sur une vieille image.
@@ -1085,6 +1164,16 @@ option, et ne crée que le lien `/dev/fd` **manquant** — pas `/dev/stdin`, `/d
   **Instruit et corrigé à l'épisode 14** (§ 4.14) : `/dev/fd` manque au *runtime* sur cette image,
   donc la substitution de processus du `tee` ne s'ouvre pas et l'`exec` échoue en entier, en
   silence. Le prologue répare `/dev/fd` et **mesure** la substitution au lieu de la supposer.
+
+- **M2 — exécuter dans un invité** (voie 2 du § 7.6, `exec <c> <cmd>`) : laissé ouvert par
+  l'épisode 16, **délibérément**. C'est le seul chemin vers les affirmations de **connectivité**
+  (« m1 joint intrus »), et c'est aussi celui qui fait cesser le canal d'observer pour commander
+  l'intérieur des invités. À trancher pour lui-même, jamais en passant. Le banc de l'épisode 16
+  mesure ce manque en creux, pour qu'il ne tombe pas par effet de bord.
+- Le **veilleur du rapport à la demande** interroge son fichier-drapeau toutes les secondes
+  (épisode 16). C'est le prix d'un hostfs qui n'offre aucune notification : négligeable sur un
+  UML, mais c'est bien un réveil par seconde et par invité, et non zéro. Un `inotify` côté invité
+  supposerait qu'il soit disponible dans toutes les images, ce que rien ne garantit.
 
 ## 7. Vers le vérificateur : ce qu'un TP demande de prouver (épisode 15)
 
@@ -1132,21 +1221,38 @@ intrus`, images `debian-trixie-47362` (dont le userland porte `iptables`, `ip6ta
 
 ### 7.3 Les manques
 
+> **État après l'épisode 16** (§ 4.15) : **M1, M3 et M4 sont comblés** par le verbe `report` et le
+> sixième journal du même nom — la voie 1 du § 7.6, la moins intrusive. **M2 reste ouvert**, et
+> délibérément : il exige que le canal exécute dans l'invité, ce qui change sa nature. Le texte
+> ci-dessous est laissé tel qu'il a été **mesuré** à l'épisode 15 ; ce qui a changé est dit à
+> chaque manque.
+
 - **M1 — l'état d'un invité à l'instant *t*.** Les cinq journaux sont des **traces** (ce qui s'est
   dit), `switch-info` est le seul **état** — et c'est celui d'un switch. Mesure : `switch-info r1`
   refuse, en le disant (« a machine: switch-info applies to a switch »).
+  **Comblé (ép. 16)** : `report <machine|routeur>` demande à l'invité de se décrire, et
+  `log <c> report` sert ce qu'il a écrit.
 - **M2 — faire faire quelque chose à un invité.** Aucun des 41 verbes publiés n'exécute, ne lit ni
   n'interroge quoi que ce soit dans une machine. Donc aucun `ping` à la demande, donc aucune
   affirmation de **connectivité** — le cœur de C2, C3 et de la partie « Test » de C4.
+  **Toujours ouvert après l'ép. 16**, et c'est une décision : la voie 2 (`exec`) ferait du canal
+  un exécuteur à l'intérieur des invités. Le banc de l'ép. 16 mesure ce manque **en creux** —
+  aucun verbe publié ne s'appelle `exec`, `run`, `shell` ni `ssh` — pour qu'il ne tombe jamais
+  par effet de bord.
 - **M3 — le producteur d'état existe déjà, mais il n'est ni déclenchable ni servi.**
   `marionnet-report.sh` (ép. 7) écrit un rapport qui porte **exactement** ce que M1 réclame :
   interfaces réelles, tables de routage v4 **et** v6, voisinage, `net.ipv4.ip_forward`, et le
   pare-feu sous forme **rejouable** (`iptables-save`). Mesuré : rien dans le hostfs tant que la
   machine tourne ; le rapport apparaît **à l'arrêt** (432 lignes) ; et `log r1 report` **refuse** —
   la liste des journaux est fermée à cinq.
+  **Comblé (ép. 16)** : le déclencheur est un veilleur posé dans l'invité par l'épilogue, et la
+  liste s'est ouverte à **six**.
 - **M4 — une adresse fabriquée dans l'invité n'est nulle part côté hôte.** Le treeview `ifconfig` a
   bien une colonne « IPv6 address », mais elle porte le **déclaré** et ne s'alimente jamais depuis
   l'invité. Un correcteur ne peut donc même pas **nommer** la cible d'un `ping6`.
+  **Comblé (ép. 16)** par le même chemin que M1 : le rapport porte `ip -o addr show`, donc les
+  adresses réelles, `fe80::` comprises. Le treeview, lui, n'a pas bougé — et ne doit pas bouger :
+  ce qu'il porte est ce que l'utilisateur a **déclaré**.
 
 ### 7.4 Les pièges mesurés (ils condamnent les raccourcis évidents)
 
@@ -1189,8 +1295,8 @@ Aucune n'est inventée : chacune vient d'une affirmation d'un des cinq TP.
 | `journal <c> <j>` contient / ne contient pas … | `log` | disponible |
 | `journal <c> <j>` sans échec (`!! FAILED`) | `log` | disponible |
 | `documents <c>` porte rapport / historique / terminal | `documents` | disponible |
-| **état de l'invité** (adresses, routes, `ip_forward`, pare-feu) | **manquant** | **M1/M3** |
-| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2** |
+| **état de l'invité** (adresses, routes, `ip_forward`, pare-feu) | `report`, puis `log <c> report` | disponible **depuis l'ép. 16** |
+| **connectivité** (`ping`, `ssh`, un port ouvert) | **manquant** | **M2**, laissé ouvert (§ 4.15) |
 
 ### 7.6 Ce qu'il faudra ajouter, et à quel prix
 
@@ -1812,3 +1918,52 @@ même TP (adresses **lien-local**) suffit à établir M4, et il est même plus f
 canal : filtres `jq` sur `.entries` au lieu de `.tables[].entries`, ports `vde` numérotés à partir
 de 1, champ `port_no` et non `ports`, et les trois attentes fausses ci-dessus. Aucun fichier du
 dépôt n'a été modifié en dehors de cette documentation.
+
+### 2026-08-12 — Épisode 16 : le rapport à la demande, et le déclencheur qui manquait
+
+**Ce que l'épisode livre** (détail : § 4.15). La **voie 1** du § 7.6, choisie parce que l'épisode 15
+avait montré qu'il ne manquait **ni producteur ni format** : `marionnet-report.sh` porte déjà
+l'état qu'un correcteur veut lire, il ne s'exécutait qu'à l'arrêt et personne ne le servait. Sont
+livrés le **veilleur** (`bin/scripts/marionnet-report-watch.sh`, déposé dans le hostfs et démarré
+par l'épilogue), le protocole à trois fichiers (`report.request` / `report.md` / `report.done`), le
+verbe **`report <component> [--timeout=<s>]`** et le **sixième journal**, `report`, servi par `log`.
+M1, M3 et M4 sont comblés ; **M2 reste ouvert, par décision** — `exec` ferait du canal un exécuteur
+dans les invités.
+
+**Ce que la mesure a retourné.** Quatre fois, et trois d'entre elles ont mis en défaut le **banc**,
+jamais le canal :
+
+1. **La forme évidente de l'unité systemd ne démarre pas.** Écrite avec les dépendances par défaut
+   et un `systemctl start` bloquant, l'unité du veilleur ne tourne tout simplement pas : la trixie
+   boote, `boot.log` est complet, et `report` expire parce que personne ne veille. Nous sommes
+   sourcés par le relais, que systemd est lui-même en train de démarrer — la demande est donc un
+   ordonnancement dans une transaction déjà en cours. Le veilleur n'a besoin d'**aucun**
+   ordonnancement (il attend un fichier) : `DefaultDependencies=no` et `--no-block`. Et, parce que
+   la première ligne retire aussi ce qu'on **veut** garder, `Conflicts=shutdown.target` remet le
+   veilleur à l'arrêt avant que le rapport de fin soit pris.
+2. **Le marqueur de `wait --ready` est écrit par le SCÉNARIO**, jamais par le relais (§ 4.7). Un
+   banc dont le `rc_config` l'oublie attend 240 s pour rien — et l'attente ne prouve alors rien du
+   tout sur l'épisode.
+3. **`fe80::` n'existe que sur une interface montée.** Le scénario faisait `ip addr add` sans
+   `ip link set up` : pas d'adresse lien-local, donc pas de discriminant M4. Ce n'est pas un détail
+   d'IPv6 — c'est **exactement** la propriété qu'on veut montrer, une adresse que *personne* n'a
+   déclarée et que l'invité fabrique.
+4. **L'ordre de `.available` n'est pas celui de `help`.** `journals_of` concatène les journaux du
+   hostfs *puis* les deux que Marionnet écrit lui-même, donc `report` arrive **avant** `console` et
+   `terminal` dans la liste d'un composant, alors que `help` le publie en sixième. Les deux sont
+   justes : l'un dit le vocabulaire, l'autre ce que *ce* composant a.
+
+**Le discriminant, en une ligne.** Sur la même machine, au même instant, par le même verbe :
+`log m1 rc_config` ne contient pas `ip_forward` (la trace ne voit pas les redirections, § 7.4) et
+`log m1 report` dit `net.ipv4.ip_forward = 1`. Le rapport mesuré porte aussi la règle de SNAT sous
+forme rejouable (`iptables-save`), l'adresse posée par le rc, et l'adresse lien-local que le
+treeview `ifconfig` ignore.
+
+**Mesures.** Banc neuf `_claude-local/bench/report-bench.sh` : **51 assertions, 0 échec**, dont le
+bout en bout sur une trixie démarrée par le canal. Bancs existants rejoués : `journal-bench.sh`
+(statique, **97**, 0 échec), le banc de complétion (**60**, 0 échec) et `exam-bench.sh` (**74**,
+0 échec — le rapport d'arrêt et l'archivage du mode examen sont intacts). Les trois
+ont demandé la **même** correction, et une seule : la liste des journaux, passée de cinq à six.
+C'est la règle d'unicité qui joue à plein — le **code** de la complétion n'a pas été touché du
+tout (12ᵉ application), seul son *banc* codifiait la liste ; ce sont les bancs qui portaient une
+copie, jamais les clients.

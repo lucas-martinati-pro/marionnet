@@ -585,7 +585,7 @@ A journal is a **file**, and that is the difference with everything else in this
 outlives what it describes. A machine which has been powered off still answers `log`, and a
 switch answers about a `vde_switch` which is long gone.
 
-Five journals, of two natures — three written by the guest itself, in the hostfs directory of
+Six journals, of two natures — four written by the guest itself, in the hostfs directory of
 § 9, and two written by Marionnet on the host side:
 
 | Journal | Written by | Holds |
@@ -595,13 +595,16 @@ Five journals, of two natures — three written by the guest itself, in the host
 | `commands` | the guest, at every prompt | the timestamped history of what was typed — a `#<epoch>` line before each command |
 | `console` | Marionnet, host side | the console of the UML process itself, which shows a boot that never reaches the relay at all |
 | `terminal` | Marionnet, host side | the recorded terminal session: the commands **and** their output, as the student saw them |
+| `report` | the guest, **when asked** | the *state* of the guest at one instant: its real interfaces, its routing tables, its neighbours, `ip_forward`, and its firewall in replayable form. See `report` below |
 
-The three first ones are always there. The two last ones exist only if the session was started
-for it (`--console-log`, `--terminal-log`, both implied by `--exam` — see below), because
-recording a session in silence would be surveillance rather than teaching.
+The three first ones are always there. `console` and `terminal` exist only if the session was
+started for it (`--console-log`, `--terminal-log`, both implied by `--exam` — see below),
+because recording a session in silence would be surveillance rather than teaching. And
+`report` is there once somebody has asked for it, or once the guest has been shut down
+gracefully.
 
 That list lives in the running Marionnet, not on this page: `help` publishes it under `logs`,
-and every answer repeats, under `available`, the journals **this** component has — five for a
+and every answer repeats, under `available`, the journals **this** component has — six for a
 machine or a router, one for a switch, none for a cable.
 
 Because the failing line has the same shape wherever it comes from, one `grep` covers a
@@ -658,6 +661,42 @@ its message instead. Here too the names are published by `help`, as `switch_tabl
 
 A switch which is not running refuses, and names the other verb: what it said at startup
 outlives it, and that is `log`.
+
+### What a guest is doing right now
+
+The five journals above are **traces**: they say what was *said* — a command was called, a
+service printed something. A trace cannot say what *is*. The classic trap is a redirection:
+`echo 1 > /proc/sys/net/ipv4/ip_forward` leaves `echo 1` in the trace, and nothing else, so
+looking for `ip_forward` there finds nothing although forwarding is on.
+
+`report` asks a running machine or router to describe itself. It answers that the report was
+taken; the report itself is the sixth journal, read like any other:
+
+```bash
+mrnctl report m1                       # ask — answers when the guest has written it
+mrnctl -q .content log m1 report       # read it
+```
+
+```bash
+mrnctl -q .content log m1 report | grep 'ip_forward'
+# net.ipv4.ip_forward = 1
+```
+
+It is a **snapshot**, and it says so in its own header: everything in it was true at the date
+it carries, and asking again gives a new one. What it holds is what a corrector needs and no
+model can know — the addresses really configured (including the ones the guest made up for
+itself, which the `ifconfig` table of § 10 never sees), the routing tables for IPv4 and IPv6,
+the neighbours, `ip_forward`, and the firewall in **replayable** form (`iptables-save`), which
+is the section to read: `iptables -L -vv` prints unreadable pseudo-bytecode under the `nft`
+backend.
+
+The same producer also runs at a graceful shutdown, and the report then says `taken:
+shutdown` instead of `taken: on-demand` — which of the two you are reading is never a guess.
+
+`report` refuses what cannot answer, and the refusals do not say the same thing: a switch is
+sent to `switch-info` (it knows things, but it runs no guest), and a machine which is off is
+sent to `log … report` — the report of its last session outlives it. `--timeout=<s>` bounds
+the wait, which is a wait on the *guest*: a machine still booting has nobody to answer yet.
 
 ### Recording a session
 

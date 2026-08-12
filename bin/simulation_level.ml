@@ -1427,7 +1427,12 @@ class uml_process =
              relay's glob on the "marionnet-relay" prefix: this one must not be sourced at
              boot. The epilogue above hooks it to the SHUTDOWN of the guest instead. *)
           ("marionnet-report",
-           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report.sh") ]
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report.sh");
+          (* Episode 16: the watcher that runs the report above ON REQUEST, so that the
+             state of a running guest becomes observable at all. Same naming rule as the
+             producer (not sourced at boot); the epilogue starts it in the background. *)
+          ("marionnet-report-watch",
+           INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-report-watch.sh") ]
     in
     (* Create the file `boot_parameters_pathname': *)
     let descriptor =

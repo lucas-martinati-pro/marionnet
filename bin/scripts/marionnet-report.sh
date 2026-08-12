@@ -52,7 +52,14 @@
 # `bashbricks' (nor anything beyond a minimal userland).
 # ---------------------------------------------------------------------------
 
-__mrn_report_out=/mnt/hostfs/report.md
+# Episode 16: the same producer now answers to two callers -- the shutdown hook
+# of the epilogue, and the watcher that serves an ON-DEMAND request.  The second
+# one writes into a temporary file it then renames (a reader may be reading the
+# published one), and the report must say WHEN it was taken: an instantaneous
+# state is only worth what its timestamp says.  Both default to episode 7's
+# behaviour, so a host that knows nothing of this changes nothing.
+__mrn_report_out="${MARIONNET_REPORT_OUT:-/mnt/hostfs/report.md}"
+__mrn_report_when="${MARIONNET_REPORT_WHEN:-shutdown}"
 __mrn_report_timeout="$(type -p timeout 2>/dev/null)"
 __mrn_report_deadline=5
 
@@ -91,16 +98,27 @@ __mrn_report_section() {
   __mrn_report_name="$(cat /mnt/hostfs/GUESTNAME 2>/dev/null)"
   [[ -n "$__mrn_report_name" ]] || __mrn_report_name="$(hostname 2>/dev/null)"
 
-  echo "# Marionnet — end-of-session report: ${__mrn_report_name:-unknown}"
+  if [[ "$__mrn_report_when" = on-demand ]]; then
+    echo "# Marionnet — on-demand report: ${__mrn_report_name:-unknown}"
+  else
+    echo "# Marionnet — end-of-session report: ${__mrn_report_name:-unknown}"
+  fi
   echo
   echo "- date: $(date '+%F %T %z' 2>/dev/null)"
   echo "- guest: $(uname -srm 2>/dev/null)"
   echo "- uptime:$(uptime 2>/dev/null | sed 's/^ *//')"
   echo "- exam mode: ${exam:-0}"
+  echo "- taken: $__mrn_report_when"
   echo
-  echo "> Taken **during the shutdown** of this guest, by a hook the host injected."
-  echo "> Services already stopped at this point are missing from the process list;"
-  echo "> the network configuration below is the one the session ended with."
+  if [[ "$__mrn_report_when" = on-demand ]]; then
+    echo "> Taken **while this guest was running**, on request (the channel's \`report\`"
+    echo "> verb).  It is a SNAPSHOT: everything below was true at the date above and"
+    echo "> may have changed since -- ask again to see the difference."
+  else
+    echo "> Taken **during the shutdown** of this guest, by a hook the host injected."
+    echo "> Services already stopped at this point are missing from the process list;"
+    echo "> the network configuration below is the one the session ended with."
+  fi
   echo ">"
   echo "> Companions in the same directory: \`rc_config.log\` (what the startup"
   echo "> configuration did), \`boot.log\` (what the boot did before it), and"

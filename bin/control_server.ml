@@ -248,11 +248,22 @@ let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge
    It is NOT called `history', although that is the name of the file (bash_history.text) and the
    word Bash uses: `history' is already a VERB of this grammar (the treeview of saved states,
    § 4.6), and one word must not mean two things in one grammar. Same lesson as `--file' at
-   episode 3, where the name was already taken on the client side. *)
+   episode 3, where the name was already taken on the client side.
+
+   Episode 16 added a sixth, [report], and it is of a nature none of the other five has: the five
+   are TRACES — what was said, appended as it was said — while this one is a STATE, rewritten
+   whole at every request (the real interfaces, the routing tables, ip_forward, the firewall in
+   replayable form). Episode 15 measured why it had to exist: a trace cannot answer "what is true
+   at this instant", and every lab of the corpus asks exactly that.
+
+   It shares its name with the VERB which produces it, on purpose and against the rule that
+   settled [commands] above: there [history] was already a verb meaning something *else* (the
+   treeview of saved states), whereas here the verb and the journal name one thing — [report]
+   asks the guest to write it, [log … report] serves what was written. *)
 let journal_files =
   [ ("rc_config", "rc_config.log"); ("boot", "boot.log");
     ("commands", "bash_history.text"); ("console", "console.log");
-    ("terminal", "terminal.log") ]
+    ("terminal", "terminal.log"); ("report", "report.md") ]
 (* The two Marionnet writes itself, in the project's working directory rather than in a hostfs
    the student may rewrite (episodes 6 and 8): their basename above is only there to keep the
    list uniform — the path comes from simulation_level.ml. *)
@@ -331,6 +342,10 @@ let arity_of_command : (string * arity) list =
        serves what a switch *knows*. Which tables there are is published by [help]. *)
     ("switch-info",   component_and_field
                         "switch-info <switch> [<table>|--table=<table>]");
+    (* Episode 16. Completes the pair above on the guest's side: [switch-info] asks a running
+       switch what it knows, this asks a running machine or router the same. It answers *that*
+       the report was taken — its content is a journal, hence [log <component> report]. *)
+    ("report",        one_component "report <component> [--timeout=<s>]");
     ("wait",          one_component
                         "wait <component> (--state=on|off|sleeping | --ready) [--timeout=<s>]");
     ("wait-all",      no_arg "wait-all --state=on|off|sleeping [--timeout=<s>]");
@@ -2365,6 +2380,11 @@ let journals_of (st : State.globalState) ~(name:string) : component_journals opt
                   (if key = "commands" then
                      "no interactive shell of this guest has typed a command yet: the history is \
                       appended at every prompt, so it appears with the first one"
+                   else if key = "report" then
+                     (* The only one of the six nobody writes on its own: it exists because it was
+                        asked for, hence a sentence which names the verb rather than a wait. *)
+                     "nobody has asked this guest for its state yet: run report on it, or let it \
+                      shut down gracefully — the same producer also runs at the end of a session"
                    else
                      "it has not been started since this project was opened, or its guest has not \
                       reached the end of its boot — see wait --ready") })
@@ -2589,6 +2609,211 @@ let cmd_switch_info (st : State.globalState) ~(timeout:float) ~(name:string)
                              ("available", jlist (List.map jstr
                                                     Switch.Simulation_level_switch.snapshot_table_names)) ]))
         (ask ~timeout (fun () -> find_switch st ~name))
+
+(* --- report: the state of a running guest, on demand ---------------- *)
+
+(* Episode 16 of `journalisation-profonde'. The third verb of the family, and the one which
+   completes it: [log] serves what was written, [switch-info] asks a running switch what it
+   knows, and this one asks a running *guest* the same question. Episode 15 measured the hole it
+   fills — five journals, all of them traces, and not one able to say what is true at this
+   instant: no address really configured, no `ip_forward', no firewall rule in force.
+
+   NOTHING IS PRODUCED HERE. The producer is bin/scripts/marionnet-report.sh, deposited into the
+   hostfs since episode 7, which already writes exactly what a corrector wants (real interfaces,
+   routing tables v4 and v6, neighbours, ip_forward, `iptables-save'). It was missing a trigger:
+   it only ran at shutdown. This verb is that trigger, and the answer is read back through the
+   sixth journal — hence a reply which says *that* the report was taken, and never its content:
+   [log <c> report] serves the content, and one thing is served in one place.
+
+   The exchange is a file protocol, because the hostfs is the only way back into a guest (D1: no
+   image is rebuilt, ever). Host: remove [report.done], then write [report.request]. Guest (the
+   watcher of marionnet-report-watch.sh): consume the request, produce, rename onto report.md,
+   write report.done. The removal is what makes the answer PROVABLY fresh: a done file which
+   reappears was written after the request. *)
+let report_request_basename = "report.request"
+let report_done_basename    = "report.done"
+
+(* Long on purpose, and for a reason the plan did not foresee — measured, not guessed. Two delays
+   add up: the producer runs some twenty sections inside the guest, each under its own `timeout
+   5'; and the watcher itself may not be up yet. Under systemd it is started by a job which
+   systemd only runs once the boot is OVER, whereas [wait --ready] answers as soon as the startup
+   configuration writes its marker — measured on a trixie, two minutes apart. A request posted in
+   that window is not lost (the watcher serves it when it wakes up, see marionnet-report-watch.sh)
+   but it is *waited for*, hence this default. *)
+let default_report_timeout = 180.0
+
+(* What a request is aiming at. The three refusals are three different pieces of news, as
+   everywhere in this work-stream since episode 3: a switch has no guest to ask, a machine which
+   is off cannot answer *now* (but its last report, if any, is still served by [log]), and a
+   suspended one is frozen mid-instruction — the watcher included. *)
+type report_target =
+  | Rt_absent
+  | Rt_no_guest of string            (* a component, but of a kind which runs no guest: its kind *)
+  | Rt_idle     of string            (* a guest which is not running: its state, in script words *)
+  | Rt_hostfs   of string            (* a running guest: its hostfs directory *)
+
+let find_report_target (st : State.globalState) ~(name:string) : report_target =
+  match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+  | Some n ->
+      (match n#hostfs_directory_if_any with
+       | None     -> Rt_no_guest n#string_of_devkind
+       | Some dir ->
+           (match script_state_of_raw n#state_as_string with
+            | "on" -> Rt_hostfs dir
+            | s    -> Rt_idle s))
+  | None ->
+  match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
+  | Some _ -> Rt_no_guest "cable"
+  | None   -> Rt_absent
+
+(* One request at a time per component. Two clients asking together would each remove the other's
+   done file and read the other's answer — the very freshness the protocol buys. Per name rather
+   than global: asking m1 and r1 at the same time is the normal way to take a snapshot of a whole
+   network, and it must stay parallel. *)
+let report_locks : (string, Mutex.t) Hashtbl.t = Hashtbl.create 8
+let report_locks_guard = Mutex.create ()
+
+let report_lock_of (name:string) : Mutex.t =
+  Mutex.lock report_locks_guard;
+  let m =
+    match Hashtbl.find_opt report_locks name with
+    | Some m -> m
+    | None   -> let m = Mutex.create () in Hashtbl.add report_locks name m; m
+  in
+  Mutex.unlock report_locks_guard;
+  m
+
+(* `status=0 epoch=1786000000 lines=432', as the watcher prints it. Read as WORDS, not with a
+   regexp: [Str] is not reentrant and this runs in a connection thread (the lesson of episode 5).
+   An unreadable done file is not an error of the guest's making — a truncated line means we
+   caught it mid-write — hence [None] rather than a refusal. *)
+let parse_report_done (line : string) : (int * float * int) option =
+  let field key =
+    List.find_map
+      (fun word ->
+         let prefix = key ^ "=" in
+         let n = String.length prefix in
+         if String.length word > n && String.sub word 0 n = prefix then
+           Some (String.sub word n (String.length word - n))
+         else None)
+      (String.split_on_char ' ' (String.trim line))
+  in
+  match field "status", field "epoch", field "lines" with
+  | Some s, Some e, Some l ->
+      (try Some (int_of_string s, float_of_string e, int_of_string l) with _ -> None)
+  | _ -> None
+
+type report_progress =
+  | Rd_waiting                          (* no answer yet *)
+  | Rd_done    of int * float * int     (* status, epoch, lines *)
+  | Rd_unusable of string               (* the hostfs itself refused: nothing will ever come *)
+
+let cmd_report (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
+               ~(name:string) : string
+  =
+  if name = "" then
+    reply_error ~code:"bad_argument" ~detail:"report expects the name of a component"
+  else
+  (* One round trip to the GTK thread, exactly as [log] and [switch-info] spend theirs: to find
+     the component and where its guest writes. Everything after this is I/O, and belongs to this
+     thread. *)
+  match ask ~timeout:gtk_timeout (fun () -> find_report_target st ~name) with
+  | Failed e    -> reply_error ~code:"internal" ~detail:(Printexc.to_string e)
+  | Timed_out t -> reply_error ~code:"timeout" ~detail:(gtk_busy_detail t)
+  | Done Rt_absent ->
+      reply_error ~code:"unknown_node" ~detail:(Printf.sprintf "no component named %S" name)
+  | Done (Rt_no_guest kind) ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf
+                   "%S is a %s: report applies to a machine or a router, the only kinds which run \
+                    a guest system able to describe itself%s"
+                   name kind
+                   (* The pointer is only worth giving to something which *does* know its own
+                      state; suggesting switch-info to a cable would be noise, and this
+                      work-stream's rule since episode 3 is that a refusal says what to do —
+                      when there is something to do. *)
+                   (if kind = "switch" || kind = "hub" then
+                      " — what a switch knows is asked with switch-info"
+                    else ""))
+  | Done (Rt_idle state) ->
+      reply_error ~code:"bad_argument"
+        ~detail:(Printf.sprintf
+                   "%S is %s: a report is taken *inside* a running guest, so there is nobody to \
+                    take it — start it (or resume it) and ask again. The report of its last \
+                    session, if it had one, outlives it: see log %s report" name state name)
+  | Done (Rt_hostfs dir) ->
+      let lock = report_lock_of name in
+      let () = Mutex.lock lock in
+      Fun.protect ~finally:(fun () -> Mutex.unlock lock)
+        (fun () ->
+           let request = Filename.concat dir report_request_basename in
+           let answer  = Filename.concat dir report_done_basename in
+           let report  = Filename.concat dir (List.assoc "report" journal_files) in
+           (* The removal comes first and its failure is not fatal: a done file may simply not
+              exist. What must not happen is the request going out while a stale answer is still
+              lying there. *)
+           let () = (try Sys.remove answer with _ -> ()) in
+           match
+             (try
+                let out = open_out request in
+                output_string out
+                  (Printf.sprintf "%.0f\n" (Unix.gettimeofday ()));
+                close_out out; None
+              with e -> Some (Printexc.to_string e))
+           with
+           | Some why ->
+               reply_error ~code:"internal"
+                 ~detail:(Printf.sprintf
+                            "could not ask %S for a report: writing %s failed (%s)"
+                            name request why)
+           | None ->
+               let observe () =
+                 Done
+                   (if not (Sys.file_exists dir) then
+                      Rd_unusable
+                        (Printf.sprintf "the hostfs directory of %S (%s) has disappeared" name dir)
+                    else
+                      match mtime_of_regular_file answer with
+                      | None -> Rd_waiting
+                      | Some _ ->
+                          (match first_line_of answer with
+                           | None -> Rd_waiting   (* caught mid-write: look again *)
+                           | Some line ->
+                               (match parse_report_done line with
+                                | None -> Rd_waiting
+                                | Some (status, epoch, lines) -> Rd_done (status, epoch, lines))))
+               in
+               poll_until ~wait_timeout ~observe
+                 ~reached:(function Rd_waiting -> false | _ -> true)
+                 ~on_reached:(fun v elapsed ->
+                    match v with
+                    | Rd_unusable why -> reply_error ~code:"internal" ~detail:why
+                    | Rd_done (status, _epoch, _lines) when status <> 0 ->
+                        reply_error ~code:"internal"
+                          ~detail:(Printf.sprintf
+                                     "the guest of %S answered, but its report producer failed \
+                                      (status %d): %s" name status report)
+                    | Rd_done (_, epoch, lines) ->
+                        reply_ok [ ("component", jstr name);
+                                   (* The name to read it back with, published rather than
+                                      spelled by the client: log <c> report. *)
+                                   ("file",      jstr "report");
+                                   ("path",      jstr report);
+                                   ("lines",     jint lines);
+                                   ("epoch",     jfloat epoch);
+                                   ("waited",    jfloat elapsed) ]
+                    | Rd_waiting -> assert false (* [reached] said otherwise *))
+                 ~on_expiry:(fun _ elapsed ->
+                    reply_error ~code:"timeout"
+                      ~detail:(Printf.sprintf
+                                 "%S did not answer the request for a report within %.1fs. Its \
+                                  guest may still be booting (see wait --ready) — the watcher is \
+                                  started at the very end of the boot, later than the marker \
+                                  --ready waits for, so a request may legitimately wait for it. \
+                                  Or it runs no watcher at all: a guest booted by an older \
+                                  Marionnet, or one whose boot never reached its relay, has none \
+                                  (see log %s boot)"
+                                 name elapsed name)))
 
 (* The two refusals [log] (episode 3) and [switch-info] (episode 5) share, because they share a
    shape: one optional choice, spelled positionally or as an option. A mistyped --tial= would
@@ -3863,6 +4088,17 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                           ~what:"table" ~other_options:[ "timeout" ] with
                   | Error detail -> reply_error ~code:"bad_argument" ~detail
                   | Ok table     -> cmd_switch_info st ~timeout ~name:(arg0 r) ~table),
+                 `Continue)
+            (* Episode 16: same reading of --timeout as [wait] below — it bounds the wait for the
+               guest's answer, not the round trip to the GTK main thread — and for the same
+               reason: what is being waited for happens inside a guest. *)
+            | "report" ->
+                let wait_timeout =
+                  match option_value r "timeout" with
+                  | None   -> default_report_timeout
+                  | Some _ -> timeout
+                in
+                (cmd_report st ~gtk_timeout:default_timeout ~wait_timeout ~name:(arg0 r),
                  `Continue)
             (* [--timeout] changes meaning for these two (see the comment above [cmd_wait]):
                it bounds the wait, not the round trip to the GTK main thread. Hence the

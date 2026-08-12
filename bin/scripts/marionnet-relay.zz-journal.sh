@@ -291,4 +291,85 @@ INIT
 fi
 unset __mrn_journal_hook
 
+# ---------------------------------------------------------------------------
+# ON-DEMAND REPORT (episode 16).  What the session is doing RIGHT NOW.
+#
+# The hook above answers "what did the session end with?".  Episode 15 showed
+# that a corrector needs the other question too -- "what is true at this
+# instant?" -- and that nothing in the channel could answer it: the five
+# journals are traces, and a trace says what was SAID, not what IS.
+#
+# The producer is the very same `marionnet-report'; all that is added here is a
+# watcher which runs it when the host drops a flag file in the hostfs.  Started
+# in the background, at the end of the boot, so that a machine answers `report'
+# as soon as it is up.
+#
+# Two branches, decided by the GUEST as everywhere else in this file, and for
+# ONE reason -- the watcher must outlive the relay:
+#
+#   1. under systemd the relay is an LSB script run through a generated unit,
+#      and a background child of a unit is killed with its control group when
+#      the unit finishes.  So the watcher gets a unit of its own, exactly like
+#      the shutdown hook above -- written in /run (nothing survives a reboot of
+#      the guest: the host deposits everything again anyway).
+#   2. under SysV nothing owns a control group: `setsid' (when the image has
+#      it) puts the watcher in a session of its own, and a plain `&' does the
+#      rest -- a non-interactive shell sends no SIGHUP when it ends.
+#
+# Never fatal, never noisy: a guest that refuses the watcher simply answers
+# `report' with a timeout, and its shutdown report is untouched.
+# ---------------------------------------------------------------------------
+
+__mrn_journal_watch=/mnt/hostfs/marionnet-report-watch
+
+if [[ -r "$__mrn_journal_watch" ]]; then
+
+  case $- in *x*) __mrn_journal_x_watch=yes ;; *) __mrn_journal_x_watch=no ;; esac
+  { set +x ; } 2>/dev/null
+
+  if [[ -d /run/systemd/system ]] && type -p systemctl >/dev/null 2>&1; then
+    {
+      cat > /run/systemd/system/marionnet-report-watch.service <<UNIT
+[Unit]
+Description=Marionnet: on-demand report watcher (journalisation-profonde)
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash $__mrn_journal_watch
+Restart=on-failure
+RestartSec=5
+UNIT
+      systemctl daemon-reload
+      # `--no-block' AND `DefaultDependencies=no'. MEASURED, in this order: written the obvious
+      # way -- default dependencies, blocking `start' -- the unit simply does not run, and a
+      # trixie whose boot has otherwise completed answers `report' with a timeout because
+      # nothing is watching. We are being sourced by the relay, which systemd is itself
+      # starting, so the request is an ordering into a transaction already under way; the
+      # watcher needs no ordering at all (it waits for a file), hence no dependencies and no
+      # waiting for the answer.
+      # `Conflicts=shutdown.target' brings back the one thing `DefaultDependencies=no' removes
+      # and which we do want: being stopped when the guest shuts down, so that the watcher is
+      # gone before the end-of-session report is taken (episode 7's hook).
+      systemctl start --no-block marionnet-report-watch.service
+    } >/dev/null 2>&1
+  else
+    # The redirections are NOT decoration: without them the watcher inherits the
+    # descriptors of this shell, hence the student's console for the whole life
+    # of the machine -- and, if it were started before the epilogue closed the
+    # capture, it would hold the `tee' pipe open for ever.
+    if type -p setsid >/dev/null 2>&1; then
+      setsid /bin/bash "$__mrn_journal_watch" </dev/null >/dev/null 2>&1 &
+    else
+      /bin/bash "$__mrn_journal_watch" </dev/null >/dev/null 2>&1 &
+    fi
+  fi
+
+  [[ "$__mrn_journal_x_watch" = yes ]] && { set -x ; } 2>/dev/null
+  unset __mrn_journal_x_watch
+fi
+unset __mrn_journal_watch
+
 :
