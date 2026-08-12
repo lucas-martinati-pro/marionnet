@@ -673,7 +673,9 @@ write anything in a hostfs — the failure a script cannot otherwise see. And bo
 by the host, hence out of the guest's reach, where the three journals of the hostfs are
 writable from inside the guest: of those two, the terminal recording is the one that holds the
 commands together with their output, which is what makes marking defensible. On the exam mode
-itself, and what it archives into the project file, see `doc-src/exam-mode.md`.
+itself, what it archives into the project file, and how those archives are read from the
+interface — the Markdown report opens rendered, its source one gesture away — see
+`doc-src/exam-mode.md`.
 
 ---
 

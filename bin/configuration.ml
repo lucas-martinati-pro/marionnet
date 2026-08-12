@@ -54,6 +54,10 @@ let configuration =
                 "MARIONNET_TMPDIR";
                 "MARIONNET_KEEP_ALL_SNAPSHOTS_WHEN_SAVING";
                 "MARIONNET_TIMEZONE";
+                (* Deep logging, episode 10: an alternative Markdown -> HTML converter (a command
+                   reading the Markdown on its standard input). Unset, the conversion is done
+                   in-process by cmarkit: see treeview_documents.ml and etc/marionnet.conf. *)
+                "MARIONNET_MARKDOWN_TO_HTML";
               ]
     ();;
 

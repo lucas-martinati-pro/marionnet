@@ -92,8 +92,15 @@ REQUIRED_PACKAGES_RUNTIME_I386 = libc6:i386
 #    for the strings which are not valid UTF-8, without which the emitted file would not be
 #    valid JSON at all. Debian equivalents, for the packaging channels:
 #    libyojson-ocaml-dev and libbase64-ocaml-dev.
+#  - cmarkit renders the guest end-of-session report (Markdown, work-stream
+#    `journalisation-profonde') into HTML, in-process: the rendering must be the SAME on every
+#    machine which opens a graded project, and its `~safe:true' mode neutralizes the raw HTML of
+#    a file written inside a guest, i.e. on a machine the student controls. ISC, no dependency.
+#    NOTE for the packaging channels (`modernisation-installation-marionnet'): unlike yojson and
+#    base64, cmarkit has NO Debian/Ubuntu package as of 2026-08 -- it must come from opam, or be
+#    vendored.
 OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras \
-                lablgtk3-sourceview3 conf-gtksourceview3 yojson base64
+                lablgtk3-sourceview3 conf-gtksourceview3 yojson base64 cmarkit
 
 # `opam' packages for tooling (editor support and documentation, not needed to build):
 # `sherlodoc' searches the odoc output BY TYPE (`dune build @doc-private' first), which is how

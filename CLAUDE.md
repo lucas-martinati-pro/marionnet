@@ -277,7 +277,24 @@ Reprise : appliquer le skill `chantier-long`.
   chaque passage. Corrigé par la mesure : `wait <c> --state=off` **ne suffit pas** pour lire
   `documents` — la transition d'état précède l'import du mode examen — d'où une attente **bornée**
   du treeview dans l'exemple, et une section d'`exam-bench.sh` devenue idempotente puisque
-  l'exemple éteint la machine lui-même). Deux faits
+  l'exemple éteint la machine lui-même) ; **ép. 10 fait 2026-08-12** (le **rapport rendu** :
+  double-clic = page HTML dans le navigateur, menu contextuel = la **source** dans une fenêtre
+  GtkSourceView **éditable** — écrite en retour, fermer annule. La conversion est **interne**
+  (`cmarkit`, ISC, aucune dépendance) et non déléguée à l'hôte, pour deux raisons qui ne se voient
+  qu'en pensant à la **notation** : la même archive rendrait autrement **différemment selon la
+  machine**, et `report.md` est écrit **dans l'invité**, donc `~safe:true` empêche un `<script>`
+  d'étudiant de tourner dans la page du correcteur ; échappatoire explicite
+  `MARIONNET_MARKDOWN_TO_HTML` (stdin→stdout), avec repli sur cmarkit si elle manque, échoue ou se
+  tait. Mesure qui a retourné le plan : `~safe:true` **n'échappe pas** le HTML brut, il le **jette**
+  en laissant un commentaire *invisible* — l'omission est donc rendue **visible**. Deux défauts
+  antérieurs tombent, tous deux nécessaires au discriminant : `import_file` perdait l'**extension**
+  du document (rien ne distinguait un `.md` à l'affichage, la colonne `Format` disant « text »
+  exprès depuis l'ép. 7 — le format persisté ne bouge toujours pas) et `MARIONNET_HTML_READER`
+  valait **`galeon`**, mort vers 2010, sans que rien ne le signale (`display` lance
+  `«lecteur 'f' &»` : le shell sort 0 quoi qu'il arrive) — les lecteurs sont désormais **vérifiés**,
+  avec repli sur `xdg-open`. **3ᵉ dépendance de build** après `yojson`/`base64`, et la seule
+  **sans paquet Debian/Ubuntu** : à répercuter par `modernisation-installation-marionnet`).
+  Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un

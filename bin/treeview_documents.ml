@@ -29,6 +29,7 @@ module UnixExtra = Ocamlbricks.UnixExtra
 module StringExtra = Ocamlbricks.StringExtra
 module FilenameExtra = Ocamlbricks.FilenameExtra
 module Stateful_modules = Ocamlbricks.Stateful_modules
+module Egg = Ocamlbricks.Egg
 (* --- *)
 
 open Gettext
@@ -105,6 +106,130 @@ module Terminal_recording = struct
 
 end (* module Terminal_recording *)
 
+(* Deep logging, episode 10: reading the report the guest wrote.
+
+   The end-of-session report is Markdown (episode 7: its producer is plain Bash inside a minimal
+   guest, where an unescaped `<' would silently break an HTML page), and until now a double-click
+   opened it in MARIONNET_TEXT_EDITOR -- readable, not rendered.
+
+   WHY THE CONVERSION IS IN-PROCESS (cmarkit) and not delegated to whichever converter the host
+   happens to have. Two properties, and both of them matter for a document which may be GRADED:
+
+   - the rendering is THE SAME EVERYWHERE. The student, the teacher and the corrector open the
+     same archive and see the same page. A chain of external candidates (pandoc, cmark, ...)
+     would make the page depend on the machine which opens it, and nothing on that page would
+     say which converter produced it.
+
+   - `~safe:true' NEUTRALIZES raw HTML. report.md is written INSIDE the guest, i.e. on a machine
+     the student controls; without this, a `<script>' dropped into the report would run in the
+     page the corrector opens.
+
+   The operator keeps an explicit way out: MARIONNET_MARKDOWN_TO_HTML, when set, receives the
+   Markdown on its standard input and its output is used instead (`pandoc -f markdown -t html'
+   and its richer rendering, typically). It is then a DECISION, not a side effect of what happens
+   to be installed -- and it gives up the two properties above, which is why the configuration
+   file says so. *)
+module Markdown_rendering = struct
+
+  let is_markdown (pathname:string) : bool =
+    List.mem (String.lowercase_ascii (Filename.extension pathname)) [".md"; ".markdown"]
+
+  (* Deliberately minimal: a report is read, not browsed. Monospace where the guest wrote command
+     outputs, visible borders (the report of episode 7 has tables), and a width which does not
+     force the eye to travel across a maximized window. *)
+  let stylesheet = "\
+body { max-width: 50em; margin: 2em auto; padding: 0 1em; line-height: 1.5;
+       font-family: sans-serif; }
+h1, h2, h3 { line-height: 1.2; margin-top: 1.5em; }
+h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: .2em; }
+code, pre { font-family: monospace, monospace; }
+pre { background: #f6f6f6; border: 1px solid #ddd; padding: .6em; overflow-x: auto; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid #bbb; padding: .2em .6em; text-align: left; }
+blockquote { border-left: 3px solid #ccc; margin-left: 0; padding-left: 1em; color: #555; }
+p.omitted { color: #a00; font-style: italic; }
+"
+
+  let escape (s:string) : string =
+    let b = Buffer.create (String.length s) in
+    String.iter
+      (function
+       | '&' -> Buffer.add_string b "&amp;"
+       | '<' -> Buffer.add_string b "&lt;"
+       | '>' -> Buffer.add_string b "&gt;"
+       | '"' -> Buffer.add_string b "&quot;"
+       | c   -> Buffer.add_char b c)
+      s;
+    Buffer.contents b
+
+  (* The envelope is OURS whatever the converter, hence `pandoc' without `-s': one page layout,
+     one charset declaration, one stylesheet -- and a converter which forgets the charset (most
+     of them emit a fragment) cannot turn the accents of a French report into mojibake. *)
+  let page ~(title:string) ~(fragment:string) : string =
+    Printf.sprintf
+      "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>%s</title>\n<style>\n%s</style>\n</head>\n<body>\n%s</body>\n</html>\n"
+      (escape title) stylesheet fragment
+
+  (* MEASURED, and it changes what the reader sees: `~safe:true' does not ESCAPE raw HTML, it
+     DROPS it, leaving `<!-- CommonMark HTML block omitted -->' -- a comment, hence invisible in a
+     browser. A corrector would read a report with a silent hole in it. So the hole is made
+     visible; and what the guest actually wrote stays reachable, one gesture away, through "show
+     the source" of this same episode.
+
+     The pattern follows the renderer, whose output the library documents as unstable: should a
+     future cmarkit change its wording, this stops matching and we are back to the invisible
+     comment -- a degradation, not a breakage -- and the bench of the episode turns red, which is
+     the point of asserting on the visible marker rather than on the comment. *)
+  let omission = Str.regexp "<!-- CommonMark \\([A-Za-z ]+\\) omitted -->"
+  let omission_marker =
+    "<p class=\"omitted\">[ raw HTML written by the guest, omitted here: see the source ]</p>"
+
+  let by_cmarkit (markdown:string) : string =
+    (* ~strict:false enables the non-strict extensions, tables among them: the report of episode 7
+       is written with tables, and strict CommonMark would render them as paragraphs. *)
+    let fragment = Cmarkit_html.of_doc ~safe:true (Cmarkit.Doc.of_string ~strict:false markdown) in
+    Str.global_replace omission omission_marker fragment
+
+  (* Failure is never fatal here: whatever goes wrong we fall back on cmarkit, and the user gets
+     a page instead of an explanation. The command is run through a shell, so an absent program
+     is just a non-zero status (127) -- no need to look for it in the PATH ourselves. *)
+  let by_external_command ~(command:string) ~(markdown:string) : string option =
+    try
+      match UnixExtra.run ~input:markdown command with
+      | (output, Unix.WEXITED 0) when String.trim output <> "" -> Some output
+      | (_, _) ->
+          Log.printf1 "Markdown_rendering: MARIONNET_MARKDOWN_TO_HTML (%s) failed: using cmarkit\n"
+            command;
+          None
+    with e ->
+      Log.printf2 "Markdown_rendering: MARIONNET_MARKDOWN_TO_HTML (%s) raised %s: using cmarkit\n"
+        command (Printexc.to_string e);
+      None
+
+  let fragment_of ~(markdown:string) : string =
+    match Configuration.get_string_variable "MARIONNET_MARKDOWN_TO_HTML" with
+    | None -> by_cmarkit markdown
+    | Some command ->
+        (match by_external_command ~command ~markdown with
+         | Some fragment -> fragment
+         | None -> by_cmarkit markdown)
+
+  (* The rendered page is written OUTSIDE the project: the documents directory is what goes into
+     the .mar, and a rendering is not a document -- it is recomputed at every reading. Returning
+     [None] on failure is what keeps the historical behaviour reachable (the text editor). *)
+  let html_copy_of ~(title:string) ~(pathname:string) : string option =
+    try
+      let markdown = UnixExtra.cat pathname in
+      let content = page ~title ~fragment:(fragment_of ~markdown) in
+      Some (UnixExtra.temp_file
+              ~parent:(Filename.get_temp_dir_name ())
+              ~prefix:"marionnet-document-" ~suffix:".html" ~content ())
+    with e ->
+      Log.printf2 "Markdown_rendering: cannot render %s: %s\n" pathname (Printexc.to_string e);
+      None
+
+end (* module Markdown_rendering *)
+
 class t =
 fun ~packing
     ~method_directory
@@ -152,12 +277,75 @@ object(self)
   (** Display the document at the given row, in an asynchronous process: *)
   method private display row_id =
     let frmt = self#get_row_format (row_id) in
-    let reader = self#format_to_reader frmt in
     let pathname = Filename.concat (self#directory) (self#get_row_filename row_id) in
+    (* Deep logging, episode 10: a Markdown document is shown RENDERED. It is recognized by its
+       name, not by the `Format' column, which stays "text" on purpose (episode 7): no format
+       value which an older Marionnet could not read ever reaches a .mar file. The counterpart is
+       that a document imported BEFORE this episode has no extension at all (see [import_file]),
+       and keeps opening in the text editor -- the behaviour it had. *)
+    let (reader, pathname) =
+      if frmt = "text" && Markdown_rendering.is_markdown pathname then
+        match Markdown_rendering.html_copy_of ~title:(self#get_row_title row_id) ~pathname with
+        | Some html_pathname -> (self#format_to_reader "html", html_pathname)
+        | None               -> (self#format_to_reader frmt, pathname)
+      else
+        (self#format_to_reader frmt, pathname)
+    in
     let command_line =
       Printf.sprintf "%s '%s'&" reader pathname in
     (* Here ~force:true would be useless, because of '&' (the shell well exit in any case). *)
     Log.system_or_ignore command_line
+
+  (* Deep logging, episode 10: show the SOURCE of a Markdown document, and let it be edited. The
+     rendered page answers "what does the report say", this answers "what exactly did the guest
+     write" -- and gives the corrector a place to annotate it.
+
+     Modifying a document of a .mar which serves as evidence takes nothing away: the archive is in
+     the student's hands anyway, and `exam-mode.md' has been saying since episode 9 which journals
+     are falsifiable. What this adds is the annotation of a report BY THE CORRECTOR.
+
+     Threads: the window is created here, i.e. in the callback of the contextual menu, so from the
+     main thread. [Egg.wait] blocks, hence the separate thread -- which writes a file (no Gtk+
+     call) and then goes back through the actor for the treeview callback, which touches widgets
+     (work-stream `refonte-automate-composants'). Same pattern as gui_bricks.ml:990. *)
+  method private edit_source row_id =
+    let pathname = Filename.concat (self#directory) (self#get_row_filename row_id) in
+    (* Concatenation rather than a format string, like the [import_*] methods below: a translated
+       format string with a wrong arity breaks at run time, in silence (work-stream i18n). *)
+    let title = (s_ "Source of ") ^ (self#get_row_title row_id) in
+    let content = try UnixExtra.cat pathname with _ -> "" in
+    let result : (string option) Egg.t = Egg.create () in
+    let () =
+      Gui_source_editing.window
+        ~title
+        ~language:(`id "markdown")
+        ~content
+        ~result
+        ~draw_spaces:[]
+        (* Closing the window discards: unlike the configuration editor this one WRITES a file of
+           the project, and a window closed by mistake must not commit anything. *)
+        ~close_means_cancel:()
+        ()
+    in
+    ignore (Thread.create
+      (fun () ->
+         match Egg.wait result with
+         | None -> ()
+         | Some text when text = content -> ()
+         | Some text ->
+             (try
+                (* Imported documents are deposited read-only (see [import_file]), so saving means
+                   opening the file, writing it, and closing it again. *)
+                UnixExtra.set_perm ~u:() ~w:true pathname;
+                UnixExtra.rewrite pathname text;
+                UnixExtra.set_perm ~a:() ~w:false pathname;
+                Log.printf1 "Treeview_documents: %s has been edited\n" pathname;
+                (* Marks the project as not already saved (marionnet.ml:124). *)
+                GMain_actor.apply_extract self#run_after_update_callback row_id
+              with e ->
+                Log.printf2 "Treeview_documents: cannot save %s: %s\n"
+                  pathname (Printexc.to_string e)))
+      ())
 
   val error_message =
     (s_ "You should select an existing document in PDF, Postscript, DVI, HTML or text format.")
@@ -241,16 +429,56 @@ object(self)
     else
       failwith ("I cannot recognize the file type of " ^ pathname);
 
+  (* Deep logging, episode 10: a reader which is not installed used to mean that NOTHING happened
+     at all. [display] appends `&', so the shell exits 0 whatever the command was, and
+     [Log.system_or_ignore] has nothing to report. The historical default of MARIONNET_HTML_READER
+     is `galeon', a browser dead since ~2010 and absent from any current distribution: the page
+     rendered by this episode would have opened nowhere. So the configured reader is now CHECKED,
+     and a list of candidates takes over when it is absent -- which also repairs the installed
+     marionnet.conf of a user who never touched it.
+
+     The configured value may carry options (`firefox --new-window'), hence the test on its first
+     word only, the value itself being passed on unchanged. *)
+  method private resolve_reader ~(configured:string) ~(candidates:string list) : string =
+    let program_of command =
+      match String.split_on_char ' ' (String.trim command) with
+      | program :: _ -> program
+      | []           -> ""
+    in
+    if UnixExtra.is_executable (program_of configured) then configured else
+    match List.find_opt UnixExtra.is_executable candidates with
+    | Some fallback ->
+        Log.printf2 "Treeview_documents: the reader \"%s\" is not installed: using \"%s\"\n"
+          configured fallback;
+        fallback
+    | None ->
+        Log.printf1
+          "Treeview_documents: the reader \"%s\" is not installed, and no candidate either\n"
+          configured;
+        configured
+
   method private format_to_reader format =
+    let configured ~default varname = Configuration.extract_string_variable_or ~default varname in
+    (* `xdg-open' comes first in every list: it is what a desktop session actually honours. *)
+    let document_candidates = ["xdg-open"; "evince"; "okular"; "atril"; "mupdf"] in
+    let browser_candidates  = ["xdg-open"; "sensible-browser"; "x-www-browser"; "firefox"; "chromium"] in
+    (* Never a terminal editor here: it would open no window at all. *)
+    let editor_candidates   = ["xdg-open"; "sensible-editor"; "gedit"; "kate"; "emacs"] in
     match format with
-    | "pdf"  -> Configuration.extract_string_variable_or ~default:"evince" "MARIONNET_PDF_READER"
-    | "ps"   -> Configuration.extract_string_variable_or ~default:"evince" "MARIONNET_POSTSCRIPT_READER"
-    | "dvi"  -> Configuration.extract_string_variable_or ~default:"evince" "MARIONNET_DVI_READER"
+    | "pdf"  -> self#resolve_reader ~candidates:document_candidates
+                  ~configured:(configured ~default:"evince" "MARIONNET_PDF_READER")
+    | "ps"   -> self#resolve_reader ~candidates:document_candidates
+                  ~configured:(configured ~default:"evince" "MARIONNET_POSTSCRIPT_READER")
+    | "dvi"  -> self#resolve_reader ~candidates:document_candidates
+                  ~configured:(configured ~default:"evince" "MARIONNET_DVI_READER")
       (* 'file' may recognize (X)HTML as XML... *)
-    | "html" -> Configuration.extract_string_variable_or ~default:"galeon" "MARIONNET_HTML_READER"
-    | "text" -> Configuration.extract_string_variable_or ~default:"emacs"  "MARIONNET_TEXT_EDITOR"
+    | "html" -> self#resolve_reader ~candidates:browser_candidates
+                  ~configured:(configured ~default:"xdg-open" "MARIONNET_HTML_READER")
+    | "text" -> self#resolve_reader ~candidates:editor_candidates
+                  ~configured:(configured ~default:"emacs"  "MARIONNET_TEXT_EDITOR")
       (* the file type in unknown: web browsers can open most everything... *)
-    | "auto" -> Configuration.extract_string_variable_or ~default:"galeon" "MARIONNET_HTML_READER"
+    | "auto" -> self#resolve_reader ~candidates:browser_candidates
+                  ~configured:(configured ~default:"xdg-open" "MARIONNET_HTML_READER")
     | _ ->
       failwith ("The format \"" ^ format ^ "\" is not supported");
 
@@ -263,7 +491,17 @@ object(self)
     try
       let file_format    = self#file_to_format pathname in
       let parent         = self#directory in
-      let fresh_pathname = UnixExtra.temp_file ~parent ~prefix:"document-" () in
+      (* Deep logging, episode 10: the imported copy KEEPS the extension of its source. Until now
+         it was named `document-XXXXXX', so nothing at display time could tell a Markdown report
+         from any other text -- and the `Format' column deliberately says "text" for both
+         (episode 7). Kept conservative: an extension which is not a plain word is dropped, since
+         this name ends up in a shell command line ([display]). *)
+      let suffix =
+        let e = String.lowercase_ascii (Filename.extension pathname) in
+        let plain c = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c = '.') in
+        if e <> "" && String.length e <= 12 && String.for_all plain e then e else ""
+      in
+      let fresh_pathname = UnixExtra.temp_file ~parent ~prefix:"document-" ~suffix () in
       let fresh_name     = Filename.basename fresh_pathname in
       let result         = (fresh_name, file_format) in
      (try
@@ -449,6 +687,20 @@ object(self)
         let row_id = Option.extract selected_rowid_if_any in
         self#display row_id);
     self#set_double_click_on_row_callback (fun row_id -> self#display row_id);
+
+    (* Deep logging, episode 10: the choice between the rendered document and its source, as two
+       gestures rather than a dialog asking the question at every reading. The predicate makes
+       this entry appear on Markdown rows only (an item whose predicate is false is not built at
+       all, treeview.ml:853), so nothing changes for the other documents. The double-click, above,
+       keeps the reading gesture: the rendered page. *)
+    self#add_menu_item
+      (s_ "Show and edit the source of this document")
+      (function
+       | Some row_id -> Markdown_rendering.is_markdown (self#get_row_filename row_id)
+       | None        -> false)
+      (fun selected_rowid_if_any ->
+        let row_id = Option.extract selected_rowid_if_any in
+        self#edit_source row_id);
 
     self#add_menu_item
       (s_ "Remove this document")

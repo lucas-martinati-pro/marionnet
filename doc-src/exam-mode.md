@@ -46,9 +46,26 @@ Two consequences worth knowing:
 * the archiving is the **last** thing a shutdown does, so on a slow guest it lands a moment
   after the machine's icon has gone grey.
 
-A document is opened by double-clicking it, as any imported document. Reports are Markdown:
-today they open in the text editor Marionnet is configured to use (`MARIONNET_TEXT_EDITOR`),
-so they are read as plain text — readable, but not yet rendered.
+A document is opened by double-clicking it, as any imported document. Reports are Markdown, and
+they open **rendered**, in the browser Marionnet is configured to use (`MARIONNET_HTML_READER`,
+`xdg-open` by default). Their **source** is one gesture away: right-click the document and choose
+*Show and edit the source*, which opens it in a syntax-coloured editor — where a corrector can
+also annotate it, the document of the project being written back on `OK`.
+
+Three things are worth knowing about that rendering, because they concern a document on which a
+mark may rest:
+
+* the conversion is done **by Marionnet itself**, not by a converter of the host. The page is
+  therefore **the same everywhere** — the same on the student's machine, on yours, and on the
+  machine of whoever opens the archive later;
+* the report is written **inside the guest**, so on a machine the student controls. Any raw HTML
+  it may contain is **not** given to the browser: it is dropped, and the page says so in its
+  place, in red. Nothing written in a report can run in the page you read. What was dropped
+  remains visible in the source;
+* should you prefer another converter (a richer rendering, say `pandoc`), set
+  `MARIONNET_MARKDOWN_TO_HTML` in `marionnet.conf` or in the environment: it receives the
+  Markdown on its standard input. This gives up the two properties above; Marionnet falls back on
+  its own conversion if that command is missing, fails, or answers nothing.
 
 ## 3. What can be trusted
 

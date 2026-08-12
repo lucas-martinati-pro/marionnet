@@ -162,7 +162,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **7** | **Réanimer le mode examen** : le prologue pose l'historique **horodaté** dans le hostfs (`bash_history.text`, 4ᵉ journal du verbe `log` sous le nom `commands`), l'épilogue accroche à l'**arrêt** un producteur de rapport **Markdown** (`report.md`, section pare-feu comprise), et l'import du § 2.4 — enfin gardé, enfin symétrique — archive rapport, historique **et** console (cf. § 4.7) | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` — **fait** (2026-08-11) |
 | **8** | **Le terminal de l'étudiant, enregistré** (option `--terminal-log`, implicite en `--exam`) : Marionnet substitue son enregistreur au premier champ de `xterm=` et `script(1)` capture ce qui traverse la fenêtre ; 5ᵉ journal du verbe `log`, nommé `terminal`, archivé **nettoyé** dans `documents` (cf. § 4.8) | un témoin écrit sur `/dev/tty0` apparaît dans `log … terminal` et **pas** dans `log … console` — **fait** (2026-08-12) |
 | **9** | **Documentation + exemples exécutables + banc** : § 11 neuf du guide `doc-src/scripting/` (les cinq journaux, leurs deux natures, `switch-info` en miroir), note utilisateur `doc-src/exam-mode.md` pour l'enseignant, et deux exemples versionnés — `04-journals.sh`, `05-exam-session.sh` (cf. § 4.9) | les exemples de la doc sont joués **tels quels** par le banc, et le tableau des journaux du guide est **comparé** à ce que `help` publie — **fait** (2026-08-12) |
-| **10** | **Lire un rapport Markdown depuis la GUI** : un `.md` s'ouvre aujourd'hui dans `MARIONNET_TEXT_EDITOR` ; il lui faut un vrai geste de lecture (conversion vers HTML par un convertisseur présent puis navigateur, ou lecteur dédié avec repli) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** |
+| **10** | **Lire un rapport Markdown depuis la GUI** : conversion **interne** (cmarkit, `~safe:true`) puis navigateur au double-clic, et la **source** à un geste — menu contextuel, fenêtre GtkSourceView éditable. Deux défauts antérieurs tombent avec : l'extension perdue à l'import et le lecteur HTML mort (`galeon`), sans quoi le rendu n'irait nulle part (cf. § 4.10) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** — **fait** (2026-08-12) |
 | **11** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→9 opérationnels |
 | **12** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
 
@@ -770,6 +770,81 @@ encore.
 Et un mot qui n'est pas un détail : un exemple joué par un banc **ne peut pas mentir longtemps**.
 C'est la seule forme de documentation que ce chantier considère comme livrée.
 
+### 4.10 Ce que l'épisode 10 a livré (et pourquoi la conversion est interne)
+
+Neuf épisodes ont produit de la matière, un canal pour la lire et une doc pour l'expliquer. Il
+restait un endroit où le chantier ne tenait pas sa promesse : **l'interface**. Le rapport de fin
+de session est du Markdown (épisode 7, et pour une bonne raison : son producteur est du Bash dans
+un invité minimal), et un double-clic dans le treeview `documents` l'ouvrait dans
+`MARIONNET_TEXT_EDITOR` — lisible, non rendu.
+
+**Le point de conception est le déterminisme, et il ne se voit qu'en pensant à la notation.** Le
+premier plan cherchait un convertisseur *sur l'hôte* — `pandoc`, `cmark`, `markdown_py` — avec
+repli sur l'éditeur de texte. C'est le réflexe de ce dépôt (un lecteur externe par format, réglé
+par variable d'environnement), et il est faux ici pour deux raisons :
+
+- **la même archive rendrait différemment selon la machine** qui l'ouvre, et rien sur la page ne
+  dirait laquelle a servi. Pour un document sur lequel une note peut reposer, c'est un défaut, pas
+  un détail ;
+- **`report.md` est écrit dans l'invité**, donc sur une machine que l'étudiant contrôle. Avec
+  `pandoc` ou `markdown_py`, le HTML brut passe tel quel : un `<script>` déposé dans le rapport
+  s'exécuterait dans la page du correcteur.
+
+D'où `cmarkit` (ISC, Daniel Bünzli, **aucune dépendance**) lié au binaire : `Doc.of_string
+~strict:false` (les tableaux du rapport en dépendent) puis `Cmarkit_html.of_doc ~safe:true`.
+L'échappatoire demeure — `MARIONNET_MARKDOWN_TO_HTML`, une commande qui lit le Markdown sur son
+entrée standard — mais elle est **explicite** : le rendu plus riche devient une décision de
+l'exploitant, avec ce qu'elle coûte, dit dans `marionnet.conf`. L'enveloppe de la page (doctype,
+charset, feuille de style sobre) est la nôtre **quel que soit** le convertisseur : un convertisseur
+qui oublie le charset ne peut pas transformer les accents d'un rapport français en mojibake.
+
+**Ce que la mesure a retourné** : `~safe:true` ne fait pas ce que le plan supposait. Il n'échappe
+pas le HTML brut, il le **jette**, en laissant un commentaire (`<!-- CommonMark HTML block
+omitted -->`) — invisible dans un navigateur. Le correcteur aurait lu un rapport troué **sans le
+savoir**. L'omission est donc remplacée par une ligne visible, et ce que l'invité a écrit reste
+atteignable par la vue *source*. Le motif de remplacement suit un rendu que la bibliothèque
+documente comme instable : s'il change, on retombe sur le commentaire invisible (dégradation, pas
+casse) et le banc rougit — raison pour laquelle il assert sur le **marqueur visible**.
+
+**Deux défauts antérieurs, tous deux nécessaires au discriminant.** (1) `import_file` copiait le
+document vers `document-XXXXXX`, **sans extension** : à l'affichage, rien ne distinguait un
+rapport Markdown d'un texte, la colonne `Format` disant « text » pour les deux — délibérément,
+depuis l'épisode 7, pour qu'aucune valeur de format neuve n'atteigne un `.mar` (D5). L'extension
+est désormais conservée (filtrée : elle finit dans une ligne de commande), le format persisté ne
+bouge pas, et un `.mar` antérieur — dont les documents n'ont pas d'extension — garde exactement le
+comportement qu'il avait. (2) `MARIONNET_HTML_READER` valait `galeon` dans `etc/marionnet.conf`
+*et* dans le code : un navigateur mort vers 2010. Or `display` lance `«lecteur 'fichier' &»`, donc
+le shell sort 0 quoi qu'il arrive et un lecteur absent ne produit **rien**, en silence. Les
+lecteurs sont maintenant vérifiés (`UnixExtra.is_executable`, sur le **premier mot** pour laisser
+passer les options) avec repli sur `xdg-open` et quelques usuels — ce qui répare aussi le
+`marionnet.conf` déjà installé de qui n'y a jamais touché.
+
+**Le choix rendu/source.** Demandé par l'auteur pendant le plan, et livré dans le même épisode
+parce que tout existait : `Gui_source_editing.window` (GtkSourceView3 + `Egg`, employée jusqu'ici
+pour les fichiers de configuration), `markdown.lang` présent dans gtksourceview-3.0, et un menu
+contextuel de treeview qui prend un **prédicat**. Deux gestes plutôt qu'une boîte de dialogue à
+chaque ouverture : double-clic = lire (le rendu), menu contextuel = la source, éditable. L'entrée
+n'apparaît que sur une ligne Markdown. L'édition écrit le document du projet — ouvrir, écrire,
+refermer, les documents importés étant posés en lecture seule — et marque le projet modifié en
+repassant par l'acteur, la fenêtre étant créée depuis le thread principal et l'attente de l'`Egg`
+depuis un thread à part (le motif de `gui_bricks.ml:990`). Fermer la fenêtre **annule**, contrairement
+à l'éditeur de configuration : celle-ci écrit un fichier, une fermeture par mégarde ne doit rien
+committer. Et sur le fond : rendre un document du `.mar` modifiable n'enlève aucune garantie — le
+`.mar` est de toute façon entre les mains de l'étudiant, et `exam-mode.md` dit depuis l'épisode 9
+quels journaux sont falsifiables ; ce que l'édition apporte, c'est l'**annotation par le
+correcteur**.
+
+**Le banc mérite un mot**, parce que sa méthode est neuve dans ce chantier : le rendu vit dans un
+fichier qui dépend de lablgtk, donc aucune stanza `(tests)` ne peut le lier, et le geste qui le
+déclenche est un double-clic. Plutôt que de **paraphraser** le code (un banc paraphrasé ment dès
+la première divergence), `markdown-bench.sh` **extrait** le module `Markdown_rendering` du fichier
+source, lui donne une doublure de ses trois dépendances et le compile : ce sont les vraies lignes
+qui répondent. Reste hors de sa portée le câblage GUI lui-même — geste humain, joué à la main.
+
+**Une dépendance de build s'ajoute** : `cmarkit`, la troisième après `yojson` et `base64`, et la
+seule sans paquet Debian/Ubuntu (vérifié le 2026-08-12). Le `Makefile` le dit à l'endroit où le
+chantier `modernisation-installation-marionnet` viendra le lire.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -800,6 +875,11 @@ C'est la seule forme de documentation que ce chantier considère comme livrée.
   un TP doit être noté sur une vieille image.
 - Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7) ; le code, lui,
   est symétrique depuis l'épisode 7.
+- **Les pages rendues de l'épisode 10 s'accumulent** dans le répertoire temporaire (une par
+  lecture, quelques kio) : elles ne sont pas supprimées, et c'est délibéré — le navigateur est
+  lancé en asynchrone, effacer le fichier derrière lui reviendrait à courir contre son
+  chargement. `systemd-tmpfiles` s'en charge. À rouvrir seulement si quelqu'un lit des centaines
+  de rapports dans une même session.
 - **Constaté à l'épisode 7, hors périmètre** : sur une `debian-wheezy`, `rc_config.log` ne porte
   que son en-tête — la capture du prologue (épisode 1) n'y attrape rien, alors que le `set -x`
   fonctionne (mesuré : la trace part bien dans un fichier que le scénario redirige lui-même). Le
@@ -1162,3 +1242,70 @@ tables de `switch-info`). `exam-bench.sh` : **74 assertions, 0 échec** (73 avan
 un `close` expiré) : le même échec s'était déjà produit à l'épisode 8 puis avait disparu sans
 qu'une ligne change, et le second passage est vert. Aucune ligne de banc n'a été relâchée pour
 l'obtenir.
+
+### 2026-08-12 — Épisode 10 : le rapport rendu, et l'omission qu'il fallait rendre visible
+
+**Ce que l'épisode a livré** (détail : § 4.10) : le rapport Markdown de l'épisode 7 s'ouvre
+**rendu** dans le navigateur au double-clic, et sa **source** est à un geste — entrée de menu
+contextuel *« Show and edit the source »*, fenêtre GtkSourceView coloriée, éditable, écrite en
+retour dans le document du projet. Conversion **interne** (cmarkit), lecteurs enfin vérifiés,
+extension conservée à l'import.
+
+**La conception s'est jouée sur un mot : *déterminisme*.** Le premier plan cherchait un
+convertisseur sur l'hôte (`pandoc`, `cmark`, `markdown_py`…) avec repli sur l'éditeur de texte.
+Deux objections l'ont écarté, et elles ne valent que parce que le document peut être **noté** :
+la même archive rendrait **différemment** selon la machine qui l'ouvre, sans que rien sur la page
+ne le dise ; et `report.md` est écrit **dans l'invité**, donc sur une machine que l'étudiant
+contrôle, si bien qu'un `<script>` y tournerait dans la page du correcteur. `cmarkit` (ISC, aucune
+dépendance) rend la même page partout et `~safe:true` neutralise le HTML brut. L'échappatoire
+reste, mais **explicite** : `MARIONNET_MARKDOWN_TO_HTML` remplace la conversion par une commande
+externe — une décision de l'exploitant, plus un effet de bord du parc installé.
+
+**Ce que la mesure a retourné.** `~safe:true` n'**échappe** pas le HTML brut : il le **jette**, en
+laissant `<!-- CommonMark HTML block omitted -->` — un commentaire, donc **invisible** dans un
+navigateur. Le correcteur aurait lu un rapport troué sans le savoir. L'omission est donc rendue
+visible (une ligne rouge, à la place), et ce que l'invité a réellement écrit reste atteignable par
+la vue *source* du même épisode. Le motif suit un rendu que la bibliothèque documente comme
+instable : s'il change, on retombe sur le commentaire invisible — une dégradation, pas une casse —
+et le banc rougit, ce pour quoi il assert sur le **marqueur visible** et non sur le commentaire.
+
+**Deux défauts antérieurs sont tombés en chemin**, tous deux nécessaires au discriminant. (1) Le
+document importé perdait son extension (`document-XXXXXX`) : rien, à l'affichage, ne distinguait
+un rapport Markdown d'un texte quelconque — la colonne `Format` disant « text » pour les deux
+depuis l'épisode 7, **exprès**, pour qu'aucune valeur neuve n'atteigne un `.mar`. L'import
+conserve désormais l'extension ; un `.mar` d'avant cet épisode garde le comportement d'avant.
+(2) `MARIONNET_HTML_READER` valait **`galeon`** dans `etc/marionnet.conf` *et* dans le code — un
+navigateur mort vers 2010 — et `display` lance `«lecteur 'fichier' &»`, si bien qu'un lecteur
+absent ne produisait **rien du tout**, en silence. Les lecteurs sont maintenant vérifiés avant
+d'être lancés, avec un repli sur `xdg-open` et quelques usuels : le correctif répare aussi le
+`marionnet.conf` déjà installé de qui n'y a jamais touché.
+
+**Sur le choix rendu/source**, l'ergonomie a été tranchée dans le sens du geste le plus fréquent :
+pas de boîte de dialogue à chaque ouverture (un clic de plus, à chaque lecture, pour une réponse
+presque toujours la même), mais **deux gestes** — double-clic pour lire, menu contextuel pour la
+source. L'entrée n'apparaît que sur une ligne Markdown (le prédicat du menu, `treeview.ml:853`,
+ne construit même pas l'item quand il est faux) : rien ne change pour les autres documents.
+
+**Mesures.** Banc neuf `markdown-bench.sh` : **47 assertions, 0 échec**. Sa méthode est le point
+notable — il **extrait** le module `Markdown_rendering` de `treeview_documents.ml`, lui donne une
+doublure de ses trois dépendances (Log, Configuration, UnixExtra) et le compile : ce sont les
+**vraies lignes** qui répondent, hors GUI, là où un banc qui paraphraserait le code mentirait dès
+la première divergence. Il couvre la reconnaissance par le nom, l'enveloppe (charset, titre
+échappé, accents), le tableau (mode non strict), l'omission signalée, l'échappatoire et ses trois
+replis (commande absente, en échec, muette), et le fichier rendu (hors projet, `TMPDIR` honoré,
+jamais fatal).
+
+**Non-régression, tous verts au premier passage** : `exam-bench.sh` **74/74**, `doc-bench.sh`
+**62/62**, `journal-bench.sh` **165/165**. Et l'`exam.mar` que le premier laisse derrière lui porte
+la preuve du second correctif, celui de l'import : ses quatre documents s'appellent désormais
+`document-….md`, `document-….log` et `document-….text`, là où ils n'avaient aucune extension —
+la colonne `Format` disant toujours « text » pour les quatre. Reste le câblage GUI lui-même
+(double-clic → navigateur, menu contextuel → source), joué **à la main** : aucun outil de synthèse
+d'événements X n'est installé sur cette machine, et fabriquer une automatisation de clic pour un
+seul geste coûtait plus qu'il ne prouvait.
+
+**Une dépendance de build s'ajoute**, la troisième après `yojson` et `base64` : `cmarkit`.
+Contrairement aux deux autres elle n'a **aucun paquet Debian/Ubuntu** (vérifié le 2026-08-12) —
+elle vient d'opam ou devra être *vendored*. Noté dans le `Makefile` à l'intention du chantier
+`modernisation-installation-marionnet`, qui devra la répercuter dans `Build-Depends`,
+`BuildRequires` et l'image Docker.
