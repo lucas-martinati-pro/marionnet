@@ -161,7 +161,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **6** | **Capture de console** (option `--console-log`, implicite en `--exam`) : la sortie du processus UML est enregistrée dans `<projet>/<nom>-console.log`, servie par le verbe `log` sous le nom `console` (cf. § 4.6). Des trois pistes, `fd:` — et encore, seulement là où un `console=` explicite éteint la console par défaut | un démarrage qui n'atteint **jamais** le relais (courant coupé en plein boot) laisse une trace côté hôte, là où le hostfs reste **vide** — **fait** (2026-08-11) |
 | **7** | **Réanimer le mode examen** : le prologue pose l'historique **horodaté** dans le hostfs (`bash_history.text`, 4ᵉ journal du verbe `log` sous le nom `commands`), l'épilogue accroche à l'**arrêt** un producteur de rapport **Markdown** (`report.md`, section pare-feu comprise), et l'import du § 2.4 — enfin gardé, enfin symétrique — archive rapport, historique **et** console (cf. § 4.7) | après extinction propre en `--exam`, le treeview `documents` porte les entrées **et** elles survivent à un cycle sauvegarde/rechargement du `.mar` — **fait** (2026-08-11) |
 | **8** | **Le terminal de l'étudiant, enregistré** (option `--terminal-log`, implicite en `--exam`) : Marionnet substitue son enregistreur au premier champ de `xterm=` et `script(1)` capture ce qui traverse la fenêtre ; 5ᵉ journal du verbe `log`, nommé `terminal`, archivé **nettoyé** dans `documents` (cf. § 4.8) | un témoin écrit sur `/dev/tty0` apparaît dans `log … terminal` et **pas** dans `log … console` — **fait** (2026-08-12) |
-| **9** | **Documentation + exemples exécutables + banc** : le guide `doc-src/scripting/` ignore encore les cinq journaux et le mode examen ; exemples type « aucun service n'a échoué », « tel binaire est en telle version » | les exemples de la doc sont joués **tels quels** par le banc |
+| **9** | **Documentation + exemples exécutables + banc** : § 11 neuf du guide `doc-src/scripting/` (les cinq journaux, leurs deux natures, `switch-info` en miroir), note utilisateur `doc-src/exam-mode.md` pour l'enseignant, et deux exemples versionnés — `04-journals.sh`, `05-exam-session.sh` (cf. § 4.9) | les exemples de la doc sont joués **tels quels** par le banc, et le tableau des journaux du guide est **comparé** à ce que `help` publie — **fait** (2026-08-12) |
 | **10** | **Lire un rapport Markdown depuis la GUI** : un `.md` s'ouvre aujourd'hui dans `MARIONNET_TEXT_EDITOR` ; il lui faut un vrai geste de lecture (conversion vers HTML par un convertisseur présent puis navigateur, ou lecteur dédié avec repli) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** |
 | **11** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→9 opérationnels |
 | **12** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
@@ -719,6 +719,57 @@ demanderait `script(1)` **dans** l'invité — falsifiable par l'étudiant, donc
 que D2. Les **routeurs** démarrent avec `~console:"none"` : rien à enregistrer tant que ce choix
 tient, le code étant symétrique.
 
+### 4.9 Ce que l'épisode 9 a livré (et pourquoi la doc a le droit de nommer les journaux)
+
+Huit épisodes ont produit de la matière et un canal pour la lire ; **aucun n'avait touché la
+documentation utilisateur**. Le guide `doc-src/scripting/README.md` s'arrêtait aux *tables* (§ 10,
+« read what happened » — qui ne lisait justement que ce que Marionnet sait de lui-même), et le mode
+examen, réanimé à l'épisode 7 après des années de panne silencieuse, n'avait **pas une ligne** pour
+l'enseignant qui ne pilote pas Marionnet par script.
+
+**Le point de conception de l'épisode est une tension, et elle méritait d'être tranchée
+explicitement.** L'invariant transverse des deux chantiers dit que la grammaire n'a qu'**une**
+source de vérité — le serveur, publiée par `help` — et le guide s'en réclame dans sa dernière
+section (« it does not restate the command list… when in doubt, `help` wins over this page »). Or
+un § sur les journaux qui n'en **nommerait aucun** n'apprendrait rien : la valeur de la page n'est
+pas la liste (que `help` donne), c'est **qui écrit quoi** — trois journaux viennent de l'invité et
+sont donc falsifiables par l'étudiant, deux sont écrits par l'hôte et ne le sont pas. Cette
+information n'est nulle part dans `help`, et c'est elle qui décide d'une notation.
+
+Arbitrage retenu : **la doc nomme, et le banc compare**. Le § 11 porte un tableau des cinq
+journaux, et `doc-bench.sh` extrait ces noms du Markdown pour les confronter à `.logs` de `help` —
+la coïncidence devient une **propriété mesurée à chaque passage**, plus une promesse d'auteur.
+C'est la 9ᵉ application de la règle d'unicité, sous une forme nouvelle : les huit précédentes
+*demandaient* la liste au serveur (client, vérificateur, traducteur, complétion) ; celle-ci la
+**cite et la fait vérifier**, parce qu'un lecteur humain n'exécute pas `help` avant de lire une
+phrase.
+
+**Livré.** (a) Guide, § 11 neuf (« Recipe E — the journals ») : la forme de `log`, les cinq
+journaux et leurs deux natures, le `grep '^!! FAILED'` qui vaut pour une machine, un routeur **et**
+un switch, les **trois** refus qui ne disent pas la même chose (attendre l'invité / démarrer le
+composant / relancer Marionnet avec l'option), les deux plafonds de nature différente, `switch-info`
+en miroir, et les options d'enregistrement — sections suivantes renumérotées (11→15), une seule
+ancre interne à corriger. (b) **`doc-src/exam-mode.md`**, note utilisateur en anglais destinée à
+l'enseignant : ce que la session enregistre, ce que l'extinction **gracieuse** archive dans le
+`.mar`, ce qui est falsifiable et ce qui ne l'est pas, et les limites **mesurées** (images SysV
+sans séquence d'arrêt, image de routeur de 2014 qui ne boote pas, rapport Markdown lu aujourd'hui
+comme du texte brut — c'est l'épisode 10). (c) Deux exemples exécutables, `04-journals.sh` et
+`05-exam-session.sh`, joués **tels quels** par les bancs, comme les trois précédents.
+
+**Ce que l'écriture des exemples a mis au jour.** `wait <c> --state=off` **ne suffit pas** à
+garantir que l'archivage du mode examen est fini : la transition d'état précède l'import
+(`gracefully_shutdown_right_now` archive **puis** détruit, mais l'état est déjà passé), si bien
+qu'un script qui lit `documents` juste après peut lire un treeview encore vide. Le piège de
+l'épisode 7 était donc **plus fin** que ce qu'on en avait écrit : l'attente de l'état est
+nécessaire, pas suffisante. L'exemple 05 attend donc, en plus et de façon **bornée**, que le
+treeview se remplisse — jamais un `sleep` fixe, jamais une attente infinie — et le dit dans son
+commentaire. Corollaire côté banc : puisque l'exemple **fait** l'extinction gracieuse de la
+machine, la section E4b d'`exam-bench.sh` ne l'éteint plus qu'à la condition qu'elle tourne
+encore.
+
+Et un mot qui n'est pas un détail : un exemple joué par un banc **ne peut pas mentir longtemps**.
+C'est la seule forme de documentation que ce chantier considère comme livrée.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1077,3 +1128,37 @@ d'un relais qu'elle n'atteint jamais ; on lui coupe donc le courant, ce qui est 
 pour un invité sans init vivant. Une troisième, dans `journal-bench.sh` : le discriminant de
 l'épisode 6 coupe le courant « en plein boot », et 8 s ne l'étaient plus assez sur cette machine —
 le relais avait le temps d'écrire. Ramené à 5 s.
+
+### 2026-08-12 — Épisode 9 : la documentation, et le droit de nommer
+
+**Ce que l'épisode a livré** (détail et arbitrage : § 4.9) : le § 11 neuf du guide
+`doc-src/scripting/README.md` (« Recipe E — the journals » : le verbe `log`, les cinq journaux et
+leurs deux natures, les trois refus, les deux plafonds, `switch-info` en miroir, les options
+d'enregistrement), la note utilisateur **`doc-src/exam-mode.md`** pour l'enseignant qui ne pilote
+pas Marionnet par script, et deux exemples versionnés — `04-journals.sh` et `05-exam-session.sh` —
+joués **tels quels** par les bancs. Sections suivantes du guide renumérotées (11→15), une ancre
+interne et un renvoi de `useful-scripts/mrn-check` (« § 12 » → « § 13 ») corrigés en conséquence.
+
+**Le seul point de conception**, et il a été tranché explicitement : la doc **nomme** les cinq
+journaux (sans quoi elle n'apprendrait rien : `help` donne la liste, pas *qui écrit quoi*), et le
+banc **compare** ce tableau à `.logs` de `help` à chaque passage. La règle d'unicité n'est pas
+contournée, elle est appliquée sous une forme neuve : citer, et faire vérifier la citation.
+
+**Ce que la mesure a corrigé.** Écrire l'exemple 05 a montré que `wait <c> --state=off` **ne
+suffit pas** pour lire `documents` : la transition d'état précède l'import du mode examen. Le
+piège noté à l'épisode 7 était donc plus fin qu'écrit — l'attente de l'état est nécessaire, pas
+suffisante. L'exemple attend en plus, de façon bornée, que le treeview se remplisse ; et puisque
+l'exemple fait lui-même l'extinction gracieuse de la machine, la section E4b d'`exam-bench.sh` ne
+l'éteint plus qu'à la condition qu'elle tourne encore. Deuxième correction, mineure : la table MAC
+d'un switch démarré **après** ses machines est légitimement vide (rien n'a traversé depuis), ce
+que l'exemple dit désormais au lieu d'afficher une section muette.
+
+**Mesures.** `doc-bench.sh` : **62 assertions, 0 échec** (46 avant l'épisode ; +16, dont le garde
+anti-dérive du tableau, les refus de `log` sur un câble et sur un journal absent, et les quatre
+tables de `switch-info`). `exam-bench.sh` : **74 assertions, 0 échec** (73 avant), la section neuve
+**E6** jouant `05-exam-session.sh` tel quel — et, en contre-épreuve `EXAM=0`, exigeant de lui qu'il
+**refuse** (code 2) au lieu de collecter du vide. Le **premier** passage d'`exam-bench.sh` a rendu
+2 échecs, tous deux imputables à l'image de routeur de 2014 restée `on` après son `poweroff` (d'où
+un `close` expiré) : le même échec s'était déjà produit à l'épisode 8 puis avait disparu sans
+qu'une ligne change, et le second passage est vert. Aucune ligne de banc n'a été relâchée pour
+l'obtenir.

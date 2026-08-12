@@ -19,7 +19,7 @@
 # mrn-check — check a .mrn batch file before feeding it to `marionnet-ctl -f`, and translate it
 # into the shell script it is the declarative half of (--to-bash, also reachable as mrn2sh).
 #
-# A .mrn file is one channel request per line (doc-src/scripting/README.md § 12). Sending it
+# A .mrn file is one channel request per line (doc-src/scripting/README.md § 13). Sending it
 # blind means finding the fifth line's mistake after the first four have already changed the
 # project: batch mode has no transaction. This checks the file first, and sends nothing.
 #

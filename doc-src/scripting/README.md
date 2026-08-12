@@ -30,7 +30,7 @@ That is the whole setup. The option does three things:
 2. it switches Marionnet to **script mode**: the windows Marionnet opens *by itself* — the
    splash screen, the summary of the adaptations made to an old project, a load error — are
    captured and closed instead of waiting for a human who is not there (see
-   [§ 11](#11-the-windows-that-open-by-themselves));
+   [§ 12](#12-the-windows-that-open-by-themselves));
 3. it changes nothing else. The GUI is the same GUI, and a human can keep using it while a
    script drives it.
 
@@ -568,7 +568,116 @@ to act on.
 
 ---
 
-## 11. The windows that open by themselves
+## 11. Recipe E — the journals
+
+The tables of § 10 say what *Marionnet* knows. The journals say what happened **inside**: what
+the boot did, whether the startup configuration failed and where, what was typed at the prompt,
+and what the console and the terminal window showed.
+
+```bash
+mrnctl log m1                          # the startup configuration — the default journal
+mrnctl log m1 boot --tail=40           # what the boot did before the relay was reached
+mrnctl -q .content log m1 commands     # what was typed, one line per command
+mrnctl -q .content log sw1             # a switch, too, journals what vde_switch answered
+```
+
+A journal is a **file**, and that is the difference with everything else in this guide: it
+outlives what it describes. A machine which has been powered off still answers `log`, and a
+switch answers about a `vde_switch` which is long gone.
+
+Five journals, of two natures — three written by the guest itself, in the hostfs directory of
+§ 9, and two written by Marionnet on the host side:
+
+| Journal | Written by | Holds |
+|---|---|---|
+| `rc_config` | the guest, in its hostfs | the trace of the startup configuration, its output, its errors, and the status of the command which failed. A **switch** has this one too, written by Marionnet from what `vde_switch` answered |
+| `boot` | the guest, in its hostfs | what the boot did *before* the relay was reached: the kernel ring buffer, the failed units, or an excerpt of `/var/log` on an older guest |
+| `commands` | the guest, at every prompt | the timestamped history of what was typed — a `#<epoch>` line before each command |
+| `console` | Marionnet, host side | the console of the UML process itself, which shows a boot that never reaches the relay at all |
+| `terminal` | Marionnet, host side | the recorded terminal session: the commands **and** their output, as the student saw them |
+
+The three first ones are always there. The two last ones exist only if the session was started
+for it (`--console-log`, `--terminal-log`, both implied by `--exam` — see below), because
+recording a session in silence would be surveillance rather than teaching.
+
+That list lives in the running Marionnet, not on this page: `help` publishes it under `logs`,
+and every answer repeats, under `available`, the journals **this** component has — five for a
+machine or a router, one for a switch, none for a cable.
+
+Because the failing line has the same shape wherever it comes from, one `grep` covers a
+machine, a router and a switch:
+
+```bash
+mrnctl -q .content log m1 | grep '^!! FAILED'
+```
+
+### A missing journal is three different pieces of news
+
+`log` refuses a file which is not there yet, and the refusal says what to do about it — whether
+to wait for the guest, to start the component, or to restart Marionnet with an option:
+
+```bash
+mrnctl log m1 boot
+# {"ok":false,"error":"bad_argument","detail":"\"m1\" has written no boot journal yet (…):
+#  it has not been started since this project was opened, or its guest has not reached the end
+#  of its boot — see wait --ready"}
+```
+
+Distinguishing those three is what lets a script decide by itself: `wait --ready` and try
+again, `start` and try again, or give up and tell the human which option the session lacks.
+
+### What the answer promises
+
+The content comes back in the `content` field, as one JSON line like every other answer, and
+two ceilings apply — they are not of the same nature:
+
+* the **answer** carries at most 400 lines; `--tail=<n>` moves that window, and `truncated`
+  says the file held more (`total_lines` says how much more);
+* the **reader** stops at 2 MiB, because the file is written by a guest which has no reason to
+  be reasonable.
+
+A line which is not valid UTF-8 is dropped and **counted** (`dropped_lines`) rather than
+served: the answer has to remain a single JSON line.
+
+### What a switch knows right now
+
+`switch-info` is the mirror of `log`. One serves what was *written*, and survives; the other
+asks a running `vde_switch` what it currently *knows*, which is written down nowhere and dies
+with it:
+
+```bash
+mrnctl switch-info s1                  # every table, in one round trip
+mrnctl switch-info s1 macs             # or just one, positionally or with --table=
+
+mrnctl -q '.tables[] | select(.name=="macs") | .entries[].mac' switch-info s1
+```
+
+Each table carries `entries`, parsed into fields, **and** `lines`, the switch's own words —
+no parser of ours is a reason to lose them. A table the switch refused carries its code and
+its message instead. Here too the names are published by `help`, as `switch_tables`.
+
+A switch which is not running refuses, and names the other verb: what it said at startup
+outlives it, and that is `log`.
+
+### Recording a session
+
+Two options at startup, both implied by `--exam`:
+
+| Option | What it records |
+|---|---|
+| `--console-log` | the console of each virtual machine, into the project's directory |
+| `--terminal-log` | the terminal session of each virtual machine, replayable with `scriptreplay` |
+
+They matter for two different reasons. A console shows a boot which never gets far enough to
+write anything in a hostfs — the failure a script cannot otherwise see. And both are written
+by the host, hence out of the guest's reach, where the three journals of the hostfs are
+writable from inside the guest: of those two, the terminal recording is the one that holds the
+commands together with their output, which is what makes marking defensible. On the exam mode
+itself, and what it archives into the project file, see `doc-src/exam-mode.md`.
+
+---
+
+## 12. The windows that open by themselves
 
 Marionnet sometimes opens a window nobody asked for: the splash screen, the summary of what
 had to be adapted when loading an old project, an error. In a driven session there is nobody
@@ -591,7 +700,7 @@ long a captured window is given before it is closed.
 
 ---
 
-## 12. Batch mode
+## 13. Batch mode
 
 One command per line, read from a file or from standard input:
 
@@ -698,7 +807,7 @@ overwrites it, and the generated header says so.
 
 ---
 
-## 13. When it does not work
+## 14. When it does not work
 
 | Symptom | Cause and cure |
 |---|---|
@@ -717,13 +826,17 @@ never have to configure both.
 
 ---
 
-## 14. Going further
+## 15. Going further
 
 * `mrnctl help` — the vocabulary, always current.
 * `mrnctl --help` — the client's own options.
-* `mrn-check --help` — checking a `.mrn` before sending it (§ 12).
+* `mrn-check --help` — checking a `.mrn` before sending it (§ 13).
+* `doc-src/exam-mode.md` — the exam mode: what a session records, and what ends up in the
+  project file (for the teacher, with or without this channel).
 * `docs/pilotage-par-script.md` — the design of the channel, its rationale, and the journal of
   how it was built (in French, developer audience).
+* `docs/journalisation-profonde.md` — the design of the journals of § 11 (in French, developer
+  audience).
 * `doc-src/scripting/examples/` — the scripts of this guide, runnable as they are.
 
 ### How this guide stays true

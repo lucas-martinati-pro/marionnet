@@ -265,7 +265,19 @@ Reprise : appliquer le skill `chantier-long`.
   en mesurant : `Treeview_documents#import_document` acceptait un `~move` et ne le transmettait
   **jamais** à `import_file`, si bien que tout import était une copie ; corrigé, intentions
   rendues explicites — rapport et historique **copiés** (déplacer `bash_history.text` ferait taire
-  `log … commands` après une extinction), seule la copie nettoyée du terminal déplacée). Deux faits
+  `log … commands` après une extinction), seule la copie nettoyée du terminal déplacée) ;
+  **ép. 9 fait 2026-08-12** (la **documentation utilisateur**, la première du chantier : § 11 neuf
+  du guide `doc-src/scripting/README.md` — « Recipe E — the journals », d'où une renumérotation
+  11→15 — la note **`doc-src/exam-mode.md`** pour l'enseignant qui ne pilote pas Marionnet par
+  script, et deux exemples versionnés joués **tels quels** par les bancs. Tension tranchée
+  explicitement : l'invariant d'unicité interdit de recopier la grammaire, mais un § qui ne
+  nommerait aucun journal n'apprendrait rien — la valeur de la page est **qui écrit quoi** (trois
+  journaux vivent dans un hostfs que l'étudiant peut réécrire, deux sont écrits par l'hôte), ce que
+  `help` ne dit pas ; donc la doc **cite** et le banc **compare** ce tableau à `.logs` de `help` à
+  chaque passage. Corrigé par la mesure : `wait <c> --state=off` **ne suffit pas** pour lire
+  `documents` — la transition d'état précède l'import du mode examen — d'où une attente **bornée**
+  du treeview dans l'exemple, et une section d'`exam-bench.sh` devenue idempotente puisque
+  l'exemple éteint la machine lui-même). Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
   `/mnt/hostfs/{<image>.,marionnet-}relay*` en ordre alphabétique, donc un **prologue** et un
