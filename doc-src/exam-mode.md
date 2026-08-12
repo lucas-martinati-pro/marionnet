@@ -49,15 +49,28 @@ Two consequences worth knowing:
 A document is opened by double-clicking it, as any imported document. Reports are Markdown, and
 they open **rendered**, in the browser Marionnet is configured to use (`MARIONNET_HTML_READER`,
 `xdg-open` by default). Their **source** is one gesture away: right-click the document and choose
-*Show and edit the source*, which opens it in a syntax-coloured editor — where a corrector can
-also annotate it, the document of the project being written back on `OK`.
+*Show the source*, which opens it in a syntax-coloured window.
+
+Whether that window lets you **write** depends on who is in front of it, and this is deliberate:
+
+* **during the exam** — Marionnet started with `--exam` — the source is **read-only**. The
+  student can read what their session produced; they cannot rewrite their own copy from the
+  interface;
+* **afterwards**, when the teacher (or a script, or an agent) reopens the same project **without**
+  `--exam`, the very same gesture opens an editor: annotating a report is then one of the reasons
+  the archive exists, and `OK` writes it back into the project.
 
 Three things are worth knowing about that rendering, because they concern a document on which a
 mark may rest:
 
 * the conversion is done **by Marionnet itself**, not by a converter of the host. The page is
   therefore **the same everywhere** — the same on the student's machine, on yours, and on the
-  machine of whoever opens the archive later;
+  machine of whoever opens the archive later. It is not written anywhere either: Marionnet
+  **serves** it on `127.0.0.1`, under an unguessable address, for the couple of minutes a browser
+  needs to fetch it, then stops. This is what makes it work with a browser installed as a snap or
+  a flatpak — those are confined and would not see a file left in `/tmp` — and it leaves nothing
+  behind. The counterpart: reloading that tab much later gives an error, ask for the document
+  again;
 * the report is written **inside the guest**, so on a machine the student controls. Any raw HTML
   it may contain is **not** given to the browser: it is dropped, and the page says so in its
   place, in red. Nothing written in a report can run in the page you read. What was dropped

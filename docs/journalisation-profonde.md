@@ -163,8 +163,10 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **8** | **Le terminal de l'étudiant, enregistré** (option `--terminal-log`, implicite en `--exam`) : Marionnet substitue son enregistreur au premier champ de `xterm=` et `script(1)` capture ce qui traverse la fenêtre ; 5ᵉ journal du verbe `log`, nommé `terminal`, archivé **nettoyé** dans `documents` (cf. § 4.8) | un témoin écrit sur `/dev/tty0` apparaît dans `log … terminal` et **pas** dans `log … console` — **fait** (2026-08-12) |
 | **9** | **Documentation + exemples exécutables + banc** : § 11 neuf du guide `doc-src/scripting/` (les cinq journaux, leurs deux natures, `switch-info` en miroir), note utilisateur `doc-src/exam-mode.md` pour l'enseignant, et deux exemples versionnés — `04-journals.sh`, `05-exam-session.sh` (cf. § 4.9) | les exemples de la doc sont joués **tels quels** par le banc, et le tableau des journaux du guide est **comparé** à ce que `help` publie — **fait** (2026-08-12) |
 | **10** | **Lire un rapport Markdown depuis la GUI** : conversion **interne** (cmarkit, `~safe:true`) puis navigateur au double-clic, et la **source** à un geste — menu contextuel, fenêtre GtkSourceView éditable. Deux défauts antérieurs tombent avec : l'extension perdue à l'import et le lecteur HTML mort (`galeon`), sans quoi le rendu n'irait nulle part (cf. § 4.10) | un double-clic sur le rapport d'un composant, dans le treeview `documents`, le donne à lire **rendu** — **fait** (2026-08-12) |
-| **11** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→9 opérationnels |
-| **12** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
+| **11** | **La page que le navigateur ne pouvait pas lire** : le rendu de l'épisode 10 était écrit dans `/tmp`, invisible d'un navigateur **confiné** (le Firefox snap d'Ubuntu a un `/tmp` privé, et son profil AppArmor exclut les fichiers **cachés** du home). La page n'est plus écrite nulle part : elle est **servie** sur la boucle locale, sous une URL à jeton, le temps qu'un navigateur la prenne (cf. § 4.11) | le double-clic **affiche** le rapport, mesuré fenêtre à l'appui, là où la même page rendait « Erreur de chargement » — **fait** (2026-08-12) |
+| **12** | **La course de l'extinction, et le droit d'écrire** : deux machines qui s'éteignent en même temps écrivaient dans le même treeview depuis deux threads (des champs retombaient sur le défaut de leur colonne, « Please edit this ») ; et la source d'un document était éditable **pendant** l'examen. L'import passe par l'acteur, et la fenêtre source est **en lecture seule** sous `--exam` (cf. § 4.12) | l'onglet Documents après extinction de deux machines ne porte plus aucun champ par défaut ; et sous `--exam` la fenêtre source n'a plus de bouton pour valider — **fait** (2026-08-12) |
+| **13** *(opt.)* | Vérificateur à l'exécution : assertions déclaratives, compagnon de `mrn-check` | à concevoir seulement une fois 1→12 opérationnels |
+| **14** *(opt.)* | Skill de conception/vérification de TP pour agent | idem |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -845,6 +847,92 @@ qui répondent. Reste hors de sa portée le câblage GUI lui-même — geste hum
 seule sans paquet Debian/Ubuntu (vérifié le 2026-08-12). Le `Makefile` le dit à l'endroit où le
 chantier `modernisation-installation-marionnet` viendra le lire.
 
+### 4.11 Ce que l'épisode 11 a livré (et le navigateur qui ne voit pas `/tmp`)
+
+L'épisode 10 était livré, committé, et son banc vert. Il restait le geste que rien n'automatisait
+— le double-clic. Joué (avec `xdotool`, que l'auteur venait d'installer), il a **échoué** : le
+rapport s'ouvrait bien dans Firefox, sur *« Erreur de chargement de la page »*.
+
+**La cause n'est pas dans le rendu, elle est dans l'emplacement.** Le Firefox d'Ubuntu est un
+**snap**, et `snap-confine` donne à chaque snap un `/tmp` **privé** : la page écrite dans le
+`/tmp` de l'hôte n'existe tout simplement pas pour lui. Son profil AppArmor est explicite sur le
+reste — `owner @{HOME}/[^s.]**`, c'est-à-dire le home **moins ses fichiers cachés** (le
+commentaire du profil dit « to prevent reading dotfiles ») : `~/.marionnet/` aurait échoué
+pareillement.
+
+**Le premier correctif a été refusé, et à raison.** Il posait la page dans un répertoire **non
+caché** du home (`~/marionnet-rendered/`) — le seul endroit qu'un navigateur deb, snap ou flatpak
+peuvent tous lire. C'est céder deux fois : créer un répertoire visible chez l'utilisateur pour un
+fichier **recalculé à chaque lecture**, et le faire à cause d'un choix d'empaquetage d'une
+distribution. L'auteur a demandé d'autres pistes ; quatre ont été mises sur la table (écarter les
+navigateurs confinés ; servir la page ; rendre le Markdown dans une fenêtre Gtk+ ; refuser
+explicitement), et c'est **servir la page** qui a été retenu.
+
+**Ce qui est livré : la page n'est écrite nulle part.** Elle est servie sur `127.0.0.1`, sur un
+port éphémère, sous un chemin qui est un **jeton de 128 bits** tiré de `/dev/urandom`, par le
+serveur d'ocamlbricks (`Network.stream_inet4_server`, `~no_fork:()` — jamais forker une GUI —
+`~range4:"127.0.0.1/32"` : seule la boucle locale peut se connecter). Le lecteur reçoit une URL
+au lieu d'un chemin, ce que la ligne de commande de `display` accepte sans changer d'une virgule.
+Tout navigateur, confiné ou non, a le droit d'atteindre la boucle locale : c'est la seule réponse
+qui ne dépende pas de la façon dont la machine empaquette ses logiciels — et il ne reste **rien**
+derrière, ni dans le home, ni dans `/tmp`.
+
+Le serveur se retire **de lui-même** : cinq secondes après que la page a été prise (un navigateur
+peut la demander deux fois — un rechargement, une favicon), et de toute façon au bout de deux
+minutes. Un rapport d'examen ne reste donc pas lisible depuis `localhost` pendant toute la
+session. Le repli, si la boucle locale n'est pas disponible, reste le fichier temporaire de
+l'épisode 10 : jamais rien plutôt qu'une fenêtre en moins.
+
+**Ce que l'épisode dit de la méthode.** Le banc de l'épisode 10 ne pouvait pas voir ce défaut : il
+vérifiait que la page **existe** et qu'elle est **hors du projet**, ce qui était vrai. Ce qu'il ne
+pouvait pas vérifier, c'est qu'un **autre programme, confiné, y accède** — et aucune assertion sur
+notre propre processus ne l'aurait montré. C'est le geste humain, joué une fois, qui l'a dit. La
+mesure a été rendue au banc ensuite (la forme de l'URL, la page servie, le 404 sans le jeton, le
+type MIME, le retrait automatique, et le home resté propre), mais l'ordre compte : **le banc ne
+remplace pas le premier passage réel**.
+
+**Mesuré, fenêtre à l'appui** : le double-clic sur *Report on m1* affiche le rapport **rendu**
+(titres, listes, blocs de code) ; le menu contextuel n'offre l'entrée *source* que sur la ligne
+Markdown ; la fenêtre GtkSourceView colore bien le Markdown ; `Valider` écrit l'annotation dans le
+document du projet (accents compris) et **rétablit** la lecture seule ; `Annuler` ne change pas un
+octet. Le banc de l'épisode lie désormais le **vrai** ocamlbricks construit par dune, au lieu
+d'une doublure d'`UnixExtra` : le module extrait s'appuie sur `Network`, il n'y a plus rien à
+simuler.
+
+### 4.12 Ce que l'épisode 12 a livré (la course, et qui a le droit d'écrire)
+
+Deux défauts rapportés par l'auteur après un `--exam` réel sur un projet à deux machines.
+
+**(1) Des champs retombés sur le défaut de leur colonne.** L'onglet Documents montrait des lignes
+portant « Please edit this » — la valeur par défaut d'une colonne — là où l'import venait de poser
+un titre, un type ou un auteur, et l'auteur valait tantôt « - », tantôt le nom de l'utilisateur
+(celui que `import_document` pose avant que `import_report` ne le remplace). Nondéterministe, donc
+une **course** : `import_exam_documents` s'exécute dans le thread d'**extinction** de chaque
+machine, et éteindre un laboratoire les éteint **toutes à la fois** — deux séquences
+`add_row`/`set_row_*` s'entrelaçaient dans un `GtkTreeStore` et une forêt que rien ne protège.
+
+Le correctif est la règle du dépôt, appliquée là où elle manquait (`docs/refonte-automate-composants.md`) :
+**toute mutation Gtk+ appartient au thread principal**. C'est le **geste entier** qui passe par
+l'acteur, et non chaque ligne : ce qui ne doit pas s'entrelacer est la séquence, pas l'appel isolé.
+`apply_extract` bloque jusqu'au bout, ce dont l'appelant a besoin — juste après, l'extinction
+détruit le composant et le hostfs d'où les fichiers sont copiés.
+
+**Honnêteté du banc** : `exam-race-bench.sh` lance les deux extinctions en parallèle **par le
+canal** et vérifie qu'aucun champ n'est défaillant, mais il ne **reproduit pas** la course — mesuré,
+les deux archivages tombent à ~5 s d'écart et le banc passe **aussi sans le correctif** (vérifié en
+le désactivant). Le déclencheur observé est le bouton **« Tout arrêter »** de la GUI, qui les éteint
+vraiment d'un coup. Le banc vaut donc comme **non-régression** ; la justification du correctif est
+le code et la discipline, pas ce passage.
+
+**(2) L'étudiant pouvait éditer sa copie.** L'épisode 10 avait donné à la fenêtre source le droit
+d'écrire — pensé pour le **correcteur** qui annote un rapport. En mode examen, c'est l'étudiant qui
+est devant l'écran : lire ce que sa session a produit est légitime, le réécrire ne l'est pas. La
+fenêtre `Gui_source_editing` reçoit donc un `?read_only` (vue non éditable, **un seul** bouton, qui
+ferme — pas un `OK` grisé, qui laisserait croire qu'on pourrait valider en sachant s'y prendre), et
+le treeview le passe quand `Initialization.are_we_in_exam_mode`. L'entrée de menu change de nom en
+conséquence (« Show the source » / « Show and edit the source ») : le libellé dit ce que le geste
+fait **ici**. Hors examen — l'enseignant, un script, un agent qui rouvre le projet — rien ne change.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -875,11 +963,13 @@ chantier `modernisation-installation-marionnet` viendra le lire.
   un TP doit être noté sur une vieille image.
 - Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7) ; le code, lui,
   est symétrique depuis l'épisode 7.
-- **Les pages rendues de l'épisode 10 s'accumulent** dans le répertoire temporaire (une par
-  lecture, quelques kio) : elles ne sont pas supprimées, et c'est délibéré — le navigateur est
-  lancé en asynchrone, effacer le fichier derrière lui reviendrait à courir contre son
-  chargement. `systemd-tmpfiles` s'en charge. À rouvrir seulement si quelqu'un lit des centaines
-  de rapports dans une même session.
+- **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
+  recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
+  document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
+- **L'entrée de menu de l'épisode 10 n'est pas traduite** (« Show and edit the source of this
+  document » apparaît en anglais au milieu d'un menu français), non plus que « Source of ». Les
+  douze catalogues sont également dépourvus des deux chaînes : c'est une passe i18n
+  (`gettext-messages-pot` puis `msgmerge`), pas un correctif de ce chantier.
 - **Constaté à l'épisode 7, hors périmètre** : sur une `debian-wheezy`, `rc_config.log` ne porte
   que son en-tête — la capture du prologue (épisode 1) n'y attrape rien, alors que le `set -x`
   fonctionne (mesuré : la trace part bien dans un fichier que le scénario redirige lui-même). Le
@@ -1309,3 +1399,63 @@ Contrairement aux deux autres elle n'a **aucun paquet Debian/Ubuntu** (vérifié
 elle vient d'opam ou devra être *vendored*. Noté dans le `Makefile` à l'intention du chantier
 `modernisation-installation-marionnet`, qui devra la répercuter dans `Build-Depends`,
 `BuildRequires` et l'image Docker.
+
+### 2026-08-12 — Épisode 11 : la page que le navigateur ne pouvait pas lire
+
+**Le geste manquant a parlé.** L'épisode 10 était committé et son banc vert ; restait le
+double-clic, que rien n'automatisait. Joué avec `xdotool`, il a échoué sur *« Erreur de chargement
+de la page »* : le Firefox d'Ubuntu est un **snap**, et `snap-confine` lui donne un `/tmp`
+**privé**. La page rendue, écrite dans le `/tmp` de l'hôte, n'existait pas pour lui. Le profil
+AppArmor dit le reste : `owner @{HOME}/[^s.]**` — le home **sans ses fichiers cachés** — donc
+`~/.marionnet/` n'aurait rien arrangé.
+
+**Le premier correctif (un répertoire non caché du home) a été refusé par l'auteur**, et à raison :
+créer un répertoire visible chez l'utilisateur pour un fichier recalculé à chaque lecture, à cause
+d'un choix d'empaquetage d'une distribution, c'est céder deux fois. Quatre pistes ont été mises sur
+la table ; celle retenue supprime la question au lieu de la déplacer.
+
+**Livré** (détail : § 4.11) : la page n'est **écrite nulle part**. Elle est servie sur
+`127.0.0.1`, port éphémère, chemin = jeton de 128 bits, par `Network.stream_inet4_server`
+(`~no_fork:()`, `~range4:"127.0.0.1/32"`). Le lecteur reçoit une URL là où il recevait un chemin —
+`display` n'a pas changé d'une ligne. Le serveur se retire seul : 5 s après que la page a été
+prise, 2 min au plus. Repli sur le fichier temporaire si la boucle locale échoue.
+
+**Ce que l'épisode enseigne sur la méthode** : le banc de l'épisode 10 ne pouvait pas voir ce
+défaut. Il vérifiait que la page existe et qu'elle est hors du projet — c'était vrai. Ce qu'aucune
+assertion sur notre propre processus ne pouvait montrer, c'est qu'un **autre programme, confiné,
+y accède**. Le banc a reçu la mesure ensuite, mais l'ordre compte : il ne remplace pas le premier
+passage réel.
+
+**Mesures.** `markdown-bench.sh` : **50 assertions, 0 échec** (47 avant l'épisode) — dont la forme
+de l'URL, la page réellement servie et son `Content-Type`, le **404** sur un chemin sans le jeton,
+le **retrait automatique** du serveur, et le home resté propre. Le banc lie maintenant le vrai
+`ocamlbricks` construit par dune (le module extrait utilise `Network` : il n'y avait plus rien à
+simuler). Et le bout en bout GUI, cette fois **joué** : double-clic → rapport affiché rendu ;
+entrée de menu présente sur la seule ligne Markdown ; source coloriée ; `Valider` écrit
+l'annotation (accents compris) dans le document du projet et rétablit la lecture seule ;
+`Annuler` ne change pas un octet. Deux pièges de la conduite au clavier, notés pour la prochaine
+fois : la colonne **Titre est éditable**, donc un clic y ouvre une saisie et le double-clic
+n'active jamais la ligne (viser la colonne **Icône**) ; et un menu Gtk+ est une **fenêtre X à
+part**, invisible d'une capture de la fenêtre principale.
+
+### 2026-08-12 — Épisode 12 : la course de l'extinction, et le droit d'écrire
+
+**Deux défauts rapportés par l'auteur** après un `--exam` réel à deux machines (détail : § 4.12).
+
+**La course.** L'onglet Documents portait des « Please edit this » — le défaut d'une colonne — et
+des auteurs incohérents : `import_exam_documents` tourne dans le thread d'extinction de chaque
+machine, et deux extinctions simultanées écrivaient dans le même `GtkTreeStore`. Le geste **entier**
+passe désormais par `GMain_actor.apply_extract` : ce qui ne doit pas s'entrelacer est la séquence,
+pas l'appel isolé. C'est la règle du dépôt appliquée à un endroit qui y avait échappé.
+
+**Le droit d'écrire.** La fenêtre source de l'épisode 10 était éditable pour tout le monde ; en mode
+examen, c'est l'**étudiant** qui est devant l'écran. `Gui_source_editing.window` reçoit un
+`?read_only` (vue non éditable, un seul bouton qui ferme) et le treeview le passe sous `--exam` ;
+le libellé du menu change avec lui. Hors examen, rien ne change : annoter un rapport reste ce pour
+quoi le geste existe.
+
+**Mesures.** `exam-race-bench.sh` (neuf) : deux machines, extinctions lancées en parallèle,
+8 documents, aucun champ défaillant, tous les auteurs « - ». **Et une honnêteté à consigner** : ce
+banc ne reproduit pas la course (les deux archivages tombent à ~5 s d'écart ; il passe aussi sans
+le correctif, vérifié en le désactivant). Le déclencheur réel est « Tout arrêter » dans la GUI, qui
+éteint tout d'un coup ; le banc vaut comme non-régression, pas comme discriminant.

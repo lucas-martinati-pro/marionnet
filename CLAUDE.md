@@ -293,7 +293,33 @@ Reprise : appliquer le skill `chantier-long`.
   valait **`galeon`**, mort vers 2010, sans que rien ne le signale (`display` lance
   `«lecteur 'f' &»` : le shell sort 0 quoi qu'il arrive) — les lecteurs sont désormais **vérifiés**,
   avec repli sur `xdg-open`. **3ᵉ dépendance de build** après `yojson`/`base64`, et la seule
-  **sans paquet Debian/Ubuntu** : à répercuter par `modernisation-installation-marionnet`).
+  **sans paquet Debian/Ubuntu** : à répercuter par `modernisation-installation-marionnet`) ;
+  **ép. 11 fait 2026-08-12** (le geste GUI enfin **joué** — `xdotool` — a fait tomber l'ép. 10 :
+  le Firefox d'Ubuntu est un **snap**, `snap-confine` lui donne un `/tmp` **privé**, donc la page
+  rendue dans le `/tmp` de l'hôte s'ouvrait sur « Erreur de chargement » ; son profil AppArmor
+  accorde `owner @{HOME}/[^s.]**`, le home **sans ses fichiers cachés**, donc `~/.marionnet/`
+  n'aurait rien arrangé. Un premier correctif posait la page dans un répertoire **visible** du
+  home : **refusé** (céder deux fois — un répertoire chez l'utilisateur, pour un fichier recalculé
+  à chaque lecture, à cause d'un empaquetage de distribution). Retenu à la place : la page n'est
+  **écrite nulle part**, elle est **servie** sur `127.0.0.1` (port éphémère, chemin = jeton de
+  128 bits, `Network.stream_inet4_server ~no_fork:() ~range4:"127.0.0.1/32"`), et le serveur se
+  retire seul — 5 s après la prise, 2 min au plus. Le lecteur reçoit une URL là où il recevait un
+  chemin : `display` n'a pas changé. Leçon de méthode : le banc de l'ép. 10 ne **pouvait pas** voir
+  ce défaut — qu'un **autre programme, confiné, accède** au fichier ne se mesure pas depuis notre
+  processus. Pièges de conduite au clavier : la colonne **Titre est éditable** — un clic y ouvre une
+  saisie et le double-clic n'active jamais la ligne, viser **Icône** — et un menu Gtk+ est une
+  **fenêtre X à part**, invisible d'une capture de la fenêtre principale) ;
+  **ép. 12 fait 2026-08-12** (deux défauts d'un `--exam` réel : (a) **course** — l'import du mode
+  examen tourne dans le thread d'**extinction** de chaque machine, et deux extinctions simultanées
+  écrivaient dans le même `GtkTreeStore` : des champs retombaient sur le **défaut de leur colonne**
+  (« Please edit this »). Le **geste entier** passe désormais par `GMain_actor.apply_extract` — ce
+  qui ne doit pas s'entrelacer est la séquence, pas l'appel isolé ; la règle du dépôt, appliquée là
+  où elle manquait. Le banc `exam-race-bench.sh` est une **non-régression, pas un discriminant** :
+  il ne reproduit pas la course (archivages à ~5 s d'écart, il passe aussi sans le correctif —
+  vérifié), le déclencheur réel étant « Tout arrêter » dans la GUI. (b) **droit d'écrire** : la
+  fenêtre source de l'ép. 10 est **en lecture seule sous `--exam`** — c'est l'étudiant qui est
+  devant l'écran — et éditable quand l'enseignant ou un agent rouvre le projet sans `--exam` ;
+  `Gui_source_editing.window` a gagné un `?read_only`, et le libellé du menu change avec lui).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**

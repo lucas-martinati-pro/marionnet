@@ -30,6 +30,7 @@ module StringExtra = Ocamlbricks.StringExtra
 module FilenameExtra = Ocamlbricks.FilenameExtra
 module Stateful_modules = Ocamlbricks.Stateful_modules
 module Egg = Ocamlbricks.Egg
+module Network = Ocamlbricks.Network
 (* --- *)
 
 open Gettext
@@ -214,16 +215,123 @@ p.omitted { color: #a00; font-style: italic; }
          | Some fragment -> fragment
          | None -> by_cmarkit markdown)
 
-  (* The rendered page is written OUTSIDE the project: the documents directory is what goes into
-     the .mar, and a rendering is not a document -- it is recomputed at every reading. Returning
-     [None] on failure is what keeps the historical behaviour reachable (the text editor). *)
-  let html_copy_of ~(title:string) ~(pathname:string) : string option =
+  (* WHERE the page goes is not a detail, and episode 10 got it wrong: MEASURED on a Kubuntu
+     24.04, a snap-confined browser -- the Firefox Ubuntu installs by default -- is given a
+     PRIVATE /tmp by snap-confine, so a page written in the host's /tmp opens as "page load
+     error". Its AppArmor profile is explicit about the rest: it grants `@{HOME}/[^s.]**', i.e.
+     the home MINUS its dotfiles ("to prevent reading dotfiles"), so ~/.marionnet would fail just
+     the same, and a non-hidden directory of the home is an intrusion this program has no reason
+     to commit for a page which is recomputed at every reading.
+
+     So the page is not written anywhere: it is SERVED, on the loopback, under an unguessable
+     path, for the time it takes a browser to fetch it. Every browser -- deb, snap, flatpak --
+     is allowed to reach 127.0.0.1, which makes this the one answer that does not depend on how
+     the machine happens to package its software. Nothing is left behind either.
+
+     The server is the one of ocamlbricks (Network.stream_inet4_server), which returns the
+     ephemeral port it obtained and registers what it takes to be killed later. *)
+
+  (* 128 bits from the kernel: the URL is the only thing protecting the page from another local
+     user during the few seconds it is served. *)
+  let fresh_token () : string =
+    try
+      let ic = open_in_bin "/dev/urandom" in
+      let s = really_input_string ic 16 in
+      let () = close_in ic in
+      String.concat "" (List.map (fun c -> Printf.sprintf "%02x" (Char.code c))
+                          (List.init 16 (String.get s)))
+    with _ -> Printf.sprintf "%d%f" (Unix.getpid ()) (Unix.gettimeofday ())
+
+  (* The whole of HTTP we need: one request line to read, one answer to write. HTTP/1.0 plus
+     `Connection: close' so that the browser does not wait for a second request on a connection
+     nobody will serve. *)
+  let http_answer ~(status:string) ~(body:string) : string =
+    Printf.sprintf
+      "HTTP/1.0 %s\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: %d\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n%s"
+      status (String.length body) body
+
+  (* Serve [content] on the loopback and return the URL to give to the browser. The server stops
+     itself: a few seconds after the page has been fetched (the browser may ask twice -- a reload,
+     a favicon), and in any case after [lifetime] seconds, so that a report does not stay readable
+     from localhost for the whole session. *)
+  let serve_on_loopback ?(lifetime=120.) ~(content:string) () : string option =
+    try
+      let token = fresh_token () in
+      let path = "/" ^ token in
+      let served_at : float option ref = ref None in
+      let protocol (channel : Network.stream_channel) =
+        let request = try channel#input_line () with _ -> "" in
+        (* "GET /<token> HTTP/1.1" -- the target is the second word. *)
+        let target =
+          match String.split_on_char ' ' (String.trim request) with
+          | _ :: target :: _ -> target
+          | _                -> ""
+        in
+        (* Drain the headers: answering before the request is complete would reset the connection
+           on some clients. Bounded, because the peer is not necessarily a browser. *)
+        let rec drain n =
+          if n > 0 then
+            match (try String.trim (channel#input_line ()) with _ -> "") with
+            | "" -> ()
+            | _  -> drain (n - 1)
+        in
+        let () = drain 64 in
+        let answer =
+          if target = path then begin
+            served_at := Some (Unix.gettimeofday ());
+            http_answer ~status:"200 OK" ~body:content
+          end else
+            http_answer ~status:"404 Not Found"
+              ~body:"<!DOCTYPE html><meta charset=\"utf-8\"><p>Not here.</p>"
+        in
+        channel#send answer
+      in
+      let (server_thread, ipv4, port) =
+        Network.stream_inet4_server
+          ~no_fork:()                      (* forking the GUI to serve a page: never *)
+          ~ipv4:"127.0.0.1"                (* the loopback, and nothing else *)
+          ~range4:"127.0.0.1/32"           (* and only the loopback may connect *)
+          ~max_pending_requests:2
+          ~protocol
+          ()
+      in
+      let () =
+        ignore (Thread.create
+          (fun () ->
+             let deadline = Unix.gettimeofday () +. lifetime in
+             let rec watch () =
+               Thread.delay 1.0;
+               let now = Unix.gettimeofday () in
+               match !served_at with
+               | Some t when now -. t > 5. -> ()
+               | _ when now > deadline     -> ()
+               | _                         -> watch ()
+             in
+             watch ();
+             ignore (Ocamlbricks.ThreadExtra.kill server_thread);
+             Log.printf1 "Markdown_rendering: the page served on port %d is gone\n" port)
+          ())
+      in
+      Some (Printf.sprintf "http://%s:%d%s" ipv4 port path)
+    with e ->
+      Log.printf1 "Markdown_rendering: cannot serve the page on the loopback: %s\n"
+        (Printexc.to_string e);
+      None
+
+  (* What the reader has to be given: an URL if the loopback is available, a file otherwise (the
+     temporary directory is the last resort, and it is enough for an unconfined browser).
+     [None] keeps the historical behaviour reachable -- the text editor, on the Markdown itself. *)
+  let target_of ~(title:string) ~(pathname:string) : string option =
     try
       let markdown = UnixExtra.cat pathname in
       let content = page ~title ~fragment:(fragment_of ~markdown) in
-      Some (UnixExtra.temp_file
-              ~parent:(Filename.get_temp_dir_name ())
-              ~prefix:"marionnet-document-" ~suffix:".html" ~content ())
+      match serve_on_loopback ~content () with
+      | Some url -> Some url
+      | None ->
+          Log.printf "Markdown_rendering: falling back on a file of the temporary directory\n";
+          Some (UnixExtra.temp_file
+                  ~parent:(Filename.get_temp_dir_name ())
+                  ~prefix:"marionnet-document-" ~suffix:".html" ~content ())
     with e ->
       Log.printf2 "Markdown_rendering: cannot render %s: %s\n" pathname (Printexc.to_string e);
       None
@@ -285,9 +393,9 @@ object(self)
        and keeps opening in the text editor -- the behaviour it had. *)
     let (reader, pathname) =
       if frmt = "text" && Markdown_rendering.is_markdown pathname then
-        match Markdown_rendering.html_copy_of ~title:(self#get_row_title row_id) ~pathname with
-        | Some html_pathname -> (self#format_to_reader "html", html_pathname)
-        | None               -> (self#format_to_reader frmt, pathname)
+        match Markdown_rendering.target_of ~title:(self#get_row_title row_id) ~pathname with
+        | Some target -> (self#format_to_reader "html", target)
+        | None        -> (self#format_to_reader frmt, pathname)
       else
         (self#format_to_reader frmt, pathname)
     in
@@ -315,6 +423,12 @@ object(self)
     let title = (s_ "Source of ") ^ (self#get_row_title row_id) in
     let content = try UnixExtra.cat pathname with _ -> "" in
     let result : (string option) Egg.t = Egg.create () in
+    (* Deep logging, episode 12: WHO is in front of the screen decides whether this is a viewer or
+       an editor. In exam mode it is the student, and the documents of the treeview are their own
+       copy: reading it is legitimate, rewriting it is not. Out of exam mode it is whoever reopens
+       the project -- the teacher, an agent -- and annotating a report is precisely what the
+       episode 10 gesture is for. Nothing is hidden either way: the source is READABLE in both. *)
+    let read_only = Initialization.are_we_in_exam_mode in
     let () =
       Gui_source_editing.window
         ~title
@@ -322,11 +436,14 @@ object(self)
         ~content
         ~result
         ~draw_spaces:[]
+        ?read_only:(if read_only then Some () else None)
         (* Closing the window discards: unlike the configuration editor this one WRITES a file of
            the project, and a window closed by mistake must not commit anything. *)
         ~close_means_cancel:()
         ()
     in
+    (* In exam mode nothing can come back but [None]: no thread, and above all no writer. *)
+    if read_only then () else
     ignore (Thread.create
       (fun () ->
          match Egg.wait result with
@@ -580,6 +697,28 @@ object(self)
      never runs, a session recording no console) must cost nothing at shutdown. *)
   method import_exam_documents ~machine_or_router_name ~hostfs_directory ~console_pathname
                                ~terminal_pathname () =
+    (* Deep logging, episode 12. This runs in the SHUTDOWN THREAD of a machine (machine.ml:776,
+       router.ml:1299), and shutting a lab down shuts every guest down AT ONCE: two threads were
+       therefore adding rows to the same treeview at the same time. The symptom was visible and
+       nondeterministic — a document showing "Please edit this", i.e. the DEFAULT of a column,
+       where [import_report] and its siblings had just set a title, an author or a type: one
+       thread's writes were lost, the two sequences add_row/set_row_* interleaving inside a store
+       and a forest that no lock protects.
+
+       So the whole gesture goes through the actor, which is the rule of this source tree (see
+       docs/refonte-automate-composants.md): every Gtk+ mutation belongs to the main thread. It is
+       the WHOLE gesture and not each row that is delegated, because what must not interleave is
+       the sequence, not the single call. [apply_extract] blocks until it is done, which is what
+       the caller needs: right after it, the shutdown destroys the device and the hostfs the files
+       are being copied from. *)
+    GMain_actor.apply_extract
+      (fun () ->
+         self#import_exam_documents_in_the_main_thread ~machine_or_router_name ~hostfs_directory
+           ~console_pathname ~terminal_pathname ())
+      ()
+
+  method private import_exam_documents_in_the_main_thread ~machine_or_router_name
+                   ~hostfs_directory ~console_pathname ~terminal_pathname () =
     let import what pathname =
       if Sys.file_exists pathname then
         try what ~machine_or_router_name ~pathname () with e ->
@@ -694,7 +833,11 @@ object(self)
        all, treeview.ml:853), so nothing changes for the other documents. The double-click, above,
        keeps the reading gesture: the rendered page. *)
     self#add_menu_item
-      (s_ "Show and edit the source of this document")
+      (* Episode 12: the label says what the gesture does here, and it does not do the same thing
+         for a student sitting an exam and for whoever reopens the project afterwards. *)
+      (if Initialization.are_we_in_exam_mode
+         then (s_ "Show the source of this document")
+         else (s_ "Show and edit the source of this document"))
       (function
        | Some row_id -> Markdown_rendering.is_markdown (self#get_row_filename row_id)
        | None        -> false)

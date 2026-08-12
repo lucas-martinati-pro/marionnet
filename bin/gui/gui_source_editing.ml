@@ -81,6 +81,11 @@ let window
   ?(height=500)
   ?(width=660)
   ?(draw_spaces=[`SPACE; `NEWLINE])
+  (* Deep logging, episode 12: a viewer rather than an editor. The buffer cannot be modified and
+     there is no way to commit anything -- the only button closes, and the egg is released with
+     [None], like a cancellation. Its caller is the documents treeview in exam mode: a student
+     must be able to READ the report their session produced, never to rewrite it. *)
+  ?read_only
   ?close_means_cancel
   (* not as window (in order to be drawn on top of another dialog). This information carry out the window_skel parent: *)
   ?(create_as_dialog : GWindow.window_skel option)
@@ -141,8 +146,10 @@ let window
         ?packing:(GObj.widget -> unit) ->
         ?show:bool ->
         unit -> source_view *)
+  let editable = not (Option.to_bool read_only) in
   let source_view =
     GSourceView3.source_view
+      ~editable
       ~auto_indent:(Option.to_bool auto_indent)
       ~insert_spaces_instead_of_tabs:true
       ~tab_width:2
@@ -156,9 +163,13 @@ let window
   in
   let hbox = GPack.hbox ~packing:vbox#add ~homogeneous:true () in
   vbox#set_child_packing ~expand:false ~fill:false hbox#coerce;
-  let button_cancel = GButton.button ~stock:`CANCEL ~packing:hbox#add () in
-  let button_ok = GButton.button ~stock:`OK ~packing:hbox#add () in
-  List.iter (fun w -> hbox#set_child_packing ~expand:false ~fill:false w#coerce) [button_cancel; button_ok];
+  (* Read-only: one button, which closes. Not a disabled `OK', which would suggest that something
+     could be committed if only one knew how. *)
+  let button_cancel =
+    GButton.button ~stock:(if editable then `CANCEL else `CLOSE) ~packing:hbox#add () in
+  let button_ok = if editable then Some (GButton.button ~stock:`OK ~packing:hbox#add ()) else None in
+  List.iter (fun w -> hbox#set_child_packing ~expand:false ~fill:false w)
+    (button_cancel#coerce :: (match button_ok with None -> [] | Some b -> [b#coerce]));
   let language_manager = Lazy.force language_manager in
   let lang = Option.bind language (language_manager#get_language) in
   (* let () = Option.iter (fun l -> Printf.kfprintf flush stderr "gui_source_editing: lang=%s\n" l#name) lang in *)
@@ -188,10 +199,11 @@ let window
     Thunk.linearize (fun () -> Egg.release result (get_text ()); win#destroy ())
   in
   let close_callback =
-    if close_means_cancel=None then ok_callback else cancel_callback
+    (* Closing a read-only window can only mean cancelling: there is nothing to commit. *)
+    if close_means_cancel=None && editable then ok_callback else cancel_callback
   in
   ignore (button_cancel#connect#clicked ~callback:cancel_callback);
-  ignore (button_ok#connect#clicked ~callback:ok_callback);
+  Option.iter (fun b -> ignore (b#connect#clicked ~callback:ok_callback)) button_ok;
   ignore (win_connect_destroy close_callback);
   (* --- *)
   win#misc#grab_focus ();
