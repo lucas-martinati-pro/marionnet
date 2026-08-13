@@ -50,6 +50,7 @@ class terminal_manager :
 class ['a] epithet_manager :
   ?default_epithet:('a epithet) ->
   ?filter:('a epithet -> bool) ->
+  ?ordering:('a epithet -> 'a epithet -> int) ->
   kind: [> `distrib | `kernel | `variant ] ->
   directory_searching_list:string list ->
   prefix:string ->

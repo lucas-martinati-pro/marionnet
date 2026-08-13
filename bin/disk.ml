@@ -155,6 +155,46 @@ let make_epithet_to_variant_list_and_dir_mapping ~prefix ~epithet_to_dir_mapping
       epithet_to_dir_mapping
 
 
+(* The dotted-numeric version contained in an epithet, if any:
+   "3.2.64-ghost" -> [3;2;64], "6.12.95-i386" -> [6;12;95], "default" -> [].
+   The scan starts at the first digit and stops at the first dot which is not followed
+   by a digit: *)
+let version_of_epithet (e : 'a epithet) : int list =
+  let n = String.length e in
+  let is_digit i = (i < n) && (e.[i] >= '0') && (e.[i] <= '9') in
+  let rec skip_to_first_digit i =
+    if i >= n then [] else
+    if is_digit i then parse_group [] i else skip_to_first_digit (i+1)
+  and parse_group acc i =
+    let j = ref i in
+    let () = while is_digit !j do incr j done in
+    match int_of_string_opt (String.sub e i (!j - i)) with
+    | None   -> List.rev acc (* an absurdly long number: stop here *)
+    | Some x ->
+        let acc = x::acc in
+        if (!j < n) && (e.[!j] = '.') && (is_digit (!j + 1))
+          then parse_group acc (!j + 1)
+          else List.rev acc
+  in
+  skip_to_first_digit 0
+
+(* Order epithets from the most recent to the oldest, according to the version number they
+   contain: {"3.2.64-ghost"; "6.12.95"; "6.12.95-i386"} becomes
+   ["6.12.95"; "6.12.95-i386"; "3.2.64-ghost"].
+   This is the order in which kernels are managed (see the `kernels' epithet manager below),
+   because the *first* supported kernel is the one proposed by default when a machine or a
+   router is created, both by the GUI dialog (Gui_bricks.make_combo_boxes_of_vm_installations)
+   and by the control server (User_level, Control_server): the newest must win, otherwise a
+   modern filesystem could be coupled to an obsolete kernel unable to boot it.
+   An epithet without any version number is sorted last (it is never silently promoted), and
+   ties are broken lexicographically, so a plain build precedes its qualified variants
+   ("6.12.95" before "6.12.95-i386"): *)
+let compare_epithets_by_decreasing_version (e1 : 'a epithet) (e2 : 'a epithet) : int =
+  match compare (version_of_epithet e2) (version_of_epithet e1) with
+  | 0 -> compare e1 e2
+  | c -> c
+
+
 class type ['a] epithet_manager_object =
   object
     (* Constructor's arguments: *)
@@ -178,6 +218,7 @@ class type ['a] epithet_manager_object =
 class ['a] epithet_manager
   : ?default_epithet:('a epithet) ->
     ?filter:('a epithet->bool) ->
+    ?ordering:('a epithet -> 'a epithet -> int) ->
     kind: [> `distrib | `kernel | `variant ] ->
     directory_searching_list:string list ->
     prefix:string ->
@@ -186,6 +227,7 @@ class ['a] epithet_manager
   fun
   ?(default_epithet="default")
   ?filter
+  ?ordering (* how `get_epithet_list' sorts its result; the map's order (lexicographic) if unset *)
   ~kind
   ~directory_searching_list
   ~prefix (* "machine-", "router-", "linux-", "" (for variants), ... *)
@@ -214,7 +256,10 @@ class ['a] epithet_manager
   method prefix = prefix
 
   method get_epithet_list : 'a epithet list =
-    String_map.domain epithet_to_dir_mapping
+    let xs = String_map.domain epithet_to_dir_mapping in
+    match ordering with
+    | None     -> xs
+    | Some cmp -> List.sort cmp xs
 
   method epithet_exists (epithet:'a epithet) : bool =
     String_map.mem epithet epithet_to_dir_mapping
@@ -353,10 +398,13 @@ class virtual_machine_installations
 	?default_epithet:filesystem_default_epithet
 	()
   in
-  (* The manager of all kernel epithets: *)
+  (* The manager of all kernel epithets. Unlike filesystems and variants, kernels are sorted
+     from the most recent to the oldest: the head of the list is the default proposed when a
+     machine or a router is created (see `compare_epithets_by_decreasing_version'): *)
   let kernels : [`kernel] epithet_manager =
     new epithet_manager
         ~filter:Filter.exclude_companion_files
+        ~ordering:compare_epithets_by_decreasing_version
         ~kind:`kernel
         ~prefix:kernel_prefix
         ~directory_searching_list:kernel_searching_list
