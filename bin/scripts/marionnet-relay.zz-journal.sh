@@ -116,8 +116,18 @@ if { : > "$__mrn_journal_boot_log" ; } 2>/dev/null; then
   { set +x ; } 2>/dev/null
 
   # A guest without `timeout' is not impossible (minimal userlands), hence the
-  # lookup rather than a plain call:
+  # lookup rather than a plain call -- and, since episode 20, the MEASURE rather
+  # than the lookup alone: the router image (busybox, 2014) has a `timeout' with
+  # the old interface (`timeout -t SECS PROG'), so the modern form tries to run a
+  # program named "15" and every section of this collection reported
+  # "timeout: can't execute '15'".  Presence was never the question -- episode 14
+  # had already learnt it on `tee' -- so the form we are about to use is played
+  # once, and a `timeout' that cannot bound anything is treated as absent.
   __mrn_journal_timeout="$(type -p timeout 2>/dev/null)"
+  if [[ -n "$__mrn_journal_timeout" ]] && \
+     ! "$__mrn_journal_timeout" 1 true >/dev/null 2>&1 ; then
+    __mrn_journal_timeout=""
+  fi
   __mrn_journal_deadline=15
 
   # $1 = section title, $2 = shell command line (a pipeline is expected).

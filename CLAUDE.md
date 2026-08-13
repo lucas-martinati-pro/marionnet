@@ -445,16 +445,29 @@ Reprise : appliquer le skill `chantier-long`.
   son rc (`switch.ml:593` : `--rcfile` est mort), puis instantané par la socket mgmt ; collecteur
   **toujours actif**, enregistrement de session **sur option** — donc **aucun attribut persisté
   ajouté**, le format v3 n'est pas rouvert.
-  **Reste : ép. 20**, le **guide de l'enseignant** (anglais) — automatiser et contrôler Marionnet
+  **ép. 20 fait 2026-08-13** (le **routeur mesuré**, aucune fonctionnalité neuve) : `79c25dd` ayant
+  réparé le choix du noyau par défaut, la **liste close** du § 6 a été jouée — mode examen sur
+  routeur (**quatre** documents archivés), ses **sept** journaux, `report`/`exec`, les 7 configs
+  Quagga **relues dans l'invité**, le TP d'exemple du skill réécrit avec un vrai composant `router`
+  et rejoué (13 PASS / 1 FAIL), et les **deux documents livrés** corrigés. Le rejeu a trouvé **un**
+  défaut, le seul de l'épisode : trois scripts déposés dans l'invité (`marionnet-watch.sh`,
+  `marionnet-report.sh`, `…zz-journal.sh`) testaient `type -p timeout`, soit un **moyen** là où
+  seule la **capacité** compte — l'image de routeur a un `timeout` **busybox** à l'ancienne
+  interface (`-t SECS`), d'où un `timeout 180 bash -c …` qui cherchait un programme nommé « 180 » :
+  tout `exec` rendait 127 et rapport comme collecte étaient **vides**. Même leçon qu'à l'ép. 14 sur
+  `tee` ; discriminant mesuré dans les deux sens sur le même invité : **17** sections
+  « can't execute » avant, **0** après. Deux découvertes utiles : le **rapport à la demande** écrit
+  le fichier que l'archivage cherche (donc le mode examen est complet sur une image SysV **au prix
+  d'une commande**), et l'**historique** dépend d'un `HOME` — un étudiant se logue, le relais non.
+  Deux défauts **consignés, non corrigés** (§ 6) : `wait --ready` **ment au second démarrage**
+  (`make_hostfs_content` est dans l'`initializer` de `uml_process`, et le device simulé survit au
+  `poweroff` — mesuré sur machine **et** routeur), et le prompt de login a disparu du journal
+  `terminal` d'une trixie, ce que le run de contrôle **avec le code précédent** reproduit.
+  **Reste : ép. 21**, le **guide de l'enseignant** (anglais) — automatiser et contrôler Marionnet
   par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un §
   « concevoir et noter un TP avec un agent IA » qui met en œuvre le skill de l'ép. 19. Même régime
   de grammaire : citer, et faire vérifier la citation par un banc. **Après quoi le chantier est
-  clôturable.** **Préalable consigné le 2026-08-13** : le **démarrage du routeur va être ajusté**,
-  donc tout ce que le chantier n'a jamais pu jouer faute d'un routeur qui boote est à **rejouer
-  avant** l'ép. 20 — liste close au § 6 de `docs/journalisation-profonde.md` (mode examen sur
-  routeur, ses cinq journaux, `report`/`exec`, les 7 configs Quagga vérifiées **dans** l'invité, le
-  TP d'exemple du skill), plus **deux documents livrés qui deviendront faux** (`exam-mode.md` § 4
-  et l'encadré du § 7 du skill, tous deux affirmant qu'aucune image de routeur ne boote).
+  clôturable.**
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

@@ -60,7 +60,18 @@
 # behaviour, so a host that knows nothing of this changes nothing.
 __mrn_report_out="${MARIONNET_REPORT_OUT:-/mnt/hostfs/report.md}"
 __mrn_report_when="${MARIONNET_REPORT_WHEN:-shutdown}"
+
+# Episode 20: what is asked here is a CAPACITY, never a presence.  `type -p
+# timeout' answers yes on the router image (busybox, 2014), whose `timeout' has
+# the old interface `timeout -t SECS PROG': the modern form then tries to run a
+# program named after the number of seconds, and EVERY section of this report
+# came back with "timeout: can't execute '5'".  Same lesson as episode 14 on
+# `tee', same remedy: run the form we are about to use, once, and fall back
+# silently on `eval' -- which this function has always been able to do.
 __mrn_report_timeout="$(type -p timeout 2>/dev/null)"
+if [[ -n "$__mrn_report_timeout" ]] && ! "$__mrn_report_timeout" 1 true >/dev/null 2>&1 ; then
+  __mrn_report_timeout=""
+fi
 __mrn_report_deadline=5
 
 # Nothing to do if the hostfs is not writable any more (the report is precisely

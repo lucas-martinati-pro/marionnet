@@ -99,12 +99,16 @@ session is alive, with `marionnet-ctl log <machine> exec`.
 ## 4. Limits, measured rather than assumed
 
 * **Old SysV guest images have no shutdown sequence** (their `inittab` answers Marionnet's
-  shutdown gesture by halting immediately), so they produce **no report**. Their history,
-  console and terminal are unaffected — the first is written continuously, the two others by
-  the host.
-* **Routers** are treated exactly like machines. The only router image currently shipped dates
-  from 2014 and does not boot on recent hosts, so this half is symmetric in the code but has
-  not been exercised end to end.
+  shutdown gesture by halting immediately), so they produce **no report at shutdown**. Their
+  history, console and terminal are unaffected — the first is written continuously, the two
+  others by the host. The remedy costs one command: ask the guest for a report **while it is
+  still running** (`marionnet-ctl report <machine>`). That report is written to the same place
+  the shutdown hook would have written it, so the archiving finds it and files it under
+  *Report on …* like any other.
+* **Routers** are treated exactly like machines, and this is now measured end to end: a router
+  archives its report, its history, its console and its terminal. The image currently shipped is
+  a 2014 busybox one, hence one of the SysV cases above — so the report of a router is the one
+  you ask for before shutting it down.
 * The report is deliberately **sober**: it is a dependency-free replacement for a producer that
   died years ago, not a system-audit tool.
 

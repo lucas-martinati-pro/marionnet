@@ -408,7 +408,9 @@ Four limits, measured rather than assumed — none of them is the student's faul
   demand*, during the session, still answers;
 * archiving is the **last** thing a shutdown does, so it lands a moment after the icon goes grey:
   `wait <c> --state=off` is not enough to read `documents`, wait for the row;
-* the only router image currently shipped dates from 2014 and does not boot on recent hosts.
+* the router image currently shipped is a 2014 busybox one: it boots and it is playable, but it
+  is one of the SysV images above, so **ask it for a `report` before you shut it down** if you
+  want that report archived. Its console, terminal and history are unaffected.
 
 ---
 
@@ -436,11 +438,11 @@ Each of these has cost a debugging session already. The counter-rule is the seco
 
 A small but complete lab. Everything below runs as it is.
 
-> **Why the forwarding node is a machine and not a `router` component.** Marionnet has a real
-> router kind, and a real lab uses it — with one startup configuration per routing daemon (§ 1).
-> But the only router image currently shipped dates from 2014 and does not boot on recent hosts,
-> so an example built on it could not be *played*, only read. A machine with two interfaces
-> forwards exactly the same way. Everything else below is unchanged by the substitution.
+> **Two names for one interface.** The model calls a router's ports `port0`, `port1`… — that is
+> what `connect` and `ifconfig-set` take — while the guest inside calls them `eth0`, `eth1`… by
+> the same rank. A scenario is written in the guest's names, everything else in the model's. The
+> declared addresses reach the guest at boot, so a router that is only *addressed* needs no
+> scenario at all; the one below exists for what a declaration cannot carry.
 
 ### 7.1 The statement given to the student
 
@@ -457,19 +459,21 @@ new /tmp/routing-lab.mar --no-save
 
 add machine m1
 add machine m2
-add machine r1 --ports=2
+add router  r1 --ports=2
 add switch  s1 --ports=4
 add switch  s2 --ports=4
 
 connect c1 m1:eth0 s1:port1
-connect c2 r1:eth0 s1:port2
+connect c2 r1:port0 s1:port2
 connect c3 m2:eth0 s2:port1
-connect c4 r1:eth1 s2:port2
+connect c4 r1:port1 s2:port2
 
 ifconfig-set m1 eth0 ipv4-address 10.0.1.1/24
 ifconfig-set m1 eth0 ipv4-gateway 10.0.1.254
 ifconfig-set m2 eth0 ipv4-address 10.0.2.1/24
 ifconfig-set m2 eth0 ipv4-gateway 10.0.2.254
+ifconfig-set r1 port0 ipv4-address 10.0.1.254/24
+ifconfig-set r1 port1 ipv4-address 10.0.2.254/24
 
 save-as /tmp/routing-lab.mar
 ```
@@ -486,9 +490,8 @@ report, never from the `ifconfig` table (which only ever holds the declared valu
 ### 7.3 What the router does at boot — `r1-scenario.sh`
 
 ```bash
-# r1: forward between the two LANs.
-ip addr add 10.0.1.254/24 dev eth0
-ip addr add 10.0.2.254/24 dev eth1
+# r1: the two addresses are declared in the lab, so they are already on eth0 and eth1 here.
+# What a declaration cannot carry is what this scenario is for:
 ip link set eth0 up
 ip link set eth1 up
 sysctl -w net.ipv4.ip_forward=1          # not `echo 1 > …`: see the trap about redirections
@@ -503,9 +506,10 @@ printf '%s\n' "$LINE" > /mnt/hostfs/.marionnet-guest-ready.tmp &&
 mrnctl rc-set r1 --from=/tmp/r1-scenario.sh --enable
 ```
 
-Had `r1` been a `router` component, the model would name its ports `port0` and `port1` while the
-guest would still call its interfaces `eth0` and `eth1`: the first pair is the GUI's view, the
-second the guest's. On a machine the two coincide.
+A router image usually forwards already — the one currently shipped does. Setting it anyway is
+not superstition: it makes the lab independent of that default, and it puts the word in the
+trace, which is what the key checks in § 7.4. And keep the marker: `wait --ready` waits for a
+file *the scenario* writes, never for anything the relay writes by itself.
 
 ### 7.4 The correction key — `key.mrv`
 
@@ -514,7 +518,7 @@ second the guest's. On a machine the two coincide.
 state  r1 is on
 field  r1 port_no is 2
 cable  c1 m1:eth0 s1:port1
-cable  c2 r1:eth0 s1:port2
+cable  c2 r1:port0 s1:port2
 
 # --- the switch, live ---------------------------------------------------------
 switch s1 ports has port=2

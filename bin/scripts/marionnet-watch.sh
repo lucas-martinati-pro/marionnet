@@ -154,17 +154,40 @@ __mrn_watch_do_report() {
   return 0
 }
 
-# --- Bounded execution.  `timeout' comes from coreutils and is there on every
-#     image measured so far, wheezy included; the fallback exists because a
-#     watcher which hangs on one command stops answering `report' too -- one
-#     loop for the two means one failure for the two, and that is the price of
-#     the single loop.  So: never run a command without a bound, even when the
-#     usual way of bounding one is missing.
+# --- Bounded execution.  The fallback exists because a watcher which hangs on
+#     one command stops answering `report' too -- one loop for the two means one
+#     failure for the two, and that is the price of the single loop.  So: never
+#     run a command without a bound, even when the usual way of bounding one is
+#     missing.
+#
+#     WHICH QUESTION TO ASK.  This guard used to be `type -p timeout', i.e. the
+#     very mistake episode 14 had already paid for on `tee': it tested a MEANS
+#     where only a CAPACITY matters.  Episode 20 measured it on the router image
+#     (guignol, busybox 2014): `timeout' IS there, but with the OLD busybox
+#     interface (`timeout -t SECS PROG'), so `timeout 180 /bin/bash -c ...'
+#     tried to run a program called `180' and EVERY exec came back with status
+#     127 and "timeout: can't execute '180'".  The capacity is therefore
+#     measured -- once, by running the form we are about to use -- and the
+#     fallback names its reason in the journal the channel serves.
+__mrn_watch_timeout=""   # "yes" | "no"; empty until measured
+__mrn_watch_timeout_usable() {
+  if [[ -z "$__mrn_watch_timeout" ]]; then
+    if timeout 1 true >/dev/null 2>&1 ; then
+      __mrn_watch_timeout=yes
+    else
+      __mrn_watch_timeout=no
+      printf '## timeout(1) is unusable in this guest (`timeout 1 true'"'"' did not run): commands are bounded by the built-in fallback\n' \
+        >> "$__mrn_watch_exec_log" 2>/dev/null
+    fi
+  fi
+  [[ "$__mrn_watch_timeout" = "yes" ]]
+}
+
 __mrn_watch_bounded() {
   local seconds="$1" ; shift
   local pid waited=0 status
 
-  if type -p timeout >/dev/null 2>&1; then
+  if __mrn_watch_timeout_usable ; then
     timeout "$seconds" /bin/bash -c "$1" </dev/null >"$__mrn_watch_exec_part" 2>&1
     return $?
   fi

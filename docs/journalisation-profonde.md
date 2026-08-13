@@ -172,7 +172,8 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **17** | **Le vérificateur déclaratif** `useful-scripts/mrn-verify` : un fichier d'assertions (`.mrv`) contrôlé puis joué contre une session vivante, trois verdicts dont le troisième compte (`SKIP` ≠ `FAIL`), et des **capacités lues dans la grammaire** — compagnon de `mrn-check`, comme un `.mrv` est le pendant d'un `.mrn` (cf. § 4.16) | deux lignes du même fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward` **échoue** et `report m1 says … ip_forward = 1` **passe** — **fait** (2026-08-12) |
 | **18** | **M2 — exécuter dans un invité** : verbe `exec <composant> <ligne de commande> [--timeout=<s>]` (voie 2 du § 7.6), servi par le veilleur de l'épisode 16 **généralisé** ; **7ᵉ journal** `exec` (ce que le canal a injecté, tenu à part de ce que l'étudiant a tapé) ; et la famille `reaches` de `mrn-verify` devient vivante (cf. § 4.17) | sur la même session, au même instant : `reaches m1 h3` **PASS**, puis h3 éteinte **FAIL**, alors que le rapport de m1 n'a pas bougé — un rapport décrit un **état**, jamais une **accessibilité** — **fait** (2026-08-12) |
 | **19** | **Le skill de conception de TP**, pour un agent IA quelconque : `doc-src/lab-design-skill.md` (anglais, livré avec la doc) + un wrapper mince `.claude/skills/marionnet-lab-design/`. Il nomme les 43 verbes — décision de l'auteur : **citer, et faire vérifier la citation** — mais ne recopie **aucune** syntaxe (cf. § 4.18) | son TP d'exemple est **joué** : le `.mrn` linté et envoyé, le corrigé rendant 13 PASS / 1 FAIL — et le FAIL est exactement l'assertion que le § 7.4 réserve à la session d'examen — **fait** (2026-08-12) |
-| **20** | **Le guide de l'enseignant** (anglais) : automatiser et contrôler Marionnet par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un § « concevoir et noter un TP avec un agent IA » qui met en œuvre l'épisode 19 | le banc compare la liste des verbes **cités** à celle que `help` publie, dans les deux sens — à faire |
+| **20** | **Le routeur mesuré** : tout ce que le chantier n'avait jamais pu jouer faute d'une image de routeur qui démarre (§ 6, liste close du 2026-08-13), rejoué une fois `79c25dd` réparé le choix du noyau — et le **défaut** que ce rejeu a fait apparaître : trois scripts déposés dans l'invité testaient la **présence** de `timeout(1)` là où seule sa **capacité** compte (cf. § 4.19) | sur le même routeur, le même rapport : **17** sections « can't execute » avec le code précédent, **0** avec le correctif — et le journal `exec` **nomme** la raison de son repli — **fait** (2026-08-13) |
+| **21** | **Le guide de l'enseignant** (anglais) : automatiser et contrôler Marionnet par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un § « concevoir et noter un TP avec un agent IA » qui met en œuvre l'épisode 19 | le banc compare la liste des verbes **cités** à celle que `help` publie, dans les deux sens — à faire |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1333,10 +1334,12 @@ une checklist de livraison.
 mesure :
 
 - il devait porter un **routeur** — c'est ce qu'un vrai TP emploie. Mais la seule image de routeur
-  installée date de 2014 et ne démarre pas (§ 4.7). Un exemple qu'on ne peut pas **jouer** n'est
-  qu'un texte : le nœud qui route est donc une **machine à deux interfaces**, et le skill dit en
-  toutes lettres pourquoi, avec ce que la substitution change (le modèle nommerait `port0`/`port1`
-  là où l'invité dit `eth0`/`eth1`) ;
+  installée date de 2014 et ne démarrait pas (§ 4.7). Un exemple qu'on ne peut pas **jouer** n'est
+  qu'un texte : le nœud qui routait était donc une **machine à deux interfaces**, et le skill
+  disait en toutes lettres pourquoi. **Caduc depuis l'épisode 20** (§ 4.19) : le routeur démarre,
+  le § 7 du skill porte de nouveau un composant `router`, et l'encadré ne parle plus d'une
+  substitution mais de ce qui reste vrai — le modèle dit `port0`/`port1` là où l'invité dit
+  `eth0`/`eth1` ;
 - son scénario écrit `sysctl -w net.ipv4.ip_forward=1` et **non** `echo 1 > /proc/…`. Ce n'est pas
   une élégance : avec la redirection, l'assertion `journal r1 rc_config contains ip_forward`
   **échouerait sur une machine correcte** (§ 7.4, `set -x` ne trace pas les redirections). Le skill
@@ -1355,6 +1358,77 @@ skill n'est donc pas un raisonnement : c'est une mesure, sur la même machine, a
 **Mesures.** `_claude-local/bench/skill-bench.sh` neuf : **58 assertions, 0 échec** (dont **41 sans
 démarrer une seule UML**, jouables par `--static`). Aucun `.ml` touché, aucun `msgid` introduit —
 comme les épisodes 9 et 15, celui-ci est documentaire.
+
+### 4.19 Ce que l'épisode 20 a mesuré (et la question qu'il fallait poser à `timeout`)
+
+Cet épisode n'ajoute **aucune fonctionnalité**. Il joue ce que le chantier n'avait jamais pu jouer :
+depuis l'épisode 7, tout ce qui est écrit pour les invités est **symétrique dans le code**
+(`machine.ml` et `router.ml` appellent le même geste), mais aucune ligne n'avait jamais tourné sur
+un **routeur**. L'unique image installée, `router-guignol-18474` (buildroot/busybox, 2014), recevait
+par défaut le noyau `3.2.64-ghost`, dont le stub SKAS0 segfault sur un hôte ≥ 5.15 ; le commit
+`79c25dd` — « the default kernel is now the most recent installed » — a levé cela, et le § 6 portait
+depuis le 2026-08-13 la **liste close** de ce qui restait à rejouer.
+
+**Le défaut trouvé en jouant, et c'est le seul de l'épisode.** Trois scripts déposés dans l'invité
+bornaient leurs commandes par `timeout(1)` derrière une garde `type -p timeout` : le veilleur
+(`marionnet-watch.sh`, ép. 16 et 18), le producteur de rapport (`marionnet-report.sh`, ép. 7) et le
+collecteur (`marionnet-relay.zz-journal.sh`, ép. 2). Or cette image **a** un `timeout` — celui de
+busybox 1.22, dont l'interface est l'**ancienne** (`timeout -t SECS PROG`). La forme moderne
+`timeout 180 /bin/bash -c …` y cherche donc un programme nommé « 180 », et **tout** en découle :
+chaque `exec` rendait `status 127` et `timeout: can't execute '180'`, chaque section du rapport
+était vide, chaque section de la collecte aussi. C'est **mot pour mot** la leçon de l'épisode 14 sur
+`tee` : `type -p` teste un **moyen**, jamais une **capacité**. Les trois gardes **jouent** désormais,
+une fois, la forme qu'elles s'apprêtent à utiliser (`timeout 1 true`), et le repli du veilleur
+**nomme sa raison** dans le journal `exec` que le canal sert — un repli muet se serait fait oublier.
+
+**Le discriminant tient en un nombre, mesuré dans les deux sens sur le même invité** (code précédent
+restauré par `git stash`, binaire reconstruit, banc rejoué) : le rapport d'un routeur porte **17**
+sections « can't execute » avant, **0** après — et, après, l'adresse des interfaces, la table de
+routage et `net.ipv4.ip_forward = 1`. Un rapport **présent et vide** est le pire cas pour une
+notation : il a l'air d'une réponse.
+
+**Ce que le rejeu a établi, point par point** (la liste du § 6, close le 2026-08-13) :
+
+| # | Ce qui n'avait jamais été joué | Résultat |
+|---|---|---|
+| 1 | **Mode examen sur un routeur** (ép. 7) | `documents` porte les **quatre** entrées — rapport, historique, console, terminal — et elles survivent au cycle `.mar`. Deux conditions, toutes deux mesurées : le rapport doit être **demandé avant l'extinction** (cette image SysV n'a pas de séquence d'arrêt, § 4.7 — le rapport à la demande de l'ép. 16 écrit **le même fichier**, et l'archivage le trouve), et l'historique suppose un shell qui **a un `HOME`** (cf. ci-dessous) |
+| 2 | **Les cinq journaux d'un routeur** (ép. 1-3, 6, 14) | les **sept** répondent : `rc_config` (avec la fin de la configuration, donc rien de perdu), `boot` (branche **sysv**, `dmesg` via klogd), `console`, `terminal` (l'écran de login de l'image, avec ses séquences ANSI), `commands`, `report`, `exec`. `/dev/fd` **existe** au runtime sur cette image : le piège de l'ép. 14 ne s'y produit pas |
+| 3 | **`report` et `exec` sur un routeur** (ép. 16, 18) | fonctionnent — **après** le correctif ci-dessus, sans lequel aucun des deux ne rendait quoi que ce soit d'utile |
+| 4 | **Le TP d'exemple du skill** (ép. 19) | réécrit avec un vrai composant `router` (`add router r1 --ports=2`, câbles sur `port0`/`port1`, adresses **déclarées** — elles arrivent dans l'invité au démarrage) et **rejoué** : **13 PASS / 1 FAIL / 0 SKIP** sur la maquette conforme, le FAIL étant l'assertion réservée à l'examen ; puis forwarding coupé en marche → **11 PASS / 3 FAIL**, l'état et l'expérience basculent, la trace non |
+| 5 | **Les sept configurations Quagga** par `--field=` (chantier `pilotage-par-script`, ép. 12) | posées composant **éteint** (une modification en marche est refusée, et c'est mesuré), puis **relues dans l'invité** : chaque `/etc/quagga/<srv>.conf` porte ce que le canal a écrit, et `zebra`, `ripd`, `ospfd`, `bgpd`, `ripngd`, `isisd` tournent **sur ces fichiers-là** |
+| 6 | **Les deux documents livrés devenus faux** | corrigés : `doc-src/exam-mode.md` § 4 (le routeur est mesuré de bout en bout ; sur une image SysV, on demande son rapport avant de l'éteindre) et l'encadré du § 7 du skill (il ne parle plus d'une substitution, mais des deux noms d'une même interface) |
+
+**Deux découvertes de terrain, l'une utile à l'enseignant, l'autre à qui écrit un banc :**
+
+- **le rapport à la demande sauve le mode examen sur les vieilles images.** Le § 6 tenait le rapport
+  d'une image SysV pour hors de portée. C'est vrai du **hook d'arrêt**, et faux du résultat : un
+  `report <c>` pendant la session écrit `report.md` à l'endroit exact où l'archivage ira le
+  chercher. Une commande, et la limite tombe — c'est désormais écrit dans `exam-mode.md` ;
+- **l'historique d'un invité dépend d'un `HOME`, pas du fragment.** Sur guignol, `bash_history.text`
+  restait vide alors que le fragment de l'ép. 7 était bien déposé **et** accroché à `/root/.bashrc`.
+  La raison : le relais tourne avec `HOME=/` (l'init de cette image n'en pose pas), un bash
+  interactif **non-login** lit `/etc/bash.bashrc` — absent ici — puis `~/.bashrc`, donc `/.bashrc`,
+  qui n'existe pas. Avec `HOME=/root`, l'historique s'écrit. **Rien à corriger dans le dispositif** :
+  un étudiant se **logue**, donc son shell est un shell de login, qui lit `/etc/profile` puis
+  `/etc/profile.d/` — vérifié sur cette image. C'est le **banc** qui simulait un cas qui n'existe
+  pour personne, et c'est lui qui a été corrigé.
+
+**Un défaut consigné, hors périmètre de l'épisode** (§ 6) : `wait --ready` **ment au second
+démarrage**. `make_hostfs_content` est appelé dans l'`initializer` de `uml_process`
+(`simulation_level.ml:1530`), donc à la **création** du device simulé — lequel survit au `poweroff`.
+Ni `boot_parameters` ni le marqueur ne sont réécrits au démarrage suivant, si bien que la comparaison
+de fraîcheur de `cmd_wait_ready` compare un marqueur périmé à un `boot_parameters` tout aussi périmé
+et répond `ready: true` en 50 ms. Mesuré sur **machine et routeur** : ce n'est pas une propriété du
+genre. Même famille que le défaut connu du `rc-set` sur un switch — un état capturé à la création
+d'un device qui survit à l'extinction.
+
+**Mesures.** Banc neuf `_claude-local/bench/router-bench.sh` : **60 assertions, 0 échec** (10 sans
+UML). `exam-bench.sh` : **81 assertions**, dont les **quatre** entrées `documents` du routeur, et
+**1 échec** — l'assertion « le prompt de login » de l'ép. 8, sur la **machine** trixie, qui échoue
+depuis le 2026-08-13 de manière systématique ; le run de contrôle **avec le code précédent restauré**
+échoue de la même façon, donc cet épisode n'en est pas la cause (consigné au § 6). Bancs existants
+rejoués un par un : `skill-bench` 58/0, `doc-bench` 66/0, `verify-bench` 84/0, `exec-bench` 60/0,
+`journal-bench` 171/0.
 
 ## 5. Rapports avec les autres chantiers
 
@@ -1382,33 +1456,48 @@ comme les épisodes 9 et 15, celui-ci est documentaire.
 - Le **rapport de fin de session sur les images SysV** : impossible tant que leur `inittab`
   répond au ctrl-alt-del par `/sbin/halt` (§ 4.7). **Nuance depuis l'épisode 16** : le rapport
   *à la demande*, lui, ne dépend d'aucune séquence d'arrêt — sur ces images il est donc le seul
-  des deux à répondre, et il suffit à un correcteur qui prend son instantané avant d'éteindre. Le remède serait d'envelopper `/sbin/halt`
+  des deux à répondre, et il suffit à un correcteur qui prend son instantané avant d'éteindre.
+  **Mesuré à l'épisode 20, et la nuance vaut mieux que ça** : ce rapport-là est écrit dans le
+  **même fichier** que celui du hook, donc l'archivage du mode examen le trouve et le classe sous
+  « Rapport sur … » comme n'importe quel autre. Sur une image sans séquence d'arrêt, le mode examen
+  est complet **au prix d'une commande** (`report <c>` avant l'extinction) — c'est dit dans
+  `doc-src/exam-mode.md` § 4. Le remède serait d'envelopper `/sbin/halt`
   dans le COW — le motif que ces images utilisent déjà pour `/sbin/shutdown` — mais toucher au
   binaire d'arrêt d'un invité pour un journal n'a pas paru un bon marché ; à rouvrir seulement si
   un TP doit être noté sur une vieille image.
-- Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7) ; le code, lui,
-  est symétrique depuis l'épisode 7.
-  **À FAIRE AVANT L'ÉPISODE 20 (consigné le 2026-08-13, sur indication de l'auteur)** : le
-  **démarrage du routeur va être ajusté** prochainement. Tout ce que ce chantier n'a **jamais pu
-  jouer** faute d'un routeur qui boote devra donc être **rejoué**, et les textes qui en tirent une
-  limite **relus**, avant d'écrire le guide de l'enseignant. La liste, close, de ce qui n'a pas eu
-  lieu :
-  1. le **mode examen sur un routeur** (ép. 7) : rapport, historique, console et terminal
-     archivés dans `documents` à l'extinction propre — le code est symétrique (`machine.ml` **et**
-     `router.ml` appellent `import_exam_documents`), rien n'a été mesuré ;
-  2. les **journaux d'un routeur** (ép. 1-3, 6, 14) : `rc_config`, `boot`, `commands`, `console`,
-     `terminal` produits par un invité routeur réel ;
-  3. le **rapport à la demande** et l'**exécution** sur un routeur (ép. 16, 18) : `report r1` et
-     `exec r1 …` passent par le veilleur déposé dans le hostfs, jamais éprouvé sur cette image ;
-  4. le **TP d'exemple du skill** (ép. 19, § 4.18) : il a dû renoncer au composant `router` pour
-     rester **jouable**. Une fois le routeur bootable, reprendre le § 7 de
-     `doc-src/lab-design-skill.md` — la maquette redevient `m1 — s1 — r1 — s2 — m2` avec un vrai
-     routeur, et l'encadré qui explique la substitution disparaît ou change de sens ;
-  5. les **sept configurations Quagga** du routeur par `--field=` (chantier `pilotage-par-script`,
-     ép. 12) : posées et relues par le canal, mais **jamais** vérifiées dans un invité qui tourne ;
-  6. la **phrase de `doc-src/exam-mode.md` § 4** (« the only router image currently shipped dates
-     from 2014 and does not boot ») et son équivalent au § 7 du skill : elles deviendront fausses
-     le jour de l'ajustement, et ce sont des **documents livrés**.
+- ~~Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7).~~ **JOUÉ ET
+  SOLDÉ à l'épisode 20** (§ 4.19), une fois `79c25dd` réparé le choix du noyau par défaut. Les six
+  points de la liste close du 2026-08-13 — mode examen sur routeur, ses journaux, `report`/`exec`,
+  le TP d'exemple du skill, les sept configurations Quagga vérifiées **dans** l'invité, et les deux
+  documents livrés devenus faux — ont tous été rejoués ou corrigés ; le tableau du § 4.19 dit ce
+  que chacun a rendu. Ce qui reste de cette entrée n'est plus une attente mais **deux propriétés de
+  l'image de 2014**, à retirer le jour où elle sera rénovée : son `timeout` est celui de busybox
+  (ancienne interface `-t SECS`, d'où le correctif de l'épisode 20), et elle n'a **pas** de
+  séquence d'arrêt, donc son rapport se **demande** avant l'extinction.
+
+- **`wait --ready` ment au second démarrage** (mesuré à l'épisode 20, sur **machine et routeur** —
+  ce n'est pas une propriété du genre). `make_hostfs_content` est appelé dans l'`initializer` de
+  `uml_process` (`simulation_level.ml:1530`), donc à la **création** du device simulé, lequel
+  **survit au `poweroff`** : au démarrage suivant, ni `boot_parameters` ni le marqueur ne sont
+  réécrits. La garde de fraîcheur de `cmd_wait_ready` compare alors deux fichiers également périmés
+  et répond `ready: true` en 50 ms, sur le marqueur du boot **précédent** — un `exec` qui suit se
+  heurte à un veilleur qui n'est pas encore là. Même famille que le `rc-set` d'un switch ci-dessous :
+  un état capturé à la création d'un device qui survit à l'extinction. Deux remèdes possibles,
+  tous deux dans `simulation_level.ml` : rejouer `make_hostfs_content` au `spawn` (c'est ce que son
+  nom laisse attendre), ou effacer le marqueur au démarrage. **Non corrigé** : le chemin de
+  démarrage est commun à tous les composants, et cela se tranche avec l'automate d'état en tête
+  (chantier clos `marionnet-automate-composants`). En attendant, un banc qui redémarre un invité
+  **ne demande pas `--ready`** : il attend que l'invité **réponde** (`exec <c> -- true`).
+
+- **Le prompt de login n'apparaît plus dans le journal `terminal` d'une trixie** (constaté le
+  2026-08-13, systématique sur trois passages ; l'assertion correspondante d'`exam-bench.sh` passait
+  encore le 2026-08-12, deux fois). Ce n'est **pas** l'épisode 20 : le run de contrôle, avec ses
+  trois scripts restaurés par `git stash` et le binaire reconstruit, échoue exactement pareil. Les
+  lignes de commande noyau des deux runs sont **identiques**, et les deux `getty` sont démarrés dans
+  les deux cas ; ce qui manque est le prompt lui-même, sur toute la durée de vie de la machine. Reste
+  à instruire — la piste la plus simple étant une course entre le `getty` de `tty0` et l'extinction
+  demandée par l'exemple, sur un hôte plus chargé.
+
 - **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
   recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
   document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
@@ -2429,3 +2518,55 @@ mesurée, sur la même machine et au même instant, et non raisonnée.
 **Reste.** L'épisode 20 : le guide de l'enseignant (anglais), un exemple par commande et des TP
 complets fabriqués et notés, avec un § « concevoir et noter un TP avec un agent IA » qui met en
 œuvre ce skill. Après quoi le chantier est clôturable.
+
+---
+
+### 2026-08-13 — épisode 20 : le routeur mesuré, et la question qu'il fallait poser
+
+**Pourquoi maintenant.** Le § 6 portait, consignée la veille sur indication de l'auteur, la liste
+**close** de ce que ce chantier n'avait **jamais pu jouer** faute d'une image de routeur qui
+démarre. Le commit `79c25dd` (« the default kernel is now the most recent installed ») a levé
+l'obstacle : un routeur créé aujourd'hui prend `6.12.95-i386` au lieu de la série 2014 « -ghost »,
+et boote en quatre secondes. Cet épisode ne conçoit rien — il **joue**, et il corrige ce que jouer
+a fait apparaître.
+
+**Le défaut, et c'est le seul.** Trois scripts déposés dans l'invité bornaient leurs commandes
+derrière une garde `type -p timeout` : le veilleur (ép. 16/18), le producteur de rapport (ép. 7) et
+le collecteur (ép. 2). L'image de routeur **a** un `timeout` — celui de busybox 1.22, à l'ancienne
+interface `-t SECS` — si bien que `timeout 180 /bin/bash -c …` y cherchait un programme nommé
+« 180 ». Conséquence : **tout** `exec` rendait 127, **toutes** les sections du rapport et de la
+collecte étaient vides. C'est mot pour mot la leçon de l'épisode 14 sur `tee` : on teste une
+**capacité**, jamais un **moyen**. Les trois gardes jouent désormais la forme qu'elles vont
+utiliser, et le repli du veilleur **nomme sa raison** dans le journal `exec`.
+
+**Le discriminant est un nombre, mesuré dans les deux sens** (code précédent restauré par
+`git stash`, binaire reconstruit, banc rejoué sur le même invité) : **17** sections
+« can't execute » dans le rapport du routeur avant, **0** après. Un rapport présent et vide est le
+pire cas pour une notation — il a l'air d'une réponse.
+
+**Ce que le rejeu a rendu** (détail au § 4.19) : les quatre documents d'examen d'un routeur, ses
+sept journaux, `report` et `exec`, les sept configurations Quagga **relues dans l'invité**, et le
+TP d'exemple du skill réécrit avec un vrai composant `router` puis rejoué (13 PASS / 1 FAIL / 0 SKIP
+sur la maquette conforme). Deux documents livrés ont été corrigés, qui affirmaient qu'aucune image
+de routeur ne démarre.
+
+**Deux découvertes de terrain.** Le **rapport à la demande** (ép. 16) écrit le fichier que
+l'archivage du mode examen va chercher : sur une image SysV sans séquence d'arrêt, le mode examen
+est donc complet au prix d'une commande — la limite du § 6 tombe. Et l'**historique** d'un invité
+dépend d'un `HOME`, pas du fragment : le relais de guignol tourne avec `HOME=/`, un bash non-login
+n'y lit aucun `bashrc`, alors qu'un étudiant — qui se **logue** — lit `/etc/profile.d/`. Rien à
+corriger dans le dispositif ; c'est le banc qui simulait un cas qui n'existe pour personne.
+
+**Deux défauts consignés, non corrigés** (§ 6) : `wait --ready` **ment au second démarrage** (le
+hostfs n'est écrit qu'à la création du device simulé, qui survit au `poweroff` — mesuré sur machine
+**et** routeur ; il touche le chemin de démarrage commun, donc il se tranche avec l'automate d'état
+en tête) ; et le prompt de login a disparu du journal `terminal` d'une trixie depuis ce jour, ce que
+le run de contrôle **avec le code précédent** reproduit à l'identique — donc pas cet épisode.
+
+**Mesures.** Banc neuf `router-bench.sh` : **60 assertions, 0 échec** (10 sans UML). `exam-bench.sh`
+**81 assertions, 1 échec** (celui ci-dessus, préexistant). Rejoués un par un : `skill-bench` 58/0,
+`doc-bench` 66/0, `verify-bench` 84/0, `exec-bench` 60/0, `journal-bench` 171/0.
+
+**Reste.** L'épisode **21** : le guide de l'enseignant (anglais), un exemple par commande et des TP
+complets fabriqués et notés, avec un § « concevoir et noter un TP avec un agent IA ». Après quoi le
+chantier est clôturable.
