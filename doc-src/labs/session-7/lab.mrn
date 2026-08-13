@@ -1,0 +1,34 @@
+# Session 7 — routing, filtering, SNAT — the lab, in batch form.
+#
+# Played by build.sh, which then installs the boot scenarios and saves the project. It can also
+# be played by hand:  mrnctl -f lab.mrn
+#
+# Batch mode stops at the first refusal, which is what you want when each line depends on the
+# one before. `mrn-check lab.mrn' validates this file without sending anything.
+#
+#   m1 ── h1 ── r1 ── h3 ── intruder
+#        LAN 1              "the outside"
+#     192.168.1.0/24       10.0.0.0/24
+#
+# r1 is a machine with three interfaces, not a `router' component: this lab is about netfilter,
+# and the router component of Marionnet runs Quagga on a guest image that has no iptables.
+
+new /tmp/session-7.mar --no-save
+
+add hub     h1 --ports=4
+add hub     h3 --ports=4
+add machine m1
+add machine r1 --ports=3
+add machine intruder
+
+connect c1 m1:eth0       h1:port1
+connect c2 r1:eth0       h1:port2
+connect c3 r1:eth2       h3:port1
+connect c4 intruder:eth0 h3:port2
+
+# The addresses of the two ends are given: this lab grades what the student does on r1, not
+# their typing. Marionnet configures a declared address inside the guest at boot.
+ifconfig-set m1       eth0 ipv4-address 192.168.1.1/24
+ifconfig-set r1       eth0 ipv4-address 192.168.1.254/24
+ifconfig-set r1       eth2 ipv4-address 10.0.0.254/24
+ifconfig-set intruder eth0 ipv4-address 10.0.0.9/24

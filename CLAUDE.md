@@ -463,11 +463,31 @@ Reprise : appliquer le skill `chantier-long`.
   (`make_hostfs_content` est dans l'`initializer` de `uml_process`, et le device simulé survit au
   `poweroff` — mesuré sur machine **et** routeur), et le prompt de login a disparu du journal
   `terminal` d'une trixie, ce que le run de contrôle **avec le code précédent** reproduit.
-  **Reste : ép. 21**, le **guide de l'enseignant** (anglais) — automatiser et contrôler Marionnet
-  par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un §
-  « concevoir et noter un TP avec un agent IA » qui met en œuvre le skill de l'ép. 19. Même régime
-  de grammaire : citer, et faire vérifier la citation par un banc. **Après quoi le chantier est
-  clôturable.**
+  **ép. 21 fait 2026-08-13** (le **guide de l'enseignant**, dernier épisode annoncé) :
+  `doc-src/teacher-guide.md` — le fil qui va de l'énoncé à la note — plus un **TP réel complet**
+  (`doc-src/labs/session-7/` : routage, filtrage, SNAT ; énoncé, `lab.mrn`, scénarios, corrigé,
+  **deux** clés selon que la session est vivante ou close, `build.sh`/`play.sh`/`grade.sh`). La
+  tension n'était pas d'écriture mais d'**invariant** : le § 4 promettait « un exemple **par
+  commande** », or le guide de scripting **refuse** une table des commandes, et un exemple — à la
+  différence d'un nom de verbe (ép. 19) — **est** une syntaxe. Tranché : **les exemples sont des
+  gestes joués, pas des citations**. Le § 4 est une **session ordonnée** que le banc rejoue ligne à
+  ligne, et la **couverture se mesure par l'exécution** (une fonction `mrnctl` espionne note le
+  verbe de chaque appel, comparé à `help` **dans les deux sens**) : un verbe neuf casse le banc,
+  une option renommée fait **échouer** son exemple. Le § « concevoir et noter un TP avec un agent
+  IA » est écrit du côté de l'**humain** — ce qu'il doit **exiger** avant d'y croire (compteurs
+  d'un run complet, clé jouée contre un TP délibérément faux, liste des `SKIP`, `.mar` rejoué) et
+  ce qu'il ne délègue pas (ambiguïtés de l'énoncé, barème, sanction). Discriminant : le TP joué
+  **deux fois** sur la même session — **14 PASS / 0 FAIL**, puis forwarding coupé **en marche** par
+  `exec` → **12 PASS / 2 FAIL**, l'**état** et l'**expérience** basculant, la **trace** non.
+  Pièges neufs : le **quoting** d'un `rc-set` qui redirige (c'est le shell de l'appelant qui lit la
+  ligne), les **noms de ports** selon le genre (`eth0…` machine, `port0…` composant `router`),
+  `wait --ready` qui attend en vain sans marqueur écrit par le scénario, et **deux défauts
+  consignés** au § 6 : les **titres des documents archivés sont traduits à moitié** (« Rapport sur
+  m1 » à côté de « Console of m1 » — un corrigé qui grep un libellé anglais ne note **rien**
+  ailleurs) et le **rapport d'arrêt n'est pas garanti** (3 machines éteintes peu après leur boot,
+  une seule avec son `report.md` → demander `report <c>` **avant** l'extinction).
+  **Tous les épisodes annoncés sont faits → chantier CLÔTURABLE (MODE C), sur décision de
+  l'auteur.**
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

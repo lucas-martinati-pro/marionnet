@@ -1,0 +1,38 @@
+# Session 7 — the key for a copy that is OVER: nothing is started, nothing is asked of a guest.
+#
+#   mrn-verify --refresh=never key-recorded.mrv
+#
+# `--refresh=never' means: do not ask any guest for a fresh report, read the last one it wrote.
+# On a copy whose machines were shut down properly, that report is inside the project, and so
+# are the four archived documents. This is how thirty copies are marked in one evening — but
+# read what each assertion rests on:
+#
+#   · `documents' is host-written for the console and the terminal recording, guest-written for
+#     the report and the history. A FAIL on a guest-written document is a finding, not a
+#     sanction: quote the terminal recording next to it;
+#   · nothing here proves connectivity. An accessibility is an experiment, and an experiment
+#     needs the lab to run — that is what key.mrv is for.
+
+# the model survived the session
+field r1 port_no is 3
+cable c2 r1:eth0 h1:port2
+cable c3 r1:eth2 h3:port1
+
+# the session was closed the way the statement asked: properly, machine by machine
+state m1 is off
+state r1 is off
+
+# what the shutdown archived — the terminal recording is the piece a mark may rest on
+# Two measured details shape these three lines:
+#   · the titles of archived documents are TRANSLATED (a French session files a report under
+#     « Rapport sur r1 »), so a pattern that assumes English marks nothing abroad — hence the
+#     alternative below. Nothing in the channel is localised; this treeview is;
+#   · a report is archived only if it EXISTS when the machine shuts down. Ask each guest for one
+#     during the session (`report <c>') if you want to be sure: see § 5.5 of the teacher's guide.
+documents m1 has ~ Terminal of
+documents r1 has ~ Terminal of
+documents r1 has ~ (Report on|Rapport sur)
+
+# what the last report of r1 said about itself
+report r1 says ~ ip_forward *= *1
+report r1 says ~ ^-A POSTROUTING .*MASQUERADE

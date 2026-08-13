@@ -1029,6 +1029,10 @@ never have to configure both.
 * `mrnctl --help` — the client's own options.
 * `mrn-check --help` — checking a `.mrn` before sending it (§ 13).
 * `mrn-verify --help` — the assertions of a `.mrv`, and what each one rests on (§ 14).
+* `doc-src/teacher-guide.md` — the same channel seen from a classroom: preparing a lab, running
+  the session, marking thirty copies. It carries **one worked example per verb** — the only
+  place that does, and they are replayed rather than copied — plus a complete lab in
+  `doc-src/labs/session-7/`.
 * `doc-src/exam-mode.md` — the exam mode: what a session records, and what ends up in the
   project file (for the teacher, with or without this channel).
 * `doc-src/lab-design-skill.md` — how to go from a *statement* to a *mark*: designing a lab,

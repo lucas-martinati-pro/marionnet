@@ -173,7 +173,7 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **18** | **M2 — exécuter dans un invité** : verbe `exec <composant> <ligne de commande> [--timeout=<s>]` (voie 2 du § 7.6), servi par le veilleur de l'épisode 16 **généralisé** ; **7ᵉ journal** `exec` (ce que le canal a injecté, tenu à part de ce que l'étudiant a tapé) ; et la famille `reaches` de `mrn-verify` devient vivante (cf. § 4.17) | sur la même session, au même instant : `reaches m1 h3` **PASS**, puis h3 éteinte **FAIL**, alors que le rapport de m1 n'a pas bougé — un rapport décrit un **état**, jamais une **accessibilité** — **fait** (2026-08-12) |
 | **19** | **Le skill de conception de TP**, pour un agent IA quelconque : `doc-src/lab-design-skill.md` (anglais, livré avec la doc) + un wrapper mince `.claude/skills/marionnet-lab-design/`. Il nomme les 43 verbes — décision de l'auteur : **citer, et faire vérifier la citation** — mais ne recopie **aucune** syntaxe (cf. § 4.18) | son TP d'exemple est **joué** : le `.mrn` linté et envoyé, le corrigé rendant 13 PASS / 1 FAIL — et le FAIL est exactement l'assertion que le § 7.4 réserve à la session d'examen — **fait** (2026-08-12) |
 | **20** | **Le routeur mesuré** : tout ce que le chantier n'avait jamais pu jouer faute d'une image de routeur qui démarre (§ 6, liste close du 2026-08-13), rejoué une fois `79c25dd` réparé le choix du noyau — et le **défaut** que ce rejeu a fait apparaître : trois scripts déposés dans l'invité testaient la **présence** de `timeout(1)` là où seule sa **capacité** compte (cf. § 4.19) | sur le même routeur, le même rapport : **17** sections « can't execute » avec le code précédent, **0** avec le correctif — et le journal `exec` **nomme** la raison de son repli — **fait** (2026-08-13) |
-| **21** | **Le guide de l'enseignant** (anglais) : automatiser et contrôler Marionnet par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un § « concevoir et noter un TP avec un agent IA » qui met en œuvre l'épisode 19 | le banc compare la liste des verbes **cités** à celle que `help` publie, dans les deux sens — à faire |
+| **21** | **Le guide de l'enseignant** (anglais) `doc-src/teacher-guide.md` : le fil qui va de l'énoncé à la note, un exemple **par commande** — des **gestes joués**, pas des citations —, un TP réel complet et noté en `--exam` (`doc-src/labs/session-7/`), et un § « concevoir et noter un TP avec un agent IA » écrit du côté de l'humain (cf. § 4.20) | la couverture est mesurée **par l'exécution** : le banc rejoue chaque ligne du § 4 et compare les verbes **appelés** à ceux que `help` publie, dans les deux sens ; et le TP joué deux fois rend 14/0 puis 12/2, l'état et l'expérience basculant, la trace non — **fait** (2026-08-13) |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1430,6 +1430,94 @@ depuis le 2026-08-13 de manière systématique ; le run de contrôle **avec le c
 rejoués un par un : `skill-bench` 58/0, `doc-bench` 66/0, `verify-bench` 84/0, `exec-bench` 60/0,
 `journal-bench` 171/0.
 
+### 4.20 Ce que l'épisode 21 a livré (et l'exemple qui n'est pas une citation)
+
+**Le point dur n'était pas d'écrire, c'était l'invariant.** Le tableau du § 4 promet depuis
+l'épisode 0 « un exemple **par commande** ». Or le guide de scripting **refuse** explicitement une
+table des commandes (son § 4, « The command list is not in this guide ») et dit pourquoi : une
+seconde liste est juste le jour où on l'écrit, fausse ensuite. L'épisode 19 avait déjà tranché un
+cas voisin en citant les verbes **sans** leur syntaxe et en faisant vérifier la citation ; ici, un
+exemple **est** une syntaxe, donc la même réponse ne suffisait pas.
+
+**Décision (auteur, 2026-08-13) : les exemples ne sont pas des citations, ce sont des gestes
+joués.** Le § 4 du guide neuf `doc-src/teacher-guide.md` est une **session** ordonnée — construire,
+configurer, démarrer, observer, éteindre — dont chaque ligne est exécutée par le banc contre une
+Marionnet vivante. La couverture n'est pas relue, elle est **mesurée par l'exécution** : pendant le
+rejeu, une fonction `mrnctl` espionne note le verbe de chaque appel, et cet ensemble est comparé à
+celui que `help` publie **dans les deux sens**. Conséquences, et c'est ce qui distingue ce § d'une
+table : un verbe ajouté au serveur **casse le banc** tant qu'il n'a pas son exemple, et une option
+renommée fait **échouer** l'exemple qui l'emploie — là où une table recopiée se serait tue.
+
+**Ce qui est livré.**
+
+| Livrable | Ce que c'est |
+|---|---|
+| `doc-src/teacher-guide.md` | le **fil de l'enseignant** : de l'énoncé à la note. Renvoie aux trois documents existants au lieu de les répéter ; porte l'**index** (§ 4) et le § « concevoir et noter avec un agent IA » (§ 6) |
+| `doc-src/labs/session-7/` | un **TP réel complet** (C4 du corpus : routage, filtrage, SNAT) : énoncé, `lab.mrn`, scénarios d'invité, corrigé, **deux** clés (session vivante / copie close), `build.sh`, `play.sh`, `grade.sh` |
+| `_claude-local/bench/teacher-bench.sh` | le banc : prose sans grammaire recopiée, index joué ligne à ligne, couverture bidirectionnelle + deux discriminants, TP joué tel quel, copie d'examen notée |
+
+**Le § 6 du guide est écrit du côté de l'enseignant, pas de l'agent.** Le skill de l'épisode 19
+dit à l'agent *comment faire* ; ici on dit à l'humain **quoi exiger** avant d'y croire : les
+compteurs d'un run complet, la clé jouée contre un TP **délibérément faux**, la liste des `SKIP`,
+et le `.mar` sauvé-quitté-rejoué. Et ce qu'il ne délègue pas : les ambiguïtés de l'énoncé, le
+barème, la sanction.
+
+**Le discriminant de l'épisode est le TP, joué deux fois de suite sur la même session.** Corrigé
+installé : **14 PASS / 0 FAIL / 0 SKIP**. Puis, forwarding coupé **en marche** par
+`exec r1 -- sysctl -w net.ipv4.ip_forward=0`, la **même** clé rejouée : **12 PASS / 2 FAIL**, et
+les deux qui basculent sont exactement l'**état** (`report r1 says ~ ip_forward *= *1`) et
+l'**expérience** (`reaches m1 intruder`) — la **trace** (`journal r1 rc_config ok`) passe encore,
+parce qu'elle dit vrai : la configuration a bien tourné. C'est la hiérarchie des preuves du § 7.5,
+rendue visible en deux lignes de sortie.
+
+**Pièges neufs, tous mesurés.**
+
+1. **Le quoting d'un `rc-set` qui redirige.** `rc-set m1 printf 'x' > /mnt/hostfs/…` fait
+   rediriger **le shell de l'appelant** : la queue libre part à l'invité, mais c'est bash qui lit
+   la ligne en premier. Il faut quoter la queue entière. Même famille que le quoting d'`exec`
+   (ép. 18), et ça se voit à l'œil nu seulement quand on **joue** la ligne.
+2. **Les ports ne se nomment pas pareil selon le genre** : une machine a `eth0…`, un **composant
+   `router` a `port0…`**, un switch et un hub `port1…` (ils comptent à partir de 1). Le refus le
+   dit, mais un exemple faux n'aurait été trouvé que par un lecteur.
+3. **`wait --ready` sans marqueur attend pour rien** : le marqueur est écrit **par le scénario**,
+   jamais par le relais (ép. 16). Un `rc-set` qui ne l'écrit pas fait expirer l'attente à 300 s —
+   d'où l'ordre du § 4, où le scénario minimal vient **avant** le premier démarrage.
+4. **Les titres des documents archivés sont traduits** : une session française classe le rapport
+   sous « Rapport sur m1 » quand la console reste « Console of m1 ». Un corrigé qui cherche
+   `Report on` ne note **rien** chez un collègue. Rien du canal n'est localisé ; le treeview, si.
+5. **Le rapport d'arrêt n'est pas garanti.** Trois machines éteintes peu après leur boot : **une
+   seule** avait écrit son `report.md` (les trois avaient console et terminal). Le remède est
+   celui de l'épisode 20, et il coûte une commande : **demander `report <c>` avant l'extinction**.
+   Consigné au § 6.
+6. **`quit` rend la main sans garantir que le processus est mort** — et supposer le contraire
+   laisse des sessions Marionnet s'accumuler : trois tournaient en parallèle, chacune avec ses
+   UML, ses taps et la **même** adresse d'extrémité `172.23.0.254`, ce qui faisait échouer le boot
+   d'un invité de la session suivante (`wait --ready` expire à 300 s) alors que le même TP joué
+   seul aboutit. Piège **de banc** — le dépôt le savait déjà (`bench_cleanup`) — réparé par un
+   `end_session` qui **attend** la mort, puis TERM/KILL **par PID exact** (§ 6).
+7. Deux pièges d'écriture de banc, payés tous les deux : un **programme awk cité par des
+   apostrophes** ne peut contenir **aucune apostrophe**, pas même dans un commentaire français —
+   sinon le shell referme la chaîne et le programme est cassé **en silence** (zéro verbe extrait,
+   et un flux de contrôle déviant) ; et `pgrep -c -f <motif>` **se compte lui-même** (le `[l]inux`
+   habituel), en **imprimant** `0` tout en **rendant** 1, de sorte qu'un `|| echo 0` produit
+   « 0\n0 » et casse le `(( ))` qui suit.
+
+**Mesures.** Banc neuf `_claude-local/bench/teacher-bench.sh`. Sans UML (`E2E=0`) : **13
+assertions, 0 échec** — la prose ne recopie aucune ligne de syntaxe de `help`, les trois renvois
+et les neuf fichiers du TP cités existent, `mrn-check` valide le `.mrn` (14 requêtes) et
+`mrn-verify --check-only` les deux clés (14 et 10 assertions), la couverture est complète
+(**43 verbes publiés, 43 exemples**) et les deux discriminants mordent. Avec UML : les **57 lignes** du § 4 sont jouées dans l'ordre et
+**rendent toutes 0** — donc `wait --ready`, `report`, `switch-info`, `exec` et les trois
+`history-*` compris — et les verbes **joués** sont exactement ceux que la lecture statique
+annonçait. Le TP : **14 PASS / 0 FAIL / 0 SKIP**, puis **12 / 2** après coupure du forwarding. La
+copie d'examen : **neuf** documents archivés (trois par machine — le `report` demandé avant
+l'extinction fait exactement ce que le § 5.5 du guide promet), **aucun** historique (personne ne
+s'est logué : le fragment `/etc/profile.d` n'est lu que par un shell de login, ép. 20), et la
+notation d'une copie close rend **10 PASS / 0 FAIL / 0 SKIP** sans redémarrer un seul invité.
+Total du banc complet : **37 assertions, 0 échec**. Aucun `.ml` touché, `dune build` vert. Bancs
+existants rejoués — ceux qui **lisent** les documents modifiés : `skill-bench` **60/0**,
+`doc-bench` **66/0**.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1498,6 +1586,40 @@ rejoués un par un : `skill-bench` 58/0, `doc-bench` 66/0, `verify-bench` 84/0, 
   à instruire — la piste la plus simple étant une course entre le `getty` de `tty0` et l'extinction
   demandée par l'exemple, sur un hôte plus chargé.
 
+- **Le rapport d'arrêt n'est pas garanti** (mesuré à l'épisode 21, sur trois machines
+  `debian-trixie` d'une session `--exam`) : les trois ont archivé leur console et leur terminal,
+  **une seule** avait écrit son `report.md`. Les trois avaient pourtant atteint la fin de leur
+  relais — les journaux `rc_config` se terminent à l'identique. L'hypothèse la plus simple est
+  celle que l'épisode 16 a déjà mesurée pour le veilleur : une unité systemd **démarrée depuis le
+  relais** n'a son job exécuté qu'**à la fin du boot**, bien après le marqueur de `wait --ready` ;
+  une extinction demandée quelques secondes après ce marqueur la manque donc. **Non instruit** :
+  il faudrait mesurer le délai réel entre le marqueur et l'activation du hook, sur plusieurs
+  images. En attendant, le remède est celui de l'épisode 20 et il coûte une commande —
+  **demander `report <c>` avant l'extinction**, ce que `doc-src/teacher-guide.md` § 5.5 conseille
+  et que le banc de l'épisode 21 joue.
+- **Un boot d'invité qui n'aboutit pas quand plusieurs sessions Marionnet tournent en parallèle**
+  (épisode 21) : `wait m1 --ready` expire à 300 s, le hostfs porte bien les fichiers déposés par
+  l'hôte (`boot_parameters`, le relais, le `rcfile`) mais **aucun** fichier écrit par l'invité —
+  ni `rc_config.log`, ni `boot.log` : le boot n'a jamais atteint le relais. Le même TP joué
+  **seul** aboutit toujours (3 fois sur 3, dont un rejeu dans les conditions du banc). La cause a
+  fini par se voir avec un simple `ps` : **trois** processus `marionnet.exe` tournaient ensemble,
+  ceux de deux runs précédents compris, chacun avec ses UML, ses taps `mtap<pid>-*` et **la même**
+  adresse hôte `172.23.0.254`. Ce n'était donc pas Marionnet : c'était le **banc** de cet épisode,
+  qui remettait `MARIONNET_PID=""` après un `quit` **en supposant** que le processus était mort.
+  Fait rappelé au passage, et déjà connu du dépôt (`bench_cleanup` le gère depuis l'épisode 6 de
+  `pilotage-par-script`) : **`quit` rend la main sans garantir que le processus est parti**. Le
+  banc a désormais un `end_session` qui attend la mort, puis TERM/KILL **par PID exact** — et le
+  run suivant l'a **journalisé** noir sur blanc (« le processus 765852 a survécu à `quit` — TERM
+  puis KILL ») **avant** de jouer le TP du premier coup, 37 assertions et 0 échec. Ce qui reste
+  ouvert, et vaut d'être su : deux sessions Marionnet **simultanées** partagent l'adresse
+  d'extrémité de leurs taps ; rien n'interdit de les lancer, et personne ne le signale.
+- **Les titres des documents archivés sont traduits, et pas tous** : une session française classe
+  « **Rapport sur** m1 » à côté de « **Console of** m1 » et « **Terminal of** m1 ». Deux
+  conséquences : un corrigé qui cherche un libellé anglais (`documents r1 has ~ Report on`) ne
+  note **rien** sur une machine dont la locale n'est pas l'anglais — d'où l'alternative écrite
+  dans `doc-src/labs/session-7/key-recorded.mrv` — et l'**incohérence** elle-même est un défaut :
+  les `msgid` `Console of `/`Terminal of ` ont pourtant été traduits à l'épisode 13. À instruire :
+  soit les quatre titres sont localisés, soit aucun ne l'est ; le mélange est le pire des trois.
 - **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
   recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
   document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
@@ -2570,3 +2692,42 @@ le run de contrôle **avec le code précédent** reproduit à l'identique — do
 **Reste.** L'épisode **21** : le guide de l'enseignant (anglais), un exemple par commande et des TP
 complets fabriqués et notés, avec un § « concevoir et noter un TP avec un agent IA ». Après quoi le
 chantier est clôturable.
+
+### 2026-08-13 — épisode 21 : le guide de l'enseignant, et l'exemple qui n'est pas une citation
+
+**Pourquoi maintenant.** C'est le dernier épisode annoncé par le tableau du § 4, et le seul qui
+manquait pour clore : les trois documents livrés jusqu'ici s'adressent à qui script
+(`doc-src/scripting/README.md`), à qui n'a pas envie de scripter (`doc-src/exam-mode.md`) et à un
+**agent** (`doc-src/lab-design-skill.md`). Personne n'avait écrit le **fil de l'enseignant**, de
+son énoncé jusqu'à la note — ni, surtout, l'index promis « un exemple par commande ».
+
+**La tension, et la décision.** L'index promis est exactement ce que le guide de scripting
+**refuse** au nom de l'invariant du dépôt (§ 4 : « The command list is not in this guide »). Un
+exemple, contrairement à un nom de verbe, **est** une syntaxe : la réponse de l'épisode 19 (citer
+sans arité, faire vérifier la citation) ne suffisait donc pas. L'auteur a tranché : **les exemples
+sont des gestes joués, pas des citations**. Le § 4 du guide est une session ordonnée, le banc la
+rejoue ligne à ligne contre une Marionnet vivante, et la **couverture est mesurée par l'exécution
+même** — une fonction `mrnctl` espionne note le verbe de chaque appel, l'ensemble obtenu est
+comparé à celui que `help` publie, dans les deux sens. Un verbe neuf casse le banc ; une option
+renommée fait échouer son exemple. Détail au § 4.20.
+
+**Livré.** `doc-src/teacher-guide.md` (9 §, dont l'index des **43** verbes et le § « concevoir et
+noter un TP avec un agent IA », écrit du côté de l'humain : ce qu'il doit **exiger** avant de
+croire un agent) ; `doc-src/labs/session-7/` — un TP **réel** complet (C4 du corpus : routage,
+filtrage, SNAT), avec ses deux clés, l'une pour une session vivante, l'autre pour une copie close ;
+et le banc `teacher-bench.sh`. Trois renvois d'une ligne ont été ajoutés aux documents existants.
+
+**Le discriminant** est le TP joué deux fois sur la même session : corrigé installé,
+**14 PASS / 0 FAIL / 0 SKIP** ; puis forwarding coupé **en marche** par `exec`, la même clé rend
+**12 PASS / 2 FAIL** — et les deux qui basculent sont l'**état** et l'**expérience**, la **trace**
+passant encore. La hiérarchie des preuves du § 7.5, en deux lignes de sortie.
+
+**Sept pièges neufs, tous mesurés** (§ 4.20) : le **quoting** d'un `rc-set` qui redirige (c'est le
+shell de l'appelant qui lit la ligne en premier) ; les **noms de ports** qui diffèrent selon le
+genre (`eth0…` pour une machine, `port0…` pour un composant `router`) ; `wait --ready` qui attend
+pour rien quand le scénario n'écrit pas le marqueur ; les **titres des documents archivés qui sont
+traduits** — un corrigé qui cherche `Report on` ne note rien sur une machine française ; le
+**rapport d'arrêt qui n'est pas garanti** (trois machines éteintes peu après leur boot, une seule
+avec son `report.md` — remède : le demander avant l'extinction, comme à l'épisode 20) ; et deux
+pièges d'écriture de banc, dont un programme **awk cité par des apostrophes** qui contenait une
+apostrophe dans un commentaire français, cassé **en silence**.

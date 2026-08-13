@@ -1,0 +1,44 @@
+# Session 7 — the correction key.  mrn-verify key.mrv
+#
+# One assertion per line. Three kinds of evidence, in increasing order of what they prove, and
+# the order matters more than the count:
+#
+#   1. the MODEL — what Marionnet knows by construction. Always true if the lab was handed out
+#      as it was built; worth asserting because a student may have moved a cable;
+#   2. the TRACE — what the boot scenario did, and whether anything in it failed. It proves a
+#      command was CALLED, never that the machine is in a given state (a trace does not show
+#      redirections, and a scenario can be replaced after the boot);
+#   3. the STATE and the EXPERIMENT — what the guest says about itself now (`report'), and what
+#      actually crosses the network (`reaches'). Only the last one proves connectivity: a
+#      report describes a state, never an accessibility.
+#
+# Play it against a deliberately wrong copy too. A key that passes on everything marks nothing.
+
+# ---- 1. the model: the topology of the statement ---------------------------------------------
+field r1 port_no is 3
+cable c1 m1:eth0       h1:port1
+cable c2 r1:eth0       h1:port2
+cable c3 r1:eth2       h3:port1
+cable c4 intruder:eth0 h3:port2
+
+# ---- the session is alive (a copy shut down is marked with --refresh=never) --------------------
+state m1 is on
+state r1 is on
+state intruder is on
+
+# ---- 2. the trace: the configuration ran, and nothing in it failed ----------------------------
+journal r1 rc_config ok
+
+# ---- 3. the state, taken inside the guest -----------------------------------------------------
+report r1 says ~ ip_forward *= *1
+report r1 says ~ ^:FORWARD DROP
+report r1 says ~ ^-A POSTROUTING .*MASQUERADE
+report m1 says ~ default via 192\.168\.1\.254
+
+# ---- 3. the experiment: the only proof of connectivity ----------------------------------------
+reaches m1 intruder
+
+# ---- after an exam session: what the shutdown archived ----------------------------------------
+# Uncomment when marking a copy that has been shut down properly. The terminal recording is the
+# one document a mark may rest on: it is written by the host, not by the guest.
+# documents m1 has ~ Terminal of

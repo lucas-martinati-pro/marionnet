@@ -253,6 +253,29 @@ l'installer une fois et, si la distribution l'exige, créer des liens par nom de
 - **`jq`** est requis par `mrn-check` et `mrn-verify` (et optionnel pour `marionnet-ctl` :
   `--query`, `--pretty`). Même arbitrage.
 
+**Complément 2026-08-13 (venu de l'épisode 21 de `journalisation-profonde`) : la documentation
+utilisateur n'est, elle non plus, installée par aucune cible.** Même mesure, même résultat
+(`grep -rn 'doc-src' Makefile Makefile.d/*.mk` : aucun résultat). Ce n'était qu'un manque tant que
+`doc-src/` contenait des sources historiques (`documentation.texi`) ; ça n'en est plus un depuis
+que ce dossier porte **la** documentation d'usage, écrite pour être lue par un enseignant qui
+**n'a pas** le dépôt :
+
+| Fichier | Pour qui |
+|---|---|
+| `doc-src/teacher-guide.md` | l'enseignant : de l'énoncé à la note, un exemple par commande |
+| `doc-src/scripting/README.md` + `doc-src/scripting/examples/` | qui pilote le canal (les exemples sont **exécutables**) |
+| `doc-src/exam-mode.md` | l'enseignant qui ne script pas |
+| `doc-src/lab-design-skill.md` | un **agent IA** à qui l'on délègue la conception d'un TP — le guide de l'enseignant dit « lis ce fichier et suis-le », donc il faut qu'il **existe** sur la machine |
+| `doc-src/labs/session-7/` | un TP complet **rejouable** (scripts + clés) : il sert de modèle, donc il s'installe comme les exemples |
+| `doc-src/project-format-v3.md` | le format `.mar` |
+
+Destination naturelle : `$(PREFIX)/share/doc/marionnet/`, en gardant l'arborescence (les documents
+se **citent par chemin relatif** entre eux — c'est le mécanisme qui remplace la recopie de la
+grammaire). Deux points à trancher au paquet : les scripts de `labs/` et de `scripting/examples/`
+sont **exécutables** et doivent le rester (`doc` en lecture seule les rendrait inutilisables sans
+copie préalable), et le guide de l'enseignant cite `doc-src/…` — à relire une fois le chemin
+d'installation choisi, ou à laisser tel quel en le disant.
+
 **Voie d'implémentation** (à trancher à l'épisode qui construira l'install) : soit une stanza
 `install` de dune (les clients deviennent des `(files …)` d'une section `bin`, ce qui les fait
 suivre `dune install --prefix` et donc tous les canaux), soit une copie explicite dans

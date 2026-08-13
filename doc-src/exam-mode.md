@@ -129,6 +129,10 @@ shutdown and without opening a window, through Marionnet's control channel: see
 `doc-src/scripting/README.md`, § 11. That is how a lab is checked by a script — or by an agent
 — rather than by hand.
 
+If what you want is the whole thread — preparing a lab, handing it out, running the session and
+marking the copies, with one worked example per command — that is `doc-src/teacher-guide.md`,
+and a complete lab lives in `doc-src/labs/session-7/`.
+
 And if the marking itself is what you want delegated: `doc-src/lab-design-skill.md` is the
 procedure an AI agent should follow to design a lab, write its correction key as a file of
 assertions, and grade a session from it — including which of the four documents above a mark may

@@ -613,6 +613,10 @@ passed / failed / skipped). "It should work" is not a result.
   recipes, and the troubleshooting table.
 * `doc-src/scripting/examples/` — runnable scripts, including an exam session and an assertion
   file.
+* `doc-src/teacher-guide.md` — the teacher's side of this page: the same work seen by the human
+  who will read your report. Its § 6 says what they are expected to demand from you (counters, a
+  run against a deliberately wrong lab, the list of `SKIP`s, the `.mar` replayed), and its
+  `doc-src/labs/session-7/` is a complete lab you may take as a model.
 * `doc-src/exam-mode.md` — what an exam session records, and what can be trusted in it.
 * `docs/pilotage-par-script.md`, `docs/journalisation-profonde.md` — the design and the
   measurements behind all of the above (in French, developer audience).
