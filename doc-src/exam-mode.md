@@ -124,3 +124,8 @@ Everything above can also be read **while the session is running**, without wait
 shutdown and without opening a window, through Marionnet's control channel: see
 `doc-src/scripting/README.md`, § 11. That is how a lab is checked by a script — or by an agent
 — rather than by hand.
+
+And if the marking itself is what you want delegated: `doc-src/lab-design-skill.md` is the
+procedure an AI agent should follow to design a lab, write its correction key as a file of
+assertions, and grade a session from it — including which of the four documents above a mark may
+rest on, and which it may not.

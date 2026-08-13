@@ -412,7 +412,25 @@ Reprise : appliquer le skill `chantier-long`.
   `exec m1 "sh -c 'exit 7'"` rend **7** — une commande composée se passe comme **un seul
   argument**) ; et borner la commande et l'attente avec la **même** valeur rend le dépassement
   **irrapportable**, d'où 15 s de grâce et une réponse qui porte `timed_out`, le statut 124 et la
-  sortie produite avant l'arrêt).
+  sortie produite avant l'arrêt) ; **ép. 19 fait 2026-08-12** (le **skill de conception de TP**,
+  pour un agent IA quelconque : `doc-src/lab-design-skill.md` — anglais, dans la documentation
+  **livrée**, parce qu'un enseignant qui installe Marionnet doit l'avoir — plus un wrapper de 12
+  lignes `.claude/skills/marionnet-lab-design/` qui n'y **renvoie** que. La tension de l'épisode
+  n'était pas d'écriture mais d'**invariant** : la grammaire ne se recopie pas, et pourtant un
+  agent à qui l'on ne dit pas ce qui existe **invente un verbe plausible**. Tranché : **citer, et
+  faire vérifier la citation** — les 43 verbes nommés **par intention** avec un exemple chacun,
+  **aucune arité ni liste d'options**, et un banc qui mesure dans les **deux sens** (tout verbe
+  publié est nommé, donc un verbe neuf **casse le banc** ; aucune **ligne de syntaxe** de `help`
+  n'apparaît). Le TP d'exemple est **joué**, ce qui l'a fait bouger deux fois : il devait porter
+  un composant **routeur** — la seule image installée date de 2014 et ne démarre pas, et un
+  exemple qu'on ne peut pas jouer n'est qu'un texte — et son scénario écrit `sysctl -w` et non
+  `echo 1 > /proc/…`, sans quoi l'assertion de trace **échouerait sur une machine correcte**
+  (§ 7.4). Discriminant : le corrigé joué **deux fois** — conforme, hors examen, **13 PASS /
+  1 FAIL / 0 SKIP**, le FAIL étant exactement l'assertion réservée à la session d'examen ; puis,
+  en appliquant au skill le **point 5 de sa propre checklist**, forwarding coupé **en marche** par
+  `exec` → l'**état** bascule, l'**expérience** (`reaches`) bascule, la **trace** ne bouge pas.
+  Corrigé au premier run : le **banc** comptait pour des copies de grammaire les sept verbes sans
+  argument, dont la syntaxe **est** leur nom).
   Deux faits
   mesurés qui commandent tout
   le reste : (1) le relais invité **source déjà**
@@ -427,6 +445,16 @@ Reprise : appliquer le skill `chantier-long`.
   son rc (`switch.ml:593` : `--rcfile` est mort), puis instantané par la socket mgmt ; collecteur
   **toujours actif**, enregistrement de session **sur option** — donc **aucun attribut persisté
   ajouté**, le format v3 n'est pas rouvert.
+  **Reste : ép. 20**, le **guide de l'enseignant** (anglais) — automatiser et contrôler Marionnet
+  par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un §
+  « concevoir et noter un TP avec un agent IA » qui met en œuvre le skill de l'ép. 19. Même régime
+  de grammaire : citer, et faire vérifier la citation par un banc. **Après quoi le chantier est
+  clôturable.** **Préalable consigné le 2026-08-13** : le **démarrage du routeur va être ajusté**,
+  donc tout ce que le chantier n'a jamais pu jouer faute d'un routeur qui boote est à **rejouer
+  avant** l'ép. 20 — liste close au § 6 de `docs/journalisation-profonde.md` (mode examen sur
+  routeur, ses cinq journaux, `report`/`exec`, les 7 configs Quagga vérifiées **dans** l'invité, le
+  TP d'exemple du skill), plus **deux documents livrés qui deviendront faux** (`exam-mode.md` § 4
+  et l'encadré du § 7 du skill, tous deux affirmant qu'aucune image de routeur ne boote).
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;

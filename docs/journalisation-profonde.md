@@ -171,7 +171,8 @@ L'ordre du glob donne cet encadrement gratuitement. Deux points à vérifier à 
 | **16** | **Le rapport à la demande** (voie 1 du § 7.6) : le producteur de l'épisode 7 n'attendait qu'un **déclencheur** et un **service** — veilleur déposé dans le hostfs, protocole à trois fichiers, verbe `report`, 6ᵉ journal du même nom. M1, M3 et M4 comblés ; M2 laissé ouvert (cf. § 4.15) | sur la même machine, au même instant, `log m1 rc_config` ne contient **pas** `ip_forward` et `log m1 report` dit `net.ipv4.ip_forward = 1` — **fait** (2026-08-12) |
 | **17** | **Le vérificateur déclaratif** `useful-scripts/mrn-verify` : un fichier d'assertions (`.mrv`) contrôlé puis joué contre une session vivante, trois verdicts dont le troisième compte (`SKIP` ≠ `FAIL`), et des **capacités lues dans la grammaire** — compagnon de `mrn-check`, comme un `.mrv` est le pendant d'un `.mrn` (cf. § 4.16) | deux lignes du même fichier, sur la même machine au même instant : `journal m1 rc_config contains ip_forward` **échoue** et `report m1 says … ip_forward = 1` **passe** — **fait** (2026-08-12) |
 | **18** | **M2 — exécuter dans un invité** : verbe `exec <composant> <ligne de commande> [--timeout=<s>]` (voie 2 du § 7.6), servi par le veilleur de l'épisode 16 **généralisé** ; **7ᵉ journal** `exec` (ce que le canal a injecté, tenu à part de ce que l'étudiant a tapé) ; et la famille `reaches` de `mrn-verify` devient vivante (cf. § 4.17) | sur la même session, au même instant : `reaches m1 h3` **PASS**, puis h3 éteinte **FAIL**, alors que le rapport de m1 n'a pas bougé — un rapport décrit un **état**, jamais une **accessibilité** — **fait** (2026-08-12) |
-| **19** *(opt.)* | Skill de conception/vérification de TP pour agent | après 17 et 18 : il émet dans la grammaire du vérificateur, sinon il émet du bash invérifiable |
+| **19** | **Le skill de conception de TP**, pour un agent IA quelconque : `doc-src/lab-design-skill.md` (anglais, livré avec la doc) + un wrapper mince `.claude/skills/marionnet-lab-design/`. Il nomme les 43 verbes — décision de l'auteur : **citer, et faire vérifier la citation** — mais ne recopie **aucune** syntaxe (cf. § 4.18) | son TP d'exemple est **joué** : le `.mrn` linté et envoyé, le corrigé rendant 13 PASS / 1 FAIL — et le FAIL est exactement l'assertion que le § 7.4 réserve à la session d'examen — **fait** (2026-08-12) |
+| **20** | **Le guide de l'enseignant** (anglais) : automatiser et contrôler Marionnet par script, un exemple **par commande**, des TP complets fabriqués et notés en `--exam`, et un § « concevoir et noter un TP avec un agent IA » qui met en œuvre l'épisode 19 | le banc compare la liste des verbes **cités** à celle que `help` publie, dans les deux sens — à faire |
 
 ### 4.1 Ce que l'épisode 1 a réellement livré (et pourquoi deux fichiers, pas un)
 
@@ -1287,6 +1288,74 @@ et la complétion n'a **pas** été touchée : le 7ᵉ journal y arrive parce qu
 `help`, et le placeholder du nouveau verbe s'appelle `<command-line>` et non `<command>`, ce
 dernier désignant déjà un verbe **du canal** dans cette grammaire.
 
+### 4.18 Ce que l'épisode 19 a livré (et la citation qu'il fallait faire vérifier)
+
+L'épisode 15 avait **planifié** celui-ci et dit pourquoi il devait venir en dernier (D6). Ce qu'il
+livre n'est ni un verbe ni un journal : c'est la **procédure** qui manquait entre l'outillage et
+son usage — comment on va d'un **énoncé** à une **note**.
+
+**Le fichier, et son emplacement.** `doc-src/lab-design-skill.md` (anglais, 614 lignes) vit dans
+la documentation **livrée**, pas dans `.claude/` : un enseignant qui installe Marionnet doit
+l'avoir, et n'importe quel agent capable de lancer un shell doit pouvoir le lire — la demande
+disait « générique, pas forcément Claude Code ». Le wrapper `.claude/skills/marionnet-lab-design/`
+existe quand même, mais il ne fait **que renvoyer** au fichier (12 lignes non vides, mesuré par le
+banc) : c'est la discipline d'unicité appliquée au skill lui-même.
+
+**La tension qu'il a fallu trancher, et comment.** L'invariant du dépôt interdit de recopier la
+grammaire ailleurs que dans `help` — le § 4 du guide utilisateur s'intitule littéralement « The
+command list is not in this guide ». Mais un agent à qui l'on ne dit pas **ce qui existe** ne peut
+pas concevoir : il inventera un verbe plausible plutôt que de demander. Décision de l'auteur :
+**citer, et faire vérifier la citation** — le motif de l'épisode 9, poussé d'un cran. Le skill
+nomme les 43 verbes, groupés par **intention** et non par ordre alphabétique, avec un exemple
+chacun ; il ne porte **aucune arité, aucune liste d'options**. Et le banc mesure la citation dans
+les **deux sens** :
+
+- tout verbe publié par `help` est nommé au § 1 du skill — un verbe neuf **casse le banc**, il ne
+  laisse pas la doc vieillir en silence ;
+- aucune **ligne de syntaxe** publiée par `help` n'apparaît dans le skill — c'est-à-dire
+  précisément ce qui dérive.
+
+La seconde assertion a d'abord rendu un échec, et c'était le **banc** qui avait tort : sept verbes
+sans argument (`status`, `quit`, `start-all`…) ont pour syntaxe leur propre nom, si bien que les
+nommer était compté pour une copie. Corrigé en excluant les syntaxes égales au verbe — la mesure
+porte sur l'arité et les options, pas sur le nom.
+
+**Ce que le skill contient, et pourquoi c'est cet ordre.** Cinq directives d'abord (demander la
+grammaire ; le canal ne peut que ce que la GUI peut ; `accepted` ≠ `done` ; `SKIP` ≠ `FAIL` ; une
+note repose sur ce que l'**hôte** a écrit) — parce que ce sont elles qui, enfreintes, produisent un
+travail qui a l'air juste. Puis la carte des capacités par intention, le cycle de vie et ses
+artefacts (`.mrn`, `.mar`, scénario, `.mrv`), le tableau de ce qui est **prouvable et par quoi**,
+la **hiérarchie de preuve** en trois niveaux, l'écriture du corrigé, les onze pièges mesurés du
+chantier avec leur contre-règle, un TP complet, la procédure de notation d'une session `--exam`, et
+une checklist de livraison.
+
+**Le TP d'exemple est joué, pas rédigé.** Deux points l'ont fait bouger, et tous deux par la
+mesure :
+
+- il devait porter un **routeur** — c'est ce qu'un vrai TP emploie. Mais la seule image de routeur
+  installée date de 2014 et ne démarre pas (§ 4.7). Un exemple qu'on ne peut pas **jouer** n'est
+  qu'un texte : le nœud qui route est donc une **machine à deux interfaces**, et le skill dit en
+  toutes lettres pourquoi, avec ce que la substitution change (le modèle nommerait `port0`/`port1`
+  là où l'invité dit `eth0`/`eth1`) ;
+- son scénario écrit `sysctl -w net.ipv4.ip_forward=1` et **non** `echo 1 > /proc/…`. Ce n'est pas
+  une élégance : avec la redirection, l'assertion `journal r1 rc_config contains ip_forward`
+  **échouerait sur une machine correcte** (§ 7.4, `set -x` ne trace pas les redirections). Le skill
+  garde les deux assertions, l'une sous l'autre, et explique laquelle prouve quoi.
+
+**Le discriminant est le corrigé lui-même, joué deux fois.** Sur la maquette conforme, hors mode
+examen : **13 PASS, 1 FAIL, 0 SKIP** — et le seul échec est `documents m1 has Terminal of`, c'est-à-dire
+exactement l'assertion que le § 7.4 du skill annonce comme réservée à la session d'examen. Puis le
+banc applique au skill le **point 5 de sa propre checklist** (« jouer le corrigé contre une maquette
+délibérément fausse ; un corrigé qui passe sur tout ne prouve rien ») : on coupe le forwarding **en
+marche**, par `exec` (ép. 18), et on rejoue le **même** fichier. Ce qui bascule est l'**état**
+(`report … ip_forward`) et l'**expérience** (`reaches m1 m2`) ; ce qui ne bouge pas est la
+**trace** (`journal … contains ip_forward`), qui prouve un **appel** et jamais un état. Le § 4.2 du
+skill n'est donc pas un raisonnement : c'est une mesure, sur la même machine, au même instant.
+
+**Mesures.** `_claude-local/bench/skill-bench.sh` neuf : **58 assertions, 0 échec** (dont **41 sans
+démarrer une seule UML**, jouables par `--static`). Aucun `.ml` touché, aucun `msgid` introduit —
+comme les épisodes 9 et 15, celui-ci est documentaire.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1319,6 +1388,27 @@ dernier désignant déjà un verbe **du canal** dans cette grammaire.
   un TP doit être noté sur une vieille image.
 - Le **bout en bout du routeur** attend une image de routeur qui boote (§ 4.7) ; le code, lui,
   est symétrique depuis l'épisode 7.
+  **À FAIRE AVANT L'ÉPISODE 20 (consigné le 2026-08-13, sur indication de l'auteur)** : le
+  **démarrage du routeur va être ajusté** prochainement. Tout ce que ce chantier n'a **jamais pu
+  jouer** faute d'un routeur qui boote devra donc être **rejoué**, et les textes qui en tirent une
+  limite **relus**, avant d'écrire le guide de l'enseignant. La liste, close, de ce qui n'a pas eu
+  lieu :
+  1. le **mode examen sur un routeur** (ép. 7) : rapport, historique, console et terminal
+     archivés dans `documents` à l'extinction propre — le code est symétrique (`machine.ml` **et**
+     `router.ml` appellent `import_exam_documents`), rien n'a été mesuré ;
+  2. les **journaux d'un routeur** (ép. 1-3, 6, 14) : `rc_config`, `boot`, `commands`, `console`,
+     `terminal` produits par un invité routeur réel ;
+  3. le **rapport à la demande** et l'**exécution** sur un routeur (ép. 16, 18) : `report r1` et
+     `exec r1 …` passent par le veilleur déposé dans le hostfs, jamais éprouvé sur cette image ;
+  4. le **TP d'exemple du skill** (ép. 19, § 4.18) : il a dû renoncer au composant `router` pour
+     rester **jouable**. Une fois le routeur bootable, reprendre le § 7 de
+     `doc-src/lab-design-skill.md` — la maquette redevient `m1 — s1 — r1 — s2 — m2` avec un vrai
+     routeur, et l'encadré qui explique la substitution disparaît ou change de sens ;
+  5. les **sept configurations Quagga** du routeur par `--field=` (chantier `pilotage-par-script`,
+     ép. 12) : posées et relues par le canal, mais **jamais** vérifiées dans un invité qui tourne ;
+  6. la **phrase de `doc-src/exam-mode.md` § 4** (« the only router image currently shipped dates
+     from 2014 and does not boot ») et son équivalent au § 7 du skill : elles deviendront fausses
+     le jour de l'ajustement, et ce sont des **documents livrés**.
 - **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
   recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
   document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
@@ -1359,6 +1449,12 @@ dernier désignant déjà un verbe **du canal** dans cette grammaire.
   c'est la première chose qui surprendra celui qui écrit un corrigé.
 
 ## 7. Vers le vérificateur : ce qu'un TP demande de prouver (épisode 15)
+
+> **État après l'épisode 19** : ce § a rempli son office — il a spécifié l'épisode 16 (le rapport
+> à la demande), l'épisode 17 (le vérificateur), l'épisode 18 (l'exécution dans l'invité) et
+> l'épisode 19 (le skill, § 4.18), qui reprend son tableau des preuves, ses manques comblés et ses
+> pièges. Les quatre manques M1→M4 sont **tous comblés**. Il reste ici comme **archive de mesure** :
+> ne pas le réécrire, le citer.
 
 **D6** dit que le vérificateur à l'exécution et le skill de conception de TP sont des épisodes
 *optionnels de fin*, et il dit *pourquoi* : « on ne conçoit pas une couche de verdict avant qu'un
@@ -2289,3 +2385,47 @@ que supprimées (la connectivité n'est plus annoncée non tranchable ; le `SKIP
 autre raison), et une **erreur de banc** préexistante a été corrigée au passage : en `E2E=0`,
 `verify-bench.sh` jouait `lab.mrv` — qui affirme `state s1 is off` — après avoir démarré ce switch
 pour lire ses tables.
+
+### 2026-08-12 — Épisode 19 : le skill qui conçoit un TP, et la grammaire qu'il ne doit pas réciter
+
+**Ce qui manquait.** Tout l'outillage existe depuis l'épisode 18 : 43 verbes, 7 journaux, un
+rapport à la demande, un exécuteur dans l'invité, un vérificateur déclaratif, un mode examen qui
+archive. Personne n'avait écrit **comment on s'en sert** pour aller d'un énoncé à une note. C'est
+le livrable que l'épisode 15 avait planifié en dernier, et pour la raison que D6 donne : on ne
+conçoit pas une couche de verdict avant qu'un journal ait tourné.
+
+**Livré.** `doc-src/lab-design-skill.md` — anglais, dans la documentation **livrée** parce qu'un
+enseignant qui installe Marionnet doit l'avoir et que n'importe quel agent capable de lancer un
+shell doit pouvoir le lire ; plus `.claude/skills/marionnet-lab-design/SKILL.md`, qui ne fait que
+**renvoyer** à lui. Cinq directives, la carte des capacités **par intention**, le cycle de vie et
+ses artefacts, ce qui est prouvable et par quoi, la hiérarchie de preuve en trois niveaux,
+l'écriture du corrigé, onze pièges mesurés avec leur contre-règle, un TP complet, la procédure de
+notation d'une session `--exam`, et une checklist de livraison.
+
+**La décision de l'épisode.** L'invariant du dépôt interdit une seconde copie de la grammaire ;
+un agent à qui l'on ne dit pas ce qui existe invente un verbe plausible. Tranché : **citer, et
+faire vérifier la citation** — le skill nomme les 43 verbes et **aucune** arité, et le banc mesure
+dans les deux sens (tout verbe publié est nommé ; aucune ligne de syntaxe n'est recopiée). Un verbe
+neuf casse donc le banc au lieu de laisser la page vieillir.
+
+**Deux corrections par la mesure.**
+
+1. Le TP d'exemple devait porter un **routeur**. La seule image de routeur installée date de 2014
+   et ne démarre pas : un exemple qu'on ne peut pas jouer n'est qu'un texte. Le nœud qui route est
+   une machine à deux interfaces, et le skill dit pourquoi et ce que la substitution change.
+2. La première version de l'assertion « aucune syntaxe recopiée » a **échoué à tort** : sept verbes
+   sans argument ont pour syntaxe leur propre nom. Le défaut était dans le banc, pas dans le skill.
+
+**Le discriminant.** Le corrigé du skill, joué contre la maquette conforme (hors examen) :
+**13 PASS, 1 FAIL, 0 SKIP**, et le FAIL est exactement l'assertion que le § 7.4 réserve à la
+session d'examen. Puis le banc applique au skill le **point 5 de sa propre checklist** : on coupe
+le forwarding **en marche** par `exec`, on rejoue le **même** fichier, et **11 PASS, 3 FAIL** —
+l'état bascule (`report … ip_forward`), l'expérience bascule (`reaches m1 m2`), la **trace** ne
+bouge pas (`journal … contains ip_forward`). La distinction trace/état du § 4.2 du skill est donc
+mesurée, sur la même machine et au même instant, et non raisonnée.
+
+**Mesures.** `skill-bench.sh` neuf : **58 assertions, 0 échec** (41 sans UML). Aucun `.ml` touché.
+
+**Reste.** L'épisode 20 : le guide de l'enseignant (anglais), un exemple par commande et des TP
+complets fabriqués et notés, avec un § « concevoir et noter un TP avec un agent IA » qui met en
+œuvre ce skill. Après quoi le chantier est clôturable.

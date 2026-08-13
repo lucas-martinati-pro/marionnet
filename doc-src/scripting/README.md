@@ -1031,6 +1031,9 @@ never have to configure both.
 * `mrn-verify --help` — the assertions of a `.mrv`, and what each one rests on (§ 14).
 * `doc-src/exam-mode.md` — the exam mode: what a session records, and what ends up in the
   project file (for the teacher, with or without this channel).
+* `doc-src/lab-design-skill.md` — how to go from a *statement* to a *mark*: designing a lab,
+  writing its correction key, and grading a session. Written for an AI agent driving this
+  channel, and readable by anyone who does the same by hand.
 * `docs/pilotage-par-script.md` — the design of the channel, its rationale, and the journal of
   how it was built (in French, developer audience).
 * `docs/journalisation-profonde.md` — the design of the journals of § 11 (in French, developer
