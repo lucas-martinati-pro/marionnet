@@ -4474,10 +4474,15 @@ let session (st : State.globalState) (ch : Network.stream_channel) : unit =
 (*                              Startup                             *)
 (* ---------------------------------------------------------------- *)
 
-(* The socket is only as private as the directory holding it: Network.server chmod's the
-   socket file itself to 0777 unconditionally (network.ml:202), so the parent directory is
-   what actually protects a channel able to drive the whole session (§ 3.4). We create it
-   0700 when missing, and refuse to start when an existing one is writable by others. *)
+(* The socket is only as private as the directory holding it *as long as* the socket file
+   keeps the 0777 mode Network.server gives it unconditionally (network.ml:231): a channel
+   able to drive the whole session must not be reachable by anybody else (§ 3.4). We create
+   the directory 0700 when missing. An existing one writable by group or others is refused
+   — *unless* it carries the sticky bit (t): that is /tmp and friends, where a foreign user
+   can create files but can neither unlink nor replace ours. Such a directory is a perfectly
+   legitimate place for a control socket, and often the only one available before any project
+   exists; what it does *not* provide is confidentiality, so there the protection moves to
+   the socket file itself, which `start` tightens to 0600 right after the bind. *)
 let check_or_make_parent_directory (dir:string) : (unit, string) result =
   match Unix.stat dir with
   | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
@@ -4492,11 +4497,18 @@ let check_or_make_parent_directory (dir:string) : (unit, string) result =
   | stats ->
       if stats.Unix.st_kind <> Unix.S_DIR then
         Error (Printf.sprintf "%S is not a directory" dir)
-      else if (stats.Unix.st_perm land 0o022) <> 0 then
+      else if (stats.Unix.st_perm land 0o022) <> 0 && (stats.Unix.st_perm land 0o1000) = 0 then
         Error (Printf.sprintf
-                 "%S is writable by group or others (mode 0%o): refusing to put a control socket there"
+                 "%S is writable by group or others without the sticky bit (mode 0%o): refusing to put a control socket there"
                  dir stats.Unix.st_perm)
-      else Ok ()
+      else
+        let () =
+          if (stats.Unix.st_perm land 0o022) <> 0 then
+            Log.printf2
+              "Control_server: %s is shared but sticky (mode 0%o): the socket file itself will protect the channel.\n"
+              dir stats.Unix.st_perm
+        in
+        Ok ()
 
 (* N12: a socket file may survive a brutal exit (SIGKILL, crash), and the bind would then
    fail with EADDRINUSE. Distinguish the two cases by connecting: someone answering means
@@ -4534,14 +4546,25 @@ let start (st : State.globalState) ~(socketfile:string) : unit =
       Log.printf1 "Control_server: NOT started: %s\n" detail
   | Ok () ->
       (try
-         let (_thread, socketfile) =
+        let () = Log.printf1 "Control_server: about to start Network.stream_unix_server on socketfile %s\n" socketfile in
+        let (_thread, socketfile) =
            Network.stream_unix_server
              ~no_fork:()
              ~socketfile
              ~protocol:(session st)
              ()
          in
-         Log.printf1 "Control_server: listening on %s\n" socketfile
+         (* Network.server chmod's the socket to 0777 (network.ml:231), which is harmless in
+            a 0700 directory and wide open in a sticky shared one (/tmp): tighten it here.
+            The clients (mrnctl, mrn-check, mrn-verify…) run as us, so 0600 costs nothing.
+            The bind is already listening at this point, hence a race window of a few
+            microseconds during which a local peer could connect; closing it entirely would
+            mean binding in a private directory and rename(2)-ing the socket into place. *)
+         let socket_mode =
+           try let () = Unix.chmod socketfile 0o600 in "0600"
+           with e -> Printf.sprintf "left as created (%s)" (Printexc.to_string e)
+         in
+         Log.printf2 "Control_server: listening on %s (socket mode %s)\n" socketfile socket_mode
        with e ->
          Log.print_exn ~prefix:"Control_server: NOT started: " e)
 

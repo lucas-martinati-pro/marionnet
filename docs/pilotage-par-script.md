@@ -118,6 +118,21 @@ Défense en profondeur retenue :
   **Prouvé en session réelle à l'ép. 3b**, témoin à l'appui (§ 11) ;
 - le défaut `0o777` reste **signalé** dans le rapport d'audit pour rétro-propagation amont.
 
+⚠️ **Rectifié le 2026-08-14** (correctif hors épisode). Le refus « répertoire accessible en
+écriture à autrui » condamnait `--control-socket /tmp/lab.sock`, alors que `/tmp` est le seul
+emplacement disponible **avant** qu'un projet existe (pas encore de répertoire temporaire de
+projet), et qu'un répertoire **sticky** (`01777`) n'est pas un répertoire sans protection : un
+tiers y crée des fichiers mais ne peut ni supprimer ni remplacer les nôtres. La règle est donc
+devenue : refus si écriture par groupe/autres **et** bit sticky absent ; sinon acceptation, avec
+une ligne de journal qui dit que la protection se déplace. Elle se déplace **effectivement** :
+`start` fait désormais un `Unix.chmod socketfile 0o600` juste après le retour de
+`Network.stream_unix_server`, ce qui referme le `0o777` d'`ocamlbricks` dans **tous** les cas
+(les clients tournent sous notre identité). Subsiste une fenêtre de quelques microsecondes entre
+le `chmod 0o777` d'amont — le socket est déjà en écoute — et le nôtre ; la supprimer demanderait
+de binder dans un répertoire privé puis de `rename(2)` le socket à sa place. Mesuré dans les deux
+sens : `/tmp` (`01777`) → `listening on /tmp/lab.sock (socket mode 0600)`, `srw------- jean jean`,
+canal interrogeable ; un répertoire `0777` **non** sticky → toujours `NOT started`.
+
 ### 3.5 Insertion dans le code existant
 
 | Fichier | Modification |
