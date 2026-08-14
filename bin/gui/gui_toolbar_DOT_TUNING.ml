@@ -64,6 +64,39 @@ let () = begin
  set w#label_DOT_TUNING_AREA#as_widget           (s_ "Tuning of the graph size. The surface may increase up to double (100%) the original, in which case case elements are arranged to completely fill the available space.") ;
  end
 
+(* Appearance of the "reverse an edge" control.
+   ---
+   This control is a GtkMenuBar (a menu is required to choose the cable to reverse), while all
+   its neighbours in this toolbar are flat buttons (relief=none). Left alone, the theme paints
+   it as what it is, a menu bar: it gets a background of its own (measured with the Breeze
+   theme: #dee0e2 against the #eff0f1 of the toolbar), which is exactly what makes this button
+   look unlike the others. The first two rules below remove that chrome; the third one gives
+   the widget the same feedback as its neighbours when the pointer is over it, that is to say
+   the 1px rounded outline that a flat button gets (an inset shadow rather than a border, in
+   order to leave the layout untouched).
+   ---
+   Note that lablgtk3 binds neither gtk_style_context_add_provider_for_screen() nor
+   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (=600): hence the provider is added to the style
+   context of each involved widget (a style context is not inherited by children), which has
+   the nice side effect of confining these rules to these two widgets. *)
+let () =
+  let css = "\
+    menubar  { background: transparent; background-image: none; box-shadow: none; border: none; padding: 0px; }\n\
+    menuitem { background: transparent; background-image: none; box-shadow: none; border: none; padding: 2px; border-radius: 2px; }\n\
+    menuitem:hover { box-shadow: inset 0 0 0 1px @theme_selected_bg_color; }\n"
+  in
+  try
+    let provider = GObj.css_provider () in
+    let () = provider#load_from_data css in
+    begin
+      w#menubar_DOT_TUNING_INVERT       #misc#style_context#add_provider provider 600;
+      w#imagemenuitem_DOT_TUNING_INVERT #misc#style_context#add_provider provider 600;
+    end
+  with e ->
+    (* A style sheet is not worth preventing the application from starting: *)
+    Log.printf1 "gui_toolbar_DOT_TUNING.ml: cannot style menubar_DOT_TUNING_INVERT: %s\n"
+      (Printexc.to_string e)
+
 (* Adjustments: *)
 let () =
   let icon_adj = GData.adjustment ~value:2.0   ~lower:0.0 ~upper:3.   ~step_incr:1.  ~page_incr:1.0 ~page_size:0. () in

@@ -825,12 +825,13 @@
                                 </child>
                                 <child>
                                   <object class="GtkToolItem" id="toolitem68">
+                                    <property name="height-request">6</property>
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
                                     <child>
                                       <object class="GtkHSeparator" id="hseparator83">
                                         <property name="height-request">6</property>
-                                        <property name="visible">True</property>
+                                        <property name="visible">False</property>
                                         <property name="can-focus">False</property>
                                       </object>
                                     </child>
@@ -1048,12 +1049,13 @@
                                 </child>
                                 <child>
                                   <object class="GtkToolItem" id="toolitem249">
+                                    <property name="height-request">6</property>
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
                                     <child>
                                       <object class="GtkHSeparator" id="hseparator84">
                                         <property name="height-request">6</property>
-                                        <property name="visible">True</property>
+                                        <property name="visible">False</property>
                                         <property name="can-focus">False</property>
                                       </object>
                                     </child>
@@ -1167,12 +1169,13 @@
                                 </child>
                                 <child>
                                   <object class="GtkToolItem" id="toolitem268">
+                                    <property name="height-request">6</property>
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
                                     <child>
                                       <object class="GtkHSeparator" id="hseparator86">
                                         <property name="height-request">6</property>
-                                        <property name="visible">True</property>
+                                        <property name="visible">False</property>
                                         <property name="can-focus">False</property>
                                       </object>
                                     </child>
