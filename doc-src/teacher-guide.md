@@ -211,8 +211,9 @@ experiment — a ping run by `exec`, or `reaches` in a key — proves that somet
 ```bash
 mrnctl suspend m1
 mrnctl resume m1
-mrnctl restart m1                       # a graceful shutdown followed by a start
-mrnctl wait m1 --state=on --timeout=180
+mrnctl restart m1                           # a graceful shutdown followed by a start
+mrnctl wait m1 --state=off                  # wait for shutdown
+mrnctl wait m1 --state=on  --timeout=180    # wait for start
 ```
 
 ### 4.9 Stopping, and the states a machine leaves behind
