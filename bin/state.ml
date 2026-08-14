@@ -1066,10 +1066,66 @@ class globalState = fun () ->
   Task_runner.the_task_runner#schedule_parallel
     (self#make_names_and_thunks ?node_list verb what_to_do_with_a_node);;
 
+ (* A topology is worth more than a run. A student draws (or completes) their network, then presses
+    "Start everything" without ever saving: from that instant the .mar on disk does NOT hold the
+    work — and what follows is exactly the moment where things go wrong (a guest which hangs, an
+    application freeze, in the worst known case the host itself: work-stream
+    `bug-critique-crash-host'). The save is made here because it costs almost nothing HERE and
+    nowhere else: nothing has run yet, so there is no COW disk state to archive and the tar holds
+    the topology and little else.
+
+    Nothing is asked, on purpose. The question would have a wrong answer — that is the lesson of
+    episode 23 of `journalisation-profonde', which closed the four other places where it was still
+    asked — and it would be raised precisely when the student is looking at the network sketch,
+    not at a dialog. The gesture is not silent for all that: [save_project] raises its own modal
+    progress bar, which also keeps a second click away.
+
+    Three guards, each of which alone makes the save either impossible or pointless:
+    - [active_project]: no filename, nothing to write into;
+    - nothing has run yet: [has_left_traces] is the model's own predicate (user_level.ml, episode
+      22 of `journalisation-profonde'), the same one which decides whether a component may be
+      removed and what the "do you want to save?" dialog warns about. Once something HAS run the
+      project is no longer virgin, and saving would archive disk states behind the user's back:
+      that is not what this is for;
+    - [project_already_saved]: the ordinary case of a project just opened — in particular
+      `marionnet -r file.mar' (marionnet.ml), which starts everything by itself — where there is
+      strictly nothing to write.
+    A failing save is already handled by [private_save_project] (error dialog, project left marked
+    as modified); the startup goes on. *)
+ method private virgin_project_needs_saving =
+  self#active_project
+  && not (List.exists (fun node -> node#has_left_traces) (self#network#get_node_list))
+  && not (self#project_already_saved)
+
+ (* The order MUST be guaranteed: the save has to be *finished* before the first component starts,
+    or `tar' would read the project working directory while the startup writes COW files into it.
+    Now [save_project] is synchronous when it is not called from the GTK main thread, and
+    asynchronous (a thread of its own) when it is — hence the thread below, which is the pattern of
+    episode 23 (the four gestures leaving a project run in a thread) brought back INTO the model:
+    no caller has to know the rule, and none can reopen the hole.
+
+    That thread is taken ONLY when there is something to save, and the reason is a measurement: every
+    command of the control server is delegated to the GTK main thread with a 5s deadline
+    (control_server.ml, [ask]), so this method does run there for the channel too — running the save
+    inline would either deadlock (the save goes through GMain_actor itself) or expire that deadline.
+    In every other case — the ordinary one — the method keeps its former behaviour to the letter:
+    same thread, tasks scheduled on the task runner before returning. *)
  method startup_everything () =
-  self#do_something_with_every_node_in_sequence
-    ~node_list:(self#network#get_nodes_that_can_startup ())
-    "Startup" (fun node -> node#startup_right_now)
+  let startup () =
+    self#do_something_with_every_node_in_sequence
+      ~node_list:(self#network#get_nodes_that_can_startup ())
+      "Startup" (fun node -> node#startup_right_now)
+  in
+  if not (self#virgin_project_needs_saving) then startup () else
+  let save_then_startup () =
+    let () = assert (not (GMain_actor.am_I_the_GTK_main_thread ())) in
+    let () = Log.printf "state#startup_everything: the project has never run and is not saved: saving it first\n" in
+    let () = self#save_project in
+    startup ()
+  in
+  if GMain_actor.am_I_the_GTK_main_thread ()
+  then (Thread.create save_then_startup () |> ignore)
+  else save_then_startup ()
 
  method shutdown_everything () =
   self#do_something_with_every_node_in_parallel
