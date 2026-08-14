@@ -139,6 +139,13 @@ class virtual ['parent] simulated_device () = object(self)
       (automaton_state, simulated_device), whose invariant was only maintained by hand. *)
   val state : 'parent Simulated_device.state ref = ref Simulated_device.No_device
 
+  (** Has this component been started at least once since Marionnet was launched? Written by
+      [startup_right_now] and never reset — powering off a device does not un-run it. Read by
+      [has_left_traces] below (exam locks, journalisation-profonde episode 22): a switch or a hub
+      keeps no disk state at all, so the states treeview cannot answer for them, yet a switch
+      which has run has written its <name>-rc_config.log in the project directory (episode 4). *)
+  val mutable ever_started : bool = false
+
   (* Note: no public accessor returns [!state] itself. Its type mentions ['parent], and
      [cable.ml] instantiates ['parent] with its own (recursively defined) object type: an
      exposed method of type ['parent Simulated_device.state] would make that type recursive
@@ -351,6 +358,7 @@ class virtual ['parent] simulated_device () = object(self)
           | Off d ->
              (d#startup;  (* This is the a method from some object in Simulation_level *)
               state := On d;
+              ever_started <- true;
               Sketch.refresh_sketch ();
               Log.printf1 "The device %s was started up\n" self#get_name
               )
@@ -476,9 +484,17 @@ class virtual ['parent] simulated_device () = object(self)
     let open Simulated_device in
     (match !state with On _ | Sleeping _ -> true | No_device | Off _ -> false)
 
-  (** Return true iff the current state allows the user to 'power off' a device from the GUI. *)
+  (** Return true iff the current state allows the user to 'power off' a device from the GUI.
+      Exam locks (journalisation-profonde, episode 22): a brutal power cut is not offered at all
+      in exam mode. The exam archiving of a session — report, command history, console, terminal
+      into the [documents] treeview, hence into the .mar handed in — hangs on ONE path,
+      [gracefully_shutdown_right_now] (machine.ml, router.ml); a poweroff bypasses it, so it
+      throws the copy away. Nothing is lost by refusing it: the graceful shutdown remains, and
+      the internal paths which really need a brutal cut ([destroy_right_now], the fallback of an
+      aborted shutdown) call [poweroff_right_now] directly, without consulting this predicate. *)
   method can_poweroff =
     let open Simulated_device in
+    Initialization.are_we_allowed_to_poweroff &&
     (match !state with No_device | Off _ -> false | On _ | Sleeping _ -> true)
 
   (** Return true iff the current state allows the user to 'suspend' a device from the GUI. *)
@@ -511,7 +527,29 @@ class virtual ['parent] simulated_device () = object(self)
       the very notion of [can_startup] has no reader left for them. *)
   method can_destroy =
     let open Simulated_device in
+    (Initialization.are_we_allowed_to_delete || not self#has_left_traces) &&
     (match !state with No_device | Off _ -> true | On _ | Sleeping _ -> false)
+
+  (** Has this component produced anything a corrector could want to read? Exam locks
+      (journalisation-profonde, episode 22): removing a component destroys its disk states, its
+      hostfs and therefore its journals, so in exam mode it is refused — but only for a component
+      which has actually run. One which was never started has produced nothing, and a student
+      building their own topology must be able to undo a mistake.
+
+      Two sources, because neither answers alone:
+      - the states treeview is *persisted* in the .mar, so it still answers after the project has
+        been closed and reopened, which no in-memory flag can do. The threshold is [> 1] and not
+        [> 0] because [add_device] (treeview_history.ml) inserts a blank root row as soon as the
+        component is created — measured, not assumed;
+      - [ever_started] covers the current session and, above all, the kinds which keep no disk
+        state at all (switch, hub, cloud, gateways): the states treeview knows nothing about them
+        although a switch which has run has written its rc journal.
+      Cables are out of this: [cable.ml] overrides [can_destroy] to a constant true, on purpose —
+      unplugging a wire while the network runs is a legitimate gesture, often the exercise itself. *)
+  method has_left_traces =
+    ever_started ||
+    (try ((Treeview_history.extract ())#number_of_states_with_name self#get_name) > 1
+     with _ -> false)
 
   (** 'Correctness' support: this is needed so that we can refuse to start incorrectly
       placed components such as Ethernet cables of the wrong crossoverness, which the user

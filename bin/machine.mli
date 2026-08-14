@@ -184,6 +184,10 @@ module User_level_machine : sig
          (docs/pilotage-par-script.md § 4.10): *)
       method can_modify                      : bool
       method can_destroy                     : bool
+      (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+         hence produced states, journals or archived documents? A fact, not the policy — the
+         policy is [can_destroy] — read by the control server to name the reason of a refusal. *)
+      method has_left_traces                 : bool
       (* --- *)
       method add_my_history                  : unit
       method add_my_ifconfig                 : ?port_row_completions:Treeview_ifconfig.port_row_completions -> int -> unit

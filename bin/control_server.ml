@@ -590,6 +590,12 @@ let cmd_status (st : State.globalState) ~(timeout:float) : string =
             ("runnable", jbool runnable);
             ("saved",    jbool saved);
             ("nodes",    jint nodes);
+            (* Exam locks (journalisation-profonde, episode 22). [can] publishes what a *component*
+               allows, which is enough for [poweroff] and [del]; it says nothing about the four
+               session-wide verbs the exam mode restrains (poweroff-all, new, open, close, quit).
+               Published here so that a client learns the mode instead of deducing it from a
+               refusal — the same reason § 4.10 gives for publishing the model's predicates. *)
+            ("exam",     jbool Initialization.are_we_in_exam_mode);
             ])
 
 (* --- eligibility: what a component allows right now -------------- *)
@@ -841,6 +847,8 @@ type editable = <
   eval_forest_attribute : Xforest.attribute -> unit;
   can_modify            : bool;
   can_destroy           : bool;
+  (* Exam locks (episode 22): why [can_destroy] says no — the state, or the mode. *)
+  has_left_traces       : bool;
   state_as_string       : string;
   get_name              : string;
   destroy               : unit;
@@ -889,6 +897,10 @@ type component_outcome =
   | Co_no_project
   | Co_unknown
   | Co_forbidden of string * string                  (* past participle, raw state *)
+  (* Exam locks (journalisation-profonde, episode 22): refused because of the *mode*, not because
+     of the state — the two must not be confused, [Co_forbidden] would name a state the client
+     could hope to leave. *)
+  | Co_exam_locked of string                         (* why, in clear *)
   | Co_bad       of string
 
 (* Present only when the target is a service configuration, and then always the four of them:
@@ -999,6 +1011,7 @@ let reply_of_component_outcome ~(name:string) : component_outcome -> string = fu
       reply_error ~code:"forbidden_transition"
         ~detail:(Printf.sprintf "%S cannot be %s in state %S"
                    name participle (script_state_of_raw raw))
+  | Co_exam_locked detail -> reply_error ~code:"forbidden_in_exam_mode" ~detail
   | Co_bad detail -> reply_error ~code:"bad_argument" ~detail
 
 (* Lookup, guard and action, in one GTK slot. A mutation needs an open project: without one the
@@ -1245,7 +1258,21 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
 
 let cmd_del (st : State.globalState) ~(timeout:float) ~(name:string) : string =
   with_component st ~timeout ~name ~f:(fun ~kind ~structural:_ c ->
-    if not c#can_destroy then Co_forbidden ("deleted", c#state_as_string) else
+    (* Exam locks (episode 22). Two different refusals under one predicate: the state (the
+       component is running, and that has always been refused) or the mode (it has run, and
+       removing it would take its states, its hostfs and therefore its journals away). Only the
+       second is liftable, by --exam-allow-delete, and the message says so — a client told
+       "cannot be deleted in state off" would look for a state that does not exist. *)
+    if not c#can_destroy then
+      (if (not Initialization.are_we_allowed_to_delete) && c#has_left_traces
+       then Co_exam_locked
+              (Printf.sprintf
+                 "%S has already run: removing it in exam mode would throw away its disk states, \
+                  its hostfs and its journals. Restart Marionnet with --exam-allow-delete to \
+                  allow it."
+                 name)
+       else Co_forbidden ("deleted", c#state_as_string))
+    else
     (* Computed before the destruction, and harmless for a cable: no cable involves a *node*
        named like a cable, so the list is empty there. *)
     let doomed_cables =
@@ -1883,6 +1910,21 @@ type transition_result =
   | Tr_unknown
   | Tr_unsupported of string   (* kind: the action makes no sense for this component *)
 
+(* Exam locks (journalisation-profonde, episode 22). Answering [Tr_forbidden] here would blame
+   the state ("m1 cannot poweroff from state on"), which is false and sends a script looking for
+   a state that would work — there is none. The refusal names the mode, and names the gesture
+   which does work: the exam copy is archived by the *graceful* shutdown only (machine.ml,
+   router.ml), so [stop] and [shutdown-all] are the way out. *)
+let exam_refusal_of_action (action:string) : string option =
+  match action with
+  | "poweroff" | "poweroff-all" when not Initialization.are_we_allowed_to_poweroff ->
+      Some (Printf.sprintf
+              "%S is refused in exam mode: an ungraceful power cut would throw away the session \
+               report, the command history and the recorded consoles, which are archived by the \
+               graceful shutdown only. Use \"stop\" (or \"shutdown-all\") instead."
+              action)
+  | _ -> None
+
 (* A node accepts the six actions of § 4.4. [restart] reads can_gracefully_shutdown because
    that is the guard marionnet.ml:169-175 itself applies, and because [#gracefully_restart]
    starts by shutting down. *)
@@ -1912,6 +1954,9 @@ let cmd_transition (st : State.globalState) ~(timeout:float) ~(action:string) ~(
     reply_error ~code:"bad_argument"
       ~detail:(Printf.sprintf "%s expects the name of a component" action)
   else
+  match exam_refusal_of_action action with
+  | Some detail -> reply_error ~code:"forbidden_in_exam_mode" ~detail
+  | None ->
   ask ~timeout
     (fun () ->
        match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
@@ -1959,6 +2004,9 @@ let cmd_transition (st : State.globalState) ~(timeout:float) ~(action:string) ~(
    selected — an answer of 0 is the honest way to say "nothing to do", and it is the number a
    bench must assert on. *)
 let cmd_transition_all (st : State.globalState) ~(timeout:float) ~(action:string) : string =
+  match exam_refusal_of_action action with
+  | Some detail -> reply_error ~code:"forbidden_in_exam_mode" ~detail
+  | None ->
   ask ~timeout
     (fun () ->
        let selected =
@@ -3200,6 +3248,16 @@ let leave_current_project (st : State.globalState) ~(timeout:float)
   ask_ (fun () -> (st#active_project, st#project_already_saved))
   >>= fun (active, already_saved) ->
   if not active then Ok None else
+  (* Exam locks (journalisation-profonde, episode 22). The shutdown below is graceful, so the
+     session *is* archived into the [documents] treeview — but an archive which is never written
+     to the .mar is an archive nobody will read, and --no-save is precisely the order to throw it
+     away. Refused rather than silently upgraded to --save: a channel which does the opposite of
+     what it was told is worse than one which refuses. *)
+  if Initialization.are_we_in_exam_mode && policy = Some Discard_it then
+    Error (reply_error_with ~extra:(extra ()) ~code:"forbidden_in_exam_mode"
+             ~detail:"--no-save is refused in exam mode: the session archives (report, command \
+                      history, recorded consoles) reach the .mar through the save only. Use --save.")
+  else
   if policy = None && not already_saved then
     Error (reply_error_with ~extra:(extra ()) ~code:"unsaved_changes"
              ~detail:"the project has unsaved changes: pass --save or --no-save to say what to do with them")
@@ -3308,6 +3366,38 @@ let cmd_save (st : State.globalState) ~(timeout:float) ~(filename: string option
   else
     Error (reply_error_with ~extra:(extra ()) ~code:"internal"
              ~detail:"saving the project failed (see the log and the notifications)"))
+
+(* Exam locks (journalisation-profonde, episode 22). [quit] is the third way of losing the copy,
+   and the quietest: [quit_async] destroys the processes of every running component
+   (state.ml, [destroy_process_before_quitting]) — a brutal cut, hence no archiving — and saves
+   nothing. In exam mode it is therefore refused while a project is open and either something is
+   still up or the project carries unsaved changes; [close --save] does both jobs in the right
+   order (graceful shutdown, then save), and [quit] passes right after it. Not refused outright:
+   a driven exam session must still be able to end itself, which is how the teacher's guide
+   closes one. *)
+let cmd_quit (st : State.globalState) ~(timeout:float) : string * [ `Continue | `Quit ] =
+  let quitting () = (reply_ok [ ("quitting", jbool true) ], `Quit) in
+  if not Initialization.are_we_in_exam_mode then quitting () else
+  match
+    ask_or_answer ~extra:(fun () -> []) ~timeout
+      (fun () -> (st#active_project,
+                  st#is_there_something_on_or_sleeping (),
+                  st#project_already_saved))
+  with
+  | Error answer -> (answer, `Continue)
+  | Ok (false, _, _) -> quitting ()
+  | Ok (true, running, saved) when running || not saved ->
+      (reply_error ~code:"forbidden_in_exam_mode"
+         ~detail:(Printf.sprintf
+                    "quitting now would throw the exam copy away (%s): quitting cuts the power \
+                     of every running component and saves nothing. Run \"close --save\" first, \
+                     then quit."
+                    (match running, saved with
+                     | true,  true  -> "components are still running"
+                     | true,  false -> "components are still running, and the project has unsaved changes"
+                     | false, _     -> "the project has unsaved changes")),
+       `Continue)
+  | Ok _ -> quitting ()
 
 (* Reading the capture needs neither the GTK main thread nor a deadline — which is exactly
    the point: when the GUI is stuck behind a modal dialog and every other command times
@@ -4415,7 +4505,7 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
                       cmd_wait_all st ~gtk_timeout:default_timeout ~wait_timeout ~state),
                  `Continue)
             | "help"   -> (cmd_help ~verb:(arg_opt r 0), `Continue)
-            | "quit"   -> (reply_ok [ ("quitting", jbool true) ], `Quit)
+            | "quit"   -> cmd_quit st ~timeout
             | verb     -> (unknown_command_reply ~verb, `Continue)))
 
 (* ---------------------------------------------------------------- *)

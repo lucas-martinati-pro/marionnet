@@ -82,6 +82,12 @@ The window opens as usual and stays usable: the channel does not replace the int
 the same session you are looking at. Everything below assumes those two lines.
 
 For an exam, add `--exam` — it also turns on the two host-side recordings (`doc-src/exam-mode.md`).
+Be aware that an exam session **refuses** what would destroy the copy before it is archived: no
+power cut (`poweroff`, `poweroff-all`, the *Power-off all* button), no `--no-save`, no `quit`
+while something is still running, and no removal of a component which has already run — the last
+one being liftable with `--exam-allow-delete` when you build the mock-up yourself. Quitting from
+the menu shuts everything down gracefully and saves, without asking. See `doc-src/exam-mode.md`
+§ 3.
 
 ---
 

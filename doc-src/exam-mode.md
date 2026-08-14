@@ -41,8 +41,8 @@ of …*, *Console of …* and *Terminal of …*. From there they are part of the
 
 Two consequences worth knowing:
 
-* **a machine which is not shut down leaves nothing** in the project. Powering the project off
-  brutally, or closing it with machines still running, skips the archiving;
+* **a machine which is not shut down leaves nothing** in the project: a power cut skips the
+  archiving entirely. This is exactly what the exam mode now refuses to let happen — see § 3;
 * the archiving is the **last** thing a shutdown does, so on a slow guest it lands a moment
   after the machine's icon has gone grey.
 
@@ -80,7 +80,40 @@ mark may rest:
   Markdown on its standard input. This gives up the two properties above; Marionnet falls back on
   its own conversion if that command is missing, fails, or answers nothing.
 
-## 3. What can be trusted
+## 3. What the exam mode refuses (and why)
+
+Everything above hangs on **one** gesture: the graceful shutdown is where a session is archived
+into the project. Every other way of stopping a guest throws that copy away — and the most
+tempting of them, *Power-off all*, sits right next to *Shutdown all* in the bottom toolbar. In an
+exam session, those ways are therefore closed:
+
+| Gesture | Outside an exam | With `--exam` |
+|---|---|---|
+| *Power-off all* button, `poweroff`, `poweroff-all` | available | **refused**: the button is greyed out and says why; the channel answers `forbidden_in_exam_mode` |
+| **Quit** with a project open | asks whether to save | **does not ask**: it shuts every machine down gracefully **and saves**. It is not a dialog to get right under time pressure |
+| `quit` through the control channel | quits at once | **refused** while something is running or the project has unsaved changes (`close --save` first, then quit) |
+| `close --no-save`, `new … --no-save`, `open … --no-save` | available | **refused**: an archive that never reaches the `.mar` is an archive nobody will read |
+| Removing a component (*Remove*, `del`) | available | **refused for a component which has already run** — removing it would take its disk states, its shared directory and its journals along |
+
+The last line deserves its nuance: a component which was **never started** stays removable. It has
+produced nothing, and a student building their own topology must be able to undo a mistake. Only
+what has run is protected. If you would rather keep the plain behaviour — say, you prepare the
+mock-up yourself in an exam session — start Marionnet with:
+
+```bash
+marionnet --exam --exam-allow-delete
+```
+
+The **Options** menu carries a witness of that lock (checked, greyed out, and absent outside an
+exam mode): it is there so that a student who finds an empty *Remove* submenu understands that the
+tool is refusing, rather than believing the interface is broken.
+
+Nothing of this changes the vocabulary of the control channel: the commands are still the same,
+still listed by `help`. What changes is what a component *can* do — `can <component>` stops
+publishing the refused actions — and `status` says `"exam": true`, which is how a script learns
+the mode instead of guessing it from a refusal.
+
+## 4. What can be trusted
 
 The report and the history are written **by the guest**, into a directory the student can
 write to. A student who knows this can edit them, and a mark cannot rest on them alone.
@@ -96,7 +129,7 @@ of its own precisely so that it never lands in the student's history, and it is 
 into the project: what a corrector injected is not the work being marked. It is read while the
 session is alive, with `marionnet-ctl log <machine> exec`.
 
-## 4. Limits, measured rather than assumed
+## 5. Limits, measured rather than assumed
 
 * **Old SysV guest images have no shutdown sequence** (their `inittab` answers Marionnet's
   shutdown gesture by halting immediately), so they produce **no report at shutdown**. Their
@@ -112,7 +145,7 @@ session is alive, with `marionnet-ctl log <machine> exec`.
 * The report is deliberately **sober**: it is a dependency-free replacement for a producer that
   died years ago, not a system-audit tool.
 
-## 5. Without the exam mode
+## 6. Without the exam mode
 
 The two host-side recordings can be switched on separately, for a demonstration or a bug
 hunt:

@@ -133,11 +133,32 @@ let button_BASE_SHUTDOWN_EVERYTHING =
     ~tooltip:(s_ "Gracefully stop every element of the network")
     ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
+(* Exam locks (journalisation-profonde, episode 22). This button sits right next to "Shutdown
+   all" and does the opposite of what an exam needs: the session is archived — report, command
+   history, console, terminal into the [documents] treeview, hence into the .mar handed in — by
+   the *graceful* shutdown only (machine.ml, router.ml). A power cut therefore throws the copy
+   away, in one click, next to the right one. In exam mode the button is made insensitive and
+   says why: it is disabled rather than hidden so that a student who looks for it understands
+   that the tool refuses, instead of believing the interface has changed. *)
 let button_BASE_POWEROFF_EVERYTHING =
-  Gui_bricks.button_image ~label:(s_ "Power-off all")
-    ~file:"ico.poweroff.24x24.png"
-    ~tooltip:(s_ "(Ungracefully) shutdown every element of the network, as in a power-off")
-    ~label_position:`BOTTOM ~packing:w#hbox_BASE#add ()
+  let allowed = Initialization.are_we_allowed_to_poweroff in
+  let tooltip =
+    if allowed
+    then (s_ "(Ungracefully) shutdown every element of the network, as in a power-off")
+    (* One physical line, deliberately: a `\' continuation inside a translatable string is a trap.
+       OCaml strips the newline and the leading blanks, the POT extractor does not — the catalogue
+       would then hold a msgid nothing ever looks up, and the string would stay in English in the
+       twelve languages, silently. *)
+    else (s_ "Disabled in exam mode: a power cut would throw the exam copy away. Use \"Shutdown all\".")
+  in
+  let button =
+    Gui_bricks.button_image ~label:(s_ "Power-off all")
+      ~file:"ico.poweroff.24x24.png"
+      ~tooltip
+      ~label_position:`BOTTOM ~packing:w#hbox_BASE#add ()
+  in
+  let () = if not allowed then button#misc#set_sensitive false in
+  button
 
 (* Just a thunk, the button is not really built. We leave this code
    in order to not remove the gettext key associated to this `tooltip'

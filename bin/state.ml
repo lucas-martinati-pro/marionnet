@@ -1077,7 +1077,17 @@ class globalState = fun () ->
     "Shut down"
     (fun node -> node#gracefully_shutdown_right_now)
 
+ (* Exam locks (journalisation-profonde, episode 22). The belt, the GUI button being the braces:
+    this method cuts the power of every running component at once, which in exam mode throws away
+    the copy the teacher is supposed to grade — the archiving happens in the *graceful* shutdown
+    only. Its callers are the "Power-off all" button and the Quit entry, both fixed on their own
+    side; refusing here as well means a future caller cannot silently reopen the hole. It is not
+    a per component predicate ([can_poweroff], user_level.ml) because the selection below is not
+    made on that predicate: [poweroff_everything] selects on [can_gracefully_shutdown]. *)
  method poweroff_everything () =
+  if not Initialization.are_we_allowed_to_poweroff then
+    Log.printf "poweroff_everything: REFUSED (exam mode): this would throw away the exam copy\n"
+  else
  (* self#do_something_with_every_node_in_sequence *)
   self#do_something_with_every_node_in_parallel
     ~node_list:(self#network#get_nodes_that_can_gracefully_shutdown ())

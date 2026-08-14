@@ -61,6 +61,13 @@ let option_v      = Argv.register_unit_option "v" ~aliases:["-version"] ~doc:"pr
 let option_debug  = Argv.register_unit_option "d" ~aliases:["-debug"]   ~doc:"activate messages for debugging" () ;;
 let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash message and exit" () ;;
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
+(* Exam locks (journalisation-profonde, episode 22): in exam mode a component which has already
+   run cannot be removed, because removing it throws away its states, its hostfs and its
+   journals. This option gives that gesture back to whoever runs the session. *)
+let option_exam_allow_delete =
+  Argv.register_unit_option "-exam-allow-delete"
+    ~doc:"in exam mode, allow removing components which have already run"
+    () ;;
 let option_paths  = Argv.register_unit_option "-paths"  ~doc:"print paths (filesystems, kernels, ..) and exit" () ;;
 (* Console recording (journalisation-profonde, episode 6): opt-in, and implied by --exam.
    Recording a session in silence outside an exam would be surveillance (decision D5). *)
@@ -237,6 +244,25 @@ let are_we_recording_terminals =
   (!option_terminal_log = Some ()) || are_we_in_exam_mode
 ;;
 let () = Log.printf1 "Terminal recording: %b\n" are_we_recording_terminals ;;
+
+(* Exam locks (journalisation-profonde, episode 22). The exam mode archives what a session left
+   behind (report, command history, console, terminal) at ONE point only: the graceful shutdown
+   of a machine or a router. Every other way of stopping a guest bypasses that archiving, so it
+   destroys the copy the teacher is supposed to grade — and the most accessible of them, the
+   "Power-off all" button, sits right next to the good one in the bottom toolbar. Hence: in exam
+   mode a brutal power cut is not offered at all. *)
+let are_we_allowed_to_poweroff = not are_we_in_exam_mode ;;
+let () = Log.printf1 "Poweroff allowed: %b\n" are_we_allowed_to_poweroff ;;
+
+(* Removing a component destroys its states, its hostfs and therefore its journals. In exam mode
+   this is refused for a component which has left a trace — one which has run at least once —
+   while a component which was never started stays removable: it has produced nothing, and a
+   student building their own topology must be able to undo a mistake. The option below lifts the
+   restriction altogether, for a teacher who wants the plain behaviour back. *)
+let are_we_allowed_to_delete =
+  (not are_we_in_exam_mode) || (!option_exam_allow_delete = Some ())
+;;
+let () = Log.printf1 "Deletion allowed (even of components which ran): %b\n" are_we_allowed_to_delete ;;
 
 (* Used as continuation (~k) calling `extract_string_variable_or': *)
 let append_slash x = x ^ "/" ;;

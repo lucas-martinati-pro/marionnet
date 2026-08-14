@@ -60,6 +60,11 @@ class virtual ['a] simulated_device :
     method can_resume : bool
     method can_startup : bool
     method can_suspend : bool
+    (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+       hence produced states, journals or archived documents? It is a *fact* about the component,
+       not the policy — the policy is in [can_destroy] — and the control channel reads it to name
+       the real reason of a refusal instead of blaming the state. *)
+    method has_left_traces : bool
     (* --- *)
     method create : unit
     method create_right_now : unit
@@ -249,6 +254,11 @@ class virtual node_with_ports_card :
     method can_resume : bool
     method can_startup : bool
     method can_suspend : bool
+    (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+       hence produced states, journals or archived documents? It is a *fact* about the component,
+       not the policy — the policy is in [can_destroy] — and the control channel reads it to name
+       the real reason of a refusal instead of blaming the state. *)
+    method has_left_traces : bool
     method create : unit
     method create_right_now : unit
     method virtual destroy : unit
@@ -370,6 +380,11 @@ class virtual node_with_defects :
     method can_resume : bool
     method can_startup : bool
     method can_suspend : bool
+    (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+       hence produced states, journals or archived documents? It is a *fact* about the component,
+       not the policy — the policy is in [can_destroy] — and the control channel reads it to name
+       the real reason of a refusal instead of blaming the state. *)
+    method has_left_traces : bool
     method create : unit
     method create_right_now : unit
     method virtual defects_device_type : string
@@ -483,6 +498,11 @@ class virtual node_with_ledgrid_and_defects :
     method can_resume : bool
     method can_startup : bool
     method can_suspend : bool
+    (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+       hence produced states, journals or archived documents? It is a *fact* about the component,
+       not the policy — the policy is in [can_destroy] — and the control channel reads it to name
+       the real reason of a refusal instead of blaming the state. *)
+    method has_left_traces : bool
     method create : unit
     method create_right_now : unit
     method virtual defects_device_type : string
@@ -658,6 +678,11 @@ class type virtual cable =
     method can_resume : bool
     method can_startup : bool
     method can_suspend : bool
+    (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
+       hence produced states, journals or archived documents? It is a *fact* about the component,
+       not the policy — the policy is in [can_destroy] — and the control channel reads it to name
+       the real reason of a refusal instead of blaming the state. *)
+    method has_left_traces : bool
     method create : unit
     method create_right_now : unit
     method crossover : bool

@@ -486,6 +486,32 @@ Reprise : appliquer le skill `chantier-long`.
   m1 » à côté de « Console of m1 » — un corrigé qui grep un libellé anglais ne note **rien**
   ailleurs) et le **rapport d'arrêt n'est pas garanti** (3 machines éteintes peu après leur boot,
   une seule avec son `report.md` → demander `report <c>` **avant** l'extinction).
+  **ép. 22 fait 2026-08-14** (le mode examen **refuse** ce qui détruit sans archiver — épisode
+  **hors liste annoncée**, ouvert sur une question de l'auteur) : tout ce que le chantier archive
+  est accroché au **seul** arrêt gracieux (`machine.ml`, `router.ml`), donc **six** autres chemins
+  jetaient la copie à noter, dont trois qu'on n'aurait pas appelés dangereux — quitter en
+  répondant « non » à la sauvegarde (qui **débranche** tout), le `quit` du canal (qui détruit les
+  processus et n'écrit rien) et `close --no-save`. Livré : `can_poweroff`/`can_destroy` portent le
+  verrou dans le **modèle** (donc GUI *et* canal le lisent sans le connaître), bouton « Tout
+  débrancher » **insensible** avec son infobulle, `State#poweroff_everything` refusant en ceinture,
+  **Quitter** qui ne pose plus la question (arrêt gracieux **puis** sauvegarde), `--no-save` et
+  `quit` refusés tant qu'il reste à archiver ou à écrire, et un témoin coché-grisé au menu Options.
+  Le critère de suppression n'est pas le mode mais la **trace** : un composant **jamais démarré**
+  reste supprimable, `--exam-allow-delete` rend le reste. `has_left_traces` a **deux** sources
+  parce qu'aucune ne suffit — le treeview des états (**persisté** dans le `.mar`) et un drapeau de
+  session (genres **sans** état de disque, comme le switch). Découvrabilité conforme à l'invariant :
+  `help` inchangé (une restriction est une **capacité**, pas un mot), `can` cesse de publier les
+  actions verrouillées, `status` publie `exam`. Refus sous un code neuf `forbidden_in_exam_mode` —
+  dire « ne peut pas être supprimé dans l'état off » enverrait chercher un état qui n'existe pas.
+  Seuil **mesuré** : `number_of_states_with_name > 1` (une racine vierge existe dès l'ajout), et le
+  `count` de la réponse `history` compte les **racines**, l'état d'une exécution étant un enfant.
+  Discriminant : même machine, deux processus — bootée, arrêtée, sauvée, rouverte par une Marionnet
+  **neuve** en `--exam` (mémoire vide) → `del` refusé **quand même**. Bancs 43/0 et 19/0, GUI
+  vérifiée à l'écran, i18n faite (384 traduites / 3 non traduites, 0 fuzzy dans les 12 catalogues ;
+  le **rendu** ne se vérifie qu'après installation). Deux pièges neufs : le serveur refuse **en
+  silence** une socket dont le répertoire parent est écrivable par le groupe, et une continuation
+  `\` dans une chaîne traduisible fabrique un `msgid` que rien ne cherchera (OCaml supprime les
+  blancs, l'extracteur POT non).
   **Tous les épisodes annoncés sont faits → chantier CLÔTURABLE (MODE C), sur décision de
   l'auteur.**
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort

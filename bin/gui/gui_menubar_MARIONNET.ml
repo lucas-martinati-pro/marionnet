@@ -342,7 +342,17 @@ module Created_entry_project_quit = Menu_factory.Make_entry
    let stock = `QUIT
    let key   = (Some _Q)
 
+   (* Exam locks (journalisation-profonde, episode 22). Quitting was the *quiet* way of losing an
+      exam copy, and it lost it twice over: answering "no" to the question below powered every
+      running guest off — the archiving happens in the graceful shutdown only — and then quit
+      without saving, so even what had already been archived into the [documents] treeview never
+      reached the .mar. In exam mode the question is therefore not asked at all: as long as a
+      project is open, quitting means shutting down gracefully and saving. It is not a dialog a
+      student should have to get right under time pressure. *)
    let dialog () =
+    if (Initialization.are_we_in_exam_mode && st#active_project)
+     then (Some (mkenv [("answer","yes")]))
+    else
     if ((not st#active_project) || st#project_already_saved)
      then (Some (mkenv [("answer","no")]))
      else Talking.EDialog.ask_question ~help:None ~cancel:true
@@ -365,6 +375,8 @@ module Created_entry_project_quit = Menu_factory.Make_entry
           st#save_project;
           end
       | true, false -> begin
+          (* Not reachable in exam mode (see [dialog] above), and refused by the model anyway
+             (state.ml, [poweroff_everything]). *)
           st#poweroff_everything ();
           end
       | false, true -> begin
@@ -433,6 +445,25 @@ let options_debug_mode =
          let level = if active then 1 else 0 in
          Global_options.Debug_level.set level)
  ()
+
+(* --- *)
+(* Exam locks (journalisation-profonde, episode 22). A witness, not a command: in exam mode the
+   "Remove" dynlists of the components are empty for whatever has already run, and without this
+   line nothing on screen would say why. Hence a check item which is insensitive — a student must
+   not be able to lift the lock in two clicks — and which is simply not there outside the exam
+   mode, where removing a component is nobody's business but the user's. The state it shows is
+   the one the model reads ([can_destroy], user_level.ml); the option which flips it is
+   --exam-allow-delete, on the command line. *)
+let options_exam_delete_lock =
+ add_check_item (s_ "Exam mode: forbid removing components which have run")
+  ~active:(not Initialization.are_we_allowed_to_delete)
+  ~callback:(fun _ -> ())
+ ()
+(* --- *)
+let () =
+  if Initialization.are_we_in_exam_mode
+  then options_exam_delete_lock#coerce#misc#set_sensitive false
+  else options_exam_delete_lock#coerce#misc#hide ()
 
 (* --- *)
 let options_keep_all_snapshots_when_saving =

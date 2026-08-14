@@ -1396,7 +1396,7 @@ notation : il a l'air d'une réponse.
 | 3 | **`report` et `exec` sur un routeur** (ép. 16, 18) | fonctionnent — **après** le correctif ci-dessus, sans lequel aucun des deux ne rendait quoi que ce soit d'utile |
 | 4 | **Le TP d'exemple du skill** (ép. 19) | réécrit avec un vrai composant `router` (`add router r1 --ports=2`, câbles sur `port0`/`port1`, adresses **déclarées** — elles arrivent dans l'invité au démarrage) et **rejoué** : **13 PASS / 1 FAIL / 0 SKIP** sur la maquette conforme, le FAIL étant l'assertion réservée à l'examen ; puis forwarding coupé en marche → **11 PASS / 3 FAIL**, l'état et l'expérience basculent, la trace non |
 | 5 | **Les sept configurations Quagga** par `--field=` (chantier `pilotage-par-script`, ép. 12) | posées composant **éteint** (une modification en marche est refusée, et c'est mesuré), puis **relues dans l'invité** : chaque `/etc/quagga/<srv>.conf` porte ce que le canal a écrit, et `zebra`, `ripd`, `ospfd`, `bgpd`, `ripngd`, `isisd` tournent **sur ces fichiers-là** |
-| 6 | **Les deux documents livrés devenus faux** | corrigés : `doc-src/exam-mode.md` § 4 (le routeur est mesuré de bout en bout ; sur une image SysV, on demande son rapport avant de l'éteindre) et l'encadré du § 7 du skill (il ne parle plus d'une substitution, mais des deux noms d'une même interface) |
+| 6 | **Les deux documents livrés devenus faux** | corrigés : `doc-src/exam-mode.md` § 5 (le routeur est mesuré de bout en bout ; sur une image SysV, on demande son rapport avant de l'éteindre) et l'encadré du § 7 du skill (il ne parle plus d'une substitution, mais des deux noms d'une même interface) |
 
 **Deux découvertes de terrain, l'une utile à l'enseignant, l'autre à qui écrit un banc :**
 
@@ -1518,6 +1518,84 @@ Total du banc complet : **37 assertions, 0 échec**. Aucun `.ml` touché, `dune 
 existants rejoués — ceux qui **lisent** les documents modifiés : `skill-bench` **60/0**,
 `doc-bench` **66/0**.
 
+### 4.21 Ce que l'épisode 22 a livré (et le bouton d'à côté)
+
+**Le constat.** Tout ce que ce chantier archive — rapport, historique des commandes, console,
+terminal, dans le treeview `documents`, donc dans le `.mar` remis à l'enseignant — est accroché à
+**un seul** chemin du modèle : `gracefully_shutdown_right_now` (`machine.ml`, `router.ml`). Ce
+n'est pas un oubli d'implémentation, c'est une conséquence : le rapport de fin de session est
+écrit **par l'invité**, à l'arrêt. Mais il en découle que **tout autre chemin d'extinction jette
+la copie**, et qu'aucun d'eux ne le disait :
+
+| Geste | Ce qu'il appelle | Archivage |
+|---|---|---|
+| « Tout arrêter » ; `stop`, `shutdown-all` | `gracefully_shutdown_right_now` | oui |
+| **« Tout débrancher »** (`Power-off all`) | `poweroff_everything` → `poweroff_right_now` | **non** |
+| **`poweroff <c>` / `poweroff-all`** | idem, par composant | **non** |
+| **Quitter → « ne pas sauver »** | `poweroff_everything`, puis on quitte sans rien écrire | **non** |
+| **`quit` du canal** | `destroy_process_before_quitting`, et rien n'est sauvé | **non** |
+| `close --no-save`, `new`, `open` | arrêt **gracieux**, mais l'archive n'atteint pas le `.mar` | à moitié |
+| `del` / « Supprimer » | `destroy_right_now`, qui débranche d'abord | **non** |
+
+Le plus accessible d'entre eux est **voisin du bon** dans la barre du bas : « Tout débrancher »
+touche « Tout arrêter ». Deux clics suffisaient à effacer une copie d'examen, et rien dans
+l'interface ne le signalait. Jusqu'ici, `--exam` ne **verrouillait rien** : ses seuls effets
+étaient l'icône, le titre, `exam=1` passé au noyau, l'archivage lui-même et la fenêtre source en
+lecture seule (ép. 12).
+
+**Livré : le mode examen refuse ce qui détruit sans archiver.**
+
+- **Débrancher n'existe plus en examen.** `can_poweroff` porte le facteur
+  (`Initialization.are_we_allowed_to_poweroff`), donc le canal refuse `poweroff` et `can` ne le
+  publie plus, **sans que le serveur ait à connaître la règle** ; le bouton de la barre du bas est
+  insensible avec un infobulle qui dit pourquoi ; et `State#poweroff_everything` refuse en
+  ceinture, pour qu'un futur appelant ne rouvre pas le trou en silence. Rien n'est perdu : les
+  chemins internes qui ont réellement besoin d'une coupure brutale — `destroy_right_now`, le repli
+  d'un arrêt gracieux avorté — appellent `poweroff_right_now` **sans** consulter le prédicat.
+- **Quitter sauvegarde.** En examen, la question « voulez-vous sauver avant de quitter ? » n'est
+  **plus posée** : tant qu'un projet est ouvert, quitter veut dire arrêt gracieux **puis**
+  sauvegarde. Ce n'est pas une boîte de dialogue qu'un étudiant doit réussir sous la pression.
+- **Supprimer : le critère est la trace, pas le mode.** Un composant **jamais démarré** reste
+  supprimable — il n'a rien produit, et un étudiant qui construit sa maquette doit pouvoir défaire
+  une erreur. Dès qu'il a tourné, sa suppression est refusée, et l'option **`--exam-allow-delete`**
+  la rend à qui lance la session. Le prédicat `has_left_traces` a **deux** sources parce
+  qu'aucune ne suffit : le treeview des états (**persisté** dans le `.mar`, donc encore vrai
+  après réouverture) et un drapeau mémoire `ever_started` (qui couvre la session courante et
+  surtout les genres **sans** états de disque — un switch qui a tourné a écrit son
+  `<nom>-rc_config.log`).
+- **Le canal dit la même chose que la GUI, et le dit autrement.** `del` et `poweroff` sont refusés
+  par le modèle ; les refus sont pris en charge par un code neuf, **`forbidden_in_exam_mode`**,
+  et non par `forbidden_transition` : dire « m1 ne peut pas être supprimée dans l'état off »
+  enverrait un script chercher un état qui n'existe pas. `--no-save` est refusé plutôt que
+  **silencieusement** transformé en sauvegarde, et `quit` est refusé tant qu'un composant tourne
+  ou que le projet a des changements non écrits — jamais dans l'absolu, parce qu'une session
+  d'examen pilotée doit pouvoir se terminer elle-même (`close --save` puis `quit`).
+- **La découvrabilité suit l'invariant.** La grammaire de `help` n'a **pas** bougé : la restriction
+  est une **capacité**, pas un mot. `can` cesse de publier `poweroff`/`del`, et `status` publie
+  désormais `exam` — parce que `can` parle des composants, alors que `poweroff-all`, `new`,
+  `open`, `close` et `quit` sont des gestes de **session**, dont rien ne disait le sort.
+
+**Le seuil mesuré, pas supposé.** `number_of_states_with_name > 1` et non `> 0` : `add_device`
+insère une ligne racine vierge dès l'ajout du composant. Mesuré dans les deux sens — 1 ligne sur
+une machine fraîche, 2 après un cycle réel — et attention à la lecture : le `count` de la réponse
+`history` est le nombre de **racines**, l'état produit par une exécution étant un **enfant**.
+
+**Le discriminant** est la même machine, dans deux processus : après un boot réel, un `stop` et un
+`save`, le projet est rouvert dans une Marionnet **neuve** lancée en `--exam` — donc `ever_started`
+est faux — et `del m1` est **refusé** quand même, puis **accepté** en relançant avec
+`--exam-allow-delete`. C'est le `.mar` qui parle, pas la mémoire.
+
+**Mesures.** Deux bancs jetables. Le premier, sur trois sessions (sans `--exam`, `--exam`,
+`--exam --exam-allow-delete`) et la même maquette : **43 assertions, 0 échec**, dont le couple qui
+porte tout — le **même** switch, dans le **même** état `on`, publie `poweroff` hors examen et ne le
+publie plus en examen. Le second, avec boot UML : **19 assertions, 0 échec**. GUI vérifiée à
+l'écran : bouton « Tout débrancher » grisé, case du menu Options visible et **cochée-grisée**,
+sous-menu « Supprimer » du switch **vide** après son cycle. `dune build` vert.
+
+**Piège de banc (deux runs perdus)** : le serveur de contrôle refuse de servir une socket dont le
+répertoire parent est écrivable par d'autres (`3220ef2`) — et il le refuse **sans un mot sur la
+sortie standard**. Un `mkdir` sous umask 002 suffit à ne jamais voir la socket apparaître.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -1549,7 +1627,7 @@ existants rejoués — ceux qui **lisent** les documents modifiés : `skill-benc
   **même fichier** que celui du hook, donc l'archivage du mode examen le trouve et le classe sous
   « Rapport sur … » comme n'importe quel autre. Sur une image sans séquence d'arrêt, le mode examen
   est complet **au prix d'une commande** (`report <c>` avant l'extinction) — c'est dit dans
-  `doc-src/exam-mode.md` § 4. Le remède serait d'envelopper `/sbin/halt`
+  `doc-src/exam-mode.md` § 5. Le remède serait d'envelopper `/sbin/halt`
   dans le COW — le motif que ces images utilisent déjà pour `/sbin/shutdown` — mais toucher au
   binaire d'arrêt d'un invité pour un journal n'a pas paru un bon marché ; à rouvrir seulement si
   un TP doit être noté sur une vieille image.
@@ -1658,6 +1736,22 @@ existants rejoués — ceux qui **lisent** les documents modifiés : `skill-benc
   commande composée doit être passée comme **un seul argument** (§ 4.17, mesuré). Rien à corriger
   dans le canal — il est orienté ligne par construction, comme les queues libres de `rc-set` — mais
   c'est la première chose qui surprendra celui qui écrit un corrigé.
+
+- **Le verrou de suppression de l'épisode 22 ne survit pas à une réouverture pour les genres sans
+  état de disque** (switch, hub, cloud, passerelles) : `has_left_traces` s'appuie alors sur le seul
+  drapeau de session, faux dans un processus neuf. **Inoffensif, et c'est pourquoi ce n'est pas
+  corrigé** : ce qu'un switch écrit (`<nom>-rc_config.log`) vit dans le répertoire de travail du
+  projet, lequel est **reconstruit** à l'ouverture du `.mar` — après réouverture, il n'y a plus de
+  trace à protéger. Le jour où un journal de switch serait archivé dans `documents`, il faudra
+  donner à ces genres une source persistée (ou marquer le composant dans le forest).
+- **Les infobulles et le témoin du menu Options de l'épisode 22 ne sont pas encore traduits** :
+  deux `msgid` neufs, à passer dans les douze catalogues comme à l'épisode 13.
+- **Le mode examen n'empêche toujours pas de fermer la fenêtre par le gestionnaire de fenêtres**
+  autrement que par le chemin « Quitter » : c'est le même code (l'événement `delete` appelle la
+  même entrée de menu), donc la sauvegarde forcée s'applique — mais un `kill` du processus, lui,
+  reste hors de portée par construction. Le remède n'est pas dans Marionnet : c'est la copie
+  rendue qui fait foi, et le rapport à la demande (épisode 16) permet de ne pas tout miser sur
+  l'extinction.
 
 ## 7. Vers le vérificateur : ce qu'un TP demande de prouver (épisode 15)
 
@@ -2731,3 +2825,39 @@ traduits** — un corrigé qui cherche `Report on` ne note rien sur une machine 
 avec son `report.md` — remède : le demander avant l'extinction, comme à l'épisode 20) ; et deux
 pièges d'écriture de banc, dont un programme **awk cité par des apostrophes** qui contenait une
 apostrophe dans un commentaire français, cassé **en silence**.
+
+### 2026-08-14 — Épisode 22 : le mode examen refuse ce qui détruit sans archiver
+
+**Le déclencheur est une question de l'auteur**, pas un défaut mesuré : « en `--exam`, pourquoi ne
+pas interdire *Tout débrancher* et `mrnctl poweroff` ? — et cherche les autres oublis du même
+genre ». La réponse au « pourquoi » tient en une phrase : **tout ce que le chantier archive est
+accroché au seul arrêt gracieux**, si bien que chaque autre chemin d'extinction jette la copie que
+l'enseignant est censé noter. L'audit en a trouvé **six**, dont trois que personne n'aurait
+appelés dangereux : quitter en répondant « non » à la sauvegarde (qui **débranche** tout), le
+`quit` du canal (qui détruit les processus et n'écrit rien) et `close --no-save` (qui, lui, arrête
+proprement, mais jette l'archive avec le projet).
+
+**Livré.** Une option, `--exam-allow-delete`, et cinq refus : le bouton « Tout débrancher »
+insensible (avec son infobulle), les verbes `poweroff`/`poweroff-all` refusés par le canal, la
+suppression refusée **pour ce qui a tourné seulement**, `--no-save` refusé, et `quit` refusé tant
+qu'il resterait quelque chose à archiver ou à écrire. Un témoin dans le menu Options — coché,
+grisé, absent hors examen — dit à l'étudiant pourquoi « Supprimer » ne lui propose plus rien. La
+politique vit dans le **modèle** (`can_poweroff`, `can_destroy`) : la GUI et le canal la lisent,
+aucun des deux ne la connaît. La grammaire de `help` n'a pas bougé — une restriction est une
+**capacité**, pas un mot — mais `can` cesse de publier les actions verrouillées et `status`
+publie `exam`, parce que les gestes de session (`poweroff-all`, `new`, `open`, `close`, `quit`)
+n'ont pas de `can` où se dire.
+
+**Ce que l'auteur a tranché contre la proposition initiale.** Le verrou de suppression devait être
+une option qui **ajoute** un interdit (`--no-delete`) ; c'est l'inverse qui a été retenu —
+l'interdit est le **défaut** en examen et l'option le **lève** — et surtout le critère n'est pas le
+mode mais la **trace** : un composant jamais démarré reste supprimable, puisqu'il n'a rien produit.
+D'où `has_left_traces`, à deux sources : le treeview des états (persisté, donc valable après
+réouverture) et un drapeau de session (pour les genres sans état de disque, comme le switch).
+
+**Le discriminant** est la même machine dans deux processus : bootée, arrêtée, sauvée, puis rouverte
+par une Marionnet **neuve** en `--exam` — mémoire vide — où `del m1` est refusé quand même. C'est
+le `.mar` qui répond. **Mesures** : deux bancs jetables, **43** et **19** assertions, 0 échec ;
+GUI vérifiée à l'écran (bouton grisé, case grisée, sous-menu « Supprimer » vide) ; `dune build`
+vert. Piège payé de deux runs : le serveur refuse **en silence** une socket dont le répertoire
+parent est écrivable par le groupe.
