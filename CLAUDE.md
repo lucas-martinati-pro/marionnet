@@ -512,6 +512,29 @@ Reprise : appliquer le skill `chantier-long`.
   silence** une socket dont le répertoire parent est écrivable par le groupe, et une continuation
   `\` dans une chaîne traduisible fabrique un `msgid` que rien ne cherchera (OCaml supprime les
   blancs, l'extracteur POT non).
+  **ép. 23 fait 2026-08-14** (sortir d'un projet, c'est l'**enregistrer** — suite de l'ép. 22, sur
+  constat de l'auteur) : **Fermer**, **Nouveau** et **Ouvrir** demandaient encore « voulez-vous
+  enregistrer ? » et acceptaient « Non » — la question dont la mauvaise réponse coûte la copie
+  entière. Deux points **mesurés avant** d'être traités : le `(x)` de la fenêtre appelle la
+  **même** entrée que Projet→Quitter (déjà couvert par l'ép. 22), et le drapeau
+  `project_already_saved` **ne ment pas** après un archivage (3 documents archivés → `saved`
+  retombe à `false`), donc la garde « déjà sauvé, rien à demander » est conservée. **Le vrai
+  défaut était en dessous** : `shutdown_everything` **ordonnance** ses tâches et rend la main,
+  alors que l'archivage est le **dernier** geste d'un arrêt gracieux — les quatre chemins
+  écrivaient le `.mar` **pendant** l'extinction (course), et Quitter, qui tournait dans le
+  **thread GTK**, enchaînait sur `destroy_process_before_quitting` (coupure brutale). Livré, tout
+  dans `bin/gui/gui_menubar_MARIONNET.ml` : **une** fonction de dialogue pour les quatre gestes
+  (examen → « oui » sans question ; hors examen → question **augmentée d'un avertissement** quand
+  `has_left_traces`, prédicat publié par l'ép. 22) et **une** fonction d'exécution qui met les
+  trois temps dans l'ordre — arrêter, **attendre le task runner**, sauver. L'attente étant
+  interdite dans le thread GTK (l'archivage y passe par `GMain_actor.apply_extract`, ép. 12), la
+  réaction de **Quitter tourne désormais dans un thread**, comme les trois autres. Hors examen, la
+  branche « quitter sans sauver » garde son `poweroff_everything`. Discriminant : ces gestes sont
+  des **clics**, donc banc GUI (`xdotool`, menu Projet) + **réouverture du `.mar` dans un processus
+  neuf** → *Rapport sur m1*, *Console of m1*, *Terminal of m1*. Pièges de mesure : `xdotool key`
+  envoie **au focus** (dangereux et infidèle : on clique dans le menu), un banc sous `set -e`
+  **meurt en silence** quand le geste testé fait disparaître la fenêtre, et les **titres des
+  dialogues sont traduits** (un motif anglais ne trouve rien et rend l'assertion creuse).
   **Tous les épisodes annoncés sont faits → chantier CLÔTURABLE (MODE C), sur décision de
   l'auteur.**
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort

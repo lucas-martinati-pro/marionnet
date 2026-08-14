@@ -85,9 +85,10 @@ For an exam, add `--exam` — it also turns on the two host-side recordings (`do
 Be aware that an exam session **refuses** what would destroy the copy before it is archived: no
 power cut (`poweroff`, `poweroff-all`, the *Power-off all* button), no `--no-save`, no `quit`
 while something is still running, and no removal of a component which has already run — the last
-one being liftable with `--exam-allow-delete` when you build the mock-up yourself. Quitting from
-the menu shuts everything down gracefully and saves, without asking. See `doc-src/exam-mode.md`
-§ 3.
+one being liftable with `--exam-allow-delete` when you build the mock-up yourself. And the four
+ways of leaving a project — Quit, the window's (x), Close, New, Open — no longer ask anything:
+they shut every machine down, **wait until it is really down**, and save. See
+`doc-src/exam-mode.md` § 3.
 
 ---
 

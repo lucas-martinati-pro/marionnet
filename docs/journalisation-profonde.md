@@ -1596,6 +1596,62 @@ sous-menu « Supprimer » du switch **vide** après son cycle. `dune build` vert
 répertoire parent est écrivable par d'autres (`3220ef2`) — et il le refuse **sans un mot sur la
 sortie standard**. Un `mkdir` sous umask 002 suffit à ne jamais voir la socket apparaître.
 
+### 4.22 Ce que l'épisode 23 a livré (et la sauvegarde qui arrivait trop tôt)
+
+**Le constat de l'auteur, et ce qu'il a fallu vérifier avant d'y répondre.** L'épisode 22 avait
+traité **Quitter** ; restaient **Fermer**, **Nouveau** et **Ouvrir**, qui posent tous les trois la
+question « voulez-vous enregistrer le projet en cours ? » et acceptent « Non ». C'est la question
+dont la mauvaise réponse coûte le plus cher : les documents archivés à l'extinction ne vivent dans
+le `.mar` **que** si le projet est sauvé. Un étudiant qui clique « Non » par réflexe perd sa copie
+entière.
+
+Deux points de l'énoncé ont été **mesurés plutôt que crus** :
+
+- le `(x)` de la fenêtre : il appelle la **même** entrée que Projet→Quitter
+  (`gui_window_MARIONNET.ml`, événement `delete`), il était donc déjà couvert par l'épisode 22 —
+  vérifié, aucune boîte n'apparaît et l'application s'en va toute seule ;
+- l'hypothèse « le drapeau `project_already_saved` ment après un archivage » (ce qui aurait rendu
+  Quitter silencieux même hors examen) : **fausse**. Mesuré — trois documents archivés,
+  `saved` passe à `false` juste après. La garde « déjà sauvé donc rien à demander » est donc
+  légitime et elle est conservée.
+
+**Le vrai défaut était ailleurs, et il rendait la sauvegarde forcée inopérante.** `shutdown_everything`
+ne fait qu'**ordonnancer** ses tâches sur le task runner et rend la main aussitôt, alors que
+l'archivage est le **dernier** geste de chaque arrêt gracieux. Les quatre chemins écrivaient donc
+le `.mar` **pendant** que les invités s'éteignaient : une course, gagnée par l'invité seulement
+s'il allait assez vite. Pire pour Quitter, dont la réaction tournait dans le **thread GTK** :
+`destroy_process_before_quitting` — une coupure brutale — suivait immédiatement.
+
+**Livré**, entièrement dans `bin/gui/gui_menubar_MARIONNET.ml` :
+
+- `Common_dialogs.ask_to_save_current_project`, **une** fonction pour les quatre gestes : pas de
+  projet actif → rien ; **mode examen → « oui », sans poser la question** ; sinon la question,
+  **augmentée d'un avertissement** quand quelque chose a tourné dans la session. L'avertissement
+  se décide avec `has_left_traces`, le prédicat que l'épisode 22 avait déjà publié sur le modèle —
+  aucun code neuf pour le savoir ;
+- `Common_dialogs.shutdown_then_save`, qui met les trois temps **dans l'ordre** : arrêter,
+  **attendre le task runner**, puis sauver. L'attente ne peut pas avoir lieu dans le thread GTK
+  (l'archivage y passe par `GMain_actor.apply_extract` depuis l'épisode 12 : le bloquer serait un
+  interblocage), d'où le changement le plus structurant de l'épisode — **la réaction de Quitter
+  tourne désormais dans un thread**, comme les trois autres depuis toujours ;
+- hors examen, la branche « quitter sans sauver » garde son `poweroff_everything` : rien ne sera
+  écrit, faire attendre un arrêt gracieux ferait patienter pour rien.
+
+**Le discriminant** ne pouvait pas venir du canal — ces gestes sont des **clics**. Le banc pilote
+donc la GUI (`xdotool`, menu Projet) puis **rouvre le `.mar` dans un processus neuf** et compte ce
+qu'il contient : Quitter avec une machine encore allumée laisse un fichier portant **Rapport sur
+m1**, **Console of m1** et **Terminal of m1** — la course est fermée.
+
+**Trois pièges de mesure, tous payés** : (a) `xdotool key ctrl+q` envoie la touche à **ce qui a le
+focus**, ce qui n'est ni fidèle au geste d'un étudiant ni sans danger — les gestes se jouent en
+**cliquant dans le menu** ; (b) un banc sous `set -e` **meurt en silence** quand une fenêtre
+disparaît sous xdotool — précisément parce que le geste testé la ferme — et ne rapporte alors
+**rien du tout** ; (c) les titres des fenêtres de dialogue sont **traduits** : un motif anglais
+n'en trouve aucune et transforme « aucune boîte n'est apparue » en affirmation creuse. Enfin, un
+premier run a compté deux documents au lieu de trois : ce n'était pas la course mais le défaut
+**déjà consigné au § 6** — une machine arrêtée trop tôt après son démarrage n'écrit pas son
+rapport.
+
 ## 5. Rapports avec les autres chantiers
 
 - **`pilotage-par-script`** — fournit le canal (`control_server.ml`, `mrnctl`) qui **lit** le
@@ -2861,3 +2917,36 @@ le `.mar` qui répond. **Mesures** : deux bancs jetables, **43** et **19** asser
 GUI vérifiée à l'écran (bouton grisé, case grisée, sous-menu « Supprimer » vide) ; `dune build`
 vert. Piège payé de deux runs : le serveur refuse **en silence** une socket dont le répertoire
 parent est écrivable par le groupe.
+
+### 2026-08-14 — Épisode 23 : sortir d'un projet, c'est l'enregistrer
+
+**Le déclencheur, encore une question de l'auteur** : l'épisode 22 avait traité Quitter, mais
+**Fermer**, **Nouveau** et **Ouvrir** demandaient toujours « voulez-vous enregistrer ? » et
+acceptaient « Non » — la question dont la mauvaise réponse coûte le plus cher à un étudiant.
+
+**Deux points de l'énoncé, mesurés avant d'être traités.** Le `(x)` de la fenêtre appelle la
+**même** entrée que Projet→Quitter : il était déjà couvert, et cela se vérifie à l'écran.
+L'hypothèse d'un drapeau `project_already_saved` qui mentirait après un archivage est **fausse**
+(trois documents archivés, `saved` retombe à `false`) : la garde « déjà sauvé, donc rien à
+demander » est donc gardée telle quelle.
+
+**Le vrai défaut était en dessous**, et il aurait rendu la sauvegarde forcée décorative :
+`shutdown_everything` **ordonnance** ses tâches et rend la main, or l'archivage est le **dernier**
+geste d'un arrêt gracieux. Les quatre chemins écrivaient donc le `.mar` **pendant** l'extinction —
+une course — et Quitter, qui tournait dans le thread GTK, enchaînait sur une coupure brutale.
+
+**Livré** (tout dans `bin/gui/gui_menubar_MARIONNET.ml`) : une seule fonction de dialogue pour les
+quatre gestes — en examen elle ne demande rien et répond « oui », hors examen elle demande **et
+avertit** quand quelque chose a tourné (via `has_left_traces`, publié par l'ép. 22) — et une seule
+fonction d'exécution qui met les trois temps dans l'ordre : arrêter, **attendre le task runner**,
+puis sauver. L'attente interdisant le thread GTK, la réaction de Quitter **tourne désormais dans
+un thread**, comme les trois autres.
+
+**Discriminant** : ces gestes sont des **clics**, donc le banc pilote la GUI et **rouvre le `.mar`
+dans un processus neuf**. Quitter avec une machine encore allumée laisse un fichier qui porte
+*Rapport sur m1*, *Console of m1* et *Terminal of m1*. **Pièges payés** : `xdotool key` envoie au
+focus (dangereux et infidèle — on clique dans le menu) ; un banc sous `set -e` **meurt en silence**
+quand le geste testé fait disparaître la fenêtre ; les titres des dialogues sont **traduits**, donc
+un motif anglais ne trouve rien et rend l'assertion creuse. Et un premier run à deux documents
+n'était pas la course mais le défaut **déjà consigné** : une machine arrêtée trop tôt après son
+boot n'écrit pas son rapport.

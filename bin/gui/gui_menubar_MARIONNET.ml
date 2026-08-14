@@ -56,14 +56,55 @@ let project = add_menu (s_ "_Project" )
 
 module Common_dialogs = struct
 
+ (* Exam locks (journalisation-profonde, episode 23). FOUR gestures leave a project — Close, New,
+    Open, Quit (and the window manager's (x), which calls the Quit entry) — and three of them used
+    to ask "do you want to save the current project?". That question has a wrong answer, and its
+    cost is not symmetric: what a session archived at shutdown (report, command history, console,
+    terminal) lives in the .mar ONLY if the project is saved, so a student clicking "no" by reflex
+    loses their whole copy. In exam mode the question is therefore not asked at all — leaving means
+    saving, and the four gestures answer the same way.
+
+    Outside an exam the question stays: discarding an experiment is a legitimate gesture, and often
+    the very point of a rehearsal. But it now says what would be lost, and only when there is
+    something to lose — [has_left_traces] is the model's own predicate (user_level.ml, episode 22),
+    the same one which decides whether a component may be removed. *)
+
+ let something_has_run () =
+   List.exists (fun n -> n#has_left_traces) (st#network#get_node_list)
+
+ (* [gen_id] is the field the caller reads back ("answer" for Close and Quit, "save_current" for
+    New and Open, which chain this dialog with a file chooser). [script_answer] keeps the contract
+    of a driven session: a question raised while the control server serves a command is answered
+    by default instead of freezing it (talking.ml). *)
+ let ask_to_save_current_project ?(gen_id="answer") ?(title=(s_ "Close")) ?script_answer () =
+   if not st#active_project then (Some (mkenv [(gen_id, "no")])) else
+   if Initialization.are_we_in_exam_mode then (Some (mkenv [(gen_id, "yes")])) else
+   let question =
+     let question = (s_ "Do you want to save the current project?") in
+     if not (something_has_run ()) then question else
+     question ^ "\n\n" ^
+     (s_ "Careful: some components have run in this session. Answering \"no\" discards their disk states, and every document archived into the project.")
+   in
+   EDialog.ask_question ~help:None ~cancel:true ~gen_id ~title ~question ?script_answer ()
+
  (* Dialog used both for "New" and "Open" *)
- let save_current () =
-   if st#active_project
-    then EDialog.ask_question ~help:None ~cancel:true
-          ~gen_id:"save_current"
-          ~title:(s_ "Close" )
-          ~question:(s_ "Do you want to save the current project?") ()
-    else (Some (mkenv [("save_current","no")]))
+ let save_current () = ask_to_save_current_project ~gen_id:"save_current" ()
+
+ (* Leaving a project, in the right ORDER — the other half of episode 23, and the one which makes
+    the forced save worth anything. [shutdown_everything] only *schedules* its tasks on the task
+    runner (state.ml) and returns at once, while the exam archiving is the very LAST thing each
+    graceful shutdown does. Saving right after the call therefore wrote a .mar without the very
+    documents the save was for: a race, won by the guest only when it went down fast enough.
+    Waiting for the task runner in between is what closes it — and it MUST NOT happen in the GTK
+    main thread (task_runner.ml warns about it, and the archiving itself goes through
+    GMain_actor.apply_extract since episode 12, so blocking that thread would deadlock).
+    Every caller below therefore runs this in a thread of its own. *)
+ let shutdown_then_save ~(must_be_saved:bool) () =
+   if st#active_project then begin
+     let () = st#shutdown_everything () in
+     let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
+     if must_be_saved then st#save_project
+     end
 
 end
 
@@ -94,8 +135,7 @@ module Created_entry_project_new = Menu_factory.Make_entry(struct
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.new_project\n" in
          let active_project = st#active_project in
-         let () = if (active_project) then st#shutdown_everything () in
-         let () = if (active_project) && (must_be_saved) then st#save_project in
+         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
          let () = if (active_project) then st#close_project in
          st#new_project filename
       in
@@ -134,8 +174,7 @@ module Created_entry_project_open = Menu_factory.Make_entry(struct
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.open_project\n" in
          let active_project = st#active_project in
-         let () = if (active_project) then st#shutdown_everything () in
-         let () = if (active_project) && (must_be_saved) then st#save_project in
+         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
          let () = if (active_project) then st#close_project in
          (* --- *)
          try st#open_project_async filename
@@ -253,10 +292,8 @@ module Created_entry_project_close = Menu_factory.Make_entry
    let key   = (Some _W)
 
    (* --- *)
-   let dialog () =
-     EDialog.ask_question ~help:None ~cancel:true
-       ~title:(s_ "Close" )
-       ~question:(s_ "Do you want to save the current project?") ()
+   (* Episode 23: the same dialog as New and Open — and in exam mode, no dialog at all. *)
+   let dialog () = Common_dialogs.ask_to_save_current_project ~title:(s_ "Close") ()
 
    (* --- *)
    let reaction r =
@@ -265,9 +302,7 @@ module Created_entry_project_close = Menu_factory.Make_entry
       (* --- *)
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.close_project\n" in
-         let active_project = st#active_project in
-         let () = if (active_project) then st#shutdown_everything () in
-         let () = if (active_project) && (must_be_saved) then st#save_project in
+         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
          st#close_project
       in
       (* --- *)
@@ -348,50 +383,61 @@ module Created_entry_project_quit = Menu_factory.Make_entry
       without saving, so even what had already been archived into the [documents] treeview never
       reached the .mar. In exam mode the question is therefore not asked at all: as long as a
       project is open, quitting means shutting down gracefully and saving. It is not a dialog a
-      student should have to get right under time pressure. *)
+      student should have to get right under time pressure.
+
+      Episode 23: the same dialog as Close, New and Open, so that the four gestures which leave a
+      project answer alike — including the (x) of the window manager, which calls this very entry
+      (gui_window_MARIONNET.ml). The guard below survives, and it is not a shortcut: MEASURED
+      (2026-08-14) that the exam archiving does mark the project as modified — three documents
+      archived, [project_already_saved] false right after — so "already saved" really does mean
+      "nothing to lose", and asking there would be asking for nothing. *)
    let dialog () =
-    if (Initialization.are_we_in_exam_mode && st#active_project)
-     then (Some (mkenv [("answer","yes")]))
-    else
-    if ((not st#active_project) || st#project_already_saved)
+    if (st#active_project && st#project_already_saved)
      then (Some (mkenv [("answer","no")]))
-     else Talking.EDialog.ask_question ~help:None ~cancel:true
-           ~title:(s_ "Quit")
-           ~question:(s_ "Do you want to save\nthe current project before quitting?")
-           (* Consistent with the branch just above: a driven session quits without saving
-              behind the script's back. A script that wants its project saved says so. *)
-           ~script_answer:"no"
-           ()
+     else
+       Common_dialogs.ask_to_save_current_project
+         ~title:(s_ "Quit")
+         (* A driven session quits without saving behind the script's back. A script that wants
+            its project saved says so. *)
+         ~script_answer:"no"
+         ()
 
    (* --- *)
+   (* Episode 23. The whole sequence now runs in a THREAD OF ITS OWN, like the three other
+      gestures which leave a project, and for a reason measured rather than guessed: this
+      reaction used to run in the GTK main thread, where [shutdown_everything] can only be
+      *scheduled* — so the save, and worse [destroy_process_before_quitting] right below, went
+      ahead while the guests were still going down. In exam mode that is the copy: the archiving
+      is the last thing a graceful shutdown does. Off the main thread, the wait inside
+      [shutdown_then_save] is legitimate and the GTK thread stays free to serve the archiving
+      (GMain_actor.apply_extract, episode 12). *)
    let reaction r =
     (* At this point the user really wants to quit the application. *)
     let must_be_saved = (st#active_project) && ((r#get "answer") = "yes") in
     (* --- *)
-    let () =
-      match st#is_there_something_on_or_sleeping (), must_be_saved with
-      | true, true  -> begin
-          st#shutdown_everything ();
-          st#save_project;
-          end
-      | true, false -> begin
-          (* Not reachable in exam mode (see [dialog] above), and refused by the model anyway
-             (state.ml, [poweroff_everything]). *)
-          st#poweroff_everything ();
-          end
-      | false, true -> begin
-          st#save_project;
-          end
-      | false, false -> ()
-    in
-    (* --- *)
-    begin
+    let actions () =
+      let () =
+        match st#is_there_something_on_or_sleeping (), must_be_saved with
+        | true,  true  -> Common_dialogs.shutdown_then_save ~must_be_saved:true ()
+        | true,  false ->
+            (* Unreachable in exam mode — the dialog answers "yes" there, and the model would
+               refuse this anyway (state.ml, [poweroff_everything], episode 22). Outside an exam
+               it is the right gesture and it is kept: nothing is going to be saved, so waiting
+               for a graceful shutdown would make someone who wants to leave wait for nothing. *)
+            st#poweroff_everything ()
+        | false, true  -> st#save_project
+        | false, false -> ()
+      in
+      (* --- *)
       Log.printf "Killing the death monitor thread...\n";
       Death_monitor.stop_polling_loop ();
       st#network#destroy_process_before_quitting ();
       st#close_project;
-      st#quit_async ();
-    end
+      st#quit_async ()
+    in
+    (* --- *)
+    let _ = Thread.create (actions) () in
+    ()
 
   end) (F)
 let project_quit = Created_entry_project_quit.item

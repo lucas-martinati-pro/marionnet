@@ -90,10 +90,16 @@ exam session, those ways are therefore closed:
 | Gesture | Outside an exam | With `--exam` |
 |---|---|---|
 | *Power-off all* button, `poweroff`, `poweroff-all` | available | **refused**: the button is greyed out and says why; the channel answers `forbidden_in_exam_mode` |
-| **Quit** with a project open | asks whether to save | **does not ask**: it shuts every machine down gracefully **and saves**. It is not a dialog to get right under time pressure |
+| **Quit**, the window's **(x)**, **Close**, **New**, **Open** — the four ways of leaving a project | ask whether to save | **do not ask**: they shut every machine down gracefully, **wait for it**, and save. There is no wrong button to press |
 | `quit` through the control channel | quits at once | **refused** while something is running or the project has unsaved changes (`close --save` first, then quit) |
 | `close --no-save`, `new … --no-save`, `open … --no-save` | available | **refused**: an archive that never reaches the `.mar` is an archive nobody will read |
 | Removing a component (*Remove*, `del`) | available | **refused for a component which has already run** — removing it would take its disk states, its shared directory and its journals along |
+
+**« Wait for it » is the whole point of that second line.** The archiving is the *last* thing a
+graceful shutdown does, and shutting down is asynchronous: saving right after asking for it wrote a
+project file without the very documents the save was for. In an exam session the four gestures now
+shut down, **wait until every machine is really down**, and only then save — so leaving may take a
+few seconds longer than it used to, and what you get is a complete copy.
 
 The last line deserves its nuance: a component which was **never started** stays removable. It has
 produced nothing, and a student building their own topology must be able to undo a mistake. Only
@@ -112,6 +118,11 @@ Nothing of this changes the vocabulary of the control channel: the commands are 
 still listed by `help`. What changes is what a component *can* do — `can <component>` stops
 publishing the refused actions — and `status` says `"exam": true`, which is how a script learns
 the mode instead of guessing it from a refusal.
+
+**Outside an exam**, none of this applies: throwing an experiment away is a legitimate gesture, and
+often the point of a rehearsal. The question is still asked — but it now says what would be lost
+when something has run in the session: the disk states of the components, and every document
+already archived into the project.
 
 ## 4. What can be trusted
 
