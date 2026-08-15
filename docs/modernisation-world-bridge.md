@@ -71,6 +71,45 @@ automatiser (asservir la carte de l'hôte) est intrinsèquement **dangereux**.
   multi-machines**, mais reste opt-in explicite, encadré de garde-fous (détection de la
   carte, avertissement, rollback `at_exit`/erreur), car il peut couper l'hôte.
 
+### 2.1 bis Ce que le POC a prouvé (2026-08-15, épisode 2)
+
+Banc d'essai : `useful-scripts/marionnet-natbridge-poc.sh` (`up`/`down`/`status`/`gc`/
+`selftest`/`print-privileged-commands`), **sans une ligne d'OCaml**. Deux paliers, tous
+deux verts sur le poste de développement :
+
+- **Palier 1 — système seul** (`selftest`) : bridge `mnbr<pid>` + `192.168.101.1/24` +
+  MASQUERADE, un *network namespace* jouant l'invité ; depuis cet invité, `ping 9.9.9.9`
+  (55,8 ms) **et** résolution DNS (UDP/53) ; puis démontage et assertion « rien ne survit »
+  (bridge, netns, règles, `ip_forward`) — passée.
+- **Palier 2 — bout en bout** : `MARIONNET_BRIDGE=mnbr<pid>` et un vrai Marionnet piloté par
+  le canal de contrôle (`--control-socket`). Maquette `m1 --- w1` (machine
+  `debian-trixie-47362` / noyau `6.12.95`, `world_bridge`), `start-all`, puis depuis
+  **l'invité UML** : `ping -c2 9.9.9.9` → **2 reçus, 0 % de perte** (78,3 / 57,9 ms) et
+  `nslookup example.org 9.9.9.9` → réponse complète. Pendant ce temps la route par défaut de
+  l'hôte est restée `via 192.168.198.41 dev wlp0s20f3`, intacte.
+
+Trois enseignements qui engagent la suite :
+
+1. **`world_bridge` n'a eu besoin d'AUCUNE modification.** Il a créé son tap et l'a attaché à
+   un bridge qu'il n'a pas eu à trouver préexistant : côté hôte, `mnbr<pid>` avait pour port
+   `mtap<pid Marionnet>-1`, et il est passé `UP,LOWER_UP`. Ce que l'épisode 3 doit écrire en
+   OCaml se réduit donc à **créer/détruire le bridge et les règles NAT** ; l'attachement, lui,
+   marche déjà (`Tap_provider.make_bridge_tap` est indifférent à l'origine du bridge).
+2. **L'option B est inapplicable sur ce poste** : il sort par le **Wi-Fi** (`wlp0s20f3`).
+   Asservir une carte Wi-Fi à un bridge ne fonctionne pas (le point d'accès n'accepte pas
+   plusieurs MAC derrière un client). Le NAT de l'option A, purement L3, s'en moque. La
+   décision « A par défaut » n'était donc pas seulement la moins risquée : sur les postes
+   nomades — le cas majoritaire d'un enseignant — elle est la **seule** qui marche.
+3. **dnsmasq reste inutile** (point dur § 2.2.3, tranché par YAGNI) : l'invité configuré en
+   statique a atteint l'Internet. Reste à décider *où* l'étudiant pose cette configuration
+   (à la main, ou par le treeview `ifconfig` de la GUI) — question d'épisode 3, pas de DHCP.
+
+Commandes privilégiées à ajouter au motif sudoers (sortie de `print-privileged-commands`) :
+`ip link add/del <BR> type bridge`, `ip addr add <NET>.1/24 dev <BR>`, `ip link set <BR> up`,
+`sysctl -w net.ipv4.ip_forward=1`, et les trois `iptables -{A,D}` (une `-t nat POSTROUTING
+MASQUERADE`, deux `FORWARD`). L'attachement `ip link set mtap* master <BR>` est **déjà**
+couvert par la règle existante.
+
 ### 2.2 Points durs identifiés (à traiter aux épisodes d'implémentation)
 
 1. **Périmètre sudoers.** A et B ajoutent des commandes iproute2/iptables au motif scoped de
@@ -90,6 +129,28 @@ automatiser (asservir la carte de l'hôte) est intrinsèquement **dangereux**.
    laissait justement `world_bridge` **hors** de son bénéfice (bridge en ns racine,
    `daemon-elimination.md §12.3` point 1). A/B ici sont orthogonaux au netns ; à recouper si
    ce besoin se concrétise.
+
+### 2.3 Conventions établies par le POC (à reprendre telles quelles en OCaml)
+
+- **Nommage et propriété.** Bridge `mnbr<pid>` (≤ 15 car., `IFNAMSIZ`) et **chaque règle
+  iptables porte le commentaire `marionnet-natbridge:mnbr<pid>`** (`-m comment`). Conséquence
+  voulue : `down` et `gc` retrouvent leurs artefacts **en interrogeant le système**, sans
+  dépendre d'un fichier d'état qu'un crash aurait laissé mentir. Même discipline `owner_pid`
+  que `Tap_provider` (piège `daemon-elimination` ép. 6) : on ne détruit que ce dont le pid est
+  mort, et un pid vide ou malformé est rejeté avant de servir à sélectionner quoi que ce soit.
+- **Les deux règles `FORWARD` ne sont pas redondantes avec le MASQUERADE.** Sur un hôte où
+  tourne Docker, la politique de la chaîne `FORWARD` est `DROP` : le NAT traduirait des
+  paquets qui seraient ensuite jetés. Il faut la règle sortante et la règle retour
+  (`conntrack --ctstate RELATED,ESTABLISHED`).
+- **`ip_forward` : ne restaurer que ce qu'on a changé.** C'est la seule information que le
+  système ne redonne pas après coup (et sur ce poste il valait déjà 1, mis par Docker) : c'est
+  le seul contenu du fichier d'état, et son absence vaut « ne pas y toucher ».
+- **Choisir le /24 en écartant ce qui est déjà routé ou adressé sur l'hôte** (candidats
+  `192.168.101` … `192.168.110` ; `172.23.0.0/16` exclu, c'est le ghost network). Sans ce
+  test, un bridge NAT peut voler le préfixe du vrai LAN et priver les invités d'Internet.
+- **Amorçage.** `MARIONNET_BRIDGE` est lu **à l'initialisation** (`global_options.ml`) : au
+  POC le bridge doit donc préexister au lancement. En OCaml la question disparaît — c'est
+  Marionnet qui créera le bridge, et il connaît son propre pid.
 
 ## 3. Axe B — travail GUI (comprehensibilité enseignants/étudiants)
 
@@ -113,9 +174,18 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
    clarifiant `world_bridge` vs `world_gateway`. Sources anglaises seules ; **refresh gettext
    des 12 langues différé** à un épisode i18n consolidé (méthode `daemon-elimination`).
    **Fait 2026-07-18.**
-3. **ép. 2+** *(à venir)* — axe A : POC système « NAT bridge privé auto » (option A) sans
-   OCaml, puis câblage `Tap_provider`/`world_bridge.ml` + sudoers + GC ; ensuite option B
-   (L2 réel, garde-fous) ; refresh i18n consolidé ; compléments GUI (sélecteur de mode).
+3. **ép. 2** — *POC système « NAT bridge privé auto »* (option A), sans OCaml :
+   `useful-scripts/marionnet-natbridge-poc.sh`, prouvé aux deux paliers (§ 2.1 bis), et liste
+   des commandes privilégiées produite pour l'épisode suivant. **Fait 2026-08-15.**
+4. **ép. 3** *(à venir)* — *câblage OCaml* : création/destruction du bridge NAT et de ses
+   règles depuis Marionnet (le module naturel est `tap_provider.ml`, qui tient déjà la
+   discipline sudo + `owner_pid` + GC), extension du motif de `bin/scripts/marionnet-sudoers.sh`
+   (§ 2.1 bis), et **choix du mode** dans le dialogue de `world_bridge` (NAT auto / bridge
+   manuel), avec la sémantique NAT annoncée en clair. L'attachement du tap n'est pas à écrire :
+   il fonctionne déjà.
+5. **ép. 4+** *(à venir)* — option B (L2 réel automatique, garde-fous et rollback) en mode
+   expert ; puis **refresh i18n consolidé ×12**, qui soldera aussi la dette des trois chaînes
+   de l'épisode 1 (§ 5).
 
 ## 5. Points de vigilance transverses
 
@@ -131,6 +201,14 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
   sur les `at_exit` (piège `daemon-elimination` ép. 6).
 - **Ne pas régresser** le lab distribué multi-machines (usage 2) ni la surface plus étroite
   obtenue par `daemon-elimination`.
+- **Pièges rencontrés à l'épisode 2**, hors sujet du chantier mais coûteux :
+  - un chemin de `--control-socket` **trop long** (> 108 octets, la limite de `sun_path`)
+    fait démarrer Marionnet **sans jamais créer le socket ni rien signaler** ;
+  - le rootfs `debian-trixie-47362` **n'écrit pas le marqueur `marionnet-guest-ready`** :
+    `wait --ready` a expiré au bout de 240 s sur une machine parfaitement fonctionnelle (les
+    `exec` suivants ont tous répondu en ~1 s). À verser au chantier `marionnet-kernel-rootfs` ;
+  - **bashbricks n'est pas `set -u`-safe** (mesuré : `source` échoue sur `__bb_REPLACE_REFS`,
+    `Array_make` sur `__bb_PLUS`) — d'où le Bash nu du POC, justifié dans son en-tête.
 
 ## Journal d'avancement
 
@@ -146,3 +224,16 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
   temporairement incomplets sur ces chaînes). Vérif : `dune build` rc=0 ; pas de run GUI
   (rig indisponible ; changements = texte d'aide/tooltip). Prochain pas : épisode 2 (POC
   système NAT bridge privé auto, axe A).
+- **2026-08-15 — épisode 2** : axe A, POC système du « NAT bridge privé auto », sans OCaml.
+  Nouveau `useful-scripts/marionnet-natbridge-poc.sh` (`up`/`down`/`status`/`gc`/`selftest`/
+  `print-privileged-commands`) : bridge `mnbr<pid>`, /24 choisi en évitant ce qui est déjà
+  routé, MASQUERADE + deux règles `FORWARD`, artefacts tous étiquetés
+  `marionnet-natbridge:mnbr<pid>` pour un `gc` par pid mort, `ip_forward` restauré seulement
+  s'il a été changé. **Prouvé deux fois** (§ 2.1 bis) : `selftest` système (netns invité :
+  ICMP + DNS, puis démontage sans résidu) ; et bout en bout avec un vrai Marionnet piloté par
+  `--control-socket` (machine trixie + `world_bridge`, `ping -c2 9.9.9.9` → 0 % de perte,
+  `nslookup` → réponse), la route par défaut de l'hôte inchangée. Résultat structurant :
+  `world_bridge` et `Tap_provider` n'ont eu **aucune** modification à recevoir — l'épisode 3
+  n'a donc à écrire en OCaml que la création/destruction du bridge et des règles NAT, plus le
+  motif sudoers correspondant. Prochain pas : épisode 3 (câblage OCaml + sudoers + mode dans
+  le dialogue).

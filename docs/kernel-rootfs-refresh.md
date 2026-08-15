@@ -381,3 +381,27 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   `waitpid … exited` immédiat, pas de boucle de reboot ni recours au SIGKILL de garde à 30 s).
   `bash -n` OK sur les deux scripts. Note : la couche (b) n'exige qu'un rebuild dune ; (a) et (c)
   exigent un rebuild d'image (déjà fait).
+
+## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
+
+Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une
+session par le canal de contrôle : sur une machine `debian-trixie-47362` (noyau `6.12.95`),
+`wait <machine> --ready` **expire au bout de 240 s** —
+
+> `"m1" wrote no marionnet-guest-ready in its hostfs directory after 240.1s`
+
+— alors que **l'invité est parfaitement vivant** : les `exec` qui suivent immédiatement répondent
+tous en ~1,2 s (`ip link set`, `ip addr add`, `ping`, `nslookup`, tous `status:0`). Le marqueur de
+disponibilité n'est donc pas écrit par le rootfs trixie, ou l'est ailleurs que là où le canal le
+cherche.
+
+Pourquoi cela appartient à ce chantier : le marqueur est posé par le **relais de démarrage**, et
+c'est ici qu'a été construit le dispatch SysV/systemd (`marionnet-relay.trixie`, épisode 20). C'est
+très probablement le même mécanisme que celui déjà mesuré à l'épisode 16 puis reversé au TODO
+transverse pour le rapport : une unité systemd **démarrée depuis le relais** ne voit son job
+exécuté qu'**en fin de boot**, bien après le moment où le marqueur devrait exister.
+
+Conséquence pratique tant que ce n'est pas corrigé : **tout script qui attend `--ready` sur un
+invité trixie attendra pour rien**, y compris les bancs de TP (`marionnet-lab-design`) et les
+scripts d'exemple de `doc-src/scripting/`. Le contournement employé à l'épisode 2 est d'attendre
+`--state=on` puis d'enchaîner directement sur les `exec`, qui fonctionnent.

@@ -97,4 +97,6 @@ useful-scripts/*
 !useful-scripts/mrn-verify
 # Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
 !useful-scripts/marionnet-completion.bash
+# Banc d'essai du bridge NAT privé automatique (docs/modernisation-world-bridge.md § 2.1 bis).
+!useful-scripts/marionnet-natbridge-poc.sh
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

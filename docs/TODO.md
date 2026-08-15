@@ -286,3 +286,29 @@ risquée qu'un changement d'adresse. À noter au passage, et déjà connu du dé
 coexister.
 
 *Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+
+---
+
+## Canal de contrôle — un `--control-socket` trop long échoue en silence
+
+**Constat** (mesuré le 2026-08-15, `modernisation-world-bridge` ép. 2). Lancé avec
+`--control-socket <chemin de 127 caractères>`, Marionnet **démarre normalement, ouvre sa GUI, et ne
+crée jamais le socket** : aucun message, aucun refus, rien dans la sortie standard. La cause est la
+limite du champ `sun_path` d'une adresse unix — **108 octets**, terminaison comprise —, bien connue
+mais invisible ici, le chemin ayant seulement l'air « long » (répertoire de travail temporaire). Le
+client, lui, dit correctement `not a unix socket` : c'est le serveur qui se tait.
+
+**Voulu.** Que le serveur **refuse explicitement** un chemin trop long — au démarrage, avant même
+de tenter le `bind`, avec un message nommant la limite et la longueur fournie. Une session pilotée
+qui ne peut pas être pilotée doit le dire ; c'est d'autant plus vrai qu'un banc de test choisit
+rarement ses chemins à la main (répertoires temporaires imbriqués, `XDG_RUNTIME_DIR`, chemins de
+projet).
+
+**Ce que l'implémentation devra affronter.** Peu de choses : le contrôle est une comparaison de
+longueur au moment où l'option est lue (`bin/control_server.ml`, ouverture du canal), et le mode
+d'échec à choisir est le seul vrai arbitrage — refuser de démarrer, ou démarrer en GUI seule après
+un avertissement bien visible. La documentation d'usage (`doc-src/scripting/`) gagnerait la même
+phrase, puisqu'elle demande un chemin absolu sans dire qu'il est aussi **borné**.
+
+*Reversé ici le 2026-08-15 depuis le chantier `modernisation-world-bridge` (ép. 2), qui l'a
+rencontré de biais.*
