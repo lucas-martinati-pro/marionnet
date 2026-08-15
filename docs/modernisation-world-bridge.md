@@ -529,7 +529,17 @@ depuis `tap_provider.ml`). Ce que l'épisode a livré :
   ré-installation strictement idempotente ; `visudo -cf` accepte les deux fichiers séparément ;
   `uninstall --disable-natbridge` retire (b) et **laisse (a)** ; `uninstall` nu retire les
   trois. Refus contrôlés : `--enable-lanbridge` → rc 3, option inconnue → rc 2, second USER →
-  rc 2. **Reste à prouver sur le vrai système** (demande un mot de passe, donc un geste
-  humain) : `install --enable-natbridge` dans `/etc/sudoers.d/` puis le cycle `up`/`down` de
-  `marionnet-natbridge.sh` toujours vert en `sudo -n`. Prochain pas : épisode 6 (élévation
-  depuis la GUI).
+  rc 2. **Prouvé ensuite sur le vrai système** (le mot de passe est un geste humain, d'où un
+  deuxième temps) : `install --enable-natbridge` a écrit les **deux** fichiers
+  `/etc/sudoers.d/marionnet` et `/etc/sudoers.d/marionnet-natbridge` — la scission est donc
+  effective là où elle compte — et le **`selftest` de `marionnet-natbridge.sh` est PASSED**
+  (bridge `mnbr<pid>` sur `192.168.101.0/24`, invité netns : ICMP 52,4 ms puis DNS,
+  démontage complet, `leftovers:[]`, hôte intact). Puis, **ticket `sudo` invalidé**
+  (`sudo -k`, sans quoi on ne prouverait rien d'autre que la fraîcheur du ticket) :
+  `sudo -n ip link del mnbr9999999` répond « Cannot find device » et
+  `sudo -n ip tuntap del dev mtap9999999-1` rend 0 — les deux fichiers matchent **sans mot de
+  passe**, séparément ; tandis que `sudo -n ip link del zzz-not-a-marionnet-dev` et
+  `sudo -n iptables -A FORWARD -i mnbr1 -j ACCEPT` (une règle **sans notre commentaire**)
+  réclament tous deux un mot de passe. La surface n'a donc pas été élargie par la scission :
+  ce qui passe est exactement ce que les deux fichiers nomment. Prochain pas : épisode 6
+  (élévation depuis la GUI).
