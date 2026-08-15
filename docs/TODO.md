@@ -185,3 +185,104 @@ c'est la première chose à corriger pour voir quoi que ce soit) plutôt que de 
 Le repli final `try_to_infer_localeprefix_searching_marionnet_dot_mo_in_usr` est le suspect
 principal : il cherche dans `/usr` et trouve toujours quelque chose sur un poste où Marionnet est
 installé.
+
+**Confirmé le 2026-08-15** (clôture de `journalisation-profonde`, ép. 24) : ce défaut a **produit
+un faux constat**. Une session française classait « Rapport sur m1 » à côté de « Console of m1 », ce
+qui a été consigné comme une incohérence de traduction ; les quatre titres sont pourtant traduits
+dans `bin/po/fr.po` **et** dans le catalogue installé du switch courant. C'est
+`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`, **daté du 8 juillet 2023**, qui était lu : il porte
+`Report on ` (msgid ancien) et pas `Console of ` / `Terminal of ` (msgid de 2026). Le coût de ce
+défaut n'est donc pas seulement « on ne peut pas vérifier une traduction » : c'est **une mesure
+fausse qu'on croit vraie**.
+
+---
+
+## Modèle — `wait --ready` ment au second démarrage d'un invité
+
+**Constat** (mesuré le 2026-08-13, `journalisation-profonde` ép. 20, sur **machine et routeur** —
+ce n'est pas une propriété du genre). `make_hostfs_content` est appelé dans l'`initializer` de
+`uml_process` (`simulation_level.ml:1530`), donc à la **création** du device simulé, lequel
+**survit au `poweroff`**. Au démarrage suivant, ni `boot_parameters` ni le marqueur de disponibilité
+ne sont réécrits : la garde de fraîcheur compare deux fichiers également périmés et répond
+`ready: true` en 50 ms, sur le marqueur du boot **précédent**. Un `exec` qui suit se heurte alors à
+un veilleur qui n'est pas encore là.
+
+**Voulu.** Qu'un second démarrage réécrive ce que le premier a déposé — donc que `--ready` réponde
+sur le boot **en cours**.
+
+**Ce que l'implémentation devra affronter.** Deux remèdes, tous deux dans `simulation_level.ml` :
+rejouer `make_hostfs_content` au `spawn` (c'est ce que son nom laisse attendre), ou effacer le
+marqueur au démarrage. Le point dur est que le chemin de démarrage est **commun à tous les
+composants** : cela se tranche avec l'automate d'état en tête
+(`docs/refonte-automate-composants.md`). En attendant, un banc qui redémarre un invité ne demande
+pas `--ready` : il attend que l'invité **réponde** (`exec <c> -- true`). Détail complet :
+`docs/journalisation-profonde.md` § 6.
+
+*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+
+---
+
+## Modèle — un `rc-set` sur un **switch** n'est pris en compte qu'au premier démarrage
+
+**Constat** (mesuré le 2026-08-12, `journalisation-profonde` ép. 17). Le contenu du rc est capturé à
+la **création du device simulé** (`switch.ml:460-468`, `make_simulated_device`), et ce device
+**survit à un `poweroff`** : un `rc-set` ultérieur est accepté (`changed: true`), `rc-get` rend bien
+le nouveau contenu, et le démarrage suivant rejoue **l'ancien** — sans que rien ne le signale. Pour
+une machine le problème n'existe pas : son rc est un fichier du hostfs, relu à chaque boot. Même
+famille que l'entrée précédente : un état capturé à la création d'un device qui survit à
+l'extinction.
+
+**Voulu.** Qu'un `rc-set` accepté soit celui qui sera joué au prochain démarrage, ou qu'il soit
+refusé en disant pourquoi.
+
+**Ce que l'implémentation devra affronter.** Deux remèdes, tous deux dans `switch.ml` : passer une
+**fonction** plutôt qu'une valeur au constructeur du device, ou détruire le device simulé quand le
+rc change. Comme ci-dessus, à trancher avec l'automate d'état en tête. En attendant, tout banc ou TP
+qui veut deux rc différents utilise **deux switchs**.
+
+*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+
+---
+
+## Invités — le rapport de fin de session n'est pas garanti
+
+**Constat** (mesuré le 2026-08-13, `journalisation-profonde` ép. 21, sur trois machines
+`debian-trixie` d'une même session `--exam`) : les trois ont archivé leur console et leur terminal,
+**une seule** avait écrit son `report.md`, alors que les trois avaient atteint la fin de leur relais
+(journaux `rc_config` identiques). L'hypothèse la plus simple est celle que l'ép. 16 a déjà mesurée
+pour le veilleur : une unité systemd **démarrée depuis le relais** n'a son job exécuté qu'**à la fin
+du boot**, bien après le marqueur de disponibilité ; une extinction demandée quelques secondes après
+ce marqueur manque donc le hook d'arrêt.
+
+**Voulu.** Qu'une machine éteinte proprement laisse son rapport, quel que soit le délai depuis son
+démarrage — c'est une **copie à noter** qui manque, pas un journal de confort.
+
+**Ce que l'implémentation devra affronter.** Rien n'est instruit : il faudrait d'abord **mesurer**
+le délai réel entre le marqueur et l'activation du hook, sur plusieurs images, avant de choisir
+entre attendre, accrocher autrement, ou déclencher le rapport à l'extinction depuis l'hôte. En
+attendant, le remède coûte une commande — **demander le rapport avant d'éteindre** — ce que
+`doc-src/teacher-guide.md` § 5.5 conseille et que les bancs jouent.
+
+*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+
+---
+
+## Réseau — deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps
+
+**Constat** (vu le 2026-08-13, `journalisation-profonde` ép. 21, en cherchant pourquoi un boot
+n'aboutissait pas). Trois processus `marionnet.exe` tournaient ensemble — deux runs précédents
+survivants —, chacun avec ses UML, ses taps `mtap<pid>-*` et **la même** adresse hôte
+`172.23.0.254`. Rien n'interdit de lancer deux sessions, et **personne ne le signale** ; l'invité,
+lui, ne boote pas jusqu'à son relais.
+
+**Voulu.** Au minimum, que la collision soit **dite** (journal, dialogue) ; au mieux, que l'adresse
+d'extrémité des taps soit dérivée du processus, comme l'est déjà le nom du tap.
+
+**Ce que l'implémentation devra affronter.** L'adresse est une constante de configuration héritée
+(le contrat réseau du chantier `marionnet-daemon-elimination` la fixe côté `Tap_provider`), donc la
+dériver touche à ce qu'un TP écrit dans ses scénarios. Une **détection** est nettement moins
+risquée qu'un changement d'adresse. À noter au passage, et déjà connu du dépôt : le verbe qui quitte
+**rend la main sans garantir que le processus est parti** — c'est ainsi que trois sessions ont pu
+coexister.
+
+*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*

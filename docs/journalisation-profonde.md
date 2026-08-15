@@ -1,5 +1,12 @@
 # Chantier : journalisation-profonde
 
+> **CHANTIER CLOS le 2026-08-15** (ouvert le 2026-08-10, 25 épisodes — 0 à 24). Ce document est
+> désormais une **archive durable** : la fiche mémoire a été réduite à ses pièges transverses, et
+> le pointeur de `CLAUDE.md` a été retiré. **Résultat au § 8** ; les défauts qui survivent au
+> chantier sans lui appartenir ont été **reversés à `docs/TODO.md`** (§ 8.3). Notes destinées aux
+> utilisateurs : `doc-src/teacher-guide.md`, `doc-src/exam-mode.md`,
+> `doc-src/scripting/README.md` § 11, `doc-src/lab-design-skill.md`.
+>
 > Chantier long, ouvert le 2026-08-10. Cible : **pousser la journalisation au-delà de
 > Marionnet, jusqu'à l'intérieur des UML (machines, routeurs) et jusqu'à l'intérieur des
 > switchs**, sous une forme qu'un script — donc un agent — peut lire. Chantier frère de
@@ -1747,13 +1754,21 @@ rapport.
   puis KILL ») **avant** de jouer le TP du premier coup, 37 assertions et 0 échec. Ce qui reste
   ouvert, et vaut d'être su : deux sessions Marionnet **simultanées** partagent l'adresse
   d'extrémité de leurs taps ; rien n'interdit de les lancer, et personne ne le signale.
-- **Les titres des documents archivés sont traduits, et pas tous** : une session française classe
-  « **Rapport sur** m1 » à côté de « **Console of** m1 » et « **Terminal of** m1 ». Deux
-  conséquences : un corrigé qui cherche un libellé anglais (`documents r1 has ~ Report on`) ne
-  note **rien** sur une machine dont la locale n'est pas l'anglais — d'où l'alternative écrite
-  dans `doc-src/labs/session-7/key-recorded.mrv` — et l'**incohérence** elle-même est un défaut :
-  les `msgid` `Console of `/`Terminal of ` ont pourtant été traduits à l'épisode 13. À instruire :
-  soit les quatre titres sont localisés, soit aucun ne l'est ; le mélange est le pire des trois.
+- ~~**Les titres des documents archivés sont traduits, et pas tous** : une session française classe
+  « **Rapport sur** m1 » à côté de « **Console of** m1 » et « **Terminal of** m1 ». L'incohérence
+  elle-même est un défaut : les `msgid` `Console of `/`Terminal of ` ont pourtant été traduits à
+  l'épisode 13.~~ **Instruit à la clôture (épisode 24) : ce n'était pas un défaut du chantier, mais
+  un artefact de mesure**, et il se mesure en trois gestes. Les **quatre** titres passent par `s_`
+  (`treeview_documents.ml:423,649,661,681`) ; `bin/po/fr.po` **et** le catalogue installé du switch
+  courant (`$(opam var prefix)/share/marionnet/locale/fr/LC_MESSAGES/marionnet.mo`) traduisent les
+  **quatre** ; mais `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo` — le Marionnet **installé sur
+  la machine**, daté du **8 juillet 2023** — contient `Report on ` (msgid ancien) et **ni**
+  `Console of ` **ni** `Terminal of ` (msgid nés de ce chantier). C'est exactement le mélange
+  observé, et sa cause est déjà consignée hors chantier : `docs/TODO.md` § « i18n — en arbre de
+  développement, Marionnet lit le catalogue d'un AUTRE Marionnet ». Ce qui **reste vrai** et n'est
+  pas un défaut : un corrigé qui cherche un libellé anglais (`documents r1 has ~ Report on`) ne note
+  **rien** sur une session française — d'où l'alternative écrite dans
+  `doc-src/labs/session-7/key-recorded.mrv`, qui garde sa raison d'être.
 - **La page rendue vit deux minutes** (épisode 11 : elle est servie, pas écrite). Corollaire :
   recharger l'onglet du navigateur après ce délai donne une erreur — il faut redemander le
   document. Un compromis assumé : rien ne traîne nulle part, mais rien ne se garde non plus.
@@ -1800,8 +1815,10 @@ rapport.
   projet, lequel est **reconstruit** à l'ouverture du `.mar` — après réouverture, il n'y a plus de
   trace à protéger. Le jour où un journal de switch serait archivé dans `documents`, il faudra
   donner à ces genres une source persistée (ou marquer le composant dans le forest).
-- **Les infobulles et le témoin du menu Options de l'épisode 22 ne sont pas encore traduits** :
-  deux `msgid` neufs, à passer dans les douze catalogues comme à l'épisode 13.
+- ~~**Les infobulles et le témoin du menu Options de l'épisode 22 ne sont pas encore traduits** :
+  deux `msgid` neufs, à passer dans les douze catalogues comme à l'épisode 13.~~ **Fait** par
+  `5161c49` (384 traduites / 3 non traduites / 0 *fuzzy* dans les douze catalogues ; les trois
+  restantes sont celles de `world_bridge`, ci-dessus).
 - **Le mode examen n'empêche toujours pas de fermer la fenêtre par le gestionnaire de fenêtres**
   autrement que par le chemin « Quitter » : c'est le même code (l'événement `delete` appelle la
   même entrée de menu), donc la sauvegarde forcée s'applique — mais un `kill` du processus, lui,
@@ -1965,6 +1982,72 @@ Trois voies, du moins cher au plus intrusif :
 
 **Banc** : `_claude-local/bench/lab-pilot-bench.sh` rejoue toutes les lignes ci-dessus (dont chaque
 « non observable », par la commande qui **échoue** à prouver).
+
+## 8. Résultat et clôture (épisode 24, 2026-08-15)
+
+### 8.1 Ce que le chantier laisse
+
+Le fil est allé plus loin que son énoncé : parti de « journaliser jusqu'à l'intérieur des UML »,
+il finit sur un TP réel qu'un enseignant construit, joue et **note**. Ce qui est versionné :
+
+- **Dans l'invité, sans reconstruire aucune image** (déposés dans le hostfs par
+  `make_hostfs_content`, embarqués par `INCLUDE_AS_STRING`) : `bin/scripts/marionnet-relay.00-journal.sh`
+  et son épilogue `…zz-journal.sh` (indissociables), `marionnet-report.sh` (le rapport),
+  `marionnet-watch.sh` (le veilleur, qui sert le rapport à la demande **et** l'exécution) et
+  `marionnet-terminal-record.sh` (le terminal de l'étudiant, enregistré).
+- **Dans Marionnet** : **sept journaux** servis par un seul verbe de lecture, l'instantané des
+  tables d'un switch, le rapport à la demande, l'exécution dans un invité, et le **mode examen
+  réanimé** — qui archive, et qui **refuse** désormais ce qui détruirait sans archiver (ép. 22),
+  la sortie d'un projet valant enregistrement (ép. 23).
+- **Pour qui note** : `useful-scripts/mrn-verify` (assertions `.mrv`, trois verdicts),
+  `doc-src/teacher-guide.md`, `doc-src/exam-mode.md`, le § 11 de `doc-src/scripting/README.md`,
+  `doc-src/lab-design-skill.md` (+ le wrapper `.claude/skills/marionnet-lab-design/`) et le TP
+  complet `doc-src/labs/session-7/`.
+
+L'**invariant transverse** hérité de `pilotage-par-script` a tenu du premier au dernier épisode et
+s'est même étendu : la grammaire a une seule source de vérité — le serveur — et ce n'est plus
+seulement le **vocabulaire** qu'on lui demande, c'est la **capacité** (ép. 17). Là où la
+documentation devait tout de même apprendre quelque chose, elle **cite et fait vérifier sa
+citation** (ép. 19), ou bien elle ne cite pas : ses exemples sont des **gestes joués** dont la
+couverture se mesure par l'exécution (ép. 21).
+
+### 8.2 Ce que le chantier n'a pas fait, et pourquoi
+
+Aucun **attribut persisté** n'a été ajouté : le format `v3` n'a pas été rouvert. Le collecteur est
+toujours actif, l'enregistrement de session reste **sur option** (`--console-log`,
+`--terminal-log`, implicites en `--exam`). Restent délibérément dehors : le flux d'événements du
+switch (mis en réserve par D4), l'observabilité des **hubs** (aucune socket de management), et un
+rapport plus riche que celui de l'épisode 7 — sujet à part entière, dont l'épisode a livré
+l'endroit où il viendra se brancher.
+
+### 8.3 Où sont partis les défauts qui survivent au chantier
+
+Le § 6 reste l'exposé détaillé. Comme ce document devient une archive, ce qui doit rester **trouvable**
+sans lui a été reversé :
+
+| Défaut | Parti vers |
+|---|---|
+| `wait --ready` ment au second démarrage | `docs/TODO.md` |
+| un `rc-set` sur un **switch** n'est pris qu'au premier démarrage | `docs/TODO.md` |
+| le rapport d'arrêt n'est pas garanti | `docs/TODO.md` |
+| deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps | `docs/TODO.md` |
+| les trois chaînes non traduites (textes d'aide de `world_bridge`) | chantier `modernisation-world-bridge` |
+| l'erreur de glob des images sans `<image>.relay` | chantier `marionnet-kernel-rootfs` |
+| l'installation des clients du canal et de la documentation d'usage | chantier `modernisation-installation-marionnet` (§ 2.4 ter) |
+
+Deux entrées du § 6 sont **tombées à la clôture** : l'i18n de l'épisode 22, faite depuis
+(`5161c49`), et les « titres traduits à moitié », qui étaient un **artefact de mesure** — un
+binaire lancé depuis l'arbre de développement lit le catalogue du Marionnet **installé sur la
+machine** (défaut déjà consigné au `docs/TODO.md`). Le reste du § 6 est fait de compromis assumés
+(la page rendue vit deux minutes, le veilleur se réveille une fois par seconde, le *quoting* d'une
+commande composée) ou d'une observation non instruite (le prompt de login absent du journal
+`terminal` d'une trixie), gardée ici faute d'avoir été reproduite ailleurs.
+
+### 8.4 S'il fallait rouvrir
+
+Deux des défauts reversés — `wait --ready` et le `rc-set` d'un switch — sont la **même** famille :
+un état capturé à la création d'un device simulé qui **survit à l'extinction**. Ils se tranchent
+avec l'automate d'état en tête (`docs/refonte-automate-composants.md`), pas depuis ce chantier-ci.
 
 ## Journal d'avancement
 
@@ -2950,3 +3033,40 @@ quand le geste testé fait disparaître la fenêtre ; les titres des dialogues s
 un motif anglais ne trouve rien et rend l'assertion creuse. Et un premier run à deux documents
 n'était pas la course mais le défaut **déjà consigné** : une machine arrêtée trop tôt après son
 boot n'écrit pas son rapport.
+
+### 2026-08-15 — Épisode 24 : clôture
+
+**La question posée** n'était pas « clôture ce chantier » mais « clos-le **s'il n'y a plus rien à
+corriger** » — donc l'épisode commence par un audit du § 6, en lecture seule, et non par le rituel.
+
+**Ce que l'audit a trouvé.** Deux entrées périmées, et une seule d'entre elles enseignait quelque
+chose. La première, l'i18n de l'épisode 22, était simplement **faite depuis** (`5161c49`). La
+seconde — « les titres des documents archivés sont traduits, et pas tous » — était le seul défaut
+du § 6 que le chantier semblait s'être laissé à lui-même ; elle est tombée en trois mesures. Les
+**quatre** titres passent par `s_` (`treeview_documents.ml:423,649,661,681`) ; `bin/po/fr.po` et le
+catalogue installé du switch courant traduisent les **quatre** ; mais
+`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo` — le Marionnet **installé sur la machine**, daté du
+**8 juillet 2023** — porte `Report on ` et **ni** `Console of ` **ni** `Terminal of `, qui sont nés
+de ce chantier. Le mélange observé n'était donc pas une incohérence de catalogue mais le défaut
+i18n **déjà consigné** au `docs/TODO.md` : un binaire lancé depuis l'arbre de développement lit le
+catalogue d'un **autre** Marionnet. Leçon de méthode, et c'est la même qu'aux épisodes 14 et 20
+(`tee`, `timeout`) : **ce qu'on croit mesurer sur le programme peut n'être qu'une propriété de la
+machine** — ici, une installation de 2023 encore posée dans `/usr`.
+
+**Ce qui restait ne relevait pas de la correction** : hors périmètre déclaré (hubs, flux
+d'événements, rapport plus riche), renvoyé nommément à un autre chantier (`world_bridge`,
+`kernel-rootfs`, l'installation), compromis assumés, ou défauts **du dépôt** qui se tranchent avec
+l'automate d'état en tête. Le chantier est donc clos sans dette propre.
+
+**Le rituel, ensuite** (MODE C du skill `chantier-long`), avec une addition qui n'y figure pas :
+clore un chantier rend son document **archive**, et une archive ne se relit pas — les quatre
+défauts durables qui survivent au chantier **sans lui appartenir** ont donc été reversés à la
+TODOLIST transverse `docs/TODO.md`, où ils seront trouvés par qui n'aura jamais lu ce fichier. Le
+reste est du ménage : § 8 neuf (résultat, limites, où sont partis les défauts), fiche mémoire
+réduite à ses pièges transverses, entrée de `MEMORY.md` passée aux archives, et **retrait des
+quelque 200 lignes** que le pointeur de `CLAUDE.md` faisait relire à chaque session — en préservant
+les trois choses qui seraient mortes avec lui : le renvoi à cette archive, le piège
+`preprocessor_deps` (dune ne voit pas à travers camlp4) et l'existence du skill
+`marionnet-lab-design`.
+
+**Aucun code touché** : cet épisode ne modifie que de la documentation et de la mémoire.
