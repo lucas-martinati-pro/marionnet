@@ -63,13 +63,48 @@ let ethernet_world_bridge_name =
   Configuration.extract_string_variable_or ~default "MARIONNET_BRIDGE"
 ;;
 
+(** How a `world_bridge' component gets the host bridge it attaches to
+    (work-stream `modernisation-world-bridge', option A of
+    docs/modernisation-world-bridge.md):
+
+    - [`Nat]    : Marionnet builds its own private bridge and NATs it to the
+                  outside, through the auxiliary command marionnet-natbridge.sh
+                  (see Nat_bridge). Nothing has to be prepared on the host, and
+                  the host interface is never touched. This is the mode that also
+                  works on a Wi-Fi laptop, where enslaving the card cannot work.
+    - [`Manual] : the historical behaviour -- attach to the pre-existing host
+                  bridge named by MARIONNET_BRIDGE, which an administrator has
+                  built by hand.
+
+    The default is deliberately conservative: an installation that names
+    MARIONNET_BRIDGE anywhere has an administrator who did the work, so we keep
+    honouring it; only an installation that says nothing gets the new automatic
+    mode. MARIONNET_WORLD_BRIDGE_MODE ("nat" / "manual") overrides both.
+    Until the GUI selector of a later episode, this variable IS the selector. *)
+let world_bridge_mode : [ `Nat | `Manual ] =
+  let by_absence_of_configuration () =
+    match Configuration.get_string_variable_with_source "MARIONNET_BRIDGE" with
+    | None   -> `Nat
+    | Some _ -> `Manual
+  in
+  match Configuration.get_string_variable "MARIONNET_WORLD_BRIDGE_MODE" with
+  | Some ("nat" | "auto")      -> `Nat
+  | Some ("manual" | "bridge") -> `Manual
+  | Some _ | None              -> by_absence_of_configuration ()
+;;
+
 let make_understandable_source_of_world_bridge_configuration () =
   match (Configuration.get_string_variable_with_source "MARIONNET_BRIDGE") with
   | None | Some (_, `Environment) -> "marionnet.conf"
   | Some (_, `Filename fname)     ->  fname
 ;;
 
+(* In `Nat mode there is nothing to check and nothing to warn about: the bridge
+   does not exist YET, and it is Marionnet that will build it when the component
+   starts. Warning here would tell the user to ask an administrator for exactly
+   the manual setup this work-stream exists to remove. *)
 let check_bridge_existence_and_warning () : unit =
+  if world_bridge_mode = `Nat then () else
   let bridge_name = ethernet_world_bridge_name in
   let cmd = Printf.sprintf "brctl showmacs %s 1>/dev/null 2>/dev/null" (bridge_name) in
   if (Unix.system cmd) <> (Unix.WEXITED 0) then (* warning: *)

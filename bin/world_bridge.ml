@@ -382,11 +382,44 @@ object(self)
   val mutable world_bridge_tap_name = None
   val mutable internal_cable_process = None
 
+  (** The host bridge to attach our tap to, resolved AT START-UP TIME rather
+      than read from the configuration at initialisation.
+      ---
+      That deferral is the whole point of the automatic mode: in `Nat the bridge
+      does not exist until we ask for it, and its name (mnbr<pid>) is only known
+      once Nat_bridge has built it. In `Manual nothing changes -- the name comes
+      from MARIONNET_BRIDGE, as it always did.
+      ---
+      A failure of the automatic mode does NOT abort the start-up: we fall back
+      on the configured name, so the component behaves exactly as it did before
+      this work-stream (it will fail to find its bridge, and say so), instead of
+      failing in a new way. The reason is always logged. *)
+  method private resolve_bridge_name : string =
+    match Global_options.world_bridge_mode with
+    | `Manual -> bridge_name
+    | `Nat ->
+        (match Nat_bridge.ensure () with
+         | Ok info ->
+             let () =
+               Log.printf2
+                 "world_bridge: using the automatic NAT bridge %s (guests: address in %s.0/24)\n"
+                 info.Nat_bridge.bridge info.Nat_bridge.subnet
+             in
+             info.Nat_bridge.bridge
+         | Error e ->
+             let () =
+               Log.printf2
+                 "world_bridge: the automatic NAT bridge is unavailable (%s); falling back on the configured bridge %s\n"
+                 (Nat_bridge.string_of_error e) bridge_name
+             in
+             bridge_name)
+
   (** Create the tap with Tap_provider (sudo + iproute2), attached to the
-      admin-managed bridge, and return its name: *)
+      bridge resolved just above, and return its name: *)
   method private make_world_bridge_tap : string option =
     match world_bridge_tap_name with
     | None ->
+        let bridge_name = self#resolve_bridge_name in
         let tap_name_option =
           (match Tap_provider.make_bridge_tap ~uid:(Unix.getuid ()) ~bridge:bridge_name with
            | Ok tap_name ->

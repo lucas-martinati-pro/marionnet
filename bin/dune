@@ -194,7 +194,7 @@
   ;; cmarkit: treeview_documents renders the guest end-of-session report (Markdown, work-stream
   ;; `journalisation-profonde') into HTML in-process, so that a graded project shows THE SAME page
   ;; on every machine and the raw HTML of a file written inside a guest gets neutralized.
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras cmarkit ocamlbricks marionnet_base marionnet_tap marionnet_sites))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-extras cmarkit yojson ocamlbricks marionnet_base marionnet_tap marionnet_sites))
 
 ;;; ---
 (install
@@ -205,6 +205,11 @@
      (glob_files "scripts/marionnet_telnet.sh")
      ;; --- Tap_provider calls it by name (it lands in $PREFIX/bin/, see the Makefile):
      (glob_files "scripts/marionnet-sudoers.sh")
+     ;; --- Same treatment for the private NAT bridge of `modernisation-world-bridge':
+     ;; --- an auxiliary HOST command, run by Marionnet, that owns the whole `ip' /
+     ;; --- `iptables' sequence (the OCaml side only reads its JSON). It sources
+     ;; --- bashbricks, installed next to it by bashbricks/dune.
+     (glob_files "scripts/marionnet-natbridge.sh")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

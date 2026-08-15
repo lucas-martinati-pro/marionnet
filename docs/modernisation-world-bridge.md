@@ -130,7 +130,7 @@ couvert par la règle existante.
    `daemon-elimination.md §12.3` point 1). A/B ici sont orthogonaux au netns ; à recouper si
    ce besoin se concrétise.
 
-### 2.3 Conventions établies par le POC (à reprendre telles quelles en OCaml)
+### 2.3 Conventions établies par le POC (**tenues par le script**, cf. § 4.1)
 
 - **Nommage et propriété.** Bridge `mnbr<pid>` (≤ 15 car., `IFNAMSIZ`) et **chaque règle
   iptables porte le commentaire `marionnet-natbridge:mnbr<pid>`** (`-m comment`). Conséquence
@@ -177,15 +177,75 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
 3. **ép. 2** — *POC système « NAT bridge privé auto »* (option A), sans OCaml :
    `useful-scripts/marionnet-natbridge-poc.sh`, prouvé aux deux paliers (§ 2.1 bis), et liste
    des commandes privilégiées produite pour l'épisode suivant. **Fait 2026-08-15.**
-4. **ép. 3** *(à venir)* — *câblage OCaml* : création/destruction du bridge NAT et de ses
-   règles depuis Marionnet (le module naturel est `tap_provider.ml`, qui tient déjà la
-   discipline sudo + `owner_pid` + GC), extension du motif de `bin/scripts/marionnet-sudoers.sh`
-   (§ 2.1 bis), et **choix du mode** dans le dialogue de `world_bridge` (NAT auto / bridge
-   manuel), avec la sémantique NAT annoncée en clair. L'attachement du tap n'est pas à écrire :
-   il fonctionne déjà.
-5. **ép. 4+** *(à venir)* — option B (L2 réel automatique, garde-fous et rollback) en mode
-   expert ; puis **refresh i18n consolidé ×12**, qui soldera aussi la dette des trois chaînes
-   de l'épisode 1 (§ 5).
+4. **ép. 3** — *le POC devient un outil hôte, et l'OCaml l'appelle*. **Fait 2026-08-16.**
+   Détail et **révision de cadrage** en § 4.1.
+5. **ép. 4** *(à venir)* — **sélecteur de mode dans la GUI** (NAT auto / bridge manuel) dans le
+   dialogue de `world_bridge`, sémantique NAT annoncée en clair ; puis **refresh i18n
+   consolidé ×12**, qui soldera aussi la dette des trois chaînes de l'épisode 1 (§ 5).
+6. **ép. 5+** *(à venir)* — option B (L2 réel automatique, garde-fous et rollback) en mode
+   expert.
+
+### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
+
+Le § 2.3 ci-dessus disait « conventions à reprendre **en OCaml** », et le découpage prévoyait de
+porter le POC dans `tap_provider.ml`. **Cette décision est abandonnée**, pour une raison qui n'est
+apparue qu'une fois le POC prouvé : la séquence `ip`/`iptables` est **déjà** la source de vérité de
+la règle sudoers (`print-privileged-commands`). La réécrire en OCaml aurait créé un **deuxième
+exemplaire** de cette séquence, à tenir en phase avec le premier et avec la règle — pour ne rien
+gagner : le code OCaml aurait fait les mêmes appels système, en moins lisible.
+
+Le POC devient donc l'**implémentation**, sous la forme d'une **commande hôte auxiliaire** de
+Marionnet — le motif existe déjà dans ce dépôt (`marionnet-sudoers.sh`, appelée par son nom nu
+depuis `tap_provider.ml`). Ce que l'épisode a livré :
+
+- `bin/scripts/marionnet-natbridge.sh` (déplacé depuis `useful-scripts/`, `git mv`, renommé) :
+  - **contrat de sortie** — stdout = **exactement un objet JSON, sur une ligne, sur tous les
+    chemins de sortie** ; stderr = la trace humaine (chaque commande privilégiée est affichée
+    avant d'être lancée) ; code de retour 0/≠0, doublé d'un **code d'erreur symbolique**
+    (`E_SUDO_DENIED`, `E_NO_FREE_SUBNET`, `E_BAD_PID`, `E_ROLLBACK_INCOMPLETE`…) ;
+  - **transaction** — chaque étape mutante réussie empile son inverse ; toute défaillance (y
+    compris un signal, ou une erreur inattendue via `trap … ERR`) dépile en LIFO et **rapporte
+    honnêtement** ce qui n'a pas pu être défait (`leftovers`, `rolled_back:false`) au lieu de
+    prétendre à un nettoyage propre. `down` est le **même** dépilement, appliqué à ce que le
+    système dit exister — c'est ce qui le rend correct après un crash ;
+  - **paramétrage** — `--owner-pid`, `--subnet`, `--candidates`, `--state-dir`, `--dry-run`,
+    `--sudo-interactive`, plus `--fail-after LABEL` (test : provoque l'échec d'une étape nommée,
+    c'est ce qui rend le rollback **prouvable**) ;
+  - **bashbricks** — `Map_to_json` / `Array_to_json` fabriquent tout le JSON (aucun échappement
+    fait main). `set -eEo pipefail` mais **pas `set -u`** : la lib n'est pas *nounset-safe*, et
+    `set -u` ne protège de toute façon pas du cas « liée mais **vide** ». La garde réelle est le
+    **validateur explicite** (`require_pid`/`require_subnet`/`require_bridge`, regex ancrées), qui
+    précède chaque commande destructrice.
+- `bin/nat_bridge.ml(i)` : **mince**, il n'implémente rien. Il lance la commande, lit son JSON
+  (`Yojson`), verse stderr au journal, et rend `(t, error) result` où `error` porte le **code
+  symbolique**. `ensure ()` mémoïse le `up` et n'enregistre l'`at_exit` qu'après succès, avec la
+  **garde de pid** de `Tap_provider` (sans elle, la fermeture d'un relais X11 forké détruirait le
+  bridge des VM en marche).
+- **La couture** : `MARIONNET_BRIDGE` est lu à l'initialisation, or le bridge NAT n'existe qu'après
+  `up`. Le nom du bridge est donc résolu **au démarrage du composant**
+  (`world_bridge.ml`, `resolve_bridge_name`), pas à l'initialisation. Échec du mode auto ⇒ repli
+  sur le nom configuré : le composant se comporte alors exactement comme avant ce chantier.
+- **Le mode** : `Global_options.world_bridge_mode`. Défaut **conservateur** — `Manual` dès que
+  `MARIONNET_BRIDGE` est configuré quelque part (un admin a fait le travail, on continue de
+  l'honorer), `Nat` sinon. `MARIONNET_WORLD_BRIDGE_MODE=nat|manual` tranche explicitement, et
+  **tient lieu de sélecteur** jusqu'à l'épisode 4. En mode `Nat`,
+  `check_bridge_existence_and_warning` est un no-op : avertir que `br0` n'existe pas reviendrait à
+  réclamer la préparation manuelle que ce chantier supprime.
+- **Installation** — les **quatre** fichiers au même endroit,
+  `/usr/local/share/marionnet/scripts/` : `marionnet-sudoers.sh`, `marionnet_telnet.sh`,
+  `marionnet-natbridge.sh` et **`bashbricks.sh`** (`bashbricks/dune`, neuf — la bibliothèque
+  n'était jamais installée jusqu'ici, aucun livrable ne la sourçait). Les deux boucles du
+  `Makefile` (236 : liens durs vers `$PREFIX/bin/` ; 276 : liens symboliques en *testing*) les
+  reprennent sans modification. La sonde de bashbricks s'en trouve triviale : la bibliothèque est
+  **voisine** du script dans les deux emplacements.
+- **Règle sudoers** étendue (`marionnet-sudoers.sh`), toujours dérivée de
+  `print-privileged-commands`. Garde la plus serrée : **toute règle iptables doit porter notre
+  commentaire** `marionnet-natbridge:mnbr*` — sans ce tag, la règle n'autorise ni l'ajout ni la
+  suppression, donc elle ne peut pas servir à toucher une règle que Marionnet n'a pas créée.
+  **Piège mesuré** : `!`, `,` et `:` sont des métacaractères sudoers et doivent être échappés
+  (`\!`, `\,`, `\:`) dans les arguments d'une commande, sinon **`visudo` rejette tout le fichier**.
+- **Dépendance hôte neuve** : `jq` (le module `Json_*` de bashbricks s'en sert). Déjà sur la liste
+  du chantier `modernisation-installation-marionnet`, à répercuter dans les paquets.
 
 ## 5. Points de vigilance transverses
 
@@ -237,3 +297,56 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
   n'a donc à écrire en OCaml que la création/destruction du bridge et des règles NAT, plus le
   motif sudoers correspondant. Prochain pas : épisode 3 (câblage OCaml + sudoers + mode dans
   le dialogue).
+
+- **2026-08-16 — épisode 3** : *le POC devient un outil hôte, et l'OCaml l'appelle*.
+  **Révision de cadrage assumée** (§ 4.1) : on ne porte PAS la séquence `ip`/`iptables` en
+  OCaml — elle est déjà la source de vérité de la règle sudoers, la réécrire aurait créé un
+  second exemplaire à tenir en phase pour aucun gain. `git mv` de
+  `useful-scripts/marionnet-natbridge-poc.sh` vers **`bin/scripts/marionnet-natbridge.sh`**,
+  réécrit sur bashbricks avec un **contrat de sortie JSON** (stdout = un objet, une ligne, sur
+  tous les chemins ; stderr = trace humaine ; code d'erreur symbolique) et un **rollback
+  transactionnel** (pile d'annulation dépilée en LIFO, `leftovers` rapportés honnêtement,
+  `trap ERR/INT/TERM`) ; `down` est le même dépilement appliqué à ce que le système dit
+  exister, ce qui le rend correct après un crash. Côté OCaml, **`bin/nat_bridge.ml(i)`** ne
+  fait qu'appeler et lire le JSON (`ensure` mémoïsé + `at_exit` gardé par le pid, idiome
+  `Tap_provider`), et `world_bridge.ml` résout le nom du bridge **au démarrage du composant**
+  (`resolve_bridge_name`) et non plus à l'initialisation — c'était la seule vraie couture,
+  puisque `MARIONNET_BRIDGE` est lu trop tôt. Mode par `Global_options.world_bridge_mode`
+  (défaut conservateur : `Manual` si `MARIONNET_BRIDGE` est configuré, `Nat` sinon ;
+  `MARIONNET_WORLD_BRIDGE_MODE` tranche et tient lieu de sélecteur jusqu'à l'épisode 4).
+  Installation : les **quatre** fichiers ensemble dans `share/marionnet/scripts/`
+  (`bashbricks/dune` neuf — la bibliothèque n'était jamais installée). Règle sudoers étendue,
+  toujours dérivée de `print-privileged-commands`, avec le **tag iptables obligatoire** comme
+  garde principale. **Preuves mesurées le 2026-08-16, règle sudoers installée** : `dune build`
+  rc 0 ; contrat JSON tenu sur tous les chemins d'erreur (`E_BAD_PID`, `E_BAD_SUBNET`,
+  `E_USAGE`) ; **cycle `up`/`status`/`down` réel** — les 6 commandes privilégiées passent en
+  `sudo -n` (donc la règle, échappements compris, matche vraiment), le système confirme
+  `192.168.101.1/24` sur `mnbr<pid>` et 3 règles taguées, puis après `down` : bridge absent,
+  0 règle, `ip_forward` inchangé ; **rollback réel** (`--fail-after forward_in`, sans
+  `--dry-run`) — 5 étapes appliquées sur le vrai système, dépilées en LIFO,
+  `leftovers:[]`, et vérification système « rien ne survit » ; route par défaut de l'hôte
+  intacte tout du long. `visudo -cf` accepte la règle ; `make install-for-testing` place les
+  quatre fichiers côte à côte et l'appel **par nom nu** hors du dépôt trouve bashbricks.
+  Deux défauts corrigés en cours d'essai : le code d'erreur d'une étape est désormais décidé
+  **par l'étape** (`fail_step`) et non supposé au site d'appel — un échec injecté ne se
+  déguisait plus en `E_SUDO_DENIED` ; et le **banc d'essai** du `selftest` (veth + netns),
+  délibérément hors de la règle sudoers, utilise un `sudo` interactif (`sudo_test_run`) tandis
+  que le chemin produit garde `sudo -n` : montrer que le produit n'a besoin d'aucun mot de
+  passe est précisément l'objet de l'exercice. **`selftest` PASSED** (invité netns : ICMP
+  59,1 ms + DNS, puis démontage sans résidu). **Palier 2 rejoué et vert** : Marionnet réel
+  lancé en `MARIONNET_WORLD_BRIDGE_MODE=nat` avec `--control-socket`, maquette `m1 --- w1`
+  (trixie / 6.12.95) — **c'est Marionnet qui a créé `mnbr<son pid>`** et y a attaché son propre
+  `mtap<pid>-1` ; depuis l'invité UML en `192.168.101.2/24` : `ping -c2 9.9.9.9` → **0 % de
+  perte** (59,1 / 55,4 ms) et `nslookup example.org 9.9.9.9` → réponse complète ; route par
+  défaut de l'hôte inchangée. Puis `quit` → l'`at_exit` de `Nat_bridge` a tout retiré : plus de
+  `mnbr*`, 0 règle taguée, plus de `mtap*`, `ip_forward` intact, seul `docker0` subsiste.
+  **Troisième défaut trouvé par ce run et corrigé** : `MARIONNET_WORLD_BRIDGE_MODE` doit être
+  déclarée dans la liste blanche de `bin/configuration.ml`, sinon la nommer fait mourir le
+  démarrage sur `Invalid_argument("Unexpected variable name")` — un mode inutilisable serait
+  passé inaperçu sans essai réel. Au passage, la **valeur par défaut a été confirmée en
+  situation** : `/etc/marionnet/marionnet.conf` de ce poste porte `MARIONNET_BRIDGE=br0`, donc
+  le mode par défaut y est bien `Manual` — aucune installation existante ne change de
+  comportement, et c'est la variable qui tranche. Deux pièges mesurés : les
+  métacaractères sudoers `!`/`,`/`:` doivent être échappés sinon `visudo` rejette **tout** le
+  fichier ; et `Map_to_json` parse les scalaires, donc un message d'erreur qui *ressemble* à du
+  JSON doit passer par `Map_to_json -s`. Dépendance hôte neuve : **`jq`**.

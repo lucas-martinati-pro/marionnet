@@ -1,0 +1,46 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2026  Jean-Vincent Loddo
+;; Copyright (C) 2026  Université Sorbonne Paris Nord (USPN)
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; ---
+;; --- Install the vendored bashbricks library.
+;; ---
+;; Until the `modernisation-world-bridge' work-stream, bashbricks was a
+;; development-time dependency only: nothing that shipped ever sourced it.
+;; bin/scripts/marionnet-natbridge.sh does, and it runs on the user's machine --
+;; so the library has to be installed too.
+;;
+;; It goes into the scripts/ subdirectory of the share section, i.e. exactly
+;; where marionnet-sudoers.sh, marionnet_telnet.sh and marionnet-natbridge.sh
+;; land (bin/dune § install), which for an ordinary install means
+;;   /usr/local/share/marionnet/scripts/
+;; Keeping the four together is what makes the runtime probe of
+;; marionnet-natbridge.sh trivial: the library is simply its neighbour.
+;;
+;; Consequence to be aware of: the Makefile mirrors ALL of
+;; share/marionnet/scripts/* into $PREFIX/bin/ (hard links for
+;; `install-final-as-root', symlinks for `install-for-testing'), so
+;; bashbricks.sh is mirrored there as well, although it is a library to be
+;; sourced rather than a command. Harmless, and it makes the probe work from
+;; both directories.
+;;
+;; The `(source as destination)' form is the one already used by i18n/dune for
+;; the gettext catalogues.
+;; ---
+(install
+  (files (bashbricks.sh as scripts/bashbricks.sh))
+  (section share)
+  (package marionnet))

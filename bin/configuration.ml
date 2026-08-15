@@ -30,6 +30,13 @@ let configuration =
   Configuration_files.make
     ~file_names
     ~variables:["MARIONNET_BRIDGE";(* This is temporary: more than one bridge will be usable... *)
+                (* How a `world_bridge' gets its host bridge: "nat" (Marionnet builds and NATs
+                   its own, nothing to prepare on the host) or "manual" (attach to the
+                   pre-existing MARIONNET_BRIDGE). Work-stream `modernisation-world-bridge';
+                   see Global_options.world_bridge_mode. Until the GUI grows a selector, this
+                   variable IS the selector -- hence it must be declared here, or naming it
+                   aborts the start-up with "Unexpected variable name". *)
+                "MARIONNET_WORLD_BRIDGE_MODE";
                 "MARIONNET_KEYBOARD_LAYOUT";
                 "MARIONNET_DEBUG";
                 "MARIONNET_PDF_READER";

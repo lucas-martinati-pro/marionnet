@@ -51,9 +51,25 @@ val set_workaround_wirefilter_problem : bool -> unit
     configuration file requires restarting Marionnet. *)
 val ethernet_world_bridge_name : string
 
+(** How a [world_bridge] component obtains the host bridge it attaches to
+    (work-stream [modernisation-world-bridge], option A).
+
+    - [`Nat]: Marionnet builds its own private bridge and NATs it to the outside
+      ({!Nat_bridge}); nothing has to be prepared on the host, and the host
+      interface is never touched — the only mode that can work on a Wi-Fi laptop.
+    - [`Manual]: the historical behaviour, attach to the pre-existing bridge
+      named by {!ethernet_world_bridge_name}.
+
+    Default: [`Manual] as soon as [MARIONNET_BRIDGE] is configured anywhere (an
+    administrator did the work, we keep honouring it), [`Nat] otherwise.
+    [MARIONNET_WORLD_BRIDGE_MODE] (values [nat] or [manual]) overrides both, and
+    is the selector until the GUI grows one. *)
+val world_bridge_mode : [ `Nat | `Manual ]
+
 (** Test that [ethernet_world_bridge_name] really exists on the host (via [brctl showmacs]) and,
     if not, pop up a warning dialog naming the file to fix. Being a Gtk+ call, it must run in
-    the GTK main thread. Returns [unit] in both cases: this is advisory, it blocks nothing. *)
+    the GTK main thread. Returns [unit] in both cases: this is advisory, it blocks nothing.
+    A no-op in [`Nat] mode: there the bridge is not supposed to exist yet. *)
 val check_bridge_existence_and_warning : unit -> unit
 
 (** Keyboard layout to impose on Xnest sessions ([MARIONNET_KEYBOARD_LAYOUT]);
