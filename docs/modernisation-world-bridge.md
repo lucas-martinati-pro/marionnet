@@ -6,6 +6,10 @@
 > sa **barrière de mise en œuvre** (config hôte manuelle hors GUI), sur le modèle du
 > chantier `daemon-elimination` ; (2) un **travail GUI** rendant le composant
 > compréhensible pour enseignants et étudiants. Skill de pilotage : `chantier-long`.
+>
+> ⚠️ **Objectif final révisé le 2026-08-16 (épisode 4)** : le mode d'accès au monde n'est
+> plus un *réglage global* de `world_bridge` mais **le choix d'un composant** dans la GUI.
+> Lire le **§ 1 bis** en premier : il prime sur tout ce que les § 2 à 4 disent du « mode ».
 
 ## 1. Contexte et objectif
 
@@ -44,6 +48,96 @@ Deux usages (help `bin/world_bridge.ml`, `Dialog_add_or_update.help_callback`) :
 Rendre `world_bridge` **utilisable sans préparation hôte manuelle risquée** (axe barrière)
 et **compréhensible dans la GUI** (axe pédagogique), sans dégrader ses deux usages ni la
 surface de sécurité obtenue par `daemon-elimination`.
+
+## 1 bis. Objectif final révisé (épisode 4, 2026-08-16)
+
+L'objectif ci-dessus est **tenu**, mais la forme que prend sa livraison change, et ce
+changement rend caduques plusieurs décisions des § 2 à 4. En une phrase :
+
+> **Les deux modes d'accès au monde ne sont pas un réglage, ce sont deux composants.**
+> L'utilisateur ne choisit plus « quel mode pour `world_bridge` » (variable d'environnement,
+> invisible, globale au processus) : il choisit **quel équipement il pose sur son réseau**,
+> dans le menu de la palette, au même endroit et de la même façon qu'il choisit entre un hub
+> et un switch.
+
+### 1 bis.1 Ce que voit l'utilisateur
+
+Le bouton « planète » de la palette (`ico.world.palette.png`, libellé *Real world access*,
+défini dans `bin/gui/gui_toolbar_COMPONENTS.ml`) offre aujourd'hui deux entrées, *Gateway* et
+*Bridge*. Il en offrira **trois** :
+
+| Entrée du menu | Composant | Ce que ça fait | Privilèges |
+|---|---|---|---|
+| **Gateway** | `world_gateway` (inchangé) | NAT applicatif `slirpvde`, purement en espace utilisateur | **aucun** |
+| **NAT bridge** | *nouveau composant* | réseau privé automatique : bridge dédié `mnbr*` + MASQUERADE, créé et détruit par Marionnet | sudo scoped (b) |
+| **LAN bridge** | `world_bridge` (l'actuel) | vrai accès L2 : les VM sont sur le vrai LAN de l'hôte, vraies IP, vrais services | sudo scoped (c) |
+
+Le vocabulaire est arrêté : **« LAN bridge »** et non « Level 2 » (jargon OSI), « raw » (ne
+veut rien dire pour un humain) ou « manual » (nomme la contrainte d'hier, pas l'effet). Ces
+libellés disent l'**effet obtenu** — réseau privé *vs* vrai LAN — ce qui est exactement la
+question que se pose l'étudiant devant la palette.
+
+### 1 bis.2 Décisions structurantes (et leur *pourquoi*)
+
+1. **Deux natures de composants distinctes**, pas une nature à attribut. Coût assumé (9ᵉ
+   nature : grammaire du canal de contrôle, format `.mar`, treeviews, icônes, i18n) en
+   échange de la seule chose qui compte pédagogiquement : deux équipements **visiblement**
+   différents sur le dessin du réseau, avec chacun son dialogue, son aide et ses
+   avertissements. Un attribut caché dans un dialogue aurait reconduit l'opacité que ce
+   chantier combat.
+2. **`MARIONNET_WORLD_BRIDGE_MODE` disparaît.** Introduite à l'épisode 3 comme sélecteur
+   provisoire, elle n'a plus d'objet : le mode *est* le composant. Avec elle disparaît le
+   « défaut conservateur » (`Manual` si `MARIONNET_BRIDGE` est configuré) — un projet qui
+   contient un `world_bridge` reste un **LAN bridge**, donc son comportement d'hier, sans
+   qu'aucune variable n'ait à le décider.
+3. **Un bridge NAT par composant.** Deux composants *NAT bridge* dans un projet donnent deux
+   réseaux privés séparés (`mnbr<pid>-1`, `mnbr<pid>-2`, un /24 chacun) : c'est ce qu'un
+   étudiant attend en posant deux équipements distincts. L'`ensure` mémoïsé de
+   `Nat_bridge` (épisode 3, un seul bridge par processus) devient une table indexée par
+   composant.
+4. **Le LAN bridge devient automatique lui aussi**, par un script hôte symétrique
+   **`bin/scripts/marionnet-lanbridge.sh`** : détection de la carte qui porte la route par
+   défaut, asservissement au bridge, migration de l'adresse et des routes, rollback
+   transactionnel. C'est l'**option B** du § 2.1, promue de « peut-être un jour » à
+   composant de plein droit. Son risque ne disparaît pas pour autant : le dialogue
+   d'ajout/modification **avertit explicitement d'une coupure possible de l'hôte**, et
+   l'asservissement d'une carte Wi-Fi reste impossible (l'AP refuse plusieurs MAC).
+5. **Les privilèges se demandent au moment où ils servent.** Voir § 1 bis.3 : c'est le
+   changement le plus profond, car il déplace la frontière entre l'admin et l'utilisateur.
+
+### 1 bis.3 Privilèges : un socle admin, deux extensions à la demande
+
+`bin/scripts/marionnet-sudoers.sh` est la source unique de la règle sudoers. Elle porte
+désormais **trois blocs**, qui ne s'installent pas au même moment ni par la même personne :
+
+| Bloc | Contenu | Qui l'installe | Quand |
+|---|---|---|---|
+| **(a)** | taps fantômes `mtap*` (iproute2) — chantier `marionnet-daemon-elimination` | l'**administrateur**, à l'installation de Marionnet | `marionnet-sudoers.sh install` (sans option) |
+| **(b)** | bridge NAT privé `mnbr*` — `marionnet-natbridge.sh` | l'**utilisateur final**, depuis la GUI | `--enable-natbridge` |
+| **(c)** | bridge LAN `mnlan*` + carte de l'hôte — `marionnet-lanbridge.sh` | l'**utilisateur final**, depuis la GUI | `--enable-lanbridge` |
+
+Le raccourci **`--enable-bridges`** vaut `--enable-natbridge --enable-lanbridge`.
+
+Le *pourquoi* de cette séparation : à l'installation, celui qui exécute le script est
+souvent un **administrateur qui n'est pas l'utilisateur final** ; lui faire accorder
+d'emblée le droit de toucher à la carte réseau de l'hôte serait accorder à l'aveugle un
+pouvoir dont personne n'a encore le besoin. Le socle (a) est ce sans quoi **rien** ne
+fonctionne (tout composant crée des taps) ; (b) et (c) ne servent qu'à qui pose un bridge.
+
+**Trois fichiers séparés** dans `/etc/sudoers.d/` (`marionnet`, `marionnet-natbridge`,
+`marionnet-lanbridge`) plutôt qu'un fichier au contenu variable : chaque bloc s'installe, se
+vérifie et se retire indépendamment, et surtout l'activation *run-time* n'a jamais à
+réécrire le fichier (a) — celui sans lequel Marionnet ne démarre plus un seul composant.
+
+**Élévation depuis la GUI** : `sudo` est déjà une dépendance dure du projet (tout
+`Tap_provider` repose dessus), donc s'appuyer sur lui **ne suppose aucune distribution**
+particulière — contrairement à `pkexec`/PolicyKit, absent des systèmes minimaux et des
+conteneurs. Marionnet affiche son propre dialogue de mot de passe et le passe à `sudo`.
+
+**Ce que l'utilisateur apprend, et quand** : à l'**ajout** d'un composant *NAT bridge* ou
+*LAN bridge*, le dialogue annonce que ce composant **ne pourra pas démarrer sans droits
+d'administrateur** — l'information arrive au moment du geste, pas sous forme d'un échec
+inexpliqué au démarrage. L'élévation, elle, est demandée au **premier démarrage** effectif.
 
 ## 2. Axe A — élimination de la barrière de mise en œuvre
 
@@ -162,9 +256,11 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
   (« ethernet socket », `ifconfig/route`) et du `TODO rename` obsolète.
 - **Tooltips** (palette, nom, image du dialogue) enrichis pour distinguer les deux composants
   « monde ».
-- *(épisodes ultérieurs, après l'axe A)* : sélecteur de **mode** dans le dialogue (NAT auto /
-  L2 réel / bridge manuel) ; libellé de palette plus parlant ; éventuel regroupement visuel
-  des deux composants « accès au monde ».
+- *(révisé à l'épisode 4 — cf. § 1 bis)* : **pas** de sélecteur de mode dans le dialogue. Le
+  choix se fait **une entrée de menu plus haut**, dans la palette : *Gateway* / *NAT bridge* /
+  *LAN bridge*. Restent au titre de l'axe GUI : l'aide et les tooltips propres à chaque
+  composant, l'**avertissement de coupure hôte** du LAN bridge, et l'**annonce du besoin de
+  droits d'administrateur** au moment de l'ajout.
 
 ## 4. Découpage en épisodes
 
@@ -179,11 +275,38 @@ préférer à `world_gateway`, et ce qu'il faut (ou plus, après l'axe A) pour q
    des commandes privilégiées produite pour l'épisode suivant. **Fait 2026-08-15.**
 4. **ép. 3** — *le POC devient un outil hôte, et l'OCaml l'appelle*. **Fait 2026-08-16.**
    Détail et **révision de cadrage** en § 4.1.
-5. **ép. 4** *(à venir)* — **sélecteur de mode dans la GUI** (NAT auto / bridge manuel) dans le
-   dialogue de `world_bridge`, sémantique NAT annoncée en clair ; puis **refresh i18n
-   consolidé ×12**, qui soldera aussi la dette des trois chaînes de l'épisode 1 (§ 5).
-6. **ép. 5+** *(à venir)* — option B (L2 réel automatique, garde-fous et rollback) en mode
-   expert.
+5. **ép. 4** — *restructuration du chantier* : objectif final révisé (§ 1 bis), nouveau
+   découpage (ci-dessous), fiche mémoire et pointeur `CLAUDE.md` alignés. Aucun code
+   fonctionnel. **Fait 2026-08-16.**
+
+À partir d'ici, la suite est celle qu'ouvre le § 1 bis. Elle est ordonnée par
+**dépendance**, pas par difficulté : chaque épisode est prouvable seul, et aucun n'exige que
+le suivant existe.
+
+6. **ép. 5** *(à venir)* — **la règle sudoers en trois blocs**. `marionnet-sudoers.sh`
+   installe (a) seul par défaut ; `--enable-natbridge`, `--enable-lanbridge` et le raccourci
+   `--enable-bridges` ajoutent (b) et (c) dans **leurs propres fichiers** de
+   `/etc/sudoers.d/`. `print`/`check`/`install`/`uninstall` deviennent par-bloc. C'est la
+   fondation de tout le reste, et elle se prouve sans une ligne d'OCaml (`visudo -cf`, puis
+   le cycle `up`/`down` de `marionnet-natbridge.sh` toujours vert en `sudo -n`).
+7. **ép. 6** *(à venir)* — **l'élévation depuis la GUI** : dialogue de mot de passe GTK,
+   sonde « puis-je déjà ? » (`sudo -n` sur une commande inoffensive, idiome
+   `Tap_provider.is_usable`), appel de `marionnet-sudoers.sh --enable-…`, et le message
+   d'information à l'ajout d'un composant bridge. Point à trancher là : dialogue interne
+   + `sudo -S` (aucun exécutable neuf) *vs* petit binaire askpass + `sudo -A` — `bin/dune`
+   ne produit aujourd'hui **qu'un** exécutable, ce qui plaide pour le premier.
+8. **ép. 7** *(à venir)* — **le dédoublement des composants** : nature *NAT bridge* neuve à
+   côté de `world_bridge` (devenu *LAN bridge*), menu planète à trois entrées, N bridges NAT
+   (un par composant), retrait de `MARIONNET_WORLD_BRIDGE_MODE` et de la variable de
+   configuration associée, propagation au canal de contrôle, au format `.mar` et aux
+   treeviews. Le gros morceau OCaml/GUI.
+9. **ép. 8** *(à venir)* — **`bin/scripts/marionnet-lanbridge.sh`** : bridge `mnlan<pid>`,
+   détection de la carte de route par défaut, asservissement, migration de l'adresse et des
+   routes, rollback transactionnel et `selftest`, sur le patron exact de
+   `marionnet-natbridge.sh` (contrat JSON, `--fail-after`, tag de commentaire). Plus
+   l'avertissement de coupure hôte, côté GUI.
+10. **ép. 9** *(à venir)* — **refresh i18n consolidé ×12**, qui solde aussi la dette des
+    trois chaînes de l'épisode 1 (§ 5).
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -350,3 +473,31 @@ depuis `tap_provider.ml`). Ce que l'épisode a livré :
   métacaractères sudoers `!`/`,`/`:` doivent être échappés sinon `visudo` rejette **tout** le
   fichier ; et `Map_to_json` parse les scalaires, donc un message d'erreur qui *ressemble* à du
   JSON doit passer par `Map_to_json -s`. Dépendance hôte neuve : **`jq`**.
+
+- **2026-08-16 — épisode 4** : *restructuration du chantier — le mode devient un composant*.
+  Aucun code fonctionnel. L'objectif final est révisé (§ 1 bis, qui prime désormais sur ce que
+  les § 2 à 4 disent du « mode ») : l'utilisateur ne réglera pas un mode sur `world_bridge`, il
+  **choisira son équipement** dans le menu planète, qui passe de deux à **trois** entrées —
+  *Gateway* / *NAT bridge* / *LAN bridge*. Six décisions arrêtées avec l'auteur : (1) **deux
+  natures de composants** distinctes plutôt qu'un attribut caché — le coût (9ᵉ nature : canal de
+  contrôle, `.mar`, treeviews, icônes, i18n) est payé pour la seule chose qui compte
+  pédagogiquement, deux équipements visiblement différents sur le dessin ; (2) le vocabulaire
+  **« LAN bridge »**, qui dit l'effet obtenu, contre « Level 2 » (jargon OSI), « raw » et
+  « manual » (qui nomme la contrainte d'hier) ; (3) **`MARIONNET_WORLD_BRIDGE_MODE` disparaît**,
+  ainsi que son « défaut conservateur » — un `.mar` existant reste un LAN bridge, donc son
+  comportement d'hier, sans qu'aucune variable ne le décide ; (4) **un bridge NAT par
+  composant** (deux composants = deux réseaux privés séparés, ce qu'attend l'étudiant qui pose
+  deux équipements), donc l'`ensure` mémoïsé de l'épisode 3 devient une table ; (5) le LAN
+  bridge devient **automatique lui aussi** — l'option B du § 2.1, promue de « peut-être un
+  jour » à composant de plein droit, par un `marionnet-lanbridge.sh` symétrique du script NAT,
+  avec **avertissement de coupure hôte** dans le dialogue ; (6) les **privilèges se demandent au
+  moment où ils servent** : la règle sudoers se scinde en un socle **(a)** posé par
+  l'administrateur à l'installation (taps — sans lui rien ne marche) et deux extensions
+  **(b)**/**(c)** que l'utilisateur final active depuis la GUI (`--enable-natbridge`,
+  `--enable-lanbridge`, raccourci `--enable-bridges`), dans **trois fichiers séparés** de
+  `/etc/sudoers.d/` pour que l'activation run-time n'ait jamais à réécrire le fichier vital.
+  L'élévation passe par `sudo` — déjà dépendance dure du projet, donc **aucune hypothèse de
+  distribution**, contrairement à `pkexec`/PolicyKit absent des systèmes minimaux et des
+  conteneurs. Nouveau découpage en § 4 (ép. 5 sudoers → 6 élévation GUI → 7 dédoublement des
+  composants → 8 `marionnet-lanbridge.sh` → 9 i18n), ordonné par dépendance : chaque épisode se
+  prouve seul. Prochain pas : épisode 5.

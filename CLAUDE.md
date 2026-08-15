@@ -144,11 +144,14 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/retro-compatibilite-kernels-images.md` ; mémoire `marionnet-retro-compat-kernels-images` ;
   `git log --grep="marionnet-retro-compat-kernels-images"`. Ép. 0→4 faits 2026-07-17
   (ép. 4 : abandon mandriva/pinocchio/lenny + remap auto kernel/distrib au chargement `.mar`).
-- **modernisation-world-bridge** (rendre `world_bridge` — dernier bouton palette, icône planète —
-  utilisable sans config hôte manuelle risquée [axe barrière, modèle daemon-elimination] **et**
-  compréhensible en GUI ; direction : NAT privé auto par défaut + L2 réel en option experte) :
-  `docs/modernisation-world-bridge.md` ; mémoire `modernisation-world-bridge` ;
-  `git log --grep="modernisation-world-bridge"`. Ép. 0-1 faits 2026-07-18.
+- **modernisation-world-bridge** (rendre l'accès au vrai réseau utilisable sans config hôte
+  manuelle risquée **et** compréhensible en GUI ; **objectif révisé à l'ép. 4** : le mode n'est
+  plus un réglage mais **un choix de composant** — menu planète à 3 entrées *Gateway* /
+  *NAT bridge* / *LAN bridge*, deux natures distinctes, privilèges sudo en 3 blocs demandés au
+  moment où ils servent) : `docs/modernisation-world-bridge.md` (**§ 1 bis = l'objectif final,
+  il prime sur les § 2-4 dès qu'il s'agit du « mode »** ; § 4 = découpage) ; mémoire
+  `modernisation-world-bridge` ; `git log --grep="modernisation-world-bridge"`.
+  Ép. 0→4 faits ; le NAT auto est en place et prouvé.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
