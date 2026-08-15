@@ -501,3 +501,35 @@ depuis `tap_provider.ml`). Ce que l'épisode a livré :
   conteneurs. Nouveau découpage en § 4 (ép. 5 sudoers → 6 élévation GUI → 7 dédoublement des
   composants → 8 `marionnet-lanbridge.sh` → 9 i18n), ordonné par dépendance : chaque épisode se
   prouve seul. Prochain pas : épisode 5.
+
+- **2026-08-16 — épisode 5** : *la règle sudoers en trois blocs*. `bin/scripts/marionnet-sudoers.sh`
+  n'écrit plus un fichier mais **jusqu'à trois**, un par bloc, dans `/etc/sudoers.d/` :
+  `marionnet` (a, taps), `marionnet-natbridge` (b), `marionnet-lanbridge` (c). Un sélecteur
+  **unique** vaut pour les quatre sous-commandes — bloc (a) toujours pris, `--enable-natbridge`,
+  `--enable-lanbridge` et `--enable-bridges` ajoutent les autres ; `uninstall` inverse les
+  défauts (tout par défaut, `--disable-*` pour ne retirer qu'un bloc, et alors (a) est
+  délibérément épargné : l'utilisateur renonce à un droit de bridge, il ne désinstalle pas
+  Marionnet). Le `Makefile` n'a **rien** à changer : `install "$SUDO_USER"` sans option, c'est
+  exactement le nouveau geste d'installation (socle seul) — seul son commentaire dit maintenant
+  pourquoi. Le **bloc (c) refuse explicitement de s'installer** (code 3, message nommant
+  l'épisode 8) : il est le seul qui nommera la carte de l'hôte, son adresse et sa route par
+  défaut — précisément ce que (a) et (b) se gardent de mentionner — et un tel droit se dérive
+  commande par commande du script qui les exécute, jamais d'une intention. Deux pièges Bash
+  évités en écrivant : sous `set -e`, `$FLAG && BLOCKS+=(x)` est une liste AND qui **échoue**
+  quand le drapeau est faux (sortie silencieuse au milieu du parsing) — d'où des `if` partout ;
+  et la validation de disponibilité des blocs se fait **avant** toute écriture, sinon
+  `--enable-bridges` installerait (b) puis mourrait sur (c), laissant un état que personne n'a
+  demandé. Le re-exec privilégié passe `"$@"` tel quel et non une ligne reconstruite : un
+  re-exec ne peut donc pas accorder un bloc que l'appelant n'a pas demandé. **Preuves mesurées
+  le 2026-08-16** (`bash -n` vert ; cycle complet joué sous `fakeroot` avec
+  `MARIONNET_SUDOERS_DIR` pointé sur un répertoire jetable, le poste n'ayant pas de ticket
+  `sudo` en session non interactive) : `install` seul écrit **le seul** fichier (a) — et il ne
+  contient plus une ligne `mnbr` ; `check --enable-natbridge` répond 1 tant que (b) manque, 0
+  ensuite ; `install --enable-natbridge` écrit (b) sans réécrire (a) (« already up to date ») ;
+  ré-installation strictement idempotente ; `visudo -cf` accepte les deux fichiers séparément ;
+  `uninstall --disable-natbridge` retire (b) et **laisse (a)** ; `uninstall` nu retire les
+  trois. Refus contrôlés : `--enable-lanbridge` → rc 3, option inconnue → rc 2, second USER →
+  rc 2. **Reste à prouver sur le vrai système** (demande un mot de passe, donc un geste
+  humain) : `install --enable-natbridge` dans `/etc/sudoers.d/` puis le cycle `up`/`down` de
+  `marionnet-natbridge.sh` toujours vert en `sudo -n`. Prochain pas : épisode 6 (élévation
+  depuis la GUI).

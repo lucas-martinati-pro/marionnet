@@ -237,6 +237,10 @@ install-final-as-root:
 	# The scoped sudoers rule letting Tap_provider build the ghost taps with
 	# iproute2 (chantier marionnet-daemon-elimination). The script is the single
 	# place where the rule text lives, and it was just copied into bin/ above.
+	# Deliberately WITHOUT --enable-bridges: install time grants block (a) only,
+	# the socle without which nothing works. The NAT and LAN bridge grants are
+	# asked for by the end user, from the GUI, the day a bridge component is
+	# started (chantier modernisation-world-bridge).
 	# Remove the rule with: marionnet-sudoers.sh uninstall
 	echo "$(PREFIX_INSTALL)/bin/marionnet-sudoers.sh install \"\$$SUDO_USER\"" >> $(TMPSCRIPT)
 	# Note: the gettext .mo catalogues are compiled AND installed by `dune install'
