@@ -1,13 +1,15 @@
 # Pilotage de Marionnet par script
 
-> Chantier long `marionnet-pilotage-par-script`.
-> Reprise : appliquer le skill `chantier-long` (mémoire `marionnet-pilotage-par-script`,
-> `git log --grep="marionnet-pilotage-par-script"`).
+> Chantier long `marionnet-pilotage-par-script` — **CLOS le 2026-08-15**.
+> `git log --grep="marionnet-pilotage-par-script"` (14 épisodes, 0 → 13).
 >
-> **État : épisodes 0 à 2c faits.** La conception (§ 1-6) reste à l'état de projet : aucune ligne
-> de `bin/` n'est encore écrite. Ce qui existe est l'assainissement préalable de
-> `lib/STRUCTURES/network.ml` (§ 7.5, ép. 2 et 2b), sa suite de tests `test/marionnet.ml`, et sa
-> validation en GUI réelle (ép. 2c). Prochaine étape : épisode 3.
+> **Ce document est l'archive du chantier** : il tient seul, la fiche mémoire n'étant plus qu'un
+> renvoi vers lui. Lire d'abord le **§ 12 (résultat, ce qui reste hors périmètre, index des pièges
+> durables)** ; le § 9 donne la table des épisodes et le § 11 leur récit daté, preuves comprises.
+>
+> Les §§ 1 à 6 ont été écrits **avant** le code, comme conception ; ils décrivent aujourd'hui ce
+> qui existe, sauf là où un épisode les a révisés — les révisions sont dites sur place (`forest`
+> abandonné au § 4.8, voie C absorbée au § 6, `--raw` corrigé au § 5).
 
 ---
 
@@ -29,7 +31,8 @@ Deux usages, également importants :
 - **agent** : après un changement risqué, exécuter un scénario de non-régression et lire un
   verdict machine, plutôt que d'affirmer « ça devrait marcher ».
 
-Ce document est la conception ; il ne décrit pas du code existant.
+*(Phrase d'origine : « Ce document est la conception ; il ne décrit pas du code existant. » Elle a
+cessé d'être vraie à l'épisode 3a.)*
 
 ---
 
@@ -1726,6 +1729,7 @@ appliqué à `Network.server` par `marionnet-retro-compat-kernels-images` (ép. 
 | **9** | **`mrn-check`** (§ 5.6) : vérifier un `.mrn` **sans rien envoyer** — le mode lot n'a pas de transaction. Grammaire **demandée au serveur** (`--grammar=` pour l'instantané hors ligne), plus un **modèle rejoué depuis le fichier** (noms, ports, occupation), cru seulement quand le fichier part d'un `new` | **fait** (2026-08-09) — 32 assertions (`check-bench.sh`), **discriminant K4** : même ligne et même motif que l'arrêt réel de `mrnctl -f` |
 | **8** | **Documentation utilisateur** (§ 5.5) : `doc-src/scripting/README.md` + `examples/`, en anglais, versionnés — la forme et les invariants du canal, **jamais** la liste des commandes (elle appartient à `help`), et des exemples **exécutables** comme garde anti-dérive | **fait** (2026-08-09) — 39 assertions (`doc-bench.sh`), dont les 4 exemples joués tels quels et le bout en bout invité (`--ready`, journal relu côté hôte) |
 | **12** | **Les sept configurations Quagga du routeur** (§ 4.11.1) — la moitié de la ligne « 8 variantes pour le routeur » que l'ép. 4e n'avait pas livrée : `--field=zebra`, plus les deux interrupteurs de l'onglet (`--select`/`--unselect`, `--terminal`/`--no-terminal`). Les clés sortent du champ lui-même (liste d'associations), le défaut ne bouge pas, et `available` publie le vocabulaire | **fait** (2026-08-09) — 43 assertions (`rc-bench.sh`, R9/R10), **discriminant R10** : le `.conf` de l'invité porte le contenu posé par le canal, et le service désélectionné a bien vu le sien mis en `.backup` |
+| **13** | **Clôture** (§ 12) : le § 9 est intégralement soldé, le § 10 a été ouvert, démontré et refermé, et aucun défaut du chantier ne reste ouvert — les trois qui touchent le canal sont **reversés** à `docs/TODO.md`, avec leur obstacle nommé | **fait** (2026-08-15) — `dune build` et `dune test --force` verts ; aucun code touché |
 
 L'ordre 1 → 2 → 3 n'est pas négociable : bâtir le serveur sur un `network.ml` non audité
 reviendrait à fabriquer un instrument de mesure faussé.
@@ -3569,3 +3573,228 @@ hôte : `/etc/quagga/zebra.conf` de l'invité porte le marqueur posé par le can
 en place. **Non-régression** : `dune build`, `dune test --force` (0 échec), `ctl-bench` 36/36,
 `check-bench` 32/32, `mrn2sh-bench` 32/32, `completion-bench` 48/48 (8 neuves), `doc-bench` 46/46
 (7 neuves).
+
+---
+
+### 2026-08-15 — épisode 13 : clôture
+
+**Aucun code touché.** Cet épisode ne fait qu'arrêter le chantier et ranger ce qu'il laisse.
+
+Trois vérifications ont précédé la décision, dans cet ordre.
+
+1. **Le § 9 est intégralement soldé** : les quatorze lignes du tableau sont « fait », y compris les
+   deux qui ne livrent pas de code (l'abandon de `forest` à l'ép. 4g, l'absorption de la voie C).
+2. **Le § 10 — « le scripting descend dans les composants » — a été ouvert, démontré et refermé.**
+   Ses deux reliquats étaient le signal « invité prêt » (ép. 4h) et la moitié manquante de la
+   configuration de démarrage du routeur, les sept configurations Quagga (ép. 12). Ce qu'il reste de
+   ce paragraphe — augmenter hub, cloud et `world_*` d'une configuration de démarrage — est un
+   **corollaire assumé**, pas une dette : il touche le modèle, `simulation_level` et quatre
+   dialogues, et n'a jamais manqué à personne.
+3. **Aucun défaut du chantier n'est laissé ouvert.** Trois fiches de `docs/TODO.md` touchent le
+   canal ; l'auteur a tranché le 2026-08-15 qu'elles y restent, et le § 12.3 dit pourquoi.
+
+**Preuve du jour** : `dune build` **Success**, `dune test --force` **0 échec**. Les bancs n'ont pas
+été rejoués, délibérément : aucune ligne de code du chantier n'a bougé depuis l'ép. 12, et chaque
+épisode porte sa mesure datée ci-dessus — rejouer un banc GUI aurait mesuré l'état de l'hôte du
+jour, pas le chantier.
+
+**Ce que la clôture déplace.** La fiche mémoire `marionnet-pilotage-par-script` (966 lignes, relue à
+chaque session) est réduite à un renvoi : son contenu de valeur — les pièges qui servent **hors** du
+chantier — descend ici, au § 12.4, où il est versionné. L'entrée de `CLAUDE.md` quitte les
+« chantiers longs » pour la liste des archives. Ce qui est durable survit, ce qui était volatil
+disparaît.
+
+---
+
+## 12. Résultat et clôture (épisode 13, 2026-08-15)
+
+### 12.1 Ce que le chantier laisse
+
+Un canal de pilotage utilisable **identiquement** par un humain et par un agent, et de quoi s'en
+servir sans lire le source. Versionné :
+
+- **Dans Marionnet** : `bin/control_server.ml` (le serveur, in-process, sur socket unix ; requête =
+  une ligne de texte, réponse = une ligne JSON) et `bin/script_mode.ml` (les fenêtres qui s'ouvrent
+  seules sont capturées puis fermées) ; l'option `--control-socket PATH` (`bin/initialization.ml`),
+  `SIGPIPE` neutralisé dans `bin/marionnet.ml` (sans quoi un client qui raccroche tue Marionnet
+  **sans trace**), et les correctifs N1…N13 de `lib/STRUCTURES/network.ml` (§ 7.5) avec leur suite
+  de tests `test/marionnet.ml`, jouée par `dune test`.
+- **Les clients** (`useful-scripts/`, tous sans grammaire, cf. § 12.2) : `marionnet-ctl` et son
+  symlink `mrnctl` (transport + 4 codes de retour + mode lot `-f`), `mrn-check` (vérifier un `.mrn`
+  **sans rien envoyer** — le mode lot n'a pas de transaction), son second nom `mrn2sh`
+  (`--to-bash` : traduire un `.mrn` en `.sh`, justifié par le **quoting** de la queue libre) et
+  `marionnet-completion.bash` (la complétion Bash, dont les **noms** viennent de la session vivante).
+- **La documentation d'usage** : `doc-src/scripting/README.md` et ses `examples/`, en anglais,
+  **exécutables** — ce sont eux le garde anti-dérive du guide, pas une intention.
+
+Ce que le canal couvre : les commandes de projet, les huit natures de composants (`add`/`del`/
+`get`/`set`/`rename`), les câbles (`connect`), les transitions et les attentes (dont
+`wait --ready`, qui interroge l'invité), la configuration de démarrage (`rc-get`/`rc-set`, routeur
+compris) et les quatre treeviews — `ifconfig` et `defects` en lecture **et** en écriture, `history`
+par ses actions, `documents` en lecture.
+
+### 12.2 L'invariant qui a tenu du premier au dernier épisode
+
+**La grammaire a une seule source de vérité : le serveur, qui la publie par `help`.** Aucun client
+ne la recopie. La règle a été appliquée quatre fois — le client (ép. 6), le vérificateur (ép. 9),
+la complétion (ép. 10), le traducteur (ép. 11) — et deux fois elle a coûté un aller-retour de plus
+au lieu d'une liste locale. C'est ce prix qui a évité la dérive : le seul endroit où une seconde
+copie s'est glissée est le **guide** (ép. 8), qui affirmait une fonctionnalité que le canal n'avait
+pas ; c'est un exemple **exécutable** qui l'a fait tomber, à l'ép. 12, quatre épisodes plus tard.
+
+Corollaire de méthode, valable au-delà de ce chantier : **une documentation d'API écrite en lisant
+le source est fausse, et la relecture ne le voit pas** (six affirmations fausses au premier run du
+banc de l'ép. 8). Le seul remède mesuré est de l'exécuter.
+
+### 12.3 Ce qui reste, et pourquoi ce n'est pas une dette du chantier
+
+- **L'installation** des clients et du guide (`dune install` / `Makefile`) : écartée deux fois
+  (ép. 6 et 8) pour la même raison — elle élargit au chantier build. Elle appartient à
+  `modernisation-installation-marionnet`, dont la fiche la porte déjà, avec ses conséquences
+  (`socat`/`jq` deviennent des dépendances **hôte**, les deux symlinks décident du comportement).
+- **La traduction française du guide** : possible **sans risque** puisqu'il ne porte pas la
+  grammaire. Ne jamais en profiter pour y glisser une table de commandes — ce serait rétablir la
+  seconde source de vérité que le § 12.2 a coûté cher à éviter.
+- **Une configuration de démarrage pour hub, cloud et `world_*`** : corollaire assumé du § 10, à ne
+  lancer que si un besoin réel apparaît (épisode à part entière : modèle + `simulation_level` +
+  quatre dialogues).
+- **Trois défauts consignés dans `docs/TODO.md`**, laissés là sur décision de l'auteur (2026-08-15) :
+  (a) `set <n> distrib <épithète inexistante>` **accepté sans rien changer** — le seul imputable au
+  canal ; la garde symétrique de celle du noyau exigerait de publier la liste des filesystems
+  installés, donc une méthode de plus sur `component` et les trois pièges du `.mli` (§ 12.4), pour
+  un défaut dont la réponse porte déjà `changed:false` ; (b) `wait --ready` qui **ment au second
+  démarrage** d'un invité et (c) un `rc-set` sur un **switch** ignoré au second démarrage — ces deux
+  derniers viennent de `journalisation-profonde` et sont la **même famille** : un état capturé à la
+  création d'un device simulé qui **survit au `poweroff`**. Ils visent le modèle, pas le canal, et se
+  tranchent avec l'automate d'état en tête (`docs/refonte-automate-composants.md`).
+- **Au fil de l'eau, jamais prioritaires** : N6/N14/N15 de l'audit `network.ml`, les deux limites
+  assumées de l'ép. 3a (fermeture non ordonnée d'une session refusée par le plafond ; ligne
+  `End_of_file` journalisée à chaque fin de session propre), la latence résiduelle de l'ép. 4c (le
+  `task_runner` attend le thread GTK **en tenant** le mutex — ce n'est plus un interblocage), et la
+  conversion des sept bancs restants sur `bench-lib.sh` (non faite **exprès** : ils sont verts, et
+  leur valeur est d'avoir déjà mesuré).
+
+### 12.4 Index des pièges durables (déversé de la fiche mémoire à la clôture)
+
+Ceux qui servent **hors** de ce chantier. Le récit complet de chacun est dans l'épisode cité.
+
+**Concurrence, threads, GTK**
+
+- **`Cortex` lance un thread par commit** pour ses `on_commit` (`cortex.ml:307-312`, ép. 7), hors
+  section critique et sans ordre garanti : une réaction peut atterrir **après** ce que le committeur
+  a fait ensuite. On ne neutralise pas une telle réaction par un **drapeau** (il serait lu à
+  l'instant imprévisible où le thread part) mais en **retirant les callbacks** — leur présence est
+  testée par le committeur, sous les mutex. Et un `Cortex.set` ne commite **que s'il change la
+  valeur** : un banc qui rejoue deux fois la même entrée ne mesure rien.
+- **Le thread GTK ne prend JAMAIS le mutex d'un composant** (ép. 4c, interblocage capturé à la
+  pile) : les `can_*` lisent `!state` **sans verrou**, c'est délibéré — ne pas « remettre
+  proprement » un `with_mutex`. Corollaire : ne pas appeler le thread GTK de façon **synchrone** en
+  tenant un mutex de composant.
+- **`GMain_actor.apply` avale l'exception de son thunk** (`gMain_actor.ml:80-82`) et `delegate` sans
+  `~async` la jette : une action qui **échoue** au fond ressemble à un **succès**. Rattraper dans le
+  thunk et lire la référence après. Corollaire heureux : `apply` exécute **directement** quand
+  l'appelant est déjà le thread GTK, donc un appel imbriqué reste atomique.
+- **L'ordre des lignes du journal ne prouve rien** (ép. 7) : `Log.printf` prend un mutex global
+  (`lib/BASE/log_builder.ml`) ; deux lignes peuvent s'inverser. Mesurer la **présence** d'un
+  événement, jamais sa position.
+
+**Modèle, classes, `.mli`**
+
+- **Ajouter une méthode à `User_level.component` : trois pièges d'affilée** (ép. 4e). Le mixin
+  `virtual_machine_with_history_and_ifconfig` **n'hérite pas** de `component` → héritage multiple et
+  *warning 7* (erreur ici) : redéfinir avec `method!` dans `machine.ml`/`router.ml`. Le `.mli` doit
+  être complété dans **quatre** classes d'`user_level.mli` **plus** `machine.mli`. Et si le `.mli`
+  du mixin ne déclare pas la méthode, le défaut de l'ancêtre revient **en silence**.
+- **`name` et `port_no` ne s'écrivent pas par `eval_forest_attribute`** mais par
+  `#update_structural_with` (ép. 4d-2b) : le chemin GUI renomme aussi les entrées ifconfig et
+  history, le répertoire `hostfs/` et le nombre de ports du treeview. Écrire le seul `set_name`
+  laisse des lignes orphelines — corruption **silencieuse**.
+- **`User_level.check_new_name` est en première instruction des cinq chemins destructeurs**
+  (ép. 4d-2c) : ne pas le déplacer plus bas. Avant cela le modèle **acceptait un homonyme**
+  (`name_exists` n'était lu que par `add_node`/`add_cable`).
+- **Un câble ne se renomme pas** : la GUI le **détruit et le recrée** (`cable.ml:158-176`).
+- **Le défaut d'un champ n'est pas celui que montre la GUI** (ép. 4e) : lire le **constructeur**,
+  pas le dialogue — deux bancs s'y sont trompés en trois épisodes.
+- **`network#port_no_lower_of` n'est pas le port câblé le plus haut** (`user_level.ml:2101`) mais le
+  plus petit **multiple** de `port_no_min` qui le contienne. Ne jamais asserter cette borne de tête.
+- **Le modèle ne vérifie pas qu'un port est libre** (ép. 4d-3) : la garde vit dans le dialogue GUI
+  et dans le serveur. Décision assumée de ne pas l'avoir descendue dans le modèle.
+- **Le `.mar` n'est pas du XML** : `netmodel/network.xml` porte un nom trompeur (vestige ocamlduce).
+  Pendant tout ce chantier, c'était un vidage **`Marshal` binaire** — d'où l'inspection au `grep -a`,
+  et surtout la conclusion qui a fait abandonner `forest` (ép. 4d-3, 4g) : **le seul producteur
+  légitime d'un `.mar` est Marionnet**, donc `save-as`, jamais un générateur externe. **État
+  actuel** : depuis `migration-marshal-to-text` (clos 2026-08-10), un `.mar` **écrit** par ce
+  binaire est du **JSON `v3`** (la lecture `v0`/`v1`/`v2` reste intacte) — donc les deux détails
+  d'alors ont expiré : le `grep -a` n'est plus nécessaire sur un fichier neuf, et les champs de
+  configuration ne sont plus **omis** de la réponse du canal (l'en-tête magique `0x8495A6BD/BE/BF`
+  ne sert plus qu'à reconnaître un attribut hérité, `control_server.ml`). La conclusion, elle, tient.
+
+**Treeviews**
+
+- **Écrire une cellule ne valide rien** (ép. 5b/5c) : `#set_row_field` (`treeview.ml:1323`) ignore
+  le prédicat de colonne, les contraintes de ligne et les callbacks — tout cela vit dans le chemin
+  GTK *cell-edited*. Rejouer `#constraints_verdict` (et non `#check_constraints`, qui **ouvre un
+  dialogue**), plus `#edit_side_effects` pour `defects`.
+- **`hidden` ≠ `reserved`** (ép. 5a) : `_uneditable` est seulement cachée et **reste** dans les
+  lignes ; `_highlight-color` est réservée **mais éditable** (`treeview.ml:1714-1716`, `add_editable_string_column ~reserved:true`) — filtrer
+  **toujours** `is_editable && not is_reserved`.
+- **`#column_headers` n'est pas ordonné** (`Hashtbl.fold`) : l'ordre de la GUI vit dans `#columns`.
+- **Les quatre treeviews n'ont pas la même population** : `ifconfig` ne contient que les composants
+  **adressables**, `defects` les huit natures **et les câbles**.
+- **`%S` détruit un message traduit** (ép. 5b) : il échappe tout octet ≥ 0x7f. Le réserver aux
+  **identifiants** ; et **ne jamais asserter un libellé traduit** dans un banc.
+- **Dans `history`, un démarrage crée un état enfant du plus récent** (`user_level.ml:1738`, `#add_state_for_device`) : la
+  preuve qu'un état donné a été choisi est une **profondeur**, pas une présence.
+
+**camlp4 et syntaxe (tout `bin/` est préprocessé)**
+
+- **Pas de *binding operators*** (`let*`) : `camlp4of` répond « Parse error » — erreur de syntaxe,
+  pas de type. Utiliser `( >>= )`.
+- **`raise` explicite est impossible sans alias `Log`** : `raise_p4` le réécrit ; le compilateur
+  répond « Unbound module Log » **sans localisation** (`File "_none_"`).
+- **Un commentaire OCaml ne peut pas contenir un guillemet non apparié** : « Comment not
+  terminated », signalé à la fin du fichier, très loin de la cause.
+
+**Invité, hostfs**
+
+- **Tout fichier `marionnet-relay*` du hostfs est sourcé par l'invité**
+  (`uml/pupisto.debian/pupisto.debian.sh.files/marionnet-relay.trixie`, fin de `start()`) :
+  vérifier le **glob** avant de choisir un nom de fichier déposé là (d'où `marionnet-guest-ready`).
+- **Il n'y a pas d'inotify sur le hostfs** (rectifié ép. 4h) : `machine.ml` ne surveille que
+  `.X11-unix`. Observer un fichier du hostfs = `stat`, jamais dans un créneau GTK (c'est de l'I/O).
+- **`boot_parameters` date le démarrage courant** (`simulation_level.ml`) — seul horodatage « ce
+  boot-ci » disponible sans rien mémoriser ; c'est ce qui permet d'ignorer un marqueur périmé
+  (et c'est aussi ce qui casse au second démarrage, cf. § 12.3).
+
+**Bancs et mesure**
+
+- **`sun_path` ≤ 108 octets** vaut aussi pour les sockets auxiliaires d'un banc : sous un répertoire
+  de run trop profond, `socat` échoue **en silence**. Tout socket de banc va dans
+  `$XDG_RUNTIME_DIR` (court **et** déjà 0700).
+- **Les composants survivent à la mort de Marionnet** (13 orphelins mesurés à l'ép. 3b) : nettoyer
+  par **répertoire de session** `/tmp/marionnet-<N>.dir` — il y en a **un par projet ouvert** —
+  jamais par un motif global (`pkill -f marionnet` se tue lui-même).
+- **Un fusible de cardinalité se calibre au-dessus du cas normal** : un projet de 5 machines fait
+  **76** processus ; réglé à 60, il a refusé de nettoyer et laissé les orphelins en vie.
+- **Toute réponse doit être validée avant d'être assertée** (non vide **et** `ok:true`), et toute
+  assertion d'ensemble doit exiger un cardinal non nul — sinon `jq` compare des listes vides et le
+  banc **félicite sans avoir rien mesuré**.
+- **Un projet de banc ne contient ni `world_gateway` ni `world_bridge`** : leur démarrage réclame un
+  tap privilégié et bloque le `task_runner`, qui est séquentiel.
+- **Ne jamais interroger le canal juste après l'apparition du socket** pour observer un réseau
+  chargé : `-r` ne charge qu'~1 s plus tard. Pour un état « chargé mais éteint », lancer **sans
+  `-r`** et charger par `open`, qui est synchrone.
+
+**Réseau (`lib/STRUCTURES/network.ml`, § 7.5)**
+
+- **`~no_fork:()` est obligatoire** : le défaut de `Network.server` est un `fork` **par connexion**,
+  inacceptable dans un processus GTK avec des UML enfants.
+- **N'utiliser que `input_line`/`output_line`** sur un canal : les mélanger avec `#receive`/`#peek`
+  (`Unix.recv`) perd des octets (N7).
+- **`~cloexec:true` à la création du socket** (N2) : sans lui, le descripteur de contrôle est hérité
+  par les xterm, les UML et les vde.
+- **Le GC ne ferme pas les descripteurs** des canaux stdlib finalisés (mesuré OCaml 5.4.1) : il ne
+  libère que la structure. La clause « fermeture différée par le GC » de l'audit N1 était **fausse**
+  — ne pas la re-citer ; le défaut réel était le **quadruple `close`** sur un numéro déjà libéré.
+- **`~perm:0o700` porte sur le répertoire parent** du socket, ce qui neutralise le `chmod 0o777`
+  que la bibliothèque applique au socket lui-même.

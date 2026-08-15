@@ -157,18 +157,6 @@ Reprise : appliquer le skill `chantier-long`.
   2026-07-31** (`d2d03da`, par l'ép. 9 du chantier clos `marionnet-automate-composants` — détail
   dans `docs/refonte-automate-composants.md` : master lock OCaml, gel d'appli — jamais un crash
   hôte).
-- **pilotage par script** (piloter Marionnet par script — humain **et** agent : serveur de
-  contrôle **in-process** sur socket unix, GUI vivante et observable ; requête = ligne texte,
-  réponse = ligne **JSON**, aucune dépendance OCaml ajoutée ; périmètre = noyau + les 4
-  treeviews) : `docs/pilotage-par-script.md` ; mémoire `marionnet-pilotage-par-script` ;
-  `git log --grep="marionnet-pilotage-par-script"`. Épisodes 0→12 **tous clos** (§ 9 entièrement
-  soldé ; § 10 — le scripting descend dans les composants — ouvert, démontré, refermé).
-  Livrables versionnés : `bin/control_server.ml`, `bin/script_mode.ml`,
-  `useful-scripts/marionnet-ctl` (+ `mrnctl`), `mrn-check`, `mrn2sh`,
-  `marionnet-completion.bash`, `doc-src/scripting/`. **Invariant transverse** : la grammaire a
-  **une seule** source de vérité — le serveur, publiée par `help` ; ne jamais la recopier
-  ailleurs (règle appliquée 4 fois : `mrnctl`, `mrn-check`, `mrn2sh`, complétion). **Plus aucun
-  défaut connu ouvert** → **clôturable (MODE C)**, sur décision de l'auteur.
 - **modernisation-installation-marionnet** (chantier PARENT : remplacer l'installeur mort
   `useful-scripts/marionnet_from_scratch` par une diffusion moderne — script v2, .deb + dépôt
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
@@ -193,7 +181,14 @@ Reprise : appliquer le skill `chantier-long`.
   examen** — 25 épisodes, clos 2026-08-15 ; § 8 = résultat ; à lire avant de toucher les scripts
   déposés dans le hostfs (`bin/scripts/marionnet-*.sh`), un journal servi par le canal, ou
   l'archivage du mode examen ; notes utilisateur : `doc-src/teacher-guide.md`,
-  `doc-src/exam-mode.md`, `doc-src/lab-design-skill.md`), `docs/migration-ocaml5.md`
+  `doc-src/exam-mode.md`, `doc-src/lab-design-skill.md`),
+  `docs/pilotage-par-script.md` (**canal de contrôle scriptable** — serveur in-process sur socket
+  unix, requête = ligne texte, réponse = ligne **JSON** ; 14 épisodes, clos 2026-08-15 ; § 12 =
+  résultat + **index des pièges durables**, § 9 = table des épisodes ; à lire avant de toucher
+  `bin/control_server.ml`, `bin/script_mode.ml` ou un client de `useful-scripts/`. **Invariant à
+  ne jamais enfreindre** : la grammaire a **une seule** source de vérité — le serveur, publiée par
+  `help` ; aucun client ne la recopie. Notes utilisateur : `doc-src/scripting/`),
+  `docs/migration-ocaml5.md`
   (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
   `docs/daemon-elimination-study.md` (clos 2026-07-17).
 - **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours
