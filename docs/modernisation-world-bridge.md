@@ -129,6 +129,13 @@ fonctionne (tout composant crée des taps) ; (b) et (c) ne servent qu'à qui pos
 vérifie et se retire indépendamment, et surtout l'activation *run-time* n'a jamais à
 réécrire le fichier (a) — celui sans lequel Marionnet ne démarre plus un seul composant.
 
+*Rectifié à l'épisode 6* : les fichiers séparés n'étaient que la moitié de cette garantie. Le
+bloc (a) restant **toujours sélectionné**, `install --enable-natbridge` le réécrivait — au nom
+de **l'appelant**. L'administrateur accorde (a) à `X`, `Y` active le NAT bridge depuis la GUI,
+et `X` perd silencieusement ses taps. D'où le sélecteur **`--only`** : « n'appliquer la commande
+qu'aux blocs explicitement demandés ». C'est celui que la GUI emploie ; le geste par défaut de
+l'administrateur, lui, ne change pas.
+
 **Élévation depuis la GUI** : `sudo` est déjà une dépendance dure du projet (tout
 `Tap_provider` repose dessus), donc s'appuyer sur lui **ne suppose aucune distribution**
 particulière — contrairement à `pkexec`/PolicyKit, absent des systèmes minimaux et des
@@ -289,12 +296,11 @@ le suivant existe.
    `/etc/sudoers.d/`. `print`/`check`/`install`/`uninstall` deviennent par-bloc. C'est la
    fondation de tout le reste, et elle se prouve sans une ligne d'OCaml (`visudo -cf`, puis
    le cycle `up`/`down` de `marionnet-natbridge.sh` toujours vert en `sudo -n`).
-7. **ép. 6** *(à venir)* — **l'élévation depuis la GUI** : dialogue de mot de passe GTK,
-   sonde « puis-je déjà ? » (`sudo -n` sur une commande inoffensive, idiome
-   `Tap_provider.is_usable`), appel de `marionnet-sudoers.sh --enable-…`, et le message
-   d'information à l'ajout d'un composant bridge. Point à trancher là : dialogue interne
-   + `sudo -S` (aucun exécutable neuf) *vs* petit binaire askpass + `sudo -A` — `bin/dune`
-   ne produit aujourd'hui **qu'un** exécutable, ce qui plaide pour le premier.
+7. **ép. 6** — **l'élévation depuis la GUI**. **Fait 2026-08-16.** Le point ouvert a été
+   tranché pour le **dialogue interne + `sudo -S`** (aucun exécutable neuf, aucune hypothèse
+   de distribution) : `bin/gui/simple_dialogs.ml` (`ask_password`), `bin/privileges.ml(i)`
+   (sonde, `sudo -n` puis `sudo -S`, 3 essais, verdict mémoïsé), `--only` côté script, et le
+   message d'information dans le dialogue du composant. Détail en § 4.2.
 8. **ép. 7** *(à venir)* — **le dédoublement des composants** : nature *NAT bridge* neuve à
    côté de `world_bridge` (devenu *LAN bridge*), menu planète à trois entrées, N bridges NAT
    (un par composant), retrait de `MARIONNET_WORLD_BRIDGE_MODE` et de la variable de
@@ -369,6 +375,33 @@ depuis `tap_provider.ml`). Ce que l'épisode a livré :
   (`\!`, `\,`, `\:`) dans les arguments d'une commande, sinon **`visudo` rejette tout le fichier**.
 - **Dépendance hôte neuve** : `jq` (le module `Json_*` de bashbricks s'en sert). Déjà sur la liste
   du chantier `modernisation-installation-marionnet`, à répercuter dans les paquets.
+
+### 4.2 Épisode 6 en détail — qui demande, et à qui
+
+Quatre décisions, dont **deux prises contre l'intuition initiale, par la mesure**.
+
+1. **`sudo -S` derrière un dialogue à nous**, plutôt qu'un binaire askpass (`sudo -A`) ou un
+   terminal externe. `bin/dune` ne produit qu'un exécutable, et `sudo` est déjà dépendance
+   dure : c'est le seul des trois qui n'ajoute **ni fichier ni hypothèse de distribution**. Le
+   secret ne passe jamais par `argv` (que `ps` publie à tout le monde) ni par un fichier : il
+   est écrit sur le **stdin** du processus, dont on ferme aussitôt le tuyau. La sortie du
+   script part dans un fichier temporaire et non dans un second tuyau — deux tuyaux et un seul
+   lecteur, c'est un interblocage qui attend son jour.
+2. **`--only`, sans quoi les trois fichiers ne garantissaient rien** (§ 1 bis.3, rectifié).
+3. **La garde du mode piloté est `Script_mode.enabled`, pas `must_auto_answer`** — trouvé au
+   premier run du banc, pas déduit. `must_auto_answer` n'est vrai que **pendant** le service
+   d'une commande du canal ; or le dialogue s'ouvre depuis un **thread de tâche**, bien après
+   que `start` a répondu « accepted ». Avec la garde étroite, la fenêtre de mot de passe a
+   réellement surgi au milieu d'une session pilotée et la tâche a attendu un humain. Un mot de
+   passe est d'ailleurs la seule réponse pour laquelle aucun défaut ne peut tenir lieu de
+   réponse : en session pilotée on refuse, bruyamment, et l'appelant rapporte un échec net.
+4. **Le verdict d'échec est mémoïsé, et c'est `Privileges` qui parle à l'utilisateur.**
+   Démarrer *un* composant résout son bridge **deux fois** (construction de l'objet de
+   simulation, puis démarrage) : sans mémoire, l'utilisateur qui annule était questionné puis
+   sermonné deux fois dans la même seconde. Un refus est une réponse ; redemander pour le même
+   geste est du harcèlement. Le refus vaut pour la session — pour changer d'avis, relancer
+   Marionnet ou lancer le script à la main (la commande exacte figure dans le dialogue d'échec).
+   Le succès, lui, n'a besoin d'aucune mémoire : `Nat_bridge.is_usable` répond `true` ensuite.
 
 ## 5. Points de vigilance transverses
 
@@ -543,3 +576,44 @@ depuis `tap_provider.ml`). Ce que l'épisode a livré :
   réclament tous deux un mot de passe. La surface n'a donc pas été élargie par la scission :
   ce qui passe est exactement ce que les deux fichiers nomment. Prochain pas : épisode 6
   (élévation depuis la GUI).
+
+- **2026-08-16 — épisode 6** : *l'élévation depuis la GUI*. Marionnet demande désormais
+  lui-même les droits du bloc (b), au moment où ils servent. Trois pièces et un correctif de
+  l'épisode 5 (détail et *pourquoi* en § 4.2) : **`bin/gui/simple_dialogs.ml`** gagne
+  `ask_password` (entrée à visibilité coupée, `Return` = OK, corps sous
+  `GMain_actor.apply_extract` puisqu'il est ouvert depuis un thread de tâche) ;
+  **`bin/privileges.ml(i)`**, module neuf et minuscule, enchaîne sonde → `sudo -n` (un ticket
+  encore valide évite de rien demander) → dialogue → `sudo -S` (3 essais, le mot de passe sur
+  le **stdin** et jamais dans `argv`) → re-sonde, d'où un `Nat_bridge.forget_usability` publié
+  et un `Tap_provider.sudoers_script` publié aussi (le nom du script reste lu en **un** endroit) ;
+  **`bin/world_bridge.ml`** appelle cela avant `Nat_bridge.ensure` et **annonce dans son
+  dialogue d'ajout/modification** que le composant demandera un mot de passe à son premier
+  démarrage — l'information au moment du geste, pas un échec inexpliqué plus tard ; et
+  **`marionnet-sudoers.sh`** reçoit **`--only`**, sans quoi une activation par l'utilisateur
+  `Y` réécrivait le fichier (a) de l'administrateur au nom de `Y` (§ 1 bis.3, rectifié).
+  **Preuves mesurées le 2026-08-16.** Script seul : `print --only --enable-natbridge` ne rend
+  que le bloc (b), `print` nu et `print --enable-natbridge` inchangés, `--only` sans sélection
+  → rc 2, `--only` sur `uninstall` → rc 2, `--only --enable-lanbridge` → toujours rc 3 ;
+  sous `fakeroot`, `install --only --enable-natbridge` écrit **le seul** fichier (b) et le
+  `sha256` de (a) est **identique avant et après**. OCaml : `dune build` rc 0, et le module
+  neuf est **réellement compilé** — vérifié par une erreur de type volontaire qui rompt bien le
+  build (le piège « dune ne compile pas un module que personne ne référence » ne s'applique
+  donc pas ici). Banc réel, Marionnet lancé avec `--control-socket` et deux faux scripts
+  (`MARIONNET_NATBRIDGE_SCRIPT` répondant toujours `E_SUDO_DENIED`, `MARIONNET_SUDOERS_SCRIPT`
+  traçant ses arguments) : la sonde échoue, `Privileges` prend la main, `sudo -n` échoue (rc 1),
+  puis — **run instrumenté, à l'écran** — le dialogue de mot de passe est réellement apparu, a
+  été rempli, et le faux script a alors été exécuté **en root** avec exactement
+  `install --only --enable-natbridge` : la chaîne dialogue → `sudo -S` → script privilégié est
+  donc prouvée de bout en bout. C'est **ce run qui a révélé le défaut de garde** corrigé au § 4.2
+  point 3 : la fenêtre n'aurait jamais dû s'ouvrir dans une session pilotée. Après correction,
+  le banc rejoué donne exactement ce qu'on veut — **1** demande refusée sans fenêtre (« a
+  password was requested in a driven session; NOT asking »), **1** seul dialogue d'erreur
+  capturé, **1** réutilisation du verdict mémoïsé au second passage, le composant démarre quand
+  même (`state: on`), la session répond encore (`ls`), et ni tap ni bridge résiduel. Les deux
+  fichiers de `/etc/sudoers.d/` du poste sont restés **intacts** pendant toute la campagne (le
+  banc n'a touché qu'à de faux scripts). **Reste à jouer** (geste humain, avec le **vrai**
+  script) : retirer le bloc (b) réel, poser un `world_bridge` en mode `nat` dans une session
+  **interactive**, vérifier l'avertissement dans le dialogue d'ajout, taper le mot de passe,
+  puis constater `mnbr<pid>` et un `ping` sortant depuis l'invité. Dette : **10 chaînes**
+  `s_`/`f_` neuves (8 dans `privileges.ml`, 1 dans `simple_dialogs.ml`, 1 dans
+  `world_bridge.ml`) pour l'épisode 9. Prochain pas : épisode 7 (dédoublement des composants).

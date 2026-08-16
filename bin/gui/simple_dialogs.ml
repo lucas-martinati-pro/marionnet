@@ -253,6 +253,93 @@ let confirm_dialog ~question ?script_answer ?(cancel = false) () =
   !result) ()
 ;;
 
+(* --- *)
+(** Ask for the user's own password, in order to elevate a privilege with `sudo -S'
+    (work-stream [modernisation-world-bridge], episode 6: activating a scoped sudoers
+    block from the GUI, at the moment the privilege is needed). [header] says what the
+    password is going to be used for -- a password dialog that does not say what it
+    unlocks teaches the user to type it anywhere. [again] is for a retry, after sudo
+    refused the previous attempt. Returns [None] when the user cancels.
+    ---
+    On the secret itself: the string comes back as an ordinary immutable OCaml string,
+    which we cannot wipe; what we can do, and do, is keep it out of every place it would
+    OUTLIVE the call -- never logged, never captured by the script mode, never passed
+    through argv (see privileges.ml, which writes it on sudo's stdin).
+    ---
+    In a driven session there is nobody to type it: asking would freeze the calling
+    thread behind a modal window that nothing will ever close. The guard is therefore
+    [Script_mode.enabled] and NOT [must_auto_answer], which is [confirm_dialog]'s: the
+    latter is only true while a command is being served, and this dialog is opened from
+    a task-runner thread, long after the command that started the component answered.
+    Measured, not supposed (episode 6, first run of the bench): with the narrower guard
+    the password window really did pop up in the middle of a driven session and the
+    task waited for a human. A password is also the one answer no default can stand in
+    for, so we refuse, loudly, and the caller reports a plain failure. *)
+let ask_password ?(again=false) ~title ~header () : string option =
+  if Script_mode.enabled () then begin
+    Log.printf1
+      "Simple_dialogs.ask_password: a password was requested in a driven session; NOT asking (no human is there). It was needed for: %s\n"
+      header;
+    Script_mode.notify ~kind:`Question ~title
+      "a password was requested but nobody was asked (driven session)";
+    None
+  end else
+  GMain_actor.apply_extract (fun () ->
+  let dialog =
+    GWindow.dialog
+      ~title
+      ~modal:true
+      ~position:`CENTER
+      ~icon:Icon.icon_pixbuf
+      ~resizable:false
+      ()
+  in
+  let outer = GPack.hbox ~packing:(dialog#vbox#pack ~expand:true ~fill:true) ~border_width:12 ~spacing:12 () in
+  let () =
+    let img = GMisc.image ~packing:(outer#pack ~expand:false) () in
+    img#set_file (Initialization.Path.images ^ "ico.warning.orig.png")
+  in
+  let vbox = GPack.vbox ~packing:(outer#pack ~expand:true ~fill:true) ~spacing:8 () in
+  let _ =
+    GMisc.label ~text:header ~xalign:0.0 ~line_wrap:true ~width:420
+      ~packing:(vbox#pack ~expand:false) ()
+  in
+  let () =
+    if again then
+      let _ =
+        GMisc.label
+          ~markup:("<b>" ^ Glib.Markup.escape_text (s_ "Sorry, try again.") ^ "</b>")
+          ~xalign:0.0 ~line_wrap:true
+          ~packing:(vbox#pack ~expand:false) ()
+      in ()
+  in
+  let entry =
+    GEdit.entry
+      ~visibility:false          (* what makes it a password entry *)
+      ~activates_default:true    (* Return = OK, as in every password prompt *)
+      ~packing:(vbox#pack ~expand:false) ()
+  in
+  dialog#add_button_stock `CANCEL `CANCEL;
+  dialog#add_button_stock `OK `OK;
+  dialog#set_default_response `OK;
+  dialog#show ();
+  entry#misc#grab_focus ();
+  let answer =
+    match dialog#run () with
+    | `OK -> (match entry#text with "" -> None | password -> Some password)
+    | _ -> None      (* CANCEL, or the window was closed *)
+  in
+  (* Whether something was typed, never what: the log of a password dialog that
+     was cancelled is the only trace left of a failed elevation. *)
+  Log.printf1 "Simple_dialogs.ask_password: the dialog was %s\n"
+    (match answer with None -> "cancelled" | Some _ -> "answered");
+  (* The widget is about to die anyway; clearing it first is cheap and means the
+     secret is not sitting in a GtkEntry buffer while GTK gets round to freeing it. *)
+  entry#set_text "";
+  dialog#destroy ();
+  answer) ()
+;;
+
 (** Only internally used: *)
 exception TheUserCanceled;;
 

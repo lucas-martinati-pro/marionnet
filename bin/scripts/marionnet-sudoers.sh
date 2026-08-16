@@ -32,7 +32,7 @@
 #       person who will use it.  This is what `install' grants by default.
 #   (b) and (c) RUN TIME, by the end user, when a NAT bridge or a LAN bridge
 #       component is started for the first time: the GUI asks for the sudo
-#       password and re-runs us with --enable-natbridge / --enable-lanbridge
+#       password and re-runs us with --only --enable-natbridge / --enable-lanbridge
 #       (--enable-bridges is the shorthand for both).  Granting at install time
 #       the right to touch the host's network card -- which (c) implies -- would
 #       be granting a power nobody needs yet, to an account nobody has chosen.
@@ -42,6 +42,11 @@
 # matters most -- a run-time elevation NEVER has to rewrite the file carrying
 # (a), the one without which Marionnet cannot start a single component.
 # (No dot in those file names: sudo silently ignores such files in sudoers.d.)
+# Separate files are only half of that guarantee: --only is the other half, since
+# without it a bare `install --enable-natbridge' also refreshes (a) -- for the
+# CALLING user.  Let the administrator grant (a) to X, then let Y activate the NAT
+# bridge from the GUI, and X silently loses its taps.  Hence: the GUI always says
+# --only, and block (a) then stays exactly as the administrator wrote it.
 #
 # For (b) the commands are NOT invented here: they are exactly what
 # `marionnet-natbridge.sh print-privileged-commands' publishes, which is the
@@ -84,11 +89,16 @@ Usage: $TOOL print     [BLOCKS] [USER]   # write the expected sudoers rules on s
        $TOOL uninstall [BLOCKS]          # remove them; needs root (re-execs with sudo)
 
 BLOCKS selects what the command applies to. Block (a) -- the ghost taps -- is
-always selected: it is the socle, and it is what a bare \`install' grants.
+selected by default: it is the socle, and it is what a bare \`install' grants.
+Only --only takes it out of the selection.
 
        --enable-natbridge   also (b): the private NAT bridge (${BRIDGE_PREFIX}*)
        --enable-lanbridge   also (c): the LAN bridge and the host interface
        --enable-bridges     shorthand for both
+       --only               apply to the selected blocks ONLY, leaving (a) alone.
+                            This is what the GUI uses when the end user activates
+                            a bridge: block (a) must never be rewritten -- it may
+                            well have been granted to somebody else.
 
 \`uninstall' removes everything by default, and takes --disable-natbridge,
 --disable-lanbridge or --disable-bridges to remove those blocks only (block (a)
@@ -289,6 +299,7 @@ USER_ARG=""
 WANT_NAT=false
 WANT_LAN=false
 EXPLICIT_SELECTION=false
+ONLY=false
 
 function parse_command_line {
  local a
@@ -298,6 +309,7 @@ function parse_command_line {
      --enable-natbridge|--disable-natbridge)   WANT_NAT=true; EXPLICIT_SELECTION=true ;;
      --enable-lanbridge|--disable-lanbridge)   WANT_LAN=true; EXPLICIT_SELECTION=true ;;
      --enable-bridges|--disable-bridges)       WANT_NAT=true; WANT_LAN=true; EXPLICIT_SELECTION=true ;;
+     --only)                                   ONLY=true ;;
      -*) echo "$TOOL: unknown option '$a'" 1>&2; return 2 ;;
      *)
        if [[ -n $USER_ARG ]]; then
@@ -308,6 +320,19 @@ function parse_command_line {
        ;;
    esac
  done
+ # --only is a modifier of the selection, not a selection: on its own it would
+ # mean "apply to nothing", which is never what anybody meant.  And on `uninstall'
+ # it would be noise: --disable-* already leaves (a) alone.
+ if $ONLY; then
+   if [[ $COMMAND = uninstall ]]; then
+     echo "$TOOL: --only makes no sense for 'uninstall' (--disable-* already spares block (a))" 1>&2
+     return 2
+   fi
+   if ! $EXPLICIT_SELECTION; then
+     echo "$TOOL: --only needs a selection (--enable-natbridge, --enable-lanbridge or --enable-bridges)" 1>&2
+     return 2
+   fi
+ fi
  # `if' rather than `$WANT_NAT && BLOCKS+=(...)': under `set -e' the latter is a
  # failing AND-list whenever the flag is false, which is exactly the kind of
  # silent early exit this script must not have.
@@ -322,7 +347,9 @@ function parse_command_line {
      BLOCKS=(taps natbridge lanbridge)
    fi
  else
-   BLOCKS=(taps)
+   # Block (a) is implicit -- unless --only, which is precisely the promise made
+   # to the administrator: a run-time activation touches its file for nothing.
+   if $ONLY; then BLOCKS=(); else BLOCKS=(taps); fi
    if $WANT_NAT; then BLOCKS+=(natbridge); fi
    if $WANT_LAN; then BLOCKS+=(lanbridge); fi
  fi

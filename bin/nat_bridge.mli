@@ -81,3 +81,8 @@ val ensure : ?subnet:string -> unit -> (t, error) result
     (i.e. whether the scoped sudoers rule of [marionnet-sudoers.sh] is in
     place). Probed once, with a read-only sub-command. *)
 val is_usable : unit -> bool
+
+(** Drop the memoised verdict of {!is_usable}, so that the next call probes the
+    host again. The one caller that needs it is {!Privileges}, which has just
+    installed the sudoers block that {!is_usable} answered [false] about. *)
+val forget_usability : unit -> unit

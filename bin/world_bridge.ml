@@ -200,6 +200,23 @@ let make
       ()
   in
 
+  (* Said at the moment of the gesture, not as an unexplained failure at start-up
+     time: in the automatic mode this component will ask for administrator rights
+     the first time it runs (work-stream modernisation-world-bridge, episode 6).
+     Once the rule is installed the probe answers `true' and the notice goes away
+     by itself. *)
+  let () =
+    if Global_options.world_bridge_mode = `Nat && not (Nat_bridge.is_usable ()) then
+      let _ =
+        GMisc.label
+          ~markup:("<i>" ^ Glib.Markup.escape_text
+                     (s_ "Note: the first time this component is started, Marionnet will ask for your password, once, in order to grant itself the right to build its own private bridge.")
+                   ^ "</i>")
+          ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
+          ~packing:w#vbox#add ()
+      in ()
+  in
+
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
@@ -398,6 +415,18 @@ object(self)
     match Global_options.world_bridge_mode with
     | `Manual -> bridge_name
     | `Nat ->
+        (* The scoped sudoers block of the NAT bridge is granted by the user, not
+           by the administrator (docs/modernisation-world-bridge.md § 1 bis.3), and
+           this is the moment it is needed. Privileges asks for the password and
+           installs it; on refusal we simply carry on and let Nat_bridge fail as it
+           did before. Privileges tells the user itself when it fails, exactly once
+           per session; here we only leave a trace in the log. *)
+        let () =
+          match Privileges.ensure_natbridge () with
+          | Ok () -> ()
+          | Error message ->
+              Log.printf1 "world_bridge: no administrator rights for the NAT bridge: %s\n" message
+        in
         (match Nat_bridge.ensure () with
          | Ok info ->
              let () =

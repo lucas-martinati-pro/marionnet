@@ -177,6 +177,12 @@ let is_usable () =
       usable := Some verdict;
       verdict
 
+(* The memoisation above is right for a verdict that only an EXTERNAL event can
+   change -- and there is exactly one such event: the sudoers block (b) being
+   installed while we run (Privileges.ensure_natbridge). Same idiom as
+   Tap_provider.ensure_sudoers_rule, which resets its own cache in place. *)
+let forget_usability () = usable := None
+
 (* --- The bridge of this process, created at most once
    ---
    The at_exit is registered only after a bridge really exists, and carries the

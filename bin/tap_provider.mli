@@ -89,6 +89,14 @@ val is_usable : unit -> bool
     For display in a dialog / in the log. [user] defaults to the current user. *)
 val sudoers_rule : ?user:string -> unit -> (string, string) result
 
+(** bin/scripts/marionnet-sudoers.sh, the single source of every sudoers rule of
+    this program: its bare name (it is installed in the PATH), or whatever
+    [MARIONNET_SUDOERS_SCRIPT] says in a source tree. Published because it is not
+    ours alone: {!Privileges} runs the very same script to activate the scoped
+    blocks the bridges need, and a second reading of that variable would be a
+    second truth. *)
+val sudoers_script : unit -> string
+
 (** Install the sudoers rule if it is missing, by calling
     bin/scripts/marionnet-sudoers.sh (which re-executes itself with sudo).
     Beware: this INHERITS the standard channels, so it only works when Marionnet
