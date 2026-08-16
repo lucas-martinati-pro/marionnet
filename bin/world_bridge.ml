@@ -41,7 +41,7 @@ module Make_menus (Params : sig
   open Params
 
   module Toolbar_entry = struct
-   let imagefile = "ico.world_bridge.palette.png"
+   let imagefile = "ico.lan_bridge.palette.png"
    let tooltip   = (s_ "World bridge (connect the virtual machines to the real host network, or link Marionnet instances across machines; for plain Internet access, prefer a world gateway)")
    let packing   = Params.packing
   end
@@ -168,7 +168,7 @@ let make
  ?label
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
- ?(dialog_image_file=Initialization.Path.images^"ico.world_bridge.dialog.png")
+ ?(dialog_image_file=Initialization.Path.images^"ico.lan_bridge.dialog.png")
  () :'result option =
   let old_name = name in
   let (w,_,name,label) =
@@ -287,6 +287,9 @@ class world_bridge =
       ~name ?label
       ~devkind:`World_bridge
       ~kind_name:"world_bridge"
+      (* What is written in a .mar stays `world_bridge'; what is drawn says LAN,
+         now that a second bridge exists (episode 7a.3.b): *)
+      ~icon_prefix:"lan_bridge"
       ()
 
   (** Create the simulated device *)

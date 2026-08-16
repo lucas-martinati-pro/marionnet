@@ -1,5 +1,5 @@
 
-type devkind = [ `Machine | `Hub | `Switch | `Router | `World_gateway | `World_bridge | `Cloud ] ;;
+type devkind = [ `Machine | `Hub | `Switch | `Router | `World_gateway | `World_bridge | `Nat_bridge | `Cloud ] ;;
 type nodename = string
 type receptname = string
 type name = string

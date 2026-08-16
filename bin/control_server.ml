@@ -222,7 +222,7 @@ let known_actions = [ "set"; "del"; "start"; "stop"; "suspend"; "resume"; "power
    (#string_of_devkind, redefined in the seven files) and they are also the roots of a .mar
    forest, so [ls --kind=], [add <kind>] and a saved project all speak one language. "cable" is
    absent on purpose: it takes two endpoints, hence its own command (§ 4.5). *)
-let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "world_gateway" ]
+let known_kinds = [ "machine"; "router"; "switch"; "hub"; "cloud"; "world_bridge"; "nat_bridge"; "world_gateway" ]
 
 (* Episode 3 of `journalisation-profonde'. The two journals a guest leaves in its hostfs
    directory, as (what [log] calls them, what the guest named them):
@@ -1297,7 +1297,7 @@ let cmd_del (st : State.globalState) ~(timeout:float) ~(name:string) : string =
        malformed attribute would come back as a bare "false";
      - it requires port_no (List.assoc raises without it) while the correct default is local to
        each file (Const.port_no_default: machine 1, hub/switch/router/world_gateway 4, cloud 2,
-       world_bridge 1). Calling the constructor takes that default from where it is defined
+       both bridges 1). Calling the constructor takes that default from where it is defined
        instead of copying seven integers here.
    Cables are not in this list: they need two endpoints and a polarity, which is § 4.5
    (episode 4d-3). *)
@@ -1306,8 +1306,8 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
   =
   let network = st#network in
   let port_no default = match ports with Some n -> n | None -> default in
-  (* cloud and world_bridge have a fixed number of ports (cloud.ml:268, world_bridge.ml:289):
-     accepting --ports there would be accepting an argument we drop. *)
+  (* cloud and the two bridges have a fixed number of ports (cloud.ml:268,
+     bridge_common.ml:45): accepting --ports there would be accepting an argument we drop. *)
   let no_ports_here () =
     Error (Printf.sprintf "a %s has a fixed number of ports: --ports does not apply" kind)
   in
@@ -1333,6 +1333,9 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
   | "world_bridge" when ports <> None -> no_ports_here ()
   | "world_bridge" ->
       Ok (fun () -> ignore (new World_bridge.User_level_world_bridge.world_bridge ~network ~name ()))
+  | "nat_bridge" when ports <> None -> no_ports_here ()
+  | "nat_bridge" ->
+      Ok (fun () -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge ~network ~name ()))
   | "cable" ->
       Error "a cable is created by the connect command, which needs its two endpoints (§ 4.5)"
   | _ ->

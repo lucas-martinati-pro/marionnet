@@ -184,14 +184,14 @@ object(self)
     let current_port_no = self#port_no_of (device_name) in
     let port_type =
       match self#get_row_type (device_row_id) with
-      | "machine" | "world_bridge" -> "machine-port"
+      | "machine" | "world_bridge" | "nat_bridge" -> "machine-port"
       | "gateway" (* retro-compatibility *) -> "machine-port"
       | "router"             -> "router-port"
       | _                    -> "other-device-port"
     in
     let port_prefix =
       match self#get_row_type (device_row_id) with
-        "machine" | "world_bridge" -> "eth"
+        "machine" | "world_bridge" | "nat_bridge" -> "eth"
       | "gateway" (* retro-compatibility *) -> "eth"
       | _ -> "port"
     in

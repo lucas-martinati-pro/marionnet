@@ -899,3 +899,44 @@ de paramètres textuels alignerait ce qui n'a aucune raison de l'être.
   (`ls` → `B1 / world_bridge / off` : round-trip `.mar` intact), et `quit` a tout démonté —
   aucune interface `mnbr`/`mtap` résiduelle, processus sorti. Prochain pas : **7a.3.b**
   (la 9ᵉ nature elle-même).
+
+- **2026-08-16 — épisode 7a.3.b** : *la 9ᵉ nature*. Nouveau **`bin/nat_bridge.ml`** (~400 l.,
+  patron des huit composants) : `Make_menus` complet (dont la **souscription** de
+  `try_to_add_nat_bridge`, sans quoi un `.mar` ne se relit pas), dialogue et aide avec **ses
+  propres mots**, `User_level_nat_bridge.nat_bridge` sur le tronc de 7a.3.a
+  (`~devkind:`Nat_bridge`, `~kind_name:"nat_bridge"`) et `Simulation_level_nat_bridge` qui
+  fournit au tronc ses deux fonctions. Autour : `` `Nat_bridge `` dans `devkind`
+  (`user_level.ml` **et** `.mli` — le devkind n'est qu'un filtre d'égalité, donc aucun `match`
+  exhaustif à compléter), la 3ᵉ entrée du menu planète (`gui_toolbar_COMPONENTS.ml`, libellés
+  *Gateway* / *NAT bridge* / *LAN bridge*), `known_kinds` + le constructeur du canal
+  (`control_server.ml`), les deux treeviews, et **`Nat_bridge_host.release ~instance`** (le
+  `down` **et** l'oubli du mémo, annoncé par 7a.2 comme « viendra avec son usage »).
+  - **L'allocation des numéros vit dans le composant**, sous un mutex de module :
+    `Nat_bridge_host.status` → instances des bridges de **notre** pid → plus petit entier libre
+    ≥ 1 → `ensure ~instance` **dans la même section critique** (deux composants démarrés en
+    parallèle par le task runner liraient sinon la même liste). Aucun fichier d'état. Le numéro
+    est rendu par `?after_terminate`, donc réutilisable dès l'arrêt du composant.
+  - **Icônes** : `bin/images/make-bridge-icons.sh` (neuf, rejouable — les chunks de date du PNG
+    sont exclus, sinon chaque exécution apparaîtrait comme une modification dans git) dérive
+    **deux** jeux badgés, `ico.nat_bridge.*` (« NAT ») et `ico.lan_bridge.*` (« LAN »), des 18
+    `ico.world_bridge.*` **laissées intactes comme source**. D'où un `?icon_prefix` optionnel
+    dans `Bridge_common` (défaut = `kind_name`) : le LAN bridge reste `world_bridge` dans les
+    `.mar` et sur le canal, et ne change que de dessin. Dépannage assumé jusqu'à l'épisode
+    d'iconographie (à 32 px le mot est à peine lisible).
+  - **Preuves mesurées** : `dune build` rc 0 ; module **réellement compilé** (erreur volontaire
+    → échec, retirée → rc 0) ; script d'icônes **idempotent** (`--check` vert au 2ᵉ passage,
+    `git diff` vide sur les 18 sources). **Run réel privilégié piloté par le canal** :
+    `add nat_bridge N1` + `N2` → `start` des deux → côté hôte **`mnbr<pid>-1` (192.168.101.1)
+    et `mnbr<pid>-2` (192.168.102.1)**, chacun avec son propre tap asservi — c'est la preuve au
+    run de la table multi-entrées, reportée par 7a.2 ; `stop N1` retire **le premier seul** (le
+    second reste `UP`), et un `start N1` récupère le numéro 1 libéré ; `save` / `close --save` /
+    `open` rendent les deux composants (`nat_bridge`, `off`, label accentué intact) avec leur
+    ligne dans le treeview des défauts ; `quit` démonte tout (`status` du script hôte :
+    `bridges:[]`, `leftovers:[]`). Enfin, **bout en bout** : une machine trixie câblée à `N1`,
+    adressée en `192.168.101.2/24`, a pingué la passerelle **et 9.9.9.9** à **0 % de perte**.
+  - Constats du banc : dans l'arbre source il faut `MARIONNET_NATBRIDGE_SCRIPT` (sans quoi le
+    composant démarre « on » **sans** bridge, et seul le journal le dit) ; aucun bridge, LAN ou
+    NAT, n'a de ligne dans le treeview `ifconfig` (vérifié sur les deux : le complément de
+    `treeview_ifconfig.ml` est de cohérence, pas d'effet observable) ; et `pgrep -f` sur un
+    motif contenant le nom du binaire **se matche lui-même** (faux positif « encore vivant »).
+  Prochain pas : **7b** (le LAN bridge devient automatique), puis **7c** (retrait du mode).

@@ -37,7 +37,10 @@ module Make (State : sig val st:State.globalState end) = struct
  module Menus_for_crossover_cable = Cable. Make_menus (Params) (Crossover)
  module Menus_for_cloud   = Cloud. Make_menus (Params)
 
- (* World gateway and bridge in the same sub-toolbar: *)
+ (* The three ways to reach the real world, in the same sub-toolbar. They are three
+    natures of components, not three settings of one: what the user chooses on the
+    drawing is what will happen on the host (work-stream modernisation-world-bridge,
+    docs/modernisation-world-bridge.md § 1 bis). *)
  module World_access_button = struct
 
    module F = Menu_factory.Make (struct
@@ -55,15 +58,27 @@ module Make (State : sig val st:State.globalState end) = struct
       let filename = Filename.concat Initialization.Path.images "ico.world_gateway.palette.png" in
       F.add_imagefile_item ~label:"Gateway" filename ()
 
+   let nat_bridge_menu_parent =
+      let filename = Filename.concat Initialization.Path.images "ico.nat_bridge.palette.png" in
+      F.add_imagefile_item ~label:"NAT bridge" filename ()
+
+   (* Still `world_bridge' inside (the name is written in the .mar files); "LAN bridge"
+      is what it is called where a human reads it: *)
    let world_bridge_menu_parent =
-      let filename = Filename.concat Initialization.Path.images "ico.world_bridge.palette.png" in
-      F.add_imagefile_item ~label:"Bridge" filename ()
+      let filename = Filename.concat Initialization.Path.images "ico.lan_bridge.palette.png" in
+      F.add_imagefile_item ~label:"LAN bridge" filename ()
 
    end
 
  module Params_for_world_gateway = struct
   include State
   let menu_parent = World_access_button.world_gateway_menu_parent
+  let packing = `menu_parent (Menu_factory.Menuitem (menu_parent :> GMenu.menu_item_skel))
+ end
+
+ module Params_for_nat_bridge = struct
+  include State
+  let menu_parent = World_access_button.nat_bridge_menu_parent
   let packing = `menu_parent (Menu_factory.Menuitem (menu_parent :> GMenu.menu_item_skel))
  end
 
@@ -74,7 +89,8 @@ module Make (State : sig val st:State.globalState end) = struct
  end
 
  module Menus_for_world_gateway = World_gateway. Make_menus (Params_for_world_gateway)
- module Menus_for_world_bridge  = World_bridge. Make_menus (Params_for_world_bridge)
+ module Menus_for_nat_bridge    = Nat_bridge.    Make_menus (Params_for_nat_bridge)
+ module Menus_for_world_bridge  = World_bridge.  Make_menus (Params_for_world_bridge)
 
 end
 

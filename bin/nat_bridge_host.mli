@@ -91,6 +91,16 @@ val status : unit -> (t list, error) result
     it needs a bridge. *)
 val ensure : ?subnet:string -> ?instance:int -> unit -> (t, error) result
 
+(** [release ?instance ()] gives back one bridge of this process: {!down} on it,
+    and the memo of {!ensure} forgotten, so that a later [ensure] with the same
+    number builds a bridge again instead of handing back one that has gone. This
+    is what a component calls when it stops — the [at_exit] of {!ensure} does the
+    same for whatever is still held when the program leaves.
+    ---
+    The memo is dropped even when the removal failed: a phantom entry would be a
+    worse lie than the leftover, which the [gc] of a later run collects anyway. *)
+val release : ?instance:int -> unit -> (unit, error) result
+
 (** Whether the auxiliary command can be run at all, and without a password
     (i.e. whether the scoped sudoers rule of [marionnet-sudoers.sh] is in
     place). Probed once, with a read-only sub-command. *)

@@ -241,3 +241,30 @@ let ensure ?subnet ?instance () : (t, error) result =
   in
   Mutex.unlock mutex;
   result
+
+(* The counterpart of `ensure', called when a component stops -- what the at_exit
+   does for everything still held at exit time, but for one bridge, while the
+   program goes on.
+   ---
+   The entry leaves the table even when the removal failed: keeping it would make
+   the next `ensure' hand back a bridge that is no longer there, which is a worse
+   lie than the leftover itself. And a leftover is not lost: every artefact is
+   tagged with its bridge name, so the `gc' of a later run collects it. *)
+let release ?instance () : (unit, error) result =
+  Mutex.lock mutex;
+  let result =
+    try
+      let outcome = down ?instance () in
+      let () = Hashtbl.remove mine instance in
+      let () =
+        match outcome with
+        | Ok () ->
+            Log.printf1 "Nat_bridge_host: instance %s was released\n"
+              (match instance with None -> "(unsuffixed)" | Some n -> string_of_int n)
+        | Error e -> Log.printf1 "Nat_bridge_host: %s\n" (string_of_error e)
+      in
+      outcome
+    with e -> Mutex.unlock mutex; raise e
+  in
+  Mutex.unlock mutex;
+  result

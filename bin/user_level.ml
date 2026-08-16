@@ -39,7 +39,10 @@ open Gettext;;
 let spr fmt = Printf.sprintf fmt
 (* --- *)
 
-type devkind = [ `Machine | `Hub | `Switch | `Router | `World_gateway | `World_bridge | `Cloud ] ;;
+(* `World_bridge is the LAN bridge (its internal name is kept: it is written in the .mar
+   files), `Nat_bridge the private bridge Marionnet builds for itself (work-stream
+   modernisation-world-bridge, episode 7a.3.b). *)
+type devkind = [ `Machine | `Hub | `Switch | `Router | `World_gateway | `World_bridge | `Nat_bridge | `Cloud ] ;;
 
 type nodename   = string ;;
 

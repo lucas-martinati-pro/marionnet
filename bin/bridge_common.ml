@@ -66,10 +66,15 @@ module User_level_bridge = struct
     its own [make_simulated_device].
     ---
     [kind_name] is the single name from which the identity of the nature is
-    derived: the root of its subtree in the project file, the [device_type] of
-    its defects row, and the prefix of its icons ([ico.<kind_name>.<state>.<size>.png]).
-    It is {e not} a label: it is written into the [.mar] files, so it must never
-    change once a project has been saved with it. *)
+    derived: the root of its subtree in the project file and the [device_type] of
+    its defects row. It is {e not} a label: it is written into the [.mar] files,
+    so it must never change once a project has been saved with it.
+    ---
+    [icon_prefix] is the only part of that identity a component may name apart
+    ([ico.<icon_prefix>.<state>.<size>.png]), and there is one reason to: the LAN
+    bridge answers to [kind_name = "world_bridge"] forever, while its drawing had
+    to stop being the one of "the" bridge once a second bridge existed. It
+    defaults to [kind_name]. *)
 class virtual bridge =
 
  fun ~network
@@ -77,6 +82,7 @@ class virtual bridge =
      ?label
      ~(devkind : User_level.devkind)
      ~(kind_name : string)
+     ?(icon_prefix : string option)
      () ->
   object (self) inherit OoExtra.destroy_methods ()
 
@@ -98,7 +104,8 @@ class virtual bridge =
 
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
-   (imgDir^"ico."^kind_name^"."^(self#icon_suffix_of_state)^"."^iconsize^".png")
+   let icon_prefix = match icon_prefix with Some x -> x | None -> kind_name in
+   (imgDir^"ico."^icon_prefix^"."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   (* The number of ports is fixed, so a modification only carries a name and a label: *)
   method update_bridge_with ~name ~label =

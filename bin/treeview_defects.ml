@@ -508,6 +508,8 @@ object(self)
 	    "router",  Initialization.Path.images^"treeview-icons/router.xpm";
 	    "cloud",   Initialization.Path.images^"treeview-icons/cloud.xpm";
 	    "world_bridge",  Initialization.Path.images^"treeview-icons/world.xpm";
+	    (* Same small icon for both bridges until the iconography episode: *)
+	    "nat_bridge",    Initialization.Path.images^"treeview-icons/world.xpm";
 	    "gateway" (* retro-compatibility: *),  Initialization.Path.images^"treeview-icons/world.xpm";
 	    "straight-cable",    Initialization.Path.images^"treeview-icons/cable-grey.xpm";
 	    "crossover-cable",   Initialization.Path.images^"treeview-icons/cable-blue.xpm";
