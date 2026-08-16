@@ -540,6 +540,37 @@ possède, un par bridge), et fournir un `release ~instance` — personne ne dét
 bridge sans quitter l'application ; cette fonction viendra en 7a.3 avec son usage, à l'arrêt
 d'un composant.
 
+**7a.3 — la 9ᵉ nature, elle-même en deux temps.** Le découpage d'abord envisagé (« a : la
+nature vit, prouvée par le canal ; b : le menu planète ») **ne tient pas**, et c'est le code
+qui le dit : un composant n'est relu depuis un `.mar` que si sa procédure d'import a été
+souscrite (`network#subscribe_a_try_to_add_procedure`), or cette souscription est faite **dans
+le foncteur `Make_menus`** de chaque composant, instancié par `bin/gui/gui_toolbar_COMPONENTS.ml`.
+Sans entrée de menu, pas de rechargement : la GUI n'est pas détachable de « la nature existe ».
+Le découpage effectivement prouvable sépare donc le **refactor** de l'**ajout** :
+
+| | Contenu | Nature |
+|---|---|---|
+| **7a.3.a** | `bin/bridge_common.ml`, tronc commun extrait de `world_bridge.ml` | refactor pur, aucune nature nouvelle |
+| **7a.3.b** | `bin/nat_bridge.ml`, devkind `` `Nat_bridge ``, icônes, menu planète à 3 entrées, canal, treeviews, `.mar`, allocation et libération d'instance | ajout |
+
+**7a.3.a — ce que les deux bridges ont en commun.** Un composant bridge est un nœud à un seul
+port dont le périphérique simulé est un hub vde à deux ports : un tun/tap de l'hôte d'un côté,
+le hublet du composant de l'autre. Ce mécanisme est identique que le tap rejoigne un bridge
+posé par un administrateur (le LAN bridge d'aujourd'hui) ou le bridge privé que Marionnet se
+construit. La seule chose qui diffère est **quel** bridge — d'où la forme retenue : le tronc
+reçoit une **fonction** `resolve_bridge_name : unit -> string`, il n'inspecte aucun mode.
+`bin/bridge_common.ml` contient donc `Const`, `Data`, la classe user-level `bridge` (virtuelle :
+le périphérique simulé est précisément ce qui distingue les deux natures ; son `kind_name`
+donne à la fois la racine du sous-arbre `.mar`, le `device_type` des défauts et le préfixe des
+icônes) et la classe `bridge_device` (tap, hub, câble interne, cycle de vie), avec deux points
+d'extension : `resolve_bridge_name`, et un `?after_terminate` appelé après la destruction du
+tap — c'est par là que le NAT bridge rendra son numéro d'instance en 7a.3.b.
+
+Ce qui n'y est **pas**, délibérément : le squelette `Make_menus` et les dialogues. Les huit
+composants du programme les répètent déjà à l'identique — c'est le patron maison — et **aucun**
+des mots des deux bridges n'est le même (libellés, tooltips, aide) : un foncteur à une dizaine
+de paramètres textuels alignerait ce qui n'a aucune raison de l'être.
+
 ## 5. Points de vigilance transverses
 
 - **Messages de commit en anglais** (règle dépôt) ; tag/scope = `modernisation-world-bridge`.
@@ -844,3 +875,27 @@ d'un composant.
   le bloc (b) n'étant plus installé sur ce poste (`sudo -n … status` demande un mot de passe).
   Prochain pas : **7a.3** (`bridge_common.ml`, le composant `nat_bridge.ml`, la 9ᵉ nature, le
   menu planète à 3 entrées, `.mar`, canal, treeviews, icônes).
+
+- **2026-08-16 — épisode 7a.3.a** : *ce que les deux bridges ont en commun*. Nouveau
+  `bin/bridge_common.ml` (~290 l.) : `Const`, `Data`, la classe user-level virtuelle `bridge`
+  (paramétrée par `~devkind` et `~kind_name`, d'où la racine `.mar`, le `device_type` des
+  défauts et le préfixe des icônes) et la classe `bridge_device` (tap par `Tap_provider`, hub
+  vde à 2 ports, câble interne, `spawn`/`terminate`/`stop`/`continue`), avec deux points
+  d'extension : `~resolve_bridge_name : unit -> string` — le tronc **n'inspecte aucun mode**,
+  il reçoit une fonction — et `?after_terminate`, par où le NAT bridge rendra son instance en
+  7a.3.b. `bin/world_bridge.ml` **perd 217 lignes pour 44** : il ne garde que ses mots (menus,
+  dialogue, aide), sa fonction de résolution (`Manual` → `MARIONNET_BRIDGE`, `Nat` →
+  `Privileges` puis `Nat_bridge_host.ensure`) et son `make_simulated_device`. Aucune chaîne
+  traduite touchée → **aucune dette i18n** ; `bin/dune` inchangé. Un seul renommage visible :
+  `update_world_bridge_with` devient `update_bridge_with` (hérité du tronc, appelé du seul
+  `Properties.reaction`). **Preuves mesurées** : `dune build` rc 0, et le module est
+  **réellement compilé** (erreur de type volontaire dans `bridge_common.ml` → build en échec
+  sur ce fichier, retirée → rc 0). Surtout, **non-régression au run réel, avec privilèges** —
+  contrairement à ce que disait la fiche mémoire, les blocs (a) et (b) sont bien installés sur
+  ce poste : session pilotée par le canal, `MARIONNET_WORLD_BRIDGE_MODE=nat` et le **vrai**
+  `bin/scripts/marionnet-natbridge.sh` ; `new` → `add world_bridge B1` → `start B1` →
+  `wait --state=on` a donné, côté hôte, `mnbr<pid>` **créé** et `mtap<pid>-0` **asservi**
+  (`master mnbr<pid>`) ; puis `stop`, `save`, `close --save`, `open` ont rendu le composant
+  (`ls` → `B1 / world_bridge / off` : round-trip `.mar` intact), et `quit` a tout démonté —
+  aucune interface `mnbr`/`mtap` résiduelle, processus sorti. Prochain pas : **7a.3.b**
+  (la 9ᵉ nature elle-même).

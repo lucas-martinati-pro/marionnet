@@ -23,32 +23,14 @@
 
 (* --- *)
 module Log = Marionnet_log
-module Option = Ocamlbricks.Option
-module OoExtra = Ocamlbricks.OoExtra
-module Forest = Ocamlbricks.Forest
 module Xforest = Ocamlbricks.Xforest
 (* --- *)
 open Gettext
 
-(* World bridge related constants: *)
-(* TODO: make it configurable! *)
-module Const = struct
- let port_no_default = 1
- let port_no_min = 1
- let port_no_max = 1
-end
-
-
-(* The type of data exchanged with the dialog: *)
-module Data = struct
-type t = {
-  name        : string;
-  label       : string;
-  old_name    : string;
-  }
-
-let to_string t = "<obj>" (* TODO? *)
-end (* Data *)
+(* Everything this component has in common with the NAT bridge — the constants, the
+   type exchanged with the dialog, and both halves of the mechanism — lives there
+   (work-stream modernisation-world-bridge, episode 7a.3): *)
+module Data = Bridge_common.Data
 
 
 module Make_menus (Params : sig
@@ -101,7 +83,7 @@ module Make_menus (Params : sig
     let reaction { name = name; label = label; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_world_bridge.world_bridge) in
-      let action () = h#update_world_bridge_with ~name ~label in
+      let action () = h#update_bridge_with ~name ~label in
       st#network_change action ();
 
   end
@@ -297,30 +279,15 @@ class world_bridge =
      ~name
      ?label
      () ->
-  object (self) inherit OoExtra.destroy_methods ()
+  object (self)
 
   inherit
-    User_level.node_with_defects
+    Bridge_common.User_level_bridge.bridge
       ~network
-      ~name ?label ~devkind:`World_bridge
-      ~port_no:Const.port_no_default
-      ~port_no_min:Const.port_no_min
-      ~port_no_max:Const.port_no_max
-      ~user_port_offset:0
-      ~port_prefix:"eth"
+      ~name ?label
+      ~devkind:`World_bridge
+      ~kind_name:"world_bridge"
       ()
-    as self_as_node_with_defects
-
-  method defects_device_type = "world_bridge"
-  method polarity = User_level.MDI_Auto (* Because is not pedagogic anyway. *)
-  method string_of_devkind = "world_bridge"
-
-  method dotImg iconsize =
-   let imgDir = Initialization.Path.images in
-   (imgDir^"ico.world_bridge."^(self#icon_suffix_of_state)^"."^iconsize^".png")
-
-  method update_world_bridge_with ~name ~label =
-   self_as_node_with_defects#update_with ~name ~label ~port_no:1;
 
   (** Create the simulated device *)
   method private make_simulated_device =
@@ -330,17 +297,6 @@ class world_bridge =
         ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
-
-  method to_tree =
-   Forest.tree_of_leaf ("world_bridge", [
-     ("name"     ,  self#get_name );
-     ("label"    ,  self#get_label);
-     ])
-
-  method! eval_forest_attribute = function
-  | ("name"     , x ) -> self#set_name x
-  | ("label"    , x ) -> self#set_label x
-  | _ -> () (* Forward-comp. *)
 
 end (* class world_bridge *)
 
@@ -352,66 +308,19 @@ end (* module User_level_world_bridge *)
 
 module Simulation_level_world_bridge = struct
 
-(** A World Bridge hub process is just a hub process with exactly two ports,
-    of which the first one is connected to the given host tun/tap interface: *)
-class world_bridge_hub_process =
-  fun ~tap_name
-      ~working_directory
-      ~unexpected_death_callback
-      () ->
-object(self)
-  inherit Simulation_level.vde_switch_process
-      ~port_no:2
-      ~hub:true
-      ~tap_name
-      ~socket_name_prefix:"world_bridge_hub-socket-"
-      ~working_directory
-      ~unexpected_death_callback
-      ()
-      (* as self_as_vde_switch_process *)
-end
-
-class ['parent] world_bridge =
-  fun (* ~id *)
-      ~(parent:'parent)
-      ~bridge_name
-      ~working_directory
-      ~unexpected_death_callback
-      () ->
-object(self)
-  inherit ['parent] Simulation_level.device
-      ~parent
-      ~hublet_no:1
-      ~working_directory
-      ~unexpected_death_callback
-      ()
-      (* as self_as_device *)
-
-  method device_type = "world_bridge"
-
-  val the_hublet_process = ref None
-  method private extract_the_hublet_process =
-    match !the_hublet_process with
-      Some the_hublet_process -> the_hublet_process
-    | None -> failwith "world_bridge: extract_the_hublet_process was called when there is no such process"
-
-  val mutable world_bridge_hub_process = None
-  val mutable world_bridge_tap_name = None
-  val mutable internal_cable_process = None
-
-  (** The host bridge to attach our tap to, resolved AT START-UP TIME rather
-      than read from the configuration at initialisation.
-      ---
-      That deferral is the whole point of the automatic mode: in `Nat the bridge
-      does not exist until we ask for it, and its name (mnbr<pid>) is only known
-      once Nat_bridge_host has built it. In `Manual nothing changes -- the name comes
-      from MARIONNET_BRIDGE, as it always did.
-      ---
-      A failure of the automatic mode does NOT abort the start-up: we fall back
-      on the configured name, so the component behaves exactly as it did before
-      this work-stream (it will fail to find its bridge, and say so), instead of
-      failing in a new way. The reason is always logged. *)
-  method private resolve_bridge_name : string =
+(** The host bridge to attach our tap to, resolved AT START-UP TIME rather
+    than read from the configuration at initialisation.
+    ---
+    That deferral is the whole point of the automatic mode: in `Nat the bridge
+    does not exist until we ask for it, and its name (mnbr<pid>) is only known
+    once Nat_bridge_host has built it. In `Manual nothing changes -- the name comes
+    from MARIONNET_BRIDGE, as it always did.
+    ---
+    A failure of the automatic mode does NOT abort the start-up: we fall back
+    on the configured name, so the component behaves exactly as it did before
+    this work-stream (it will fail to find its bridge, and say so), instead of
+    failing in a new way. The reason is always logged. *)
+let resolve_bridge_name ~bridge_name () : string =
     match Global_options.world_bridge_mode with
     | `Manual -> bridge_name
     | `Nat ->
@@ -443,108 +352,26 @@ object(self)
              in
              bridge_name)
 
-  (** Create the tap with Tap_provider (sudo + iproute2), attached to the
-      bridge resolved just above, and return its name: *)
-  method private make_world_bridge_tap : string option =
-    match world_bridge_tap_name with
-    | None ->
-        let bridge_name = self#resolve_bridge_name in
-        let tap_name_option =
-          (match Tap_provider.make_bridge_tap ~uid:(Unix.getuid ()) ~bridge:bridge_name with
-           | Ok tap_name ->
-               Some tap_name
-           | Error error_message ->
-               let () = Log.printf1 "Failed to create a tap on the world bridge: %s\n" error_message in
-               None (* "non-existing-tap" *)
-           )
-        in
-        let () = world_bridge_tap_name <- tap_name_option in
-        tap_name_option
-    (* --- *)
-    | Some tap_name ->
-        let () = Log.printf1 "A tap for the world bridge already exists: %s\n" tap_name in
-        Some tap_name
-
-  method private destroy_world_bridge_tap =
-    Option.iter
-      (fun tap_name ->
-          let () = Tap_provider.destroy_tap tap_name in
-          (world_bridge_tap_name <- None))
-      (world_bridge_tap_name)
-
-  (* --- *)
-  initializer
-    begin
-      assert ((List.length self#get_hublet_process_list) = 1);
-      (* --- *)
-      the_hublet_process := Some (self#get_hublet_process_of_port 0);
-      (* --- *)
-      world_bridge_hub_process <- self#make_world_bridge_hub_process
-    end
-  (* --- *)
-
-
-  method private make_world_bridge_hub_process : (world_bridge_hub_process option) =
-    let () =
-      if world_bridge_hub_process <> None then () else (* continue: *)
-      Option.iter
-        (fun tap_name ->
-          let result =
-            new world_bridge_hub_process
-              ~tap_name
-              ~working_directory
-              ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-              ()
-            in
-            world_bridge_hub_process <- Some result)
-        (* --- *)
-        (self#make_world_bridge_tap)
-    in
-    world_bridge_hub_process
-
-  method spawn_processes =
-   Option.iter
-     (* --- *)
-     (fun the_world_bridge_hub_process ->
-        (* Spawn the hub process, and wait to be sure it's started: *)
-        let () = the_world_bridge_hub_process#spawn in
-        (* Create the internal cable process from the single hublet to the hub, and spawn it: *)
-         let the_internal_cable_process =
-           Simulation_level.make_ethernet_cable_process
-             ~left_end:the_world_bridge_hub_process
-             ~right_end:self#extract_the_hublet_process
-             ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index 0)
-             ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index 0)
-             ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-             ()
-         in
-         internal_cable_process <- Some the_internal_cable_process;
-         the_internal_cable_process#spawn)
-     (* --- *)
-     self#make_world_bridge_hub_process
-
-  method terminate_processes = begin
-    let () =
-      Log.printf3 "world_bridge %s#terminate_processes:  internal_cable_process=%s  world_bridge_hub_process=%s\n"
-        (parent#name) (Option.to_string internal_cable_process) (Option.to_string world_bridge_hub_process)
-    in
-    (* Terminate the internal cable process and the hub process: *)
-    let () =
-      Task_runner.do_in_parallel
-        [ (fun () -> Option.iter (fun obj -> obj#terminate) internal_cable_process);
-          (fun () -> Option.iter (fun obj -> obj#terminate) world_bridge_hub_process); ]
-    in
-    (* Destroy the tap, via Tap_provider: *)
-    self#destroy_world_bridge_tap;
-    (* Unreference everything: *)
-    internal_cable_process <- None;
-    world_bridge_hub_process <- None;
-    end
-
-  (** As world bridges are stateless from the point of view of the user, stop/continue
-      aren't distinguishable from terminate/spawn: *)
-  method stop_processes = self#terminate_processes
-  method continue_processes = self#spawn_processes
+(** The mechanism itself -- the tap, the two-port hub, the internal cable and their
+    life cycle -- is the one shared with the NAT bridge (see [Bridge_common]). All
+    this component adds is which host bridge its tap must join, and the name under
+    which it appears in the logs and in the process working directory. *)
+class ['parent] world_bridge =
+  fun (* ~id *)
+      ~(parent:'parent)
+      ~bridge_name
+      ~working_directory
+      ~unexpected_death_callback
+      () ->
+object(_self)
+  inherit ['parent] Bridge_common.Simulation_level_bridge.bridge_device
+      ~parent
+      ~device_type:"world_bridge"
+      ~resolve_bridge_name:(resolve_bridge_name ~bridge_name)
+      ~socket_name_prefix:"world_bridge_hub-socket-"
+      ~working_directory
+      ~unexpected_death_callback
+      ()
 end
 
 end (* module Simulation_level_world_bridge *)
