@@ -48,17 +48,16 @@
 # bridge from the GUI, and X silently loses its taps.  Hence: the GUI always says
 # --only, and block (a) then stays exactly as the administrator wrote it.
 #
-# For (b) the commands are NOT invented here: they are exactly what
-# `marionnet-natbridge.sh print-privileged-commands' publishes, which is the
-# single source. Keep the two in step -- that script is the one that runs them.
-# (c) awaits its own script, marionnet-lanbridge.sh (episode 8 of the chantier):
-# writing that grant before the script that justifies it, line by line, is how
-# one ends up with a rule wider than the deed. Until then --enable-lanbridge
-# refuses to install anything, loudly.
+# For (b) and (c) the commands are NOT invented here: they are exactly what
+# `marionnet-natbridge.sh print-privileged-commands' and
+# `marionnet-lanbridge.sh print-privileged-commands' publish, which are the
+# single sources. Keep them in step -- those scripts are the ones that run them.
 #
-# The rules installed are NARROWER than what they replace: marionnet-daemon was
-# a permanent root service whose 0666 socket offered the very same tap creations
-# to *every* local account, with no admin opt-in at all.
+# (a) and (b) are NARROWER than what they replace: marionnet-daemon was a
+# permanent root service whose 0666 socket offered the very same tap creations to
+# *every* local account, with no admin opt-in at all. (c) is NOT narrow, and
+# cannot be -- see the comment above content_lanbridge. That is the whole reason
+# the three blocks are three files, granted at three different moments.
 
 set -euo pipefail
 
@@ -77,6 +76,11 @@ GHOST_NETWORK_PREFIX=172.23.
 # The two below MUST agree with bin/scripts/marionnet-natbridge.sh (same names there):
 BRIDGE_PREFIX=mnbr
 TAG_PREFIX=marionnet-natbridge
+
+# And these two with bin/scripts/marionnet-lanbridge.sh (BRIDGE_PREFIX and
+# ALIAS_PREFIX there):
+LAN_BRIDGE_PREFIX=mnlan
+LAN_ALIAS_PREFIX=marionnet-lanbridge
 
 TOOL=$(basename "$0")
 
@@ -104,9 +108,12 @@ Only --only takes it out of the selection.
 --disable-lanbridge or --disable-bridges to remove those blocks only (block (a)
 is then left alone).
 
-USER defaults to \$SUDO_USER, or to the current user. The rules grant USER the
-iproute2 commands Marionnet needs on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* interfaces only,
-plus the iptables rules carrying the ${TAG_PREFIX}: comment, and nothing else.
+USER defaults to \$SUDO_USER, or to the current user. Blocks (a) and (b) grant
+USER the iproute2 commands Marionnet needs on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* interfaces
+only, plus the iptables rules carrying the ${TAG_PREFIX}: comment, and nothing
+else. Block (c) is wider BY NATURE -- a LAN bridge is the host's own card, whose
+name is not known in advance -- and grants USER the right to move IPv4 addresses
+and the default route on this machine. Read the header of the file it installs.
 EOF
 }
 
@@ -206,16 +213,61 @@ EOF
 
 # --- (c) The LAN bridge -- chantier modernisation-world-bridge, episode 8
 
-# content_lanbridge USER: not written yet, ON PURPOSE. This block is the only one
-# that will name the HOST's own interface, its address and its default route --
-# the very things (a) and (b) are careful never to mention. Such a grant is
-# derived, command by command, from the script that runs them
-# (marionnet-lanbridge.sh, episode 8); guessing it beforehand is how a rule ends
-# up wider than the deed it authorises. So: refuse, explicitly.
+# content_lanbridge USER: what goes into $SUDOERS_FILE_LANBRIDGE. Derived, command
+# by command, from `marionnet-lanbridge.sh print-privileged-commands' -- that
+# script is the one that runs them, and the single source of the list.
+#
+# READ THIS BEFORE WIDENING ANYTHING HERE. Blocks (a) and (b) are careful never
+# to name the host's own card: they act on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* devices, and
+# nothing else on the machine can be reached through them. Block (c) CANNOT be
+# written that way, and no amount of care would change it: a LAN bridge IS the
+# host's card, enslaved to a bridge, with the host's address and default route
+# moved onto it -- and that card has no fixed name. The last three lines below
+# therefore say, in plain words: "$u may reconfigure the IPv4 addressing of this
+# host". They make the ${LAN_BRIDGE_PREFIX}*-scoped lines above them redundant,
+# and those are kept all the same, because they say what the tool actually does
+# and because the day the migration is done differently, dropping the three wide
+# lines will be the whole change.
+#
+# This is precisely why (c) is a block of its own, off by default, asked for from
+# the GUI at the moment a LAN bridge component is started, and never granted at
+# install time by an administrator who is not the user.
 function content_lanbridge {
- echo "$TOOL: block (c) is not available yet: bin/scripts/marionnet-lanbridge.sh does not exist" 1>&2
- echo "$TOOL: (chantier modernisation-world-bridge, episode 8 -- the grant is derived from that script)" 1>&2
- return 3
+ local u=$1 ip
+ ip=$(ip_binary) || return 1
+ # `:' separates host specs in sudoers and must be escaped inside a command
+ # argument, or visudo rejects the whole file (measured at episode 3 with `!'
+ # and `,'). What sudo compares at runtime is the plain text, so the escaped
+ # form still matches the alias the script really sets.
+ local colon='\:'
+ cat <<EOF
+# Installed by $TOOL --enable-lanbridge -- do not edit by hand, regenerate instead.
+# Lets $u build and destroy Marionnet's LAN bridge (${LAN_BRIDGE_PREFIX}*), the one
+# marionnet-lanbridge.sh puts the host's own network card into, so that virtual
+# machines sit on the REAL local network (chantier modernisation-world-bridge).
+# Remove with: $TOOL uninstall --disable-lanbridge
+#
+# The last three lines below are NOT restricted to a device: the host's card has
+# no fixed name. Granting them means granting the right to reconfigure the IPv4
+# addressing of this machine. That is what a LAN bridge does; it is why this
+# block is separate, and why it is the end user -- not the installer -- who asks
+# for it.
+$u ALL=(root) NOPASSWD: $ip link add ${LAN_BRIDGE_PREFIX}* type bridge
+$u ALL=(root) NOPASSWD: $ip link del ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip link set ${LAN_BRIDGE_PREFIX}* address *
+$u ALL=(root) NOPASSWD: $ip link set ${LAN_BRIDGE_PREFIX}* alias ${LAN_ALIAS_PREFIX}${colon}*
+$u ALL=(root) NOPASSWD: $ip link set ${LAN_BRIDGE_PREFIX}* up
+$u ALL=(root) NOPASSWD: $ip link set ${LAN_BRIDGE_PREFIX}* down
+$u ALL=(root) NOPASSWD: $ip addr add * dev ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip addr del * dev ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip route add default via * dev ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip route del default via * dev ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip link set * master ${LAN_BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip link set * nomaster
+$u ALL=(root) NOPASSWD: $ip addr del * dev *
+$u ALL=(root) NOPASSWD: $ip addr add * dev *
+$u ALL=(root) NOPASSWD: $ip route add default via * dev *
+EOF
 }
 
 # --- Blocks as a whole
@@ -359,11 +411,21 @@ function parse_command_line {
 # available_blocks_or_die COMMAND: refuse BEFORE touching anything. Installing
 # (b) and then dying on (c) would leave the system in a state nobody asked for;
 # `uninstall' is exempt, since removing a file that was never written is a no-op.
+#
+# Until episode 8 this was a special case for (c), whose content REFUSED to be
+# produced (marionnet-lanbridge.sh did not exist yet). Now that all three blocks
+# generate, the check is the general one it should always have been: every
+# selected block must be producible -- `ip_binary' and friends can still fail on
+# a machine missing a package.
 function available_blocks_or_die {
- local b
+ local b rc=0
  if [[ $1 = uninstall ]]; then return 0; fi
  for b in "${BLOCKS[@]}"; do
-   if [[ $b = lanbridge ]]; then content_lanbridge || exit $?; fi
+   block_content "$b" "$USER_ARG" >/dev/null || rc=$?
+   if [[ $rc -ne 0 ]]; then
+     echo "$TOOL: block '$b' cannot be generated on this machine; nothing installed." 1>&2
+     exit $rc
+   fi
  done
  return 0
 }

@@ -102,6 +102,10 @@ question que se pose l'étudiant devant la palette.
    composant de plein droit. Son risque ne disparaît pas pour autant : le dialogue
    d'ajout/modification **avertit explicitement d'une coupure possible de l'hôte**, et
    l'asservissement d'une carte Wi-Fi reste impossible (l'AP refuse plusieurs MAC).
+   *Rectifié à l'épisode 8* : contrairement au NAT, ce bridge **n'est pas par processus** et
+   ne s'appelle donc pas `mnlan<pid>` mais **`mnlan0`**, un par hôte — une carte n'a qu'un
+   master, donc deux Marionnet le **partagent**, exactement comme ils partageaient le `br0`
+   fabriqué à la main. Voir § 4.3.
 5. **Les privilèges se demandent au moment où ils servent.** Voir § 1 bis.3 : c'est le
    changement le plus profond, car il déplace la frontière entre l'admin et l'utilisateur.
 
@@ -306,11 +310,13 @@ le suivant existe.
    (un par composant), retrait de `MARIONNET_WORLD_BRIDGE_MODE` et de la variable de
    configuration associée, propagation au canal de contrôle, au format `.mar` et aux
    treeviews. Le gros morceau OCaml/GUI.
-9. **ép. 8** *(à venir)* — **`bin/scripts/marionnet-lanbridge.sh`** : bridge `mnlan<pid>`,
-   détection de la carte de route par défaut, asservissement, migration de l'adresse et des
-   routes, rollback transactionnel et `selftest`, sur le patron exact de
-   `marionnet-natbridge.sh` (contrat JSON, `--fail-after`, tag de commentaire). Plus
-   l'avertissement de coupure hôte, côté GUI.
+9. **ép. 8** — **`bin/scripts/marionnet-lanbridge.sh`** : bridge **`mnlan0`** (un par hôte, et
+   non un par processus : voir § 4.3), détection de la carte de route par défaut,
+   asservissement, migration de l'adresse et des routes, rollback transactionnel et
+   `selftest`, sur le patron exact de `marionnet-natbridge.sh` (contrat JSON, `--fail-after`),
+   **plus le bloc (c) du sudoers**, qui refusait de s'installer tant que ce script n'existait
+   pas. **Zéro OCaml** : l'avertissement de coupure hôte part avec l'épisode 7, qui refond de
+   toute façon le dialogue du composant. **Fait 2026-08-16**, détail en § 4.3.
 10. **ép. 9** *(à venir)* — **refresh i18n consolidé ×12**, qui solde aussi la dette des
     trois chaînes de l'épisode 1 (§ 5).
 
@@ -402,6 +408,61 @@ Quatre décisions, dont **deux prises contre l'intuition initiale, par la mesure
    geste est du harcèlement. Le refus vaut pour la session — pour changer d'avis, relancer
    Marionnet ou lancer le script à la main (la commande exacte figure dans le dialogue d'échec).
    Le succès, lui, n'a besoin d'aucune mémoire : `Nat_bridge.is_usable` répond `true` ensuite.
+
+### 4.3 Épisode 8 en détail — le bridge qui touche à l'hôte
+
+Le NAT bridge (épisode 3) est sûr parce qu'il **ne touche jamais** la carte de l'hôte. Celui-ci
+n'a pas cette option : un LAN bridge **est** la carte de l'hôte, asservie à un bridge, avec
+l'adresse et la route par défaut déplacées dessus. Tout ce qui suit en découle.
+
+**1. Un seul bridge LAN par hôte, `mnlan0`, et non `mnlan<pid>`.** Une carte n'a qu'**un**
+master : deux instances de Marionnet ne peuvent pas avoir chacune le leur. Elles le
+**partagent** — ce qui est aussi ce qu'elles faisaient du `br0` fabriqué à la main. Le § 1 bis.2
+point 4 est corrigé en conséquence.
+
+**2. La propriété se lit sur le système, pas dans un fichier d'état.** Les ports du bridge
+nommés `mtap<pid>-<n>` **sont** la liste de ses usagers ; `down` ne démonte que si plus aucun
+n'appartient à un processus vivant. Le créateur ajoute `alias marionnet-lanbridge:<pid>` sur le
+bridge, ce qui ferme la fenêtre entre « le bridge existe » et « le premier tap y est attaché »
+— sans quoi le `gc` d'une seconde instance pourrait ramasser le bridge sous les pieds de la
+première. Corollaire du même choix : **la restauration de l'hôte se relit elle aussi sur le
+système** (le bridge porte l'adresse et la route ; le port physique est le seul port non-`mtap`),
+donc **aucun fichier d'état** — ni à partager entre comptes Unix, ni à retrouver après un crash.
+C'est plus simple que le NAT bridge, qui en garde un pour la seule mémoire de `ip_forward`.
+
+**3. L'ordre des opérations est la sûreté même.** L'adresse est posée **sur le bridge avant**
+d'être retirée de la carte : elle n'est donc *jamais nulle part*, pas même un instant, et comme
+le bridge n'a pas encore de port, rien ne répond deux fois sur le fil. Le déroulé LIFO en découle
+et c'est le seul qui marche : supprimer la route, **libérer la carte** (`nomaster`), *puis*
+seulement lui rendre son adresse et sa route. Restaurer une adresse sur une carte encore esclave
+ne marcherait qu'à moitié, et y rajouter une route par défaut échouerait. Reste une fenêtre de
+quelques millisecondes, entre le retrait de l'adresse et la route sur le bridge, où l'hôte n'a
+plus de sortie ; un `SIGKILL` pile là laisse l'adresse **sur le bridge** — ce que `down` et `gc`
+savent précisément rendre.
+
+**4. Le bloc (c) du sudoers est large, et le dit.** Les lignes qui nomment le bridge sont bornées
+à `mnlan*` comme ailleurs ; les trois dernières (`ip addr add/del * dev *`, `ip route add default
+via * dev *`) ne peuvent pas l'être, la carte de l'hôte n'ayant pas de nom fixe. Le droit
+accordé est donc, en clair, « reconfigurer l'adressage IPv4 de cette machine » — ce qui *est* la
+fonctionnalité. L'en-tête du fichier installé l'écrit sans euphémisme, et c'est exactement
+pourquoi ce bloc est séparé, désactivé par défaut, et demandé par l'**utilisateur** au moment où
+il pose un LAN bridge, jamais accordé d'avance par un administrateur.
+
+**5. Trois refus, plutôt qu'un demi-succès** : le Wi-Fi (l'AP refuse les MAC multiples d'un
+bridge — le NAT bridge, lui, marche en Wi-Fi et c'est ce que le message conseille), une carte
+déjà asservie, et une route par défaut ambiguë (zéro ou plusieurs cartes). Plus deux
+avertissements non bloquants : NetworkManager gère la carte (il peut la reconfigurer dans notre
+dos), et l'adresse est **recopiée en statique** — aucun bail DHCP n'est renouvelé sur le bridge.
+
+**6. `--netns`, ou comment prouver un chemin destructeur sans casser la machine qui teste.** Le
+`selftest` ne peut pas déplacer l'adresse de la carte sur laquelle on est assis : il se construit
+donc un hôte à lui, dans des espaces de noms réseau — un netns « hôte » (une fausse carte, une
+adresse, une route par défaut), un netns « LAN » (la passerelle) et un netns « invité » —, et y
+joue le vrai `up` puis le vrai `down` via `--netns`. Ce qui est prouvé est ce qui compte : la
+passerelle reste joignable **après** la migration, un invité accroché au bridge atteint le LAN à
+travers lui (la promesse même du LAN bridge), et la carte **retrouve** adresse et route par
+défaut. Comme le banc netns du NAT bridge, tout cela est hors règle sudoers **par choix** : c'est
+un échafaudage de test, pas un chemin produit — d'où le `sudo` interactif.
 
 ## 5. Points de vigilance transverses
 
@@ -617,3 +678,39 @@ Quatre décisions, dont **deux prises contre l'intuition initiale, par la mesure
   puis constater `mnbr<pid>` et un `ping` sortant depuis l'invité. Dette : **10 chaînes**
   `s_`/`f_` neuves (8 dans `privileges.ml`, 1 dans `simple_dialogs.ml`, 1 dans
   `world_bridge.ml`) pour l'épisode 9. Prochain pas : épisode 7 (dédoublement des composants).
+- **2026-08-16 — épisode 8** : **le bridge LAN devient automatique**, et le bloc (c) du sudoers
+  cesse de refuser. `bin/scripts/marionnet-lanbridge.sh` (neuf, patron exact de
+  `marionnet-natbridge.sh` : une ligne JSON sur tout chemin de sortie, pile d'undo LIFO,
+  validateurs ancrés, `up`/`down`/`status`/`gc`/`selftest`/`print-privileged-commands`,
+  `--dry-run`, `--fail-after`) ; `content_lanbridge` de `marionnet-sudoers.sh` **dérivé** de ce
+  `print-privileged-commands` (le refus `rc 3` disparaît, et le garde `available_blocks_or_die`
+  devient la vérification générale « tout bloc sélectionné doit être productible ») ; 1 ligne
+  d'install dans `bin/dune`. **Zéro OCaml**, par la coupe des épisodes 2/3. Les trois décisions
+  et leur pourquoi sont en § 4.3 ; les deux dernières ont été **arrachées par les essais**, pas
+  déduites :
+  1. **`mnlan0`, un par hôte** (§ 1 bis.2 point 4 corrigé) : une carte n'a qu'un master.
+  2. **La carte est gravée dans l'alias du bridge** (`marionnet-lanbridge:<pid>:<carte>`). La
+     première version la **déduisait** (« le seul port qui n'est pas un `mtap` ») ; le premier
+     `selftest` complet l'a tuée en une ligne — l'invité du banc était un port de plus, et le
+     script se retrouvait à devoir **choisir** entre deux cartes. On ne devine pas la carte de
+     quelqu'un : on la lit. La déduction survit en repli pour un bridge non estampillé.
+  3. **L'adresse est posée sur le bridge avant d'être retirée de la carte** : jamais nulle part.
+  **Preuves mesurées le 2026-08-16.** `selftest` **PASSED** : trois espaces de noms (hôte
+  factice / LAN / invité), le vrai `up` migre l'adresse, la passerelle répond **à travers**
+  `mnlan0` (0 % de perte), un invité accroché au bridge par un `mtap<pid>-1` atteint le LAN,
+  `down` **refuse** de démonter tant que ce tap appartient à un pid vivant (`kept:true`), puis
+  `down --force` déroule `route → enslave → addr_del:0 → addr_add:0 → bridge_up → link` et la
+  carte **retrouve** adresse et route par défaut (ping à nouveau vert), sans résidu. Sudoers
+  sous `fakeroot` : `visudo -cf` accepte le bloc (c) — l'échappement `\:` de l'alias passe —,
+  `install --only --enable-lanbridge` laisse le **sha256 de (a) identique**, `--enable-bridges`
+  fonctionne enfin, `uninstall --disable-lanbridge` épargne (a) et (b). **Couverture de la
+  règle** : les **15** commandes réellement exécutées, instanciées, sont toutes couvertes par
+  une ligne du bloc (c) (correspondance par glob, le modèle du `fnmatch(3)` de sudo) — **0 non
+  couverte**. `dune build` rc 0. Deux défauts trouvés par le banc et corrigés : `Array_make X`
+  échoue si l'appelant a un `local X` scalaire (`live_users` accumule désormais dans
+  `__lb_users`), et la déduction de la carte (point 2). **Découverte du poste** : la machine de
+  développement est en **Wi-Fi**, donc `up` y répond `E_WIRELESS` et renvoie vers le NAT bridge
+  — le rejeu sur une vraie carte filaire reste à faire ailleurs, le `selftest` en tenant lieu.
+  **Reste au chantier** : le câblage OCaml (`Lan_bridge`), l'avertissement de coupure hôte et le
+  retrait de `MARIONNET_WORLD_BRIDGE_MODE` partent avec l'épisode 7. Prochain pas : épisode 7
+  (dédoublement des composants).
