@@ -34,16 +34,24 @@
 
     Naming follows [Tap_provider]: the bridge is [mnbr<pid>], where [<pid>] is
     {e this} process, so that a bridge is always attributable to its owner and
-    the [gc] of a crashed run is exact. *)
+    the [gc] of a crashed run is exact. A process may hold several of them, one
+    per component asking for one, told apart by an {e instance} number exactly as
+    the taps are: [mnbr<pid>-<n>]. Passing no instance keeps the unsuffixed name,
+    which is what the single bridge of a process was called before.
+
+    {b Allocating} that number is not this module's business: it belongs to
+    whoever owns the components, since it is one of them per bridge. Here a
+    number is only a key. *)
 
 (** What the caller needs in order to configure a guest behind the bridge. *)
 type t = {
-  bridge       : string;  (** [mnbr<pid>], the name to attach a tap to *)
-  subnet       : string;  (** the /24 prefix, e.g. ["192.168.101"] *)
-  host_address : string;  (** the bridge's own address, [<subnet>.1] *)
-  gateway      : string;  (** what a guest must use as default route *)
-  guest_range  : string;  (** human-readable, e.g. ["192.168.101.2-192.168.101.254"] *)
-  owner_pid    : int;     (** the pid the artefacts are named after *)
+  bridge       : string;      (** [mnbr<pid>] or [mnbr<pid>-<n>], the name to attach a tap to *)
+  subnet       : string;      (** the /24 prefix, e.g. ["192.168.101"] *)
+  host_address : string;      (** the bridge's own address, [<subnet>.1] *)
+  gateway      : string;      (** what a guest must use as default route *)
+  guest_range  : string;      (** human-readable, e.g. ["192.168.101.2-192.168.101.254"] *)
+  owner_pid    : int;         (** the pid the artefacts are named after *)
+  instance     : int option;  (** the instance number, [None] for the unsuffixed name *)
 }
 
 (** A failure as the script reports it: [code] is one of its closed enumeration
@@ -54,28 +62,34 @@ type error = { code : string; message : string }
 
 val string_of_error : error -> string
 
-(** [up ?subnet ()] creates the bridge of this process and its NAT rules, and is
-    idempotent: on a bridge that already exists it succeeds and returns its
-    addressing. [?subnet] forces a /24 prefix (e.g. ["192.168.101"]) instead of
-    letting the script pick the first one free of the host's routes. *)
-val up : ?subnet:string -> unit -> (t, error) result
+(** [up ?subnet ?instance ()] creates one bridge of this process and its NAT
+    rules, and is idempotent: on a bridge that already exists it succeeds and
+    returns its addressing. [?subnet] forces a /24 prefix (e.g. ["192.168.101"])
+    instead of letting the script pick the first one free of the host's routes;
+    [?instance] names the bridge [mnbr<pid>-<n>] instead of [mnbr<pid>]. *)
+val up : ?subnet:string -> ?instance:int -> unit -> (t, error) result
 
-(** Removes the bridge of this process and every rule tagged with its name.
-    Idempotent, and honest: it fails if something could not be removed. *)
-val down : unit -> (unit, error) result
+(** Removes one bridge of this process and every rule tagged with its name — the
+    one designated by [?instance], as {!up} named it. Idempotent, and honest: it
+    fails if something could not be removed. *)
+val down : ?instance:int -> unit -> (unit, error) result
 
 (** Removes the artefacts of {e dead} owners only — the counterpart of
     {!Tap_provider.purge_orphan_taps}, to be called once at start-up. *)
 val gc : unit -> (unit, error) result
 
-(** Every NAT bridge currently on this host, ours and other instances'. *)
+(** Every NAT bridge currently on this host, ours and other processes'. Reading
+    the [instance] of those whose [owner_pid] is ours is how a caller knows which
+    numbers are already taken, without any state file. *)
 val status : unit -> (t list, error) result
 
-(** [ensure ()] is [up] memoised: the first successful call also registers the
-    [at_exit] that tears the bridge down, so that the bridge lives and dies with
-    Marionnet. This is what a component calls when it needs a bridge; it may be
-    called from any number of components. *)
-val ensure : ?subnet:string -> unit -> (t, error) result
+(** [ensure ?instance ()] is [up] memoised {e per instance}: a second call with
+    the same [?instance] returns the bridge built by the first one, a call with
+    another one builds another bridge (another /24). The first success also
+    registers the [at_exit] that tears down {e every} bridge this process holds,
+    so that they live and die with Marionnet. This is what a component calls when
+    it needs a bridge. *)
+val ensure : ?subnet:string -> ?instance:int -> unit -> (t, error) result
 
 (** Whether the auxiliary command can be run at all, and without a password
     (i.e. whether the scoped sudoers rule of [marionnet-sudoers.sh] is in

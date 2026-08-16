@@ -94,7 +94,7 @@ question que se pose l'étudiant devant la palette.
    réseaux privés séparés (`mnbr<pid>-1`, `mnbr<pid>-2`, un /24 chacun) : c'est ce qu'un
    étudiant attend en posant deux équipements distincts. L'`ensure` mémoïsé de
    `Nat_bridge` (épisode 3, un seul bridge par processus) devient une table indexée par
-   composant.
+   composant — fait à l'épisode 7a.2, dans `Nat_bridge_host`.
 4. **Le LAN bridge devient automatique lui aussi**, par un script hôte symétrique
    **`bin/scripts/marionnet-lanbridge.sh`** : détection de la carte qui porte la route par
    défaut, asservissement au bridge, migration de l'adresse et des routes, rollback
@@ -515,6 +515,31 @@ Ce n'est pas une supposition — la couverture a été rejouée par la méthode 
 (correspondance `fnmatch`, le modèle de sudo) sur les trois formes de nom : **15/15** pour
 `mnbr<pid>`, `mnbr<pid>-1` et `mnbr<pid>-42`.
 
+**7a.2 — l'appelant OCaml prend le nom qui lui revient, et sait en tenir plusieurs.** Deux
+gestes, tous deux préalables au composant :
+
+1. **Le nom `nat_bridge` est libéré.** `bin/nat_bridge.ml(i)` devient
+   `bin/nat_bridge_host.ml(i)` (`git mv`), conformément à la nomenclature ci-dessus : le nom nu
+   appartient au **composant** (7a.3), le suffixe `_host` à l'**appelant du script hôte**. Le
+   renommage ne touche que des références de modules (`world_bridge.ml`, `privileges.ml(i)`,
+   `global_options.ml(i)`) et deux renvois en commentaire dans le script lui-même ; `bin/dune`
+   est inchangé (les modules de la GUI sont pris par `(:standard \ …)`), et aucune chaîne
+   traduite n'est touchée, donc **aucune dette i18n** n'est créée.
+2. **Le mémo d'un bridge devient une table de bridges.** `ensure` mémoïsait un
+   `t option ref` — un bridge par processus, ce que l'épisode 3 suffisait à justifier. Il tient
+   désormais une `(int option, t) Hashtbl.t` dont la **clé est l'argument d'instance**, `None`
+   étant le nom non suffixé. `up` et `down` prennent un `?instance` qu'ils transmettent au
+   script ; `t` gagne un champ `instance : int option`, lu dans le rapport — c'est ce qui
+   permettra à 7a.3 de savoir quels numéros sont déjà pris en lisant `status`, toujours **sans
+   fichier d'état**. L'`at_exit`, enregistré une seule fois et gardé par le pid comme avant,
+   démonte **toutes** les entrées de la table : en oublier une laisserait un bridge et ses
+   règles NAT derrière, à la charge du `gc` d'un run ultérieur.
+
+**Ce que 7a.2 ne fait délibérément pas** : allouer les numéros (c'est le composant qui les
+possède, un par bridge), et fournir un `release ~instance` — personne ne détruit encore un
+bridge sans quitter l'application ; cette fonction viendra en 7a.3 avec son usage, à l'arrêt
+d'un composant.
+
 ## 5. Points de vigilance transverses
 
 - **Messages de commit en anglais** (règle dépôt) ; tag/scope = `modernisation-world-bridge`.
@@ -791,3 +816,31 @@ Ce n'est pas une supposition — la couverture a été rejouée par la méthode 
   au sous-épisode** : le `selftest` complet (ses invités netns sont hors règle sudoers **par
   choix**, il demande donc un mot de passe — geste humain). Prochain pas : 7a.2
   (`nat_bridge_host.ml(i)`, le mémo devient une table indexée par instance).
+
+- **2026-08-16 — épisode 7a.2** : *l'appelant OCaml prend son nom et sait en tenir plusieurs*
+  (§ 4.4). `bin/nat_bridge.ml(i)` → `bin/nat_bridge_host.ml(i)` par `git mv`, ce qui **libère
+  le nom `nat_bridge` pour le composant** de 7a.3 ; références mises à jour dans
+  `world_bridge.ml`, `privileges.ml(i)`, `global_options.ml(i)` et dans les deux renvois en
+  commentaire du script hôte ; `bin/dune` inchangé, aucune chaîne traduite touchée. Côté
+  fonction : `up`/`down`/`ensure` prennent un `?instance`, `t` gagne `instance : int option`
+  (lu dans le rapport, absent = nom non suffixé), le mémo `t option ref` devient une
+  `(int option, t) Hashtbl.t` sous le même mutex, et l'`at_exit` — enregistré une fois,
+  toujours gardé par le pid — démonte **toutes** les entrées. **Preuves mesurées** :
+  `dune build` rc 0 ; le module est **réellement compilé** (erreur de type volontaire → build
+  en échec sur `bin/nat_bridge_host.ml`, retirée, rc 0 de nouveau — le piège « dune ne compile
+  pas un module d'exécutable que personne ne référence » est ici vérifié, pas supposé) ; plus
+  aucune occurrence de `Nat_bridge` hors `Nat_bridge_host` dans `bin/` ; et un **run réel du
+  binaire**, piloté par le canal, avec `MARIONNET_NATBRIDGE_SCRIPT` pointant sur un script
+  **simulé** (jetable, hors dépôt) qui journalise son `argv` et rend le JSON du contrat :
+  `new` → `add world_bridge w1` → `start w1` a produit exactement `status` (la sonde
+  `is_usable`) puis `up --owner-pid <pid de Marionnet>` **sans `--instance`** — la
+  non-régression du chemin d'hier — et `quit` a produit `down --owner-pid <même pid>` par
+  l'`at_exit`, avec sortie du processus en rc 0 et aucun résidu. Le banc simulé est le bon
+  outil ici : il exerce **ce que 7a.2 change** (arguments, table, `at_exit`) sans privilège,
+  alors que la partie privilégiée, inchangée, est déjà prouvée aux épisodes 3 et 7a.1.
+  **Reste au sous-épisode** : la table à **plusieurs** entrées n'est pas encore exercée au run
+  — décision prise avec l'utilisateur, cette preuve appartient à 7a.3, où deux composants
+  alloueront deux numéros et deux /24 ; et le rejeu privilégié (`sudo -n`) n'a pas été refait,
+  le bloc (b) n'étant plus installé sur ce poste (`sudo -n … status` demande un mot de passe).
+  Prochain pas : **7a.3** (`bridge_common.ml`, le composant `nat_bridge.ml`, la 9ᵉ nature, le
+  menu planète à 3 entrées, `.mar`, canal, treeviews, icônes).

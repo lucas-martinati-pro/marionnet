@@ -98,11 +98,11 @@ let natbridge_arguments = ["install"; "--only"; "--enable-natbridge"]
    off again, within the same second. A refusal is an answer; asking twice for the
    same gesture is nagging. It holds for the session — to change one's mind, restart
    Marionnet, or run marionnet-sudoers.sh from a terminal. A SUCCESS needs no memory:
-   Nat_bridge.is_usable answers `true' from then on and we return above. *)
+   Nat_bridge_host.is_usable answers `true' from then on and we return above. *)
 let verdict : (unit, string) result option ref = ref None
 
 let ensure_natbridge () : (unit, string) result =
-  if Nat_bridge.is_usable () then Ok () else
+  if Nat_bridge_host.is_usable () then Ok () else
   match !verdict with
   | Some (Error _ as remembered) ->
       let () = Log.printf "Privileges: the NAT bridge rights were already refused in this session; not asking again\n" in
@@ -122,8 +122,8 @@ let ensure_natbridge () : (unit, string) result =
       let title = (s_ "Administrator rights required") in
       (* The verdict is memoised, and we are about to change what it answers. *)
       let succeeded () =
-        Nat_bridge.forget_usability ();
-        Nat_bridge.is_usable ()
+        Nat_bridge_host.forget_usability ();
+        Nat_bridge_host.is_usable ()
       in
       (* The script said yes, so the honest question left is whether the host now
          behaves as it should: only the probe can answer that. *)

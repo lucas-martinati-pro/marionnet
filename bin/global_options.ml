@@ -69,7 +69,7 @@ let ethernet_world_bridge_name =
 
     - [`Nat]    : Marionnet builds its own private bridge and NATs it to the
                   outside, through the auxiliary command marionnet-natbridge.sh
-                  (see Nat_bridge). Nothing has to be prepared on the host, and
+                  (see Nat_bridge_host). Nothing has to be prepared on the host, and
                   the host interface is never touched. This is the mode that also
                   works on a Wi-Fi laptop, where enslaving the card cannot work.
     - [`Manual] : the historical behaviour -- attach to the pre-existing host

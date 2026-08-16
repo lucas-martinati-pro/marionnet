@@ -55,7 +55,7 @@ val ethernet_world_bridge_name : string
     (work-stream [modernisation-world-bridge], option A).
 
     - [`Nat]: Marionnet builds its own private bridge and NATs it to the outside
-      ({!Nat_bridge}); nothing has to be prepared on the host, and the host
+      ({!Nat_bridge_host}); nothing has to be prepared on the host, and the host
       interface is never touched — the only mode that can work on a Wi-Fi laptop.
     - [`Manual]: the historical behaviour, attach to the pre-existing bridge
       named by {!ethernet_world_bridge_name}.

@@ -42,7 +42,7 @@
 
 (** Make sure the scoped sudoers block of the private NAT bridge is installed,
     asking the user for their password if that is what it takes. The sequence:
-    probe ({!Nat_bridge.is_usable}), then try without a password (a live [sudo]
+    probe ({!Nat_bridge_host.is_usable}), then try without a password (a live [sudo]
     ticket is enough), then the dialog — up to three attempts. Returns [Ok ()]
     when the probe finally succeeds, and an [Error] carrying the script's own
     diagnostic otherwise; a user who cancels is an [Error] too, a polite one.
@@ -52,7 +52,7 @@
     the caller, because starting one component goes through this function several
     times. The failed verdict is remembered for the session, so a user who says no
     is not asked again; to change their mind, they restart Marionnet or run the
-    script by hand. A success needs no such memory ({!Nat_bridge.is_usable} then
+    script by hand. A success needs no such memory ({!Nat_bridge_host.is_usable} then
     answers [true] and the call returns at once).
     ---
     Safe to call from any thread: the dialog it may open goes through

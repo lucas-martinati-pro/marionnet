@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
-(* Interface documentation is in nat_bridge.mli (single source). What follows are
-   implementation notes only. *)
+(* Interface documentation is in nat_bridge_host.mli (single source). What follows
+   are implementation notes only. *)
 
 (* --- *)
 module Log = Marionnet_log
@@ -31,6 +31,7 @@ type t = {
   gateway      : string;
   guest_range  : string;
   owner_pid    : int;
+  instance     : int option;
 }
 
 type error = { code : string; message : string }
@@ -67,7 +68,7 @@ let json_of_output (output : string) : (Yojson.Safe.t, error) result =
 let log_stderr (path : string) : unit =
   try
     let text = UnixExtra.cat path in
-    if String.trim text <> "" then Log.printf1 "Nat_bridge: %s\n" (String.trim text)
+    if String.trim text <> "" then Log.printf1 "Nat_bridge_host: %s\n" (String.trim text)
   with _ -> ()
 
 let run_json (arguments : string list) : (Yojson.Safe.t, error) result =
@@ -123,7 +124,10 @@ let t_of_json json : (t, error) result =
            host_address = field "host_address" (subnet ^ ".1");
            gateway      = field "gateway"      (subnet ^ ".1");
            guest_range  = field "guest_range"  (subnet ^ ".2-" ^ subnet ^ ".254");
-           owner_pid    = (match int_member "owner_pid" json with Some p -> p | None -> owner_pid) }
+           owner_pid    = (match int_member "owner_pid" json with Some p -> p | None -> owner_pid);
+           (* The script publishes `instance' only when it was given one, so the
+              absent field IS the unsuffixed name -- not a missing value. *)
+           instance     = int_member "instance" json }
   | _ ->
       Error { code = "E_INTERNAL";
               message = "the report is a success but names no bridge" }
@@ -138,14 +142,20 @@ let call (arguments : string list) : (Yojson.Safe.t, error) result =
 
 let owner_pid_arguments = ["--owner-pid"; string_of_int owner_pid]
 
-let up ?subnet () : (t, error) result =
+(* Absent option, absent argument: the script then uses the unsuffixed name, so
+   a caller that knows nothing of instances behaves exactly as it did before. *)
+let instance_arguments = function
+  | None -> []
+  | Some n -> ["--instance"; string_of_int n]
+
+let up ?subnet ?instance () : (t, error) result =
   let subnet_arguments = match subnet with None -> [] | Some s -> ["--subnet"; s] in
-  match call (["up"] @ owner_pid_arguments @ subnet_arguments) with
+  match call (["up"] @ owner_pid_arguments @ (instance_arguments instance) @ subnet_arguments) with
   | Error _ as failure -> failure
   | Ok json -> t_of_json json
 
-let down () : (unit, error) result =
-  match call (["down"] @ owner_pid_arguments) with
+let down ?instance () : (unit, error) result =
+  match call (["down"] @ owner_pid_arguments @ (instance_arguments instance)) with
   | Error _ as failure -> failure
   | Ok _ -> Ok ()
 
@@ -183,40 +193,49 @@ let is_usable () =
    Tap_provider.ensure_sudoers_rule, which resets its own cache in place. *)
 let forget_usability () = usable := None
 
-(* --- The bridge of this process, created at most once
+(* --- The bridges of this process, each created at most once
+   ---
+   One bridge per component asking for one, hence a table rather than the single
+   memo of episode 3: the key is the instance argument itself, `None' being the
+   unsuffixed name. Allocating those numbers is the caller's business.
    ---
    The at_exit is registered only after a bridge really exists, and carries the
    same pid guard as Tap_provider's: at_exit also runs in the children forked by
    ocamlbricks' network servers, and without the guard closing an X11 relay would
-   tear down the bridge of the still-running VMs. *)
+   tear down the bridges of the still-running VMs. It takes down EVERY bridge of
+   the table: forgetting one would leave a bridge and its NAT rules behind, for
+   the `gc' of a later run to collect. *)
 
 let mutex = Mutex.create ()
-let mine : t option ref = ref None
+let mine : (int option, t) Hashtbl.t = Hashtbl.create 4
 let at_exit_registered = ref false
 
 let register_at_exit () =
   if not !at_exit_registered then begin
     at_exit_registered := true;
     at_exit (fun () ->
-      if Unix.getpid () = owner_pid && !mine <> None then
-        match down () with
-        | Ok () -> Log.printf "Nat_bridge: the NAT bridge was removed\n"
-        | Error e -> Log.printf1 "Nat_bridge: %s\n" (string_of_error e))
+      if Unix.getpid () = owner_pid then
+        Hashtbl.iter
+          (fun instance bridge ->
+             match down ?instance () with
+             | Ok () -> Log.printf1 "Nat_bridge_host: %s was removed\n" bridge.bridge
+             | Error e -> Log.printf1 "Nat_bridge_host: %s\n" (string_of_error e))
+          mine)
   end
 
-let ensure ?subnet () : (t, error) result =
+let ensure ?subnet ?instance () : (t, error) result =
   Mutex.lock mutex;
   let result =
     try
-      match !mine with
+      match Hashtbl.find_opt mine instance with
       | Some bridge -> Ok bridge
       | None ->
-          (match up ?subnet () with
+          (match up ?subnet ?instance () with
            | Error _ as failure -> failure
            | Ok bridge ->
-               mine := Some bridge;
+               Hashtbl.replace mine instance bridge;
                register_at_exit ();
-               Log.printf2 "Nat_bridge: %s is up on %s.0/24\n" bridge.bridge bridge.subnet;
+               Log.printf2 "Nat_bridge_host: %s is up on %s.0/24\n" bridge.bridge bridge.subnet;
                Ok bridge)
     with e -> Mutex.unlock mutex; raise e
   in

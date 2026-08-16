@@ -206,7 +206,7 @@ let make
      Once the rule is installed the probe answers `true' and the notice goes away
      by itself. *)
   let () =
-    if Global_options.world_bridge_mode = `Nat && not (Nat_bridge.is_usable ()) then
+    if Global_options.world_bridge_mode = `Nat && not (Nat_bridge_host.is_usable ()) then
       let _ =
         GMisc.label
           ~markup:("<i>" ^ Glib.Markup.escape_text
@@ -404,7 +404,7 @@ object(self)
       ---
       That deferral is the whole point of the automatic mode: in `Nat the bridge
       does not exist until we ask for it, and its name (mnbr<pid>) is only known
-      once Nat_bridge has built it. In `Manual nothing changes -- the name comes
+      once Nat_bridge_host has built it. In `Manual nothing changes -- the name comes
       from MARIONNET_BRIDGE, as it always did.
       ---
       A failure of the automatic mode does NOT abort the start-up: we fall back
@@ -418,7 +418,7 @@ object(self)
         (* The scoped sudoers block of the NAT bridge is granted by the user, not
            by the administrator (docs/modernisation-world-bridge.md § 1 bis.3), and
            this is the moment it is needed. Privileges asks for the password and
-           installs it; on refusal we simply carry on and let Nat_bridge fail as it
+           installs it; on refusal we simply carry on and let Nat_bridge_host fail as it
            did before. Privileges tells the user itself when it fails, exactly once
            per session; here we only leave a trace in the log. *)
         let () =
@@ -427,19 +427,19 @@ object(self)
           | Error message ->
               Log.printf1 "world_bridge: no administrator rights for the NAT bridge: %s\n" message
         in
-        (match Nat_bridge.ensure () with
+        (match Nat_bridge_host.ensure () with
          | Ok info ->
              let () =
                Log.printf2
                  "world_bridge: using the automatic NAT bridge %s (guests: address in %s.0/24)\n"
-                 info.Nat_bridge.bridge info.Nat_bridge.subnet
+                 info.Nat_bridge_host.bridge info.Nat_bridge_host.subnet
              in
-             info.Nat_bridge.bridge
+             info.Nat_bridge_host.bridge
          | Error e ->
              let () =
                Log.printf2
                  "world_bridge: the automatic NAT bridge is unavailable (%s); falling back on the configured bridge %s\n"
-                 (Nat_bridge.string_of_error e) bridge_name
+                 (Nat_bridge_host.string_of_error e) bridge_name
              in
              bridge_name)
 

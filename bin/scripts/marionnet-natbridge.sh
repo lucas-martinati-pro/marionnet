@@ -28,7 +28,7 @@
 #
 # THIS SCRIPT IS THE IMPLEMENTATION, NOT A PROOF OF CONCEPT (it was one, at
 # episode 2, under the name marionnet-natbridge-poc.sh in useful-scripts/). The
-# OCaml side does NOT reimplement any of it: bin/nat_bridge.ml runs this command
+# OCaml side does NOT reimplement any of it: bin/nat_bridge_host.ml runs this command
 # and reads its JSON. One sequence of `ip' and `iptables' calls, one source of
 # truth -- including for the privileged command list, which
 # `print-privileged-commands' publishes and bin/scripts/marionnet-sudoers.sh
@@ -126,7 +126,7 @@ source_bashbricks >/dev/null || exit 3
 set -eEo pipefail
 
 # --- Constants. BRIDGE_PREFIX and TAG_PREFIX are part of the contract with
-# --- bin/nat_bridge.ml and with the sudoers rule: do not change them alone.
+# --- bin/nat_bridge_host.ml and with the sudoers rule: do not change them alone.
 
 BRIDGE_PREFIX=mnbr
 TAG_PREFIX=marionnet-natbridge
