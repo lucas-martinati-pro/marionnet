@@ -464,6 +464,57 @@ travers lui (la promesse même du LAN bridge), et la carte **retrouve** adresse 
 défaut. Comme le banc netns du NAT bridge, tout cela est hors règle sudoers **par choix** : c'est
 un échafaudage de test, pas un chemin produit — d'où le `sudo` interactif.
 
+### 4.4 Épisode 7 en détail — le dédoublement, en trois temps
+
+L'épisode 7 est le seul gros morceau OCaml/GUI du chantier, et il couvre six sujets qui n'ont
+pas la même nature (un script hôte, un module d'appel, une nature de composant, un dialogue,
+une suppression). Il se joue donc en **trois sous-épisodes**, chacun prouvable et committable
+seul :
+
+| Sous-épisode | Contenu | OCaml |
+|---|---|---|
+| **7a** | la nature *NAT bridge* : script hôte multi-instances, `Nat_bridge_host` indexé, composant neuf, menu planète à 3 entrées, `.mar`, canal, treeviews | oui (le gros) |
+| **7b** | le *LAN bridge* devient automatique : `Lan_bridge_host` appelant `marionnet-lanbridge.sh`, bloc (c) demandé depuis la GUI, avertissement de coupure hôte | oui |
+| **7c** | retrait de `MARIONNET_WORLD_BRIDGE_MODE`, de `Global_options.world_bridge_mode` et du contrôle `check_bridge_existence_and_warning` | oui (suppression) |
+
+**Nomenclature des modules** (arrêtée avant d'écrire la première ligne, parce que le nom
+`nat_bridge` était déjà pris par l'appelant de l'épisode 3) : le suffixe **`_host`** désigne
+l'appelant OCaml mince d'un **script hôte**, et le **nom nu** le **composant** du réseau
+virtuel. D'où `bridge_common.ml` (le tronc commun), `lan_bridge.ml` (ex-`world_bridge.ml`) et
+`nat_bridge.ml` (neuf) pour les composants ; `nat_bridge_host.ml(i)` (ex-`nat_bridge.ml(i)`) et
+`lan_bridge_host.ml(i)` (neuf) pour les appelants.
+
+**L'identité interne du LAN bridge ne change pas** : `string_of_devkind` reste `"world_bridge"`,
+la racine `.mar` et le `kind` du canal de contrôle aussi. Seuls les **libellés** deviennent
+« LAN bridge ». Un `.mar` écrit hier reste lisible, et les scripts de TP publiés (qui disent
+`add world_bridge`) continuent de fonctionner sans alias ni migration : le renommage ne se voit
+que là où un humain lit, ce qui est précisément l'objet de ce chantier.
+
+**7a.1 — le script hôte apprend à en tenir plusieurs.** `marionnet-natbridge.sh` nommait son
+bridge `mnbr<pid>` : **un par processus**. Un bridge par composant impose un suffixe
+d'instance, `mnbr<pid>-<n>`, sur le patron exact des taps (`mtap<pid>-<n>`). L'option
+`--instance N` est **optionnelle** : sans elle le nom reste celui d'hier, donc l'appelant OCaml
+actuel et tout ce qui existe déjà continuent de marcher inchangés. Trois points méritent d'être
+notés :
+
+1. **`mnbr123` est un préfixe de `mnbr123-1`.** Chercher un tag iptables par sous-chaîne
+   (`grep -F`) faisait donc croire au `down` du bridge non suffixé que les règles de l'instance 1
+   étaient les siennes — et il aurait tenté de les supprimer avec le mauvais sous-réseau.
+   D'où `tagged_rules_exist`, qui exige que le tag soit suivi d'autre chose qu'un chiffre ou un
+   tiret. C'est le genre de bogue qu'aucun test à une seule instance ne peut révéler.
+2. **Un nom d'interface ne dépasse pas 15 caractères** (`IFNAMSIZ - 1`) et le noyau **refuse**
+   au lieu de tronquer. `require_bridge` mesure donc la longueur et rend `E_BAD_INSTANCE` avant
+   toute action : un pid à 7 chiffres laisse la place à 3 chiffres d'instance.
+3. **Le `gc` reste exact** parce qu'il déduit du nom, désormais, *et* le pid *et* l'instance
+   (`pid_of_bridge` / `instance_of_bridge`) : un processus mort qui laisse trois bridges se fait
+   ramasser en trois `down` ciblés, sans fichier d'état.
+
+**Le bloc (b) du sudoers n'a eu aucune modification à recevoir** : ses lignes bornent le device
+à `mnbr*` et le tag à `marionnet-natbridge\:mnbr*`, deux globs que la forme suffixée satisfait.
+Ce n'est pas une supposition — la couverture a été rejouée par la méthode de l'épisode 8
+(correspondance `fnmatch`, le modèle de sudo) sur les trois formes de nom : **15/15** pour
+`mnbr<pid>`, `mnbr<pid>-1` et `mnbr<pid>-42`.
+
 ## 5. Points de vigilance transverses
 
 - **Messages de commit en anglais** (règle dépôt) ; tag/scope = `modernisation-world-bridge`.
@@ -714,3 +765,29 @@ un échafaudage de test, pas un chemin produit — d'où le `sudo` interactif.
   **Reste au chantier** : le câblage OCaml (`Lan_bridge`), l'avertissement de coupure hôte et le
   retrait de `MARIONNET_WORLD_BRIDGE_MODE` partent avec l'épisode 7. Prochain pas : épisode 7
   (dédoublement des composants).
+
+- **2026-08-16 — épisode 7a.1** : *plusieurs bridges NAT pour un seul Marionnet*. L'épisode 7
+  se joue en trois temps (§ 4.4) ; celui-ci est le premier et ne touche **aucune ligne
+  d'OCaml** : `bin/scripts/marionnet-natbridge.sh` accepte `--instance N` et nomme alors son
+  bridge `mnbr<pid>-<n>`, ce qu'exige la décision « un bridge NAT par composant » (§ 1 bis.2
+  point 3). L'option est optionnelle et le nom d'hier est le défaut, donc `bin/nat_bridge.ml`
+  et tout l'existant sont inchangés. Ajouts : `require_instance`, garde de longueur
+  `IFNAMSIZ` dans `require_bridge` (code `E_BAD_INSTANCE`), `pid_of_bridge` /
+  `instance_of_bridge` / `bridges_of_pid`, et surtout **`tagged_rules_exist`** — parce que
+  `mnbr123` est un **préfixe** de `mnbr123-1` et que la recherche du tag par sous-chaîne
+  faisait confondre les règles de deux instances (défaut trouvé en écrivant, pas au banc :
+  invisible tant qu'il n'y a qu'une instance). `status` publie le champ `instance` **quand il
+  y en a une** (jamais une chaîne vide), `gc` déduit du nom le pid *et* l'instance, et le
+  `selftest` monte désormais **deux** bridges, un invité derrière chacun, démonte le premier
+  et vérifie que le second survit et sort toujours. **Preuves mesurées** : `bash -n` rc 0 ;
+  garde de longueur (16 caractères refusés, 15 acceptés) ; **couverture du bloc (b) du
+  sudoers inchangé — 15/15 commandes pour `mnbr<pid>`, `mnbr<pid>-1` et `mnbr<pid>-42`**
+  (correspondance `fnmatch`, méthode de l'épisode 8) ; et le **cycle réel sur le système**, en
+  `sudo -n` et sans mot de passe : deux bridges simultanés sur deux /24 distincts
+  (192.168.101 et .102), `status` les distinguant par leur instance, `down --instance 1`
+  laissant le second intact (6 étapes défaites, `rolled_back:true`), `gc` ramassant le second
+  après la mort de leur propriétaire, puis **zéro bridge et zéro règle iptables restants** ;
+  enfin la non-régression du nom non suffixé (`up`/`status`/`down` identiques à hier). **Reste
+  au sous-épisode** : le `selftest` complet (ses invités netns sont hors règle sudoers **par
+  choix**, il demande donc un mot de passe — geste humain). Prochain pas : 7a.2
+  (`nat_bridge_host.ml(i)`, le mémo devient une table indexée par instance).

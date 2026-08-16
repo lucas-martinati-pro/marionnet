@@ -72,6 +72,23 @@
 # `gc' can recognise, and only then remove, what a dead process left behind. The
 # owner pid is NOT this script's pid (the script exits, the bridge must outlive
 # it): it defaults to the caller's, and Marionnet passes its own with --owner-pid.
+#
+# --- SEVERAL BRIDGES FOR ONE PROCESS (--instance) ---
+#
+# Since episode 7 of the work-stream the NAT bridge is a COMPONENT of the virtual
+# network, and a user may put down two of them: two components must then be two
+# separate private networks, each with its own /24. One pid therefore owns N
+# bridges, distinguished by an instance number: `mnbr<pid>-<n>', on the exact
+# pattern of the taps (`mtap<pid>-<n>'). Without --instance the name stays
+# `mnbr<pid>', unsuffixed, so everything written before this episode keeps
+# working unchanged.
+#
+# Two consequences worth knowing:
+#   * an interface name may not exceed IFNAMSIZ-1 = 15 characters, which
+#     require_bridge enforces (a 7-digit pid leaves room for 3 digits of
+#     instance);
+#   * `mnbr123' is a PREFIX of `mnbr123-1', so a tag must never be looked up with
+#     a plain substring match -- see tagged_rules_exist.
 # ---------------------------------------------------------------------------
 
 TOOL=$(basename "$0")
@@ -128,7 +145,8 @@ Array_make CANDIDATE_NETS \
 
 ACTION=""             # up | down | status | gc | selftest | ...
 OWNER_PID=""          # the pid the artefacts are named after
-BR=""                 # bridge name, mnbr<OWNER_PID>
+INSTANCE=""           # --instance: which bridge OF THAT PID (empty = the only one)
+BR=""                 # bridge name, mnbr<OWNER_PID>[-<INSTANCE>]
 NET=""                # the /24 prefix, e.g. 192.168.101
 TAG=""                # the iptables comment, TAG_PREFIX:BR
 FORCED_SUBNET=""      # --subnet
@@ -227,9 +245,22 @@ function require_subnet {   # a /24 prefix: three decimal bytes, no trailing dot
    || fail E_BAD_SUBNET "'${1:-}' is not a /24 prefix such as 192.168.101"
 }
 
+function require_instance {
+ { Regexp_is_natural "${1:-}" && (( ${1:-0} >= 1 )); } \
+   || fail E_BAD_INSTANCE "'${1:-}' is not an instance number (a positive integer)"
+}
+
+# The shape is `mnbr<pid>' or `mnbr<pid>-<instance>'. The length test is not
+# decoration: the kernel truncates nothing, it refuses -- `ip link add' would
+# fail with "Error: argument \"mnbrXXXXXXX-999\" is wrong: \"name\" too long",
+# and it is far better to say so before touching anything.
+IFNAMSIZ_MAX=15
+
 function require_bridge {
- [[ ${1:-} =~ ^${BRIDGE_PREFIX}[1-9][0-9]*$ ]] \
+ [[ ${1:-} =~ ^${BRIDGE_PREFIX}[1-9][0-9]*(-[1-9][0-9]*)?$ ]] \
    || fail E_INTERNAL "'${1:-}' is not one of our bridge names"
+ (( ${#1} <= IFNAMSIZ_MAX )) \
+   || fail E_BAD_INSTANCE "'$1' is ${#1} characters long, more than the $IFNAMSIZ_MAX a network interface name may have"
 }
 
 # --- Absolute binary paths: sudoers matches on the absolute path, and root's
@@ -340,7 +371,7 @@ function rollback {
  # and `fail' calls this function -- the recursion would be unbounded. A name
  # we cannot validate is a name we refuse to build a destructive command from,
  # so everything left on the stack is declared a leftover, loudly.
- if [[ ! $BR =~ ^${BRIDGE_PREFIX}[1-9][0-9]*$ ]] \
+ if [[ ! $BR =~ ^${BRIDGE_PREFIX}[1-9][0-9]*(-[1-9][0-9]*)?$ ]] \
     || { [[ -n $NET ]] && [[ ! $NET =~ ^([0-9]{1,3}\.){2}[0-9]{1,3}$ ]]; }; then
    echo "$TOOL: REFUSING to roll back: bridge '$BR' / subnet '$NET' did not validate." 1>&2
    for label in "${UNDO[@]}"; do Array_push LEFTOVERS "$label"; done
@@ -375,11 +406,31 @@ function rollback {
 
 # --- Names and identities
 
-function bridge_name  { echo "${BRIDGE_PREFIX}$1"; }
+# bridge_name PID [INSTANCE]: an empty (or absent) instance gives the unsuffixed
+# historical name, which is what a single-bridge process still gets.
+function bridge_name  { echo "${BRIDGE_PREFIX}$1${2:+-$2}"; }
 function tag_of       { echo "${TAG_PREFIX}:$1"; }
 function state_file   { echo "$STATE_DIR/$1"; }
 function link_exists  { "$IP" link show "$1" &>/dev/null; }
 function pid_is_alive { [[ -d /proc/$1 ]]; }
+
+# The two inverses of bridge_name, for the sweeps (status, gc) which start from
+# what the system shows rather than from what was asked.
+function pid_of_bridge      { local rest=${1#"$BRIDGE_PREFIX"}; echo "${rest%%-*}"; }
+function instance_of_bridge {
+ local rest=${1#"$BRIDGE_PREFIX"}
+ # An `if' rather than `[[ ... ]] && echo': an unsuffixed bridge is a normal
+ # case, and must not make this function return 1 under `set -e'.
+ if [[ $rest = *-* ]]; then echo "${rest#*-}"; fi
+}
+
+# Whether iptables still holds rules carrying EXACTLY this tag. The trailing
+# guard is what distinguishes `...:mnbr123' from `...:mnbr123-1': a plain
+# substring match would make `down' of the unsuffixed bridge believe that the
+# rules of instance 1 are its own, and try to delete them with the wrong subnet.
+function tagged_rules_exist {
+ sudo_run "$IPTABLES_SAVE" 2>/dev/null | grep -qE -- "$1([^0-9-]|\$)"
+}
 
 # subnet_of BRIDGE: the /24 we gave it, read back from the system (so that
 # `down' and `gc' work even if the state file is gone).
@@ -406,10 +457,13 @@ function do_up {
  local ip_forward_was
  require_pid "$OWNER_PID"
  resolve_binaries
- BR=$(bridge_name "$OWNER_PID"); require_bridge "$BR"
+ BR=$(bridge_name "$OWNER_PID" "$INSTANCE"); require_bridge "$BR"
  TAG=$(tag_of "$BR")
  REPORT[bridge]=$BR
  REPORT[owner_pid]=$OWNER_PID
+ # `if', not `[[ ... ]] && ...': under `set -e' a false test as the last command
+ # of a list makes the whole line return 1, which fires the ERR trap.
+ if [[ -n $INSTANCE ]]; then REPORT[instance]=$INSTANCE; fi
 
  if link_exists "$BR"; then
    # Idempotent: an existing bridge of ours is a success, not an error, and the
@@ -478,10 +532,11 @@ function describe_network {
 function do_down {
  require_pid "$OWNER_PID"
  resolve_binaries
- BR=$(bridge_name "$OWNER_PID"); require_bridge "$BR"
+ BR=$(bridge_name "$OWNER_PID" "$INSTANCE"); require_bridge "$BR"
  TAG=$(tag_of "$BR")
  REPORT[bridge]=$BR
  REPORT[owner_pid]=$OWNER_PID
+ if [[ -n $INSTANCE ]]; then REPORT[instance]=$INSTANCE; fi
 
  NET=$(subnet_of "$BR" || true)
  local state; state=$(state_file "$BR")
@@ -494,11 +549,11 @@ function do_down {
  fi
 
  local rules_remain=0
- if sudo_run "$IPTABLES_SAVE" 2>/dev/null | grep -qF -- "$TAG"; then rules_remain=1; fi
+ if tagged_rules_exist "$TAG"; then rules_remain=1; fi
 
  if [[ -z $NET ]] && ! link_exists "$BR"; then
    if [[ $rules_remain = 1 ]]; then
-     sudo_run "$IPTABLES_SAVE" | grep -F -- "$TAG" 1>&2 || true
+     sudo_run "$IPTABLES_SAVE" | grep -E -- "$TAG([^0-9-]|\$)" 1>&2 || true
      fail E_INTERNAL "$BR is gone but rules tagged $TAG remain, and no subnet is known to rebuild the delete commands (they are listed on stderr)"
    fi
    REPORT_TEXT[message]="nothing to remove for pid $OWNER_PID"
@@ -534,29 +589,42 @@ function do_down {
 
 function all_bridges {
  "$IP" -oneline link show type bridge 2>/dev/null \
-   | awk -F': ' -v p="^${BRIDGE_PREFIX}[0-9]+$" '$2 ~ p {print $2}'
+   | awk -F': ' -v p="^${BRIDGE_PREFIX}[0-9]+(-[0-9]+)?$" '$2 ~ p {print $2}'
+}
+
+# Every bridge belonging to one pid, suffixed or not -- what `status --owner-pid'
+# and `gc' need now that a process may own several.
+function bridges_of_pid {
+ local bridge
+ for bridge in $(all_bridges); do
+   if [[ $(pid_of_bridge "$bridge") = "$1" ]]; then echo "$bridge"; fi
+ done
 }
 
 function do_status {
  resolve_binaries
- local bridge pid list
+ local bridge pid list instance
  Array_make entries
  if [[ -n $OWNER_PID ]]; then
    require_pid "$OWNER_PID"
-   list=$(bridge_name "$OWNER_PID")
+   list=$(bridges_of_pid "$OWNER_PID")
  else
    list=$(all_bridges)
  fi
  REPORT[ip_forward]=$(cat /proc/sys/net/ipv4/ip_forward)
  for bridge in $list; do
    link_exists "$bridge" || continue
-   pid=${bridge#"$BRIDGE_PREFIX"}
+   pid=$(pid_of_bridge "$bridge")
    Map_make entry \
      bridge     "$bridge" \
      owner_pid  "$pid" \
      subnet     "$(subnet_of "$bridge")" \
      owner_alive "$(pid_is_alive "$pid" && echo true || echo false)" \
      ports      "$(ports_of_json "$bridge")"
+   # Present only when there is one, exactly as in the report of `up': a caller
+   # reads `instance' as a number or not at all, never as an empty string.
+   instance=$(instance_of_bridge "$bridge")
+   if [[ -n $instance ]]; then entry[instance]=$instance; fi
    Array_push entries "$(Map_to_json entry)"
  done
  REPORT[bridges]=$(Array_to_json entries)
@@ -575,21 +643,23 @@ function ports_of_json {
 
 function do_gc {
  resolve_binaries
- local bridge pid
+ local bridge pid instance
  Array_make collected
  Array_make kept
  for bridge in $(all_bridges); do
-   pid=${bridge#"$BRIDGE_PREFIX"}
+   pid=$(pid_of_bridge "$bridge")
+   instance=$(instance_of_bridge "$bridge")
    if pid_is_alive "$pid"; then
      Array_push kept "$bridge"
      echo "$TOOL: keeping $bridge (pid $pid is alive)." 1>&2
    else
      echo "$TOOL: collecting $bridge (pid $pid is gone)." 1>&2
      # A sub-invocation, so that one unremovable artefact does not abort the
-     # sweep and does not pollute this report's undo bookkeeping.
+     # sweep and does not pollute this report's undo bookkeeping. One call per
+     # bridge, instance included: a dead owner may have left several.
      # NOT ${DRY_RUN:+...}: DRY_RUN is 0 or 1, and "0" is non-empty.
      local dry_run_flag=(); [[ $DRY_RUN = 1 ]] && dry_run_flag=(--dry-run)
-     if "$0" down --owner-pid "$pid" "${dry_run_flag[@]}" >/dev/null 2>&1; then
+     if "$0" down --owner-pid "$pid" ${instance:+--instance "$instance"} "${dry_run_flag[@]}" >/dev/null 2>&1; then
        Array_push collected "$bridge"
      else
        Array_push LEFTOVERS "$bridge"
@@ -607,69 +677,135 @@ function do_gc {
 
 # --- selftest: a network namespace plays the guest
 
+# guest_up NS VETH PEER BRIDGE NET: a network namespace playing a virtual machine
+# behind BRIDGE, addressed <NET>.2 with <NET>.1 as its default route. Returns 1
+# without exiting -- the caller counts failures, it does not abort.
+function guest_up {
+ local ns=$1 veth=$2 peer=$3 br=$4 net=$5
+ sudo_test_run "$IP" link add "$veth" type veth peer name "$peer" &&
+ sudo_test_run "$IP" link set "$veth" master "$br" &&
+ sudo_test_run "$IP" link set "$veth" up &&
+ sudo_test_run "$IP" netns add "$ns" &&
+ sudo_test_run "$IP" link set "$peer" netns "$ns" &&
+ sudo_test_run "$IP" -netns "$ns" addr add "$net.2/24" dev "$peer" &&
+ sudo_test_run "$IP" -netns "$ns" link set lo up &&
+ sudo_test_run "$IP" -netns "$ns" link set "$peer" up &&
+ sudo_test_run "$IP" -netns "$ns" route add default via "$net.1"
+}
+
+function guest_down {
+ local ns=$1 veth=$2
+ sudo_test_run "$IP" netns del "$ns" >/dev/null 2>&1 || true
+ if link_exists "$veth"; then sudo_test_run "$IP" link del "$veth" >/dev/null 2>&1 || true; fi
+}
+
+# The selftest proves TWO things at once since episode 7: that a guest behind the
+# bridge reaches the Internet without the host being touched, and that ONE
+# process may hold SEVERAL such bridges -- two components, two private /24, one
+# taken down without disturbing the other.
 function do_selftest {
  resolve_binaries
- local ns veth peer failures=0
+ local failures=0 index up_json br net ns veth peer
  OWNER_PID=$$
- ns="mnbrns$$"; veth="vnbr$$a"; peer="vnbr$$b"
+ Array_make __st_bridges
+ Array_make __st_nets
+ Array_make __st_tags
 
- echo "== 1. bringing the NAT bridge up" 1>&2
- # A sub-invocation: `up' owns its own transaction and its own report.
- local up_json
- up_json=$("$0" up --owner-pid $$ ${FORCED_SUBNET:+--subnet "$FORCED_SUBNET"}) \
-   || fail E_INTERNAL "the 'up' leg failed: $up_json"
- BR=$(jq -r '.bridge' <<<"$up_json")
- NET=$(jq -r '.subnet' <<<"$up_json")
- require_bridge "$BR"; require_subnet "$NET"
- TAG=$(tag_of "$BR")
+ echo "== 1. bringing TWO NAT bridges up, for the same pid" 1>&2
+ local forced=()
+ if [[ -n $FORCED_SUBNET ]]; then forced=(--subnet "$FORCED_SUBNET"); fi
+ for index in 1 2; do
+   # A sub-invocation: `up' owns its own transaction and its own report. Only
+   # the first instance honours --subnet; the second must find its own, which is
+   # precisely the property being tested.
+   if ! up_json=$("$0" up --owner-pid $$ --instance "$index" "${forced[@]}"); then
+     # Whatever came up before must not be left behind by a failing selftest.
+     "$0" down --owner-pid $$ --instance 1 >/dev/null 2>&1 || true
+     fail E_INTERNAL "the 'up' leg of instance $index failed: $up_json"
+   fi
+   forced=()
+   br=$(jq -r '.bridge' <<<"$up_json")
+   net=$(jq -r '.subnet' <<<"$up_json")
+   require_bridge "$br"; require_subnet "$net"
+   Array_push __st_bridges "$br"
+   Array_push __st_nets "$net"
+   Array_push __st_tags "$(tag_of "$br")"
+   echo "$TOOL: instance $index is $br on $net.0/24" 1>&2
+ done
+ if [[ ${__st_nets[0]} = "${__st_nets[1]}" ]]; then
+   echo "$TOOL: the two instances got the SAME subnet ${__st_nets[0]}." 1>&2
+   failures=$((failures + 1))
+ fi
+ # What `up' reports must be what the system shows, and BR/NET must be set for
+ # the final assertions even if a leg below fails early.
+ BR=${__st_bridges[0]}; NET=${__st_nets[0]}; TAG=${__st_tags[0]}
 
- echo "== 2. attaching a netns guest ($ns) to $BR" 1>&2
- {
-   sudo_test_run "$IP" link add "$veth" type veth peer name "$peer" &&
-   sudo_test_run "$IP" link set "$veth" master "$BR" &&
-   sudo_test_run "$IP" link set "$veth" up &&
-   sudo_test_run "$IP" netns add "$ns" &&
-   sudo_test_run "$IP" link set "$peer" netns "$ns" &&
-   sudo_test_run "$IP" -netns "$ns" addr add "$NET.2/24" dev "$peer" &&
-   sudo_test_run "$IP" -netns "$ns" link set lo up &&
-   sudo_test_run "$IP" -netns "$ns" link set "$peer" up &&
-   sudo_test_run "$IP" -netns "$ns" route add default via "$NET.1"
- } || { echo "$TOOL: could not build the test guest." 1>&2; failures=$((failures + 1)); }
+ echo "== 2. attaching one netns guest to each bridge" 1>&2
+ for index in 0 1; do
+   ns="mnbrns$$x$((index + 1))"; veth="vnbr$$a$((index + 1))"; peer="vnbr$$b$((index + 1))"
+   guest_up "$ns" "$veth" "$peer" "${__st_bridges[index]}" "${__st_nets[index]}" \
+     || { echo "$TOOL: could not build the test guest $ns." 1>&2; failures=$((failures + 1)); }
+ done
 
  if (( failures == 0 )); then
-   echo "== 3. from the guest: ICMP to the outside" 1>&2
-   sudo_test_run "$IP" netns exec "$ns" ping -c1 -W3 9.9.9.9 1>&2 || failures=$((failures + 1))
-   echo "== 4. from the guest: UDP/53 to the outside" 1>&2
+   echo "== 3. from each guest: ICMP to the outside" 1>&2
+   for index in 1 2; do
+     sudo_test_run "$IP" netns exec "mnbrns$$x$index" ping -c1 -W3 9.9.9.9 1>&2 \
+       || failures=$((failures + 1))
+   done
+   echo "== 4. from the first guest: UDP/53 to the outside" 1>&2
    if command -v dig >/dev/null; then
-     sudo_test_run "$IP" netns exec "$ns" dig +short +time=3 +tries=1 @9.9.9.9 example.org 1>&2 \
+     sudo_test_run "$IP" netns exec "mnbrns$$x1" dig +short +time=3 +tries=1 @9.9.9.9 example.org 1>&2 \
        || failures=$((failures + 1))
    else
      Array_push WARNINGS "dig is not installed, the DNS leg was skipped (install dnsutils)"
      echo "$TOOL: dig not installed, skipping the DNS leg." 1>&2
    fi
+
+   echo "== 5. taking instance 1 down: instance 2 must survive it" 1>&2
+   guest_down "mnbrns$$x1" "vnbr$$a1"
+   "$0" down --owner-pid $$ --instance 1 >/dev/null || failures=$((failures + 1))
+   if link_exists "${__st_bridges[0]}"; then
+     echo "$TOOL: ${__st_bridges[0]} survived its own down." 1>&2
+     failures=$((failures + 1))
+   fi
+   if ! link_exists "${__st_bridges[1]}"; then
+     echo "$TOOL: ${__st_bridges[1]} disappeared with the OTHER instance." 1>&2
+     failures=$((failures + 1))
+   elif ! sudo_test_run "$IP" netns exec "mnbrns$$x2" ping -c1 -W3 9.9.9.9 1>&2; then
+     echo "$TOOL: the surviving guest lost the outside after the other down." 1>&2
+     failures=$((failures + 1))
+   fi
  fi
 
- echo "== 5. tearing everything down" 1>&2
- sudo_test_run "$IP" netns del "$ns" >/dev/null 2>&1 || true
- if link_exists "$veth"; then sudo_test_run "$IP" link del "$veth" >/dev/null 2>&1 || true; fi
- "$0" down --owner-pid $$ >/dev/null || failures=$((failures + 1))
+ echo "== 6. tearing everything down" 1>&2
+ guest_down "mnbrns$$x1" "vnbr$$a1"
+ guest_down "mnbrns$$x2" "vnbr$$a2"
+ for index in 1 2; do
+   # Idempotent: instance 1 is normally already down at step 5.
+   "$0" down --owner-pid $$ --instance "$index" >/dev/null || failures=$((failures + 1))
+ done
 
- echo "== 6. asserting that nothing survives" 1>&2
- if link_exists "$BR"; then
-   Array_push LEFTOVERS "bridge $BR"; failures=$((failures + 1))
- fi
- if "$IP" netns list 2>/dev/null | grep -qw "$ns"; then
-   Array_push LEFTOVERS "netns $ns"; failures=$((failures + 1))
- fi
- if sudo_run "$IPTABLES_SAVE" 2>/dev/null | grep -qF -- "$TAG"; then
-   Array_push LEFTOVERS "iptables rules tagged $TAG"; failures=$((failures + 1))
- fi
+ echo "== 7. asserting that nothing survives" 1>&2
+ for index in 0 1; do
+   if link_exists "${__st_bridges[index]}"; then
+     Array_push LEFTOVERS "bridge ${__st_bridges[index]}"; failures=$((failures + 1))
+   fi
+   if tagged_rules_exist "${__st_tags[index]}"; then
+     Array_push LEFTOVERS "iptables rules tagged ${__st_tags[index]}"; failures=$((failures + 1))
+   fi
+ done
+ for index in 1 2; do
+   if "$IP" netns list 2>/dev/null | grep -qw "mnbrns$$x$index"; then
+     Array_push LEFTOVERS "netns mnbrns$$x$index"; failures=$((failures + 1))
+   fi
+ done
 
- REPORT[bridge]=$BR
- REPORT[subnet]=$NET
+ REPORT[bridges]=$(Array_to_json __st_bridges)
+ REPORT[subnets]=$(Array_to_json __st_nets)
  REPORT[ip_forward]=$(cat /proc/sys/net/ipv4/ip_forward)
  if (( failures == 0 )); then
-   echo "$TOOL: SELFTEST PASSED (guest reached the Internet, host untouched)." 1>&2
+   echo "$TOOL: SELFTEST PASSED (two independent private networks, both guests reached the Internet, host untouched)." 1>&2
    REPORT[ok]=true
    finish 0
  fi
@@ -706,7 +842,9 @@ function do_print_privileged_commands {
  REPORT[ok]=true
  cat 1>&2 <<EOF
 # Privileged commands used by the automatic private NAT bridge (option A).
-# <BR> is ${BRIDGE_PREFIX}<pid>, <NET> the chosen /24 prefix, <TAG> ${TAG_PREFIX}:<BR>.
+# <BR> is ${BRIDGE_PREFIX}<pid> or ${BRIDGE_PREFIX}<pid>-<instance> (one bridge per NAT bridge
+# component), <NET> the chosen /24 prefix, <TAG> ${TAG_PREFIX}:<BR>. Both shapes
+# are covered by the same sudoers glob \`${BRIDGE_PREFIX}*'.
 # Already covered by the existing tap rule ($IP link set mtap* *), nothing to add
 # for the attachment itself:
 #   $IP link set mtap<pid>-<n> master <BR>
@@ -736,6 +874,10 @@ Options:
   --owner-pid PID     name the artefacts after PID (default: the caller, \$PPID).
                       Marionnet passes its own pid, so that the bridge lives and
                       dies with it.
+  --instance N        which bridge OF THAT PID: \`${BRIDGE_PREFIX}<pid>-N' instead of
+                      \`${BRIDGE_PREFIX}<pid>'. One Marionnet may hold several NAT bridge
+                      components, each with its own /24. Omitted, the name is
+                      the unsuffixed one -- and \`status'/\`gc' see both shapes.
   --subnet PREFIX     force the /24, e.g. --subnet 192.168.101 (default: the
                       first candidate free of the host's routes and addresses)
   --candidates A,B,C  replace the default candidate list
@@ -746,9 +888,9 @@ Options:
 
 Output: stdout is ALWAYS exactly one JSON object, on one line, success or
 failure; stderr is the human trace; the exit status is 0 on success. The JSON
-carries a symbolic error code among: E_USAGE, E_BAD_PID, E_BAD_SUBNET,
-E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_SUDO_DENIED, E_NO_FREE_SUBNET,
-E_ROLLBACK_INCOMPLETE, E_INTERNAL.
+carries a symbolic error code among: E_USAGE, E_BAD_PID, E_BAD_INSTANCE,
+E_BAD_SUBNET, E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_SUDO_DENIED,
+E_NO_FREE_SUBNET, E_ROLLBACK_INCOMPLETE, E_INTERNAL.
 
 The host interface, its address and its routes are NEVER touched: that is the
 whole point. Everything created here is undone by \`down' (and by \`gc' after a
@@ -760,6 +902,7 @@ function parse_options {
  while (( $# > 0 )); do
    case $1 in
      --owner-pid)   OWNER_PID=${2:-}; require_pid "$OWNER_PID"; shift 2 ;;
+     --instance)    INSTANCE=${2:-}; require_instance "$INSTANCE"; shift 2 ;;
      --subnet)      FORCED_SUBNET=${2:-}; require_subnet "$FORCED_SUBNET"; shift 2 ;;
      --candidates)  String_split "${2:-}" "," CANDIDATE_NETS
                     (( ${#CANDIDATE_NETS[@]} > 0 )) || fail E_USAGE "--candidates: empty list"
