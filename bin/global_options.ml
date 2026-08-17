@@ -80,36 +80,6 @@ let explicit_world_bridge_name : string option =
               else Some ethernet_world_bridge_name
 ;;
 
-(** How a `world_bridge' component gets the host bridge it attaches to
-    (work-stream `modernisation-world-bridge', option A of
-    docs/modernisation-world-bridge.md):
-
-    - [`Nat]    : Marionnet builds its own private bridge and NATs it to the
-                  outside, through the auxiliary command marionnet-natbridge.sh
-                  (see Nat_bridge_host). Nothing has to be prepared on the host, and
-                  the host interface is never touched. This is the mode that also
-                  works on a Wi-Fi laptop, where enslaving the card cannot work.
-    - [`Manual] : the historical behaviour -- attach to the pre-existing host
-                  bridge named by MARIONNET_BRIDGE, which an administrator has
-                  built by hand.
-
-    The default is deliberately conservative: an installation that names
-    MARIONNET_BRIDGE anywhere has an administrator who did the work, so we keep
-    honouring it; only an installation that says nothing gets the new automatic
-    mode. MARIONNET_WORLD_BRIDGE_MODE ("nat" / "manual") overrides both.
-    Until the GUI selector of a later episode, this variable IS the selector. *)
-let world_bridge_mode : [ `Nat | `Manual ] =
-  let by_absence_of_configuration () =
-    match Configuration.get_string_variable_with_source "MARIONNET_BRIDGE" with
-    | None   -> `Nat
-    | Some _ -> `Manual
-  in
-  match Configuration.get_string_variable "MARIONNET_WORLD_BRIDGE_MODE" with
-  | Some ("nat" | "auto")      -> `Nat
-  | Some ("manual" | "bridge") -> `Manual
-  | Some _ | None              -> by_absence_of_configuration ()
-;;
-
 let make_understandable_source_of_world_bridge_configuration () =
   match (Configuration.get_string_variable_with_source "MARIONNET_BRIDGE") with
   | None | Some (_, `Environment) -> "marionnet.conf"
@@ -120,18 +90,28 @@ let make_understandable_source_of_world_bridge_configuration () =
    to warn about: the bridge does not exist YET, and it is Marionnet that will
    build it when the component starts (episode 7b). Warning here would tell the
    user to ask an administrator for exactly the manual setup this work-stream
-   exists to remove. *)
+   exists to remove. The case that DOES deserve a warning is the opposite one:
+   somebody overrode the automatic behaviour by naming a bridge, and that bridge
+   is not on the host -- the component would then start and enslave its tap to
+   nothing, in silence. Hence the message says, first of all, how to get rid of
+   the override.
+   ---
+   Existence is read from sysfs instead of being asked to `brctl showmacs':
+   bridge-utils is no longer installed by default on a modern Debian/Ubuntu, so
+   the old test answered "no such bridge" on hosts where the bridge was
+   perfectly present. /sys/class/net/<name>/bridge exists if and only if <name>
+   is a bridge device -- an ordinary interface of the same name does not have it. *)
 let check_bridge_existence_and_warning () : unit =
   if explicit_world_bridge_name = None then () else
   let bridge_name = ethernet_world_bridge_name in
-  let cmd = Printf.sprintf "brctl showmacs %s 1>/dev/null 2>/dev/null" (bridge_name) in
-  if (Unix.system cmd) <> (Unix.WEXITED 0) then (* warning: *)
+  let sysfs_bridge_directory = Printf.sprintf "/sys/class/net/%s/bridge" (bridge_name) in
+  if (Sys.file_exists sysfs_bridge_directory) then () else (* warning: *)
     let title = Printf.sprintf (Gettext.f_ "Ethernet bridge \"%s\" not found") bridge_name in
     let source = make_understandable_source_of_world_bridge_configuration () in
     let message =
       Printf.sprintf
-        (Gettext.f_ "The Ethernet bridge \"%s\" specified in the file\n\n<tt><small>%s</small></tt>\n\nwas not found on your system. Please ask your administrator to set up this bridge with commands like:\n\n<tt><small>sudo brctl addbr %s\nsudo brctl addif %s %s    # or another interface(s)\nsudo ifconfig %s up\n</small></tt>\nOtherwise, there will be no chance to run a world bridge component properly on your system.")
-        (bridge_name) (source) (bridge_name) (bridge_name) ("eth0") (bridge_name)
+        (Gettext.f_ "The Ethernet bridge \"%s\" named in the file\n\n<tt><small>%s</small></tt>\n\nwas not found on this computer. Naming a bridge in that file is now merely a way to OVERRIDE the automatic behaviour: if you comment out (or empty) that line, Marionnet builds its own bridge when a LAN bridge component starts, and takes it down when it stops. Nothing has to be prepared by hand any more.\n\nIf you do prefer to keep using a bridge of your own, ask your administrator to create it, with commands like:\n\n<tt><small>sudo ip link add %s type bridge\nsudo ip link set %s up\nsudo ip link set eth0 master %s    # or another interface(s)\n</small></tt>")
+        (bridge_name) (source) (bridge_name) (bridge_name) (bridge_name)
     in
     Simple_dialogs.warning ~modal:true title message ()
 ;;

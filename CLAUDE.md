@@ -151,12 +151,16 @@ Reprise : appliquer le skill `chantier-long`.
   moment où ils servent) : `docs/modernisation-world-bridge.md` (**§ 1 bis = l'objectif final,
   il prime sur les § 2-4 dès qu'il s'agit du « mode »** ; § 4 = découpage) ; mémoire
   `modernisation-world-bridge` ; `git log --grep="modernisation-world-bridge"`.
-  Ép. 0→6, 8, **7a et 7b** faits : le NAT auto est prouvé, le sudoers est en 3 blocs demandés
-  au bon moment, la **9ᵉ nature `nat_bridge` existe** (menu planète à 3 entrées) et le **LAN
-  bridge est automatique de bout en bout** — `bin/lan_bridge.ml` (ex-`world_bridge.ml`, identité
-  interne inchangée) appelle `bin/lan_bridge_host.ml` → `bin/scripts/marionnet-lanbridge.sh`
-  (`mnlan0` partagé), `MARIONNET_BRIDGE` n'étant plus qu'une **surcharge** explicite. Reste
-  l'**ép. 7c** (retrait de `MARIONNET_WORLD_BRIDGE_MODE`, sans lecteur) puis l'ép. 9 (i18n ×12).
+  Ép. 0→8 faits (**épisode 7 complet**) : le NAT auto est prouvé, le sudoers est en 3 blocs
+  demandés au bon moment, la **9ᵉ nature `nat_bridge` existe** (menu planète à 3 entrées), le
+  **LAN bridge est automatique de bout en bout** — `bin/lan_bridge.ml` (ex-`world_bridge.ml`,
+  identité interne inchangée) appelle `bin/lan_bridge_host.ml` →
+  `bin/scripts/marionnet-lanbridge.sh` (`mnlan0` partagé) — et le « mode » a **disparu du
+  code** (ép. 7c) : plus de `MARIONNET_WORLD_BRIDGE_MODE` ni de `Global_options.world_bridge_mode`,
+  `MARIONNET_BRIDGE` n'étant plus qu'une **surcharge** explicite, dont
+  `check_bridge_existence_and_warning` (test par `/sys/class/net/<nom>/bridge`, plus par
+  `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ». Reste l'ép. 9
+  (i18n ×12).
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

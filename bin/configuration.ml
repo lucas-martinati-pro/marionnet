@@ -29,14 +29,11 @@ let configuration =
   in
   Configuration_files.make
     ~file_names
-    ~variables:["MARIONNET_BRIDGE";(* This is temporary: more than one bridge will be usable... *)
-                (* How a `world_bridge' gets its host bridge: "nat" (Marionnet builds and NATs
-                   its own, nothing to prepare on the host) or "manual" (attach to the
-                   pre-existing MARIONNET_BRIDGE). Work-stream `modernisation-world-bridge';
-                   see Global_options.world_bridge_mode. Until the GUI grows a selector, this
-                   variable IS the selector -- hence it must be declared here, or naming it
-                   aborts the start-up with "Unexpected variable name". *)
-                "MARIONNET_WORLD_BRIDGE_MODE";
+                (* An OVERRIDE since episode 7b of `modernisation-world-bridge': naming a
+                   bridge here means "attach my LAN bridges to this one, which I built by
+                   hand"; saying nothing (or naming nothing) lets Marionnet build and take
+                   down its own. Cf. Global_options.explicit_world_bridge_name. *)
+    ~variables:["MARIONNET_BRIDGE";
                 "MARIONNET_KEYBOARD_LAYOUT";
                 "MARIONNET_DEBUG";
                 "MARIONNET_PDF_READER";

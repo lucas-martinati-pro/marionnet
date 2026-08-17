@@ -475,7 +475,7 @@ seul :
 |---|---|---|
 | **7a** | la nature *NAT bridge* : script hôte multi-instances, `Nat_bridge_host` indexé, composant neuf, menu planète à 3 entrées, `.mar`, canal, treeviews | oui (le gros) |
 | **7b** | le *LAN bridge* devient automatique : `Lan_bridge_host` appelant `marionnet-lanbridge.sh`, bloc (c) demandé depuis la GUI, avertissement de coupure hôte | oui |
-| **7c** | retrait de `MARIONNET_WORLD_BRIDGE_MODE`, de `Global_options.world_bridge_mode` et du contrôle `check_bridge_existence_and_warning` | oui (suppression) |
+| **7c** | retrait de `MARIONNET_WORLD_BRIDGE_MODE` et de `Global_options.world_bridge_mode` ; `check_bridge_existence_and_warning` **gardé mais retourné** (cf. journal du 2026-08-17) | oui (suppression) |
 
 **Nomenclature des modules** (arrêtée avant d'écrire la première ligne, parce que le nom
 `nat_bridge` était déjà pris par l'appelant de l'épisode 3) : le suffixe **`_host`** désigne
@@ -1112,3 +1112,55 @@ parce qu'aucune ne se redevine :
   (`on`/`off`/`pause`/palette/dialog) : le rond d'état est dégagé partout, le mot reste
   lisible jusqu'à 32 px. Palliatif toujours assumé en attendant l'épisode d'iconographie.
   Prochain pas : inchangé — **7c**, puis l'épisode 9.
+
+- **2026-08-17 — épisode 7c** : *le mode disparaît, et le garde-fou change de camp*.
+  - **Ce qui part.** `Global_options.world_bridge_mode` et sa variable
+    `MARIONNET_WORLD_BRIDGE_MODE` (`bin/global_options.ml(i)`, déclaration de
+    `bin/configuration.ml`). Née à l'épisode 3 comme sélecteur provisoire — le temps que la
+    GUI en ait un — elle n'a plus **aucun lecteur** depuis que le choix est une **nature de
+    composant** (épisode 7a.3.b) et que le LAN bridge se construit tout seul (7b). C'est donc
+    du code mort qui documente un concept abandonné. Conséquence assumée : un `marionnet.conf`
+    qui la nommerait encore fait avorter le démarrage (« Unexpected variable name ») ;
+    exposition nulle, la variable est née dans ce chantier et n'a jamais été publiée
+    (`etc/marionnet.conf` ne l'a jamais portée, et les deux `marionnet.conf` du poste ont été
+    vérifiés avant le build). Au passage, le commentaire « This is temporary: more than one
+    bridge will be usable... », posé à côté de `MARIONNET_BRIDGE`, est remplacé par ce que la
+    variable veut dire aujourd'hui : une **surcharge**.
+  - **Ce qui reste, contre le découpage du § 4.** La table des épisodes prévoyait de supprimer
+    aussi `check_bridge_existence_and_warning`. Décision inverse, et voici pourquoi : depuis
+    l'épisode 7b ce contrôle est **déjà** un no-op sauf si `MARIONNET_BRIDGE` est explicitement
+    configuré. Ce qu'il reste donc à couvrir est le cas exactement inverse de celui qui le
+    rendait gênant : quelqu'un a **surchargé** l'automatique en nommant un bridge, et ce bridge
+    n'est pas sur la machine — le composant démarrerait et asservirait son tap à rien, **en
+    silence**. Ce cas mérite un mot. Deux choses y ont vieilli, et sont corrigées :
+    1. **le test** : `brctl showmacs` (un `fork` + une dépendance à `bridge-utils`, paquet qui
+       n'est plus installé par défaut sur une Debian/Ubuntu moderne) devient la lecture pure de
+       `/sys/class/net/<nom>/bridge`, répertoire qui existe **si et seulement si** l'interface
+       est un bridge. L'ancien test répondait « pas de bridge » sur un hôte où le bridge était
+       parfaitement là, dès lors que `brctl` manquait — un avertissement mensonger ;
+    2. **le message** : il enseignait `sudo brctl addbr …`, c'est-à-dire précisément la
+       préparation manuelle que ce chantier existe pour supprimer. Il dit maintenant, **dans
+       cet ordre**, que nommer un bridge n'est plus qu'une surcharge et qu'il suffit de
+       commenter (ou vider) la ligne pour que Marionnet construise et démonte le sien ; puis,
+       pour qui tient à son propre bridge, les commandes `ip link` d'aujourd'hui. Le **titre**
+       est laissé mot pour mot : il est déjà traduit ×12, le casser ne rapporterait rien.
+  - **Preuves mesurées.** `dune build` rc 0, et **module réellement recompilé** (erreur
+    volontaire dans `global_options.ml` → build en échec sur la bonne ligne, erreur retirée →
+    rc 0). `grep -rIn WORLD_BRIDGE_MODE` : plus rien hors `docs/` et du pointeur `CLAUDE.md`.
+    Prédicat sysfs discriminé en shell : `docker0` (bridge réel) → oui, `wlp0s20f3` (carte
+    Wi-Fi, donc interface qui n'est pas un bridge) → non, nom inexistant → non. Puis **deux
+    sessions pilotées** ouvrant le même `.mar` (un composant *LAN bridge* enregistré, chemin
+    `state.ml` du contrôle) : avec `MARIONNET_BRIDGE=docker0`, ouverture propre et
+    `notifications` **vide** ; avec `MARIONNET_BRIDGE=mnbr-nexistepas`, une notification
+    `warning` portant le titre inchangé et le **nouveau** corps, ses cinq `%s` substitués (nom
+    ×4 + fichier source) — l'arité est donc vérifiée sur pièce, ce qui compte pour l'épisode 9.
+    Aucun résidu après `quit`, session graphique intacte.
+  - **Deux observations de bord, hors périmètre.** (1) Un chemin de socket de contrôle **trop
+    long** (> 108 octets, la limite de `sun_path`) fait démarrer Marionnet **sans canal**, sans
+    rien dire sur la sortie standard — rencontré en montant l'essai, résolu en raccourcissant
+    le chemin. (2) Quand la surcharge vient de l'**environnement** et non d'un fichier, le
+    message renvoie quand même « le fichier `marionnet.conf` » (comportement d'origine de
+    `make_understandable_source_of_world_bridge_configuration`, inchangé ici).
+  - Dette inchangée : le nouveau corps rejoint les chaînes des épisodes 1, 6, 7a et 7b pour
+    l'**épisode 9** (i18n ×12).
+  Prochain pas : **épisode 9** (i18n ×12) — l'épisode 7 est complet.
