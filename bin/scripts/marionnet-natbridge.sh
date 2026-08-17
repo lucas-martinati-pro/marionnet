@@ -439,14 +439,20 @@ function subnet_of {
    | awk '{for(i=1;i<=NF;i++) if($i=="inet") {split($(i+1),a,"."); print a[1]"."a[2]"."a[3]; exit}}'
 }
 
-# free_subnet: the first candidate absent from the host's routes AND addresses.
-# Skipping this check is how a NAT bridge silently steals the host's own LAN
-# prefix and leaves the guests without Internet.
-function free_subnet {
- local taken net
+# subnet_is_taken NET: whether this /24 already appears among the host's routes
+# or addresses. Skipping this check is how a NAT bridge silently steals the
+# host's own LAN prefix and leaves the guests without Internet.
+function subnet_is_taken {
+ local taken
  taken=$("$IP" -4 route show; "$IP" -4 -oneline addr show)
+ grep -qF "$1." <<<"$taken"
+}
+
+# free_subnet: the first candidate this host is not already using.
+function free_subnet {
+ local net
  for net in "${CANDIDATE_NETS[@]}"; do
-   if ! grep -qF "$net." <<<"$taken"; then echo "$net"; return 0; fi
+   if ! subnet_is_taken "$net"; then echo "$net"; return 0; fi
  done
  fail E_NO_FREE_SUBNET "all candidate networks (${CANDIDATE_NETS[*]}) are already in use here"
 }
@@ -476,7 +482,18 @@ function do_up {
    succeed
  fi
 
- if [[ -n $FORCED_SUBNET ]]; then NET=$FORCED_SUBNET; else NET=$(free_subnet); fi
+ # A forced subnet gets the same check as a chosen one, and this is not a detail:
+ # the caller may now be a user typing an address in a dialog (work-stream
+ # modernisation-world-bridge, episode 10a). Posing a /24 the host already routes
+ # would break the host's own connectivity, silently, in its name.
+ if [[ -n $FORCED_SUBNET ]]; then
+   NET=$FORCED_SUBNET
+   if subnet_is_taken "$NET"; then
+     fail E_SUBNET_IN_USE "the network $NET.0/24 is already routed or addressed on this host"
+   fi
+ else
+   NET=$(free_subnet)
+ fi
  require_subnet "$NET"
  ip_forward_was=$(cat /proc/sys/net/ipv4/ip_forward)
  REPORT[ip_forward_was]=$ip_forward_was
@@ -879,7 +896,9 @@ Options:
                       components, each with its own /24. Omitted, the name is
                       the unsuffixed one -- and \`status'/\`gc' see both shapes.
   --subnet PREFIX     force the /24, e.g. --subnet 192.168.101 (default: the
-                      first candidate free of the host's routes and addresses)
+                      first candidate free of the host's routes and addresses).
+                      A forced prefix the host already uses is refused
+                      (E_SUBNET_IN_USE), not stolen.
   --candidates A,B,C  replace the default candidate list
   --state-dir DIR     where to remember whether WE turned ip_forward on
                       (default: \$MARIONNET_NATBRIDGE_STATE_DIR or $STATE_DIR)
@@ -890,7 +909,7 @@ Output: stdout is ALWAYS exactly one JSON object, on one line, success or
 failure; stderr is the human trace; the exit status is 0 on success. The JSON
 carries a symbolic error code among: E_USAGE, E_BAD_PID, E_BAD_INSTANCE,
 E_BAD_SUBNET, E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_SUDO_DENIED,
-E_NO_FREE_SUBNET, E_ROLLBACK_INCOMPLETE, E_INTERNAL.
+E_NO_FREE_SUBNET, E_SUBNET_IN_USE, E_ROLLBACK_INCOMPLETE, E_INTERNAL.
 
 The host interface, its address and its routes are NEVER touched: that is the
 whole point. Everything created here is undone by \`down' (and by \`gc' after a

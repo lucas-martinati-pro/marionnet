@@ -317,8 +317,39 @@ le suivant existe.
    **plus le bloc (c) du sudoers**, qui refusait de s'installer tant que ce script n'existait
    pas. **Zéro OCaml** : l'avertissement de coupure hôte part avec l'épisode 7, qui refond de
    toute façon le dialogue du composant. **Fait 2026-08-16**, détail en § 4.3.
-10. **ép. 9** *(à venir)* — **refresh i18n consolidé ×12**, qui solde aussi la dette des
-    trois chaînes de l'épisode 1 (§ 5).
+10. **ép. 10** *(en cours)* — **le NAT bridge se configure comme la passerelle** : adresse
+    IPv4 (10a), ports du commutateur intégré (10b), service DHCP (10c). Détail en § 4.5.
+11. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
+    aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après l'épisode 10** :
+    celui-ci ajoute des `msgid`, et traduire avant l'aurait fait traduire deux fois.
+
+### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
+
+Pour l'utilisateur, `world_gateway` et `nat_bridge` répondent à la même question — « mes
+machines accèdent à Internet » — mais leurs dialogues n'avaient rien de commun : la passerelle
+laisse choisir son adresse IPv4 (/24 figé), offre un service DHCP et un commutateur intégré à
+N ports ; le NAT bridge ne demandait qu'un nom. Or la mécanique ne justifiait pas cet écart : le
+/24 était **déjà** choisissable côté hôte (`--subnet` du script, `?subnet` de `Nat_bridge_host`,
+inutilisés), et le composant est **déjà** un `vde_switch`, simplement bridé à deux ports. Seul le
+DHCP manquait vraiment. Trois sous-épisodes, prouvés et committés séparément :
+
+- **10a — l'adresse IPv4.** Le dialogue porte la ligne « Adresse IPv4 » de la passerelle (trois
+  octets réglables, les deux derniers champs affichés mais insensibles : le réseau est un /24 et
+  le bridge en prend la **première** adresse, `<subnet>.1`, là où slirpvde met la passerelle en
+  `.2`). L'attribut voyage dans le `.mar` et — sans une ligne de plus dans le serveur — dans le
+  canal de contrôle, qui expose les champs de `to_tree`.
+- **10b — les ports du commutateur intégré.** Le composant passe de 1 à N ports (défaut 4, comme
+  la passerelle). Décision structurante : **ne pas** hériter de `Simulation_level.hub_or_switch`
+  malgré la parenté apparente avec `Switch` et `World_gateway` — son `initializer` construit le
+  `vde_switch` à la **construction** de l'objet simulé, ce qui exigerait le tap, donc le bridge,
+  donc `sudo`, et détruirait le report de `resolve_bridge_name` au **démarrage** qui est
+  précisément ce qui évite de demander le mot de passe à la pose du composant. On généralise
+  donc la mécanique de `bridge_common.ml` (N hublets, N câbles internes).
+- **10c — le service DHCP.** Révision assumée de la décision « pas de dnsmasq (YAGNI prouvé) » :
+  elle valait tant que le NAT bridge n'était pas comparé à la passerelle, qui, elle, en offre un.
+  dnsmasq est lancé **par le script hôte** (la séquence privilégiée reste la source unique de la
+  règle sudoers, cf. § 4.1), lié au seul bridge, et devient une **dépendance hôte** à répercuter
+  dans `modernisation-installation-marionnet`.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1199,3 +1230,54 @@ parce qu'aucune ne se redevine :
     d'avertissement et d'erreur génériques, antérieurs à ce chantier, jamais signalés comme
     gênants). Ils portent le même défaut latent, à traiter le jour où il se voit.
   Prochain pas, inchangé : **épisode 9** (i18n ×12).
+- **2026-08-18 — épisode 10a** : *le NAT bridge choisit son réseau*. Le dialogue d'ajout et de
+  modification porte désormais la ligne « Adresse IPv4 » de la passerelle, et le choix voyage
+  partout : `.mar`, canal de contrôle, script hôte.
+  - **Presque tout existait déjà.** `marionnet-natbridge.sh` acceptait `--subnet`, et
+    `Nat_bridge_host.up`/`ensure` un `?subnet` — jamais passé par personne. Le travail a donc
+    surtout consisté à **relier** ce qui était en place, et à combler ce que le forçage n'avait
+    jamais eu à faire : le script **court-circuitait** le test de disponibilité pour un subnet
+    forcé (`if [[ -n $FORCED_SUBNET ]]; then NET=$FORCED_SUBNET; else NET=$(free_subnet)`),
+    correct tant que l'appelant était le programme, dangereux dès que c'est un humain. Le
+    prédicat est extrait (`subnet_is_taken`) et porte aussi sur le subnet forcé → nouveau code
+    fermé **`E_SUBNET_IN_USE`**. Zéro modification du sudoers (aucune commande neuve).
+  - **Le défaut est calculé, et à un seul endroit** : `Tool.first_free_network_address` rend le
+    premier `192.168.10k` (la liste de candidats du script) qu'aucun autre NAT bridge du projet
+    ne tient — lu par `to_tree`, donc sans cast vers la classe, ce qui permet de l'appeler depuis
+    l'**argument par défaut du constructeur**. C'est ce qui préserve le comportement d'hier
+    (deux composants = deux /24) pour **toutes** les portes : dialogue, canal, et relecture d'un
+    projet enregistré avant que cet attribut existe. Le poser dans le seul dialogue aurait été
+    une régression pour le canal, mesurée au banc avant correction.
+  - **Deux défauts trouvés par le banc, invisibles autrement.**
+    (1) *L'adresse était figée à la construction de l'objet simulé* : après un `set` du canal
+    (qui écrit le champ en place, sans détruire le device — la GUI, elle, le détruit), un
+    redémarrage repartait sur l'**ancien** réseau. Corrigé en passant au niveau simulation une
+    **fonction** `unit -> string` plutôt qu'une valeur, exactement pour la raison qui fait
+    différer `resolve_bridge_name`.
+    (2) *Un refus ne se voyait nulle part* : le composant atteignait l'état `on` **sans aucun
+    bridge**, en silence (piège déjà noté à l'épisode 7a.3.b, mais tolérable tant que personne
+    ne choisissait rien). Puisque l'adresse est maintenant une **question posée à l'utilisateur**,
+    la réponse lui est due : `Simple_dialogs.warning` (donc `GMain_actor`, donc sûr depuis un
+    thread de tâche, et notification en session pilotée) porte le message du script. Il est
+    **mémoïsé** — une résolution a lieu deux fois par démarrage — et **réarmé** par
+    `after_terminate`, pour qu'un second essai raté prévienne encore.
+  - **Preuves.** `dune build` rc 0 et `bin/nat_bridge.ml` réellement recompilé (erreur volontaire
+    → échec, retirée → rc 0) ; `bridge_common.ml` l'est par construction (le `method!
+    extra_tree_attributes` du composant ne compile que si le tronc le déclare). Script :
+    `--subnet 192.168.95` (le vrai LAN de l'hôte) refusé en `E_SUBNET_IN_USE`, `--subnet
+    192.168.109` accepté. **Session pilotée réelle** : deux composants sans adresse → 101 et
+    102 (comportement d'hier préservé), un troisième sur 109 → `mnbr<pid>-2` **réellement en
+    192.168.109.1** ; conflit → **une** notification `warning` portant le message du script ;
+    stop/start → notification réarmée ; adresse corrigée → bridge construit sur le **nouveau**
+    /24, zéro notification ; **round-trip `.mar`** (les deux adresses survivent) ; et de bout en
+    bout, **un invité trixie en 192.168.104.2/24 pingue sa passerelle et 9.9.9.9 à 0 % de
+    perte** ; `quit` → aucun bridge, aucun tap, `bridges:[]` et `leftovers:[]`.
+  - **Dette i18n** (pour l'épisode 9, désormais le dernier) : 5 chaînes neuves ou modifiées —
+    libellé « IPv4 address », son tooltip, le **titre** et le **corps** de l'avertissement
+    (`f_`, respectivement **1** et **2** `%s` : une arité fausse casse à l'exécution, en
+    silence), et le paragraphe ajouté au texte d'aide.
+  - **À regarder à l'œil** (geste humain) : la fenêtre d'ajout avec sa ligne d'adresse, et le
+    dialogue d'avertissement — ce dernier passe par le `dialog_MESSAGE` du glade, dont le label
+    est en `wrap` **sans** `max_width_chars` : c'est le défaut latent laissé en l'état le
+    2026-08-17, commun à la cinquantaine de messages du programme, pas propre à cet épisode.
+  Prochain pas : **épisode 10b** (ports du commutateur intégré).

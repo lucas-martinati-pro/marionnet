@@ -159,8 +159,11 @@ Reprise : appliquer le skill `chantier-long`.
   code** (ép. 7c) : plus de `MARIONNET_WORLD_BRIDGE_MODE` ni de `Global_options.world_bridge_mode`,
   `MARIONNET_BRIDGE` n'étant plus qu'une **surcharge** explicite, dont
   `check_bridge_existence_and_warning` (test par `/sys/class/net/<nom>/bridge`, plus par
-  `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ». Reste l'ép. 9
-  (i18n ×12).
+  `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ».
+  **Ép. 10 en cours** — *le NAT bridge se configure comme la passerelle* (§ 4.5 du doc), en
+  trois temps : **10a adresse IPv4 (fait)**, 10b ports du commutateur intégré, 10c service
+  DHCP (dnsmasq lancé par le script hôte ⇒ dépendance hôte neuve). L'**ép. 9 (i18n ×12) est
+  désormais le dernier**, après le 10, pour ne pas traduire deux fois.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

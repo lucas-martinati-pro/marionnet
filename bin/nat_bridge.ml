@@ -31,12 +31,87 @@
 (* --- *)
 module Log = Marionnet_log
 module Xforest = Ocamlbricks.Xforest
+module Ipv4 = Ocamlbricks.Ipv4
 (* --- *)
 open Gettext
 
-(* Everything this component has in common with the LAN bridge -- the constants, the
-   type exchanged with the dialog, and both halves of the mechanism: *)
-module Data = Bridge_common.Data
+(* --- Choosing the private network
+   ---
+   The host script picks, by itself, the first /24 free of the host's routes among
+   its candidate list (192.168.101 ... 192.168.110). Since episode 10a the user may
+   choose instead, exactly as for a world gateway -- and the two must agree, so the
+   default offered by the dialog is taken from the SAME list. Only the third byte
+   really varies: the netmask is a /24 (the script knows no other) and the host side
+   of the bridge is always <subnet>.1 (see Nat_bridge_host.t.host_address), hence the
+   last two spin buttons of the dialog are shown but insensitive. *)
+module Const = struct
+ let first_candidate_third_byte = 101
+ let last_candidate_third_byte  = 110
+ (* --- *)
+ let cidr = 24
+ let host_byte = 1
+ (* --- *)
+ let network_config_of_third_byte b3 = ((192, 168, b3, host_byte), cidr)
+ let network_config_default = network_config_of_third_byte first_candidate_third_byte
+end
+
+(* The type of data exchanged with the dialog. Not [Bridge_common.Data] any more (the
+   LAN bridge still uses it): a NAT bridge carries its own network. *)
+module Data = struct
+type t = {
+  name           : string;
+  label          : string;
+  network_config : Ipv4.config;
+  old_name       : string;
+  }
+
+let to_string _t = "<obj>" (* TODO? *)
+end (* Data *)
+
+module Tool = struct
+
+ (* The dialog speaks of an address, the .mar of a network address ("192.168.101.0",
+    as for a world gateway) and the host script of a /24 prefix ("192.168.101"). *)
+
+ let network_address_of_config (config : Ipv4.config) =
+   let ((i1,i2,i3,_),_) = config in
+   Printf.sprintf "%i.%i.%i.0" i1 i2 i3
+
+ let subnet_of_network_address (network_address : string) =
+   let (i1,i2,i3,_) = Ipv4.of_string network_address in
+   Printf.sprintf "%i.%i.%i" i1 i2 i3
+
+ let network_config_of_network_address (network_address : string) : Ipv4.config =
+   let (i1,i2,i3,_) = Ipv4.of_string network_address in
+   ((i1, i2, i3, Const.host_byte), Const.cidr)
+
+ let network_address_default = network_address_of_config Const.network_config_default
+
+ (* The networks already held by the NAT bridges of this project. Read from their
+    [to_tree] rather than from a cast to the class defined below: the answer is the
+    same, and this way the function may be called from the class's own default
+    argument. *)
+ let network_addresses_in_use (network : User_level.network) : string list =
+   List.filter_map
+     (fun n -> let ((_, attrs), _) = n#to_tree in List.assoc_opt "network_address" attrs)
+     (network#get_nodes_such_that ~devkind:`Nat_bridge (fun _ -> true))
+
+ (** The network a NEW component takes when nobody says which one: the first
+     candidate of the host script's own list which no other NAT bridge of this
+     project already holds. This is what keeps the behaviour of yesterday, when the
+     script chose alone -- two components posted one after the other get two separate
+     /24 -- and it holds for every door: the dialog, the control channel, and the
+     re-reading of a project saved before this attribute existed. *)
+ let first_free_network_address (network : User_level.network) : string =
+   let taken = network_addresses_in_use network in
+   let rec search b3 =
+     if b3 > Const.last_candidate_third_byte then network_address_default else
+     let candidate = network_address_of_config (Const.network_config_of_third_byte b3) in
+     if List.mem candidate taken then search (b3 + 1) else candidate
+   in
+   search Const.first_candidate_third_byte
+
+end (* module Tool *)
 
 
 module Make_menus (Params : sig
@@ -61,14 +136,18 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "N" in
-      Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~ok_callback ()
+      let network_config =
+        Tool.network_config_of_network_address (Tool.first_free_network_address st#network)
+      in
+      Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
 
-    let reaction { name = name; label = label; _ } =
+    let reaction { name = name; label = label; network_config = network_config; _ } =
       let action () = ignore (
         new User_level_nat_bridge.nat_bridge
           ~network:st#network
           ~name
           ~label
+          ~network_address:(Tool.network_address_of_config network_config)
           ())
       in
       st#network_change action ();
@@ -81,14 +160,19 @@ module Make_menus (Params : sig
 
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
+     let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
      let title = (s_ "Modify NAT bridge")^" "^name in
      let label = d#get_label in
-     Dialog_add_or_update.make ~title ~name ~label ~ok_callback:Add.ok_callback ()
+     let network_config = Tool.network_config_of_network_address h#get_network_address in
+     Dialog_add_or_update.make ~title ~name ~label ~network_config ~ok_callback:Add.ok_callback ()
 
-    let reaction { name = name; label = label; old_name = old_name } =
+    let reaction { name = name; label = label; network_config = network_config; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
-      let action () = h#update_bridge_with ~name ~label in
+      let action () =
+        h#update_nat_bridge_with ~name ~label
+          ~network_address:(Tool.network_address_of_config network_config)
+      in
       st#network_change action ();
 
   end
@@ -173,11 +257,13 @@ let make
  ?(title="Add NAT bridge")
  ?(name="")
  ?label
+ ?(network_config=Const.network_config_default)
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
  ?(dialog_image_file=Initialization.Path.images^"ico.nat_bridge.dialog.png")
  () :'result option =
   let old_name = name in
+  let ((b1,b2,b3,b4),b5) = network_config in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
@@ -188,6 +274,24 @@ let make
       ?label
       ()
   in
+
+  (* The private network of this bridge, chosen as for a world gateway. The last byte
+     and the netmask are shown but insensitive: the host side of the bridge is always
+     <subnet>.1 and the script knows no netmask but /24. *)
+  let (s1,s2,s3,s4,s5) =
+    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
+    let form =
+      Gui_bricks.make_form_with_labels
+        ~packing:vbox#add
+        [ (s_ "IPv4 address") ]
+    in
+    Gui_bricks.spin_ipv4_address_with_cidr_netmask
+      ~packing:(form#add_with_tooltip ~just_for_label:()
+                  (s_ "IPv4 address of the bridge, which is the default gateway of the virtual machines connected to it"))
+      b1 b2 b3 b4 b5
+  in
+  s4#misc#set_sensitive false;
+  s5#misc#set_sensitive false;
 
   (* Said at the moment of the gesture, not as an unexplained failure at start-up
      time: this component asks for administrator rights the first time it runs
@@ -212,8 +316,17 @@ let make
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
+    let network_config =
+      let s1 = int_of_float s1#value in
+      let s2 = int_of_float s2#value in
+      let s3 = int_of_float s3#value in
+      let s4 = int_of_float s4#value in
+      let s5 = int_of_float s5#value in
+      ((s1,s2,s3,s4),s5)
+    in
       { Data.name = name;
         Data.label = label;
+        Data.network_config = network_config;
         Data.old_name = old_name;
         }
   in
@@ -236,10 +349,14 @@ when Marionnet exits, that bridge and its rules are removed: the host is left \
 exactly as it was found.\n\n\
 Each NAT bridge of the project has its OWN private network: two of these \
 components are two separate networks, not two doors onto the same one.\n\n\
-The guests must be configured in that network: the address of the bridge is \
-their gateway, and the range of usable addresses is written in the Marionnet \
-log when the component starts. There is no DHCP server: give the virtual \
-machines a static address.\n\n\
+- IPv4 address: the address of the bridge itself, which is the default gateway \
+of the virtual machines connected to it. Only the first three bytes can be \
+chosen: the network is a /24, the bridge takes its first address, and the \
+guests may use the rest of it (from .2 to .254). A network the host already \
+routes is refused rather than stolen -- the proposed value is one Marionnet \
+knows to be free.\n\n\
+The guests must be configured in that network. There is no DHCP server: give \
+the virtual machines a static address.\n\n\
 NAT bridge, LAN bridge or gateway? Use a NAT BRIDGE to reach the Internet with \
 real network performance and no host configuration -- it is also the only one \
 of the three bridges that works when the host is connected over Wi-Fi. Use a \
@@ -292,7 +409,16 @@ class nat_bridge =
  fun ~network
      ~name
      ?label
+     ?network_address
      () ->
+  (* Not a constant default: a component created without an explicit network takes
+     the first one this project has left free (see [Tool.first_free_network_address]),
+     so that two of them never collide, wherever they are created from. *)
+  let network_address =
+    match network_address with
+    | Some x -> x
+    | None   -> Tool.first_free_network_address (network :> User_level.network)
+  in
   object (self)
 
   inherit
@@ -302,11 +428,47 @@ class nat_bridge =
       ~devkind:`Nat_bridge
       ~kind_name:"nat_bridge"
       ()
+    as self_as_bridge
+
+  (** The private network of this component, as ["192.168.101.0"] -- the same shape
+      as the one of a world gateway, and the shape written into the project file.
+      What the host script wants is its /24 prefix, and what the guests need is its
+      first address: both are derived, never stored twice. *)
+  val mutable network_address : string = network_address
+  method get_network_address = network_address
+  method set_network_address x = network_address <- x
+
+  method! extra_tree_attributes = [ ("network_address", self#get_network_address) ]
+
+  method! eval_forest_attribute = function
+  | ("network_address", x) -> self#set_network_address x
+  | a -> self_as_bridge#eval_forest_attribute a
+
+  (** Redefined: the drawing says which network this bridge offers, exactly as the
+      one of a world gateway does. *)
+  method! label_for_dot =
+    let ip_gw = Ipv4.string_of_config (Tool.network_config_of_network_address self#get_network_address) in
+    match self#get_label with
+    | "" -> ip_gw
+    | _  -> Printf.sprintf "%s <br/> %s" ip_gw self#get_label
+
+  method update_nat_bridge_with ~name ~label ~network_address =
+    (* The following call ensures that the simulated device will be destroyed, hence
+       that the bridge is given back before another one is built on another network: *)
+    self#update_bridge_with ~name ~label;
+    self#set_network_address network_address;
 
   (** Create the simulated device *)
   method private make_simulated_device =
    ((new Simulation_level_nat_bridge.nat_bridge
         ~parent:self
+        (* A function, not a value, and for the same reason the trunk defers
+           [resolve_bridge_name]: the network may be changed between the moment this
+           object is built and the moment it is started. Through the GUI the point is
+           moot (a modification destroys the simulated device), but the control
+           channel writes the field in place -- and a component restarted after its
+           address was corrected must use the NEW one. *)
+        ~subnet:(fun () -> Tool.subnet_of_network_address self#get_network_address)
         ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
@@ -370,6 +532,7 @@ let no_bridge_at_all = "marionnet-no-such-bridge"
 class ['parent] nat_bridge =
   fun (* ~id *)
       ~(parent:'parent)
+      ~(subnet : unit -> string)  (* the /24 prefix chosen by the user, e.g. "192.168.101" *)
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -377,6 +540,13 @@ class ['parent] nat_bridge =
      component (a project saved and reloaded may well get another one), it is a
      property of the run, hence a reference and not a field of the .mar: *)
   let instance = ref None in
+  (* --- *)
+  (* Whether the user has already been told that this start-up got no bridge. Two
+     reasons for it: a start-up resolves its bridge TWICE (the simulated object is
+     built, then started), and a warning shown twice for one gesture is a bug of its
+     own; and the same component may be started again after the cause is fixed, hence
+     the re-arming in `after_terminate' below. *)
+  let already_warned = ref false in
   (* --- *)
   (* Called at start-up time, and possibly twice for a single gesture (the simulated
      object is built, then started): the number is therefore reused when we already
@@ -396,7 +566,7 @@ class ['parent] nat_bridge =
     let result =
       try
         let n = match !instance with Some n -> n | None -> smallest_free (taken_instances ()) in
-        (match Nat_bridge_host.ensure ~instance:n () with
+        (match Nat_bridge_host.ensure ~subnet:(subnet ()) ~instance:n () with
          | Ok info ->
              let () = instance := Some n in
              let () =
@@ -409,6 +579,28 @@ class ['parent] nat_bridge =
              let () =
                Log.printf1 "nat_bridge: no private bridge could be built (%s)\n" (Nat_bridge_host.string_of_error e)
              in
+             (* Said, and not only written in a log nobody reads: since episode 10a the
+                network is the user's own choice, so a refusal is an answer owed to a
+                question that was asked. Without this the component reaches the state
+                `on' with no bridge behind it, in complete silence. `warning' is safe
+                from this thread (it goes through GMain_actor) and does not block a
+                scripted session (it becomes a notification). *)
+             let () =
+               if !already_warned then () else
+               let () = already_warned := true in
+               let title = Printf.sprintf (f_ "NAT bridge \"%s\": no private network") (parent#get_name) in
+               let message =
+                 Printf.sprintf
+                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has \
+                        no network at all: the virtual machines connected to it will reach nothing.\n\n\
+                        <tt><small>%s</small></tt>\n\n\
+                        If the network of this component is already used by the host itself (or by \
+                        another NAT bridge), stop the component and choose another IPv4 address in \
+                        its dialog.")
+                   (parent#get_name) (Glib.Markup.escape_text (Nat_bridge_host.string_of_error e))
+               in
+               Simple_dialogs.warning title message ()
+             in
              no_bridge_at_all)
       with e -> Mutex.unlock allocation_mutex; raise e
     in
@@ -419,6 +611,7 @@ class ['parent] nat_bridge =
   (* Called once the tap has been destroyed: the bridge and its translation rules go
      away with the component, and its number becomes available again. *)
   let after_terminate () : unit =
+    let () = already_warned := false in
     let () = Mutex.lock allocation_mutex in
     let () =
       try

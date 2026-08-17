@@ -111,11 +111,20 @@ class virtual bridge =
   method update_bridge_with ~name ~label =
    self_as_node_with_defects#update_with ~name ~label ~port_no:1;
 
+  (** What a nature writes into the project file {e beyond} the two attributes
+      every bridge has. A method rather than a parameter of this class: what it
+      returns is read from the mutable fields of the sub-class, which the
+      arguments of an [inherit] clause cannot see. The reader side needs nothing
+      here — [eval_forest_attribute] below already ignores what it does not know,
+      so a sub-class only has to intercept its own attributes and forward the
+      rest. *)
+  method extra_tree_attributes : (string * string) list = []
+
   method to_tree =
    Forest.tree_of_leaf (kind_name, [
      ("name"     ,  self#get_name );
      ("label"    ,  self#get_label);
-     ])
+     ] @ self#extra_tree_attributes)
 
   method! eval_forest_attribute = function
   | ("name"     , x ) -> self#set_name x
