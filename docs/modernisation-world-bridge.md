@@ -1164,3 +1164,38 @@ parce qu'aucune ne se redevine :
   - Dette inchangée : le nouveau corps rejoint les chaînes des épisodes 1, 6, 7a et 7b pour
     l'**épisode 9** (i18n ×12).
   Prochain pas : **épisode 9** (i18n ×12) — l'épisode 7 est complet.
+- **2026-08-17 — correctif d'affichage, avant l'épisode 9** : *les fenêtres cessent de
+  s'étaler*. Constat de l'utilisateur, capture à l'appui : la fenêtre `Add LAN bridge`
+  occupait toute la largeur de l'écran, sa note en italique tenant sur **une seule ligne**.
+  - **Cause.** En Gtk+ **3**, l'argument `~width` d'un `GMisc.label` n'est qu'une *size
+    request* : il fixe la largeur **minimale**. Un label en `~line_wrap:true` continue de
+    réclamer, comme largeur **naturelle**, la phrase entière ; et le dialogue
+    (`Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label`, qui n'impose aucune
+    taille) obéit à cette largeur naturelle. Le `~width:420` posé aux épisodes 6 et 7b n'a
+    donc jamais rien coupé. Ce qui coupe, en Gtk+ 3, c'est le plafond de la largeur
+    naturelle : `set_max_width_chars`.
+  - **Choix : plafonner, ne pas couper à la main.** L'autre voie était d'insérer des sauts de
+    ligne dans les chaînes elles-mêmes, comme le fait le reste du dépôt (`talking.ml`,
+    `state.ml`, `gui_dialog_A_PROPOS.ml`). Elle est bonne pour un message dont on **veut**
+    deux lignes précises, mauvaise ici : ces trois chaînes partent à l'**épisode 9** dans
+    douze langues, chacune devrait alors reproduire une coupure calculée pour l'anglais — et
+    l'allemand déborderait quand même. Le plafond, lui, vaut pour toutes les langues sans
+    qu'aucune traduction n'ait à le savoir. Conséquence directe : **aucun `msgid` n'est
+    touché**, le POT est inchangé, l'épisode 9 n'hérite d'aucune contrainte de mise en page.
+    C'est le premier `max_width_chars` de `bin/` — premier usage assumé, avec le commentaire
+    qui dit pourquoi il est là (sans quoi il sera « nettoyé » un jour).
+  - **Portée : trois fenêtres, pas deux.** `bin/lan_bridge.ml` et `bin/nat_bridge.ml` (note du
+    dialogue d'ajout **et** de modification : c'est le même `make`), plus
+    `bin/gui/simple_dialogs.ml` — le dialogue `ask_password` de l'épisode 6, qui souffrait du
+    même défaut sur le plus long de ses paragraphes. Valeur retenue : **72 caractères**.
+  - **Preuves mesurées.** `dune build` rc 0 et **les trois modules réellement recompilés**
+    (erreur volontaire dans chacun → build en échec sur les trois lignes, erreurs retirées →
+    rc 0). Largeurs relevées par deux programmes jetables en lablgtk3 5.4.1 reconstruisant les
+    dialogues à l'identique (même image, mêmes options) et lisant l'allocation réelle :
+    `Add LAN bridge` **2667 px → 889 px** (760 px à 60 caractères, 1001 px à 80),
+    `ask_password` **2019 px → 895 px**. `git diff` : aucune ligne `s_`/`f_` modifiée.
+    Fenêtres validées à l'œil par l'utilisateur.
+  - **Non touché** : les trois autres labels `~width:420` de `simple_dialogs.ml` (messages
+    d'avertissement et d'erreur génériques, antérieurs à ce chantier, jamais signalés comme
+    gênants). Ils portent le même défaut latent, à traiter le jour où il se voit.
+  Prochain pas, inchangé : **épisode 9** (i18n ×12).

@@ -209,12 +209,17 @@ let make
         else
           (s_ "Note: when this component starts, Marionnet asks for your password, once, in order to put this computer's network card into a bridge, so that the virtual machines appear on your real local network. The host connection is interrupted for a fraction of a second. A Wi-Fi card cannot be used this way: prefer a NAT bridge.")
       in
-      let _ =
+      let note =
         GMisc.label
           ~markup:("<i>" ^ Glib.Markup.escape_text notice ^ "</i>")
           ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
           ~packing:w#vbox#add ()
-      in ()
+      in
+      (* Gtk+ 3: ~width is only the *minimum* request; a wrapping label still asks
+         for the whole sentence as its natural width, and the dialog obeys (measured:
+         2667 pixels wide). Capping the natural width is what makes the text wrap —
+         and it does so in every language, which no hand-placed line break could do. *)
+      note#set_max_width_chars 72
   in
 
   let get_widget_data () :'result =

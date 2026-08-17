@@ -195,14 +195,18 @@ let make
      the probe answers `true' and the notice goes away by itself. *)
   let () =
     if not (Nat_bridge_host.is_usable ()) then
-      let _ =
+      let note =
         GMisc.label
           ~markup:("<i>" ^ Glib.Markup.escape_text
                      (s_ "Note: the first time this component is started, Marionnet will ask for your password, once, in order to grant itself the right to build its own private bridge.")
                    ^ "</i>")
           ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
           ~packing:w#vbox#add ()
-      in ()
+      in
+      (* Gtk+ 3: ~width is only the *minimum* request; a wrapping label still asks
+         for the whole sentence as its natural width, and the dialog obeys. Capping
+         the natural width is what makes the text wrap, in every language. *)
+      note#set_max_width_chars 72
   in
 
   let get_widget_data () :'result =

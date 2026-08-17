@@ -300,9 +300,16 @@ let ask_password ?(again=false) ~title ~header () : string option =
     img#set_file (Initialization.Path.images ^ "ico.warning.orig.png")
   in
   let vbox = GPack.vbox ~packing:(outer#pack ~expand:true ~fill:true) ~spacing:8 () in
-  let _ =
-    GMisc.label ~text:header ~xalign:0.0 ~line_wrap:true ~width:420
-      ~packing:(vbox#pack ~expand:false) ()
+  let () =
+    let l =
+      GMisc.label ~text:header ~xalign:0.0 ~line_wrap:true ~width:420
+        ~packing:(vbox#pack ~expand:false) ()
+    in
+    (* Gtk+ 3: ~width is only the *minimum* request; a wrapping label still asks for
+       its longest paragraph as its natural width, and the dialog obeys (measured:
+       2019 pixels wide with the LAN bridge header). Capping the natural width is
+       what makes the text wrap, in every language. *)
+    l#set_max_width_chars 72
   in
   let () =
     if again then
