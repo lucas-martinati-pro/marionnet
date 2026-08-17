@@ -120,9 +120,11 @@ class hublet_process :
     inherit process_which_creates_a_socket_at_spawning_time
   end
 
+(* The network and the DHCP flag are read at spawning time, hence functions: the
+   simulated device outlives a stop/start while the model may change meanwhile. *)
 class slirpvde_process :
-  ?network:process_name ->
-  ?dhcp:unit ->
+  ?get_network:(unit -> process_name option) ->
+  ?get_dhcp:(unit -> bool) ->
   existing_socket_name:process_name ->
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->

@@ -443,13 +443,19 @@ class world_gateway =
       | ("port_no", x) -> self#set_port_no (int_of_string x)
       | _ -> assert false
 
-  (** Create the simulated device *)
+  (** Create the simulated device.
+      ---
+      The network and the DHCP flag are passed as FUNCTIONS: this object is built
+      once and survives every stop/start, while the control channel may write those
+      two fields in place meanwhile (the GUI cannot: a modification goes through
+      [update_with], which destroys the device). Handing over values made a
+      restarted gateway keep the ones of its first start-up. *)
   method private make_simulated_device =
     ((new Simulation_level_world_gateway.world_gateway
         ~parent:self
 	~port_no:self#get_port_no
-	~network_address
-	~dhcp_enabled
+	~get_network_address:(fun () -> self#get_network_address)
+	~get_dhcp_enabled:(fun () -> self#get_dhcp_enabled)
         ~working_directory:(network#project_working_directory)
 	~unexpected_death_callback:self#destroy_because_of_unexpected_death
 	()) :> User_level.node Simulation_level.device)
@@ -473,8 +479,8 @@ module Simulation_level_world_gateway = struct
 class ['parent] world_gateway =
   fun ~(parent:'parent)
       ~port_no
-      ~network_address (* default 10.0.2.0 *)
-      ~dhcp_enabled
+      ~(get_network_address : unit -> string) (* default 10.0.2.0 *)
+      ~(get_dhcp_enabled : unit -> bool)
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -500,8 +506,8 @@ class ['parent] world_gateway =
     self#add_accessory_process
       (new Simulation_level.slirpvde_process
  	~existing_socket_name:slirpvde_socket
- 	~network:network_address
-	?dhcp:(Option.of_bool dhcp_enabled)
+ 	~get_network:(fun () -> Some (get_network_address ()))
+	~get_dhcp:get_dhcp_enabled
  	~unexpected_death_callback:self#execute_the_unexpected_death_callback
 	())
 

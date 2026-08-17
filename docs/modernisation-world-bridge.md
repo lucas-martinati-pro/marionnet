@@ -1281,3 +1281,31 @@ parce qu'aucune ne se redevine :
     est en `wrap` **sans** `max_width_chars` : c'est le défaut latent laissé en l'état le
     2026-08-17, commun à la cinquantaine de messages du programme, pas propre à cet épisode.
   Prochain pas : **épisode 10b** (ports du commutateur intégré).
+- **2026-08-18 — épisode 10a bis** : *la passerelle portait le même défaut, et il est mesuré*.
+  Le piège trouvé à l'épisode 10a (le canal écrit un champ **sans** détruire l'objet de
+  simulation, contrairement à la GUI) a été vérifié sur `world_gateway`, qui est **hors cible du
+  chantier** mais dont le dialogue vient de servir de modèle : sur un composant arrêté,
+  `set G1 network_address 10.0.5.0` + `set G1 dhcp_enabled false` étaient acceptés par le modèle
+  (`get` les renvoyait), et le redémarrage relançait pourtant `slirpvde --network 10.0.2.0
+  --dhcp` — l'état du **premier** démarrage. Mesuré sur la ligne de commande du processus, avant
+  toute correction.
+  - **Correction, une couche plus bas que pour le NAT bridge.** Là, une fonction lue au démarrage
+    suffisait (`resolve_bridge_name` est appelé au `spawn`) ; ici les valeurs sont figées dans les
+    **arguments** d'un processus construit par l'`initializer` du device. `slirpvde_process`
+    prend donc `?get_network` / `?get_dhcp` (fonctions) et **recalcule ses arguments dans
+    `spawn`** — possible sans rien réécrire parce que `process#spawn` lit déjà le `val mutable
+    arguments` au moment de l'appel. `world_gateway.ml` passe les deux lectures du modèle,
+    `simulation_level.mli` suit.
+  - **Preuves.** `dune build` rc 0, les deux modules réellement recompilés (le build a échoué sur
+    chacun pendant l'itération, puis rc 0). Même scénario rejoué : 1ᵉʳ démarrage `--network
+    10.0.2.0 --dhcp`, puis après les deux `set` → `--network 10.0.5.0` **sans** `--dhcp` ; et,
+    dans l'autre sens, `10.0.4.0` + DHCP réactivé → un invité trixie obtient un **bail réel**
+    `10.0.4.15/24` avec passerelle `10.0.4.2` (`dhcpcd` ; `dhclient` n'existe pas sur trixie).
+    Round-trip `.mar` intact, `quit` sans résidu.
+  - **Portée du défaut, mesurée et non supposée** : il n'est **pas** systématique. Le canal ne
+    traite comme structurels que `name` et `port_no` (`control_server.ml`), donc tout autre champ
+    est écrit en place — mais seuls en souffrent les composants dont le niveau simulation *fige*
+    la valeur. Contre-exemple vérifié au run : `set m1 memory 96` sur une machine arrêtée est bien
+    honoré au redémarrage (`mem=48M` → `mem=96M`). Aucune campagne n'est ouverte : la règle à
+    retenir est locale — **tout paramètre qu'un niveau simulation reçoit par valeur est figé pour
+    le canal**.

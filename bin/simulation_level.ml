@@ -555,38 +555,52 @@ class hublet_process =
 end;;
 
 
-(** This is used to implement the world gateway component. *)
+(** This is used to implement the world gateway component.
+    ---
+    [get_network] and [get_dhcp] are functions, not values, and this is not a
+    matter of taste: the simulated device of a component is built ONCE (user_level:
+    [create_right_now], state [No_device] -> [Off]) and survives every stop/start,
+    while the model may change in between — the control channel writes a field in
+    place, through [eval_forest_attribute], without destroying anything (the GUI, on
+    the contrary, destroys the device in [update_with]). Freezing the arguments at
+    construction time therefore made a restarted gateway keep the network and the
+    DHCP flag it had at its FIRST start-up, whatever the model said since. Reading
+    them in [spawn] is what makes a restart honour the current model. *)
 class slirpvde_process =
-  fun ?network
-      ?dhcp
+  fun ?(get_network : (unit -> string option) option)
+      ?(get_dhcp : (unit -> bool) option)
       ~existing_socket_name
       ~unexpected_death_callback
       () ->
 
-  let network = match network with
-   | None -> [] (* slirpvde sets by default 10.0.2.0 *)
-   | Some n  -> ["--network"; n ]
-  in
-  let dhcp = match dhcp with
-   | None -> []
-   | Some () -> ["--dhcp" ] (* turn on the DHCP server *)
-  in
-  let arguments = List.concat [
-       [ "--mod";  "777";       (* To do: find a reasonable value for this *) ];
-       [ "--unix"; (Shell.escaped_filename existing_socket_name) ];
-       network;
-       dhcp;
+  let fixed_arguments = [
+       "--mod";  "777";       (* To do: find a reasonable value for this *)
+       "--unix"; (Shell.escaped_filename existing_socket_name);
        ]
   in
   object(self)
    inherit process
       (Initialization.Path.vde_prefix ^ "slirpvde")
-      arguments
+      fixed_arguments
       ~stdin:an_input_descriptor_never_sending_anything
       ~stdout:dev_null_out
       ~stderr:dev_null_out
       ~unexpected_death_callback
       ()
+      as super
+
+  method! spawn =
+    let network = match get_network with
+     | None   -> [] (* slirpvde sets by default 10.0.2.0 *)
+     | Some f -> (match f () with None -> [] | Some n -> ["--network"; n])
+    in
+    let dhcp = match get_dhcp with
+     | None   -> []
+     | Some f -> if f () then ["--dhcp"] else [] (* turn on the DHCP server *)
+    in
+    let () = arguments <- List.concat [ fixed_arguments; network; dhcp ] in
+    super#spawn
+
 end;; (* class slirpvde_process *)
 
 
