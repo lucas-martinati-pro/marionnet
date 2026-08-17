@@ -1030,3 +1030,68 @@ parce qu'aucune ne se redevine :
   Prochain pas : **7c** (retrait de `MARIONNET_WORLD_BRIDGE_MODE`, de
   `Global_options.world_bridge_mode` — **plus aucun lecteur depuis cet épisode** — et du
   contrôle `check_bridge_existence_and_warning` si l'on juge qu'il a fait son temps).
+
+- **2026-08-17 — épisode 7b bis** : *le chemin nominal, enfin joué sur une carte réelle de
+  l'hôte* — et le défaut que seule une carte réelle pouvait montrer.
+  - **Ce qui a rendu l'essai possible.** Le poste n'a pas de carte filaire (`wlp0s20f3` seule,
+    donc `E_WIRELESS` à tous les épisodes précédents). Il a été relié au **partage de connexion
+    USB d'un téléphone Android** (`enx022a19680b00`, pilote `rndis_host`, 192.168.95.184/24,
+    passerelle 192.168.95.165). Le noyau la voit comme une carte ethernet : la garde
+    `refuse_wireless` ne s'applique pas, et **tout ce qui touche l'hôte a donc tourné pour de
+    vrai** — création de `mnlan0`, clonage de la MAC, migration de l'adresse *et* de la route
+    par défaut, asservissement, puis restauration. Réserve honnête : un lien RNDIS n'est pas un
+    câble vers un switch ; l'essai ne dit rien du comportement d'un vrai commutateur, et un
+    rejeu sur un LAN filaire reste souhaitable.
+  - **Ce qui est prouvé.** (a) `up` réel : `mnlan0` porte l'adresse et la route, la carte est
+    `master mnlan0` en `forwarding`, et **l'hôte garde son Internet** (ping passerelle et
+    9.9.9.9 à 0 %) ; `status` retrouve l'alias `marionnet-lanbridge:<pid>:enx022a19680b00`.
+    (b) `down` : `mnlan0` disparaît, la carte retrouve adresse et route, ping vert.
+    (c) **Chaîne OCaml complète** : Marionnet piloté par le canal, un composant *LAN bridge* →
+    `Privileges.ensure_lanbridge` (bloc (c) installé, donc aucune fenêtre) → `Lan_bridge_host`
+    → script → `mnlan0` avec `enx022a19680b00` **et** `mtap<pid>-0` comme ports.
+    (d) **La promesse pédagogique, tenue pour la première fois** : une machine trixie câblée au
+    bridge, adressée en `192.168.95.210/24`, résout l'ARP de la passerelle, pingue l'hôte, la
+    passerelle et 9.9.9.9 à 0 % ; puis, **`dhcpcd` lancé dans l'invité, un bail réel du serveur
+    DHCP du LAN** (192.168.95.170, 3599 s), `/etc/resolv.conf` rempli par lui, et
+    `getent hosts deb.debian.org` qui répond. Vraies adresses, vrai DHCP, vrais voisins.
+    (e) `quit` → ni `mnlan0` ni tap, `status` : `exists:false`.
+  - **Le défaut trouvé, et pourquoi seule une carte réelle pouvait le montrer.** Sur un hôte
+    géré par **NetworkManager**, le `down` laissait une **route par défaut surnuméraire de
+    métrique 0**. Chronologie relevée à la milliseconde (`ip -ts monitor`) : notre `addr add`
+    sur la carte (t), NM qui réapplique sa configuration 0,5 ms plus tard et repose **ses**
+    routes `metric 100`, puis notre `route add` nu à t+11 ms — d'où deux routes par défaut, la
+    nôtre l'emportant sur celle du système, et sur toutes les autres cartes de la machine. En
+    netns (selftest de l'épisode 8) il n'y a ni gestionnaire réseau ni métrique : le défaut y
+    est **invisible par construction**. Danger réel : au prochain changement de bail, la route
+    de métrique 0, périmée, continue de gagner.
+  - **Correctif (script hôte seul, zéro OCaml, zéro modification du sudoers).** La **métrique
+    voyage avec la route** : `up` la lit sur la carte (`route_metric_of`) et la pose sur la
+    route *et* sur l'adresse du bridge (`ip addr add … metric N`, qui fixe la métrique de la
+    route de préfixe dérivée) ; `down` la relit **sur le bridge** — donc toujours aucun fichier
+    d'état, l'information se lit sur le système, y compris après un crash. La restauration
+    devient de surcroît **conditionnelle** (`addr_present`, `default_route_present`) : ce que le
+    gestionnaire a déjà remis n'est pas remis une seconde fois. Repli conservé dans
+    `restore_default_route` : si une règle sudoers plus stricte refusait l'argument `metric`,
+    perdre la métrique est un défaut d'aspect, laisser l'hôte sans route par défaut serait une
+    panne. Mesuré : les formes avec `metric` **sont déjà couvertes** par le bloc (c) tel qu'il
+    est installé (un `*` de sudoers matche plusieurs mots, exactement comme pour `brd`), d'où
+    aucune réinstallation à demander ; `print-privileged-commands` les publie désormais.
+  - **Vérification du correctif** : trace `ip monitor` d'un cycle complet — la route par défaut
+    du bridge porte `metric 100`, **aucune route par défaut nue n'est plus créée**, et l'état
+    final n'a qu'une seule route par défaut ; rejoué ensuite par la chaîne OCaml (`start`,
+    `quit`) avec le même résultat et aucun résidu d'interface.
+  - **Limite résiduelle, documentée plutôt que masquée** : il reste une **route de préfixe**
+    (`192.168.95.0/24`) en double, sans métrique. La trace montre qu'elle est l'œuvre de
+    NetworkManager, qui repose l'adresse **sans** priorité de route (le noyau crée alors une
+    route de métrique 0) avant d'ajouter la sienne en `metric 100`. Elle vise le même préfixe,
+    par la même carte, avec la même source : aucun effet de routage, et elle meurt avec
+    l'adresse. Remède immédiat si elle gêne : `nmcli device reapply <carte>` (vérifié : il
+    nettoie sans mot de passe).
+  - **Prérequis du jour, pour mémoire** : bloc (c) installé (`marionnet-sudoers.sh install
+    --only --enable-lanbridge`, sha256 du bloc (a) inchangé) et `MARIONNET_BRIDGE=` posé dans
+    `~/.marionnet/marionnet.conf` pour neutraliser le `br0` que `/etc/marionnet/marionnet.conf`
+    porte encore.
+  Prochain pas : inchangé — **7c**, puis l'épisode 9 (i18n ×12). Geste humain restant :
+  rejouer `marionnet-lanbridge.sh selftest` (harnais netns hors règle sudoers, donc mot de
+  passe) pour la non-régression du correctif, et, le jour où un vrai switch est là, refaire
+  (a)-(e) sur un LAN filaire.

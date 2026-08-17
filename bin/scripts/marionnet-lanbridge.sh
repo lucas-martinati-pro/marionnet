@@ -142,6 +142,7 @@ IFACE=""              # the host card the bridge is built on
 FORCED_IFACE=""       # --interface
 MAC=""                # its MAC address, cloned onto the bridge
 GATEWAY=""            # the default gateway seen through IFACE
+ROUTE_METRIC=""       # the metric of that default route (empty when it has none)
 NETNS=""              # --netns: TEST ONLY (selftest), see run_ip
 DRY_RUN=0             # --dry-run
 FORCE=0               # --force
@@ -330,6 +331,20 @@ function step {
 
 function fail_step { fail "${LAST_ERROR_CODE:-E_INTERNAL}" "$LAST_ERROR"; }
 
+# restore_default_route DEV: give DEV the host's default route back, metric
+# included (see route_metric_of). The metric-less form is a FALLBACK, not a
+# preference: should a sudoers rule stricter than the one we ship refuse the
+# argument, losing the metric is a blemish, whereas leaving the host with no
+# default route at all is a breakdown.
+function restore_default_route {
+ local dev=$1
+ if [[ -n $ROUTE_METRIC ]]; then
+   sudo_run "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$dev" metric "$ROUTE_METRIC" && return 0
+   Array_push WARNINGS "the default route of $dev came back without its metric ($ROUTE_METRIC): the privileged command carrying it was refused"
+ fi
+ sudo_run "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$dev"
+}
+
 # undo_step LABEL: the exact inverse of the step of that name. It must NEVER call
 # `fail' (it runs from inside the rollback) and never abort the script.
 #
@@ -341,17 +356,32 @@ function undo_step {
  local label=$1 index
  [[ $DRY_RUN = 1 ]] && return 0
  case $label in
-   route)     sudo_run "${IP_CMD[@]}" route del default via "$GATEWAY" dev "$BR" ;;
+   route)
+     if [[ -n $ROUTE_METRIC ]]; then
+       sudo_run "${IP_CMD[@]}" route del default via "$GATEWAY" dev "$BR" metric "$ROUTE_METRIC" && return 0
+     fi
+     sudo_run "${IP_CMD[@]}" route del default via "$GATEWAY" dev "$BR" ;;
    addr_del:*)
      index=${label#addr_del:}
      # Word splitting on HOST_ADDRS[index] is INTENDED: the entry holds the argv
      # tail `<cidr> [brd <addr>]' exactly as `ip addr add' expects it. It comes
      # from `ip', not from a user, and every field went through require_cidr /
      # require_ipv4.
-     # shellcheck disable=SC2086
-     sudo_run "${IP_CMD[@]}" addr add ${HOST_ADDRS[index]} dev "$IFACE" || return 1
-     if [[ -n $GATEWAY ]]; then
-       sudo_run "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$IFACE" || return 1
+     #
+     # Both restorations are CONDITIONAL: the card's manager may have put them
+     # back already, in the milliseconds it took us to get here, and adding them
+     # a second time is what used to leave the host with a duplicate default
+     # route (see route_metric_of).
+     if ! addr_present "$IFACE" "${HOST_ADDRS[index]%% *}"; then
+       # `metric' here is for the PREFIX route the kernel derives from the address
+       # (`192.168.95.0/24 dev <IF>'), the same reason the default route carries
+       # one: without it the kernel makes that route with metric 0 and the
+       # manager's own, metric 100, sits next to it.
+       # shellcheck disable=SC2086
+       sudo_run "${IP_CMD[@]}" addr add ${HOST_ADDRS[index]} dev "$IFACE" ${ROUTE_METRIC:+metric $ROUTE_METRIC} || return 1
+     fi
+     if [[ -n $GATEWAY ]] && ! default_route_present "$IFACE"; then
+       restore_default_route "$IFACE" || return 1
      fi
      ;;
    addr_add:*)
@@ -441,6 +471,37 @@ function detect_iface {
 function gateway_of {   # gateway_of IFACE
  read_ip -4 route show default dev "$1" 2>/dev/null \
    | awk '{for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}'
+}
+
+# route_metric_of DEV: the metric of the IPv4 default route through DEV, empty when
+# there is none, or when it is the implicit 0 (which is what `ip' prints nothing for).
+#
+# WHY THE METRIC IS CARRIED AROUND AT ALL (episode 7b bis, measured on a real card).
+# A network manager owns the card and gives its routes a metric of its own -- 100
+# for NetworkManager. Restoring the host's default route WITHOUT that metric makes
+# a SECOND route, of metric 0, i.e. one that wins over everything, including the
+# manager's own and including the other cards of a laptop. And it is not a race we
+# can win by looking first: the manager reinstalls its routes some milliseconds
+# after we hand the card back, so whoever writes last leaves a duplicate. Restoring
+# the metric makes the two the SAME route -- the kernel then keeps exactly one,
+# whatever the order. The value travels on the bridge's own default route, so it is
+# read back from the system like everything else here, with still no state file.
+function route_metric_of {
+ read_ip -4 route show default dev "$1" 2>/dev/null \
+   | awk '{for(i=1;i<=NF;i++) if($i=="metric") {print $(i+1); exit}}'
+}
+
+# addr_present DEV CIDR / default_route_present DEV: is it there already? Asked
+# before restoring, because a managed card gets its address and its route back
+# from its manager, and adding them twice is what leaves the duplicate above.
+function addr_present {
+ read_ip -4 -oneline addr show dev "$1" scope global 2>/dev/null \
+   | awk -v cidr="$2" '{for(i=1;i<=NF;i++) if($i=="inet" && $(i+1)==cidr) {found=1; exit}} END{exit !found}'
+}
+
+function default_route_present {
+ read_ip -4 route show default dev "$1" 2>/dev/null \
+   | awk -v gw="$GATEWAY" '{for(i=1;i<=NF;i++) if($i=="via" && $(i+1)==gw) {found=1; exit}} END{exit !found}'
 }
 
 function mac_of {
@@ -567,6 +628,7 @@ function do_up {
    set_physical_port "$BR"
    read_addresses "$BR"
    GATEWAY=$(gateway_of "$BR")
+   ROUTE_METRIC=$(route_metric_of "$BR")
    REPORT[adopted]=true
    describe_bridge
    REPORT_TEXT[message]="$BR already exists, nothing to do"
@@ -585,6 +647,10 @@ function do_up {
  MAC=$(mac_of "$IFACE");        require_mac "$MAC"
  GATEWAY=$(gateway_of "$IFACE")
  [[ -z $GATEWAY ]] || require_ipv4 "$GATEWAY"
+ # The metric travels with the route (see route_metric_of). A value we cannot
+ # validate is dropped rather than passed on to a privileged command.
+ ROUTE_METRIC=$(route_metric_of "$IFACE")
+ if [[ ! $ROUTE_METRIC =~ ^[0-9]{1,10}$ ]] || [[ $ROUTE_METRIC = 0 ]]; then ROUTE_METRIC=""; fi
  read_addresses "$IFACE"
  (( ${#HOST_ADDRS[@]} > 0 )) \
    || fail E_NO_ADDRESS "$IFACE carries no global IPv4 address: there is nothing to move onto the bridge"
@@ -594,7 +660,7 @@ function do_up {
  cat 1>&2 <<EOF
 $TOOL: about to move $IFACE onto $BR.
        address(es): ${HOST_ADDRS[*]}
-       default gateway: ${GATEWAY:-none}
+       default gateway: ${GATEWAY:-none}${ROUTE_METRIC:+ (metric $ROUTE_METRIC)}
        THE HOST LOSES ITS NETWORK FOR A FRACTION OF A SECOND.
 EOF
 
@@ -609,8 +675,10 @@ EOF
  # the host address is then never nowhere. The bridge has no port yet, so nothing
  # answers twice on the wire.
  for index in "${!HOST_ADDRS[@]}"; do
+   # The metric follows the address too: it is what the kernel gives the prefix
+   # route it derives from it, and the host had that route with a metric.
    # shellcheck disable=SC2086
-   step "addr_add:$index" "${IP_CMD[@]}" addr add ${HOST_ADDRS[index]} dev "$BR" || fail_step
+   step "addr_add:$index" "${IP_CMD[@]}" addr add ${HOST_ADDRS[index]} dev "$BR" ${ROUTE_METRIC:+metric $ROUTE_METRIC} || fail_step
  done
  for index in "${!HOST_ADDRS[@]}"; do
    # The CIDR alone identifies the address; see undo_step.
@@ -619,8 +687,14 @@ EOF
 
  step enslave "${IP_CMD[@]}" link set "$IFACE" master "$BR" || fail_step
 
+ # The metric goes onto the bridge's route as well: it is both what the host had
+ # and where `down' will read it back from (see route_metric_of).
  if [[ -n $GATEWAY ]]; then
-   step route "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$BR" || fail_step
+   if [[ -n $ROUTE_METRIC ]]; then
+     step route "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$BR" metric "$ROUTE_METRIC" || fail_step
+   else
+     step route "${IP_CMD[@]}" route add default via "$GATEWAY" dev "$BR" || fail_step
+   fi
  fi
 
  cat 1>&2 <<EOF
@@ -635,6 +709,7 @@ function describe_bridge {
  REPORT[interface]=$IFACE
  REPORT[mac]=$MAC
  REPORT[gateway]=$GATEWAY
+ REPORT[metric]=$ROUTE_METRIC
  REPORT[addresses]=$(Array_to_json HOST_ADDRS)
 }
 
@@ -701,9 +776,14 @@ function do_down {
  set_physical_port "$BR"
  read_addresses "$BR"
  GATEWAY=$(gateway_of "$BR")
+ # Read back from the bridge what `up' put there, the metric included: it is the
+ # metric the card had before, and the one it must get back (see route_metric_of).
+ ROUTE_METRIC=$(route_metric_of "$BR")
+ if [[ ! $ROUTE_METRIC =~ ^[0-9]{1,10}$ ]] || [[ $ROUTE_METRIC = 0 ]]; then ROUTE_METRIC=""; fi
  REPORT[interface]=$IFACE
  REPORT[addresses]=$(Array_to_json HOST_ADDRS)
  REPORT[gateway]=$GATEWAY
+ REPORT[metric]=$ROUTE_METRIC
 
  # Rebuild the undo stack in the order `up' would have built it, so that the LIFO
  # unwinding is the same, then let `rollback' do the work.
@@ -976,15 +1056,15 @@ function do_print_privileged_commands {
    "$IP link set <BR> alias ${ALIAS_PREFIX}:<PID>:<IF>" \
    "$IP link set <BR> up" \
    "$IP link set <BR> down" \
-   "$IP addr add <CIDR> [brd <ADDR>] dev <BR>" \
+   "$IP addr add <CIDR> [brd <ADDR>] dev <BR> [metric <N>]" \
    "$IP addr del <CIDR> dev <BR>" \
-   "$IP route add default via <GW> dev <BR>" \
-   "$IP route del default via <GW> dev <BR>" \
+   "$IP route add default via <GW> dev <BR> [metric <N>]" \
+   "$IP route del default via <GW> dev <BR> [metric <N>]" \
    "$IP link set <IF> master <BR>" \
    "$IP link set <IF> nomaster" \
    "$IP addr del <CIDR> dev <IF>" \
-   "$IP addr add <CIDR> [brd <ADDR>] dev <IF>" \
-   "$IP route add default via <GW> dev <IF>"
+   "$IP addr add <CIDR> [brd <ADDR>] dev <IF> [metric <N>]" \
+   "$IP route add default via <GW> dev <IF> [metric <N>]"
  REPORT[commands]=$(Array_to_json commands)
  REPORT[bridge_pattern]="${BRIDGE_PREFIX}*"
  REPORT[alias_prefix]=$ALIAS_PREFIX
@@ -992,7 +1072,12 @@ function do_print_privileged_commands {
  cat 1>&2 <<EOF
 # Privileged commands used by the LAN bridge (option B).
 # <BR> is $BR, <IF> the host's own card, <CIDR>/<GW>/<MAC> its address, gateway
-# and hardware address. Already covered by the existing tap rule ($IP link set
+# and hardware address, <N> the metric that default route already had (it is
+# carried over so that restoring the route cannot leave a duplicate one -- see
+# route_metric_of). The bracketed tails are optional arguments, and the sudoers
+# rule below covers them because a \`*' there matches several words, exactly as it
+# already does for \`[brd <ADDR>]' (measured against the installed block (c)).
+# Already covered by the existing tap rule ($IP link set
 # ${TAP_PREFIX}* *), nothing to add for the attachment itself:
 #   $IP link set ${TAP_PREFIX}<pid>-<n> master <BR>
 $(printf '%s\n' "${commands[@]}")
