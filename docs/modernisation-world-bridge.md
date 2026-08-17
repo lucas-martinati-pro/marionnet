@@ -1095,3 +1095,20 @@ parce qu'aucune ne se redevine :
   rejouer `marionnet-lanbridge.sh selftest` (harnais netns hors règle sudoers, donc mot de
   passe) pour la non-régression du correctif, et, le jour où un vrai switch est là, refaire
   (a)-(e) sur un LAN filaire.
+
+- **2026-08-17 — retouche des icônes badgées (7a.3.b bis)** : *l'étiquette ne doit pas cacher
+  l'état*. Défaut d'usage constaté sur le dessin : le bandeau `NAT`/`LAN` était estampillé en
+  bas **à droite** de la partie carrée, c'est-à-dire exactement sur le **petit rond rouge/vert**
+  qui dit si le composant est éteint ou allumé — dans **toutes** les tailles, donc un bridge
+  posé sur le dessin ne disait plus s'il tournait. Correctif d'une ligne dans
+  `bin/images/make-bridge-icons.sh` (`-gravity NorthEast` → `NorthWest`), calage vertical et
+  largeur du bandeau (62 % de la largeur) inchangés : posé à gauche il s'arrête vers 0,63·w,
+  quand le rond occupe ~0,72·w à ~0,86·w. Le commentaire de `stamp` porte désormais **les deux**
+  contraintes, une par axe (à gauche à cause du rond ; sur la partie carrée à cause du marqueur
+  `pause` qui déborde vers le bas). Vérifié : script rejoué (36 PNG réécrits, les 18
+  `ico.world_bridge.*` sources intactes), `--check` → « up to date » (l'idempotence tient),
+  `git status` → exactement 36 PNG + le script, `dune build` rc 0 avec les images propagées
+  dans `_build`, et contrôle visuel agrandi des deux jeux sur les 4 tailles ×
+  (`on`/`off`/`pause`/palette/dialog) : le rond d'état est dégagé partout, le mot reste
+  lisible jusqu'à 32 px. Palliatif toujours assumé en attendant l'épisode d'iconographie.
+  Prochain pas : inchangé — **7c**, puis l'épisode 9.

@@ -59,9 +59,15 @@ function die {
 # Stamp $1 (a source icon) into $2, with the word $3 on the background colour $4.
 # ---
 # The badge is a fixed-size `label:' box, which lets ImageMagick pick the largest
-# point size that fits, and it is placed at the bottom right OF THE SQUARE PART of
-# the icon: the `pause' variants are taller than they are wide (the pause marker
-# hangs below), and a badge glued to their bottom edge would sit outside the drawing.
+# point size that fits, and it is placed at the bottom LEFT OF THE SQUARE PART of
+# the icon. Two constraints, one per axis:
+#   - left, because the little red/green dot telling a component apart, switched off
+#     from switched on, lives on the RIGHT of the planet: a badge placed there hid it
+#     entirely, and the drawing no longer said whether the bridge was up;
+#   - the square part, because the `pause' variants are taller than they are wide (the
+#     pause marker hangs below), and a badge glued to their bottom edge would sit
+#     outside the drawing.
+# The badge being 62% of the width, it stops around 0.63*w, well clear of the dot.
 function stamp {
   local source="$1" destination="$2" word="$3" colour="$4"
   local width height badge_width badge_height offset
@@ -75,7 +81,7 @@ function stamp {
   # --- The +set of the date properties is what makes the output reproducible:
   convert "$source" \
     \( -background "$colour" -fill white -size "${badge_width}x${badge_height}" -gravity center "label:${word}" \) \
-    -gravity NorthEast -geometry "+1+${offset}" -composite \
+    -gravity NorthWest -geometry "+1+${offset}" -composite \
     -define png:exclude-chunk=date,tIME,time +set date:create +set date:modify +set date:timestamp \
     "$destination"
 }
