@@ -46,10 +46,28 @@ val workaround_wirefilter_problem_default : bool
 val get_workaround_wirefilter_problem : unit -> bool
 val set_workaround_wirefilter_problem : bool -> unit
 
-(** Name of the PRE-EXISTING host bridge the `world_bridge' component attaches its tap to
+(** Name of the PRE-EXISTING host bridge the LAN bridge component attaches its tap to
     (variable [MARIONNET_BRIDGE], default ["br0"]). Read once at initialization: changing the
     configuration file requires restarting Marionnet. *)
 val ethernet_world_bridge_name : string
+
+(** The same name, but only when somebody really configured it — [None] when
+    [MARIONNET_BRIDGE] is set nowhere and {!ethernet_world_bridge_name} is just
+    the default ["br0"].
+
+    That distinction is what decides, since episode 7b of the work-stream
+    [modernisation-world-bridge], how a LAN bridge finds its host bridge:
+    configured means an administrator built one by hand and we keep honouring it,
+    exactly as before; not configured means Marionnet builds and takes down its
+    own ({!Lan_bridge_host}), which is the whole point of that work-stream. A
+    plain string could not tell the two apart — ["br0"] is both a default and a
+    perfectly ordinary answer.
+
+    An {e empty} value counts as not configured: [/etc/marionnet/marionnet.conf]
+    shipped [MARIONNET_BRIDGE=br0] for fifteen years and an upgrade does not
+    rewrite it, so [MARIONNET_BRIDGE=] is how a user of such a host says "build
+    your own bridge" without needing root. *)
+val explicit_world_bridge_name : string option
 
 (** How a [world_bridge] component obtains the host bridge it attaches to
     (work-stream [modernisation-world-bridge], option A).
@@ -69,7 +87,9 @@ val world_bridge_mode : [ `Nat | `Manual ]
 (** Test that [ethernet_world_bridge_name] really exists on the host (via [brctl showmacs]) and,
     if not, pop up a warning dialog naming the file to fix. Being a Gtk+ call, it must run in
     the GTK main thread. Returns [unit] in both cases: this is advisory, it blocks nothing.
-    A no-op in [`Nat] mode: there the bridge is not supposed to exist yet. *)
+    A no-op unless {!explicit_world_bridge_name} is set: when Marionnet builds the
+    bridge itself, there is nothing to check and nothing to warn about — the
+    bridge is not supposed to exist yet. *)
 val check_bridge_existence_and_warning : unit -> unit
 
 (** Keyboard layout to impose on Xnest sessions ([MARIONNET_KEYBOARD_LAYOUT]);

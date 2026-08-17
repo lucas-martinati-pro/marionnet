@@ -83,53 +83,71 @@ let run_as_root ?password (arguments : string list) (script : string) : (unit, i
   | Unix.WEXITED code -> Error (code, output)
   | _ -> Error (-1, output)
 
-(* --- The one block this episode activates *)
+(* --- Activating one block
+   ---
+   The mechanism below is the same for (b) and (c) -- probe, try without asking,
+   then the dialog -- and everything that differs between the two blocks is a
+   parameter: which selector to pass to the script, which probe answers the
+   question, and above all which WORDS are shown, since a NAT bridge and a LAN
+   bridge do not ask for the same thing at all. The texts are passed rather than
+   built here because gettext extracts literals, not concatenations: each block
+   carries its own, whole, translatable sentences. *)
 
 let max_attempts = 3
 
-(* --enable-natbridge selects block (b), --only keeps block (a) out of the
+(* --enable-* selects the optional block, --only keeps block (a) out of the
    selection: the file the administrator wrote must not be rewritten by, and for,
    whoever happens to be running the GUI. *)
 let natbridge_arguments = ["install"; "--only"; "--enable-natbridge"]
+let lanbridge_arguments = ["install"; "--only"; "--enable-lanbridge"]
 
 (* Why the verdict of a FAILED elevation is remembered: starting a single component
-   resolves its bridge more than once (world_bridge.ml builds its simulated device,
+   resolves its bridge more than once (bridge_common.ml builds the simulated device,
    then starts it), so without this a user who cancels would be asked again, and told
    off again, within the same second. A refusal is an answer; asking twice for the
    same gesture is nagging. It holds for the session — to change one's mind, restart
    Marionnet, or run marionnet-sudoers.sh from a terminal. A SUCCESS needs no memory:
-   Nat_bridge_host.is_usable answers `true' from then on and we return above. *)
-let verdict : (unit, string) result option ref = ref None
+   the probe answers `true' from then on and we return above.
+   ---
+   One reference per block: refusing the LAN bridge says nothing about the NAT one. *)
+let natbridge_verdict : (unit, string) result option ref = ref None
+let lanbridge_verdict : (unit, string) result option ref = ref None
 
-let ensure_natbridge () : (unit, string) result =
-  if Nat_bridge_host.is_usable () then Ok () else
+let ensure_block
+  ~(arguments : string list)
+  ~(probe : unit -> bool)
+  ~(forget_probe : unit -> unit)
+  ~(verdict : (unit, string) result option ref)
+  ~(what : string)                                   (* log only, hence untranslated *)
+  ~(header : script:string -> string)
+  ~(failure_title : string)
+  ~(failure_message : message:string -> script:string -> string)
+  ~(installed_but_refused : string)
+  ~(cancelled : string)
+  () : (unit, string) result =
+  if probe () then Ok () else
   match !verdict with
   | Some (Error _ as remembered) ->
-      let () = Log.printf "Privileges: the NAT bridge rights were already refused in this session; not asking again\n" in
+      let () = Log.printf1 "Privileges: %s rights were already refused in this session; not asking again\n" what in
       remembered
   | _ ->
   match script_path () with
   | Error _ as failure -> failure
   | Ok script ->
-      let () = Log.printf1 "Privileges: the NAT bridge needs its sudoers block; calling %s\n" script in
+      let () = Log.printf2 "Privileges: %s needs its sudoers block; calling %s\n" what script in
       (* What we run, said plainly and in advance: a password dialog that does not
          say what it unlocks is how one teaches users to type it anywhere. *)
-      let header =
-        Printf.sprintf
-          (f_ "Marionnet needs administrator rights to build the private NAT bridge that connects this component to the Internet.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
-          (Filename.basename script) (String.concat " " natbridge_arguments)
-      in
+      let header = header ~script in
       let title = (s_ "Administrator rights required") in
       (* The verdict is memoised, and we are about to change what it answers. *)
       let succeeded () =
-        Nat_bridge_host.forget_usability ();
-        Nat_bridge_host.is_usable ()
+        forget_probe ();
+        probe ()
       in
       (* The script said yes, so the honest question left is whether the host now
          behaves as it should: only the probe can answer that. *)
       let conclude_after_success () : (unit, string) result =
-        if succeeded () then Ok () else
-        Error (s_ "the sudoers rule was installed, but the host still refuses the commands the NAT bridge needs")
+        if succeeded () then Ok () else Error installed_but_refused
       in
       let conclude_after_failure ~(code : int) ~(output : string) : (unit, string) result =
         if succeeded () then Ok () else
@@ -143,9 +161,9 @@ let ensure_natbridge () : (unit, string) result =
          case there is no reason to make them type their password again. *)
       let outcome =
         (* First, without asking anything -- see just below. *)
-        match run_as_root natbridge_arguments script with
+        match run_as_root arguments script with
         | Ok () when succeeded () ->
-            let () = Log.printf "Privileges: the NAT bridge block was installed with a live sudo ticket\n" in
+            let () = Log.printf1 "Privileges: %s block was installed with a live sudo ticket\n" what in
             Ok ()
         | first_attempt ->
            let () =
@@ -155,12 +173,11 @@ let ensure_natbridge () : (unit, string) result =
            in
            let rec attempt (n : int) : (unit, string) result =
              match Simple_dialogs.ask_password ~again:(n > 1) ~title ~header () with
-             | None ->
-                 Error (s_ "no administrator rights were granted: the NAT bridge cannot be built")
+             | None -> Error cancelled
              | Some password ->
-                 (match run_as_root ~password natbridge_arguments script with
+                 (match run_as_root ~password arguments script with
                   | Ok () ->
-                      let () = Log.printf "Privileges: the NAT bridge sudoers block is now installed\n" in
+                      let () = Log.printf1 "Privileges: %s sudoers block is now installed\n" what in
                       conclude_after_success ()
                   | Error (1, _) when n < max_attempts ->
                       (* sudo refuses an authentication with 1, and only then does
@@ -181,11 +198,52 @@ let ensure_natbridge () : (unit, string) result =
         | Ok () -> ()
         | Error message ->
             verdict := Some (Error message);
-            Simple_dialogs.error
-              (s_ "Cannot build the private NAT bridge")
-              (Printf.sprintf
-                 (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-natbridge")
-                 message (Filename.basename script))
-              ()
+            Simple_dialogs.error failure_title (failure_message ~message ~script) ()
       in
       outcome
+
+(* --- The two blocks, each with its own words *)
+
+let ensure_natbridge () : (unit, string) result =
+  ensure_block
+    ~arguments:natbridge_arguments
+    ~probe:Nat_bridge_host.is_usable
+    ~forget_probe:Nat_bridge_host.forget_usability
+    ~verdict:natbridge_verdict
+    ~what:"the NAT bridge"
+    ~header:(fun ~script ->
+       Printf.sprintf
+         (f_ "Marionnet needs administrator rights to build the private NAT bridge that connects this component to the Internet.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
+         (Filename.basename script) (String.concat " " natbridge_arguments))
+    ~failure_title:(s_ "Cannot build the private NAT bridge")
+    ~failure_message:(fun ~message ~script ->
+       Printf.sprintf
+         (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-natbridge")
+         message (Filename.basename script))
+    ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the NAT bridge needs")
+    ~cancelled:(s_ "no administrator rights were granted: the NAT bridge cannot be built")
+    ()
+
+(* The LAN bridge asks for more than the NAT one, and says so: this block lets
+   Marionnet reconfigure the IPv4 addressing of the host (the card goes into the
+   bridge, the address and the default route follow it). A dialog that hid that
+   behind "administrator rights" would be asking for a signature on a blank page. *)
+let ensure_lanbridge () : (unit, string) result =
+  ensure_block
+    ~arguments:lanbridge_arguments
+    ~probe:Lan_bridge_host.is_usable
+    ~forget_probe:Lan_bridge_host.forget_usability
+    ~verdict:lanbridge_verdict
+    ~what:"the LAN bridge"
+    ~header:(fun ~script ->
+       Printf.sprintf
+         (f_ "Marionnet needs administrator rights to put this computer's network card into a bridge, so that the virtual machines appear directly on your real local network.\n\nThis grants Marionnet the right to reconfigure the network addressing of this host, and the host loses its network connection for a fraction of a second whenever the bridge is built or taken down.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
+         (Filename.basename script) (String.concat " " lanbridge_arguments))
+    ~failure_title:(s_ "Cannot build the LAN bridge")
+    ~failure_message:(fun ~message ~script ->
+       Printf.sprintf
+         (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-lanbridge")
+         message (Filename.basename script))
+    ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the LAN bridge needs")
+    ~cancelled:(s_ "no administrator rights were granted: the LAN bridge cannot be built")
+    ()

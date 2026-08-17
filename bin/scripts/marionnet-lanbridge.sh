@@ -918,6 +918,55 @@ function do_selftest {
 # THE source of the privileged command list: bin/scripts/marionnet-sudoers.sh
 # derives block (c) from this, it does not maintain a second copy.
 
+# --- check-privileges: can we run our privileged commands WITHOUT a password?
+#
+# The OCaml side (bin/lan_bridge_host.ml, episode 7b) needs that answer before it
+# offers to ask the user for a password, and `status' cannot give it: status
+# reads the host with an UNPRIVILEGED `ip', so it succeeds exactly the same
+# whether block (c) is installed or not.
+#
+# The probe follows the discipline of bin/tap_provider.ml (`ip tuntap del' on a
+# name that cannot designate a real tap): a REAL command from our own list,
+# covered by the rule, with no effect on anything. Here it is `ip link del
+# ${BRIDGE_PREFIX}999' -- a bridge we never create, ours being always $BR --
+# matched by the ${BRIDGE_PREFIX}* pattern of block (c).
+#
+# Unlike the tap probe, deleting a device that does not exist FAILS (rc 1), so
+# the verdict cannot be read from the exit status: what tells "sudo let it
+# through" from "sudo refused" is WHICH of the two wrote the message. Hence
+# LC_ALL=C -- sudo's diagnostics are translated, iproute2's are not -- and a
+# verdict read from iproute2's own wording.
+#
+# `sudo -n -l <command>' is NOT an alternative: on an ordinary desktop
+# (%sudo ALL=(ALL:ALL) ALL) it answers "allowed" even with no rule of ours
+# installed, and the `sudo -n' that follows then asks for a password (measured,
+# see the comment in tap_provider.ml).
+function do_check_privileges {
+ resolve_binaries
+ local probe="${BRIDGE_PREFIX}999" out rc=0
+ require_bridge "$probe"
+ REPORT[bridge]=$BR
+ REPORT[probe]=$probe
+ # A device of that name would be somebody else's: we must not delete it, and we
+ # have no other harmless command to ask the question with.
+ if link_exists "$probe"; then
+   REPORT[privileged]=false
+   REPORT_TEXT[message]="$probe exists on this host: refusing to use it as a probe"
+   REPORT[ok]=true
+   finish 0
+ fi
+ out=$(LC_ALL=C sudo -n -- "$IP" link del "$probe" 2>&1) || rc=$?
+ if [[ $rc = 0 || $out == *"Cannot find device"* ]]; then
+   REPORT[privileged]=true
+   REPORT_TEXT[message]="the privileged commands of the LAN bridge run without a password"
+ else
+   REPORT[privileged]=false
+   REPORT_TEXT[message]="$out"
+ fi
+ REPORT[ok]=true
+ finish 0
+}
+
 function do_print_privileged_commands {
  resolve_binaries
  Array_make commands \
@@ -970,6 +1019,8 @@ Usage: $TOOL up     [OPTION]...        # build the LAN bridge on the host's card
        $TOOL down   [OPTION]...        # give the card back, if nobody else is using it
        $TOOL status [OPTION]...        # what exists, and who is using it
        $TOOL gc                        # remove it if no live process uses it any more
+       $TOOL check-privileges          # can we run our commands without a password?
+                                       #   (i.e. is block (c) of the sudoers rule in place)
        $TOOL selftest                  # the whole thing, played in network namespaces
                                        #   (MAY ASK FOR A PASSWORD: its netns scaffold is
                                        #   test-only and not in the sudoers rule, on purpose)
@@ -1032,6 +1083,7 @@ case $ACTION in
   status)    parse_options "$@"; do_status ;;
   gc)        parse_options "$@"; do_gc ;;
   selftest)  parse_options "$@"; do_selftest ;;
+  check-privileges) parse_options "$@"; do_check_privileges ;;
   print-privileged-commands) parse_options "$@"; do_print_privileged_commands ;;
   -h|--help) ACTION=help; usage; REPORT[ok]=true; finish 0 ;;
   *)         ACTION=${ACTION:-none}; usage; fail E_USAGE "unknown subcommand '$ACTION'" ;;

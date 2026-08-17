@@ -90,7 +90,7 @@ module Make (State : sig val st:State.globalState end) = struct
 
  module Menus_for_world_gateway = World_gateway. Make_menus (Params_for_world_gateway)
  module Menus_for_nat_bridge    = Nat_bridge.    Make_menus (Params_for_nat_bridge)
- module Menus_for_world_bridge  = World_bridge.  Make_menus (Params_for_world_bridge)
+ module Menus_for_world_bridge  = Lan_bridge.    Make_menus (Params_for_world_bridge)
 
 end
 

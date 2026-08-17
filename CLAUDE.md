@@ -151,10 +151,12 @@ Reprise : appliquer le skill `chantier-long`.
   moment où ils servent) : `docs/modernisation-world-bridge.md` (**§ 1 bis = l'objectif final,
   il prime sur les § 2-4 dès qu'il s'agit du « mode »** ; § 4 = découpage) ; mémoire
   `modernisation-world-bridge` ; `git log --grep="modernisation-world-bridge"`.
-  Ép. 0→6 et 8 faits : le NAT auto est prouvé, le sudoers est en 3 blocs demandés au bon
-  moment, et le **LAN bridge est automatique** (`bin/scripts/marionnet-lanbridge.sh`, `mnlan0`
-  partagé, carte gravée dans l'alias du bridge). Reste l'**ép. 7** (dédoublement des
-  composants, le gros morceau OCaml/GUI) puis l'ép. 9 (i18n ×12).
+  Ép. 0→6, 8, **7a et 7b** faits : le NAT auto est prouvé, le sudoers est en 3 blocs demandés
+  au bon moment, la **9ᵉ nature `nat_bridge` existe** (menu planète à 3 entrées) et le **LAN
+  bridge est automatique de bout en bout** — `bin/lan_bridge.ml` (ex-`world_bridge.ml`, identité
+  interne inchangée) appelle `bin/lan_bridge_host.ml` → `bin/scripts/marionnet-lanbridge.sh`
+  (`mnlan0` partagé), `MARIONNET_BRIDGE` n'étant plus qu'une **surcharge** explicite. Reste
+  l'**ép. 7c** (retrait de `MARIONNET_WORLD_BRIDGE_MODE`, sans lecteur) puis l'ép. 9 (i18n ×12).
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

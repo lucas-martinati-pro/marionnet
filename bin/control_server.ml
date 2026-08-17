@@ -1332,7 +1332,10 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
       Ok (fun () -> ignore (new Cloud.User_level_cloud.cloud ~network ~name ()))
   | "world_bridge" when ports <> None -> no_ports_here ()
   | "world_bridge" ->
-      Ok (fun () -> ignore (new World_bridge.User_level_world_bridge.world_bridge ~network ~name ()))
+      (* The kind is still spelled `world_bridge' in the grammar of this channel,
+         and in the .mar files: only what a human reads says "LAN bridge"
+         (work-stream modernisation-world-bridge, episode 7b). *)
+      Ok (fun () -> ignore (new Lan_bridge.User_level_lan_bridge.lan_bridge ~network ~name ()))
   | "nat_bridge" when ports <> None -> no_ports_here ()
   | "nat_bridge" ->
       Ok (fun () -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge ~network ~name ()))

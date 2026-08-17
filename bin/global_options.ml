@@ -63,6 +63,23 @@ let ethernet_world_bridge_name =
   Configuration.extract_string_variable_or ~default "MARIONNET_BRIDGE"
 ;;
 
+(* Configured, or merely defaulted? Since episode 7b that question IS the choice
+   between the two behaviours of a LAN bridge: honour the bridge an administrator
+   built by hand, or build one ourselves. `ethernet_world_bridge_name' cannot
+   answer it -- "br0" is both its default and a plausible configured value.
+   ---
+   An EMPTY value counts as not configured, and that is not a detail on a host
+   upgraded rather than installed: /etc/marionnet/marionnet.conf shipped with
+   MARIONNET_BRIDGE=br0 for fifteen years, and the file is not rewritten by an
+   upgrade. Writing `MARIONNET_BRIDGE=' (or exporting it empty) is therefore how
+   one says "let Marionnet build its own bridge" without having to be root. *)
+let explicit_world_bridge_name : string option =
+  match Configuration.get_string_variable_with_source "MARIONNET_BRIDGE" with
+  | None   -> None
+  | Some _ -> if String.trim ethernet_world_bridge_name = "" then None
+              else Some ethernet_world_bridge_name
+;;
+
 (** How a `world_bridge' component gets the host bridge it attaches to
     (work-stream `modernisation-world-bridge', option A of
     docs/modernisation-world-bridge.md):
@@ -99,12 +116,13 @@ let make_understandable_source_of_world_bridge_configuration () =
   | Some (_, `Filename fname)     ->  fname
 ;;
 
-(* In `Nat mode there is nothing to check and nothing to warn about: the bridge
-   does not exist YET, and it is Marionnet that will build it when the component
-   starts. Warning here would tell the user to ask an administrator for exactly
-   the manual setup this work-stream exists to remove. *)
+(* When nobody configured MARIONNET_BRIDGE there is nothing to check and nothing
+   to warn about: the bridge does not exist YET, and it is Marionnet that will
+   build it when the component starts (episode 7b). Warning here would tell the
+   user to ask an administrator for exactly the manual setup this work-stream
+   exists to remove. *)
 let check_bridge_existence_and_warning () : unit =
-  if world_bridge_mode = `Nat then () else
+  if explicit_world_bridge_name = None then () else
   let bridge_name = ethernet_world_bridge_name in
   let cmd = Printf.sprintf "brctl showmacs %s 1>/dev/null 2>/dev/null" (bridge_name) in
   if (Unix.system cmd) <> (Unix.WEXITED 0) then (* warning: *)

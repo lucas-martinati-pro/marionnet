@@ -59,3 +59,13 @@
     [GMain_actor]. In a driven session (script mode) it never blocks — the dialog
     refuses to ask and the call fails plainly. *)
 val ensure_natbridge : unit -> (unit, string) result
+
+(** The same, for block (c) — the LAN bridge, which is a different request and is
+    presented as such: it lets Marionnet put the host's own card into a bridge,
+    hence reconfigure the IPv4 addressing of this machine, and it interrupts the
+    host's network for a fraction of a second each time. The dialog says so.
+    ---
+    Everything else is the mechanism of {!ensure_natbridge}, with its own probe
+    ({!Lan_bridge_host.is_usable}) and its own remembered verdict: refusing one
+    bridge says nothing about the other. *)
+val ensure_lanbridge : unit -> (unit, string) result

@@ -571,6 +571,56 @@ composants du programme les répètent déjà à l'identique — c'est le patron
 des mots des deux bridges n'est le même (libellés, tooltips, aide) : un foncteur à une dizaine
 de paramètres textuels alignerait ce qui n'a aucune raison de l'être.
 
+**7b — le LAN bridge devient automatique.** L'épisode 8 avait écrit et prouvé le script hôte
+`marionnet-lanbridge.sh` ; personne ne l'appelait. 7b est l'OCaml qui manquait :
+`bin/lan_bridge_host.ml(i)` (l'appelant mince, jumeau de `nat_bridge_host`),
+`Privileges.ensure_lanbridge` (le bloc (c), demandé depuis la GUI comme (b) l'est depuis
+l'épisode 6) et `bin/world_bridge.ml` → **`bin/lan_bridge.ml`**, qui résout enfin son bridge
+au lieu d'attendre qu'un administrateur en ait posé un. Quatre choses méritent d'être écrites,
+parce qu'aucune ne se redevine :
+
+1. **`MARIONNET_BRIDGE` reste une surcharge explicite** — et c'est ce qui rend l'épisode
+   rétro-compatible sans le moindre alias : la variable configurée signifie « un administrateur
+   a fait le travail, n'y touche pas », son absence signifie « construis-le toi-même ». Mais la
+   variable était **livrée définie** (`etc/marionnet.conf` portait `MARIONNET_BRIDGE=br0` depuis
+   2008) : sans rien d'autre, l'automatique n'aurait **jamais** tourné nulle part. La ligne est
+   donc commentée, et une valeur **vide** compte pour non configurée — sur un poste mis à jour
+   plutôt qu'installé, `/etc/marionnet/marionnet.conf` garde l'ancienne ligne et seul root peut
+   la changer, alors que `MARIONNET_BRIDGE=` dans `~/.marionnet/marionnet.conf` suffit.
+   `Global_options.explicit_world_bridge_name : string option` porte cette distinction, qu'un
+   simple `string` ne pouvait pas porter (« br0 » est à la fois le défaut et une réponse
+   plausible). `check_bridge_existence_and_warning` s'y raccroche aussi : avertir qu'un bridge
+   manque n'a de sens que si quelqu'un l'a réclamé.
+2. **La sonde de privilèges a dû être ajoutée au script.** Pour le NAT bridge, `status`
+   faisait l'affaire : il lance `iptables-save`, donc il traverse le même `sudo` que le reste.
+   Ici `status` lit l'hôte avec un `ip` **non privilégié** et réussit que le bloc (c) soit
+   installé ou non : il ne prouve rien. D'où **`check-privileges`**, qui suit la discipline de
+   `tap_provider.ml` — exécuter une vraie commande de notre liste, sans effet : `ip link del`
+   sur `mnlan999`, un bridge que nous ne créons jamais et que le glob `mnlan*` du bloc (c)
+   couvre. Différence avec la sonde des taps : détruire un device absent **échoue**, donc le
+   verdict ne se lit pas dans le code de retour mais dans **qui** a écrit le message — d'où
+   `LC_ALL=C` (les diagnostics de sudo sont traduits, ceux d'iproute2 non) et un verdict tiré
+   du « Cannot find device » d'iproute2. `sudo -n -l` reste exclu, pour la raison déjà mesurée
+   dans `tap_provider.ml` : sur un poste ordinaire il répond « autorisé » sans aucune règle de
+   nous, et le `sudo -n` qui suit réclame un mot de passe.
+3. **Le mémo d'`ensure` ne s'oublie que si le bridge a vraiment été retiré.** `mnlan0` est
+   **partagé** : le `down` d'un composant est très normalement refusé parce qu'un autre
+   composant, ou un autre Marionnet, y a encore un tap — et c'est un succès (`kept`), pas une
+   erreur. Oublier le mémo là serait faux deux fois : l'`at_exit` ne trouverait plus rien à
+   rendre, et l'`ensure` suivant relancerait un `up` sur un bridge que nous tenons déjà. D'où
+   un `down` qui **rend le booléen `removed`**, et un `release` qui ne fait **rien du tout**
+   quand nous ne tenons rien : un `down` que personne n'a demandé pourrait démonter le bridge
+   qu'une autre instance vient de construire et sur lequel elle n'a pas encore attaché de tap.
+   Côté composant, un `asked_for_the_automatic_bridge : bool ref` garde la même invariance —
+   seul celui qui a demandé rend.
+4. **Le renommage ne se voit que là où un humain lit.** `git mv world_bridge.ml lan_bridge.ml`,
+   modules et libellés en « LAN bridge » ; **inchangés** : le devkind `` `World_bridge ``, le
+   `kind_name "world_bridge"` (donc la racine `.mar`, le `device_type` des défauts), le motif
+   d'import (`world_bridge` **et** `gateway`), le `kind` du canal de contrôle et le préfixe de
+   socket. Vérifié au run : `help` publie toujours `world_bridge` parmi ses `kinds`, et un
+   projet sauvegardé porte `world_bridge` dans `netmodel/network.json` comme dans
+   `states/defects.json`.
+
 ## 5. Points de vigilance transverses
 
 - **Messages de commit en anglais** (règle dépôt) ; tag/scope = `modernisation-world-bridge`.
@@ -940,3 +990,43 @@ de paramètres textuels alignerait ce qui n'a aucune raison de l'être.
     `treeview_ifconfig.ml` est de cohérence, pas d'effet observable) ; et `pgrep -f` sur un
     motif contenant le nom du binaire **se matche lui-même** (faux positif « encore vivant »).
   Prochain pas : **7b** (le LAN bridge devient automatique), puis **7c** (retrait du mode).
+
+- **2026-08-17 — épisode 7b** : *le LAN bridge devient automatique* (détail et *pourquoi* :
+  § 4.4, « 7b »). Neufs : **`bin/lan_bridge_host.ml(i)`** (appelant du script hôte : `up`,
+  `down` qui rend `removed`, `ensure`, `release`, `is_usable` ; un seul bridge par hôte, donc
+  un mémo et non une table) et la sous-commande **`check-privileges`** de
+  `marionnet-lanbridge.sh` (la seule façon de savoir si le bloc (c) est en place : `status`
+  ne traverse aucun `sudo`). Modifiés : `bin/privileges.ml(i)` — la mécanique de l'épisode 6
+  devient un `ensure_block` paramétré, d'où **`ensure_lanbridge`** avec ses propres mots (il
+  dit qu'il s'agit de reconfigurer l'adressage IPv4 de l'hôte) et son propre verdict mémoïsé ;
+  `bin/global_options.ml(i)` — **`explicit_world_bridge_name`**, sur lequel se branchent la
+  résolution du bridge **et** `check_bridge_existence_and_warning` ; `etc/marionnet.conf` — la
+  ligne `MARIONNET_BRIDGE=br0` **commentée**, sans quoi l'automatique n'aurait jamais tourné.
+  Renommé : `bin/world_bridge.ml` → **`bin/lan_bridge.ml`** (`git mv`), avec ses deux
+  références (`gui_toolbar_COMPONENTS.ml`, `control_server.ml`) — **identité interne
+  inchangée**. Le dialogue d'ajout porte l'avertissement de coupure de l'hôte (deux
+  formulations selon que le mot de passe sera demandé ou non) et l'aide est réécrite : elle
+  décrivait la préparation manuelle `brctl` d'un administrateur, c'est-à-dire exactement ce que
+  l'épisode supprime.
+  - **Preuves mesurées** : `dune build` rc 0 ; module **réellement compilé** (erreur volontaire
+    → échec, retirée → rc 0) ; sonde `check-privileges` **sur le vrai système** →
+    `privileged:false` avec le message de sudo, sans invite, et « Cannot find device » vérifié
+    comme discriminant. **Run piloté avec un script hôte simulé** (nommant `docker0`, un bridge
+    réel, pour que le tap s'attache pour de bon) : `check-privileges` **une** fois, `up
+    --owner-pid <pid de Marionnet>` — jamais `$PPID` — une fois pour deux résolutions, tap
+    `mtap<pid>-0` réellement asservi ; `stop` → **`down --owner-pid <pid>`** et tap retiré ;
+    `start` de nouveau → un second `up` (mémo bien oublié après un retrait réel) ; `quit` → un
+    seul `down`, aucun doublon d'`at_exit`, aucun résidu. **Run avec le vrai script** (le poste
+    est en Wi-Fi) : `E_WIRELESS` reçu, renvoi vers le NAT bridge, repli sur le bridge configuré,
+    composant démarré quand même, le journal disant tout — plus le chemin `Privileges` complet
+    en session pilotée (refus du dialogue, verdict mémorisé, « not asking again »).
+    **Surcharge** prouvée au passage : avec `MARIONNET_BRIDGE=br0` hérité de
+    `/etc/marionnet/marionnet.conf`, le journal dit « attaching to the configured host bridge »
+    et **le script n'est pas appelé du tout**. **Round-trip `.mar`** : label accentué intact,
+    `world_bridge` dans `netmodel/network.json` et `states/defects.json`, `help` publiant
+    toujours `world_bridge` dans ses `kinds`.
+  - Dette assumée : **i18n** (les mots du LAN bridge, l'avertissement de coupure et les textes
+    de `ensure_lanbridge` s'ajoutent aux chaînes des épisodes 1, 6 et 7a) → épisode 9.
+  Prochain pas : **7c** (retrait de `MARIONNET_WORLD_BRIDGE_MODE`, de
+  `Global_options.world_bridge_mode` — **plus aucun lecteur depuis cet épisode** — et du
+  contrôle `check_bridge_existence_and_warning` si l'on juge qu'il a fait son temps).
