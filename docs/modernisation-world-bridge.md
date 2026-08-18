@@ -329,9 +329,13 @@ le suivant existe.
     NAT bridge, donné au LAN bridge — N ports (4 par défaut, de 1 à 16) au lieu d'un seul —
     avec la rétro-compatibilité qu'impose le **renommage** de son port (`eth0` → `port1`).
     **Fait 2026-08-18**, détail en § 4.7.
-13. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
+13. **ép. 9** *(LE DERNIER, en deux temps)* — **refresh i18n consolidé ×12**, qui solde
     aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après les épisodes 10,
     11 et 12** : ils ajoutent des `msgid`, et traduire avant l'aurait fait traduire deux fois.
+    Le refresh a mesuré **43** trous par catalogue, dont **5 956 caractères pour les deux
+    seuls textes d'aide** des composants : d'où **9a** (les 41 chaînes de formulaire, d'erreur
+    et de tooltip) **fait 2026-08-18**, détail en § 4.8, et **9b** (les 2 textes d'aide), qui
+    seul rétablira l'invariant « on ne supporte que des catalogues complets ».
 
 ### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
 
@@ -541,6 +545,64 @@ Un projet antérieur repart donc avec **4 ports** (le défaut, comme un `.mar` s
 **i18n** : le libellé « Integrated switch ports » et son tooltip sont, mot pour mot, ceux de la
 passerelle et du NAT bridge — aucun `msgid` neuf pour le formulaire. Seul le texte d'aide du
 composant change (un paragraphe de plus), dette déjà comptée dans l'épisode 9.
+
+### 4.8 Épisode 9a en détail — traduire d'abord ce qu'on lit tous les jours
+
+Le refresh POT de la fin du chantier a donné le chiffre exact : le catalogue passe de 385 à
+**423 `msgid`**, et chacune des douze langues se retrouve avec **43 trous** (les 3 textes d'aide
+de l'épisode 1, disparus au profit de leurs réécritures, plus tout ce qu'ont ajouté les épisodes
+6 à 12). Ces 43 chaînes ne se ressemblent pas : **deux d'entre elles pèsent 5 956 caractères** —
+les longs textes d'aide de `nat_bridge.ml` et `lan_bridge.ml` — contre 5 071 pour les 41 autres
+réunies. Traduire ×12 les deux blocs revient à en produire davantage que tout le reste du
+chantier ; d'où la coupure en **9a** (les 41) et **9b** (les 2), 9a passant d'abord parce que ce
+sont les chaînes que l'utilisateur lit à chaque manipulation — l'entrée du menu planète, les
+champs du dialogue, le message qui demande le mot de passe — là où le texte d'aide se lit une
+fois. Entre les deux épisodes, exactement deux `msgid` retombent sur l'anglais : c'est le
+fonctionnement normal de gettext, pas une panne, mais l'invariant « on ne supporte que des
+catalogues complets » reste faux jusqu'à 9b.
+
+**La terminologie a été figée avant de traduire, catalogue par catalogue.** Les deux natures
+sont des noms de composants comme l'étaient `world bridge` et `world gateway`, et chaque langue
+avait déjà tranché comment elle les nommait — `fr` « bridge », `ru` « мост », `sk` « most do
+sveta », `pt` qui gardait l'anglais. Règle retenue : **les sigles `NAT` et `LAN` ne se traduisent
+pas**, seul le nom commun suit l'habitude du catalogue (`bridge NAT`, `NAT-Bridge`, `puente NAT`,
+`γέφυρα NAT`, `NAT-мост`, `NAT köprüsü`…). Les termes voisins étaient déjà dans les douze
+catalogues depuis les épisodes 10b et 11 (`DHCP service`, `Integrated switch ports`,
+`IPv6 address`, tous venus de la passerelle) : `RADVD service` a simplement été calqué sur le
+rendu local de `DHCP service`.
+
+**Ce que l'épisode a trouvé en chemin, et qui n'était pas de l'i18n.** Le corps des dialogues
+`Simple_dialogs.error/warning/info` est un label **Pango en mode markup** (`use-markup` sur
+`content`, `bin/gui/gui_glade3.xml`) — et le `msgid` de `bin/nat_bridge.ml:244`, écrit à
+l'épisode 11, y envoyait la forme `<prefix>::1/64`. Mesuré : `Pango.parse_markup` refuse la
+chaîne (« Unknown tag 'prefix' »), donc ce message d'erreur ne s'affichait pas comme prévu.
+La même ligne insérait de plus l'adresse **saisie par l'utilisateur** sans
+`Glib.Markup.escape_text`, contrairement au message voisin de `:1024` qui, lui, l'échappe. Les
+deux ont été corrigés **avant** de traduire : c'était le moment où cela ne coûtait rien (le POT
+était de toute façon régénéré, et rien n'était encore traduit), alors que le même correctif
+après 9a aurait exigé un second cycle POT + `msgmerge` ×12. La tournure retenue supprime les
+chevrons (`prefix::1/64`) plutôt que de les échapper : le texte doit rester lisible tel quel.
+Le tooltip jumeau de `:471` garde `<prefix>` sans dommage — les tooltips passent par
+`Tooltip.set_text` (`bin/gui/gui_bricks.ml`), du texte brut, jamais du markup.
+
+**Méthode et preuves.** Les traductions ont été assemblées en **compendium** puis versées par
+`msgmerge --compendium --no-fuzzy-matching` : c'est le mécanisme que gettext prévoit pour
+remplir des entrées vides sans toucher aux autres ni aux entrées obsolètes — pas d'édition à la
+main de 12 fichiers de 2 000 lignes. Trois gardes ont tourné à chaque langue : **arité des
+formats** (la suite ordonnée des `%s`/`%d` de `msgid` comparée à celle de `msgstr` — le piège
+durable du chantier i18n, qui plante à l'exécution en silence et que `msgfmt -c` ne voit pas),
+**absence de doublon** parmi les 41 lignes (deux `msgid` ne diffèrent que par un verbe, deux
+autres que par un suffixe d'option : un copier-coller non corrigé s'y cache sans bruit), et
+`msgfmt -c`. Un **audit d'arité sur les 12 catalogues entiers** (420 entrées chacun, pas
+seulement les neuves) donne **0 écart**. Une **validation Pango des 492 traductions** ne signale
+que la ligne 34 dans les 12 langues — le tooltip `<préfixe>`, contexte texte brut, exactement
+comme son `msgid`. `dune build` rc 0 recompile les douze `.mo`, et `msgunfmt` sur `fr.mo`,
+`de.mo`, `ru.mo` y retrouve les chaînes neuves. **Run réel** : Marionnet lancé avec
+`LANGUAGE=fr` et `MARIONNET_LOCALEPREFIX` pointant sur les `.mo` fraîchement construits affiche
+« Bienvenue dans Marionnet », « Composants », « Tout démarrer » — le catalogue neuf est bien
+celui que charge le binaire. **Geste humain restant** : voir les chaînes neuves *elles-mêmes*
+à l'écran (entrées du menu planète, dialogue du NAT bridge) demande un projet ouvert, donc une
+manipulation interactive ; non joué ici, dit tel quel.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1721,3 +1783,38 @@ parce qu'aucune ne se redevine :
   **même** LAN bridge, sur une vraie carte), non joué ici — il exige le mot de passe, le bloc
   (c) du sudoers et une carte filaire.
   Prochain pas : **épisode 9** (i18n ×12), le dernier.
+- **2026-08-18 — épisode 9a** : *les mots des deux bridges, en douze langues (1/2)* (§ 4.8).
+  Le refresh POT du chantier a mesuré **423 `msgid`** (contre 385) et **43 trous par catalogue** ;
+  cet épisode en comble **41** dans les **12 langues** de `LINGUAS` — les entrées du menu planète,
+  les titres et champs des deux dialogues, la question du service RADVD, et toute la famille des
+  messages de privilèges (`privileges.ml`) et d'échec de construction. Les deux `msgid` restants
+  sont les **longs textes d'aide** des composants (3 609 + 2 347 caractères), gardés pour **9b** :
+  eux seuls pesaient plus que les 41 autres réunies, et c'est 9b qui rétablira l'invariant
+  « catalogues complets ». **Terminologie figée d'abord** : `NAT`/`LAN` restent des sigles, le nom
+  commun suit ce que chaque catalogue faisait déjà de `world bridge` (`bridge NAT`, `NAT-Bridge`,
+  `puente NAT`, `γέφυρα NAT`, `NAT-мост`, `NAT köprüsü`…) ; `RADVD service` est calqué sur le rendu
+  local de `DHCP service`, déjà présent aux 12 depuis l'épisode 10.
+  **Défaut trouvé en chemin et corrigé avant de traduire** (2 lignes d'OCaml, seul code de
+  l'épisode) : le corps des dialogues `Simple_dialogs.*` est un label **Pango markup**
+  (`use-markup` sur `content`, `gui_glade3.xml`), et le `msgid` de `bin/nat_bridge.ml:244`
+  y envoyait `<prefix>::1/64` — **mesuré** : `Pango.parse_markup` échoue (« Unknown tag
+  'prefix' »), le message d'erreur ne s'affichait donc pas comme prévu ; l'adresse saisie y était
+  de plus insérée **sans** `Glib.Markup.escape_text`, contrairement au message voisin de `:1024`.
+  Corrigé **maintenant** parce que le POT était de toute façon en cours de régénération et que
+  rien n'était encore traduit : plus tard, il aurait fallu un second cycle POT + `msgmerge` ×12.
+  **Méthode** : traductions versées par `msgmerge --compendium --no-fuzzy-matching` (le mécanisme
+  gettext prévu pour remplir les entrées vides sans toucher au reste), avec trois gardes par
+  langue — **arité des formats** (`%s`/`%d`, ordonnés : le piège durable de `marionnet-i18n`,
+  invisible à `msgfmt -c`), **absence de doublon** parmi les 41 lignes (deux `msgid` ne diffèrent
+  que par un verbe, deux autres que par un suffixe d'option), et `msgfmt -c`.
+  **Preuves** : `msgfmt -c --statistics` → **420 traduits, 2 non traduits** aux 12, et les 2
+  restants sont bien les mêmes partout (les textes d'aide de 9b) ; **audit d'arité sur les 12
+  catalogues entiers** (420 entrées chacun) → **0 écart** ; **validation Pango des 492
+  traductions** → seule la ligne du tooltip `<préfixe>` échoue, dans les 12, exactement comme son
+  `msgid` (contexte `Tooltip.set_text`, texte brut, sans conséquence) ; `dune build` rc 0 avec les
+  douze `.mo` reconstruits, et `msgunfmt` y retrouve les chaînes neuves (`fr`, `de`, `ru`) ;
+  **run réel** avec `LANGUAGE=fr` + `MARIONNET_LOCALEPREFIX` sur les `.mo` frais → « Bienvenue
+  dans Marionnet », « Composants », « Tout démarrer ».
+  **Geste humain restant** : voir les chaînes neuves à l'écran (menu planète, dialogue du NAT
+  bridge) exige un projet ouvert, donc une manipulation interactive — non joué ici.
+  Prochain pas : **épisode 9b** (les 2 textes d'aide ×12), qui clôt le chantier.

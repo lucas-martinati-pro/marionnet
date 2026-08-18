@@ -240,9 +240,14 @@ module Make_menus (Params : sig
           let () =
             Simple_dialogs.error
               (s_ "Ill-formed IPv6 address")
+              (* The message body of Simple_dialogs.* is a Pango markup label
+                 (`use-markup' on `content', gui_glade3.xml): no angle brackets in the
+                 sentence (an <prefix> would be an unknown tag, and the whole markup
+                 would fail to parse), and the address, which the user typed, is escaped
+                 -- as the sibling message of `no private network' already does. *)
               (Printf.sprintf
-                 (f_ "\"%s\" is not an address of the expected shape. The bridge takes the first address of a /64, so it must be written <prefix>::1/64 -- for instance fd00:192:168:101::1/64.")
-                 t.ipv6_address)
+                 (f_ "\"%s\" is not an address of the expected shape. The bridge takes the first address of a /64, so it must be written prefix::1/64 -- for instance fd00:192:168:101::1/64.")
+                 (Glib.Markup.escape_text t.ipv6_address))
               ()
           in
           None

@@ -193,8 +193,21 @@ Reprise : appliquer le skill `chantier-long`.
   `ports_card#port_of_user_port_name` (`bin/user_level.ml`, tenté seulement après l'échec exact,
   et jamais écrit : le projet migre en étant enregistré) et un **renommage par position** des
   lignes de défauts (`Treeview_defects#change_port_naming`, déclenché par l'**absence** de
-  l'attribut `port_no`, patron de `hub.ml`). L'**ép. 9 (i18n ×12) est
-  désormais le dernier**, après les ép. 10, 11 et 12, pour ne pas traduire deux fois.
+  l'attribut `port_no`, patron de `hub.ml`).
+  **Ép. 9 — l'i18n ×12, le dernier, en deux temps** (gardé pour la fin afin de ne pas traduire
+  deux fois) : le refresh POT donne **423 `msgid`** et **43 trous par catalogue**, dont **2 seuls
+  textes d'aide pèsent 5 956 caractères**. **9a FAIT** (§ 4.8 du doc) — les **41** chaînes courtes
+  traduites dans les 12 langues, terminologie figée d'abord (`NAT`/`LAN` restent des sigles, seul
+  le nom commun suit l'habitude de chaque catalogue), versées par **`msgmerge --compendium`**.
+  **Piège durable établi ici** : le corps des dialogues `Simple_dialogs.error/warning/info/help`
+  est un label **Pango markup** — `use-markup` est posé sur `content` dans
+  `bin/gui/gui_glade3.xml`, **pas** dans `simple_dialogs.ml` où seul le *titre* reçoit un
+  `set_use_markup` explicite — donc tout `<mot>` d'un `msgid` **ou** d'une traduction casse le
+  parsing du message entier, et toute valeur venue de l'utilisateur doit passer par
+  `Glib.Markup.escape_text` (les **tooltips**, eux, sont du texte brut : `Tooltip.set_text`).
+  C'est ce qui a fait corriger `bin/nat_bridge.ml:244` en même temps. Reste **9b** : les 2 textes
+  d'aide ×12, qui **seul** rétablira l'invariant « on ne supporte que des catalogues complets »
+  et clôt le chantier.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
