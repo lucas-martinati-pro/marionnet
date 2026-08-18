@@ -184,8 +184,17 @@ Reprise : appliquer le skill `chantier-long`.
   (mesuré). Tout l'IPv6 est **conditionné à un uplink v6** (`check-ipv6`, non privilégié) : sans
   lui, support **sauté** (`E_NO_IPV6_UPLINK`) et champs **grisés** — asymétrie assumée avec
   l'ép. 10c.2, le DHCP étant actif par défaut là où l'IPv6 est *opt-in*.
-  L'**ép. 9 (i18n ×12) est
-  désormais le dernier**, après les ép. 10 et 11, pour ne pas traduire deux fois.
+  **Ép. 12 FAIT** — *le commutateur intégré du LAN bridge* (§ 4.7 du doc) : le LAN bridge passe
+  lui aussi à N ports (4/1/16), les cinq constantes de port vivant désormais dans
+  `bin/bridge_common.ml` pour les deux natures. **Piège durable établi ici** : le nom d'un port
+  n'est pas un libellé — un câble nomme son réceptacle dans le `.mar` et l'import **avale**
+  l'échec de résolution, donc renommer `eth0` en `port1` aurait fait disparaître **en silence**
+  les câbles des projets antérieurs ; d'où un **repli** vers l'ancienne convention dans
+  `ports_card#port_of_user_port_name` (`bin/user_level.ml`, tenté seulement après l'échec exact,
+  et jamais écrit : le projet migre en étant enregistré) et un **renommage par position** des
+  lignes de défauts (`Treeview_defects#change_port_naming`, déclenché par l'**absence** de
+  l'attribut `port_no`, patron de `hub.ml`). L'**ép. 9 (i18n ×12) est
+  désormais le dernier**, après les ép. 10, 11 et 12, pour ne pas traduire deux fois.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

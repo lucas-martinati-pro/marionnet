@@ -20,7 +20,7 @@
     on the host but beside it, and takes down when it is done with it (work-stream
     modernisation-world-bridge, episode 7a.3.b).
 
-    Same mechanism as the LAN bridge -- a tap in a two-port hub, see [Bridge_common] --
+    Same mechanism as the LAN bridge -- a tap in a switch, see [Bridge_common] --
     and one difference, which is the whole point: the host bridge its tap joins does
     not have to exist beforehand. This component asks [Nat_bridge_host] for one, gets
     a private /24 of its own, and gives it back when it stops. *)
@@ -52,12 +52,14 @@ module Const = struct
  let cidr = 24
  let host_byte = 1
  (* --- *)
- (* The ports of the integrated switch (episode 10b). Same default as a world
-    gateway, but a minimum of 1: a NAT bridge serving a single machine is a
-    legitimate thing to build, and it is what every NAT bridge was until now. *)
- let port_no_default = 4
- let port_no_min = 1
- let port_no_max = 16
+ (* The ports of the integrated switch (episode 10b). Not values of its own since
+    episode 12: the LAN bridge offers exactly the same switch, so the three numbers
+    are those of the trunk both bridges share. They are still named here because
+    this is where a reader -- and control_server.ml -- looks for what a NAT bridge
+    is worth. *)
+ let port_no_default = Bridge_common.Const.port_no_default
+ let port_no_min = Bridge_common.Const.port_no_min
+ let port_no_max = Bridge_common.Const.port_no_max
  (* --- *)
  (* The DHCP service (episode 10c.2), on by default as a world gateway's is: the
     same question deserves the same answer, and a component whose guests get their
@@ -755,13 +757,12 @@ class nat_bridge =
       ~name ?label
       ~devkind:`Nat_bridge
       ~kind_name:"nat_bridge"
-      (* Unlike the LAN bridge, this component offers the ports of an integrated
-         switch, and names them as a switch does (episode 10b): *)
+      (* The ports of the integrated switch (episode 10b), named as a switch names
+         its own. The prefix and the offset are the ones of the trunk since episode
+         12, where the LAN bridge came to the same shape: *)
       ~port_no
       ~port_no_min:Const.port_no_min
       ~port_no_max:Const.port_no_max
-      ~port_prefix:"port"
-      ~user_port_offset:1
       ()
     as self_as_bridge
 
@@ -944,7 +945,7 @@ let smallest_free (taken : int list) : int =
    Returning something plausible would be worse -- it might exist. *)
 let no_bridge_at_all = "marionnet-no-such-bridge"
 
-(** The mechanism itself -- the tap, the two-port hub, the internal cable and their
+(** The mechanism itself -- the tap, the switch, the internal cables and their
     life cycle -- is the one shared with the LAN bridge (see [Bridge_common]). What
     this component adds is a bridge of its own: one that does not exist until it is
     asked for, and that is given back when the component stops. *)

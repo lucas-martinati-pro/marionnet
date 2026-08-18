@@ -241,6 +241,26 @@ object(self)
     let port_row_ids = Forest.children_nodes device_row_id !id_forest in
     List.iter (self#update_row_name update) port_row_ids
 
+  (* Used importing a component whose nature changed the way it NAMES its ports, where
+     the method above only shifts their numbering: the k-th port row is renamed after
+     the convention given, whatever it was called before. The LAN bridge is the case it
+     was written for (work-stream modernisation-world-bridge, episode 12): a project
+     saved earlier has one row called "eth0" under it, and the component now has four
+     ports called "port1"..."port4" -- the three missing rows being appended with the
+     new naming by [update_port_no], the first one would stay "eth0" for ever.
+     ---
+     By position and not by rewriting the old name: position is what the ports card
+     itself uses to map a row onto a port, and it is the only thing that stays true
+     whatever the naming was. *)
+  method change_port_naming ~device_name ~port_prefix ~user_port_offset =
+    let device_row_id = self#unique_row_id_of_name device_name in
+    let port_row_ids = Forest.children_nodes device_row_id !id_forest in
+    List.iteri
+      (fun i row_id ->
+         let name = Printf.sprintf "%s%d" port_prefix (i + user_port_offset) in
+         self#update_row_name (fun _ -> name) row_id)
+      port_row_ids
+
   method private add_port
     ?(defective_by_default=false)
     ~device_name

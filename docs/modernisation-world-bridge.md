@@ -325,9 +325,13 @@ le suivant existe.
     dnsmasq, donc pas de radvd à installer) et la traversée NAT66 — plus une **troisième porte
     privilégiée** pour le forwarding IPv6, qui ne se laisse pas scoper en sudoers.
     **Fait 2026-08-18**, détail en § 4.6.
-12. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
-    aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après les épisodes 10
-    et 11** : ils ajoutent des `msgid`, et traduire avant l'aurait fait traduire deux fois.
+12. **ép. 12** — **le commutateur intégré du LAN bridge** : ce que l'épisode 10b a donné au
+    NAT bridge, donné au LAN bridge — N ports (4 par défaut, de 1 à 16) au lieu d'un seul —
+    avec la rétro-compatibilité qu'impose le **renommage** de son port (`eth0` → `port1`).
+    **Fait 2026-08-18**, détail en § 4.7.
+13. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
+    aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après les épisodes 10,
+    11 et 12** : ils ajoutent des `msgid`, et traduire avant l'aurait fait traduire deux fois.
 
 ### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
 
@@ -492,6 +496,51 @@ laxiste que la garde qui tourne en root :
 l'injection de l'ép. 10c.1 est précisément « cette sous-commande prend exactement *n* arguments »,
 et que les quatre combinaisons de DHCPv4 et de RA ne se distinguent pas par un compte. Un
 sentinelle `-` aurait troqué la garde contre un analyseur.
+
+### 4.7 Épisode 12 en détail — le même commutateur, et le prix d'un renommage
+
+L'épisode 10b avait donné au NAT bridge les ports d'un commutateur intégré en constatant que
+son dispositif simulé **était déjà** un `vde_switch`, simplement bridé à deux ports. Le LAN
+bridge partage ce dispositif (`bin/bridge_common.ml`) et était resté à un port : brancher trois
+machines sur le vrai réseau obligeait à poser **trois composants**, donc **trois taps** dans le
+même bridge hôte `mnlan0`. Un seul composant à N ports fait la même chose avec un tap — c'est
+exactement ce qu'est un switch dont l'*uplink* est la carte de l'hôte, et la règle de projet
+« le câblage suit la réalité » le demande. Les deux bridges offrant désormais le **même**
+commutateur, les cinq constantes de port (4, 1, 16, préfixe `port`, offset 1) ont quitté
+`nat_bridge.ml` pour le tronc, où elles sont la valeur par défaut des deux natures.
+
+**Le vrai contenu de l'épisode n'est pas là : c'est le renommage.** Le port unique du LAN
+bridge s'appelait `eth0`, et un composant à N ports nomme les siens `port1…portN` comme tout
+commutateur de ce programme. Or **le nom d'un port n'est pas un libellé** : un câble écrit dans
+le `.mar` le **nom** de son réceptacle (`leftreceptname`, `cable.ml`), et l'import le résout
+par un `List.find` dont l'échec est avalé par le `with _ -> false` de `Eval_forest_child`. Sans
+précaution, ouvrir un projet enregistré avant cet épisode aurait fait **disparaître ses câbles,
+en silence** — mesuré : un `.mar` dont le câble nomme un port introuvable (`eth9`) est bien
+chargé, mais le câble n'existe plus dans le modèle (`get c1` → `unknown_node`).
+
+D'où deux rattrapages, chacun avec un précédent dans le dépôt :
+
+- **La résolution d'un nom de port se replie sur l'ancienne convention** (`user_level.ml`,
+  méthode privée `port_of_user_port_name` des cartes de ports) : quand la recherche exacte
+  échoue et que le nom demandé a la forme `eth<i>`, elle réessaie avec `<préfixe><i + offset>`
+  de **cette** carte. Le repli est **après** l'échec (une carte dont les noms sont ceux
+  demandés se comporte exactement comme avant) et il ne s'écrit nulle part : le prochain
+  enregistrement écrit les noms courants, donc **le projet migre en étant enregistré une fois**
+  (mesuré : `rightreceptname` passe de `eth0` à `port1` dans le `.mar` réenregistré).
+- **Les lignes du treeview des défauts sont renommées par position** (`treeview_defects.ml`,
+  `change_port_naming`, voisine de `change_port_user_offset` que `hub.ml` appelle depuis
+  toujours pour une migration du même genre) : la k-ième ligne fille prend le nom de la
+  convention courante, quel que soit son ancien nom. Par position et non par réécriture du nom,
+  parce que la position est ce qui reste vrai quel que soit le nommage d'hier. L'appel n'a lieu
+  **que** si l'attribut `port_no` est absent du sous-arbre — c'est exactement ce qui signe un
+  projet d'avant l'épisode, comme la forme de l'arbre le signe dans `hub.ml`.
+
+Un projet antérieur repart donc avec **4 ports** (le défaut, comme un `.mar` sans `port_no` en
+10b), son câble sur `port1`, et ses lignes de défauts renommées `port1…port4`.
+
+**i18n** : le libellé « Integrated switch ports » et son tooltip sont, mot pour mot, ceux de la
+passerelle et du NAT bridge — aucun `msgid` neuf pour le formulaire. Seul le texte d'aide du
+composant change (un paragraphe de plus), dette déjà comptée dans l'épisode 9.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1641,4 +1690,34 @@ parce qu'aucune ne se redevine :
   - **Contrainte neuve pour `modernisation-installation-marionnet`** : un **6ᵉ script installé**
     (`marionnet-ipv6.sh`), qui doit être **root:root non inscriptible** comme
     `marionnet-dnsmasq.sh`, sans quoi la règle refuse de le nommer.
+  Prochain pas : **épisode 12** (le commutateur intégré du LAN bridge).
+- **2026-08-18 — épisode 12** : *le commutateur intégré du LAN bridge* (§ 4.7). Le composant
+  passe de 1 port à N (4 par défaut, de 1 à 16), nommés `port1…portN` comme ceux du NAT bridge :
+  les deux bridges offrent désormais le même commutateur, et les cinq constantes de port vivent
+  dans le tronc (`bridge_common.ml`), `nat_bridge.ml` s'y référant. Côté LAN bridge
+  (`lan_bridge.ml`) : ligne « Integrated switch ports » du dialogue, `port_no` dans le `.mar` et
+  dans le canal, `~hublet_no` passé au dispositif simulé, `--ports` accepté par
+  `control_server.ml`. **Le cœur de l'épisode est ailleurs** : renommer un port aurait fait
+  **disparaître en silence** les câbles des projets antérieurs (le `.mar` nomme le réceptacle,
+  et l'import avale l'échec de résolution), d'où deux rattrapages — un **repli** de la
+  résolution d'un nom de port vers l'ancienne convention (`user_level.ml`,
+  `port_of_user_port_name`, tenté seulement **après** l'échec exact) et un **renommage par
+  position** des lignes du treeview des défauts (`treeview_defects.ml`, `change_port_naming`,
+  déclenché par l'**absence** de l'attribut `port_no`, sur le patron de `hub.ml`).
+  **Preuves** : `dune build` rc 0 avec **erreur volontaire dans chacun des 6 modules touchés**
+  (recompilation réelle vérifiée un par un) ; session pilotée — `add world_bridge B1 --ports=6`
+  → `port1…port6` dans le treeview des défauts, défaut 4 pour un second bridge, réduction sous
+  un câble refusée en nommant le plancher (5), `--port_no=17` refusé, 1 et 16 acceptés,
+  `port_no` dans le `network.json`, NAT bridge non régressé ; **rétro-compatibilité mesurée**
+  sur un `.mar` fabriqué sans `port_no` et dont le câble nomme `B1:eth0` → 4 ports, câble
+  **survivant** sur `port1`, lignes de défauts renommées `port1…port4`, trace
+  « comes from an older project » dans le journal, et **migration par simple enregistrement**
+  (`rightreceptname` devenu `port1`) ; **contre-preuve** : le même `.mar` avec un nom
+  irrécupérable (`eth9`) perd bien son câble (`unknown_node`), ce qui montre que le risque
+  était réel et que le repli est ce qui sauve le cas hérité ; `quit` sans résidu.
+  **i18n** : aucune chaîne neuve pour le formulaire (libellé et tooltip sont ceux de la
+  passerelle) ; seul le texte d'aide change de `msgid`, dette déjà comptée dans l'épisode 9.
+  **Geste humain restant** : le run réel privilégié (deux invités sur `port1` et `port2` du
+  **même** LAN bridge, sur une vraie carte), non joué ici — il exige le mot de passe, le bloc
+  (c) du sudoers et une carte filaire.
   Prochain pas : **épisode 9** (i18n ×12), le dernier.

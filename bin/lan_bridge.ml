@@ -21,7 +21,7 @@
     DHCP and DNS, the other machines of the room — by putting the host's own
     network card into a bridge (work-stream modernisation-world-bridge, ep. 7b).
 
-    Same mechanism as the NAT bridge — a tap in a two-port hub, see [Bridge_common] —
+    Same mechanism as the NAT bridge — a tap in a switch, see [Bridge_common] —
     and one difference, which is the whole point: this one does not build a network
     of its own, it joins the one that is already there. Marionnet builds that bridge
     itself ([Lan_bridge_host]) unless an administrator configured one by hand, in
@@ -72,12 +72,13 @@ module Make_menus (Params : sig
       let name = st#network#suggestedName "B" in
       Dialog_add_or_update.make ~title:(s_ "Add LAN bridge") ~name ~ok_callback ()
 
-    let reaction { name = name; label = label; _ } =
+    let reaction { name = name; label = label; port_no = port_no; _ } =
       let action () = ignore (
         new User_level_lan_bridge.lan_bridge
           ~network:st#network
           ~name
           ~label
+          ~port_no
           ())
       in
       st#network_change action ();
@@ -90,15 +91,19 @@ module Make_menus (Params : sig
 
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
+     let h = ((Obj.magic d):> User_level_lan_bridge.lan_bridge) in
      let title = (s_ "Modify LAN bridge")^" "^name in
      let label = d#get_label in
-     Dialog_add_or_update.make ~title ~name ~label ~ok_callback:Add.ok_callback ()
+     let port_no = h#get_port_no in
+     (* Not Const.port_no_min: the smallest number of ports which still holds every
+        cable already connected to this component (as for a world gateway): *)
+     let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
+     Dialog_add_or_update.make ~title ~name ~label ~port_no ~port_no_min ~ok_callback:Add.ok_callback ()
 
-    let reaction { name = name; label = label; old_name = old_name } =
+    let reaction { name = name; label = label; port_no = port_no; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_lan_bridge.lan_bridge) in
-      (* A LAN bridge has exactly one port, today as yesterday (Bridge_common.Const): *)
-      let action () = h#update_bridge_with ~name ~label ~port_no:Bridge_common.Const.port_no_default in
+      let action () = h#update_bridge_with ~name ~label ~port_no in
       st#network_change action ();
 
   end
@@ -184,6 +189,9 @@ let make
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
  ?(dialog_image_file=Initialization.Path.images^"ico.lan_bridge.dialog.png")
+ ?(port_no=Bridge_common.Const.port_no_default)
+ ?(port_no_min=Bridge_common.Const.port_no_min)
+ ?(port_no_max=Bridge_common.Const.port_no_max)
  () :'result option =
   let old_name = name in
   let (w,_,name,label) =
@@ -195,6 +203,24 @@ let make
       ~name_tooltip:(s_ "LAN bridge name. This name must be unique in the virtual network. Suggested: B1, B2, ...")
       ?label
       ()
+  in
+
+  (* The ports of the integrated switch (episode 12). This component was a single
+     port until now, and it is the very same switch the NAT bridge offers: one tap
+     towards the host, N ports towards the virtual machines. Label and tooltip are,
+     word for word, the ones a world gateway and a NAT bridge already use -- the same
+     thing must be called by the same name, and this costs no new msgid. *)
+  let port_no =
+    let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
+    let form =
+      Gui_bricks.make_form_with_labels
+        ~packing:vbox#add
+        [ (s_ "Integrated switch ports") ]
+    in
+    Gui_bricks.spin_byte
+      ~packing:(form#add_with_tooltip (s_ "The number of ports of the integrated switch"))
+      ~lower:port_no_min ~upper:port_no_max ~step_incr:1
+      port_no
   in
 
   (* Said at the moment of the gesture, and not as an unexplained failure — or, worse,
@@ -226,8 +252,10 @@ let make
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
+    let port_no = int_of_float port_no#value in
       { Data.name = name;
         Data.label = label;
+        Data.port_no = port_no;
         Data.old_name = old_name;
         }
   in
@@ -262,6 +290,9 @@ bridge instead.\n\n\
 There is one such bridge per computer, shared: several Marionnet instances, and \
 several LAN bridge components, use the same one, and it is given back when the \
 last of them has finished with it.\n\n\
+- Integrated switch ports: the number of virtual machines that may be plugged \
+DIRECTLY into this component. They are all on the real local network, each with \
+its own address, exactly as if they were plugged into a switch of the room.\n\n\
 LAN bridge, NAT bridge or gateway? Use a LAN BRIDGE when the virtual machines \
 must appear directly on the real network of this computer, or to link \
 Marionnet instances running on different machines. Use a NAT BRIDGE to reach \
@@ -290,9 +321,29 @@ module Eval_forest_child = struct
     | ("world_bridge", attrs)
     | ("gateway" (* retro-compatibility *), attrs) ->
     	let name  = List.assoc "name"  attrs in
-        Log.printf1 "Importing LAN bridge \"%s\"...\n" name;
-        let x = new User_level_lan_bridge.lan_bridge ~network ~name () in
+        (* Read here and given to the CONSTRUCTOR, not left to eval_forest_attribute:
+           the number of ports decides how many hublets the node is built with (the
+           same reason as the NAT bridge, episode 10b). *)
+        let port_no_attribute = try Some (int_of_string (List.assoc "port_no" attrs)) with _ -> None in
+        let port_no = match port_no_attribute with Some n -> n | None -> Bridge_common.Const.port_no_default in
+        Log.printf2 "Importing LAN bridge \"%s\" with %d ports...\n" name port_no;
+        let x = new User_level_lan_bridge.lan_bridge ~network ~name ~port_no () in
 	x#from_tree ("world_bridge", attrs) children  ;
+        (* A project saved before episode 12 has a single port called "eth0", and the
+           row of the defects treeview that goes with it is still called that -- the
+           other rows, just appended by the constructor, being named the new way. The
+           absence of the attribute is exactly what says "saved before", as the shape
+           of the tree says it in hub.ml. The cables of such a project name "eth0"
+           too, but they are caught elsewhere, where a name is turned into a port
+           index (user_level.ml, [port_of_user_port_name]). *)
+        let () =
+          if port_no_attribute = None then begin
+            Log.printf1 "This LAN bridge comes from an older project: renaming the ports of \"%s\"...\n" name;
+            network#defects#change_port_naming ~device_name:name
+              ~port_prefix:Bridge_common.Const.port_prefix
+              ~user_port_offset:Bridge_common.Const.user_port_offset
+            end
+        in
         Log.printf1 "LAN bridge \"%s\" successfully imported.\n" name;
         true
    | _ ->
@@ -315,6 +366,7 @@ class lan_bridge =
  fun ~network
      ~name
      ?label
+     ?(port_no=Bridge_common.Const.port_no_default)
      () ->
   object (self)
 
@@ -327,12 +379,29 @@ class lan_bridge =
       (* What is written in a .mar stays `world_bridge'; what is drawn says LAN,
          now that a second bridge exists (episode 7a.3.b): *)
       ~icon_prefix:"lan_bridge"
+      (* The ports of the integrated switch (episode 12): the values of the trunk,
+         which are those of the NAT bridge -- the two components offer the very same
+         switch, the only difference being which host bridge their tap joins. *)
+      ~port_no
       ()
+    as self_as_bridge
+
+  method! extra_tree_attributes = [
+    ("port_no", string_of_int self#get_port_no);
+    ]
+
+  method! eval_forest_attribute = function
+  | ("port_no", x) -> self#set_port_no (int_of_string x)
+  | a -> self_as_bridge#eval_forest_attribute a
 
   (** Create the simulated device *)
   method private make_simulated_device =
    ((new Simulation_level_lan_bridge.lan_bridge
         ~parent:self
+        (* By value: a change of the number of ports goes through update_with, which
+           destroys the simulated device, so the next one is built with the number of
+           the moment (the same reasoning as the NAT bridge, episode 10b). *)
+        ~hublet_no:self#get_port_no
         ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
@@ -347,13 +416,14 @@ end (* module User_level_lan_bridge *)
 
 module Simulation_level_lan_bridge = struct
 
-(** The mechanism itself -- the tap, the two-port hub, the internal cable and their
-    life cycle -- is the one shared with the NAT bridge (see [Bridge_common]). What
-    this component adds is which host bridge its tap joins: the one Marionnet builds
+(** The mechanism itself -- the tap, the switch, the internal cables and their life
+    cycle -- is the one shared with the NAT bridge (see [Bridge_common]). What this
+    component adds is which host bridge its tap joins: the one Marionnet builds
     on the host's card, or the one an administrator prepared. *)
 class ['parent] lan_bridge =
   fun (* ~id *)
       ~(parent:'parent)
+      ~(hublet_no : int)          (* the ports of the integrated switch (episode 12) *)
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -423,6 +493,7 @@ object(_self)
       ~device_type:"world_bridge"
       ~resolve_bridge_name
       ~after_terminate
+      ~hublet_no
       ~socket_name_prefix:"world_bridge_hub-socket-"
       ~working_directory
       ~unexpected_death_callback

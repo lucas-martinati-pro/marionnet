@@ -830,11 +830,36 @@ class ['parent] ports_card
   method port_prefix = port_prefix
   method user_port_offset = user_port_offset
 
+  (* A project saved before a nature changed the way it names its ports still names
+     them the old way, and its cables say so: the receptacle of a cable travels in the
+     .mar as a NAME ("leftreceptname", cable.ml), which is resolved right here. The LAN
+     bridge is the case that made this necessary (work-stream modernisation-world-bridge,
+     episode 12): its single port was called "eth0" and is now the "port1" of an
+     integrated switch, so the name written in an old project would be found nowhere --
+     and the import of a cable swallows the exception (with _ -> false), so the cable
+     would simply VANISH, in silence, from a project that used to work.
+     ---
+     Hence this fallback, and its two limits: it is tried only AFTER the exact lookup
+     has failed (a card whose names are the ones asked for behaves exactly as before),
+     and it only ever translates the old interface-like naming towards the convention
+     of THIS card. Nothing is written back: the next save writes the current names, so
+     the project migrates by being saved once. *)
+  method private port_of_user_port_name x =
+    try List.find (fun p -> p#user_name = x) port_list
+    with Not_found ->
+      let legacy_name =
+        try Scanf.sscanf x "eth%d%!" (fun i -> Some (Printf.sprintf "%s%d" port_prefix (i + user_port_offset)))
+        with _ -> None
+      in
+      (match legacy_name with
+       | Some y when y <> x -> List.find (fun p -> p#user_name = y) port_list
+       | Some _ | None -> raise Not_found)
+
   method internal_index_of_user_port_name x =
-    (List.find (fun p->p#user_name = x) port_list)#internal_index
+    (self#port_of_user_port_name x)#internal_index
 
   method user_port_index_of_user_port_name x =
-    (List.find (fun p->p#user_name = x) port_list)#user_index
+    (self#port_of_user_port_name x)#user_index
 
   method user_port_name_of_internal_index i =
     (Array.get port_array i)#user_name

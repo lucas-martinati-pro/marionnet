@@ -21,8 +21,8 @@
 
     A bridge component is a network node whose simulated device is a vde switch
     having a host tun/tap on its first port and the component's hublets on the
-    others (a single one, for the LAN bridge; as many as the user asked for, for
-    the NAT bridge since episode 10b). That mechanism is the same whether the
+    others (as many as the user asked for, for the NAT bridge since episode 10b
+    and for the LAN bridge since episode 12). That mechanism is the same whether the
     tap is attached to a bridge built by an administrator (the LAN bridge, the
     historical [world_bridge]) or to the private NAT bridge Marionnet builds for
     itself ([Nat_bridge_host]). The one thing that differs is {b which bridge},
@@ -41,16 +41,23 @@ module Forest = Ocamlbricks.Forest
 module Xforest = Ocamlbricks.Xforest
 (* --- *)
 
-(* What a bridge has when it says nothing: exactly one port, named as an interface
-   ("eth0"). That is the LAN bridge, and it was both bridges until episode 10b; the
-   NAT bridge now says otherwise (a switch with N ports, named "port1"..."portN"). *)
+(* What the two bridges are worth since episode 12: an integrated switch of N ports
+   named "port1"..."portN", as a world gateway or a switch names its own. Both
+   natures now agree on these five values, so they live here and nowhere else --
+   the NAT bridge got them at episode 10b, the LAN bridge at episode 12, and until
+   then a bridge was a single port called "eth0". That old name is not merely a
+   label: the cables of a project name their receptacle by it (see the legacy
+   fallback of [ports_card#internal_index_of_user_port_name], user_level.ml). *)
 module Const = struct
- let port_no_default = 1
+ (* Same default as a world gateway, but a minimum of 1: a bridge serving a single
+    machine is a legitimate thing to build, and it is what every bridge was until
+    those two episodes. *)
+ let port_no_default = 4
  let port_no_min = 1
- let port_no_max = 1
+ let port_no_max = 16
  (* --- *)
- let port_prefix = "eth"
- let user_port_offset = 0
+ let port_prefix = "port"
+ let user_port_offset = 1
 end
 
 (* The type of data exchanged with the dialogs (the same for both natures): *)
@@ -58,6 +65,7 @@ module Data = struct
 type t = {
   name        : string;
   label       : string;
+  port_no     : int;
   old_name    : string;
   }
 
@@ -82,9 +90,9 @@ module User_level_bridge = struct
     to stop being the one of "the" bridge once a second bridge existed. It
     defaults to [kind_name].
     ---
-    The port-related parameters all default to what both bridges were until
-    episode 10b — a single port called ["eth0"] — so a nature which does not
-    mention them (the LAN bridge) keeps exactly its behaviour of yesterday. *)
+    The port-related parameters all default to what both bridges are worth since
+    episode 12 ([Const] above): an integrated switch of four ports called
+    ["port1"…["port4"]. A nature is free to say otherwise, and none does any more. *)
 class virtual bridge =
 
  fun ~network
@@ -122,11 +130,10 @@ class virtual bridge =
    let icon_prefix = match icon_prefix with Some x -> x | None -> kind_name in
    (imgDir^"ico."^icon_prefix^"."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
-  (* [port_no] is explicit rather than implicitly 1: a nature whose number of ports is
-     fixed passes its own constant (the LAN bridge passes 1), a nature which lets the
-     user choose passes what the dialog returned. Calling [update_with] is also what
-     destroys the simulated device, hence what makes a modification effective on the
-     next start-up. *)
+  (* [port_no] is explicit rather than implicit: both natures now let the user choose
+     the number of ports, and both pass here what their dialog returned. Calling
+     [update_with] is also what destroys the simulated device, hence what makes a
+     modification effective on the next start-up. *)
   method update_bridge_with ~name ~label ~port_no =
    self_as_node_with_defects#update_with ~name ~label ~port_no;
 
@@ -195,7 +202,8 @@ end
     instance number there). The LAN bridge has nothing to give back.
     ---
     [hublet_no] is the number of ports the component offers to the virtual network
-    (episode 10b). It defaults to 1, which is the LAN bridge and was both bridges. *)
+    (episode 10b for the NAT bridge, episode 12 for the LAN bridge). Both natures
+    pass here what their own dialog returned; the default is the one of [Const]. *)
 class ['parent] bridge_device =
   fun (* ~id *)
       ~(parent:'parent)
