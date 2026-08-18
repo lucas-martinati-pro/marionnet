@@ -472,16 +472,15 @@ let make
         ~red_text_condition:(fun x -> not (Tool.is_valid_ipv6_address x))
         ()
     in
-    (* Two corrections of layout, made HERE and not in the shared helper: changing the
-       defaults of [activable_entry] would move the four other dialogs that use it,
-       none of which was asked about.
-       - the check button was glued to the entry, reading as one widget;
-       - the entry showed about half of an address. 32 characters leave real margin
-         around what it must hold: [fd00:192:168:101::1/64] is 22 and a hand-written
-         prefix such as [2001:db8:1234:5678::1/64] is 25, so nothing a user types ends
-         up half hidden. In Gtk+ 3 this is a MINIMUM request, so a wider dialog simply
-         gives the entry more; it stays well below the width of the IPv4 row. *)
-    let () = ipv6#hbox#set_spacing 8 in
+    (* The entry showed about half of an address. 32 characters leave real margin
+       around what it must hold: [fd00:192:168:101::1/64] is 22 and a hand-written
+       prefix such as [2001:db8:1234:5678::1/64] is 25, so nothing a user types ends up
+       half hidden. In Gtk+ 3 this is a MINIMUM request, so a wider dialog simply gives
+       the entry more; it stays well below the width of the IPv4 row.
+       ---
+       The width is set HERE because it is a property of what THIS field holds. The
+       spacing that used to sit beside it is not: it was the same defect in the two
+       dialogs using [activable_entry], so it now lives in the helper. *)
     let () = ipv6#entry#set_width_chars 32 in
     let radvd_enabled =
       GButton.check_button

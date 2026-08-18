@@ -278,7 +278,11 @@ let activable_entry
   ?red_text_condition
   ()
   =
-  let hbox = GPack.hbox ?packing ~homogeneous () in
+  (* The spacing is not decoration: with none, the check button touches the entry and
+     the two read as ONE widget -- seen on screen in the NAT bridge dialog, and true of
+     the router dialog for the same reason. Both call sites of this function want it,
+     so it belongs here rather than being repeated at each of them. *)
+  let hbox = GPack.hbox ?packing ~homogeneous ~spacing:8 () in
   let check_button =
     GButton.check_button
       ~active
