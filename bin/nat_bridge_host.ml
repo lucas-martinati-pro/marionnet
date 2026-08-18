@@ -148,12 +148,19 @@ let instance_arguments = function
   | None -> []
   | Some n -> ["--instance"; string_of_int n]
 
-let up ?subnet ?(dhcp=false) ?instance () : (t, error) result =
+let up ?subnet ?(dhcp=false) ?ipv6 ?(radvd=false) ?instance () : (t, error) result =
   let subnet_arguments = match subnet with None -> [] | Some s -> ["--subnet"; s] in
   (* Off unless asked for, here: the default belongs to the model (the component
      decides, see nat_bridge.ml), not to this thin caller. *)
   let dhcp_arguments = if dhcp then ["--dhcp"] else [] in
-  match call (["up"] @ owner_pid_arguments @ (instance_arguments instance) @ subnet_arguments @ dhcp_arguments) with
+  (* `--radvd' without `--ipv6' is a usage error for the script, and rightly so:
+     there is no prefix to advertise. We do not even build that argv. *)
+  let ipv6_arguments = match ipv6 with
+    | None -> []
+    | Some address -> ["--ipv6"; address] @ (if radvd then ["--radvd"] else [])
+  in
+  match call (["up"] @ owner_pid_arguments @ (instance_arguments instance)
+              @ subnet_arguments @ dhcp_arguments @ ipv6_arguments) with
   | Error _ as failure -> failure
   | Ok json -> t_of_json json
 
@@ -173,6 +180,21 @@ let status () : (t list, error) result =
        | Some (`List entries) ->
            Ok (List.filter_map (fun entry -> Result.to_option (t_of_json entry)) entries)
        | _ -> Ok [])
+
+(* --- IPv6 (episode 11)
+   ---
+   Deliberately NOT memoised, unlike `is_usable' below: this answer changes
+   without Marionnet doing anything at all -- a Wi-Fi association, a phone
+   tethered by USB, a VPN going up or down. The dialog therefore asks again every
+   time it opens; it costs one fork, and it is what keeps its three greyed-out
+   fields honest.
+   ---
+   A script that cannot be run answers `false'. That is the safe direction: the
+   only harmful answer here is offering an IPv6 that cannot work. *)
+let has_ipv6_uplink () : bool =
+  match call ["check-ipv6"] with
+  | Error _ -> false
+  | Ok json -> (member "uplink" json) = Some (`Bool true)
 
 (* --- Usability
    ---
@@ -226,14 +248,14 @@ let register_at_exit () =
           mine)
   end
 
-let ensure ?subnet ?dhcp ?instance () : (t, error) result =
+let ensure ?subnet ?dhcp ?ipv6 ?radvd ?instance () : (t, error) result =
   Mutex.lock mutex;
   let result =
     try
       match Hashtbl.find_opt mine instance with
       | Some bridge -> Ok bridge
       | None ->
-          (match up ?subnet ?dhcp ?instance () with
+          (match up ?subnet ?dhcp ?ipv6 ?radvd ?instance () with
            | Error _ as failure -> failure
            | Ok bridge ->
                Hashtbl.replace mine instance bridge;

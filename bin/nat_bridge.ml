@@ -32,6 +32,7 @@
 module Log = Marionnet_log
 module Xforest = Ocamlbricks.Xforest
 module Ipv4 = Ocamlbricks.Ipv4
+module Ipv6 = Ocamlbricks.Ipv6
 (* --- *)
 open Gettext
 
@@ -66,6 +67,22 @@ module Const = struct
     to build one; the remedy is the package, or this very check button. *)
  let dhcp_enabled_default = true
  (* --- *)
+ (* IPv6 (episode 11), and the two defaults do NOT follow the same rule:
+    - [ipv6_enabled] is OFF, deliberately. Unlike DHCP -- which a world gateway
+      already offered, so that offering it here only removed a difference -- IPv6
+      is something no NAT bridge ever did. A project saved before this episode must
+      behave exactly as it did, and turning the host into an IPv6 router is not a
+      thing to do to somebody who did not ask. The user ticks the box.
+    - [radvd_enabled] is ON, because whoever ticks that box asks for
+      autoconfiguration: handing out the prefix is the point, not the extra.
+    Both are moot on a host with no IPv6 uplink: the dialog greys the three fields
+    out and the host script skips its IPv6 legs (E_NO_IPV6_UPLINK). *)
+ let ipv6_enabled_default = false
+ let radvd_enabled_default = true
+ (* SLAAC works on a /64 and on nothing else, which is why this is a constant and
+    not a choice, exactly as [cidr] is for IPv4. *)
+ let ipv6_cidr = 64
+ (* --- *)
  let network_config_of_third_byte b3 = ((192, 168, b3, host_byte), cidr)
  let network_config_default = network_config_of_third_byte first_candidate_third_byte
 end
@@ -78,6 +95,9 @@ type t = {
   label          : string;
   network_config : Ipv4.config;
   dhcp_enabled   : bool;
+  ipv6_enabled   : bool;
+  ipv6_address   : string;
+  radvd_enabled  : bool;
   port_no        : int;
   old_name       : string;
   }
@@ -103,6 +123,62 @@ module Tool = struct
    ((i1, i2, i3, Const.host_byte), Const.cidr)
 
  let network_address_default = network_address_of_config Const.network_config_default
+
+ (* The IPv6 address of the bridge, derived from its IPv4 network (episode 11):
+    "192.168.101.0" gives "fd00:192:168:101::1/64". Three consequences worth
+    stating, because none of them is obvious:
+    - it is a ULA prefix (fd00::/8), the IPv6 equivalent of a private network: it
+      is masqueraded on the way out, as the /24 is;
+    - there is NO second allocator to keep in step. The /24 of a component is
+      already unique in the project (see [first_free_network_address]), so the /64
+      derived from it is too -- the collision cannot happen twice;
+    - the hexadecimal groups are made to READ like the decimal bytes, so that a
+      student can put the two networks side by side. That is a mnemonic and not an
+      encoding: 0x192 is not 192, and nothing here pretends otherwise. *)
+ let ipv6_address_of_network_address (network_address : string) : string =
+   let (i1,i2,i3,_) = Ipv4.of_string network_address in
+   Printf.sprintf "fd00:%i:%i:%i::1/%i" i1 i2 i3 Const.ipv6_cidr
+
+ let ipv6_address_default = ipv6_address_of_network_address network_address_default
+
+ (* What the dialog accepts. The shape is narrower than "a valid IPv6 config", and
+    on purpose -- it is the shape the host script validates in root, and the shape
+    SLAAC needs: <prefix>::1/64, the bridge taking ::1 of its /64 exactly as it
+    takes .1 of its /24. Written here as a predicate on the STRING, because that is
+    what a Gtk+ entry gives us and what travels in the .mar. *)
+ let is_valid_ipv6_address (x : string) : bool =
+   Ipv6.String.is_valid_config x
+   && (let (address, cidr) = Ipv6.config_of_string x in
+       (* [Ipv6.t] is the eight 16-bit groups, so the interface identifier is read
+          off the array rather than out of a string: "fd00:1::1" and
+          "fd00:1:0:0:0:0:0:1" are the same address, and both must pass. *)
+       cidr = Const.ipv6_cidr
+       && (match Array.to_list address with
+           | [g1; g2; g3; g4; 0; 0; 0; 1] ->
+               (* Three prefixes are not networks one announces, and the host script
+                  refuses all three in root: link-local (fe80::/10), multicast
+                  (ff00::/8) and the loopback. Measured the hard way -- without this,
+                  "fe80::1/64" was accepted by the model and refused only at start-up,
+                  far from the gesture. The bound covers the deprecated site-local
+                  range too; nothing legitimate lives at or above fe80. *)
+               g1 < 0xfe80 && (g1, g2, g3, g4) <> (0, 0, 0, 0)
+           | _ -> false))
+
+ (* The canonical spelling of an IPv6 address: lower case, and the longest run of
+    zeros compressed. It matters because the guard of the host script -- the one that
+    runs in root -- accepts only that spelling, deliberately (it derives the prefix
+    to advertise by removing a fixed suffix, instead of parsing an address). A user
+    typing "FD00::1/64" is not making a mistake, and neither is one writing
+    "fd00:0:0:0:0:0:0:1/64": normalising is what keeps the model and that guard from
+    ever disagreeing. Measured the hard way -- uppercase passed the model and was
+    refused at start-up, in root, far from the gesture.
+    ---
+    Total on purpose: what it cannot parse it returns unchanged, the refusal being
+    the business of [is_valid_ipv6_address] and of the guard itself. *)
+ let canonical_ipv6_address (x : string) : string =
+   if not (Ipv6.String.is_valid_config x) then x else
+   let (address, cidr) = Ipv6.config_of_string x in
+   Printf.sprintf "%s/%i" (Ipv6.to_string address) cidr
 
  (* The networks already held by the NAT bridges of this project. Read from their
     [to_tree] rather than from a cast to the class defined below: the answer is the
@@ -149,7 +225,25 @@ module Make_menus (Params : sig
 
     let key = Some GdkKeysyms._N
 
-    let ok_callback t = Gui_bricks.Ok_callback.check_name t.name t.old_name st#network#name_exists t
+    (* Two questions, in that order: the name, as everywhere else, and -- when IPv6
+       is enabled -- the address. The red text of the entry is a hint, not a
+       refusal: without this check an ill-formed prefix would reach the host script,
+       which validates it in root and would refuse it at START-UP time, far from the
+       gesture that caused it. *)
+    let ok_callback t =
+      match Gui_bricks.Ok_callback.check_name t.name t.old_name st#network#name_exists t with
+      | None -> None
+      | Some t ->
+          if (not t.ipv6_enabled) || Tool.is_valid_ipv6_address t.ipv6_address then Some t else
+          let () =
+            Simple_dialogs.error
+              (s_ "Ill-formed IPv6 address")
+              (Printf.sprintf
+                 (f_ "\"%s\" is not an address of the expected shape. The bridge takes the first address of a /64, so it must be written <prefix>::1/64 -- for instance fd00:192:168:101::1/64.")
+                 t.ipv6_address)
+              ()
+          in
+          None
 
     let dialog () =
       let name = st#network#suggestedName "N" in
@@ -158,7 +252,10 @@ module Make_menus (Params : sig
       in
       Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; dhcp_enabled = dhcp_enabled; port_no = port_no; _ } =
+    let reaction { name = name; label = label; network_config = network_config;
+                   dhcp_enabled = dhcp_enabled; ipv6_enabled = ipv6_enabled;
+                   ipv6_address = ipv6_address; radvd_enabled = radvd_enabled;
+                   port_no = port_no; _ } =
       let action () = ignore (
         new User_level_nat_bridge.nat_bridge
           ~network:st#network
@@ -166,6 +263,9 @@ module Make_menus (Params : sig
           ~label
           ~network_address:(Tool.network_address_of_config network_config)
           ~dhcp_enabled
+          ~ipv6_enabled
+          ~ipv6_address
+          ~radvd_enabled
           ~port_no
           ())
       in
@@ -184,19 +284,28 @@ module Make_menus (Params : sig
      let label = d#get_label in
      let network_config = Tool.network_config_of_network_address h#get_network_address in
      let dhcp_enabled = h#get_dhcp_enabled in
+     let ipv6_enabled = h#get_ipv6_enabled in
+     let ipv6_address = h#get_ipv6_address in
+     let radvd_enabled = h#get_radvd_enabled in
      let port_no = h#get_port_no in
      (* Not Const.port_no_min: the smallest number of ports which still holds every
         cable already connected to this component (as for a world gateway): *)
      let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
      Dialog_add_or_update.make
-       ~title ~name ~label ~network_config ~dhcp_enabled ~port_no ~port_no_min
+       ~title ~name ~label ~network_config ~dhcp_enabled
+       ~ipv6_enabled ~ipv6_address ~radvd_enabled
+       ~port_no ~port_no_min
        ~ok_callback:Add.ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; dhcp_enabled = dhcp_enabled; port_no = port_no; old_name = old_name } =
+    let reaction { name = name; label = label; network_config = network_config;
+                   dhcp_enabled = dhcp_enabled; ipv6_enabled = ipv6_enabled;
+                   ipv6_address = ipv6_address; radvd_enabled = radvd_enabled;
+                   port_no = port_no; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
       let action () =
         h#update_nat_bridge_with ~name ~label ~port_no ~dhcp_enabled
+          ~ipv6_enabled ~ipv6_address ~radvd_enabled
           ~network_address:(Tool.network_address_of_config network_config)
       in
       st#network_change action ();
@@ -285,6 +394,9 @@ let make
  ?label
  ?(network_config=Const.network_config_default)
  ?(dhcp_enabled=Const.dhcp_enabled_default)
+ ?(ipv6_enabled=Const.ipv6_enabled_default)
+ ?ipv6_address
+ ?(radvd_enabled=Const.radvd_enabled_default)
  ?(port_no=Const.port_no_default)
  ?(port_no_min=Const.port_no_min)
  ?(port_no_max=Const.port_no_max)
@@ -294,6 +406,14 @@ let make
  () :'result option =
   let old_name = name in
   let ((b1,b2,b3,b4),b5) = network_config in
+  (* Not a constant default: the IPv6 prefix is DERIVED from the IPv4 network of
+     this very component (episode 11), so the dialog of a new bridge offers the
+     /64 that matches the /24 it is about to take. *)
+  let ipv6_address =
+    match ipv6_address with
+    | Some x -> x
+    | None   -> Tool.ipv6_address_of_network_address (Tool.network_address_of_config network_config)
+  in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
@@ -308,12 +428,18 @@ let make
   (* The private network of this bridge, chosen as for a world gateway. The last byte
      and the netmask are shown but insensitive: the host side of the bridge is always
      <subnet>.1 and the script knows no netmask but /24. *)
-  let ((s1,s2,s3,s4,s5), dhcp_enabled, port_no) =
+  let ((s1,s2,s3,s4,s5), dhcp_enabled, ipv6, radvd_enabled, port_no) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [ (s_ "IPv4 address"); (s_ "DHCP service"); (s_ "Integrated switch ports") ]
+        [ (s_ "IPv4 address"); (s_ "DHCP service");
+          (* Episode 11. Four of these five labels cost nothing: they are the ones a
+             world gateway and a router already use, word for word -- "IPv6 address"
+             comes from the router dialog and is translated in all fourteen
+             catalogues. The same thing must be called by the same name anyway. *)
+          (s_ "IPv6 address"); (s_ "RADVD service");
+          (s_ "Integrated switch ports") ]
     in
     let network_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
@@ -330,7 +456,29 @@ let make
         ~packing:(form#add_with_tooltip
                     (s_ "Should the bridge provide a DHCP service to the virtual machines connected to it?")) ()
     in
-    (* The three labels of this form are the ones a world gateway already uses, word
+    (* The IPv6 half (episode 11). ONE widget carries two things, and that is the
+       existing idiom of this program (Gui_bricks.activable_entry, as the router
+       dialog uses for its own optional IPv6 configuration): the check button is the
+       master switch -- off by default -- and it is what makes the address entry
+       sensitive. The entry turns red on anything that is not <prefix>::1/64, the
+       shape SLAAC needs and the shape the host script validates in root. *)
+    let ipv6 : < active : bool;  content : string;  hbox : GPack.box;
+                 check_button : GButton.toggle_button;  entry : GEdit.entry > =
+      Gui_bricks.activable_entry
+        ~packing:(form#add_with_tooltip
+                    (s_ "Should the virtual machines connected to the bridge also get an IPv6 address by themselves? The address is the one of the bridge, of the shape <prefix>::1/64: its /64 is announced to the guests, and translated (NAT66) on the way out. This needs the host itself to have IPv6."))
+        ~active:ipv6_enabled
+        ~text:ipv6_address
+        ~red_text_condition:(fun x -> not (Tool.is_valid_ipv6_address x))
+        ()
+    in
+    let radvd_enabled =
+      GButton.check_button
+        ~active:radvd_enabled
+        ~packing:(form#add_with_tooltip
+                    (s_ "Should the bridge announce its IPv6 network (Router Advertisements), so that the virtual machines configure themselves without any DHCP? Without it they have an IPv6 network but must be numbered by hand.")) ()
+    in
+    (* The labels of this form are the ones a world gateway already uses, word
        for word, hence already translated: the same thing must be called by the same
        name, and this costs no new msgid. Step 1 and not 2 (the gateway's step): the
        minimum here is 1, so a step of 2 would only ever offer odd numbers. *)
@@ -340,10 +488,71 @@ let make
         ~lower:port_no_min ~upper:port_no_max ~step_incr:1
         port_no
     in
-    (network_config, dhcp_enabled, port_no)
+    (network_config, dhcp_enabled, ipv6, radvd_enabled, port_no)
   in
   s4#misc#set_sensitive false;
   s5#misc#set_sensitive false;
+
+  (* --- The IPv6 fields, and the one question that decides whether they mean
+     anything (episode 11)
+     ---
+     On a host with no global IPv6 address and no IPv6 default route, nothing here
+     can work: announcing a default router that cannot route anywhere is a lie, and
+     the host script skips its IPv6 legs for exactly that reason. So the two widgets
+     are shown -- hiding them would leave the user wondering -- but insensitive, and
+     a note says why. The predicate is the host command's own (`check-ipv6', no
+     privilege needed), asked EVERY time this dialog opens: tethering a phone or
+     joining a VPN changes the answer, and a stale one would be worse than none.
+     ---
+     Values already stored are NOT overwritten when the fields are greyed: a project
+     configured at the university keeps its IPv6 settings when it is opened at home,
+     and gets them back where they work. *)
+  let host_has_ipv6 = Nat_bridge_host.has_ipv6_uplink () in
+  let refresh_radvd_sensitiveness () =
+    radvd_enabled#misc#set_sensitive (host_has_ipv6 && ipv6#active)
+  in
+  let () = ignore (ipv6#check_button#connect#toggled (fun () -> refresh_radvd_sensitiveness ())) in
+  let () = if not host_has_ipv6 then ipv6#hbox#misc#set_sensitive false in
+  let () = refresh_radvd_sensitiveness () in
+  let () =
+    if not host_has_ipv6 then
+      let note =
+        GMisc.label
+          ~markup:("<i>" ^ Glib.Markup.escape_text
+                     (s_ "Note: the IPv6 fields are disabled because this host has no IPv6 address and no IPv6 route of its own. A bridge cannot give the virtual machines an IPv6 access it does not have itself.")
+                   ^ "</i>")
+          ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
+          ~packing:w#vbox#add ()
+      in
+      (* Gtk+ 3: ~width is a minimum, not a cap -- see the note below. *)
+      note#set_max_width_chars 72
+  in
+
+  (* The IPv6 default is derived from the IPv4 network, so it follows that network
+     when the user changes it -- but ONLY while it is still the derived value.
+     Overwriting a prefix somebody typed by hand would be worse than leaving a
+     default that no longer matches. *)
+  let () =
+    let derived_now () =
+      Tool.ipv6_address_of_network_address
+        (Printf.sprintf "%i.%i.%i.0"
+           (int_of_float s1#value) (int_of_float s2#value) (int_of_float s3#value))
+    in
+    let last_derived = ref ipv6_address in
+    let follow () =
+      if ipv6#content = !last_derived then begin
+        let fresh = derived_now () in
+        last_derived := fresh;
+        ipv6#entry#set_text fresh
+      end
+    in
+    (* Three separate connections rather than a list: putting the spin buttons in one
+       makes the type checker unify their (closed, very large) object types, which is
+       a lot of noise for no gain. *)
+    ignore (s1#connect#value_changed (fun () -> follow ()));
+    ignore (s2#connect#value_changed (fun () -> follow ()));
+    ignore (s3#connect#value_changed (fun () -> follow ()))
+  in
 
   (* Said at the moment of the gesture, not as an unexplained failure at start-up
      time: this component asks for administrator rights the first time it runs
@@ -377,11 +586,20 @@ let make
       ((s1,s2,s3,s4),s5)
     in
     let dhcp_enabled = dhcp_enabled#active in
+    (* Read from the widgets even when they are greyed out: they then still hold the
+       values this dialog was given, which is precisely what must survive being
+       opened on a host without IPv6. *)
+    let ipv6_enabled = ipv6#active in
+    let ipv6_address = ipv6#content in
+    let radvd_enabled = radvd_enabled#active in
     let port_no = int_of_float port_no#value in
       { Data.name = name;
         Data.label = label;
         Data.network_config = network_config;
         Data.dhcp_enabled = dhcp_enabled;
+        Data.ipv6_enabled = ipv6_enabled;
+        Data.ipv6_address = ipv6_address;
+        Data.radvd_enabled = radvd_enabled;
         Data.port_no = port_no;
         Data.old_name = old_name;
         }
@@ -418,6 +636,20 @@ addresses below .100 are left free for the machines a teacher wants to number by
 hand. Disable it to give every guest a static address, or when the host has no \
 dnsmasq installed (the package is dnsmasq-base on Debian and Ubuntu): without it \
 the bridge refuses to be built at all.\n\n\
+- IPv6 address: when the check button beside it is enabled, the bridge also gets \
+an IPv6 network -- a private (ULA) /64 whose first address it takes, just as it \
+takes the first address of its /24 -- and translates it (NAT66) on the way out. \
+The proposed prefix is derived from the IPv4 network, so that the two read alike, \
+but any /64 may be written instead, for instance the documentation prefix of a \
+lab handout. This requires the HOST to have IPv6 itself: without a global IPv6 \
+address and an IPv6 route of its own, these two fields are disabled, because a \
+bridge cannot hand out an access it does not have.\n\n\
+- RADVD service: when it is enabled, the bridge announces its IPv6 network \
+(Router Advertisements), and the virtual machines configure themselves from it -- \
+address, default route and DNS server -- with no DHCP involved at all. This is \
+stateless autoconfiguration (SLAAC), and it is why a /64 is imposed: nothing \
+else works. Disable it to number the guests by hand while keeping the IPv6 \
+network.\n\n\
 - Integrated switch ports: the number of virtual machines that may be plugged \
 DIRECTLY into this component. They are all in the same network, they see each \
 other, and they all reach the Internet through the bridge.\n\n\
@@ -482,6 +714,9 @@ class nat_bridge =
      ?label
      ?network_address
      ?(dhcp_enabled=Const.dhcp_enabled_default)
+     ?(ipv6_enabled=Const.ipv6_enabled_default)
+     ?ipv6_address
+     ?(radvd_enabled=Const.radvd_enabled_default)
      ?(port_no=Const.port_no_default)
      () ->
   (* Not a constant default: a component created without an explicit network takes
@@ -491,6 +726,16 @@ class nat_bridge =
     match network_address with
     | Some x -> x
     | None   -> Tool.first_free_network_address (network :> User_level.network)
+  in
+  (* Derived from the network above, and therefore computed AFTER it: a component
+     created without an explicit prefix gets the /64 that matches its own /24, so the
+     two networks of one bridge read alike and neither can collide. *)
+  let ipv6_address =
+    (* Normalised here too: the initial value of an instance variable does NOT go
+       through its setter, and this one may come straight from a dialog entry. *)
+    match ipv6_address with
+    | Some x -> Tool.canonical_ipv6_address x
+    | None   -> Tool.ipv6_address_of_network_address network_address
   in
   object (self)
 
@@ -525,15 +770,67 @@ class nat_bridge =
   method get_dhcp_enabled = dhcp_enabled
   method set_dhcp_enabled x = dhcp_enabled <- x
 
+  (** Whether this bridge also gives its guests an IPv6 network (episode 11).
+      Absent from a project saved before that episode, which therefore reads back
+      the default -- [false] here, unlike [dhcp_enabled]: IPv6 is something no NAT
+      bridge used to do, so an old project must keep behaving as it did. *)
+  val mutable ipv6_enabled : bool = ipv6_enabled
+  method get_ipv6_enabled = ipv6_enabled
+  method set_ipv6_enabled x = ipv6_enabled <- x
+
+  (** The IPv6 address of the bridge, of the shape ["fd00:192:168:101::1/64"]: the
+      bridge takes the first address of its /64 exactly as it takes the first of its
+      /24, and that /64 is what the guests configure themselves from. Stored (and not
+      derived on the fly from [network_address]) because the user may choose it --
+      typically the documentation prefix of a lab handout. *)
+  val mutable ipv6_address : string = ipv6_address
+  method get_ipv6_address = ipv6_address
+  (* Normalised on the way in, once, for every door at once: the dialog, the control
+     channel, the project file and the constructor all go through here. *)
+  method set_ipv6_address x = ipv6_address <- Tool.canonical_ipv6_address x
+
+  (** Whether the bridge ANNOUNCES that network (Router Advertisements), which is
+      what lets the guests configure themselves without any DHCP. On by default:
+      whoever enables IPv6 wants autoconfiguration -- doing without it is the
+      special case, not the other way round. *)
+  val mutable radvd_enabled : bool = radvd_enabled
+  method get_radvd_enabled = radvd_enabled
+  method set_radvd_enabled x = radvd_enabled <- x
+
   method! extra_tree_attributes = [
     ("network_address", self#get_network_address);
     ("dhcp_enabled", string_of_bool self#get_dhcp_enabled);
+    ("ipv6_enabled", string_of_bool self#get_ipv6_enabled);
+    ("ipv6_address", self#get_ipv6_address);
+    ("radvd_enabled", string_of_bool self#get_radvd_enabled);
     ("port_no", string_of_int self#get_port_no);
     ]
 
   method! eval_forest_attribute = function
-  | ("network_address", x) -> self#set_network_address x
+  | ("network_address", x) ->
+      (* The IPv6 prefix follows the IPv4 network while it is still the DERIVED one --
+         the same rule the dialog applies to its entry (episode 11). It matters when
+         reading a project saved BEFORE that episode: its network arrives here, after
+         the constructor has already derived a prefix from the network it allocated.
+         An [ipv6_address] written in the file is applied just after this, and wins,
+         because [extra_tree_attributes] lists it after [network_address]. *)
+      let () =
+        if self#get_ipv6_address = Tool.ipv6_address_of_network_address self#get_network_address
+        then self#set_ipv6_address (Tool.ipv6_address_of_network_address x)
+      in
+      self#set_network_address x
   | ("dhcp_enabled", x) -> self#set_dhcp_enabled (bool_of_string x)
+  | ("ipv6_enabled", x) -> self#set_ipv6_enabled (bool_of_string x)
+  | ("ipv6_address", x) ->
+      (* Validated HERE, and not only in the dialog: this is also the path the control
+         channel writes through, and it turns an exception into a refusal that names
+         the value (control_server.ml, `the model refused ...'). Accepting an
+         ill-formed prefix here would postpone the refusal to start-up time, in root,
+         far from the gesture that caused it -- and the same guard covers a
+         hand-written .mar. *)
+      if Tool.is_valid_ipv6_address x then self#set_ipv6_address x else
+      failwith (Printf.sprintf "%S is not of the shape <prefix>::1/64 (e.g. fd00:192:168:101::1/64)" x)
+  | ("radvd_enabled", x) -> self#set_radvd_enabled (bool_of_string x)
   | ("port_no", x) -> self#set_port_no (int_of_string x)
   | a -> self_as_bridge#eval_forest_attribute a
 
@@ -545,12 +842,16 @@ class nat_bridge =
     | "" -> ip_gw
     | _  -> Printf.sprintf "%s <br/> %s" ip_gw self#get_label
 
-  method update_nat_bridge_with ~name ~label ~port_no ~network_address ~dhcp_enabled =
+  method update_nat_bridge_with ~name ~label ~port_no ~network_address ~dhcp_enabled
+                                ~ipv6_enabled ~ipv6_address ~radvd_enabled =
     (* The following call ensures that the simulated device will be destroyed, hence
        that the bridge is given back before another one is built on another network: *)
     self#update_bridge_with ~name ~label ~port_no;
     self#set_network_address network_address;
     self#set_dhcp_enabled dhcp_enabled;
+    self#set_ipv6_enabled ipv6_enabled;
+    self#set_ipv6_address ipv6_address;
+    self#set_radvd_enabled radvd_enabled;
 
   (** Create the simulated device *)
   method private make_simulated_device =
@@ -566,6 +867,13 @@ class nat_bridge =
         (* A function too, and for the same reason: the check button of the dialog
            destroys this object, but a `set' through the control channel does not. *)
         ~get_dhcp:(fun () -> self#get_dhcp_enabled)
+        (* Functions again, and for the same reason (episode 11). The option is
+           built here rather than in the simulated object so that "IPv6 is off" and
+           "IPv6 is on with this address" are ONE value, impossible to get out of
+           step -- and so that a `set' of either field through the control channel is
+           honoured by the next start-up. *)
+        ~get_ipv6:(fun () -> if self#get_ipv6_enabled then Some self#get_ipv6_address else None)
+        ~get_radvd:(fun () -> self#get_radvd_enabled)
         (* By value, this one: a change of the number of ports goes through
            [update_with], which destroys this very object (control channel
            included -- port_no is one of its two structural fields). *)
@@ -635,6 +943,8 @@ class ['parent] nat_bridge =
       ~(parent:'parent)
       ~(subnet : unit -> string)  (* the /24 prefix chosen by the user, e.g. "192.168.101" *)
       ~(get_dhcp : unit -> bool)  (* whether the bridge serves DHCP (episode 10c.2) *)
+      ~(get_ipv6 : unit -> string option) (* the IPv6 address of the bridge, if any (episode 11) *)
+      ~(get_radvd : unit -> bool)         (* whether that /64 is announced (episode 11) *)
       ~(hublet_no : int)          (* the ports of the integrated switch (episode 10b) *)
       ~working_directory
       ~unexpected_death_callback
@@ -669,7 +979,13 @@ class ['parent] nat_bridge =
     let result =
       try
         let n = match !instance with Some n -> n | None -> smallest_free (taken_instances ()) in
-        (match Nat_bridge_host.ensure ~subnet:(subnet ()) ~dhcp:(get_dhcp ()) ~instance:n () with
+        (* [?ipv6] absent means "no IPv6 at all", which is why an option travels here
+           rather than a string plus a boolean: the two could not disagree. On a host
+           with no IPv6 uplink the script ignores it and warns -- it is not our place
+           to second-guess that, and asking the host twice would be one predicate too
+           many (see Nat_bridge_host.has_ipv6_uplink). *)
+        (match Nat_bridge_host.ensure ~subnet:(subnet ()) ~dhcp:(get_dhcp ())
+                 ?ipv6:(get_ipv6 ()) ~radvd:(get_radvd ()) ~instance:n () with
          | Ok info ->
              let () = instance := Some n in
              let () =

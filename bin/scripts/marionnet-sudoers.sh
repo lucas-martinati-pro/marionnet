@@ -85,6 +85,12 @@ TAG_PREFIX=marionnet-natbridge
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 DHCP_HELPER=$SCRIPT_DIR/marionnet-dnsmasq.sh
 
+# Same reasoning for the IPv6 gate (episode 11), one step further: it takes NO
+# argument, so its two lines are entirely literal -- there is not even a glob to
+# abuse. What it needs from us is only to be named by an absolute path, and to be
+# untouchable by the user (root_owned_all_the_way, as for the DHCP helper).
+IPV6_HELPER=$SCRIPT_DIR/marionnet-ipv6.sh
+
 # And these two with bin/scripts/marionnet-lanbridge.sh (BRIDGE_PREFIX and
 # ALIAS_PREFIX there):
 LAN_BRIDGE_PREFIX=mnlan
@@ -143,6 +149,8 @@ function ip_binary            { binary_among iproute2 /usr/sbin/ip /sbin/ip /usr
 function iptables_binary      { binary_among iptables /usr/sbin/iptables /sbin/iptables /usr/bin/iptables; }
 function iptables_save_binary { binary_among iptables-save /usr/sbin/iptables-save /sbin/iptables-save /usr/bin/iptables-save; }
 function sysctl_binary        { binary_among sysctl /usr/sbin/sysctl /sbin/sysctl /usr/bin/sysctl /bin/sysctl; }
+function ip6tables_binary      { binary_among ip6tables /usr/sbin/ip6tables /sbin/ip6tables /usr/bin/ip6tables; }
+function ip6tables_save_binary { binary_among ip6tables-save /usr/sbin/ip6tables-save /sbin/ip6tables-save /usr/bin/ip6tables-save; }
 
 # default_user: who the rule is for, when not given on the command line.
 function default_user {
@@ -214,11 +222,15 @@ function root_owned_all_the_way {
 }
 
 function content_natbridge {
- local u=$1 ip iptables iptables_save sysctl
+ local u=$1 ip iptables iptables_save sysctl ip6tables ip6tables_save
  ip=$(ip_binary) || return 1
  iptables=$(iptables_binary) || return 1
  iptables_save=$(iptables_save_binary) || return 1
  sysctl=$(sysctl_binary) || return 1
+ # Episode 11. The same package ships both families, so a host that resolved
+ # iptables resolves these too; a host that does not could not do IPv6 anyway.
+ ip6tables=$(ip6tables_binary) || return 1
+ ip6tables_save=$(ip6tables_save_binary) || return 1
  # sudoers metacharacters MUST be backslash-escaped inside a command's arguments,
  # or visudo rejects the whole file: `!' (it is the negation operator), `,' (it
  # separates command specs) and `:' (it separates host specs). Measured with
@@ -226,18 +238,39 @@ function content_natbridge {
  # The escapes are sudoers SYNTAX -- what sudo compares at runtime is the plain
  # text, so these still match the commands marionnet-natbridge.sh runs.
  local bang='\!' comma='\,' tag="${TAG_PREFIX}\\:${BRIDGE_PREFIX}*"
+ # The IPv6 patterns, spelled once because of that same `:' rule -- and here it
+ # bites harder than elsewhere: MEASURED with visudo, an unescaped `*::/64' does
+ # not merely make the file invalid, it ends the command spec at the first colon
+ # and reads the rest of the line as a NEW spec, so the file would grant
+ # something nobody wrote. `/' and `*' need nothing.
+ local addr6_pattern='*\:\:1/64' net6_pattern='*\:\:/64'
  # The DHCP line is granted only when the script it names cannot be tampered
  # with. Refusing loudly beats granting silently: without this line the NAT
  # bridge still works, guests are simply addressed by hand, as before episode 10c.
- local dhcp_line=""
+ local -a helper_lines=()
  if root_owned_all_the_way "$DHCP_HELPER"; then
-   dhcp_line="$u ALL=(root) NOPASSWD: $DHCP_HELPER start ${BRIDGE_PREFIX}* *"
+   # Three sub-commands, three lines: the trailing globs are harmless because the
+   # script itself refuses any call whose argument COUNT is not the one it expects
+   # (episodes 10c and 11).
+   helper_lines+=("$u ALL=(root) NOPASSWD: $DHCP_HELPER start ${BRIDGE_PREFIX}* *")
+   helper_lines+=("$u ALL=(root) NOPASSWD: $DHCP_HELPER start-both ${BRIDGE_PREFIX}* * *")
+   helper_lines+=("$u ALL=(root) NOPASSWD: $DHCP_HELPER start-ra ${BRIDGE_PREFIX}* * *")
  elif [[ -z ${DHCP_REFUSAL_SAID:-} ]]; then
    # Said once: the content of a block is generated twice (once to check that it
    # CAN be generated here, once to write it), and one warning is one warning.
    DHCP_REFUSAL_SAID=1
    echo "$TOOL: NOT granting the DHCP service: $DHCP_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
    echo "$TOOL: install Marionnet first, then run this from the INSTALLED scripts -- a NOPASSWD rule on an editable script is a root shell." 1>&2
+ fi
+ # The IPv6 gate, under exactly the same condition and for the same reason.
+ # Without these two lines the NAT bridge still works: it simply stays IPv4-only,
+ # and says so (E_NO_IPV6_UPLINK is not the only way IPv6 can be absent).
+ if root_owned_all_the_way "$IPV6_HELPER"; then
+   helper_lines+=("$u ALL=(root) NOPASSWD: $IPV6_HELPER enable")
+   helper_lines+=("$u ALL=(root) NOPASSWD: $IPV6_HELPER disable")
+ elif [[ -z ${IPV6_REFUSAL_SAID:-} ]]; then
+   IPV6_REFUSAL_SAID=1
+   echo "$TOOL: NOT granting the IPv6 gate: $IPV6_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
  fi
  cat <<EOF
 # Installed by $TOOL --enable-natbridge -- do not edit by hand, regenerate instead.
@@ -259,10 +292,24 @@ $u ALL=(root) NOPASSWD: $iptables -D FORWARD -i ${BRIDGE_PREFIX}* $bang -o ${BRI
 $u ALL=(root) NOPASSWD: $iptables -A FORWARD -o ${BRIDGE_PREFIX}* -m conntrack --ctstate RELATED${comma}ESTABLISHED -m comment --comment $tag -j ACCEPT
 $u ALL=(root) NOPASSWD: $iptables -D FORWARD -o ${BRIDGE_PREFIX}* -m conntrack --ctstate RELATED${comma}ESTABLISHED -m comment --comment $tag -j ACCEPT
 $u ALL=(root) NOPASSWD: $iptables_save
+#
+# The IPv6 half (episode 11): the same shapes on the other family, plus the
+# gate -- the only two lines here with NO wildcard at all, which is exactly why
+# the gate is a script and not three \`sysctl -w' rules.
+$u ALL=(root) NOPASSWD: $ip -6 addr add $addr6_pattern dev ${BRIDGE_PREFIX}* nodad
+$u ALL=(root) NOPASSWD: $ip -6 addr del $addr6_pattern dev ${BRIDGE_PREFIX}*
+$u ALL=(root) NOPASSWD: $ip6tables -t nat -A POSTROUTING -s $net6_pattern $bang -o ${BRIDGE_PREFIX}* -m comment --comment $tag -j MASQUERADE
+$u ALL=(root) NOPASSWD: $ip6tables -t nat -D POSTROUTING -s $net6_pattern $bang -o ${BRIDGE_PREFIX}* -m comment --comment $tag -j MASQUERADE
+$u ALL=(root) NOPASSWD: $ip6tables -A FORWARD -i ${BRIDGE_PREFIX}* $bang -o ${BRIDGE_PREFIX}* -m comment --comment $tag -j ACCEPT
+$u ALL=(root) NOPASSWD: $ip6tables -D FORWARD -i ${BRIDGE_PREFIX}* $bang -o ${BRIDGE_PREFIX}* -m comment --comment $tag -j ACCEPT
+$u ALL=(root) NOPASSWD: $ip6tables -A FORWARD -o ${BRIDGE_PREFIX}* -m conntrack --ctstate RELATED${comma}ESTABLISHED -m comment --comment $tag -j ACCEPT
+$u ALL=(root) NOPASSWD: $ip6tables -D FORWARD -o ${BRIDGE_PREFIX}* -m conntrack --ctstate RELATED${comma}ESTABLISHED -m comment --comment $tag -j ACCEPT
+$u ALL=(root) NOPASSWD: $ip6tables_save
 EOF
  # Appended after the heredoc, and not inside it: a heredoc terminator must sit
- # alone on its line, and an optional line cannot be expressed there.
- if [[ -n $dhcp_line ]]; then echo "$dhcp_line"; fi
+ # alone on its line, and optional lines cannot be expressed there.
+ local line
+ for line in "${helper_lines[@]}"; do echo "$line"; done
 }
 
 # --- (c) The LAN bridge -- chantier modernisation-world-bridge, episode 8

@@ -56,15 +56,29 @@
 #
 # --- THE CONTRACT WITH marionnet-natbridge.sh ---
 #
-#   start <BRIDGE> <NET>   BRIDGE is mnbr<pid>[-<instance>], NET a /24 prefix
-#                          such as 192.168.101. The bridge MUST already exist
-#                          and already carry <NET>.1/24 -- that is what proves
-#                          it is one of ours, built through sudoers block (b).
+#   start <BRIDGE> <NET>              DHCPv4 only (episode 10c)
+#   start-both <BRIDGE> <NET> <A6>    DHCPv4 + IPv6 Router Advertisements
+#   start-ra <BRIDGE> <NET> <A6>      Router Advertisements only, no DHCPv4
+#
+#                          BRIDGE is mnbr<pid>[-<instance>], NET a /24 prefix
+#                          such as 192.168.101, A6 the IPv6 address of the
+#                          bridge, always of the shape <prefix>::1/64. The
+#                          bridge MUST already exist and already carry
+#                          <NET>.1/24 -- and, for the two IPv6 forms, A6 as
+#                          well -- that is what proves it is one of ours, built
+#                          through sudoers block (b).
 #                          Idempotent: an already running server of ours is a
 #                          success.
 #   stdout                 the pid of dnsmasq, alone on one line, and nothing
 #                          else. stderr carries the human trace.
 #   exit status            0 on success, non-zero on failure.
+#
+# Why three sub-commands rather than one with optional arguments (episode 11):
+# the guard that kills argument injection is "this sub-command takes EXACTLY n
+# arguments" (see below). A single `start' with a variable arity, or with a `-'
+# standing for "no IPv6", would trade that guard for a sentinel to be parsed --
+# and the four on/off combinations of DHCPv4 and RA cannot be told apart by a
+# count alone. One name per shape keeps every arity fixed.
 #
 # Stopping is NOT here, and that is deliberate: the server runs as the user, so
 # marionnet-natbridge.sh kills it with a plain TERM, by pid read from the pid
@@ -93,6 +107,12 @@ USER_RUN_DIR=""
 DHCP_FIRST=100
 DHCP_LAST=200
 DHCP_LEASE_TIME=1h
+
+# The lifetime carried by the Router Advertisements (episode 11). Kept equal to
+# the DHCPv4 lease on purpose: a student comparing the two reads one number, and
+# a prefix that stops being advertised expires within the hour instead of
+# lingering for a day on the guests.
+RA_LIFETIME=1h
 
 IP=""
 DNSMASQ=""
@@ -140,6 +160,28 @@ function valid_subnet {
   return 0
 }
 
+# valid_address6 A6: the IPv6 address of the bridge, and nothing else. The shape
+# is deliberately narrow -- <prefix>::1/64, lower case, one to four hex groups --
+# because that is exactly what Marionnet computes, and because the prefix
+# announced to the guests is then derived by removing a fixed suffix rather than
+# by parsing. A /64 is not a taste: SLAAC does not work on anything else.
+function valid_address6 {
+  local a=$1
+  [[ $a =~ ^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){0,3}::1/64$ ]] || return 1
+  # Link-local (fe80::/10), the deprecated site-local range and multicast
+  # (ff00::/8) are not networks one advertises; `::1/64' alone (no group at all) is
+  # the loopback, and the regexp above already refuses it. `f[ef]' and not `fe80'
+  # so that fe81:: does not slip through -- and it leaves fc00::/7 (the ULA range,
+  # which is what we normally get) alone.
+  if [[ $a =~ ^f[ef] ]]; then return 1; fi
+  return 0
+}
+
+# prefix6_of_address6 A6: the prefix dnsmasq must advertise, e.g.
+# fd00:192:168:101::1/64 -> fd00:192:168:101::. Safe only because
+# valid_address6 has already imposed the suffix.
+function prefix6_of_address6 { echo "${1%1/64}"; }
+
 # The target user is the one sudo came from -- never a name given to us. Running
 # this script as root outside sudo is refused rather than guessed: dnsmasq would
 # then stay root, and Marionnet could no longer stop it without privileges.
@@ -178,9 +220,15 @@ function running_pid {
 # --- start
 
 function do_start {
-  local bridge=$1 net=$2 user group pid
+  local mode=$1 bridge=$2 net=$3 addr6=${4:-} prefix6="" user group pid
+  case $mode in dhcp4|dhcp4+ra|ra) ;; *) die "internal error: unknown mode '$mode'" ;; esac
   valid_bridge "$bridge" || die "invalid bridge name '$bridge' (expected ${BRIDGE_PREFIX}<pid>[-<instance>], at most 15 characters)"
   valid_subnet "$net"    || die "invalid /24 prefix '$net' (expected three bytes, e.g. 192.168.101)"
+  if [[ $mode != dhcp4 ]]; then
+    valid_address6 "$addr6" \
+      || die "invalid IPv6 address '$addr6' (expected <prefix>::1/64 in lower case, e.g. fd00:192:168:101::1/64)"
+    prefix6=$(prefix6_of_address6 "$addr6")
+  fi
   resolve_binaries
   user=$(target_user)
   group=$(id -gn "$user")
@@ -193,6 +241,12 @@ function do_start {
     || die "no bridge named '$bridge' on this host"
   "$IP" -oneline -4 addr show dev "$bridge" | grep -qE "inet $net\.1/24( |$)" \
     || die "'$bridge' does not carry $net.1/24 -- refusing to serve a network it does not own"
+  # Same reasoning for IPv6: only sudoers block (b) can have put that address
+  # there, and dnsmasq could not bind it anyway.
+  if [[ -n $prefix6 ]]; then
+    "$IP" -oneline -6 addr show dev "$bridge" | grep -qE "inet6 $addr6( |$)" \
+      || die "'$bridge' does not carry $addr6 -- refusing to advertise a prefix it does not own"
+  fi
 
   if pid=$(running_pid "$bridge"); then
     echo "$TOOL: a DHCP server of ours is already running on $bridge (pid $pid)." 1>&2
@@ -231,10 +285,27 @@ function do_start {
     --bind-interfaces --except-interface=lo
     --interface="$bridge" --listen-address="$net.1"
     --no-hosts
-    --dhcp-authoritative
-    --dhcp-range="$net.$DHCP_FIRST,$net.$DHCP_LAST,255.255.255.0,$DHCP_LEASE_TIME"
     --dhcp-leasefile="$leases"
   )
+  if [[ $mode != ra ]]; then
+    command+=(
+      --dhcp-authoritative
+      --dhcp-range="$net.$DHCP_FIRST,$net.$DHCP_LAST,255.255.255.0,$DHCP_LEASE_TIME"
+    )
+  fi
+  # The IPv6 half (episode 11). --enable-ra is the master switch; `ra-only' in
+  # the range means "advertise the prefix, hand out no DHCPv6 lease", which is
+  # precisely stateless autoconfiguration. The DNS server is announced INSIDE
+  # the advertisement (RDNSS), so a guest reaches it over IPv6 even though the
+  # upstream resolver of this dnsmasq is reached over IPv4.
+  if [[ -n $prefix6 ]]; then
+    command+=(
+      --enable-ra
+      --dhcp-range="$prefix6,ra-only,64,$RA_LIFETIME"
+      --dhcp-option=option6:dns-server,"[${prefix6}1]"
+      --listen-address="${prefix6}1"
+    )
+  fi
   # Echoed in full before being run: a tool that hides what it does to the host
   # is worthless (same rule as marionnet-natbridge.sh).
   printf '  + %s\n' "${command[*]}" 1>&2
@@ -244,28 +315,48 @@ function do_start {
   # would be silent, so the pid is read back and verified rather than assumed.
   pid=$(running_pid "$bridge") \
     || die "dnsmasq returned success on $bridge but left no usable pid file"
-  echo "$TOOL: DHCP server up on $bridge ($net.$DHCP_FIRST-$net.$DHCP_LAST, lease $DHCP_LEASE_TIME), pid $pid, running as $user." 1>&2
+  if [[ $mode != ra ]]; then
+    echo "$TOOL: DHCP server up on $bridge ($net.$DHCP_FIRST-$net.$DHCP_LAST, lease $DHCP_LEASE_TIME), pid $pid, running as $user." 1>&2
+  else
+    echo "$TOOL: server up on $bridge with NO DHCPv4 (DNS only on $net.1), pid $pid, running as $user." 1>&2
+  fi
+  if [[ -n $prefix6 ]]; then
+    echo "       Router Advertisements for ${prefix6}/64 (SLAAC, lifetime $RA_LIFETIME), DNS announced at ${prefix6}1." 1>&2
+  fi
   echo "$pid"
 }
 
 function usage {
   cat 1>&2 <<EOF
-Usage: $TOOL start <BRIDGE> <NET>   # start the DHCP/DNS server of a NAT bridge
+Usage: $TOOL start      <BRIDGE> <NET>        # DHCPv4 and DNS
+       $TOOL start-both <BRIDGE> <NET> <A6>   # ... and IPv6 advertisements
+       $TOOL start-ra   <BRIDGE> <NET> <A6>   # advertisements, no DHCPv4
 
   BRIDGE  ${BRIDGE_PREFIX}<pid>[-<instance>], an existing bridge carrying <NET>.1/24
   NET     the /24 prefix it is addressed on, e.g. 192.168.101
+  A6      the IPv6 address the bridge already carries, <prefix>::1/64,
+          e.g. fd00:192:168:101::1/64
 
 Run as root through sudo, by bin/scripts/marionnet-natbridge.sh only. dnsmasq
-drops to \$SUDO_USER, hands out $DHCP_FIRST-$DHCP_LAST of the /24, and is stopped later by a
-plain TERM -- no privilege needed for that, which is why there is no \`stop'
-here. Prints the pid on stdout.
+drops to \$SUDO_USER, hands out $DHCP_FIRST-$DHCP_LAST of the /24, advertises the /64 for
+stateless autoconfiguration when asked, and is stopped later by a plain TERM --
+no privilege needed for that, which is why there is no \`stop' here. Prints the
+pid on stdout.
 EOF
 }
 
+# One arity per sub-command, checked before anything else: this is the guard that
+# makes the wide glob of the sudoers rule harmless (see the header).
 case "${1:-}" in
   start)
     (( $# == 3 )) || { usage; die "start: expected exactly two arguments, got $(( $# - 1 ))"; }
-    do_start "$2" "$3" ;;
+    do_start dhcp4 "$2" "$3" ;;
+  start-both)
+    (( $# == 4 )) || { usage; die "start-both: expected exactly three arguments, got $(( $# - 1 ))"; }
+    do_start dhcp4+ra "$2" "$3" "$4" ;;
+  start-ra)
+    (( $# == 4 )) || { usage; die "start-ra: expected exactly three arguments, got $(( $# - 1 ))"; }
+    do_start ra "$2" "$3" "$4" ;;
   -h|--help) usage ;;
   *) usage; die "unknown or missing subcommand '${1:-}'" ;;
 esac

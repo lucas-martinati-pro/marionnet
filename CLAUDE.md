@@ -171,8 +171,21 @@ Reprise : appliquer le skill `chantier-long`.
   règle sudoers **ne peut pas** scoper une commande à arguments variables (un `*` d'argument
   avale des mots entiers, injection mesurée) — d'où `bin/scripts/marionnet-dnsmasq.sh`, porte
   privilégiée minuscule qui **valide ses arguments en root**, et n'est accordée que si elle est
-  root-owned sur toute sa chaîne. L'**ép. 9 (i18n ×12) est
-  désormais le dernier**, après le 10, pour ne pas traduire deux fois.
+  root-owned sur toute sa chaîne.
+  **Ép. 11 FAIT** — *l'autoconfiguration IPv6* (§ 4.6 du doc) : le NAT bridge donne aussi une
+  **adresse IPv6** (ULA `/64` **dérivé du /24**, `/64` imposé par SLAAC) et un **service RADVD**
+  — les RA sont émis par le **dnsmasq déjà lancé** (`--enable-ra`, `ra-only`), donc **pas de
+  radvd** — plus la traversée **NAT66**. Deux pièges durables établis ici : (1) le forwarding
+  IPv6 n'est **pas** per-interface, il fait de tout l'hôte un routeur, et un routeur **ignore les
+  RA reçus** → sans `accept_ra=2` l'hôte perd sa propre route v6 *minutes plus tard*, d'où la
+  **3ᵉ porte privilégiée `bin/scripts/marionnet-ipv6.sh`, à ZÉRO argument** (règle sudoers
+  **entièrement littérale**, plus aucun glob à détourner) qui mémorise et restitue les valeurs ;
+  (2) dans sudoers, un **`:` non échappé ne casse pas le fichier, il change ce qu'il accorde**
+  (mesuré). Tout l'IPv6 est **conditionné à un uplink v6** (`check-ipv6`, non privilégié) : sans
+  lui, support **sauté** (`E_NO_IPV6_UPLINK`) et champs **grisés** — asymétrie assumée avec
+  l'ép. 10c.2, le DHCP étant actif par défaut là où l'IPv6 est *opt-in*.
+  L'**ép. 9 (i18n ×12) est
+  désormais le dernier**, après les ép. 10 et 11, pour ne pas traduire deux fois.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

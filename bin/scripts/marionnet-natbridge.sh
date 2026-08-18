@@ -79,7 +79,31 @@
 # hand, needs no privilege at all and is done here: dnsmasq drops to the calling
 # user, so a plain TERM by pid is enough.
 #
-# What is deliberately NOT here: IPv6.
+# --- IPv6 (--ipv6 / --radvd, episode 11) ---
+#
+# It used to say here: "what is deliberately NOT here: IPv6". It is here now,
+# and in the same shape as the IPv4 half -- an address on the bridge, NAT to the
+# outside, and a server that configures the guests -- because the same dnsmasq
+# can send Router Advertisements (`--enable-ra'), so there is no radvd to install
+# and no second daemon to supervise.
+#
+# Three things make it NOT a mere transposition of the IPv4 legs:
+#
+#   * IPv6 forwarding is not per-interface: turning it on makes the WHOLE host a
+#     router, and a router ignores the advertisements it receives. Left alone,
+#     the host would silently lose its own IPv6 default route minutes later. So a
+#     second privileged door, marionnet-ipv6.sh, raises accept_ra to 2 at the
+#     same time and remembers what it overwrote. It takes NO argument, which is
+#     what lets its sudoers lines be entirely literal.
+#   * that door is SHARED by every NAT bridge of this host, so it is released
+#     only when the last of them goes (see ipv6_gate_release), and by `gc' after
+#     a crash.
+#   * everything IPv6 is conditioned on this host HAVING IPv6 -- a global address
+#     and a default route. Without them the whole support is skipped, with the
+#     warning E_NO_IPV6_UPLINK: handing the guests a default router that cannot
+#     route anywhere would be a lie, and the dialog that offers all this greys
+#     its three fields out for exactly the same reason. `check-ipv6' is the one
+#     place that answers the question, for the dialog as for `up'.
 #
 # Naming and lifetime follow Tap_provider (bin/tap_provider.ml): every artefact
 # carries the pid of the process that owns it -- the bridge is `mnbr<pid>' and
@@ -157,6 +181,13 @@ DHCP_RUN_DIR=/run/marionnet-natbridge
 DHCP_USER_RUN_DIR=$DHCP_RUN_DIR/$(id -u)
 DHCP_HELPER=$SCRIPT_DIR/marionnet-dnsmasq.sh
 
+# The IPv6 gate (episode 11). A second privileged door, and for the same reason
+# as the first: turning the host into an IPv6 router is three sysctl writes whose
+# PREVIOUS values must be remembered somewhere root can write and everyone can
+# read. Its state file sits beside the DHCP ones, under the root-owned parent.
+IPV6_HELPER=$SCRIPT_DIR/marionnet-ipv6.sh
+IPV6_STATE_FILE=$DHCP_RUN_DIR/ipv6.state
+
 # Where we remember the one thing the system cannot tell us afterwards: whether
 # WE turned ip_forward on (so that `down' only restores what `up' changed).
 STATE_DIR=${MARIONNET_NATBRIDGE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/marionnet-natbridge}
@@ -177,6 +208,12 @@ NET=""                # the /24 prefix, e.g. 192.168.101
 TAG=""                # the iptables comment, TAG_PREFIX:BR
 FORCED_SUBNET=""      # --subnet
 WANT_DHCP=0           # --dhcp: also run a DHCP/DNS server on the bridge
+FORCED_ADDRESS6=""    # --ipv6 <prefix>::1/64: the IPv6 address of the bridge
+WANT_RADVD=0          # --radvd: advertise the /64 (SLAAC) on the bridge
+ADDR6=""              # the address actually used, empty when IPv6 is off
+PREFIX6=""            # <prefix>:: derived from ADDR6, empty when IPv6 is off
+DNSMASQ_ARGV=()       # the helper sub-command and its arguments, see set_dnsmasq_argv
+ASSUME_IPV6_UPLINK=0  # --assume-ipv6-uplink: TEST ONLY, see parse_options
 DRY_RUN=0             # --dry-run
 FAIL_AFTER=""         # --fail-after LABEL (test only, see A8.4 of the plan)
 SUDO_INTERACTIVE=0    # --sudo-interactive
@@ -294,7 +331,7 @@ function require_bridge {
 # PATH is not the user's. Same probing discipline as bin/scripts/marionnet-sudoers.sh.
 # Resolved lazily, so that a missing package is reported as JSON like anything else.
 
-IP=""; IPTABLES=""; IPTABLES_SAVE=""; SYSCTL=""
+IP=""; IPTABLES=""; IPTABLES_SAVE=""; SYSCTL=""; IP6TABLES=""; IP6TABLES_SAVE=""
 
 function binary_among {   # binary_among CODE CANDIDATE...
  local code=$1 candidate; shift
@@ -312,6 +349,15 @@ function resolve_binaries {
  # Absolute too: sudoers matches on the path, so `sysctl' bare would never match
  # the rule that marionnet-sudoers.sh installs.
  SYSCTL=$(binary_among E_NO_SYSCTL /usr/sbin/sysctl /sbin/sysctl /usr/bin/sysctl /bin/sysctl)
+}
+
+# The IPv6 firewall binaries are resolved SEPARATELY and only when IPv6 is
+# actually wanted (episode 11): a host without ip6tables must keep working for
+# everything else, so its absence is not allowed to break a plain IPv4 `up'.
+function resolve_binaries6 {
+ [[ -n $IP6TABLES ]] && return 0
+ IP6TABLES=$(binary_among E_NO_IP6TABLES /usr/sbin/ip6tables /sbin/ip6tables /usr/bin/ip6tables)
+ IP6TABLES_SAVE=$(binary_among E_NO_IP6TABLES /usr/sbin/ip6tables-save /sbin/ip6tables-save /usr/bin/ip6tables-save)
 }
 
 # --- Privileged execution
@@ -371,6 +417,19 @@ function undo_step {
  case $label in
    # The only step whose inverse needs NO privilege: dnsmasq runs as us.
    dhcp)        dhcp_stop "$BR" ;;
+   forward6_in)
+     sudo_run "$IP6TABLES" -D FORWARD -o "$BR" -m conntrack --ctstate RELATED,ESTABLISHED \
+              -m comment --comment "$TAG" -j ACCEPT ;;
+   forward6_out)
+     sudo_run "$IP6TABLES" -D FORWARD -i "$BR" ! -o "$BR" \
+              -m comment --comment "$TAG" -j ACCEPT ;;
+   nat6_masquerade)
+     sudo_run "$IP6TABLES" -t nat -D POSTROUTING -s "${PREFIX6}/64" ! -o "$BR" \
+              -m comment --comment "$TAG" -j MASQUERADE ;;
+   # Not `sudo_run ... disable': the gate is shared, and its release is refused
+   # while another bridge still carries an IPv6 address.
+   ipv6_gate)   ipv6_gate_release ;;
+   addr6)       sudo_run "$IP" -6 addr del "$ADDR6" dev "$BR" ;;
    nat_masquerade)
      sudo_run "$IPTABLES" -t nat -D POSTROUTING -s "$NET.0/24" ! -o "$BR" \
               -m comment --comment "$TAG" -j MASQUERADE ;;
@@ -401,8 +460,9 @@ function rollback {
  # we cannot validate is a name we refuse to build a destructive command from,
  # so everything left on the stack is declared a leftover, loudly.
  if [[ ! $BR =~ ^${BRIDGE_PREFIX}[1-9][0-9]*(-[1-9][0-9]*)?$ ]] \
-    || { [[ -n $NET ]] && [[ ! $NET =~ ^([0-9]{1,3}\.){2}[0-9]{1,3}$ ]]; }; then
-   echo "$TOOL: REFUSING to roll back: bridge '$BR' / subnet '$NET' did not validate." 1>&2
+    || { [[ -n $NET ]] && [[ ! $NET =~ ^([0-9]{1,3}\.){2}[0-9]{1,3}$ ]]; } \
+    || { [[ -n $ADDR6 ]] && [[ ! $ADDR6 =~ ^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){0,3}::1/64$ ]]; }; then
+   echo "$TOOL: REFUSING to roll back: bridge '$BR' / subnet '$NET' / address '$ADDR6' did not validate." 1>&2
    for label in "${UNDO[@]}"; do Array_push LEFTOVERS "$label"; done
    Array_make UNDO
    REPORT[rolled_back]=false
@@ -540,10 +600,185 @@ function dhcp_stop {
 
 # Called before anything is built, so that a missing dnsmasq is a clean refusal
 # rather than a half-built bridge rolled back for nothing.
-function require_dhcp_support {
+function require_dnsmasq_support {
  [[ -x $DHCP_HELPER ]] \
-   || fail E_INTERNAL "--dhcp needs $DHCP_HELPER, which is missing or not executable (is Marionnet correctly installed?)"
+   || fail E_INTERNAL "--dhcp and --radvd need $DHCP_HELPER, which is missing or not executable (is Marionnet correctly installed?)"
  binary_among E_NO_DNSMASQ /usr/sbin/dnsmasq /sbin/dnsmasq /usr/bin/dnsmasq >/dev/null
+}
+
+# set_dnsmasq_argv: which sub-command of the helper matches what was asked. One
+# name per shape rather than optional arguments -- the fixed arity of each is the
+# guard that makes the wide sudoers glob harmless (header of marionnet-dnsmasq.sh).
+function set_dnsmasq_argv {
+ if [[ -n $ADDR6 ]] && [[ $WANT_RADVD = 1 ]]; then
+   if [[ $WANT_DHCP = 1 ]]; then
+     DNSMASQ_ARGV=(start-both "$BR" "$NET" "$ADDR6")
+   else
+     DNSMASQ_ARGV=(start-ra "$BR" "$NET" "$ADDR6")
+   fi
+ else
+   DNSMASQ_ARGV=(start "$BR" "$NET")
+ fi
+}
+
+# dnsmasq_wanted: is there anything for the server to do at all? RA alone is
+# reason enough to start it, which is why this is not `$WANT_DHCP = 1'.
+function dnsmasq_wanted {
+ if [[ $WANT_DHCP = 1 ]]; then return 0; fi
+ if [[ -n $ADDR6 ]] && [[ $WANT_RADVD = 1 ]]; then return 0; fi
+ return 1
+}
+
+# --- IPv6 (episode 11)
+#
+# Everything here hangs on ONE predicate: does this host have IPv6 at all? With
+# no global address and no default route, handing the guests a /64 and a default
+# router would be a lie -- so the entire IPv6 support is skipped, and said out
+# loud (E_NO_IPV6_UPLINK), exactly as the dialog greys its three fields out. The
+# predicate lives HERE and nowhere else: bin/nat_bridge.ml asks for it through
+# `check-ipv6' instead of reading /proc a second time in OCaml.
+
+function ipv6_global_address { "$IP" -6 -oneline addr show scope global 2>/dev/null | awk '{print $4; exit}'; }
+function ipv6_default_route  { "$IP" -6 route show default 2>/dev/null | head -1; }
+
+function ipv6_uplink_present {
+ if [[ $ASSUME_IPV6_UPLINK = 1 ]]; then return 0; fi
+ local address route
+ address=$(ipv6_global_address)
+ route=$(ipv6_default_route)
+ [[ -n $address ]] && [[ -n $route ]]
+}
+
+# The shape is imposed, not merely checked: <prefix>::1/64, lower case. The
+# bridge takes ::1 of its /64 exactly as it takes .1 of its /24, and the prefix
+# to advertise is then obtained by removing a fixed suffix rather than by parsing
+# an address. A /64 is not a matter of taste -- SLAAC works on nothing else.
+function require_address6 {
+ local a=${1:-}
+ [[ $a =~ ^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){0,3}::1/64$ ]] \
+   || fail E_BAD_ADDRESS6 "'$a' is not of the expected shape <prefix>::1/64 in lower case (e.g. fd00:192:168:101::1/64)"
+ # `f[ef]' covers fe80::/10 (link-local), the deprecated site-local range and
+ # ff00::/8 (multicast), and leaves fc00::/7 -- the ULA range Marionnet derives --
+ # untouched. Same rule in marionnet-dnsmasq.sh and in Tool.is_valid_ipv6_address.
+ if [[ $a =~ ^f[ef] ]]; then
+   fail E_BAD_ADDRESS6 "'$a' is link-local, site-local or multicast: not a network one advertises"
+ fi
+ return 0
+}
+
+function prefix6_of_address6 { echo "${1%1/64}"; }
+
+# address6_is_taken A6: does that /64 already appear among the host's IPv6
+# addresses or routes? Same reason as subnet_is_taken for IPv4: silently
+# stealing a prefix the host already uses is a network outage in the user's name.
+function address6_is_taken {
+ local prefix taken
+ prefix=$(prefix6_of_address6 "$1")
+ taken=$("$IP" -6 route show; "$IP" -6 -oneline addr show)
+ grep -qF "$prefix" <<<"$taken"
+}
+
+# address6_of BRIDGE: the global IPv6 address we gave it, read back from the
+# system -- so that `down' and `gc' work even when the state file is gone.
+function address6_of {
+ "$IP" -6 -oneline addr show dev "$1" scope global 2>/dev/null | awk '{print $4; exit}'
+}
+
+# The IPv6 twin of tagged_rules_exist, on the other table.
+function tagged6_rules_exist {
+ sudo_run "$IP6TABLES_SAVE" 2>/dev/null | grep -qE -- "$1([^0-9-]|\$)"
+}
+
+# --- The IPv6 gate
+#
+# IPv6 forwarding cannot be turned on for one interface only: it makes the whole
+# host a ROUTER -- and a router IGNORES the Router Advertisements it receives, so
+# the host would lose its own default route within the lifetime of the last one
+# it heard. The gate therefore also raises accept_ra to 2 ("accept even when
+# forwarding is on"), for the interfaces that exist and for those that will
+# appear. It is a SCRIPT and not three sudoers lines for two reasons: the
+# previous values must be remembered in state root can write, and a rule on
+# `sysctl -q -w net.ipv6.conf.*' would let any key at all through -- the very
+# injection measured at episode 10c.
+
+function ipv6_gate_posted { [[ -r $IPV6_STATE_FILE ]]; }
+
+function require_ipv6_gate_support {
+ [[ -x $IPV6_HELPER ]] \
+   || fail E_INTERNAL "--ipv6 needs $IPV6_HELPER, which is missing or not executable (is Marionnet correctly installed?)"
+}
+
+# Any OTHER bridge of ours still carrying a global IPv6 address: while one
+# remains, the gate stays posted. Counted from the SYSTEM and not from a counter
+# file, which is what makes it survive a crash.
+function other_ipv6_bridges_exist {
+ local bridge
+ for bridge in $(all_bridges); do
+   if [[ $bridge = "$BR" ]]; then continue; fi
+   if [[ -n $(address6_of "$bridge") ]]; then return 0; fi
+ done
+ return 1
+}
+
+# The inverse of the `ipv6_gate' step, and deliberately a no-op while someone
+# else still needs the gate. Never called outside a rollback or a `down'.
+function ipv6_gate_release {
+ if other_ipv6_bridges_exist; then
+   echo "$TOOL: keeping the IPv6 gate: another bridge still carries an IPv6 address." 1>&2
+   return 0
+ fi
+ sudo_run "$IPV6_HELPER" disable
+}
+
+# resolve_ipv6: decide ONCE whether this invocation has an IPv6 half, and set
+# ADDR6/PREFIX6 accordingly (empty = no IPv6 at all). Never fails because the
+# host lacks IPv6: it warns and returns, which is what "ignore the IPv6 support"
+# means on a host that cannot route it.
+function resolve_ipv6 {
+ ADDR6=""; PREFIX6=""
+ if [[ -z $FORCED_ADDRESS6 ]] && [[ $WANT_RADVD = 0 ]]; then return 0; fi
+ if ! ipv6_uplink_present; then
+   Array_push WARNINGS E_NO_IPV6_UPLINK
+   echo "$TOOL: SKIPPING the IPv6 support: this host has no global IPv6 address, or no IPv6 default route." 1>&2
+   return 0
+ fi
+ [[ -n $FORCED_ADDRESS6 ]] || fail E_USAGE "--radvd needs --ipv6 <prefix>::1/64"
+ require_address6 "$FORCED_ADDRESS6"
+ ADDR6=$FORCED_ADDRESS6
+ PREFIX6=$(prefix6_of_address6 "$ADDR6")
+ resolve_binaries6
+ require_ipv6_gate_support
+}
+
+# build_ipv6_legs: the IPv6 half of `up', as steps that each record their
+# inverse. Called from BOTH branches of do_up -- the fresh bridge and the one
+# that already exists, since a component may be restarted with IPv6 after having
+# run without it. Returns 1 without exiting, like `step'.
+function build_ipv6_legs {
+ if [[ -z $ADDR6 ]]; then return 0; fi
+ if [[ -z $(address6_of "$BR") ]]; then
+   if address6_is_taken "$ADDR6"; then
+     fail E_ADDRESS6_IN_USE "the network ${PREFIX6}/64 is already routed or addressed on this host"
+   fi
+   # nodad: the bridge is ours and brand new, nobody else is on it, and a
+   # TENTATIVE address is one dnsmasq cannot bind -- duplicate address detection
+   # here buys a race condition and nothing else.
+   step addr6 "$IP" -6 addr add "$ADDR6" dev "$BR" nodad || return 1
+ fi
+ if ! ipv6_gate_posted; then
+   step ipv6_gate "$IPV6_HELPER" enable || return 1
+ fi
+ # --dry-run must not reach for sudo just to LOOK at the rules: nothing is being
+ # built, so the steps are recorded unconditionally.
+ if [[ $DRY_RUN = 1 ]] || ! tagged6_rules_exist "$TAG"; then
+   step nat6_masquerade "$IP6TABLES" -t nat -A POSTROUTING -s "${PREFIX6}/64" ! -o "$BR" \
+        -m comment --comment "$TAG" -j MASQUERADE                || return 1
+   step forward6_out "$IP6TABLES" -A FORWARD -i "$BR" ! -o "$BR" \
+        -m comment --comment "$TAG" -j ACCEPT                    || return 1
+   step forward6_in "$IP6TABLES" -A FORWARD -o "$BR" -m conntrack --ctstate RELATED,ESTABLISHED \
+        -m comment --comment "$TAG" -j ACCEPT                    || return 1
+ fi
+ return 0
 }
 
 # --- up
@@ -560,7 +795,10 @@ function do_up {
  # of a list makes the whole line return 1, which fires the ERR trap.
  if [[ -n $INSTANCE ]]; then REPORT[instance]=$INSTANCE; fi
 
- if [[ $WANT_DHCP = 1 ]]; then require_dhcp_support; fi
+ # Before anything else: the IPv6 half may turn out not to exist at all (no
+ # uplink on this host), and everything below reads ADDR6, not the raw options.
+ resolve_ipv6
+ if dnsmasq_wanted; then require_dnsmasq_support; fi
 
  if link_exists "$BR"; then
    # Idempotent: an existing bridge of ours is a success, not an error, and the
@@ -568,10 +806,14 @@ function do_up {
    NET=$(subnet_of "$BR")
    require_subnet "$NET"
    # ... but a bridge that exists WITHOUT the service that was asked for is not
-   # "nothing to do": a component may be restarted with DHCP after having run
-   # without it.
-   if [[ $WANT_DHCP = 1 ]] && ! dhcp_running_pid "$BR" >/dev/null; then
-     step dhcp "$DHCP_HELPER" start "$BR" "$NET" || fail_step
+   # "nothing to do": a component may be restarted with DHCP, or with IPv6,
+   # after having run without them. A server ALREADY running is left alone,
+   # though: changing the shape of its service goes through `down', exactly as
+   # for --subnet and --dhcp (see bin/nat_bridge_host.mli).
+   build_ipv6_legs || fail_step
+   if dnsmasq_wanted && ! dhcp_running_pid "$BR" >/dev/null; then
+     set_dnsmasq_argv
+     step dhcp "$DHCP_HELPER" "${DNSMASQ_ARGV[@]}" || fail_step
    fi
    describe_network
    describe_dhcp
@@ -614,18 +856,24 @@ function do_up {
  step forward_in "$IPTABLES" -A FORWARD -o "$BR" -m conntrack --ctstate RELATED,ESTABLISHED \
       -m comment --comment "$TAG" -j ACCEPT               || fail_step
 
+ # The IPv6 half, after the IPv4 one and before the server: dnsmasq must find
+ # BOTH addresses already on the bridge (it refuses to serve a network the bridge
+ # does not own), and the LIFO rollback must undo the address after the rules.
+ build_ipv6_legs                                          || fail_step
+
  # LAST, and not by taste: dnsmasq binds <NET>.1 on a bridge that must therefore
  # already exist, be addressed and be up. Being last also makes it the FIRST
  # thing the LIFO rollback undoes, which is what we want -- a server left behind
  # on a bridge that is being destroyed would be the worst leftover of all.
- if [[ $WANT_DHCP = 1 ]]; then
-   step dhcp "$DHCP_HELPER" start "$BR" "$NET"            || fail_step
+ if dnsmasq_wanted; then
+   set_dnsmasq_argv
+   step dhcp "$DHCP_HELPER" "${DNSMASQ_ARGV[@]}"          || fail_step
  fi
 
  if [[ $DRY_RUN != 1 ]]; then
    mkdir -p "$STATE_DIR"
-   printf 'SUBNET=%s\nIP_FORWARD_WAS=%s\nOWNER_PID=%s\n' \
-     "$NET" "$ip_forward_was" "$OWNER_PID" > "$(state_file "$BR")"
+   printf 'SUBNET=%s\nIP_FORWARD_WAS=%s\nOWNER_PID=%s\nADDRESS6=%s\n' \
+     "$NET" "$ip_forward_was" "$OWNER_PID" "$ADDR6" > "$(state_file "$BR")"
  fi
 
  describe_dhcp
@@ -638,6 +886,12 @@ EOF
  if [[ ${REPORT[dhcp]} = true ]]; then
    echo "       DHCP and DNS served on $NET.1 for $NET.100-$NET.200 (dnsmasq, pid ${REPORT[dhcp_pid]})." 1>&2
  fi
+ if [[ -n $ADDR6 ]]; then
+   echo "       IPv6: $ADDR6 on the bridge, NAT66 to the outside enabled." 1>&2
+   if [[ ${REPORT[radvd]} = true ]]; then
+     echo "       Guests autoconfigure from ${PREFIX6}/64 (SLAAC), default route and DNS ${PREFIX6}1." 1>&2
+   fi
+ fi
  succeed
 }
 
@@ -648,17 +902,37 @@ function describe_network {
  REPORT[host_address]="$NET.1"
  REPORT[gateway]="$NET.1"
  REPORT[guest_range]="$NET.2-$NET.254"
+ # `ipv6' is a boolean and always present, so that a caller never has to tell
+ # "no IPv6 here" from "an older version of this script"; the address comes as a
+ # separate field, present only when there is one -- same discipline as
+ # `instance' in the report of `up'.
+ if [[ -n $ADDR6 ]]; then
+   REPORT[ipv6]=true
+   REPORT[ipv6_address]="$ADDR6"
+   REPORT[ipv6_prefix]="${PREFIX6}/64"
+ else
+   REPORT[ipv6]=false
+ fi
 }
 
 # Whether a guest may simply ask for its address instead of being given one --
 # read from the SYSTEM (is a server of ours running?), never from the flag we
 # were passed: the two differ precisely in the cases that matter.
 function describe_dhcp {
- local pid
+ local pid cmdline
+ REPORT[radvd]=false
  if pid=$(dhcp_running_pid "$BR"); then
-   REPORT[dhcp]=true
    REPORT[dhcp_pid]=$pid
-   REPORT[dhcp_range]="$NET.100-$NET.200"
+   # One process serves both halves, and either half may be off: what it is
+   # actually doing is read from ITS OWN command line, not from our flags.
+   cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+   if [[ $cmdline == *"--dhcp-range=$NET.100,"* ]]; then
+     REPORT[dhcp]=true
+     REPORT[dhcp_range]="$NET.100-$NET.200"
+   else
+     REPORT[dhcp]=false
+   fi
+   if [[ $cmdline == *"--enable-ra"* ]]; then REPORT[radvd]=true; fi
  else
    REPORT[dhcp]=false
  fi
@@ -680,13 +954,21 @@ function do_down {
  if [[ -n $INSTANCE ]]; then REPORT[instance]=$INSTANCE; fi
 
  NET=$(subnet_of "$BR" || true)
+ # The system first, the state file only as a fallback: `down' must work after a
+ # crash, and it knows nothing of the flags the matching `up' was given.
+ ADDR6=$(address6_of "$BR" || true)
  local state; state=$(state_file "$BR")
  local ip_forward_was=1
  if [[ -r $state ]]; then
    # shellcheck disable=SC1090
    source "$state"
    [[ -n $NET ]] || NET=${SUBNET:-}
+   [[ -n $ADDR6 ]] || ADDR6=${ADDRESS6:-}
    ip_forward_was=${IP_FORWARD_WAS:-1}
+ fi
+ if [[ -n $ADDR6 ]]; then
+   PREFIX6=$(prefix6_of_address6 "$ADDR6")
+   resolve_binaries6
  fi
 
  local rules_remain=0
@@ -722,6 +1004,19 @@ function do_down {
    Array_push UNDO forward_out
    Array_push UNDO forward_in
  fi
+ # The IPv6 half, pushed exactly where `up' put it. The gate is shared, so its
+ # release is a request, not an order: ipv6_gate_release refuses while another
+ # bridge still carries an IPv6 address -- and our own address is still there
+ # when the label is processed, which is why that check skips $BR.
+ if [[ -n $ADDR6 ]]; then
+   Array_push UNDO addr6
+   if ipv6_gate_posted; then Array_push UNDO ipv6_gate; fi
+   if tagged6_rules_exist "$TAG"; then
+     Array_push UNDO nat6_masquerade
+     Array_push UNDO forward6_out
+     Array_push UNDO forward6_in
+   fi
+ fi
  # Pushed last, exactly where `up' put it, so the LIFO unwinding stops the
  # server before the bridge it is bound to disappears. Read from the system:
  # `down' knows nothing of the flags the matching `up' was given.
@@ -755,7 +1050,7 @@ function bridges_of_pid {
 
 function do_status {
  resolve_binaries
- local bridge pid list instance
+ local bridge pid list instance address6
  Array_make entries
  if [[ -n $OWNER_PID ]]; then
    require_pid "$OWNER_PID"
@@ -764,23 +1059,51 @@ function do_status {
    list=$(all_bridges)
  fi
  REPORT[ip_forward]=$(cat /proc/sys/net/ipv4/ip_forward)
+ REPORT[ipv6_forwarding]=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
+ REPORT[ipv6_gate]=$(ipv6_gate_posted && echo true || echo false)
  for bridge in $list; do
    link_exists "$bridge" || continue
    pid=$(pid_of_bridge "$bridge")
+   address6=$(address6_of "$bridge" || true)
    Map_make entry \
      bridge     "$bridge" \
      owner_pid  "$pid" \
      subnet     "$(subnet_of "$bridge")" \
      owner_alive "$(pid_is_alive "$pid" && echo true || echo false)" \
      ports      "$(ports_of_json "$bridge")" \
-     dhcp       "$(dhcp_running_pid "$bridge" >/dev/null && echo true || echo false)"
+     dhcp       "$(dhcp_running_pid "$bridge" >/dev/null && echo true || echo false)" \
+     ipv6       "$([[ -n $address6 ]] && echo true || echo false)"
    # Present only when there is one, exactly as in the report of `up': a caller
    # reads `instance' as a number or not at all, never as an empty string.
    instance=$(instance_of_bridge "$bridge")
    if [[ -n $instance ]]; then entry[instance]=$instance; fi
+   if [[ -n $address6 ]]; then entry[ipv6_address]=$address6; fi
    Array_push entries "$(Map_to_json entry)"
  done
  REPORT[bridges]=$(Array_to_json entries)
+ REPORT[ok]=true
+ finish 0
+}
+
+# check-ipv6: the ONE answer to "may this host do IPv6 at all?", for the dialog
+# of bin/nat_bridge.ml as much as for `up'. Unprivileged on purpose -- reading an
+# address and a route asks nothing of sudo -- and cheap enough to be called every
+# time the dialog opens, which is what keeps its three greyed fields honest when
+# the host gains or loses IPv6 mid-session.
+function do_check_ipv6 {
+ resolve_binaries
+ local address route
+ address=$(ipv6_global_address)
+ route=$(ipv6_default_route)
+ REPORT[uplink]=$([[ -n $address ]] && [[ -n $route ]] && echo true || echo false)
+ REPORT[has_address]=$([[ -n $address ]] && echo true || echo false)
+ REPORT[has_default_route]=$([[ -n $route ]] && echo true || echo false)
+ if [[ -n $address ]]; then REPORT[address]=$address; fi
+ # Free text: a route line contains spaces and words that must never be parsed
+ # as JSON (see the two-map split above).
+ if [[ -n $route ]]; then REPORT_TEXT[default_route]=$route; fi
+ REPORT[forwarding]=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
+ REPORT[gate]=$(ipv6_gate_posted && echo true || echo false)
  REPORT[ok]=true
  finish 0
 }
@@ -881,6 +1204,17 @@ function guest_down {
 # bridge reaches the Internet without the host being touched, and that ONE
 # process may hold SEVERAL such bridges -- two components, two private /24, one
 # taken down without disturbing the other.
+# ipv6_privilege_available: may WE post the IPv6 gate without a password here?
+# The gate takes no argument, so there is no harmless call to probe with (unlike
+# dnsmasq's `start' on an unknown bridge): we ask sudo itself, which answers
+# without running anything. A `sudo -l' that needs authentication answers no
+# under `-n', so this may say no where the rule would in fact have said yes --
+# a skipped leg, reported as skipped, never a false success.
+function ipv6_privilege_available {
+ if [[ $SUDO_INTERACTIVE = 1 ]]; then return 0; fi
+ sudo -n -l -- "$IPV6_HELPER" enable >/dev/null 2>&1
+}
+
 # dhcp_privilege_available: may WE start the DHCP server without a password
 # here? Probed the way marionnet-lanbridge.sh probes block (c) -- by running a
 # real command of the list which does nothing (an unknown bridge), and reading
@@ -901,6 +1235,11 @@ function do_selftest {
  resolve_binaries
  local failures=0 index up_json br net ns veth peer
  local dhcp_flag=() dhcp_tested=false
+ local ipv6_flag=() ipv6_tested=false ipv6_forwarding_was
+ # A prefix chosen for the test alone, unlikely to be routed anywhere: the point
+ # is to prove the advertisement machinery, not to reach the IPv6 Internet.
+ local selftest_address6=fd00:192:168:254::1/64
+ ipv6_forwarding_was=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
  OWNER_PID=$$
  Array_make __st_bridges
  Array_make __st_nets
@@ -918,6 +1257,24 @@ function do_selftest {
  else
    dhcp_tested=true
  fi
+ # The IPv6 legs need the gate -- whose sudoers lines name the INSTALLED script --
+ # and the advertisement server, which is the same dnsmasq as above. They also
+ # need an uplink this host may simply not have: `--assume-ipv6-uplink' supplies
+ # THAT, and only that. Everything else below is the real thing (a real address on
+ # the bridge, the real gate, real advertisements).
+ if [[ ! -x $IPV6_HELPER ]]; then
+   Array_push WARNINGS "$IPV6_HELPER is missing, the IPv6 legs were skipped"
+   echo "$TOOL: SKIPPING the IPv6 legs: $IPV6_HELPER is missing." 1>&2
+ elif ! $dhcp_tested; then
+   Array_push WARNINGS "the IPv6 legs need the dnsmasq legs, which were skipped"
+   echo "$TOOL: SKIPPING the IPv6 legs: nothing could advertise the prefix." 1>&2
+ elif ! ipv6_privilege_available; then
+   Array_push WARNINGS "sudo does not cover $IPV6_HELPER here, the IPv6 legs were skipped"
+   echo "$TOOL: SKIPPING the IPv6 legs: sudo -n does not cover $IPV6_HELPER (the rule names the INSTALLED path)." 1>&2
+ else
+   ipv6_tested=true
+   resolve_binaries6
+ fi
  local forced=()
  if [[ -n $FORCED_SUBNET ]]; then forced=(--subnet "$FORCED_SUBNET"); fi
  # By DEFAULT the sub-invocations keep `sudo -n': that the product path needs no
@@ -929,10 +1286,14 @@ function do_selftest {
  for index in 1 2; do
    dhcp_flag=()
    if [[ $index = 1 ]] && $dhcp_tested; then dhcp_flag=(--dhcp); fi
+   ipv6_flag=()
+   if [[ $index = 1 ]] && $ipv6_tested; then
+     ipv6_flag=(--ipv6 "$selftest_address6" --radvd --assume-ipv6-uplink)
+   fi
    # A sub-invocation: `up' owns its own transaction and its own report. Only
    # the first instance honours --subnet; the second must find its own, which is
    # precisely the property being tested.
-   if ! up_json=$("$0" up --owner-pid $$ --instance "$index" "${forced[@]}" "${dhcp_flag[@]}" "${sudo_flag[@]}"); then
+   if ! up_json=$("$0" up --owner-pid $$ --instance "$index" "${forced[@]}" "${dhcp_flag[@]}" "${ipv6_flag[@]}" "${sudo_flag[@]}"); then
      # Whatever came up before must not be left behind by a failing selftest.
      "$0" down --owner-pid $$ --instance 1 "${sudo_flag[@]}" >/dev/null 2>&1 || true
      fail E_INTERNAL "the 'up' leg of instance $index failed: $up_json"
@@ -967,6 +1328,42 @@ function do_selftest {
      sudo_test_run "$IP" netns exec "mnbrns$$x$index" ping -c1 -W3 9.9.9.9 1>&2 \
        || failures=$((failures + 1))
    done
+   if $ipv6_tested; then
+     echo "== 3 bis. the first guest AUTOCONFIGURES in IPv6, from our advertisements" 1>&2
+     local ns6="mnbrns$$x1" peer6="vnbr$$b1" prefix6="${selftest_address6%1/64}" got6="" attempt
+     # A network namespace is a host: it accepts advertisements unless told
+     # otherwise, and nothing here tells it otherwise. This polls instead of
+     # sleeping a fixed time -- the advertisement answers the guest's own
+     # solicitation, so it normally arrives at once and only DAD takes a second.
+     for attempt in 1 2 3 4 5 6 7 8 9 10; do
+       got6=$(sudo_test_run "$IP" -netns "$ns6" -6 -oneline addr show dev "$peer6" scope global 2>/dev/null \
+              | awk '{print $4; exit}')
+       if [[ -n $got6 ]]; then break; fi
+       sleep 1
+     done
+     if [[ $got6 == "$prefix6"* ]]; then
+       echo "$TOOL: the guest configured itself as $got6 out of ${prefix6}/64." 1>&2
+     else
+       echo "$TOOL: no address from ${prefix6}/64 on the guest (got '${got6:-nothing}')." 1>&2
+       failures=$((failures + 1))
+     fi
+     if ! sudo_test_run "$IP" netns exec "$ns6" ping -6 -c1 -W3 "${prefix6}1" 1>&2; then
+       echo "$TOOL: the guest cannot reach the bridge at ${prefix6}1." 1>&2
+       failures=$((failures + 1))
+     fi
+     if ! sudo_test_run "$IP" -netns "$ns6" -6 route show default | grep -q .; then
+       echo "$TOOL: the guest learnt no IPv6 default route from the advertisements." 1>&2
+       failures=$((failures + 1))
+     fi
+     # And the instance that asked for nothing must advertise nothing: two
+     # components, two independent networks, in IPv6 as in IPv4.
+     if sudo_test_run "$IP" -netns "mnbrns$$x2" -6 -oneline addr show dev "vnbr$$b2" scope global 2>/dev/null \
+        | grep -q inet6; then
+       echo "$TOOL: the guest of instance 2 got a global IPv6 address nobody advertised." 1>&2
+       failures=$((failures + 1))
+     fi
+   fi
+
    echo "== 4. from the first guest: UDP/53 to the outside" 1>&2
    if command -v dig >/dev/null; then
      sudo_test_run "$IP" netns exec "mnbrns$$x1" dig +short +time=3 +tries=1 @9.9.9.9 example.org 1>&2 \
@@ -1046,7 +1443,22 @@ function do_selftest {
    if dhcp_running_pid "${__st_bridges[index]}" >/dev/null; then
      Array_push LEFTOVERS "dnsmasq of ${__st_bridges[index]}"; failures=$((failures + 1))
    fi
+   if $ipv6_tested && tagged6_rules_exist "${__st_tags[index]}"; then
+     Array_push LEFTOVERS "ip6tables rules tagged ${__st_tags[index]}"; failures=$((failures + 1))
+   fi
  done
+ # The gate is the one artefact that is NOT per bridge: it must be gone, and the
+ # host's own forwarding must be exactly what it was before the test.
+ if $ipv6_tested; then
+   if ipv6_gate_posted; then
+     Array_push LEFTOVERS "the IPv6 gate ($IPV6_STATE_FILE)"; failures=$((failures + 1))
+   fi
+   local forwarding_now; forwarding_now=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
+   if [[ $forwarding_now != "$ipv6_forwarding_was" ]]; then
+     Array_push LEFTOVERS "net.ipv6.conf.all.forwarding left at $forwarding_now (was $ipv6_forwarding_was)"
+     failures=$((failures + 1))
+   fi
+ fi
  for index in 1 2; do
    if "$IP" netns list 2>/dev/null | grep -qw "mnbrns$$x$index"; then
      Array_push LEFTOVERS "netns mnbrns$$x$index"; failures=$((failures + 1))
@@ -1056,7 +1468,9 @@ function do_selftest {
  REPORT[bridges]=$(Array_to_json __st_bridges)
  REPORT[subnets]=$(Array_to_json __st_nets)
  REPORT[dhcp_tested]=$dhcp_tested
+ REPORT[ipv6_tested]=$ipv6_tested
  REPORT[ip_forward]=$(cat /proc/sys/net/ipv4/ip_forward)
+ REPORT[ipv6_forwarding]=$(cat /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null || echo 0)
  if (( failures == 0 )); then
    echo "$TOOL: SELFTEST PASSED (two independent private networks, both guests reached the Internet, host untouched)." 1>&2
    REPORT[ok]=true
@@ -1076,6 +1490,9 @@ function do_selftest {
 
 function do_print_privileged_commands {
  resolve_binaries
+ # ip6tables ships in the same package as iptables, so this resolves wherever the
+ # IPv4 half does; a host missing it could not be granted the IPv6 lines anyway.
+ resolve_binaries6
  Array_make commands \
    "$IP link add <BR> type bridge" \
    "$IP addr add <NET>.1/24 dev <BR>" \
@@ -1089,7 +1506,17 @@ function do_print_privileged_commands {
    "$IPTABLES -{A,D} FORWARD -i <BR> ! -o <BR> -m comment --comment <TAG> -j ACCEPT" \
    "$IPTABLES -{A,D} FORWARD -o <BR> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment <TAG> -j ACCEPT" \
    "$IPTABLES_SAVE" \
-   "$DHCP_HELPER start <BR> <NET>"
+   "$DHCP_HELPER start <BR> <NET>" \
+   "$IP -6 addr add <A6> dev <BR> nodad" \
+   "$IP -6 addr del <A6> dev <BR>" \
+   "$IP6TABLES -t nat -{A,D} POSTROUTING -s <PREFIX6>/64 ! -o <BR> -m comment --comment <TAG> -j MASQUERADE" \
+   "$IP6TABLES -{A,D} FORWARD -i <BR> ! -o <BR> -m comment --comment <TAG> -j ACCEPT" \
+   "$IP6TABLES -{A,D} FORWARD -o <BR> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment <TAG> -j ACCEPT" \
+   "$IP6TABLES_SAVE" \
+   "$DHCP_HELPER start-both <BR> <NET> <A6>" \
+   "$DHCP_HELPER start-ra <BR> <NET> <A6>" \
+   "$IPV6_HELPER enable" \
+   "$IPV6_HELPER disable"
  REPORT[commands]=$(Array_to_json commands)
  REPORT[bridge_pattern]="${BRIDGE_PREFIX}*"
  REPORT[tag_prefix]=$TAG_PREFIX
@@ -1109,10 +1536,18 @@ $(printf '%s\n' "${commands[@]}")
 # \`$IP link add ${BRIDGE_PREFIX}* type bridge' installed, \`ip link add ${BRIDGE_PREFIX}1 --INJECT type
 # bridge' is accepted), so a \`dnsmasq ... --pid-file=* ...' rule would also
 # accept \`--dhcp-script=/tmp/evil' -- arbitrary code as root. marionnet-dnsmasq.sh
-# is the small, argument-validating door that closes that: it takes exactly two
-# arguments, checks them as root against anchored regexps, and holds the dnsmasq
-# command line itself. Nothing grants the right to STOP the server: it drops to
-# the user, who owns it.
+# is the small, argument-validating door that closes that: each of its three
+# sub-commands takes an exact number of arguments, checks them as root against
+# anchored regexps, and holds the dnsmasq command line itself. Nothing grants the
+# right to STOP the server: it drops to the user, who owns it.
+#
+# The last two lines are the IPv6 gate (episode 11), and they take NO argument at
+# all -- which is the whole point. Turning the host into an IPv6 router is three
+# sysctl writes whose keys must be exact; a rule \`$SYSCTL -q -w net.ipv6.conf.*'
+# would accept any key whatsoever (the same word-swallowing glob measured above),
+# so the gate is a script with a fixed vocabulary instead, whose sudoers lines are
+# entirely literal. It also remembers the values it overwrote, which no sudoers
+# rule could do.
 #
 # Test harness only (selftest), NOT part of what Marionnet needs:
 #   $IP link add/del <VETH> type veth peer name <PEER>
@@ -1128,6 +1563,7 @@ function usage {
 Usage: $TOOL up     [OPTION]...        # create the NAT bridge (idempotent)
        $TOOL down   [OPTION]...        # remove it and its rules (idempotent)
        $TOOL status [OPTION]...        # what exists, for one pid or for all
+       $TOOL check-ipv6                # may this host do IPv6? (no privilege needed)
        $TOOL gc                        # remove the artefacts of DEAD owners only
        $TOOL selftest                  # up + a netns guest + ping/DNS + down + assert clean
                                        #   (MAY ASK FOR A PASSWORD: its veth/netns guest is
@@ -1148,6 +1584,19 @@ Options:
                       immediately drops it to the calling user -- so \`down' and
                       \`gc' stop it WITHOUT any privilege. Omitted, nothing runs
                       and guests are configured by hand, as before.
+  --ipv6 A6           also address the bridge in IPv6 and NAT66 its /64 to the
+                      outside. A6 is <prefix>::1/64 in lower case, e.g.
+                      fd00:192:168:101::1/64 -- the bridge takes ::1 of its /64
+                      as it takes .1 of its /24. IGNORED, with the warning
+                      E_NO_IPV6_UPLINK, on a host with no global IPv6 address or
+                      no IPv6 default route: announcing a router that cannot
+                      route would be a lie. Turning IPv6 forwarding on makes the
+                      whole host a router, so accept_ra is raised to 2 at the
+                      same time (marionnet-ipv6.sh, the shared IPv6 gate), and
+                      both are restored when the last such bridge goes down.
+  --radvd             advertise the /64 on the bridge (dnsmasq --enable-ra,
+                      ra-only: stateless autoconfiguration, no DHCPv6), with the
+                      bridge as default router and DNS server. Needs --ipv6.
   --subnet PREFIX     force the /24, e.g. --subnet 192.168.101 (default: the
                       first candidate free of the host's routes and addresses).
                       A forced prefix the host already uses is refused
@@ -1163,7 +1612,9 @@ failure; stderr is the human trace; the exit status is 0 on success. The JSON
 carries a symbolic error code among: E_USAGE, E_BAD_PID, E_BAD_INSTANCE,
 E_BAD_SUBNET, E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_NO_DNSMASQ,
 E_SUDO_DENIED, E_NO_FREE_SUBNET, E_SUBNET_IN_USE, E_ROLLBACK_INCOMPLETE,
-E_INTERNAL.
+E_INTERNAL, E_BAD_ADDRESS6, E_ADDRESS6_IN_USE, E_NO_IP6TABLES. One code appears
+only among the WARNINGS, never as an error: E_NO_IPV6_UPLINK, the host that
+cannot do IPv6 at all.
 
 The host interface, its address and its routes are NEVER touched: that is the
 whole point. Everything created here is undone by \`down' (and by \`gc' after a
@@ -1185,9 +1636,16 @@ function parse_options {
                     [[ -n $STATE_DIR ]] || fail E_USAGE "--state-dir: empty path"
                     shift 2 ;;
      --dhcp)             WANT_DHCP=1; shift ;;
+     --ipv6)        FORCED_ADDRESS6=${2:-}; require_address6 "$FORCED_ADDRESS6"; shift 2 ;;
+     --radvd)            WANT_RADVD=1; shift ;;
      --dry-run)          DRY_RUN=1; shift ;;
      --sudo-interactive) SUDO_INTERACTIVE=1; shift ;;
      --fail-after)  FAIL_AFTER=${2:-}; shift 2 ;;   # test only, see the plan § A8.4
+     # Test only, and never passed by Marionnet: pretend this host has an IPv6
+     # uplink. Without it the IPv6 half cannot be exercised at all on a host that
+     # has no IPv6 -- the legs would be skipped, which is precisely the product
+     # behaviour and precisely what makes them unprovable here.
+     --assume-ipv6-uplink) ASSUME_IPV6_UPLINK=1; shift ;;
      *)             usage; fail E_USAGE "unexpected argument '$1'" ;;
    esac
  done
@@ -1199,6 +1657,7 @@ case $ACTION in
   up|down)   parse_options "$@"; [[ -n $OWNER_PID ]] || OWNER_PID=$PPID
              if [[ $ACTION = up ]]; then do_up; else do_down; fi ;;
   status)    parse_options "$@"; do_status ;;
+  check-ipv6) parse_options "$@"; do_check_ipv6 ;;
   gc)        parse_options "$@"; do_gc ;;
   selftest)  parse_options "$@"; do_selftest ;;
   print-privileged-commands) parse_options "$@"; do_print_privileged_commands ;;

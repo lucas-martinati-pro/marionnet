@@ -317,11 +317,17 @@ le suivant existe.
    **plus le bloc (c) du sudoers**, qui refusait de s'installer tant que ce script n'existait
    pas. **Zéro OCaml** : l'avertissement de coupure hôte part avec l'épisode 7, qui refond de
    toute façon le dialogue du composant. **Fait 2026-08-16**, détail en § 4.3.
-10. **ép. 10** *(en cours)* — **le NAT bridge se configure comme la passerelle** : adresse
-    IPv4 (10a), ports du commutateur intégré (10b), service DHCP (10c). Détail en § 4.5.
-11. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
-    aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après l'épisode 10** :
-    celui-ci ajoute des `msgid`, et traduire avant l'aurait fait traduire deux fois.
+10. **ép. 10** — **le NAT bridge se configure comme la passerelle** : adresse
+    IPv4 (10a), ports du commutateur intégré (10b), service DHCP (10c). **Fait 2026-08-18**,
+    détail en § 4.5.
+11. **ép. 11** — **l'autoconfiguration IPv6** : le pendant IPv6 de ce que l'épisode 10 vient de
+    donner en IPv4 — une adresse, un service qui configure les invités (RA/SLAAC par le même
+    dnsmasq, donc pas de radvd à installer) et la traversée NAT66 — plus une **troisième porte
+    privilégiée** pour le forwarding IPv6, qui ne se laisse pas scoper en sudoers.
+    **Fait 2026-08-18**, détail en § 4.6.
+12. **ép. 9** *(à venir, désormais LE DERNIER)* — **refresh i18n consolidé ×12**, qui solde
+    aussi la dette des trois chaînes de l'épisode 1 (§ 5). **Déplacé après les épisodes 10
+    et 11** : ils ajoutent des `msgid`, et traduire avant l'aurait fait traduire deux fois.
 
 ### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
 
@@ -396,6 +402,96 @@ DHCP manquait vraiment. Trois sous-épisodes, prouvés et committés séparémen
   bridge sans DHCP : dégrader en silence une demande explicite de l'utilisateur est exactement ce
   que ce chantier combat ; décocher la case est un geste, l'installer un paquet en est un autre,
   les deux sont dits dans le texte d'aide.
+
+### 4.6 Épisode 11 en détail — l'IPv6 n'est pas la transposition de l'IPv4
+
+L'épisode 10 a donné au NAT bridge l'adresse, les ports et le service DHCP de la passerelle.
+Restait l'IPv6, que ce script disait explicitement ne pas faire (« *what is deliberately NOT
+here: IPv6* »). La mécanique était pourtant à portée : **le dnsmasq déjà lancé sait émettre des
+Router Advertisements** (`--enable-ra`, `--dhcp-range=<préfixe>::,ra-only,64,<durée>`), donc
+**aucun radvd à installer** et aucun second démon à surveiller. Trois choses, en revanche,
+interdisent de traiter cet épisode comme un simple copier-coller de la moitié IPv4.
+
+**1. Le forwarding IPv6 n'est pas per-interface — et il casse l'IPv6 de l'hôte.**
+`net.ipv6.conf.all.forwarding=1` fait de **tout** l'hôte un routeur, et un routeur **ignore les
+annonces qu'il reçoit** : l'hôte garderait son adresse et sa route par défaut jusqu'à
+l'expiration de la dernière annonce entendue, puis les perdrait, **des minutes plus tard**, sans
+que rien ne désigne Marionnet. Le correctif est un sysctl de plus, `accept_ra=2` (« accepter même
+quand le forwarding est actif »), et c'est lui qui a décidé de la forme de l'épisode.
+
+**2. D'où une troisième porte privilégiée, `bin/scripts/marionnet-ipv6.sh`** — et cette fois
+l'argument est le symétrique exact de celui de l'ép. 10c.1 :
+
+- une règle `sysctl -q -w net.ipv6.conf.*` accepterait **n'importe quelle clé** (un `*` avale des
+  mots entiers, et `sysctl -w` prend plusieurs affectations d'un coup) : c'est une écriture
+  sysctl arbitraire en root ;
+- surtout, **les valeurs antérieures doivent être mémorisées** quelque part, pour que `disable`
+  rende l'hôte tel qu'il a été trouvé — et une règle sudoers ne mémorise rien.
+
+Le script **ne prend donc aucun argument** : ses deux lignes sudoers sont **entièrement
+littérales**, il n'y a plus de glob à détourner. Il ne source rien, ne lit aucune variable
+d'environnement, n'accepte aucun chemin, et **n'utilise même pas `sysctl(8)`** : il écrit
+directement les entrées `/proc/sys/net/ipv6/conf/<x>/<clé>` après avoir validé `<x>` contre la
+liste qu'il a lui-même énumérée. Son état vit dans `/run/marionnet-natbridge/ipv6.state`
+(répertoire root déjà créé à l'ép. 10c.1), écrit **atomiquement** et **seulement à la première
+pose** — mémoriser une valeur déjà modifiée serait mémoriser l'état modifié comme s'il était
+l'original.
+
+Une décision de conception mérite d'être dite, parce qu'elle **supprime une question** : plutôt
+que de parier sur la propagation de `conf.all.accept_ra` aux interfaces existantes (comportement
+que la documentation noyau ne garantit pas de la même façon pour toutes les clés), le script
+**relit** chaque interface après l'écriture et relève celles que le noyau a laissées à 1. Il est
+donc correct dans les deux mondes, sans mesure à croire — et il pose aussi
+`default.accept_ra=2`, pour l'interface qui **apparaîtra plus tard** (tethering USB, VPN, station
+d'accueil). Il ne touche **jamais** une interface volontairement à 0 : cette porte protège la
+configuration de l'hôte, elle n'impose pas la sienne.
+
+La porte est **partagée** par tous les NAT bridges de l'hôte : elle n'est relâchée qu'au dernier
+(`ipv6_gate_release` compte les bridges portant encore une adresse v6, **depuis le système** et
+non depuis un compteur — ce qui survit à un crash), et le `gc` la ramasse après coup.
+
+**3. Tout l'IPv6 est conditionné à ce que l'hôte AIT de l'IPv6** : une adresse globale **et** une
+route par défaut. Sans elles, annoncer aux invités un routeur qui ne route nulle part est un
+mensonge — donc le support entier est **sauté, avec l'avertissement `E_NO_IPV6_UPLINK`**, et le
+dialogue grise ses champs pour exactement la même raison. Ce n'est **pas** la doctrine de
+l'ép. 10c.2 (« pas de dégradation silencieuse », qui refusait de démarrer sans dnsmasq), et
+l'asymétrie est assumée : le DHCP était **actif par défaut**, donc le refuser retirait quelque
+chose qui marchait ; l'IPv6 est **opt-in**, donc la sauter ne retire rien — et un projet
+configuré à l'université doit continuer à s'ouvrir à la maison. Le prédicat vit à **un seul
+endroit**, la sous-commande **`check-ipv6`** du script hôte (non privilégiée : lire une adresse
+et une route ne demande rien), interrogée par le dialogue **à chaque ouverture** — associer un
+Wi-Fi ou brancher un téléphone change la réponse, et une réponse périmée serait pire que pas de
+réponse.
+
+**Le champ « IPv6 address » réutilise un widget qui existait déjà** :
+`Gui_bricks.activable_entry` (le patron du dialogue de routeur pour sa propre configuration IPv6
+optionnelle) porte **la case maîtresse et l'entrée** en une seule ligne de formulaire — la case
+rend l'entrée sensible, l'entrée rougit sur tout ce qui n'est pas `<préfixe>::1/64`. Le libellé
+`IPv6 address` **existe déjà dans les 14 catalogues** (il vient du routeur) : coût i18n nul.
+Le défaut est **dérivé du /24** de la composante (`192.168.101.0` →
+`fd00:192:168:101::1/64`) : ULA masqueradé comme le /24, **aucun second allocateur** à tenir
+(l'unicité du /24 suffit), et des groupes hexadécimaux qui **se lisent** comme les octets
+décimaux — mnémonique assumé, pas un encodage (0x192 n'est pas 192, et le code le dit).
+
+**Deux défauts trouvés au banc, et corrigés** — les deux sont la même erreur, un modèle plus
+laxiste que la garde qui tourne en root :
+
+- `fe80::1/64` était **accepté par le modèle** et n'aurait été refusé qu'au démarrage, en root,
+  loin du geste. Le validateur OCaml refuse maintenant le lien-local, le site-local déprécié et
+  le multicast (`g1 < 0xfe80`), comme le script — dont la regexp est passée de `^fe80:` à
+  `^f[ef]`, plus large et donc plus honnête (`fe81::` ne passe plus, `fc00::/7` reste intact).
+- `FD00::1/64` (majuscules) était accepté par le modèle et refusé par le script, dont la garde
+  est minuscule-seulement **par construction** (elle dérive le préfixe en retirant un suffixe
+  fixe, au lieu de parser). Corrigé du bon côté : le *setter* **normalise** (minuscules,
+  compression), donc toutes les portes en profitent — dialogue, canal, `.mar`, constructeur —
+  et `FD00:0:0:0:0:0:0:1/64` devient `fd00::1/64`. Une adresse IPv6 est insensible à la casse :
+  refuser aurait été punir l'utilisateur d'une contrainte interne.
+
+**Ce que le contrat du script gagne** : trois sous-commandes dnsmasq au lieu d'une
+(`start`, `start-both`, `start-ra`), chacune d'**arité fixe** — parce que la garde qui a tué
+l'injection de l'ép. 10c.1 est précisément « cette sous-commande prend exactement *n* arguments »,
+et que les quatre combinaisons de DHCPv4 et de RA ne se distinguent pas par un compte. Un
+sentinelle `-` aurait troqué la garde contre un analyseur.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1494,3 +1590,55 @@ parce qu'aucune ne se redevine :
     n'est accordée qu'au script **installé**. Le côté hôte, lui, est prouvé depuis 10c.1
     (`selftest` avec bail réel), et le chaînon OCaml l'est par le banc ci-dessus.
   Prochain pas : **épisode 9** (i18n ×12), désormais le dernier du chantier.
+- **2026-08-18 — épisode 11** : *l'autoconfiguration IPv6*. Le NAT bridge donne à ses invités une
+  adresse IPv6 qu'ils se configurent seuls, et une sortie NAT66. Détail et raisons en § 4.6.
+  - **Côté hôte.** `bin/scripts/marionnet-ipv6.sh` **neuf** (la 3ᵉ porte privilégiée, `enable` /
+    `disable` / `status`, **zéro argument** donc règle sudoers **sans aucun glob** ; écrit
+    directement `/proc/sys/net/ipv6/conf/…` après avoir validé le nom d'interface qu'il a
+    lui-même énuméré ; mémorise les valeurs antérieures dans `/run/marionnet-natbridge/ipv6.state`
+    et les restitue). `marionnet-natbridge.sh` : `--ipv6 <adresse>` / `--radvd`, sous-commande
+    **`check-ipv6`** (JSON, **sans sudo**), 5 étapes neuves à inverses (`addr6`, `ipv6_gate`,
+    `nat6_masquerade`, `forward6_out`, `forward6_in`), `ADDRESS6=` dans l'état par bridge, porte
+    relâchée **au dernier** bridge v6, codes `E_BAD_ADDRESS6` / `E_ADDRESS6_IN_USE` /
+    `E_NO_IP6TABLES` et l'avertissement `E_NO_IPV6_UPLINK`, `selftest` étendu (SLAAC réel en
+    netns), `--assume-ipv6-uplink` **de test seulement**. `marionnet-dnsmasq.sh` : deux
+    sous-commandes de plus (`start-both`, `start-ra`), chacune d'arité fixe, `--enable-ra` +
+    `ra-only` + RDNSS. `marionnet-sudoers.sh` : bloc (b) + 11 lignes, la porte accordée sous la
+    même condition `root_owned_all_the_way` que dnsmasq.
+  - **Côté modèle.** `Nat_bridge_host.up`/`ensure` prennent `?ipv6:string` et `?radvd:bool` ;
+    `has_ipv6_uplink` est **volontairement non mémoïsé** (Wi-Fi, tethering, VPN changent la
+    réponse). `nat_bridge.ml` : `ipv6_enabled` (défaut **false** — l'IPv6 est *opt-in*, contrairement
+    au DHCP), `ipv6_address` (défaut **dérivé** du /24), `radvd_enabled` (défaut **true** : qui
+    active l'IPv6 veut l'autoconfiguration), les trois dans le `.mar` et dans le canal, `~get_ipv6`
+    et `~get_radvd` **fonctions** (piège de l'ép. 10a), et le préfixe **suit** le /24 tant qu'il
+    est le dérivé — dans le dialogue comme à la relecture d'un vieux `.mar`.
+  - **Preuves faites.** `dune build` rc 0, les deux modules **réellement recompilés** (erreur
+    volontaire dans chacun, retirée par `cp`). `bash -n` sur les 4 scripts ; **`visudo -cf`
+    « analyse réussie »** sur le bloc (b) régénéré — après un défaut **mesuré** : un `*::/64`
+    non échappé ne rend pas le fichier invalide, il **termine la spécification de commande au
+    premier `:`** et lit la suite comme une nouvelle, donc le fichier accorderait autre chose
+    que ce qui est écrit (d'où `addr6_pattern`/`net6_pattern`). Les deux lignes dnsmasq réelles
+    validées par **`dnsmasq --test`** (rc 0, avec et sans DHCPv4). `check-ipv6` sur cet hôte →
+    `uplink:false`, et `up --ipv6 … --radvd` → jambes v6 **sautées**, `E_NO_IPV6_UPLINK` dans
+    `warnings`, `ipv6:false` ; avec `--assume-ipv6-uplink`, les 12 étapes attendues dans l'ordre
+    et `start-both` ; `--radvd` sans `--ipv6` → `E_USAGE` ; 4 adresses illégales → `E_BAD_ADDRESS6`.
+    **Session pilotée** (canal) : défauts à l'ajout (`ipv6_enabled=false`, `fd00:192:168:101::1/64`,
+    `radvd_enabled=true`), 2ᵉ et 3ᵉ composants sur les /24 et /64 suivants, `set` dans les deux
+    sens, 6 valeurs illégales refusées **en nommant la valeur**, les 3 attributs dans le
+    `network.json`, round-trip `close --save`/`open` fidèle, et un `.mar` **fabriqué sans les
+    attributs** relu en `ipv6_enabled=false` avec le préfixe dérivé **du réseau du fichier**.
+    **Banc à script hôte simulé** : `--dhcp` seul pour le composant sans IPv6,
+    `--ipv6 … --radvd` pour celui qui demande les deux, `--ipv6 …` **sans** `--radvd` pour le
+    troisième, et le drapeau **suit** un `set` fait à l'arrêt, dans les deux sens. `quit` sans
+    résidu (aucun `mtap`, aucun `mnbr`, `forwarding`/`accept_ra` de l'hôte inchangés).
+  - **i18n** : **4 chaînes neuves** (le libellé `RADVD service`, deux tooltips, la note « pas
+    d'IPv6 sur cet hôte ») + le texte d'aide, déjà dans la dette de l'ép. 9. `IPv6 address` est
+    **le libellé du routeur, présent dans les 14 catalogues** — coût nul.
+  - **Restent des gestes humains** (aucun n'est faisable ici) : le `selftest` avec ses jambes v6
+    (il exige un mot de passe **et** `--assume-ipv6-uplink`, cet hôte n'ayant aucune IPv6), et
+    surtout la **sortie NAT66 réelle**, non prouvable faute d'uplink v6 — dit tel quel, sans
+    l'enrober.
+  - **Contrainte neuve pour `modernisation-installation-marionnet`** : un **6ᵉ script installé**
+    (`marionnet-ipv6.sh`), qui doit être **root:root non inscriptible** comme
+    `marionnet-dnsmasq.sh`, sans quoi la règle refuse de le nommer.
+  Prochain pas : **épisode 9** (i18n ×12), le dernier.

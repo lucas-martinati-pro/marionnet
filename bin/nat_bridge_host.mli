@@ -62,15 +62,29 @@ type error = { code : string; message : string }
 
 val string_of_error : error -> string
 
-(** [up ?subnet ?dhcp ?instance ()] creates one bridge of this process and its
-    NAT rules, and is idempotent: on a bridge that already exists it succeeds and
-    returns its addressing. [?subnet] forces a /24 prefix (e.g. ["192.168.101"])
-    instead of letting the script pick the first one free of the host's routes;
-    [?dhcp] (default [false]) also leaves a DHCP/DNS server bound to that bridge
-    alone — it needs [dnsmasq] on the host, whose absence is a clean refusal
-    ([E_NO_DNSMASQ]) {e before} anything is built; [?instance] names the bridge
-    [mnbr<pid>-<n>] instead of [mnbr<pid>]. *)
-val up : ?subnet:string -> ?dhcp:bool -> ?instance:int -> unit -> (t, error) result
+(** [up ?subnet ?dhcp ?ipv6 ?radvd ?instance ()] creates one bridge of this
+    process and its NAT rules, and is idempotent: on a bridge that already exists
+    it succeeds and returns its addressing. [?subnet] forces a /24 prefix
+    (e.g. ["192.168.101"]) instead of letting the script pick the first one free
+    of the host's routes; [?dhcp] (default [false]) also leaves a DHCP/DNS server
+    bound to that bridge alone — it needs [dnsmasq] on the host, whose absence is
+    a clean refusal ([E_NO_DNSMASQ]) {e before} anything is built; [?instance]
+    names the bridge [mnbr<pid>-<n>] instead of [mnbr<pid>].
+
+    [?ipv6] is the IPv6 address of the bridge, always of the shape
+    [<prefix>::1/64] (e.g. ["fd00:192:168:101::1/64"]): it addresses the bridge
+    and masquerades that /64 to the outside. [?radvd] (default [false]) also
+    advertises the prefix, so that the guests configure themselves by SLAAC, with
+    the bridge as default router and DNS server; it is meaningless without
+    [?ipv6], and is then not even passed on.
+
+    {b Both are ignored, with a warning and not an error, on a host with no IPv6
+    uplink} — no global address, or no default route (see {!has_ipv6_uplink}).
+    Announcing a router that cannot route would be a lie, and the component had
+    better start in IPv4 than not start at all: unlike [?dhcp], IPv6 is something
+    the user opts into, so skipping it takes away nothing that used to work. *)
+val up : ?subnet:string -> ?dhcp:bool -> ?ipv6:string -> ?radvd:bool ->
+         ?instance:int -> unit -> (t, error) result
 
 (** Removes one bridge of this process and every rule tagged with its name — the
     one designated by [?instance], as {!up} named it. Idempotent, and honest: it
@@ -93,10 +107,12 @@ val status : unit -> (t list, error) result
     so that they live and die with Marionnet. This is what a component calls when
     it needs a bridge.
     ---
-    [?subnet] and [?dhcp] are read on the call that really builds the bridge, and
-    ignored by the ones the memo answers: changing either of them takes a
-    {!release} first — which is precisely what a component does when it stops. *)
-val ensure : ?subnet:string -> ?dhcp:bool -> ?instance:int -> unit -> (t, error) result
+    [?subnet], [?dhcp], [?ipv6] and [?radvd] are read on the call that really
+    builds the bridge, and ignored by the ones the memo answers: changing any of
+    them takes a {!release} first — which is precisely what a component does when
+    it stops. *)
+val ensure : ?subnet:string -> ?dhcp:bool -> ?ipv6:string -> ?radvd:bool ->
+             ?instance:int -> unit -> (t, error) result
 
 (** [release ?instance ()] gives back one bridge of this process: {!down} on it,
     and the memo of {!ensure} forgotten, so that a later [ensure] with the same
@@ -107,6 +123,18 @@ val ensure : ?subnet:string -> ?dhcp:bool -> ?instance:int -> unit -> (t, error)
     The memo is dropped even when the removal failed: a phantom entry would be a
     worse lie than the leftover, which the [gc] of a later run collects anyway. *)
 val release : ?instance:int -> unit -> (unit, error) result
+
+(** Whether this host can do IPv6 at all: a global IPv6 address {e and} a default
+    IPv6 route. It is the single predicate behind everything IPv6 in this
+    work-stream — the dialog greys its three IPv6 fields out when it is [false],
+    and {!up} skips its IPv6 legs for the same reason — which is why it is asked
+    of the host command ([check-ipv6], no privilege needed) rather than computed a
+    second time here.
+
+    {b Not memoised}, on purpose: the answer changes without Marionnet doing
+    anything (a Wi-Fi association, a tethered phone, a VPN), so it is asked again
+    every time it matters. A host command that cannot be run answers [false]. *)
+val has_ipv6_uplink : unit -> bool
 
 (** Whether the auxiliary command can be run at all, and without a password
     (i.e. whether the scoped sudoers rule of [marionnet-sudoers.sh] is in

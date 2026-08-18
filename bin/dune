@@ -215,6 +215,11 @@
      ;; --- sudoers rule swallows extra words, so the rule could not be scoped.
      ;; --- It must land next to marionnet-sudoers.sh, which names it by that path.
      (glob_files "scripts/marionnet-dnsmasq.sh")
+     ;; --- The second privileged door, the IPv6 gate (episode 11): it takes NO
+     ;; --- argument at all, so its sudoers lines are entirely literal -- there is no
+     ;; --- glob left to abuse. Same requirement as above: it must land next to
+     ;; --- marionnet-sudoers.sh, which names it by that path, and be root-owned.
+     (glob_files "scripts/marionnet-ipv6.sh")
      ;; --- And its counterpart, the LAN bridge (episode 8 of the same work-stream):
      ;; --- same contract, same rollback discipline, but this one enslaves the HOST's
      ;; --- own card -- hence sudoers block (c), which it is also the source of.
