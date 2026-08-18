@@ -312,3 +312,56 @@ phrase, puisqu'elle demande un chemin absolu sans dire qu'il est aussi **borné*
 
 *Reversé ici le 2026-08-15 depuis le chantier `modernisation-world-bridge` (ép. 2), qui l'a
 rencontré de biais.*
+
+---
+
+## Canal — `add … --ports=N` ne vérifie **pas** les bornes de la nature
+
+**Constat** (mesuré le 2026-08-18, `modernisation-world-bridge` ép. 10b). `set <n> port_no <N>`
+refuse proprement ce qui sort des bornes du composant (« a nat_bridge cannot have more than 16
+ports », « … fewer than 6 port(s) here : cables are plugged too high »). `add`, lui, ne vérifie
+que `N ≥ 0` (`cmd_add`, `bin/control_server.ml`) et passe la valeur telle quelle au constructeur :
+`add machine m0 --ports=0` et `add machine m99 --ports=99` sont **acceptés**, comme
+`add nat_bridge N --ports=0`. Deux natures s'en tirent par accident — `switch` et `world_gateway`
+meurent sur une assertion de `bin/gui/ledgrid.ml` — ce qui montre bien qu'aucun garde-fou n'est
+prévu là.
+
+**Voulu.** Que `add` refuse exactement ce que `set` refuse : les bornes appartiennent à la nature
+(`port_no_min` / `port_no_max`, déjà interrogées par le canal pour `set`), et un composant créé
+hors bornes est un composant que la GUI n'aurait jamais laissé construire.
+
+**Ce que l'implémentation devra affronter.** Les bornes sont lues sur un **nœud existant**
+(`n#port_no_min`, `n#port_no_max`), alors qu'`add` doit décider **avant** de construire :
+il faudra soit une table `kind → (min, max)` à côté de `node_maker` (une seconde source de
+vérité, ce que ce fichier évite par principe), soit construire puis vérifier puis détruire — le
+`rollback` d'`add` existe déjà pour les `--<champ>=<valeur>` refusés, et pourrait servir aussi à
+cela, à condition que le constructeur ne meure pas avant (cf. l'entrée suivante).
+
+*Reversé ici le 2026-08-18 depuis le chantier `modernisation-world-bridge` (ép. 10b), qui l'a
+rencontré de biais.*
+
+---
+
+## Canal — un constructeur qui échoue laisse quand même son nœud dans le réseau
+
+**Constat** (mesuré le 2026-08-18, `modernisation-world-bridge` ép. 10b). `add switch s0
+--ports=0` répond `ok:false` (« creating "s0" failed: … ledgrid.ml, line 320: Assertion
+failed ») — et pourtant `s0` **figure ensuite dans `ls`**, puis dans le `.mar` sauvegardé.
+Même chose pour `add world_gateway g99 --ports=99`. La raison est que le nœud s'enregistre
+auprès du réseau **dans son constructeur**, avant la partie qui lève : quand `node_maker`
+rattrape l'exception, le mal est fait, et le `rollback` prévu pour les champs refusés ne
+s'applique pas à ce chemin-là.
+
+**Voulu.** Qu'un `add` refusé laisse le réseau **exactement** comme il était — c'est déjà la
+promesse écrite pour les options `--<champ>=<valeur>` (« un `add` échoué signifie un réseau
+inchangé »), et elle doit valoir aussi quand c'est le constructeur qui échoue.
+
+**Ce que l'implémentation devra affronter.** Le rattrapage ne peut pas se contenter de
+`Printexc.to_string` : il doit **chercher** le nœud du nom demandé et le détruire s'il existe
+(`st#network#get_node_by_name`, puis `destroy`), en sachant que l'objet est à moitié construit —
+c'est justement pourquoi il vaut mieux ne détruire que ce qui est enregistré, sans toucher à ce
+que l'exception a laissé en plan. À faire dans la même section critique
+(`st#network_change`) que la création.
+
+*Reversé ici le 2026-08-18 depuis le chantier `modernisation-world-bridge` (ép. 10b), qui l'a
+rencontré de biais.*

@@ -161,7 +161,8 @@ Reprise : appliquer le skill `chantier-long`.
   `check_bridge_existence_and_warning` (test par `/sys/class/net/<nom>/bridge`, plus par
   `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ».
   **Ép. 10 en cours** — *le NAT bridge se configure comme la passerelle* (§ 4.5 du doc), en
-  trois temps : **10a adresse IPv4 (fait)**, 10b ports du commutateur intégré, 10c service
+  trois temps : **10a adresse IPv4 (fait)**, **10b ports du commutateur intégré (fait** — N ports
+  `port1…portN`, tronc `bridge_common` paramétré et devenu un vrai switch**)**, 10c service
   DHCP (dnsmasq lancé par le script hôte ⇒ dépendance hôte neuve). L'**ép. 9 (i18n ×12) est
   désormais le dernier**, après le 10, pour ne pas traduire deux fois.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine

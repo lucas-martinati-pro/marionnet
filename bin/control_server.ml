@@ -1296,9 +1296,9 @@ let cmd_del (st : State.globalState) ~(timeout:float) ~(name:string) : string =
      - the registry swallows the error (with _ -> false, machine.ml:545), so a refused name or a
        malformed attribute would come back as a bare "false";
      - it requires port_no (List.assoc raises without it) while the correct default is local to
-       each file (Const.port_no_default: machine 1, hub/switch/router/world_gateway 4, cloud 2,
-       both bridges 1). Calling the constructor takes that default from where it is defined
-       instead of copying seven integers here.
+       each file (Const.port_no_default: machine 1, hub/switch/router/world_gateway/nat_bridge 4,
+       cloud 2, LAN bridge 1). Calling the constructor takes that default from where it is
+       defined instead of copying seven integers here.
    Cables are not in this list: they need two endpoints and a polarity, which is § 4.5
    (episode 4d-3). *)
 let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:int option)
@@ -1306,8 +1306,9 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
   =
   let network = st#network in
   let port_no default = match ports with Some n -> n | None -> default in
-  (* cloud and the two bridges have a fixed number of ports (cloud.ml:268,
-     bridge_common.ml:45): accepting --ports there would be accepting an argument we drop. *)
+  (* cloud and the LAN bridge have a fixed number of ports (cloud.ml:268,
+     bridge_common.ml Const): accepting --ports there would be accepting an argument we
+     drop. The NAT bridge has the ports of its integrated switch (episode 10b). *)
   let no_ports_here () =
     Error (Printf.sprintf "a %s has a fixed number of ports: --ports does not apply" kind)
   in
@@ -1336,9 +1337,9 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
          and in the .mar files: only what a human reads says "LAN bridge"
          (work-stream modernisation-world-bridge, episode 7b). *)
       Ok (fun () -> ignore (new Lan_bridge.User_level_lan_bridge.lan_bridge ~network ~name ()))
-  | "nat_bridge" when ports <> None -> no_ports_here ()
   | "nat_bridge" ->
-      Ok (fun () -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge ~network ~name ()))
+      Ok (fun () -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge ~network ~name
+                              ~port_no:(port_no Nat_bridge.Const.port_no_default) ()))
   | "cable" ->
       Error "a cable is created by the connect command, which needs its two endpoints (§ 4.5)"
   | _ ->

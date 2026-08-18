@@ -97,7 +97,8 @@ module Make_menus (Params : sig
     let reaction { name = name; label = label; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_lan_bridge.lan_bridge) in
-      let action () = h#update_bridge_with ~name ~label in
+      (* A LAN bridge has exactly one port, today as yesterday (Bridge_common.Const): *)
+      let action () = h#update_bridge_with ~name ~label ~port_no:Bridge_common.Const.port_no_default in
       st#network_change action ();
 
   end

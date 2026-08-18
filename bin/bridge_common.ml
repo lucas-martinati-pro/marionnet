@@ -19,9 +19,10 @@
 (** What the two bridge components have in common (work-stream
     [modernisation-world-bridge], episode 7a.3).
 
-    A bridge component is a network node with a single Ethernet port, whose
-    simulated device is a two-port vde hub having a host tun/tap on one side and
-    the component's hublet on the other. That mechanism is the same whether the
+    A bridge component is a network node whose simulated device is a vde switch
+    having a host tun/tap on its first port and the component's hublets on the
+    others (a single one, for the LAN bridge; as many as the user asked for, for
+    the NAT bridge since episode 10b). That mechanism is the same whether the
     tap is attached to a bridge built by an administrator (the LAN bridge, the
     historical [world_bridge]) or to the private NAT bridge Marionnet builds for
     itself ([Nat_bridge_host]). The one thing that differs is {b which bridge},
@@ -40,11 +41,16 @@ module Forest = Ocamlbricks.Forest
 module Xforest = Ocamlbricks.Xforest
 (* --- *)
 
-(* Both bridges have exactly one port: *)
+(* What a bridge has when it says nothing: exactly one port, named as an interface
+   ("eth0"). That is the LAN bridge, and it was both bridges until episode 10b; the
+   NAT bridge now says otherwise (a switch with N ports, named "port1"..."portN"). *)
 module Const = struct
  let port_no_default = 1
  let port_no_min = 1
  let port_no_max = 1
+ (* --- *)
+ let port_prefix = "eth"
+ let user_port_offset = 0
 end
 
 (* The type of data exchanged with the dialogs (the same for both natures): *)
@@ -74,7 +80,11 @@ module User_level_bridge = struct
     ([ico.<icon_prefix>.<state>.<size>.png]), and there is one reason to: the LAN
     bridge answers to [kind_name = "world_bridge"] forever, while its drawing had
     to stop being the one of "the" bridge once a second bridge existed. It
-    defaults to [kind_name]. *)
+    defaults to [kind_name].
+    ---
+    The port-related parameters all default to what both bridges were until
+    episode 10b — a single port called ["eth0"] — so a nature which does not
+    mention them (the LAN bridge) keeps exactly its behaviour of yesterday. *)
 class virtual bridge =
 
  fun ~network
@@ -83,6 +93,11 @@ class virtual bridge =
      ~(devkind : User_level.devkind)
      ~(kind_name : string)
      ?(icon_prefix : string option)
+     ?(port_no = Const.port_no_default)
+     ?(port_no_min = Const.port_no_min)
+     ?(port_no_max = Const.port_no_max)
+     ?(port_prefix = Const.port_prefix)
+     ?(user_port_offset = Const.user_port_offset)
      () ->
   object (self) inherit OoExtra.destroy_methods ()
 
@@ -90,11 +105,11 @@ class virtual bridge =
     User_level.node_with_defects
       ~network
       ~name ?label ~devkind
-      ~port_no:Const.port_no_default
-      ~port_no_min:Const.port_no_min
-      ~port_no_max:Const.port_no_max
-      ~user_port_offset:0
-      ~port_prefix:"eth"
+      ~port_no
+      ~port_no_min
+      ~port_no_max
+      ~user_port_offset
+      ~port_prefix
       ()
     as self_as_node_with_defects
 
@@ -107,9 +122,13 @@ class virtual bridge =
    let icon_prefix = match icon_prefix with Some x -> x | None -> kind_name in
    (imgDir^"ico."^icon_prefix^"."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
-  (* The number of ports is fixed, so a modification only carries a name and a label: *)
-  method update_bridge_with ~name ~label =
-   self_as_node_with_defects#update_with ~name ~label ~port_no:1;
+  (* [port_no] is explicit rather than implicitly 1: a nature whose number of ports is
+     fixed passes its own constant (the LAN bridge passes 1), a nature which lets the
+     user choose passes what the dialog returned. Calling [update_with] is also what
+     destroys the simulated device, hence what makes a modification effective on the
+     next start-up. *)
+  method update_bridge_with ~name ~label ~port_no =
+   self_as_node_with_defects#update_with ~name ~label ~port_no;
 
   (** What a nature writes into the project file {e beyond} the two attributes
       every bridge has. A method rather than a parameter of this class: what it
@@ -138,18 +157,24 @@ end (* module User_level_bridge *)
 
 module Simulation_level_bridge = struct
 
-(** A bridge hub process is just a hub process with exactly two ports,
-    of which the first one is connected to the given host tun/tap interface: *)
+(** The vde process at the heart of a bridge component: a switch whose first port is
+    connected to the given host tun/tap interface, and whose [port_no - 1] remaining
+    ports receive the hublets of the component.
+    ---
+    A switch and not a hub (it was a hub while there were only two ports, where the
+    distinction is void): what the user is offered is an integrated switch, and the
+    Linux bridge on the other side of the tap learns addresses anyway. *)
 class bridge_hub_process =
-  fun ~tap_name
+  fun ~(port_no : int)
+      ~tap_name
       ~socket_name_prefix
       ~working_directory
       ~unexpected_death_callback
       () ->
 object(self)
   inherit Simulation_level.vde_switch_process
-      ~port_no:2
-      ~hub:true
+      ~port_no
+      ~hub:false
       ~tap_name
       ~socket_name_prefix
       ~working_directory
@@ -167,13 +192,17 @@ end
     ---
     [after_terminate] is called once the tap has been destroyed, and is how a
     component gives back what its bridge holds (the NAT bridge releases its
-    instance number there). The LAN bridge has nothing to give back. *)
+    instance number there). The LAN bridge has nothing to give back.
+    ---
+    [hublet_no] is the number of ports the component offers to the virtual network
+    (episode 10b). It defaults to 1, which is the LAN bridge and was both bridges. *)
 class ['parent] bridge_device =
   fun (* ~id *)
       ~(parent:'parent)
       ~(device_type : string)
       ~(resolve_bridge_name : unit -> string)
       ?(after_terminate : (unit -> unit) = fun () -> ())
+      ?(hublet_no : int = Const.port_no_default)
       ~(socket_name_prefix : string)
       ~working_directory
       ~unexpected_death_callback
@@ -181,7 +210,7 @@ class ['parent] bridge_device =
 object(self)
   inherit ['parent] Simulation_level.device
       ~parent
-      ~hublet_no:1
+      ~hublet_no
       ~working_directory
       ~unexpected_death_callback
       ()
@@ -189,15 +218,9 @@ object(self)
 
   method device_type = device_type
 
-  val the_hublet_process = ref None
-  method private extract_the_hublet_process =
-    match !the_hublet_process with
-      Some the_hublet_process -> the_hublet_process
-    | None -> failwith (device_type^": extract_the_hublet_process was called when there is no such process")
-
   val mutable the_hub_process = None
   val mutable the_tap_name = None
-  val mutable internal_cable_process = None
+  val mutable internal_cable_processes = []
 
   (** Create the tap with Tap_provider (sudo + iproute2), attached to the
       bridge resolved by the component, and return its name: *)
@@ -231,9 +254,7 @@ object(self)
   (* --- *)
   initializer
     begin
-      assert ((List.length self#get_hublet_process_list) = 1);
-      (* --- *)
-      the_hublet_process := Some (self#get_hublet_process_of_port 0);
+      assert ((List.length self#get_hublet_process_list) = hublet_no);
       (* --- *)
       the_hub_process <- self#make_the_hub_process
     end
@@ -247,6 +268,8 @@ object(self)
         (fun tap_name ->
           let result =
             new bridge_hub_process
+              (* One port for the tap, and one per hublet: *)
+              ~port_no:(hublet_no + 1)
               ~tap_name
               ~socket_name_prefix
               ~working_directory
@@ -265,38 +288,46 @@ object(self)
      (fun the_hub_process ->
         (* Spawn the hub process, and wait to be sure it's started: *)
         let () = the_hub_process#spawn in
-        (* Create the internal cable process from the single hublet to the hub, and spawn it: *)
-         let the_internal_cable_process =
-           Simulation_level.make_ethernet_cable_process
-             ~left_end:the_hub_process
-             ~right_end:self#extract_the_hublet_process
-             ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index 0)
-             ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index 0)
-             ~unexpected_death_callback:self#execute_the_unexpected_death_callback
-             ()
-         in
-         internal_cable_process <- Some the_internal_cable_process;
-         the_internal_cable_process#spawn)
+        (* Create the internal cable processes, from each hublet to the switch: *)
+        let () =
+          internal_cable_processes <-
+            List.mapi
+              (fun i hublet_process ->
+                 Simulation_level.make_ethernet_cable_process
+                   ~left_end:the_hub_process
+                   ~right_end:hublet_process
+                   ~leftward_defects:(parent#ports_card#get_my_inward_defects_by_index i)
+                   ~rightward_defects:(parent#ports_card#get_my_outward_defects_by_index i)
+                   ~unexpected_death_callback:self#execute_the_unexpected_death_callback
+                   ())
+              (self#get_hublet_process_list)
+        in
+        (* WARNING (same reason as Simulation_level.main_process_with_n_hublets_and_cables):
+           the cables must be spawned SEQUENTIALLY, in the order of the ports, because
+           that order is what maps the vde port numbering onto the Marionnet one. *)
+        List.iter (fun cable -> cable#spawn) internal_cable_processes)
      (* --- *)
      self#make_the_hub_process
 
   method terminate_processes = begin
     let () =
-      Log.printf4 "%s %s#terminate_processes:  internal_cable_process=%s  hub_process=%s\n"
-        device_type (parent#name) (Option.to_string internal_cable_process) (Option.to_string the_hub_process)
+      Log.printf4 "%s %s#terminate_processes:  internal_cable_processes=%s  hub_process=%s\n"
+        device_type (parent#name)
+        (string_of_int (List.length internal_cable_processes))
+        (Option.to_string the_hub_process)
     in
-    (* Terminate the internal cable process and the hub process: *)
+    (* Terminate the internal cable processes and the hub process: *)
     let () =
       Task_runner.do_in_parallel
-        [ (fun () -> Option.iter (fun obj -> obj#terminate) internal_cable_process);
-          (fun () -> Option.iter (fun obj -> obj#terminate) the_hub_process); ]
+        ((fun () -> Option.iter (fun obj -> obj#terminate) the_hub_process) ::
+         (List.map (fun cable () -> cable#terminate) internal_cable_processes))
     in
     (* Destroy the tap, via Tap_provider: *)
     self#destroy_the_tap;
     (* Give back what the component holds beyond the tap (nothing, for a LAN bridge): *)
     let () = after_terminate () in
     (* Unreference everything: *)
-    internal_cable_process <- None;
+    internal_cable_processes <- [];
     the_hub_process <- None;
     end
 

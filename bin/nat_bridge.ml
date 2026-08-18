@@ -51,6 +51,13 @@ module Const = struct
  let cidr = 24
  let host_byte = 1
  (* --- *)
+ (* The ports of the integrated switch (episode 10b). Same default as a world
+    gateway, but a minimum of 1: a NAT bridge serving a single machine is a
+    legitimate thing to build, and it is what every NAT bridge was until now. *)
+ let port_no_default = 4
+ let port_no_min = 1
+ let port_no_max = 16
+ (* --- *)
  let network_config_of_third_byte b3 = ((192, 168, b3, host_byte), cidr)
  let network_config_default = network_config_of_third_byte first_candidate_third_byte
 end
@@ -62,6 +69,7 @@ type t = {
   name           : string;
   label          : string;
   network_config : Ipv4.config;
+  port_no        : int;
   old_name       : string;
   }
 
@@ -141,13 +149,14 @@ module Make_menus (Params : sig
       in
       Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; _ } =
+    let reaction { name = name; label = label; network_config = network_config; port_no = port_no; _ } =
       let action () = ignore (
         new User_level_nat_bridge.nat_bridge
           ~network:st#network
           ~name
           ~label
           ~network_address:(Tool.network_address_of_config network_config)
+          ~port_no
           ())
       in
       st#network_change action ();
@@ -164,13 +173,18 @@ module Make_menus (Params : sig
      let title = (s_ "Modify NAT bridge")^" "^name in
      let label = d#get_label in
      let network_config = Tool.network_config_of_network_address h#get_network_address in
-     Dialog_add_or_update.make ~title ~name ~label ~network_config ~ok_callback:Add.ok_callback ()
+     let port_no = h#get_port_no in
+     (* Not Const.port_no_min: the smallest number of ports which still holds every
+        cable already connected to this component (as for a world gateway): *)
+     let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
+     Dialog_add_or_update.make
+       ~title ~name ~label ~network_config ~port_no ~port_no_min ~ok_callback:Add.ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; old_name = old_name } =
+    let reaction { name = name; label = label; network_config = network_config; port_no = port_no; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
       let action () =
-        h#update_nat_bridge_with ~name ~label
+        h#update_nat_bridge_with ~name ~label ~port_no
           ~network_address:(Tool.network_address_of_config network_config)
       in
       st#network_change action ();
@@ -258,6 +272,9 @@ let make
  ?(name="")
  ?label
  ?(network_config=Const.network_config_default)
+ ?(port_no=Const.port_no_default)
+ ?(port_no_min=Const.port_no_min)
+ ?(port_no_max=Const.port_no_max)
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
  ?(dialog_image_file=Initialization.Path.images^"ico.nat_bridge.dialog.png")
@@ -278,17 +295,30 @@ let make
   (* The private network of this bridge, chosen as for a world gateway. The last byte
      and the netmask are shown but insensitive: the host side of the bridge is always
      <subnet>.1 and the script knows no netmask but /24. *)
-  let (s1,s2,s3,s4,s5) =
+  let ((s1,s2,s3,s4,s5), port_no) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [ (s_ "IPv4 address") ]
+        [ (s_ "IPv4 address"); (s_ "Integrated switch ports") ]
     in
-    Gui_bricks.spin_ipv4_address_with_cidr_netmask
-      ~packing:(form#add_with_tooltip ~just_for_label:()
-                  (s_ "IPv4 address of the bridge, which is the default gateway of the virtual machines connected to it"))
-      b1 b2 b3 b4 b5
+    let network_config =
+      Gui_bricks.spin_ipv4_address_with_cidr_netmask
+        ~packing:(form#add_with_tooltip ~just_for_label:()
+                    (s_ "IPv4 address of the bridge, which is the default gateway of the virtual machines connected to it"))
+        b1 b2 b3 b4 b5
+    in
+    (* The two labels of this form are the ones a world gateway already uses, word
+       for word, hence already translated: the same thing must be called by the same
+       name, and this costs no new msgid. Step 1 and not 2 (the gateway's step): the
+       minimum here is 1, so a step of 2 would only ever offer odd numbers. *)
+    let port_no =
+      Gui_bricks.spin_byte
+        ~packing:(form#add_with_tooltip (s_ "The number of ports of the integrated switch"))
+        ~lower:port_no_min ~upper:port_no_max ~step_incr:1
+        port_no
+    in
+    (network_config, port_no)
   in
   s4#misc#set_sensitive false;
   s5#misc#set_sensitive false;
@@ -324,9 +354,11 @@ let make
       let s5 = int_of_float s5#value in
       ((s1,s2,s3,s4),s5)
     in
+    let port_no = int_of_float port_no#value in
       { Data.name = name;
         Data.label = label;
         Data.network_config = network_config;
+        Data.port_no = port_no;
         Data.old_name = old_name;
         }
   in
@@ -355,6 +387,9 @@ chosen: the network is a /24, the bridge takes its first address, and the \
 guests may use the rest of it (from .2 to .254). A network the host already \
 routes is refused rather than stolen -- the proposed value is one Marionnet \
 knows to be free.\n\n\
+- Integrated switch ports: the number of virtual machines that may be plugged \
+DIRECTLY into this component. They are all in the same network, they see each \
+other, and they all reach the Internet through the bridge.\n\n\
 The guests must be configured in that network. There is no DHCP server: give \
 the virtual machines a static address.\n\n\
 NAT bridge, LAN bridge or gateway? Use a NAT BRIDGE to reach the Internet with \
@@ -384,8 +419,15 @@ module Eval_forest_child = struct
    (match root with
     | ("nat_bridge", attrs) ->
     	let name  = List.assoc "name"  attrs in
-        Log.printf1 "Importing NAT bridge \"%s\"...\n" name;
-        let x = new User_level_nat_bridge.nat_bridge ~network ~name () in
+        (* Read here and given to the CONSTRUCTOR, not left to eval_forest_attribute:
+           the number of ports decides how many hublets the node is built with. A
+           project saved before episode 10b has no such attribute, and gets the
+           default -- as a world gateway does (world_gateway.ml). *)
+        let port_no =
+          try int_of_string (List.assoc "port_no" attrs) with _ -> Const.port_no_default
+        in
+        Log.printf2 "Importing NAT bridge \"%s\" with %d ports...\n" name port_no;
+        let x = new User_level_nat_bridge.nat_bridge ~network ~name ~port_no () in
 	x#from_tree ("nat_bridge", attrs) children  ;
         Log.printf1 "NAT bridge \"%s\" successfully imported.\n" name;
         true
@@ -410,6 +452,7 @@ class nat_bridge =
      ~name
      ?label
      ?network_address
+     ?(port_no=Const.port_no_default)
      () ->
   (* Not a constant default: a component created without an explicit network takes
      the first one this project has left free (see [Tool.first_free_network_address]),
@@ -427,6 +470,13 @@ class nat_bridge =
       ~name ?label
       ~devkind:`Nat_bridge
       ~kind_name:"nat_bridge"
+      (* Unlike the LAN bridge, this component offers the ports of an integrated
+         switch, and names them as a switch does (episode 10b): *)
+      ~port_no
+      ~port_no_min:Const.port_no_min
+      ~port_no_max:Const.port_no_max
+      ~port_prefix:"port"
+      ~user_port_offset:1
       ()
     as self_as_bridge
 
@@ -438,10 +488,14 @@ class nat_bridge =
   method get_network_address = network_address
   method set_network_address x = network_address <- x
 
-  method! extra_tree_attributes = [ ("network_address", self#get_network_address) ]
+  method! extra_tree_attributes = [
+    ("network_address", self#get_network_address);
+    ("port_no", string_of_int self#get_port_no);
+    ]
 
   method! eval_forest_attribute = function
   | ("network_address", x) -> self#set_network_address x
+  | ("port_no", x) -> self#set_port_no (int_of_string x)
   | a -> self_as_bridge#eval_forest_attribute a
 
   (** Redefined: the drawing says which network this bridge offers, exactly as the
@@ -452,10 +506,10 @@ class nat_bridge =
     | "" -> ip_gw
     | _  -> Printf.sprintf "%s <br/> %s" ip_gw self#get_label
 
-  method update_nat_bridge_with ~name ~label ~network_address =
+  method update_nat_bridge_with ~name ~label ~port_no ~network_address =
     (* The following call ensures that the simulated device will be destroyed, hence
        that the bridge is given back before another one is built on another network: *)
-    self#update_bridge_with ~name ~label;
+    self#update_bridge_with ~name ~label ~port_no;
     self#set_network_address network_address;
 
   (** Create the simulated device *)
@@ -469,6 +523,10 @@ class nat_bridge =
            channel writes the field in place -- and a component restarted after its
            address was corrected must use the NEW one. *)
         ~subnet:(fun () -> Tool.subnet_of_network_address self#get_network_address)
+        (* By value, this one: a change of the number of ports goes through
+           [update_with], which destroys this very object (control channel
+           included -- port_no is one of its two structural fields). *)
+        ~hublet_no:self#get_port_no
         ~working_directory:(network#project_working_directory)
         ~unexpected_death_callback:self#destroy_because_of_unexpected_death
         ()) :> User_level.node Simulation_level.device)
@@ -533,6 +591,7 @@ class ['parent] nat_bridge =
   fun (* ~id *)
       ~(parent:'parent)
       ~(subnet : unit -> string)  (* the /24 prefix chosen by the user, e.g. "192.168.101" *)
+      ~(hublet_no : int)          (* the ports of the integrated switch (episode 10b) *)
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -635,6 +694,7 @@ object(_self)
       ~device_type:"nat_bridge"
       ~resolve_bridge_name
       ~after_terminate
+      ~hublet_no
       ~socket_name_prefix:"nat_bridge_hub-socket-"
       ~working_directory
       ~unexpected_death_callback

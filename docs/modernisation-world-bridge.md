@@ -1309,3 +1309,57 @@ parce qu'aucune ne se redevine :
     honoré au redémarrage (`mem=48M` → `mem=96M`). Aucune campagne n'est ouverte : la règle à
     retenir est locale — **tout paramètre qu'un niveau simulation reçoit par valeur est figé pour
     le canal**.
+- **2026-08-18 — épisode 10b** : *le NAT bridge gagne les ports de son commutateur intégré*.
+  Le composant passe de 1 à N ports (défaut 4, min 1, max 16), nommés `port1…portN` comme ceux
+  d'un `world_gateway` ou d'un switch. Le mécanisme n'a pas changé de nature : l'objet simulé
+  **était déjà** un `vde_switch`, simplement bridé à deux ports.
+  - **`bin/bridge_common.ml`, le tronc apprend à compter.** Les constantes de ports deviennent
+    les **valeurs par défaut** de paramètres optionnels (`?port_no`, `?port_no_min`,
+    `?port_no_max`, `?port_prefix`, `?user_port_offset`) : une nature qui ne les mentionne pas —
+    le LAN bridge — garde mot pour mot son comportement d'hier. `bridge_hub_process` reçoit son
+    `~port_no` (`hublet_no + 1`, le tap prenant un port) au lieu de le coder en dur, et devient
+    un **switch** (`~hub:false`) : ce qu'on offre à l'utilisateur est un commutateur, et la
+    distinction était vide tant qu'il n'y avait que deux ports. `bridge_device` prend
+    `?hublet_no` et construit **N** câbles internes, spawnés **séquentiellement** — l'ordre est
+    ce qui fait correspondre la numérotation vde et celle de Marionnet (même avertissement que
+    `Simulation_level.main_process_with_n_hublets_and_cables`).
+  - **Décision structurante tenue** : ne **pas** hériter de `Simulation_level.hub_or_switch`
+    malgré la parenté évidente. Son `initializer` construit le `vde_switch` à la **construction**
+    de l'objet simulé, donc exigerait le tap, donc le bridge, donc `sudo` — et tuerait le report
+    de `resolve_bridge_name` au **démarrage**, qui est précisément ce qui évite de demander le
+    mot de passe à la pose du composant.
+  - **`bin/nat_bridge.ml`** : `Const.port_no_{default,min,max}` = 4/1/16 (min 1, contre le min 4
+    de la passerelle : un NAT bridge servant une seule machine reste légitime, et c'est ce
+    qu'étaient tous les NAT bridges jusqu'ici) ; ligne « Integrated switch ports » du dialogue
+    avec `spin_byte ~step_incr:1` ; `port_no` dans `extra_tree_attributes` (le point d'extension
+    de l'épisode 10a sert une deuxième fois) et lu **au constructeur** à l'import d'un `.mar` ;
+    `~hublet_no:self#get_port_no` au niveau simulation, par **valeur** cette fois — `port_no` est
+    l'un des deux champs *structurels* du canal, donc un changement détruit l'objet simulé
+    (le piège de l'épisode 10a ne se rejoue pas ici).
+  - **Zéro nouvelle chaîne à traduire** : les deux libellés du formulaire sont, mot pour mot,
+    ceux que `world_gateway` utilise déjà — la même chose doit porter le même nom, et l'épisode 9
+    n'hérite de rien de plus. Seul le texte d'aide (déjà non traduit, né à l'épisode 10a) gagne
+    un paragraphe.
+  - **`bin/control_server.ml`** : `add nat_bridge N1 --ports=6` n'est plus refusé ; `set N1
+    port_no 8` marchait déjà sans une ligne de plus.
+  - **Preuves.** `dune build` rc 0 avec les deux modules **réellement recompilés** (erreur
+    volontaire dans chacun, retirée par `cp` depuis une copie — jamais `git checkout`). Session
+    pilotée : `--ports=6` accepté et `port1…port6` dans le treeview des défauts, `set N1 port_no
+    2` refusé tant qu'un câble occupe `port6`, `port_no` présent dans le `.mar`, relecture d'un
+    `.mar` **sans** l'attribut → 4 ports et son câble sur `port4`, et le `world_bridge` du même
+    fichier inchangé (`name`/`label` seuls, `--ports` toujours refusé). **Run réel privilégié** :
+    deux invités trixie sur `port1` et `port2` du *même* NAT bridge — `vde_switch -tap
+    mtap<pid>-0 -n 6` sans `-x` — ping mutuel **et** ping 9.9.9.9 à 0 % de perte depuis chacun ;
+    `stop` puis `start` du bridge reconstruit ses 4 câbles et rétablit les deux ; `quit` sans
+    résidu (`bridges:[]`, `leftovers:[]`, aucune interface). **Non-régression du LAN bridge au
+    run** : sur `MARIONNET_BRIDGE=docker0`, son hub reste à `-n 3` avec un seul câble interne et
+    son tap est bien asservi.
+  - **Deux défauts du canal trouvés au banc, et laissés hors de cet épisode** (versés à
+    `docs/TODO.md`) : `add <kind> --ports=N` ne vérifie **pas** les bornes de la nature, alors que
+    `set port_no` le fait (`add machine m0 --ports=0` et `--ports=99` passent) ; et un
+    constructeur qui lève en cours de route laisse tout de même son nœud dans le réseau (`add
+    switch s0 --ports=0` échoue sur une assertion de `ledgrid.ml` et `s0` apparaît quand même
+    dans `ls`, puis dans le `.mar`). Tous deux sont antérieurs à cet épisode et communs à
+    plusieurs natures.
+  Prochain pas : **épisode 10c** (service DHCP par `dnsmasq`, dépendance hôte neuve), puis
+  l'épisode 9 (i18n ×12), qui reste le dernier.
