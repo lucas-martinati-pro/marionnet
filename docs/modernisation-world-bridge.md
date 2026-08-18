@@ -384,6 +384,19 @@ DHCP manquait vraiment. Trois sous-épisodes, prouvés et committés séparémen
     pas accordée, et le `selftest` bascule alors sur `--sudo-interactive` (mot de passe) plutôt
     que de faire croire à une couverture qui n'existe pas.
 
+  **10c.2 — le défaut est `true`, et il vaut aussi pour les vieux projets.** La question posée
+  était : un `.mar` antérieur à cet épisode, qui n'a pas l'attribut, doit-il repartir avec ou
+  sans DHCP ? La réponse retenue est **avec**, comme une passerelle — la même question mérite la
+  même réponse, et un composant qui donne déjà l'Internet à ses invités a peu de sens à leur
+  refuser leur adresse. Le prix est assumé et connu : sur un hôte **sans `dnsmasq-base`** (ou
+  dont la ligne sudoers dnsmasq n'a pas été accordée, faute d'un script installé root-owned), un
+  projet qui démarrait cesse de démarrer, `require_dhcp_support` refusant **avant** de rien
+  construire. Ce refus n'est pas silencieux : il remonte dans l'avertissement de l'épisode 10a,
+  qui cite le code et le message du script (`E_NO_DNSMASQ`). **Pas de repli automatique** vers un
+  bridge sans DHCP : dégrader en silence une demande explicite de l'utilisateur est exactement ce
+  que ce chantier combat ; décocher la case est un geste, l'installer un paquet en est un autre,
+  les deux sont dits dans le texte d'aide.
+
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
 Le § 2.3 ci-dessus disait « conventions à reprendre **en OCaml** », et le découpage prévoyait de
@@ -1440,3 +1453,44 @@ parce qu'aucune ne se redevine :
   Prochain pas : **épisode 10c.2** (case à cocher « DHCP » du dialogue, attribut `dhcp_enabled`
   dans le `.mar` et le canal, lu **par une fonction au démarrage** — piège de l'épisode 10a),
   puis l'épisode 9 (i18n ×12), qui reste le dernier.
+- **2026-08-18 — épisode 10c.2** : *la case à cocher*. Le drapeau du service DHCP remonte de
+  l'hôte jusqu'à l'utilisateur, et l'**épisode 10 est complet**.
+  - **`bin/nat_bridge_host.ml(i)`** : `?dhcp:bool` (défaut `false` — l'appelant décide, le défaut
+    du modèle est ailleurs) sur `up`, qui ajoute `--dhcp` à l'argv, et sur `ensure`, qui le
+    propage. Le `.mli` dit ce qui ne se devine pas : comme `?subnet`, `?dhcp` n'est lu que par
+    l'appel qui **construit** réellement le bridge — le mémo ignore les suivants, et changer
+    d'avis passe par un `release`, ce que fait précisément un composant qui s'arrête.
+  - **`bin/nat_bridge.ml`** : `Const.dhcp_enabled_default = true`, champ `dhcp_enabled` de
+    `Data`, troisième ligne du dialogue (`GButton.check_button`, patron de `world_gateway.ml`),
+    attribut du `.mar` (`extra_tree_attributes` + `eval_forest_attribute`), paramètre de
+    `update_nat_bridge_with`, et surtout **`~get_dhcp:(fun () -> self#get_dhcp_enabled)`** au
+    niveau simulation : une **fonction**, pour la même raison que `~subnet` à l'épisode 10a — le
+    canal écrit le champ en place sans détruire l'objet simulé, une valeur passée serait figée.
+    Le texte d'aide perd sa phrase « There is no DHCP server » au profit d'un paragraphe qui dit
+    la plage (`.100`–`.200`), le rôle de DNS et de passerelle du bridge, et la dépendance
+    `dnsmasq-base`.
+  - **Canal de contrôle : aucune ligne écrite** — il expose les champs de `to_tree`, donc
+    `add nat_bridge N2 --dhcp_enabled=false` et `set N1 dhcp_enabled true` marchent d'office
+    (vérifié au banc, comme `network_address` à l'épisode 10a), et une valeur illégale est
+    refusée avec un message qui la nomme.
+  - **Preuves.** `dune build` rc 0, les deux modules **réellement recompilés** (erreur volontaire
+    dans chacun, retirée par `cp` — jamais par `git checkout`). Session pilotée : défaut `true` à
+    l'ajout, `--dhcp_enabled=false` honoré, `set` accepté dans les deux sens, `"maybe"` refusé,
+    attribut présent dans le `network.json` du `.mar`, round-trip `close --save`/`open` fidèle,
+    et **`.mar` fabriqué sans l'attribut relu en `true`** pour les trois composants. Puis, avec
+    un **script hôte simulé** (journalise `argv`, tient un état pour que `status` rapporte les
+    bridges montés — sans quoi tous les composants se voient attribuer l'instance 1 et le mémo
+    d'`ensure` avale le second `up`) : trois composants démarrés → `up … --subnet 192.168.101`
+    **sans** `--dhcp` pour celui qui l'a décoché, `--subnet 192.168.102 --dhcp` et
+    `--subnet 192.168.107 --dhcp` pour les deux autres ; puis, composant **arrêté**, `set` du
+    canal, redémarrage → le drapeau **suit** dans les deux sens (piège de l'épisode 10a
+    effectivement évité). `quit` sans résidu (aucun `mtap`, aucun `mnbr`).
+  - **i18n** : **une** chaîne neuve, le tooltip de la case (celui de la passerelle nomme « the
+    gateway »). Le libellé `DHCP service` est celui de `world_gateway`, **présent dans les 14
+    catalogues** — coût nul. Le texte d'aide était déjà dans la dette de l'épisode 9.
+  - **Reste un geste humain** : le run réel privilégié (invité trixie prenant un **bail** du NAT
+    bridge), qui exige d'installer (`make install` testing) puis
+    `sudo <installdir>/marionnet-sudoers.sh install --only --enable-natbridge` — la ligne dnsmasq
+    n'est accordée qu'au script **installé**. Le côté hôte, lui, est prouvé depuis 10c.1
+    (`selftest` avec bail réel), et le chaînon OCaml l'est par le banc ci-dessus.
+  Prochain pas : **épisode 9** (i18n ×12), désormais le dernier du chantier.

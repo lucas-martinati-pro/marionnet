@@ -58,6 +58,14 @@ module Const = struct
  let port_no_min = 1
  let port_no_max = 16
  (* --- *)
+ (* The DHCP service (episode 10c.2), on by default as a world gateway's is: the
+    same question deserves the same answer, and a component whose guests get their
+    addresses by themselves is what one expects of a bridge that already gives them
+    the Internet. A project saved before this episode gets that default too -- so a
+    host without dnsmasq refuses to build the bridge (E_NO_DNSMASQ) where it used
+    to build one; the remedy is the package, or this very check button. *)
+ let dhcp_enabled_default = true
+ (* --- *)
  let network_config_of_third_byte b3 = ((192, 168, b3, host_byte), cidr)
  let network_config_default = network_config_of_third_byte first_candidate_third_byte
 end
@@ -69,6 +77,7 @@ type t = {
   name           : string;
   label          : string;
   network_config : Ipv4.config;
+  dhcp_enabled   : bool;
   port_no        : int;
   old_name       : string;
   }
@@ -149,13 +158,14 @@ module Make_menus (Params : sig
       in
       Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; port_no = port_no; _ } =
+    let reaction { name = name; label = label; network_config = network_config; dhcp_enabled = dhcp_enabled; port_no = port_no; _ } =
       let action () = ignore (
         new User_level_nat_bridge.nat_bridge
           ~network:st#network
           ~name
           ~label
           ~network_address:(Tool.network_address_of_config network_config)
+          ~dhcp_enabled
           ~port_no
           ())
       in
@@ -173,18 +183,20 @@ module Make_menus (Params : sig
      let title = (s_ "Modify NAT bridge")^" "^name in
      let label = d#get_label in
      let network_config = Tool.network_config_of_network_address h#get_network_address in
+     let dhcp_enabled = h#get_dhcp_enabled in
      let port_no = h#get_port_no in
      (* Not Const.port_no_min: the smallest number of ports which still holds every
         cable already connected to this component (as for a world gateway): *)
      let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
      Dialog_add_or_update.make
-       ~title ~name ~label ~network_config ~port_no ~port_no_min ~ok_callback:Add.ok_callback ()
+       ~title ~name ~label ~network_config ~dhcp_enabled ~port_no ~port_no_min
+       ~ok_callback:Add.ok_callback ()
 
-    let reaction { name = name; label = label; network_config = network_config; port_no = port_no; old_name = old_name } =
+    let reaction { name = name; label = label; network_config = network_config; dhcp_enabled = dhcp_enabled; port_no = port_no; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
       let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
       let action () =
-        h#update_nat_bridge_with ~name ~label ~port_no
+        h#update_nat_bridge_with ~name ~label ~port_no ~dhcp_enabled
           ~network_address:(Tool.network_address_of_config network_config)
       in
       st#network_change action ();
@@ -272,6 +284,7 @@ let make
  ?(name="")
  ?label
  ?(network_config=Const.network_config_default)
+ ?(dhcp_enabled=Const.dhcp_enabled_default)
  ?(port_no=Const.port_no_default)
  ?(port_no_min=Const.port_no_min)
  ?(port_no_max=Const.port_no_max)
@@ -295,12 +308,12 @@ let make
   (* The private network of this bridge, chosen as for a world gateway. The last byte
      and the netmask are shown but insensitive: the host side of the bridge is always
      <subnet>.1 and the script knows no netmask but /24. *)
-  let ((s1,s2,s3,s4,s5), port_no) =
+  let ((s1,s2,s3,s4,s5), dhcp_enabled, port_no) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [ (s_ "IPv4 address"); (s_ "Integrated switch ports") ]
+        [ (s_ "IPv4 address"); (s_ "DHCP service"); (s_ "Integrated switch ports") ]
     in
     let network_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
@@ -308,7 +321,16 @@ let make
                     (s_ "IPv4 address of the bridge, which is the default gateway of the virtual machines connected to it"))
         b1 b2 b3 b4 b5
     in
-    (* The two labels of this form are the ones a world gateway already uses, word
+    (* The DHCP server is left on the bridge by the host script (episode 10c.1); the
+       component only says whether it wants one. Same label as a world gateway --
+       the tooltip cannot be the same, since that one names the gateway. *)
+    let dhcp_enabled =
+      GButton.check_button
+        ~active:dhcp_enabled
+        ~packing:(form#add_with_tooltip
+                    (s_ "Should the bridge provide a DHCP service to the virtual machines connected to it?")) ()
+    in
+    (* The three labels of this form are the ones a world gateway already uses, word
        for word, hence already translated: the same thing must be called by the same
        name, and this costs no new msgid. Step 1 and not 2 (the gateway's step): the
        minimum here is 1, so a step of 2 would only ever offer odd numbers. *)
@@ -318,7 +340,7 @@ let make
         ~lower:port_no_min ~upper:port_no_max ~step_incr:1
         port_no
     in
-    (network_config, port_no)
+    (network_config, dhcp_enabled, port_no)
   in
   s4#misc#set_sensitive false;
   s5#misc#set_sensitive false;
@@ -354,10 +376,12 @@ let make
       let s5 = int_of_float s5#value in
       ((s1,s2,s3,s4),s5)
     in
+    let dhcp_enabled = dhcp_enabled#active in
     let port_no = int_of_float port_no#value in
       { Data.name = name;
         Data.label = label;
         Data.network_config = network_config;
+        Data.dhcp_enabled = dhcp_enabled;
         Data.port_no = port_no;
         Data.old_name = old_name;
         }
@@ -387,11 +411,16 @@ chosen: the network is a /24, the bridge takes its first address, and the \
 guests may use the rest of it (from .2 to .254). A network the host already \
 routes is refused rather than stolen -- the proposed value is one Marionnet \
 knows to be free.\n\n\
+- DHCP service: when it is enabled, the bridge also hands out addresses, from \
+.100 to .200 of its own network, together with itself as default gateway and as \
+DNS server -- so a virtual machine configured for DHCP needs nothing else. The \
+addresses below .100 are left free for the machines a teacher wants to number by \
+hand. Disable it to give every guest a static address, or when the host has no \
+dnsmasq installed (the package is dnsmasq-base on Debian and Ubuntu): without it \
+the bridge refuses to be built at all.\n\n\
 - Integrated switch ports: the number of virtual machines that may be plugged \
 DIRECTLY into this component. They are all in the same network, they see each \
 other, and they all reach the Internet through the bridge.\n\n\
-The guests must be configured in that network. There is no DHCP server: give \
-the virtual machines a static address.\n\n\
 NAT bridge, LAN bridge or gateway? Use a NAT BRIDGE to reach the Internet with \
 real network performance and no host configuration -- it is also the only one \
 of the three bridges that works when the host is connected over Wi-Fi. Use a \
@@ -452,6 +481,7 @@ class nat_bridge =
      ~name
      ?label
      ?network_address
+     ?(dhcp_enabled=Const.dhcp_enabled_default)
      ?(port_no=Const.port_no_default)
      () ->
   (* Not a constant default: a component created without an explicit network takes
@@ -488,13 +518,22 @@ class nat_bridge =
   method get_network_address = network_address
   method set_network_address x = network_address <- x
 
+  (** Whether the host script is asked to leave a DHCP/DNS server on this bridge
+      (episode 10c.2). Absent from a project saved before that episode, which
+      therefore reads back the default -- [true], as for a world gateway. *)
+  val mutable dhcp_enabled : bool = dhcp_enabled
+  method get_dhcp_enabled = dhcp_enabled
+  method set_dhcp_enabled x = dhcp_enabled <- x
+
   method! extra_tree_attributes = [
     ("network_address", self#get_network_address);
+    ("dhcp_enabled", string_of_bool self#get_dhcp_enabled);
     ("port_no", string_of_int self#get_port_no);
     ]
 
   method! eval_forest_attribute = function
   | ("network_address", x) -> self#set_network_address x
+  | ("dhcp_enabled", x) -> self#set_dhcp_enabled (bool_of_string x)
   | ("port_no", x) -> self#set_port_no (int_of_string x)
   | a -> self_as_bridge#eval_forest_attribute a
 
@@ -506,11 +545,12 @@ class nat_bridge =
     | "" -> ip_gw
     | _  -> Printf.sprintf "%s <br/> %s" ip_gw self#get_label
 
-  method update_nat_bridge_with ~name ~label ~port_no ~network_address =
+  method update_nat_bridge_with ~name ~label ~port_no ~network_address ~dhcp_enabled =
     (* The following call ensures that the simulated device will be destroyed, hence
        that the bridge is given back before another one is built on another network: *)
     self#update_bridge_with ~name ~label ~port_no;
     self#set_network_address network_address;
+    self#set_dhcp_enabled dhcp_enabled;
 
   (** Create the simulated device *)
   method private make_simulated_device =
@@ -523,6 +563,9 @@ class nat_bridge =
            channel writes the field in place -- and a component restarted after its
            address was corrected must use the NEW one. *)
         ~subnet:(fun () -> Tool.subnet_of_network_address self#get_network_address)
+        (* A function too, and for the same reason: the check button of the dialog
+           destroys this object, but a `set' through the control channel does not. *)
+        ~get_dhcp:(fun () -> self#get_dhcp_enabled)
         (* By value, this one: a change of the number of ports goes through
            [update_with], which destroys this very object (control channel
            included -- port_no is one of its two structural fields). *)
@@ -591,6 +634,7 @@ class ['parent] nat_bridge =
   fun (* ~id *)
       ~(parent:'parent)
       ~(subnet : unit -> string)  (* the /24 prefix chosen by the user, e.g. "192.168.101" *)
+      ~(get_dhcp : unit -> bool)  (* whether the bridge serves DHCP (episode 10c.2) *)
       ~(hublet_no : int)          (* the ports of the integrated switch (episode 10b) *)
       ~working_directory
       ~unexpected_death_callback
@@ -625,7 +669,7 @@ class ['parent] nat_bridge =
     let result =
       try
         let n = match !instance with Some n -> n | None -> smallest_free (taken_instances ()) in
-        (match Nat_bridge_host.ensure ~subnet:(subnet ()) ~instance:n () with
+        (match Nat_bridge_host.ensure ~subnet:(subnet ()) ~dhcp:(get_dhcp ()) ~instance:n () with
          | Ok info ->
              let () = instance := Some n in
              let () =

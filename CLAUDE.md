@@ -160,12 +160,14 @@ Reprise : appliquer le skill `chantier-long`.
   `MARIONNET_BRIDGE` n'étant plus qu'une **surcharge** explicite, dont
   `check_bridge_existence_and_warning` (test par `/sys/class/net/<nom>/bridge`, plus par
   `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ».
-  **Ép. 10 en cours** — *le NAT bridge se configure comme la passerelle* (§ 4.5 du doc), en
-  trois temps : **10a adresse IPv4 (fait)**, **10b ports du commutateur intégré (fait** — N ports
-  `port1…portN`, tronc `bridge_common` paramétré et devenu un vrai switch**)**, **10c service
-  DHCP — 10c.1 côté hôte fait** (`--dhcp` de `marionnet-natbridge.sh`, dnsmasq lié au seul
-  bridge ; **dépendance hôte neuve `dnsmasq-base`**), reste **10c.2** (case à cocher du dialogue
-  + `dhcp_enabled` dans le `.mar` et le canal). **Piège durable établi à cette occasion** : une
+  **Ép. 10 COMPLET** — *le NAT bridge se configure comme la passerelle* (§ 4.5 du doc), en
+  trois temps : **10a adresse IPv4**, **10b ports du commutateur intégré** (N ports
+  `port1…portN`, tronc `bridge_common` paramétré et devenu un vrai switch), **10c service
+  DHCP** — **10c.1 côté hôte** (`--dhcp` de `marionnet-natbridge.sh`, dnsmasq lié au seul
+  bridge ; **dépendance hôte neuve `dnsmasq-base`**) et **10c.2 côté modèle** (case
+  « DHCP service » du dialogue, `dhcp_enabled` dans le `.mar` et le canal, `?dhcp` sur
+  `Nat_bridge_host.up`/`ensure` ; défaut **`true` même pour un `.mar` antérieur**, sans repli
+  quand dnsmasq manque). **Piège durable établi à cette occasion** : une
   règle sudoers **ne peut pas** scoper une commande à arguments variables (un `*` d'argument
   avale des mots entiers, injection mesurée) — d'où `bin/scripts/marionnet-dnsmasq.sh`, porte
   privilégiée minuscule qui **valide ses arguments en root**, et n'est accordée que si elle est

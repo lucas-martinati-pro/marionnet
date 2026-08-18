@@ -148,9 +148,12 @@ let instance_arguments = function
   | None -> []
   | Some n -> ["--instance"; string_of_int n]
 
-let up ?subnet ?instance () : (t, error) result =
+let up ?subnet ?(dhcp=false) ?instance () : (t, error) result =
   let subnet_arguments = match subnet with None -> [] | Some s -> ["--subnet"; s] in
-  match call (["up"] @ owner_pid_arguments @ (instance_arguments instance) @ subnet_arguments) with
+  (* Off unless asked for, here: the default belongs to the model (the component
+     decides, see nat_bridge.ml), not to this thin caller. *)
+  let dhcp_arguments = if dhcp then ["--dhcp"] else [] in
+  match call (["up"] @ owner_pid_arguments @ (instance_arguments instance) @ subnet_arguments @ dhcp_arguments) with
   | Error _ as failure -> failure
   | Ok json -> t_of_json json
 
@@ -223,14 +226,14 @@ let register_at_exit () =
           mine)
   end
 
-let ensure ?subnet ?instance () : (t, error) result =
+let ensure ?subnet ?dhcp ?instance () : (t, error) result =
   Mutex.lock mutex;
   let result =
     try
       match Hashtbl.find_opt mine instance with
       | Some bridge -> Ok bridge
       | None ->
-          (match up ?subnet ?instance () with
+          (match up ?subnet ?dhcp ?instance () with
            | Error _ as failure -> failure
            | Ok bridge ->
                Hashtbl.replace mine instance bridge;

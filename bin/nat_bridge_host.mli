@@ -62,12 +62,15 @@ type error = { code : string; message : string }
 
 val string_of_error : error -> string
 
-(** [up ?subnet ?instance ()] creates one bridge of this process and its NAT
-    rules, and is idempotent: on a bridge that already exists it succeeds and
+(** [up ?subnet ?dhcp ?instance ()] creates one bridge of this process and its
+    NAT rules, and is idempotent: on a bridge that already exists it succeeds and
     returns its addressing. [?subnet] forces a /24 prefix (e.g. ["192.168.101"])
     instead of letting the script pick the first one free of the host's routes;
-    [?instance] names the bridge [mnbr<pid>-<n>] instead of [mnbr<pid>]. *)
-val up : ?subnet:string -> ?instance:int -> unit -> (t, error) result
+    [?dhcp] (default [false]) also leaves a DHCP/DNS server bound to that bridge
+    alone — it needs [dnsmasq] on the host, whose absence is a clean refusal
+    ([E_NO_DNSMASQ]) {e before} anything is built; [?instance] names the bridge
+    [mnbr<pid>-<n>] instead of [mnbr<pid>]. *)
+val up : ?subnet:string -> ?dhcp:bool -> ?instance:int -> unit -> (t, error) result
 
 (** Removes one bridge of this process and every rule tagged with its name — the
     one designated by [?instance], as {!up} named it. Idempotent, and honest: it
@@ -88,8 +91,12 @@ val status : unit -> (t list, error) result
     another one builds another bridge (another /24). The first success also
     registers the [at_exit] that tears down {e every} bridge this process holds,
     so that they live and die with Marionnet. This is what a component calls when
-    it needs a bridge. *)
-val ensure : ?subnet:string -> ?instance:int -> unit -> (t, error) result
+    it needs a bridge.
+    ---
+    [?subnet] and [?dhcp] are read on the call that really builds the bridge, and
+    ignored by the ones the memo answers: changing either of them takes a
+    {!release} first — which is precisely what a component does when it stops. *)
+val ensure : ?subnet:string -> ?dhcp:bool -> ?instance:int -> unit -> (t, error) result
 
 (** [release ?instance ()] gives back one bridge of this process: {!down} on it,
     and the memo of {!ensure} forgotten, so that a later [ensure] with the same
