@@ -349,7 +349,40 @@ DHCP manquait vraiment. Trois sous-épisodes, prouvés et committés séparémen
   elle valait tant que le NAT bridge n'était pas comparé à la passerelle, qui, elle, en offre un.
   dnsmasq est lancé **par le script hôte** (la séquence privilégiée reste la source unique de la
   règle sudoers, cf. § 4.1), lié au seul bridge, et devient une **dépendance hôte** à répercuter
-  dans `modernisation-installation-marionnet`.
+  dans `modernisation-installation-marionnet`. Joué en deux temps, sur le patron des épisodes
+  7a et 8 : **10c.1** l'hôte (zéro OCaml, prouvable seul), **10c.2** la case à cocher du
+  dialogue, l'attribut `dhcp_enabled` dans le `.mar` et le canal.
+
+  **10c.1 a dû changer de porte d'entrée, sur mesure.** Le plan de l'épisode disait « une ligne
+  sudoers pour la commande dnsmasq ». La mesure préalable l'a interdit : avec la règle **déjà
+  installée** `ip link add mnbr* type bridge`, la commande `ip link add mnbr999999 --INJECT type
+  bridge` est **acceptée par sudo** (seul iproute2 proteste) — un `*` d'argument avale des mots
+  entiers, y compris au **milieu** de la règle. Une règle `dnsmasq … --pid-file=* …` aurait donc
+  accepté `--dhcp-script=/tmp/evil`, c'est-à-dire l'exécution de code arbitraire en root. Aucune
+  disposition des options ne referme ce trou : seul un motif **entièrement littéral** est sûr, et
+  la ligne dnsmasq contient deux valeurs qui varient (le bridge, le /24).
+
+  D'où **`bin/scripts/marionnet-dnsmasq.sh`** : la commande accordée par sudo n'est pas dnsmasq,
+  c'est **un script qui valide ses arguments en root** avant de faire quoi que ce soit — le glob
+  large de la règle est rattrapé par une vérification qui, elle, tourne en root. Il est
+  volontairement minuscule et *ne source rien* (bashbricks serait une grande surface exécutée en
+  root, et n'est pas *nounset-safe*), ne lit aucune variable d'environnement sauf `SUDO_USER`,
+  n'accepte **aucun chemin** en argument (pid-file et baux sont calculés sous `/run/`), et porte
+  la ligne dnsmasq **en dur**. Trois gardes forment le fond : exactement deux arguments (un
+  troisième est refusé — c'est ce qui tue l'injection), regexps ancrées, et la vérification que
+  le bridge existe **et porte déjà `<NET>.1/24`** (état auquel seul le bloc (b) permet d'arriver).
+
+  Deux conséquences qui ne se devinent pas :
+  - **dnsmasq abandonne ses privilèges** (`--user`/`--group` de l'appelant), ce qui rend son
+    arrêt **non privilégié** : `down` et `gc` le tuent par un simple TERM sur un pid lu dans son
+    pid-file *et* vérifié par sa `cmdline`. Une règle sudoers `kill` aurait été une escalade
+    complète, et un `pkill -f` la faute déjà payée par ce projet.
+  - **La règle refuse de s'écrire** si le script qu'elle nomme n'est pas root, ou si un
+    répertoire de son chemin est inscriptible par autrui (`root_owned_all_the_way` dans
+    `marionnet-sudoers.sh`) : accorder `NOPASSWD` sur un script que l'utilisateur peut éditer,
+    c'est lui donner un shell root. Corollaire pratique : depuis un arbre source la ligne n'est
+    pas accordée, et le `selftest` bascule alors sur `--sudo-interactive` (mot de passe) plutôt
+    que de faire croire à une couverture qui n'existe pas.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1363,3 +1396,47 @@ parce qu'aucune ne se redevine :
     plusieurs natures.
   Prochain pas : **épisode 10c** (service DHCP par `dnsmasq`, dépendance hôte neuve), puis
   l'épisode 9 (i18n ×12), qui reste le dernier.
+
+- **2026-08-18 — épisode 10c.1** : *le NAT bridge distribue les adresses* (côté hôte, **zéro
+  OCaml**). Le service DHCP/DNS que la passerelle offrait depuis toujours existe enfin pour le
+  NAT bridge : `marionnet-natbridge.sh up --dhcp` laisse un `dnsmasq` **lié au seul bridge**,
+  qui distribue `<NET>.100-.200` et répond en DNS sur `<NET>.1`.
+  - **Une mesure a décidé de l'architecture** (détail en § 4.5) : sur la règle **déjà
+    installée**, `ip link add mnbr999999 --INJECT type bridge` passe sudo. Un `*` d'argument
+    avale des mots — donc pas de règle `dnsmasq …` scopable, donc une **porte dédiée**,
+    `bin/scripts/marionnet-dnsmasq.sh` (~230 l., aucun `source`, aucune variable
+    d'environnement sauf `SUDO_USER`, aucun chemin reçu, ligne dnsmasq en dur, arguments
+    validés en root), seule commande que le sudoers accorde — et seulement si elle est
+    root-owned sur toute sa chaîne de répertoires (`root_owned_all_the_way`).
+  - **`marionnet-natbridge.sh`** : drapeau `--dhcp` ; étape `dhcp` **dernière** du `up` (donc
+    **première** défaite par le rollback LIFO : un serveur survivant à son bridge serait le pire
+    des résidus) ; `down` empile cette étape d'après le **système**, pas d'après les drapeaux du
+    `up` ; arrêt **sans aucun privilège** (dnsmasq a abandonné les siens) par TERM puis KILL sur
+    un pid lu dans le pid-file *et* vérifié par sa `cmdline` ; `status` et le rapport gagnent
+    `dhcp`/`dhcp_pid`/`dhcp_range` ; `gc` ramasse aussi un serveur qui aurait survécu à son
+    bridge ; `E_NO_DNSMASQ` ; `selftest` étendu (instance 1 avec DHCP, instance 2 sans — ce qui
+    prouve du même coup l'indépendance des deux réseaux — bail réel demandé par `dhcpcd` depuis
+    le netns invité, `-C resolv.conf` pour qu'un client DHCP ne réécrive pas le
+    `/etc/resolv.conf` **de l'hôte**, qu'un netns partage).
+  - **Preuves.** `bash -n` ×3, `dune build` rc 0, le script installé par `bin/dune` (vérifié
+    dans `marionnet.install`). Garde `root_owned_all_the_way` discriminée (`/usr/sbin/*` et
+    `/usr/local/share/marionnet/scripts/*` acceptés, `/tmp` et l'arbre source refusés).
+    **Non-régression** : `up`/`status`/`down` **sans** `--dhcp` inchangés, `leftovers:[]`, zéro
+    résidu. **Échec propre** : `up --dhcp` sans la règle → `E_SUDO_DENIED`, rollback des 6
+    étapes, `rolled_back:true`, rien sur l'hôte. **`selftest` PASSED** (`--sudo-interactive`,
+    `dhcp_tested:true`) : deux /24 indépendants, ping Internet et DNS depuis chaque invité,
+    **bail réel `192.168.101.176` délivré par notre dnsmasq**, `down` de l'instance 1 défaisant
+    **7** étapes, l'instance 2 intacte, puis plus rien — ni bridge, ni règle taguée, ni netns,
+    ni dnsmasq.
+  - **Un défaut trouvé au run et corrigé** : les fichiers du serveur (`.pid`, `.leases`)
+    vivaient dans un `/run/marionnet-natbridge/` appartenant à root, donc **survivaient au
+    `down`** (l'utilisateur ne pouvait pas les délier) alors que le rapport annonçait
+    `leftovers:[]`. Corrigé par un **sous-répertoire par uid**, créé par root puis donné à
+    l'utilisateur, le parent restant à root pour que personne ne puisse y squatter un nom.
+    Rejoué : `/run/marionnet-natbridge/1001/` reste **vide** après le selftest.
+  - **Dépendance hôte neuve : `dnsmasq-base`** (et surtout *pas* `dnsmasq`, qui installerait un
+    service système se disputant le port 53) → à répercuter dans
+    `modernisation-installation-marionnet`.
+  Prochain pas : **épisode 10c.2** (case à cocher « DHCP » du dialogue, attribut `dhcp_enabled`
+  dans le `.mar` et le canal, lu **par une fonction au démarrage** — piège de l'épisode 10a),
+  puis l'épisode 9 (i18n ×12), qui reste le dernier.

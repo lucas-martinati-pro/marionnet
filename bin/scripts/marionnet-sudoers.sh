@@ -77,6 +77,14 @@ GHOST_NETWORK_PREFIX=172.23.
 BRIDGE_PREFIX=mnbr
 TAG_PREFIX=marionnet-natbridge
 
+# The DHCP service of a NAT bridge (episode 10c) is started by a script, not by
+# a bare dnsmasq -- see the header of marionnet-dnsmasq.sh for why a sudoers rule
+# cannot scope a dnsmasq command line. The rule must therefore name that script
+# by an ABSOLUTE path, and the only defensible one is the copy sitting next to
+# THIS file: both are installed together, by the same hand.
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+DHCP_HELPER=$SCRIPT_DIR/marionnet-dnsmasq.sh
+
 # And these two with bin/scripts/marionnet-lanbridge.sh (BRIDGE_PREFIX and
 # ALIAS_PREFIX there):
 LAN_BRIDGE_PREFIX=mnlan
@@ -175,6 +183,36 @@ EOF
 # no rule can be added, and none can be deleted: the grant cannot be used to
 # touch a rule Marionnet did not create. The host interface, its address and its
 # routes are never named here: they cannot be touched through this rule.
+#
+# The last line, when it is there, is the DHCP service (episode 10c). It grants
+# a SCRIPT rather than dnsmasq itself, because sudoers cannot scope a dnsmasq
+# command line: a `*' in an argument swallows extra words (measured), so
+# `--dhcp-script=/tmp/evil' would slip through and run as root. marionnet-dnsmasq.sh
+# takes exactly two arguments and validates them AS ROOT before doing anything;
+# and this rule is only written when that script is root-owned and unwritable by
+# others, all the way up its path -- see root_owned_all_the_way.
+# root_owned_all_the_way PATH: is PATH, and every directory above it, owned by
+# root and unwritable by anyone else? Granting `NOPASSWD: <script>' on a file the
+# grantee may edit -- or that lives in a directory they may edit -- is granting a
+# root shell, plainly. Being able to say NO is worth these few lines: an
+# administrator installing from an unpacked source tree would otherwise hand out
+# exactly that, and never know.
+function root_owned_all_the_way {
+ local path=$1 owner mode
+ path=$(readlink -f "$path") || return 1
+ [[ -e $path ]] || return 1
+ while : ; do
+   read -r owner mode < <(stat -c '%u %a' "$path") || return 1
+   [[ $owner = 0 ]] || return 1
+   # No write bit for group or other. Counted from the RIGHT: %a is three digits,
+   # or four when a setuid/sticky bit is set.
+   (( (0${mode: -2:1} & 2) == 0 && (0${mode: -1} & 2) == 0 )) || return 1
+   if [[ $path = / ]]; then break; fi
+   path=$(dirname "$path")
+ done
+ return 0
+}
+
 function content_natbridge {
  local u=$1 ip iptables iptables_save sysctl
  ip=$(ip_binary) || return 1
@@ -188,6 +226,19 @@ function content_natbridge {
  # The escapes are sudoers SYNTAX -- what sudo compares at runtime is the plain
  # text, so these still match the commands marionnet-natbridge.sh runs.
  local bang='\!' comma='\,' tag="${TAG_PREFIX}\\:${BRIDGE_PREFIX}*"
+ # The DHCP line is granted only when the script it names cannot be tampered
+ # with. Refusing loudly beats granting silently: without this line the NAT
+ # bridge still works, guests are simply addressed by hand, as before episode 10c.
+ local dhcp_line=""
+ if root_owned_all_the_way "$DHCP_HELPER"; then
+   dhcp_line="$u ALL=(root) NOPASSWD: $DHCP_HELPER start ${BRIDGE_PREFIX}* *"
+ elif [[ -z ${DHCP_REFUSAL_SAID:-} ]]; then
+   # Said once: the content of a block is generated twice (once to check that it
+   # CAN be generated here, once to write it), and one warning is one warning.
+   DHCP_REFUSAL_SAID=1
+   echo "$TOOL: NOT granting the DHCP service: $DHCP_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
+   echo "$TOOL: install Marionnet first, then run this from the INSTALLED scripts -- a NOPASSWD rule on an editable script is a root shell." 1>&2
+ fi
  cat <<EOF
 # Installed by $TOOL --enable-natbridge -- do not edit by hand, regenerate instead.
 # Lets $u build and destroy Marionnet's private NAT bridge (${BRIDGE_PREFIX}*), the one
@@ -209,6 +260,9 @@ $u ALL=(root) NOPASSWD: $iptables -A FORWARD -o ${BRIDGE_PREFIX}* -m conntrack -
 $u ALL=(root) NOPASSWD: $iptables -D FORWARD -o ${BRIDGE_PREFIX}* -m conntrack --ctstate RELATED${comma}ESTABLISHED -m comment --comment $tag -j ACCEPT
 $u ALL=(root) NOPASSWD: $iptables_save
 EOF
+ # Appended after the heredoc, and not inside it: a heredoc terminator must sit
+ # alone on its line, and an optional line cannot be expressed there.
+ if [[ -n $dhcp_line ]]; then echo "$dhcp_line"; fi
 }
 
 # --- (c) The LAN bridge -- chantier modernisation-world-bridge, episode 8

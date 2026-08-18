@@ -162,8 +162,14 @@ Reprise : appliquer le skill `chantier-long`.
   `brctl`) ne signale plus que le cas « surcharge pointant dans le vide ».
   **Ép. 10 en cours** — *le NAT bridge se configure comme la passerelle* (§ 4.5 du doc), en
   trois temps : **10a adresse IPv4 (fait)**, **10b ports du commutateur intégré (fait** — N ports
-  `port1…portN`, tronc `bridge_common` paramétré et devenu un vrai switch**)**, 10c service
-  DHCP (dnsmasq lancé par le script hôte ⇒ dépendance hôte neuve). L'**ép. 9 (i18n ×12) est
+  `port1…portN`, tronc `bridge_common` paramétré et devenu un vrai switch**)**, **10c service
+  DHCP — 10c.1 côté hôte fait** (`--dhcp` de `marionnet-natbridge.sh`, dnsmasq lié au seul
+  bridge ; **dépendance hôte neuve `dnsmasq-base`**), reste **10c.2** (case à cocher du dialogue
+  + `dhcp_enabled` dans le `.mar` et le canal). **Piège durable établi à cette occasion** : une
+  règle sudoers **ne peut pas** scoper une commande à arguments variables (un `*` d'argument
+  avale des mots entiers, injection mesurée) — d'où `bin/scripts/marionnet-dnsmasq.sh`, porte
+  privilégiée minuscule qui **valide ses arguments en root**, et n'est accordée que si elle est
+  root-owned sur toute sa chaîne. L'**ép. 9 (i18n ×12) est
   désormais le dernier**, après le 10, pour ne pas traduire deux fois.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;

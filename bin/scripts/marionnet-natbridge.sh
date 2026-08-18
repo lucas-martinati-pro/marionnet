@@ -63,8 +63,23 @@
 # require_pid / require_subnet / require_bridge, which every destructive
 # command is preceded by, and whose regexps are anchored.
 #
-# What is deliberately NOT here: dnsmasq (guests get a static address; the POC
-# proved they reach the Internet without DHCP) and IPv6.
+# --- THE DHCP SERVICE (--dhcp, episode 10c) ---
+#
+# `--dhcp' adds a dnsmasq bound to the bridge alone, handing out .100-.200 of
+# the /24 and answering DNS for the guests -- the very service world_gateway
+# already offered, and whose absence was the last difference between the two
+# ways of reaching the Internet. It is OPTIONAL: without the flag not a single
+# byte changes, and a teacher may still want guests configured by hand.
+#
+# dnsmasq is NOT started from here: it is started by marionnet-dnsmasq.sh, a
+# deliberately tiny script which is the ONLY thing sudo grants for it. Read its
+# header for the reason (in short: a sudoers wildcard argument swallows extra
+# words, so a `dnsmasq ... --pid-file=* ...' rule would let anyone add
+# `--dhcp-script=/tmp/evil' and run code as root). Stopping it, on the other
+# hand, needs no privilege at all and is done here: dnsmasq drops to the calling
+# user, so a plain TERM by pid is enough.
+#
+# What is deliberately NOT here: IPv6.
 #
 # Naming and lifetime follow Tap_provider (bin/tap_provider.ml): every artefact
 # carries the pid of the process that owns it -- the bridge is `mnbr<pid>' and
@@ -131,6 +146,17 @@ set -eEo pipefail
 BRIDGE_PREFIX=mnbr
 TAG_PREFIX=marionnet-natbridge
 
+# Where marionnet-dnsmasq.sh, running as root, puts the pid file and the lease
+# file of the DHCP server of a bridge. Part of the contract with that script
+# (same constants there): do not change one of them alone. It is under /run and
+# not under STATE_DIR because the first of the two is written by root, and
+# because a reboot must take everything away. One sub-directory per user, owned
+# by that user: root holds the parent, so no one may squat a name there, and we
+# can still delete our own files when the server is stopped.
+DHCP_RUN_DIR=/run/marionnet-natbridge
+DHCP_USER_RUN_DIR=$DHCP_RUN_DIR/$(id -u)
+DHCP_HELPER=$SCRIPT_DIR/marionnet-dnsmasq.sh
+
 # Where we remember the one thing the system cannot tell us afterwards: whether
 # WE turned ip_forward on (so that `down' only restores what `up' changed).
 STATE_DIR=${MARIONNET_NATBRIDGE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/marionnet-natbridge}
@@ -150,6 +176,7 @@ BR=""                 # bridge name, mnbr<OWNER_PID>[-<INSTANCE>]
 NET=""                # the /24 prefix, e.g. 192.168.101
 TAG=""                # the iptables comment, TAG_PREFIX:BR
 FORCED_SUBNET=""      # --subnet
+WANT_DHCP=0           # --dhcp: also run a DHCP/DNS server on the bridge
 DRY_RUN=0             # --dry-run
 FAIL_AFTER=""         # --fail-after LABEL (test only, see A8.4 of the plan)
 SUDO_INTERACTIVE=0    # --sudo-interactive
@@ -342,6 +369,8 @@ function undo_step {
  local label=$1
  [[ $DRY_RUN = 1 ]] && return 0
  case $label in
+   # The only step whose inverse needs NO privilege: dnsmasq runs as us.
+   dhcp)        dhcp_stop "$BR" ;;
    nat_masquerade)
      sudo_run "$IPTABLES" -t nat -D POSTROUTING -s "$NET.0/24" ! -o "$BR" \
               -m comment --comment "$TAG" -j MASQUERADE ;;
@@ -457,6 +486,66 @@ function free_subnet {
  fail E_NO_FREE_SUBNET "all candidate networks (${CANDIDATE_NETS[*]}) are already in use here"
 }
 
+# --- The DHCP server (episode 10c)
+#
+# Starting is privileged and lives in marionnet-dnsmasq.sh; everything below is
+# the UNPRIVILEGED half -- finding the server, and stopping it. That asymmetry
+# is the design: dnsmasq drops to us, so we own the process afterwards.
+
+function dhcp_pid_file   { echo "$DHCP_USER_RUN_DIR/$1.pid"; }
+function dhcp_lease_file { echo "$DHCP_USER_RUN_DIR/$1.leases"; }
+
+# dhcp_running_pid BRIDGE: the pid of OUR dnsmasq for that bridge, if it is
+# alive. Identity is verified on the spot -- a pid file may name a pid the
+# kernel has since recycled for something else entirely, and killing THAT is
+# exactly the accident this project has already paid for once.
+function dhcp_running_pid {
+ local bridge=$1 file pid cmdline
+ file=$(dhcp_pid_file "$bridge")
+ [[ -r $file ]] || return 1
+ read -r pid < "$file" || return 1
+ [[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
+ [[ -d /proc/$pid ]] || return 1
+ cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || return 1
+ [[ $cmdline == *"--interface=$bridge "* ]] || return 1
+ echo "$pid"
+}
+
+# dhcp_stop BRIDGE: TERM, then KILL only if it survives, and only ever the pid
+# that dhcp_running_pid has just vouched for. No pattern, no pkill, no sudo.
+# Returns 0 when nothing of ours is left running.
+function dhcp_stop {
+ local bridge=$1 pid attempt
+ pid=$(dhcp_running_pid "$bridge") || return 0
+ echo "  + kill -TERM $pid (dnsmasq of $bridge)" 1>&2
+ kill -TERM "$pid" 2>/dev/null || true
+ for attempt in 1 2 3 4 5 6 7 8 9 10; do
+   [[ -d /proc/$pid ]] || break
+   sleep 0.2
+ done
+ if [[ -d /proc/$pid ]]; then
+   echo "  + kill -KILL $pid (it did not stop on TERM)" 1>&2
+   kill -KILL "$pid" 2>/dev/null || true
+   sleep 0.2
+ fi
+ # The pid file was written by root, but it lies in OUR directory (the helper
+ # gives every user their own), so it goes away with the server -- and so does
+ # the lease file, whose leases name a network that no longer exists. Should the
+ # unlink fail all the same, a stale file is harmless: dhcp_running_pid checks
+ # the process, not the file.
+ rm -f "$(dhcp_pid_file "$bridge")" "$(dhcp_lease_file "$bridge")" 2>/dev/null || true
+ if dhcp_running_pid "$bridge" >/dev/null; then return 1; fi
+ return 0
+}
+
+# Called before anything is built, so that a missing dnsmasq is a clean refusal
+# rather than a half-built bridge rolled back for nothing.
+function require_dhcp_support {
+ [[ -x $DHCP_HELPER ]] \
+   || fail E_INTERNAL "--dhcp needs $DHCP_HELPER, which is missing or not executable (is Marionnet correctly installed?)"
+ binary_among E_NO_DNSMASQ /usr/sbin/dnsmasq /sbin/dnsmasq /usr/bin/dnsmasq >/dev/null
+}
+
 # --- up
 
 function do_up {
@@ -471,12 +560,21 @@ function do_up {
  # of a list makes the whole line return 1, which fires the ERR trap.
  if [[ -n $INSTANCE ]]; then REPORT[instance]=$INSTANCE; fi
 
+ if [[ $WANT_DHCP = 1 ]]; then require_dhcp_support; fi
+
  if link_exists "$BR"; then
    # Idempotent: an existing bridge of ours is a success, not an error, and the
    # caller still gets the addressing it needs.
    NET=$(subnet_of "$BR")
    require_subnet "$NET"
+   # ... but a bridge that exists WITHOUT the service that was asked for is not
+   # "nothing to do": a component may be restarted with DHCP after having run
+   # without it.
+   if [[ $WANT_DHCP = 1 ]] && ! dhcp_running_pid "$BR" >/dev/null; then
+     step dhcp "$DHCP_HELPER" start "$BR" "$NET" || fail_step
+   fi
    describe_network
+   describe_dhcp
    REPORT_TEXT[message]="$BR already exists, nothing to do"
    echo "$TOOL: $BR already exists (subnet $NET.0/24) -- nothing to do." 1>&2
    succeed
@@ -516,18 +614,30 @@ function do_up {
  step forward_in "$IPTABLES" -A FORWARD -o "$BR" -m conntrack --ctstate RELATED,ESTABLISHED \
       -m comment --comment "$TAG" -j ACCEPT               || fail_step
 
+ # LAST, and not by taste: dnsmasq binds <NET>.1 on a bridge that must therefore
+ # already exist, be addressed and be up. Being last also makes it the FIRST
+ # thing the LIFO rollback undoes, which is what we want -- a server left behind
+ # on a bridge that is being destroyed would be the worst leftover of all.
+ if [[ $WANT_DHCP = 1 ]]; then
+   step dhcp "$DHCP_HELPER" start "$BR" "$NET"            || fail_step
+ fi
+
  if [[ $DRY_RUN != 1 ]]; then
    mkdir -p "$STATE_DIR"
    printf 'SUBNET=%s\nIP_FORWARD_WAS=%s\nOWNER_PID=%s\n' \
      "$NET" "$ip_forward_was" "$OWNER_PID" > "$(state_file "$BR")"
  fi
 
+ describe_dhcp
  cat 1>&2 <<EOF
 $TOOL: $BR is up on $NET.0/24 (host side $NET.1), NAT to the outside enabled.
        Guests: address in $NET.0/24, default route $NET.1.
        Note: a bridge with no port yet stays NO-CARRIER; it comes up when the
        first tap is attached to it.
 EOF
+ if [[ ${REPORT[dhcp]} = true ]]; then
+   echo "       DHCP and DNS served on $NET.1 for $NET.100-$NET.200 (dnsmasq, pid ${REPORT[dhcp_pid]})." 1>&2
+ fi
  succeed
 }
 
@@ -538,6 +648,20 @@ function describe_network {
  REPORT[host_address]="$NET.1"
  REPORT[gateway]="$NET.1"
  REPORT[guest_range]="$NET.2-$NET.254"
+}
+
+# Whether a guest may simply ask for its address instead of being given one --
+# read from the SYSTEM (is a server of ours running?), never from the flag we
+# were passed: the two differ precisely in the cases that matter.
+function describe_dhcp {
+ local pid
+ if pid=$(dhcp_running_pid "$BR"); then
+   REPORT[dhcp]=true
+   REPORT[dhcp_pid]=$pid
+   REPORT[dhcp_range]="$NET.100-$NET.200"
+ else
+   REPORT[dhcp]=false
+ fi
 }
 
 # --- down
@@ -573,6 +697,13 @@ function do_down {
      sudo_run "$IPTABLES_SAVE" | grep -E -- "$TAG([^0-9-]|\$)" 1>&2 || true
      fail E_INTERNAL "$BR is gone but rules tagged $TAG remain, and no subnet is known to rebuild the delete commands (they are listed on stderr)"
    fi
+   # A DHCP server may outlive a bridge someone destroyed behind our back; it
+   # costs nothing to check, and leaving one running would be a leftover we
+   # could not name afterwards.
+   if [[ $DRY_RUN != 1 ]] && ! dhcp_stop "$BR"; then
+     Array_push LEFTOVERS "dnsmasq of $BR"
+     fail E_ROLLBACK_INCOMPLETE "$BR is gone but its DHCP server could not be stopped"
+   fi
    REPORT_TEXT[message]="nothing to remove for pid $OWNER_PID"
    echo "$TOOL: nothing to remove for pid $OWNER_PID." 1>&2
    succeed
@@ -591,6 +722,10 @@ function do_down {
    Array_push UNDO forward_out
    Array_push UNDO forward_in
  fi
+ # Pushed last, exactly where `up' put it, so the LIFO unwinding stops the
+ # server before the bridge it is bound to disappears. Read from the system:
+ # `down' knows nothing of the flags the matching `up' was given.
+ if dhcp_running_pid "$BR" >/dev/null; then Array_push UNDO dhcp; fi
 
  rollback
  [[ $DRY_RUN = 1 ]] || rm -f "$state"
@@ -637,7 +772,8 @@ function do_status {
      owner_pid  "$pid" \
      subnet     "$(subnet_of "$bridge")" \
      owner_alive "$(pid_is_alive "$pid" && echo true || echo false)" \
-     ports      "$(ports_of_json "$bridge")"
+     ports      "$(ports_of_json "$bridge")" \
+     dhcp       "$(dhcp_running_pid "$bridge" >/dev/null && echo true || echo false)"
    # Present only when there is one, exactly as in the report of `up': a caller
    # reads `instance' as a number or not at all, never as an empty string.
    instance=$(instance_of_bridge "$bridge")
@@ -683,10 +819,35 @@ function do_gc {
      fi
    fi
  done
+ # A DHCP server may survive its own bridge (a link destroyed by hand, a crash
+ # between the two): its pid file is then the only trace left, so the sweep
+ # looks there as well. Bridges still standing were handled by the loop above,
+ # whose `down' stops their server.
+ local file base owner
+ for file in "$DHCP_USER_RUN_DIR"/*.pid; do
+   if [[ ! -e $file ]]; then continue; fi
+   base=$(basename "$file" .pid)
+   if [[ ! $base =~ ^${BRIDGE_PREFIX}[1-9][0-9]*(-[1-9][0-9]*)?$ ]]; then continue; fi
+   if link_exists "$base"; then continue; fi
+   if ! dhcp_running_pid "$base" >/dev/null; then continue; fi
+   owner=$(pid_of_bridge "$base")
+   if pid_is_alive "$owner"; then
+     Array_push kept "dnsmasq of $base"
+     echo "$TOOL: keeping the DHCP server of $base (pid $owner is alive)." 1>&2
+     continue
+   fi
+   echo "$TOOL: collecting the DHCP server of $base (pid $owner is gone)." 1>&2
+   if [[ $DRY_RUN = 1 ]] || dhcp_stop "$base"; then
+     Array_push collected "dnsmasq of $base"
+   else
+     Array_push LEFTOVERS "dnsmasq of $base"
+   fi
+ done
+
  REPORT[collected]=$(Array_to_json collected)
  REPORT[kept]=$(Array_to_json kept)
  if (( ${#LEFTOVERS[@]} > 0 )); then
-   fail E_ROLLBACK_INCOMPLETE "${#LEFTOVERS[@]} dead bridge(s) could not be collected"
+   fail E_ROLLBACK_INCOMPLETE "${#LEFTOVERS[@]} dead artefact(s) could not be collected"
  fi
  REPORT[ok]=true
  finish 0
@@ -720,24 +881,60 @@ function guest_down {
 # bridge reaches the Internet without the host being touched, and that ONE
 # process may hold SEVERAL such bridges -- two components, two private /24, one
 # taken down without disturbing the other.
+# dhcp_privilege_available: may WE start the DHCP server without a password
+# here? Probed the way marionnet-lanbridge.sh probes block (c) -- by running a
+# real command of the list which does nothing (an unknown bridge), and reading
+# WHO answers: a message from the helper means sudo let it through, a message
+# from sudo means the rule does not cover this path. It usually does not in a
+# source tree: the sudoers rule names the INSTALLED script.
+function dhcp_privilege_available {
+ # --sudo-interactive means a human is here and may type a password: the DHCP
+ # legs then run even from a source tree, where the rule (which names the
+ # INSTALLED script) cannot apply.
+ if [[ $SUDO_INTERACTIVE = 1 ]]; then return 0; fi
+ local output
+ output=$(LC_ALL=C sudo -n "$DHCP_HELPER" start "${BRIDGE_PREFIX}999999" 192.168.101 2>&1) || true
+ [[ $output == *"marionnet-dnsmasq.sh:"* ]]
+}
+
 function do_selftest {
  resolve_binaries
  local failures=0 index up_json br net ns veth peer
+ local dhcp_flag=() dhcp_tested=false
  OWNER_PID=$$
  Array_make __st_bridges
  Array_make __st_nets
  Array_make __st_tags
 
  echo "== 1. bringing TWO NAT bridges up, for the same pid" 1>&2
+ # Only the FIRST one gets a DHCP server: two components must be two independent
+ # networks, and the second bridge staying without a server is part of that.
+ if [[ ! -x $DHCP_HELPER ]]; then
+   Array_push WARNINGS "$DHCP_HELPER is missing, the DHCP legs were skipped"
+   echo "$TOOL: SKIPPING the DHCP legs: $DHCP_HELPER is missing." 1>&2
+ elif ! dhcp_privilege_available; then
+   Array_push WARNINGS "sudo does not cover $DHCP_HELPER here, the DHCP legs were skipped"
+   echo "$TOOL: SKIPPING the DHCP legs: sudo -n does not cover $DHCP_HELPER (the rule names the INSTALLED path)." 1>&2
+ else
+   dhcp_tested=true
+ fi
  local forced=()
  if [[ -n $FORCED_SUBNET ]]; then forced=(--subnet "$FORCED_SUBNET"); fi
+ # By DEFAULT the sub-invocations keep `sudo -n': that the product path needs no
+ # password is precisely what this test proves. --sudo-interactive is propagated
+ # only when a human asked for it (typically to exercise the DHCP legs from a
+ # source tree, where the sudoers rule cannot name this script).
+ local sudo_flag=()
+ if [[ $SUDO_INTERACTIVE = 1 ]]; then sudo_flag=(--sudo-interactive); fi
  for index in 1 2; do
+   dhcp_flag=()
+   if [[ $index = 1 ]] && $dhcp_tested; then dhcp_flag=(--dhcp); fi
    # A sub-invocation: `up' owns its own transaction and its own report. Only
    # the first instance honours --subnet; the second must find its own, which is
    # precisely the property being tested.
-   if ! up_json=$("$0" up --owner-pid $$ --instance "$index" "${forced[@]}"); then
+   if ! up_json=$("$0" up --owner-pid $$ --instance "$index" "${forced[@]}" "${dhcp_flag[@]}" "${sudo_flag[@]}"); then
      # Whatever came up before must not be left behind by a failing selftest.
-     "$0" down --owner-pid $$ --instance 1 >/dev/null 2>&1 || true
+     "$0" down --owner-pid $$ --instance 1 "${sudo_flag[@]}" >/dev/null 2>&1 || true
      fail E_INTERNAL "the 'up' leg of instance $index failed: $up_json"
    fi
    forced=()
@@ -779,9 +976,44 @@ function do_selftest {
      echo "$TOOL: dig not installed, skipping the DNS leg." 1>&2
    fi
 
+   if $dhcp_tested; then
+     echo "== 4 bis. the first guest ASKS for its address, instead of being given one" 1>&2
+     if command -v dhcpcd >/dev/null; then
+       local ns1="mnbrns$$x1" peer1="vnbr$$b1" net1=${__st_nets[0]} leased=""
+       sudo_test_run "$IP" -netns "$ns1" addr flush dev "$peer1" || true
+       # -C resolv.conf: the namespace shares the host's filesystem, and a DHCP
+       # client rewriting /etc/resolv.conf of this machine would be a fine way
+       # to break the developer's own network from inside a test.
+       if sudo_test_run "$IP" netns exec "$ns1" dhcpcd -1 -q -t 15 -C resolv.conf "$peer1" 1>&2; then
+         leased=$(sudo_test_run "$IP" -netns "$ns1" -4 -oneline addr show dev "$peer1" \
+                  | grep -oE 'inet [0-9.]+' | awk '{print $2}')
+       fi
+       if [[ $leased =~ ^${net1//./\.}\.(1[0-9][0-9]|200)$ ]]; then
+         echo "$TOOL: the guest was handed $leased by our dnsmasq." 1>&2
+       else
+         echo "$TOOL: no lease inside $net1.100-$net1.200 (got '${leased:-nothing}')." 1>&2
+         failures=$((failures + 1))
+       fi
+       # The following legs expect the static addressing of guest_up.
+       sudo_test_run "$IP" netns exec "$ns1" dhcpcd -k "$peer1" >/dev/null 2>&1 || true
+       sudo_test_run "$IP" -netns "$ns1" addr flush dev "$peer1" || true
+       sudo_test_run "$IP" -netns "$ns1" addr add "$net1.2/24" dev "$peer1" || true
+       sudo_test_run "$IP" -netns "$ns1" route add default via "$net1.1" || true
+       # And the bridge that did NOT ask for a server must not have one: two
+       # components, two independent networks.
+       if dhcp_running_pid "${__st_bridges[1]}" >/dev/null; then
+         echo "$TOOL: instance 2 has a DHCP server nobody asked for." 1>&2
+         failures=$((failures + 1))
+       fi
+     else
+       Array_push WARNINGS "dhcpcd is not installed, the DHCP lease leg was skipped"
+       echo "$TOOL: dhcpcd not installed, skipping the lease leg." 1>&2
+     fi
+   fi
+
    echo "== 5. taking instance 1 down: instance 2 must survive it" 1>&2
    guest_down "mnbrns$$x1" "vnbr$$a1"
-   "$0" down --owner-pid $$ --instance 1 >/dev/null || failures=$((failures + 1))
+   "$0" down --owner-pid $$ --instance 1 "${sudo_flag[@]}" >/dev/null || failures=$((failures + 1))
    if link_exists "${__st_bridges[0]}"; then
      echo "$TOOL: ${__st_bridges[0]} survived its own down." 1>&2
      failures=$((failures + 1))
@@ -800,7 +1032,7 @@ function do_selftest {
  guest_down "mnbrns$$x2" "vnbr$$a2"
  for index in 1 2; do
    # Idempotent: instance 1 is normally already down at step 5.
-   "$0" down --owner-pid $$ --instance "$index" >/dev/null || failures=$((failures + 1))
+   "$0" down --owner-pid $$ --instance "$index" "${sudo_flag[@]}" >/dev/null || failures=$((failures + 1))
  done
 
  echo "== 7. asserting that nothing survives" 1>&2
@@ -811,6 +1043,9 @@ function do_selftest {
    if tagged_rules_exist "${__st_tags[index]}"; then
      Array_push LEFTOVERS "iptables rules tagged ${__st_tags[index]}"; failures=$((failures + 1))
    fi
+   if dhcp_running_pid "${__st_bridges[index]}" >/dev/null; then
+     Array_push LEFTOVERS "dnsmasq of ${__st_bridges[index]}"; failures=$((failures + 1))
+   fi
  done
  for index in 1 2; do
    if "$IP" netns list 2>/dev/null | grep -qw "mnbrns$$x$index"; then
@@ -820,6 +1055,7 @@ function do_selftest {
 
  REPORT[bridges]=$(Array_to_json __st_bridges)
  REPORT[subnets]=$(Array_to_json __st_nets)
+ REPORT[dhcp_tested]=$dhcp_tested
  REPORT[ip_forward]=$(cat /proc/sys/net/ipv4/ip_forward)
  if (( failures == 0 )); then
    echo "$TOOL: SELFTEST PASSED (two independent private networks, both guests reached the Internet, host untouched)." 1>&2
@@ -852,7 +1088,8 @@ function do_print_privileged_commands {
    "$IPTABLES -t nat -{A,D} POSTROUTING -s <NET>.0/24 ! -o <BR> -m comment --comment <TAG> -j MASQUERADE" \
    "$IPTABLES -{A,D} FORWARD -i <BR> ! -o <BR> -m comment --comment <TAG> -j ACCEPT" \
    "$IPTABLES -{A,D} FORWARD -o <BR> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment <TAG> -j ACCEPT" \
-   "$IPTABLES_SAVE"
+   "$IPTABLES_SAVE" \
+   "$DHCP_HELPER start <BR> <NET>"
  REPORT[commands]=$(Array_to_json commands)
  REPORT[bridge_pattern]="${BRIDGE_PREFIX}*"
  REPORT[tag_prefix]=$TAG_PREFIX
@@ -866,6 +1103,16 @@ function do_print_privileged_commands {
 # for the attachment itself:
 #   $IP link set mtap<pid>-<n> master <BR>
 $(printf '%s\n' "${commands[@]}")
+#
+# The last line is NOT dnsmasq itself, and that is the point: a sudoers rule
+# whose arguments contain a wildcard lets extra words through (measured: with
+# \`$IP link add ${BRIDGE_PREFIX}* type bridge' installed, \`ip link add ${BRIDGE_PREFIX}1 --INJECT type
+# bridge' is accepted), so a \`dnsmasq ... --pid-file=* ...' rule would also
+# accept \`--dhcp-script=/tmp/evil' -- arbitrary code as root. marionnet-dnsmasq.sh
+# is the small, argument-validating door that closes that: it takes exactly two
+# arguments, checks them as root against anchored regexps, and holds the dnsmasq
+# command line itself. Nothing grants the right to STOP the server: it drops to
+# the user, who owns it.
 #
 # Test harness only (selftest), NOT part of what Marionnet needs:
 #   $IP link add/del <VETH> type veth peer name <PEER>
@@ -895,6 +1142,12 @@ Options:
                       \`${BRIDGE_PREFIX}<pid>'. One Marionnet may hold several NAT bridge
                       components, each with its own /24. Omitted, the name is
                       the unsuffixed one -- and \`status'/\`gc' see both shapes.
+  --dhcp              also serve DHCP and DNS on the bridge (dnsmasq bound to it
+                      alone, guests get <NET>.100-<NET>.200, gateway and DNS
+                      <NET>.1). Started as root by marionnet-dnsmasq.sh, which
+                      immediately drops it to the calling user -- so \`down' and
+                      \`gc' stop it WITHOUT any privilege. Omitted, nothing runs
+                      and guests are configured by hand, as before.
   --subnet PREFIX     force the /24, e.g. --subnet 192.168.101 (default: the
                       first candidate free of the host's routes and addresses).
                       A forced prefix the host already uses is refused
@@ -908,8 +1161,9 @@ Options:
 Output: stdout is ALWAYS exactly one JSON object, on one line, success or
 failure; stderr is the human trace; the exit status is 0 on success. The JSON
 carries a symbolic error code among: E_USAGE, E_BAD_PID, E_BAD_INSTANCE,
-E_BAD_SUBNET, E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_SUDO_DENIED,
-E_NO_FREE_SUBNET, E_SUBNET_IN_USE, E_ROLLBACK_INCOMPLETE, E_INTERNAL.
+E_BAD_SUBNET, E_NO_IPROUTE2, E_NO_IPTABLES, E_NO_SYSCTL, E_NO_DNSMASQ,
+E_SUDO_DENIED, E_NO_FREE_SUBNET, E_SUBNET_IN_USE, E_ROLLBACK_INCOMPLETE,
+E_INTERNAL.
 
 The host interface, its address and its routes are NEVER touched: that is the
 whole point. Everything created here is undone by \`down' (and by \`gc' after a
@@ -930,6 +1184,7 @@ function parse_options {
      --state-dir)   STATE_DIR=${2:-}
                     [[ -n $STATE_DIR ]] || fail E_USAGE "--state-dir: empty path"
                     shift 2 ;;
+     --dhcp)             WANT_DHCP=1; shift ;;
      --dry-run)          DRY_RUN=1; shift ;;
      --sudo-interactive) SUDO_INTERACTIVE=1; shift ;;
      --fail-after)  FAIL_AFTER=${2:-}; shift 2 ;;   # test only, see the plan § A8.4

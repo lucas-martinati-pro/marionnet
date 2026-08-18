@@ -210,6 +210,11 @@
      ;; --- `iptables' sequence (the OCaml side only reads its JSON). It sources
      ;; --- bashbricks, installed next to it by bashbricks/dune.
      (glob_files "scripts/marionnet-natbridge.sh")
+     ;; --- The one privileged door of its DHCP service (episode 10c): sudo grants
+     ;; --- THIS script, never a dnsmasq command line -- a wildcard argument in a
+     ;; --- sudoers rule swallows extra words, so the rule could not be scoped.
+     ;; --- It must land next to marionnet-sudoers.sh, which names it by that path.
+     (glob_files "scripts/marionnet-dnsmasq.sh")
      ;; --- And its counterpart, the LAN bridge (episode 8 of the same work-stream):
      ;; --- same contract, same rollback discipline, but this one enslaves the HOST's
      ;; --- own card -- hence sudoers block (c), which it is also the source of.
