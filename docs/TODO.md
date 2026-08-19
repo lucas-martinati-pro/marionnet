@@ -399,3 +399,69 @@ exclu.
 
 *Reversé ici le 2026-08-19 depuis le correctif de la fenêtre « Quitter » (`34393bb`), qui les a
 rencontrés de biais.*
+
+---
+
+## Hygiène — les **fichiers de socket du blinker** s'accumulent dans `/tmp`, un par run
+
+**Constat.** `bin/gui/ledgrid_manager.ml` fabrique au chargement du module un chemin
+`/tmp/.marionnet-blinker-server-socket-<n>` (`UnixExtra.temp_file`), sur lequel le thread blinker
+se `bind`. Ce fichier n'est retiré que sur le **chemin de sortie propre** : la branche
+`please-die` de la boucle et `kill_blinker_thread`. Toute fin anormale — plantage, `SIGKILL`,
+gel de l'application — le laisse en place. Relevé le 2026-08-19 : **84 fichiers**, du 4 août au
+19 août, plus 2 `/tmp/blinker-killer-client-socket-*` (ceux-là créés par `Filename.temp_file`
+dans `kill_blinker_thread`). Rien ne les balaie, ni au démarrage ni ailleurs.
+
+**Voulu.** Qu'un run ne laisse pas de trace après lui, et qu'un run **de plus** ne coûte pas un
+fichier de plus dans `/tmp` indéfiniment. Deux gestes possibles, indépendants : retirer le fichier
+dès que le `bind` a réussi (une socket unix reste utilisable après `unlink` du chemin **tant que
+les deux extrémités le tiennent ouvert** — mais ici le pair, `wirefilter`, résout le chemin à
+chaque `sendto` : à vérifier avant de choisir cette voie), ou balayer au démarrage les fichiers du
+motif dont **aucun processus vivant** ne tient la socket.
+
+**Ce que l'implémentation devra affronter.** Le nom est calculé à l'initialisation du module,
+avant que quoi que ce soit ne soit lancé, et il est passé tel quel à `wirefilter` en `--blink`
+(`bin/simulation_level.ml:735-743`) : il ne peut donc pas devenir « anonyme » (socket abstraite)
+sans toucher aussi la ligne de commande de `wirefilter`. Un balayage au démarrage, lui, doit
+distinguer les fichiers morts des **sockets d'une autre instance de Marionnet tournant en
+parallèle** — `/tmp` est partagé, et deux sessions simultanées sont un cas connu du dépôt (voir
+l'entrée « deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps »). Le test
+sûr n'est pas la date du fichier mais le fait qu'aucun processus ne le tienne ouvert.
+
+*Repéré le 2026-08-19, en instruisant le gel du blinker (`ledgrid_manager`) : chaque fin brutale
+laisse le sien, et le gel en question en est une.*
+
+---
+
+## Hygiène — des `vde_switch` / `wirefilter` **survivent à la session** qui les a lancés
+
+**Constat.** Relevé le 2026-08-19 sur cette machine de développement : **120 processus**
+(80 `vde_switch`, 40 `wirefilter`) sans parent Marionnet, tous réadoptés par `systemd --user`,
+et répartis en **17 identifiants de session distincts** échelonnés du 13 au 19 août. Marionnet
+possède pourtant ce qu'il faut (`at_exit: killing all current descendants` puis `killing all
+orphans before exiting`, plus le *descendants monitor*) : ces filets ne jouent que sur une sortie
+**qui s'exécute** — un `SIGKILL`, un plantage ou un gel qu'il faut trancher les met tous hors jeu
+d'un coup.
+
+**Voulu.** Qu'une session tuée brutalement n'abandonne pas ses processus auxiliaires — ou, à
+défaut, qu'une session suivante sache les reconnaître et **proposer** de les balayer. Ils ne
+gênent pas une nouvelle session (chaque run a son propre répertoire de travail), mais ils tiennent
+des sockets et des descripteurs, et ils s'accumulent sans borne.
+
+**Ce que l'implémentation devra affronter.** Le seul mécanisme qui survive au `SIGKILL` du parent
+est côté noyau : `prctl(PR_SET_PDEATHSIG)` posé **par l'enfant, entre `fork` et `exec`**, ou un
+`cgroup` par session. Il n'y a pas de contradiction avec le `setsid` de `bin/marionnet.ml:51-58` —
+celui-là détache Marionnet du **terminal lançeur**, pas ses enfants de lui : vérifié, les
+`vde_switch` orphelins portent encore comme identifiant de session le **PID du Marionnet mort**
+qui les a lancés. Mais `PR_SET_PDEATHSIG` ne vaut que pour les enfants **directs** et n'existe pas
+dans le `Unix` d'OCaml : il faudrait un stub C sur le chemin de `Simulation_level.process#spawn`.
+
+La voie de moindre risque est donc plutôt la seconde, et elle a un point d'appui : puisque
+l'identifiant de session de ces processus **est** le PID du Marionnet qui les a lancés, un
+balayage n'a pas à deviner — il regroupe par `sid` et ne retient que les groupes dont le processus
+`sid` n'existe plus. Reste à respecter la règle du dépôt (lister les PID, les montrer, ne tuer que
+par PID exact, jamais par motif), et à ne **jamais** balayer sans demander : deux sessions
+Marionnet simultanées sont un cas connu (voir l'entrée « deux sessions Marionnet simultanées
+partagent l'adresse hôte de leurs taps »).
+
+*Repéré le 2026-08-19, en nettoyant après la reproduction du gel du blinker.*
