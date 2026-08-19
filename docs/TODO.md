@@ -365,3 +365,37 @@ que l'exception a laissé en plan. À faire dans la même section critique
 
 *Reversé ici le 2026-08-18 depuis le chantier `modernisation-world-bridge` (ép. 10b), qui l'a
 rencontré de biais.*
+
+---
+
+## GUI — les **autres** fenêtres de message s'étalent encore sur toute la largeur
+
+**Constat** (mesuré le 2026-08-19, à l'occasion du correctif `34393bb`, qui a plafonné le seul
+`title_QUESTION`). Le même défaut Gtk+ 3 subsiste ailleurs : un label sans plafond de largeur
+**naturelle** réclame son plus long paragraphe sur une ligne, et le dialogue obéit.
+- `dialog_MESSAGE` (`bin/gui/gui_glade3.xml`) : son label `content` a bien `wrap`, mais **aucun**
+  `max-width-chars` — **1814 px** relevés sur l'allocation réelle pour un message d'erreur d'un
+  seul paragraphe. C'est la forme de **tous** les `Simple_dialogs.error / warning / info / help`.
+  Son label `title`, lui, n'a même pas de `wrap` (exactement l'état de `title_QUESTION` avant le
+  correctif) : sans conséquence tant que les titres restent courts.
+- `bin/gui/simple_dialogs.ml` : les labels en `~line_wrap:true` de `recapitulative` (en-tête,
+  préambule, détail d'un dépliant) et de `ask_text_dialog` n'ont pas de plafond non plus. Le
+  `~width:640` de la fenêtre de `recapitulative` ne protège de rien : c'est un **minimum**.
+
+**Voulu.** Que tout label de message porte un plafond de largeur naturelle, comme `title_QUESTION`
+(72) et les trois labels OCaml de `lan_bridge.ml` / `nat_bridge.ml` / `simple_dialogs.ml`
+(`7192aa3`). Un plafond vaut pour les douze langues ; un saut de ligne calculé pour l'une d'elles,
+non — c'est l'argument qui a écarté les `\n` posés à la main.
+
+**Ce que l'implémentation devra affronter.** Le correctif se pose à deux endroits selon l'origine
+du label : dans le **glade** pour ceux que charge le builder (`wrap` + `max-width-chars` sur
+`content` et `title` de `dialog_MESSAGE`), en **OCaml** (`set_max_width_chars`) pour ceux que
+construit `GMisc.label`. Aucun `msgid` n'est concerné, donc aucun catalogue. Le point dur est
+ailleurs : une partie des messages du dépôt contient **déjà** des `\n` calculés à la main
+(`talking.ml`, `state.ml`, `gui_dialog_A_PROPOS.ml`, cf. `7192aa3`) ; un plafond posé par-dessus
+coupe une seconde fois et peut produire des lignes irrégulières. Il faudra donc, message par
+message, soit retirer la coupure manuelle, soit accepter le résultat — un balayage aveugle est
+exclu.
+
+*Reversé ici le 2026-08-19 depuis le correctif de la fenêtre « Quitter » (`34393bb`), qui les a
+rencontrés de biais.*
