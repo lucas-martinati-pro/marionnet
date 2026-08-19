@@ -63,6 +63,7 @@ type t = {
   name              : string;
   label             : string;
   port_no           : int;
+  auto_mdix         : bool;
   show_vde_terminal : bool;
   activate_fstp     : bool;
   rc_config         : bool * string; (* run commands (rc) file configuration *)
@@ -97,14 +98,14 @@ module Make_menus (Params : sig
       Dialog_add_or_update.make ~title:(s_ "Add switch") ~name ~ok_callback ()
 
     let reaction
-       { name = name; label = label; port_no = port_no;
+       { name = name; label = label; port_no = port_no; auto_mdix = auto_mdix;
          show_vde_terminal = show_vde_terminal; activate_fstp = activate_fstp;
          rc_config = rc_config; _ }
       =
       let action () =
         ignore
           (new User_level_switch.switch
-                 ~network:st#network ~name ~label ~port_no ~show_vde_terminal ~activate_fstp ~rc_config ())
+                 ~network:st#network ~name ~label ~port_no ~auto_mdix ~show_vde_terminal ~activate_fstp ~rc_config ())
       in
       st#network_change action ();
 
@@ -121,23 +122,25 @@ module Make_menus (Params : sig
      let label = s#get_label in
      let port_no = s#get_port_no in
      let port_no_min = st#network#port_no_lower_of (s :> User_level.node) in
+     let auto_mdix = s#get_auto_mdix in
      let show_vde_terminal = s#get_show_vde_terminal in
      let activate_fstp = s#get_activate_fstp in
      let rc_config = s#get_rc_config in
      Dialog_add_or_update.make
-       ~title ~name ~label ~port_no ~port_no_min
+       ~title ~name ~label ~port_no ~port_no_min ~auto_mdix
        ~show_vde_terminal ~activate_fstp ~rc_config
        ~ok_callback:Add.ok_callback ()
 
     let reaction { name = name; label = label; port_no = port_no;
                    old_name = old_name;
+                   auto_mdix = auto_mdix;
                    show_vde_terminal = show_vde_terminal;
                    activate_fstp = activate_fstp;
                    rc_config = rc_config }
       =
       let d = (st#network#get_node_by_name old_name) in
       let s = ((Obj.magic d):> User_level_switch.switch) in
-      let action () = s#update_switch_with ~name ~label ~port_no ~show_vde_terminal ~activate_fstp ~rc_config in
+      let action () = s#update_switch_with ~name ~label ~port_no ~auto_mdix ~show_vde_terminal ~activate_fstp ~rc_config in
       st#network_change action ();
 
   end
@@ -223,6 +226,7 @@ let make
  ?(port_no=Const.port_no_default)
  ?(port_no_min=Const.port_no_min)
  ?(port_no_max=Const.port_no_max)
+ ?(auto_mdix=false)
  ?(show_vde_terminal=false)
  ?(activate_fstp=false)
  ?(rc_config=(false, Const.initial_content_for_rcfiles))
@@ -241,12 +245,16 @@ let make
       ?label
       ()
   in
-  let (port_no, show_vde_terminal, activate_fstp, rc_config) =
+  let (port_no, auto_mdix, show_vde_terminal, activate_fstp, rc_config) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_switch#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
         [(s_ "Ports number");
+         (* Not translated on purpose: "Auto MDI-X" is the IEEE acronym printed as such on
+            real hardware and in datasheets, in every language we support. The meaning is
+            carried by the tooltip, which *is* translated. *)
+         ("Auto MDI-X");
          (s_ "Show VDE terminal");
          (s_ "Activate FSTP");
          (s_ "Startup configuration");
@@ -257,6 +265,13 @@ let make
         ~packing:(form#add_with_tooltip (s_ "Switch ports number"))
         ~lower:port_no_min ~upper:port_no_max ~step_incr:2
         port_no
+    in
+    let auto_mdix =
+      GButton.check_button
+        ~active:auto_mdix
+        ~packing:(form#add_with_tooltip
+                    (s_ "Check to let the switch accept, on all its ports, any kind of cable, straight or crossover"))
+        ()
     in
     let show_vde_terminal =
       GButton.check_button
@@ -281,19 +296,21 @@ let make
          ~language:("vde_switch") (* special syntax *)
          ()
     in
-    (port_no, show_vde_terminal, activate_fstp, rc_config)
+    (port_no, auto_mdix, show_vde_terminal, activate_fstp, rc_config)
   in
   (* --- *)
   let get_widget_data () :'result =
     let name = name#text in
     let label = label#text in
     let port_no = int_of_float port_no#value in
+    let auto_mdix = auto_mdix#active in
     let show_vde_terminal = show_vde_terminal#active in
     let rc_config = (rc_config#active, rc_config#content) in
     let activate_fstp = activate_fstp#active in
       { Data.name = name;
         Data.label = label;
         Data.port_no = port_no;
+        Data.auto_mdix = auto_mdix;
         Data.show_vde_terminal = show_vde_terminal;
         Data.activate_fstp = activate_fstp;
         Data.rc_config = rc_config;
@@ -377,6 +394,7 @@ class switch =
      ~name
      ?label
      ~port_no
+     ?(auto_mdix=false)
      ?(show_vde_terminal=false)
      ?(activate_fstp=false)
      ?(rc_config=(false,""))
@@ -397,8 +415,18 @@ class switch =
 
   method ledgrid_label = "Switch"
   method defects_device_type = "switch"
-  method polarity = User_level.MDI_X
   method string_of_devkind = "switch"
+
+  (* "Auto MDI-X": a real switch with intelligent ports detects the wiring by itself, so no
+     cable is ever wrong. Marionnet models this as a polarity (user_level.ml), and the three
+     components which own an implicit switch (cloud, world_gateway and both bridges, through
+     bridge_common) already answer [MDI_Auto] silently. Here the user decides, port by port
+     being meaningless: the flag holds for the whole device. Read as a method, hence re-read
+     at every [cable#is_correct] (cable.ml), not frozen at startup. *)
+  val mutable auto_mdix : bool = auto_mdix
+  method get_auto_mdix = auto_mdix
+  method set_auto_mdix x = auto_mdix <- x
+  method polarity = if auto_mdix then User_level.MDI_Auto else User_level.MDI_X
 
   val mutable show_vde_terminal : bool = show_vde_terminal
   method get_show_vde_terminal = show_vde_terminal
@@ -448,10 +476,11 @@ class switch =
    (imgDir^"ico.switch."^(self#icon_suffix_of_state)^"."^iconsize^".png")
 
   method update_switch_with ~name ~label ~port_no
-   ~show_vde_terminal ~activate_fstp ~rc_config
+   ~auto_mdix ~show_vde_terminal ~activate_fstp ~rc_config
    =
    (* The following call ensure that the simulated device will be destroyed: *)
    self_as_node_with_ledgrid_and_defects#update_with ~name ~label ~port_no;
+   self#set_auto_mdix (auto_mdix);
    self#set_show_vde_terminal (show_vde_terminal);
    self#set_activate_fstp (activate_fstp);
    self#set_rc_config (rc_config);
@@ -482,6 +511,7 @@ class switch =
       ("name"     ,  self#get_name );
       ("label"    ,  self#get_label);
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
+      ("auto_mdix" , string_of_bool (self#get_auto_mdix));
       ("show_vde_terminal" , string_of_bool (self#get_show_vde_terminal));
       ("activate_fstp"     , string_of_bool (self#get_activate_fstp));
       (* Since `v3: the flag in clear, the script in its own file (episode 5). *)
@@ -493,6 +523,9 @@ class switch =
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("port_no"  , x ) -> self#set_port_no (int_of_string x)
+  (* Absent from a project older than this feature: the default (false) then stands, which is
+     exactly the historical behaviour (MDI_X). *)
+  | ("auto_mdix", x )         -> self#set_auto_mdix (bool_of_string x)
   | ("show_vde_terminal", x ) -> self#set_show_vde_terminal (bool_of_string x)
   | ("activate_fstp", x )     -> self#set_activate_fstp (bool_of_string x)
   (* `v0/`v1/`v2: the pair, marshalled into the attribute. Kept, and kept first. *)
