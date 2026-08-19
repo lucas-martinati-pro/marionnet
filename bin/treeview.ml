@@ -1576,6 +1576,13 @@ object(self)
   method expand_row id =
     GMain_actor.apply_extract (fun () -> view#expand_row (self#id_to_path id)) ()
 
+  (* Can the rows of THIS treeview have children? A treeview whose rows are always added
+     without a [parent_row_id] is flat by construction, and there "expand all" / "collapse all"
+     have nothing to act upon: both the two side buttons and the two contextual menu entries are
+     hidden when this answers false (see the initializer below and
+     [add_expand_and_collapse_button]). Redefined by treeview_documents, the only flat one. *)
+  method rows_may_have_children = true
+
   method expand_everything =
     GMain_actor.apply_extract (fun () -> view#expand_all ()) ()
 
@@ -1729,19 +1736,25 @@ object(self)
     in
     ();
 
-    self#add_menu_item
-      (s_ "Expand all")
-      (fun _ -> true)
-      (fun selected_rowid_if_any ->
-        self#expand_everything);
+    (* The separator belongs INSIDE the guard: it separates these two entries from those the
+       subclass adds afterwards, so on a flat treeview it would be left leading the menu. *)
+    if self#rows_may_have_children then begin
 
-    self#add_menu_item
-      (s_ "Collapse all")
-      (fun _ -> true)
-      (fun selected_rowid_if_any ->
-        self#collapse_everything);
+      self#add_menu_item
+        (s_ "Expand all")
+        (fun _ -> true)
+        (fun selected_rowid_if_any ->
+          self#expand_everything);
 
-    self#add_separator_menu_item;
+      self#add_menu_item
+        (s_ "Collapse all")
+        (fun _ -> true)
+        (fun selected_rowid_if_any ->
+          self#collapse_everything);
+
+      self#add_separator_menu_item;
+
+      end;
 end;;
 
 (* Convenient alias: *)
@@ -1860,7 +1873,11 @@ class virtual treeview_with_a_primary_key_Name_column
 
  end
 
-(* Add the two buttons "Expand all" and "Collapse all" at right side of the treeview. *)
+(* Build the vertical toolbar at the right side of the treeview, holding the two buttons
+   "Expand all" and "Collapse all" -- but only where they mean something: on a treeview whose
+   rows are flat ([rows_may_have_children] false) they would be no-ops, so only the toolbar
+   itself is returned. The toolbar is returned in every case because a caller may add its own
+   buttons to it (treeview_documents: "Import a document"). *)
 let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (treeview:t) : GButton.toolbar =
   let toolbar =
     let packing w = hbox#pack ~expand:false w in
@@ -1869,19 +1886,24 @@ let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (t
   (*let packing = toolbar#add in*)
   let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in
   (* --- *)
-  let b1 = Gui_bricks.button_image (*~window*) ~packing ~file:"ico.action.zoom.in.png" () in
-  let b2 = Gui_bricks.button_image (*~window*) ~packing ~file:"ico.action.zoom.out.png" () in
   let () =
-    (* !!!VERIFY TRANSITION (lablgtk2->lablgtk3): *)
-    (* (* (* let set = (GData.tooltips ())#set_tip in *) *) *)
-    (* val GtkBase.Widget.Tooltip.set_text : [> `widget ] Gtk.obj -> string -> unit *)
-    let set widget ~text = GtkBase.Widget.Tooltip.set_text widget text in
-    set b1#as_widget ~text:(s_ "Expand all");
-    set b2#as_widget ~text:(s_ "Collapse all")
-  in
-  let () =
-    let set (b:GButton.button) callback = ignore (b#connect#clicked ~callback) in
-    set b1 (fun () -> treeview#expand_everything);
-    set b2 (fun () -> treeview#collapse_everything)
+    if treeview#rows_may_have_children then begin
+      let b1 = Gui_bricks.button_image (*~window*) ~packing ~file:"ico.action.zoom.in.png" () in
+      let b2 = Gui_bricks.button_image (*~window*) ~packing ~file:"ico.action.zoom.out.png" () in
+      let () =
+        (* !!!VERIFY TRANSITION (lablgtk2->lablgtk3): *)
+        (* (* (* let set = (GData.tooltips ())#set_tip in *) *) *)
+        (* val GtkBase.Widget.Tooltip.set_text : [> `widget ] Gtk.obj -> string -> unit *)
+        let set widget ~text = GtkBase.Widget.Tooltip.set_text widget text in
+        set b1#as_widget ~text:(s_ "Expand all");
+        set b2#as_widget ~text:(s_ "Collapse all")
+      in
+      let () =
+        let set (b:GButton.button) callback = ignore (b#connect#clicked ~callback) in
+        set b1 (fun () -> treeview#expand_everything);
+        set b2 (fun () -> treeview#collapse_everything)
+      in
+      ()
+      end
   in
   toolbar

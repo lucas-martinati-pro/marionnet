@@ -354,6 +354,12 @@ object(self)
       ()
   (* as super *)
 
+  (* This treeview is FLAT: its only row creator, [import_document], calls [add_row] without a
+     [parent_row_id], so no row here ever has children. "Expand all" / "Collapse all" would have
+     nothing to act upon -- hence neither the two side buttons nor the two contextual menu
+     entries are built (treeview.ml). *)
+  method! rows_may_have_children = false
+
   val icon_header = "Icon"
   method get_row_icon = self#get_Icon_field (icon_header)
   method set_row_icon = self#set_Icon_field (icon_header)
