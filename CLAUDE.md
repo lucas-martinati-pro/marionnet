@@ -213,8 +213,14 @@ Reprise : appliquer le skill `chantier-long`.
   comme eux désigne autre chose) ; versement `msgmerge --compendium` validé par un essai à blanc
   (diff vide) ; audit d'arité **sur les 12 catalogues entiers** (5 064 entrées, 0 écart) où une
   regex naïve produit des **faux positifs** (`1% implies` lu comme `% i` — exclure `%%` et le
-  drapeau espace) ; Pango 24/24 ; `.mo` compilés interrogés par clé exacte. **Le chantier n'a
-  plus d'épisode ouvert.**
+  drapeau espace) ; Pango 24/24 ; `.mo` compilés interrogés par clé exacte.
+  **Ép. 13 OUVERT — le seul restant, sans code** (§ 4.10 du doc) : *les gestes que seule une
+  vraie plateforme peut jouer*, repoussés parce que cette machine de dev **n'a pas d'IPv6** et
+  que certains chemins privilégiés ne se jouent ni en `netns` ni sans installation — run
+  privilégié réel du NAT bridge (bail DHCP dans un invité, après `make install` +
+  `--enable-natbridge`), `selftest --assume-ipv6-uplink`, **sortie NAT66** (seule preuve
+  *bloquée par l'environnement*), les deux ports du LAN bridge sur une carte physique, les
+  textes à l'écran, et les rejeux différés des ép. 6 et 8. Le chantier **ne se clôt pas** avant.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

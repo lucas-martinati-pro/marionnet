@@ -336,7 +336,12 @@ le suivant existe.
     seuls textes d'aide** des composants : d'où **9a** (les 41 chaînes de formulaire, d'erreur
     et de tooltip) **fait 2026-08-18**, détail en § 4.8, et **9b** (les 2 textes d'aide)
     **fait 2026-08-19**, détail en § 4.9, qui rétablit l'invariant « on ne supporte que des
-    catalogues complets » et **clôt le chantier**.
+    catalogues complets ».
+14. **ép. 13** *(ouvert, sans code)* — **les gestes que seule une vraie plateforme peut jouer** :
+    run privilégié réel du NAT bridge, `selftest` avec ses jambes IPv6, sortie **NAT66**
+    (non prouvable sur cet hôte, qui n'a aucune IPv6), les deux ports du LAN bridge sur une
+    carte physique, et les mots à l'écran. Détail en § 4.10. **Le chantier reste ouvert sur
+    ce seul épisode** ; il se clôt (MODE C) quand ces gestes auront été joués.
 
 ### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
 
@@ -654,6 +659,49 @@ traduction et non l'anglais.
 un projet, de créer un bridge et de cliquer « Aide » — un geste interactif. Le run non interactif
 mené ici démarre bien le binaire mais ne l'atteste pas ; ce qui est attesté, c'est que le `.mo`
 que ce binaire charge contient et sert ces traductions.
+
+### 4.10 Épisode 13 — les gestes que seule une vraie plateforme peut jouer
+
+Le code du chantier est complet et les catalogues aussi ; ce qui reste n'est pas du travail
+d'écriture mais de **preuve sur matériel**. Plusieurs vérifications ont été repoussées épisode
+après épisode pour une raison qui n'a pas changé : la machine de développement où tout cela a
+été construit **n'a pas d'IPv6**, et une partie des chemins privilégiés ne se joue ni en
+`netns` ni sans installation. Le chantier reste donc **ouvert** sur ce seul épisode, à jouer
+**quand la plateforme le permettra** — et non à cocher par approximation.
+
+**a. Le run privilégié réel du NAT bridge** (ép. 10c.2). `make install` en profil *testing*,
+puis `sudo <installdir>/marionnet-sudoers.sh install --only --enable-natbridge` — la ligne
+`dnsmasq` n'est accordée qu'au script **installé**, root-owned sur toute sa chaîne. Ce qu'il
+faut voir : un invité trixie branché sur un port du NAT bridge obtenant un **bail DHCP réel**,
+puis un second composant DHCP décoché dont le `status` du script dit `dhcp:false`. Un coup
+d'œil au dialogue au passage (ligne « DHCP service »).
+
+**b. Le `selftest` avec ses jambes IPv6** (ép. 11) :
+`marionnet-natbridge.sh selftest --sudo-interactive --assume-ipv6-uplink` — sans ce drapeau les
+jambes v6 sont **sautées**, faute d'uplink. Ce qu'il faut voir : un invité `netns`
+**s'autoconfigurant** dans le /64 annoncé, pinguant `<préfixe>::1`, et l'hôte **rendu à
+l'identique** (`forwarding`, `accept_ra`, aucun `ipv6.state` résiduel).
+
+**c. La sortie NAT66 réelle** (ép. 11), **non prouvable sur cet hôte** : il n'a aucune adresse
+IPv6 globale. Demande un uplink v6 véritable (campus, tethering v6, tunnel). C'est le seul point
+du chantier dont la preuve est *bloquée par l'environnement*, pas par le temps.
+
+**d. Les deux ports du LAN bridge sur une vraie carte** (ép. 12) : deux invités sur `port1` et
+`port2` du **même** LAN bridge, sur une carte physique (filaire de préférence, tethering à
+défaut), et un `up`/`down` sur un vrai LAN filaire derrière un switch — le seul chemin qui
+touche à la carte de l'hôte et à sa route par défaut.
+
+**e. Les mots à l'écran** (ép. 9a et 9b) : les entrées du menu planète, les champs du dialogue
+du NAT bridge, et les **deux textes d'aide** eux-mêmes, qui demandent un projet ouvert, un
+bridge créé et un clic sur « Aide ». C'est le geste le moins coûteux de la liste, et celui qui
+attrape les fautes qu'aucune garde automatique ne voit (coupures, largeur, ton).
+
+**f. Les rejeux différés** : l'élévation de privilèges depuis la GUI (ép. 6) avec le **vrai**
+script, et le `selftest` `netns` du LAN bridge (ép. 8).
+
+Aucun de ces gestes n'appelle de code neuf. S'ils passent, le chantier se clôt (MODE C) ; si
+l'un d'eux échoue, il ouvrira son propre épisode correctif — c'est précisément pourquoi on ne
+clôt pas avant de les avoir joués.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1886,3 +1934,14 @@ parce qu'aucune ne se redevine :
   `dune build` rc 0 ; et surtout les **`.mo` compilés interrogés avec la clé exacte** rendent les
   24 traductions, pas l'anglais. **Non prouvé, dit tel quel** : lire les deux textes à l'écran
   exige un projet ouvert et un clic sur « Aide ». **Le chantier n'a plus d'épisode ouvert.**
+
+- **2026-08-19 — épisode 13 ouvert** : *les gestes que seule une vraie plateforme peut jouer*
+  (§ 4.10). Le code et les catalogues sont complets ; ce qui reste est de la **preuve sur
+  matériel**, repoussée jusqu'ici pour une raison inchangée — cette machine de développement
+  **n'a pas d'IPv6**, et certains chemins privilégiés ne se jouent ni en `netns` ni sans
+  installation. Six gestes listés (run privilégié réel du NAT bridge avec bail DHCP ;
+  `selftest --assume-ipv6-uplink` ; **sortie NAT66**, seule preuve *bloquée par
+  l'environnement* ; deux ports du LAN bridge sur une carte physique ; les textes à l'écran ;
+  les rejeux différés des ép. 6 et 8). Aucun code neuf attendu : s'ils passent, le chantier se
+  clôt (MODE C) ; si l'un échoue, il ouvrira son épisode correctif. **Décision de l'utilisateur
+  (2026-08-19)** : ne pas clore le chantier tant que ces gestes n'ont pas été joués.
