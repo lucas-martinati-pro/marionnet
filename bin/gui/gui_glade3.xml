@@ -550,6 +550,14 @@
                   </packing>
                 </child>
                 <child>
+                  <!-- The two properties below are what keeps this dialog from stretching
+                       across the whole screen. In Gtk+ 3 a label with no cap on its NATURAL
+                       width asks for its longest paragraph on a single line, and the dialog
+                       obeys (measured: 1714 pixels for the "Quit" question). "wrap" allows the
+                       break, "max-width-chars" is what forces it, in every language, which no
+                       hand-placed line break inside a msgid could do. Same fix, same value, as
+                       the OCaml-built labels of lan_bridge.ml, nat_bridge.ml and
+                       simple_dialogs.ml. Do not remove as "useless". -->
                   <object class="GtkLabel" id="title_QUESTION">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
@@ -558,6 +566,8 @@
                     <property name="label" translatable="yes">&lt;b&gt;Title&lt;/b&gt;</property>
                     <property name="use-markup">True</property>
                     <property name="justify">center</property>
+                    <property name="wrap">True</property>
+                    <property name="max-width-chars">72</property>
                   </object>
                   <packing>
                     <property name="expand">True</property>
