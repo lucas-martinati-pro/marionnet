@@ -205,9 +205,16 @@ Reprise : appliquer le skill `chantier-long`.
   `set_use_markup` explicite — donc tout `<mot>` d'un `msgid` **ou** d'une traduction casse le
   parsing du message entier, et toute valeur venue de l'utilisateur doit passer par
   `Glib.Markup.escape_text` (les **tooltips**, eux, sont du texte brut : `Tooltip.set_text`).
-  C'est ce qui a fait corriger `bin/nat_bridge.ml:244` en même temps. Reste **9b** : les 2 textes
-  d'aide ×12, qui **seul** rétablira l'invariant « on ne supporte que des catalogues complets »
-  et clôt le chantier.
+  C'est ce qui a fait corriger `bin/nat_bridge.ml:244` en même temps.
+  **Ép. 9b FAIT** (§ 4.9 du doc) — les 2 textes d'aide (5 927 car.) traduits ×12, **aucun `.ml`
+  touché, aucun cycle POT** : les 12 catalogues passent à **422 traduits, 0 trou**, donc
+  l'invariant « on ne supporte que des catalogues complets » est **rétabli**. Labels de puces
+  repris **mot pour mot** des libellés du dialogue (un texte d'aide qui ne nomme pas les champs
+  comme eux désigne autre chose) ; versement `msgmerge --compendium` validé par un essai à blanc
+  (diff vide) ; audit d'arité **sur les 12 catalogues entiers** (5 064 entrées, 0 écart) où une
+  regex naïve produit des **faux positifs** (`1% implies` lu comme `% i` — exclure `%%` et le
+  drapeau espace) ; Pango 24/24 ; `.mo` compilés interrogés par clé exacte. **Le chantier n'a
+  plus d'épisode ouvert.**
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

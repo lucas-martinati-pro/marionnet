@@ -334,8 +334,9 @@ le suivant existe.
     11 et 12** : ils ajoutent des `msgid`, et traduire avant l'aurait fait traduire deux fois.
     Le refresh a mesuré **43** trous par catalogue, dont **5 956 caractères pour les deux
     seuls textes d'aide** des composants : d'où **9a** (les 41 chaînes de formulaire, d'erreur
-    et de tooltip) **fait 2026-08-18**, détail en § 4.8, et **9b** (les 2 textes d'aide), qui
-    seul rétablira l'invariant « on ne supporte que des catalogues complets ».
+    et de tooltip) **fait 2026-08-18**, détail en § 4.8, et **9b** (les 2 textes d'aide)
+    **fait 2026-08-19**, détail en § 4.9, qui rétablit l'invariant « on ne supporte que des
+    catalogues complets » et **clôt le chantier**.
 
 ### 4.5 Épisode 10 en détail — l'écart avec la passerelle n'était pas justifié
 
@@ -603,6 +604,56 @@ comme son `msgid`. `dune build` rc 0 recompile les douze `.mo`, et `msgunfmt` su
 celui que charge le binaire. **Geste humain restant** : voir les chaînes neuves *elles-mêmes*
 à l'écran (entrées du menu planète, dialogue du NAT bridge) demande un projet ouvert, donc une
 manipulation interactive ; non joué ici, dit tel quel.
+
+### 4.9 Épisode 9b en détail — les deux textes d'aide, et la fin du chantier
+
+Ce qui restait après 9a tenait en deux `msgid` : les textes d'aide de `bin/lan_bridge.ml:271`
+(2 334 caractères) et de `bin/nat_bridge.ml:633` (3 593), soit **5 927 caractères** à traduire
+douze fois. Aucun code ne bouge ici — aucun `msgid` ne change, donc **aucun cycle POT** : le
+travail est entièrement dans `bin/po/`, et il rétablit l'invariant que 9a laissait
+volontairement faux (*on ne supporte que des catalogues complets*).
+
+**Le lexique a été relu avant d'écrire une ligne.** Un texte d'aide explique les champs du
+dialogue qu'il accompagne : s'il ne les nomme pas exactement comme eux, il désigne autre chose.
+Les rendus déjà figés ont donc été extraits des douze catalogues et repris **mot pour mot**
+comme labels de puces — `Integrierte Switch Ports` (de), `Porty integrovaného prepínača` (sk),
+`Порты встроенного коммутатора` (ru), `Ενσωματωμένες πόρτες δρομολογητή` (el, dont l'habitude
+locale dit « δρομολογητή » là où l'anglais dit *switch* : on garde le libellé du champ, pas la
+traduction littérale du texte anglais), `Bütünleşik anahtar bağlantı noktaları` (tr). Même
+discipline pour les natures elles-mêmes (`NAT-Bridge`, `Puente NAT`, `Punte NAT`, `NAT-ponto`,
+`Most NAT`, `NAT-мост`, `Γέφυρα NAT`, `NAT köprüsü`) et pour la troisième voie, qui n'est pas
+traduite partout (`World gateway` reste tel quel en es/it/pt/ro/eo, contre `Passerelle
+internet`, `Brána do sveta`, `Мировой шлюз`, `Πύλη κόσμου`, `Dünya ağ geçidi`).
+
+**La forme du texte est aussi une contrainte technique**, et elle a été vérifiée par machine
+plutôt que par relecture : mêmes paragraphes et mêmes puces que le `msgid` (le contrôle compare
+le nombre de `\n` et de `\n\n` de chaque traduction à celui de sa source), **aucune** directive
+de format introduite (les deux `msgid` n'en portent aucune), et **aucun `<` ni `&`** — le corps
+de `Simple_dialogs.help` est un label Pango en mode markup, comme l'a montré le défaut trouvé à
+9a. Les majuscules d'insistance de l'anglais (`SAME`, `WITHOUT`, `OWN`, `DIRECTLY`) sont rendues
+par des majuscules, jamais par des balises.
+
+**Méthode** : douze compendiums (un par langue, deux entrées chacun) versés par
+`msgmerge --compendium --no-fuzzy-matching`, comme à 9a. Un **essai à blanc** l'a validée avant
+de s'en servir : `msgmerge` sans compendium sur `fr.po` rend un fichier **identique au bit près**
+(diff vide), donc le versement n'introduit aucun reformatage parasite. Le résultat le confirme :
+**1 275 insertions, 0 suppression** sur les douze fichiers.
+
+**Preuves.** `msgfmt -c --statistics` → **422 traduits, 0 non traduit** dans les douze catalogues
+(l'invariant est rétabli ; `ar` et `zh`, hors `LINGUAS` et incomplets de longue date, ne sont pas
+touchés). **Audit d'arité sur les douze catalogues entiers**, soit **5 064 entrées** : **0 écart**
+— au passage, l'expression régulière naïve du premier essai a produit sept faux positifs
+(`1% implies` d'un texte courant lu comme une directive `% i`), corrigés en excluant `%%` et le
+drapeau espace, ce qui vaut d'être noté pour le prochain audit. **Validation Pango des 24
+traductions neuves** : 24 valides, 0 échec, les deux `msgid` anglais l'étant aussi. `dune build`
+rc 0 reconstruit les douze `.mo`. Enfin, le contrôle qui compte vraiment : les catalogues
+**compilés** sont interrogés avec la clé exacte des deux `msgid` — les 24 renvoient bien la
+traduction et non l'anglais.
+
+**Ce qui n'est pas prouvé ici, dit tel quel** : lire les deux textes *à l'écran* demande d'ouvrir
+un projet, de créer un bridge et de cliquer « Aide » — un geste interactif. Le run non interactif
+mené ici démarre bien le binaire mais ne l'atteste pas ; ce qui est attesté, c'est que le `.mo`
+que ce binaire charge contient et sert ces traductions.
 
 ### 4.1 Épisode 3 en détail — révision de cadrage : appeler, ne pas réécrire
 
@@ -1818,3 +1869,20 @@ parce qu'aucune ne se redevine :
   **Geste humain restant** : voir les chaînes neuves à l'écran (menu planète, dialogue du NAT
   bridge) exige un projet ouvert, donc une manipulation interactive — non joué ici.
   Prochain pas : **épisode 9b** (les 2 textes d'aide ×12), qui clôt le chantier.
+
+- **2026-08-19 — épisode 9b** : *les deux textes d'aide, en douze langues* (§ 4.9). Les 2 `msgid`
+  laissés par 9a — `bin/lan_bridge.ml:271` et `bin/nat_bridge.ml:633`, **5 927 caractères** —
+  traduits ×12. **Aucun code, aucun cycle POT** : rien que `bin/po/`. Lexique relu d'abord et
+  labels de puces repris **mot pour mot** des champs du dialogue (`Integrierte Switch Ports`,
+  `Порты встроенного коммутатора`, `Ενσωματωμένες πόρτες δρομολογητή`…), le sigle jamais traduit.
+  Forme contrôlée par machine (mêmes paragraphes et puces que le `msgid`, zéro directive de format
+  introduite, zéro `<`/`&` — le corps de `Simple_dialogs.help` est un label Pango markup).
+  Versement par `msgmerge --compendium --no-fuzzy-matching`, **validé par un essai à blanc**
+  (msgmerge sans compendium rend `fr.po` **identique**, diff vide) : résultat **1 275 insertions,
+  0 suppression**. **Preuves** : `msgfmt -c --statistics` → **422 traduits, 0 non traduit** aux 12
+  (invariant rétabli ; `ar`/`zh` hors `LINGUAS` non touchés) ; **audit d'arité sur les 12
+  catalogues entiers, 5 064 entrées → 0 écart** (les 7 « écarts » du premier essai étaient des
+  faux positifs d'expression régulière : `1% implies` lu comme `% i`) ; **Pango : 24/24 valides** ;
+  `dune build` rc 0 ; et surtout les **`.mo` compilés interrogés avec la clé exacte** rendent les
+  24 traductions, pas l'anglais. **Non prouvé, dit tel quel** : lire les deux textes à l'écran
+  exige un projet ouvert et un clic sur « Aide ». **Le chantier n'a plus d'épisode ouvert.**
