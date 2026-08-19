@@ -230,21 +230,60 @@ object (self)
     self#with_lock (fun () ->
     self#set_port_connection_state_unlocked ~id ~port ~value)) ()
 
-  method flash ~id ~port () =
-    (* Hot path: the blinker thread calls this on every datagram it receives. Kept SYNCHRONOUS
-       (apply_extract, not delegate ~async) on purpose: it gives the blinker natural backpressure
-       instead of piling idle callbacks up in the main loop, and OCaml threads were already
-       serialised by the runtime master lock anyway, so nothing is lost in parallelism. *)
-    GMain_actor.apply_extract (fun () ->
-    self#with_lock (fun () ->
-    (try
+  (* Hot path: the blinker thread hands over here everything it has read since the previous
+     delivery. Until now this was a per-datagram [flash ~id ~port], kept SYNCHRONOUS
+     (apply_extract) in the name of backpressure. The backpressure was real, but it pushed back
+     on the wrong side: while the blinker waits for the main thread it does not read its datagram
+     socket, so the socket fills, and then
+
+       - `wirefilter' blocks in its own sendto, which stops the SIMULATED NETWORK -- measured, a
+         ping through a switch goes from 1.4 ms to 2441 ms with 22% loss;
+
+       - at exit, [kill_blinker_thread] sends "please-die" on that saturated socket FROM the main
+         thread, the very thread the blinker is waiting for -- measured, the main thread parks in
+         the kernel (unix_wait_for_peer) and the application can no longer be quit.
+
+     Hence the three properties this method must keep: ASYNCHRONOUS (the blinker never waits, so
+     it always gives the socket back to the kernel), COALESCED (one delegation per batch instead
+     of one per packet, so the main loop is not flooded either -- that was the legitimate half of
+     the backpressure argument), and holding the mutex exactly ONCE for the whole batch. LED
+     blinking is cosmetic -- this very file says so below -- and cosmetics must never be able to
+     stop anything. *)
+  method flash_many (batch : (int * int) list) =
+    if batch = [] then () else
+    (* TWO guards, because a batch can fail on either side of the actor and both failures would
+       otherwise leave no trace whatsoever -- and a silent failure on this path is exactly what
+       made the bug this method comes from so expensive to instruct.
+
+         (1) the caller's side: [delegate ~async:()] does not wait, but it still POSTS the idle
+             callback from the blinker thread. An exception there would escape into the blinker
+             loop and kill that thread for good -- LEDs, and socket draining, with it.
+
+         (2) the actor's side: [delegate ~async:()] discards whatever its closure raises. Anything
+             escaping [with_lock] -- the mutex itself, notably -- would be swallowed in silence.
+
+       The per-LED failure below stays silent on purpose, and it is the only one which may: a LED
+       grid destroyed while packets are still in flight is the normal course of things and says
+       nothing about anything. *)
+    try
+      GMain_actor.delegate ~async:() (fun () ->
+      try
+      self#with_lock (fun () ->
+      List.iter
+        (fun (id, port) ->
 (* Annoying for the world_gateway *)
 (*       Log.print_string ("Flashing port " ^ (string_of_int port) ^ " of device " ^ *)
 (*                     (self#id_to_name id) ^ "\n"); *)
-      (self#id_to_device id)#flash port;
-     with _ ->
-       ())
-      (* Log.printf "WARNING: failed in flashing (id: %i; port: %i)\n" id port) *))) ()
+           try (self#id_to_device id)#flash port with _ -> ())
+        batch)
+      with e ->
+        Log.printf2
+          "ledgrid_manager: WARNING: flashing a batch of %d LED(s) failed in the GTK main thread: %s\n"
+          (List.length batch) (Printexc.to_string e)) ()
+    with e ->
+      Log.printf2
+        "ledgrid_manager: WARNING: handing a batch of %d LED(s) over to the GTK main thread failed: %s\n"
+        (List.length batch) (Printexc.to_string e)
 
   (** Destroy all currently existing widgets and their data, so that we can start
       afresh with a new network: *)
@@ -298,6 +337,29 @@ object (self)
            which the catch-all handler of this very loop would swallow, spinning
            forever on an already closed socket. *)
         let finished = ref false in
+        (* Coalescing, the blinker's half of what [flash_many] documents above. The one duty of
+           this thread is to give the socket back to the kernel as fast as it can; what it has
+           read is remembered here and handed over to the main thread at most every
+           [flush_interval] seconds. 50 ms sits below the 80 ms a LED stays lit
+           ([Ledgrid.flash_duration]), so nothing visible is lost, and it caps the main loop at
+           twenty delegations per second whatever the packet rate is. *)
+        let flush_interval = 0.050 in
+        let pending : (int * int) list ref = ref [] in
+        let last_flush = ref (Unix.gettimeofday ()) in
+        let flush_pending () =
+          if !pending = [] then () else begin
+            let batch = List.rev !pending in
+            pending := [];
+            last_flush := Unix.gettimeofday ();
+            self#flash_many batch
+          end
+        in
+        (* An endpoint with no LED grid is announced as (id: -1; port: -1) by simulation_level.ml.
+           Remembering it would buy nothing but a lookup guaranteed to fail, once per packet --
+           and, before this was a batch, a whole round trip to the main thread for it. *)
+        let remember (id, port) =
+          if id >= 0 && not (List.mem (id, port) !pending) then pending := (id, port) :: !pending
+        in
         while not !finished do
           (* ==== Beginning of the reasonable version ==== *)
 (** This commented-out version was absolutely reasonable and it worked with the old
@@ -327,19 +389,36 @@ object (self)
           (*   self#flash ~id ~port (); *)
           (* ==== End of the reasonable version ==== *)
           (* ==== Beginning of the unreasonable version ==== *)
+          (* Wait for a datagram, but never longer than what is left of the current flush
+             period: a burst which stops must still get its last LED lit. Nothing pending means
+             nothing to wake up for, hence the unbounded wait (negative timeout). *)
+          let waiting_time =
+            if !pending = [] then (-1.0) else
+            let left = flush_interval -. ((Unix.gettimeofday ()) -. !last_flush) in
+            if left > 0.0 then left else 0.0
+          in
+          let readable =
+            try (match Unix.select [socket] [] [] waiting_time with ([], _, _) -> false | _ -> true)
+            with _ -> false
+          in
+          if not readable then flush_pending () else begin
           (try
             ignore (Unix.recvfrom socket buffer 0 maximum_message_size [])
           with _ -> ());
           let length = try Bytes.index buffer '\n' with _ -> 0 in
           let message = (Bytes.sub buffer 0 length) |> Bytes.to_string in
-          try
+          (* Since episode 11 this [try] enclosed the two flashes as well as the parsing, so any
+             failure of theirs was reported as "can't understand the message" -- 433 lines of it
+             in the bug report which led here, all of them lying about where the problem was.
+             It now guards the parsing, and nothing but the parsing: [remember] cannot raise. *)
+          (try
             let id1, port1, id2, port2 =
               (** This long formatted string is passed to VDE as a cable identifier. This allows us
                   to easily understand which LEDs to work on when we receive a blinking command. *)
               Scanf.sscanf message "((id: %i; port: %i)(id: %i; port: %i))" (fun id1 port1 id2 port2 -> (id1, port1, id2, port2))
             in
-            self#flash ~id:id1 ~port:port1 ();
-            self#flash ~id:id2 ~port:port2 ();
+            remember (id1, port1);
+            remember (id2, port2)
           (* ==== End of the unreasonable version ==== *)
           with _ ->
             try
@@ -352,7 +431,10 @@ object (self)
               let _ = try Unix.unlink blinker_thread_socket_file_name with _ -> () in
               ();
             with _ ->
-              Log.printf1 "ledgrid_manager: Warning: can't understand the message '%s'\n" message;
+              Log.printf1 "ledgrid_manager: Warning: can't understand the message '%s'\n" message);
+          (* --- *)
+          if ((Unix.gettimeofday ()) -. !last_flush) >= flush_interval then flush_pending ()
+          end
         done)
       ()
 
@@ -367,20 +449,44 @@ object (self)
       Filename.temp_file "blinker-killer-client-socket-" "" in
     (try Unix.unlink client_socket_file_name with _ -> ());
     Unix.bind client_socket (Unix.ADDR_UNIX client_socket_file_name);
+    (* NON-BLOCKING, and this is not a micro-optimisation. This method runs in the GTK main
+       thread, and the destination is a datagram socket whose only reader is the blinker thread:
+       a blocking sendto on a full receive queue parks the main thread in the kernel
+       (unix_wait_for_peer) with nobody left to wake it up, since the blinker is itself waiting
+       for the main thread. That is, measured, how an application became impossible to quit --
+       the last line of its log being the one printed just below. The coalescing installed in
+       the blinker loop is what keeps that queue drained; this is the belt to its braces, and a
+       "please-die" which never arrives costs nothing: the process is exiting anyway. *)
+    let () = try Unix.set_nonblock client_socket with _ -> () in
     Log.printf "ledgrid_manager: Sending the message \"please-die\" to the blinker thread...\n";
     let message = Bytes.of_string "please-die" in
-    (try
-      ignore (Unix.sendto
-                client_socket
-                message
-                0
-                ((Bytes.length message))
-                []
-                (Unix.ADDR_UNIX blinker_thread_socket_file_name));
-    with _ -> begin
-      Log.printf "ledgrid_manager: VERY SERIOUS: sending the message \"please-die\" to the blinker thread failed.\n";
-    end);
-    Log.printf "ledgrid_manager:   Ok.\n";
+    let rec try_to_send attempts_left =
+      let outcome =
+        try
+          let () =
+            ignore (Unix.sendto
+                      client_socket
+                      message
+                      0
+                      ((Bytes.length message))
+                      []
+                      (Unix.ADDR_UNIX blinker_thread_socket_file_name))
+          in
+          None
+        with e -> Some e
+      in
+      match outcome with
+      | None -> Log.printf "ledgrid_manager:   Ok.\n"
+      | Some _ when attempts_left > 0 ->
+          let () = Thread.delay 0.02 in
+          try_to_send (attempts_left - 1)
+      | Some e ->
+          Log.printf1
+            "ledgrid_manager: the message \"please-die\" could not be delivered (%s); the blinker thread is left to die with the process.\n"
+            (Printexc.to_string e)
+    in
+    (* Ten attempts, 20 ms apart: 200 ms at the very worst, and never an unbounded wait. *)
+    let () = try_to_send 10 in
     (* Make sure this arrives right now: *)
 (*     flush_all (); *)
 (*     Thread.join (self#blinker_thread); *)
