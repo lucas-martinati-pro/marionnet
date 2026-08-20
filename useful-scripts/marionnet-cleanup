@@ -124,7 +124,7 @@ rundirs_of_cmdline() {
 }
 
 scan() {
-  local pid comm cmd cwd sid dir
+  local pid comm cmd cwd exe sid dir
   local -a candidates=()
   local -A live_sids=()
 
@@ -138,8 +138,13 @@ scan() {
     # unprotected) until it was measured on 2026-08-20.
     read -r comm < "/proc/$pid/comm" 2>/dev/null || continue
 
-    # A live Marionnet: its session protects everything that shares it.
-    if [[ "$comm" == marionnet* ]]; then
+    # A live Marionnet: its session protects everything that shares it. Recognised by its
+    # EXECUTABLE, never by its name: bash puts the name of a script into /proc/<pid>/comm, so
+    # `marionnet-cleanup' itself matched a `marionnet*' test on comm -- this very script then
+    # counted as a live Marionnet, refused every --purge-dirs, and spared any orphan sharing
+    # the terminal it was run from. Measured on 2026-08-20.
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
+    if [[ "${exe##*/}" == marionnet || "${exe##*/}" == marionnet.* ]]; then
       sid=$(session_id_of "$pid") || continue
       [ -n "$sid" ] && live_sids["$sid"]=1
       LIVE_MARIONNETS+=("$pid")
