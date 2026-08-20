@@ -319,34 +319,3 @@ mort du parent posé sur les enfants directs (§ « Pièges globaux » du CLAUDE
 ne les atteint pas.
 
 *Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici.*
-
----
-
-## Hygiène — les **répertoires de run** `/tmp/marionnet-<n>.dir/` ne sont balayés par personne
-
-**Constat.** Relevé le 2026-08-20 : **359 répertoires**, **1,8 Go**, un par run. Chacun porte
-la `teaching_copy/` du projet de sa session — c'est-à-dire sa **copie de travail non
-enregistrée**. Rien ne les retire : ni à la sortie, pour ceux dont la session est morte
-brutalement, ni au démarrage suivant.
-
-**Voulu.** Qu'un run ne laisse pas 5 Mo dans `/tmp` à chaque fois. La difficulté n'est pas
-technique, elle est de **politique** : ce répertoire est exactement l'endroit où se trouve le
-travail que l'utilisateur n'a pas enregistré quand sa session est morte. Le balayer sans rien
-dire, c'est effacer la seule copie qui restait.
-
-**Ce que l'implémentation devra affronter.** `useful-scripts/marionnet-cleanup --purge-dirs`
-fait le geste à la demande, sous garde (rien tant qu'un Marionnet tourne, rien de plus jeune
-qu'une heure) : c'est le minimum, et il faut un humain pour le déclencher. Une reprise
-sérieuse doit d'abord répondre à « à partir de quand un projet non enregistré est-il
-perdu ? » — un âge, une confirmation à l'ouverture (« la session du 12 août a laissé un projet
-non enregistré, le récupérer ? »), ou une corbeille. Le tas de 359 est aussi la preuve qu'un
-utilisateur ne le fera jamais de lui-même.
-
-**Précision du 2026-08-20** (épisode 1 de `todo-transverse`, mesurée de biais) : une sortie
-**propre par la GUI** ne laisse rien — *Quitter* appelle bien `close_project`
-(`bin/gui/gui_menubar_MARIONNET.ml:435`), qui retire le répertoire. En revanche le `quit` **du
-canal de contrôle** ne passe pas par là : trois runs d'un banc ont laissé trois répertoires. Une
-session pilotée en laisse donc un **à chaque exécution**, ce qui explique une bonne part du tas.
-
-*Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici : les
-sockets et les processus sont traités, ces répertoires ne le sont qu'à la main.*

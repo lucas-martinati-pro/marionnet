@@ -32,6 +32,7 @@ module Linux = Ocamlbricks.Linux
 module Option = Ocamlbricks.Option
 module UnixExtra = Ocamlbricks.UnixExtra
 module SysExtra = Ocamlbricks.SysExtra
+module StringExtra = Ocamlbricks.StringExtra
 module StackExtra = Ocamlbricks.StackExtra
 (* --- *)
 (* open StdLabels *)
@@ -318,6 +319,51 @@ let () =
       (st#project_paths#set_temporary_directory "/tmp")
     end
   end
+
+(* Nobody sweeps the run directories `<tmp>/marionnet-<n>.dir/' of past sessions. A clean exit
+   through the GUI removes its own (state.ml, [reset_and_remove_the_project_working_directory],
+   called by [close_project] on the way out), but a session killed brutally leaves it behind,
+   and so does a session quitted through the control channel, which does not close the project.
+   Each of them holds the *unsaved* working copy of its project: that is precisely why Marionnet
+   must not purge them by itself — even an old one may be the only copy that was left. So it
+   counts them, names the tool, and removes nothing.
+   Which ones are still in use is deliberately NOT decided here: `useful-scripts/marionnet-cleanup'
+   scans /proc to tell a live session from a dead one, and a second implementation of that scan
+   would be a second source of truth serving a message whose whole point is to hand over to that
+   script. Hence a count and no claim of death. *)
+let () =
+  let dir = st#project_paths#get_temporary_directory in
+  (* The shape UnixExtra.temp_dir builds in state.ml (~prefix:"marionnet-" ~suffix:".dir"). *)
+  let is_a_run_directory name =
+    (StringExtra.is_prefix "marionnet-" name) && (Filename.check_suffix name ".dir")
+  in
+  (* /tmp is shared: someone else's directory is none of our business, and we could not
+     remove it anyway. *)
+  let is_mine name =
+    try (Unix.stat (Filename.concat dir name)).Unix.st_uid = (Unix.getuid ()) with _ -> false
+  in
+  let n =
+    try
+      List.length
+        (List.filter (is_mine)
+           (SysExtra.readdir_as_list ~only_directories:() ~name_filter:is_a_run_directory dir))
+    with _ -> 0
+  in
+  if n = 0 then () else
+  let () =
+    Log.printf2 ~force:true
+      "marionnet: %d run directory(ies) of other sessions found in %s (use `useful-scripts/marionnet-cleanup --purge-dirs' to review and remove the abandoned ones)\n"
+      n dir
+  in
+  (* An exam is not the place for housekeeping advice, and the student cannot act on it. *)
+  if Initialization.are_we_in_exam_mode || Initialization.Disable_warnings.orphan_run_directories
+  then () else
+  Simple_dialogs.warning
+    (s_ "Run directories left behind")
+    (Printf.sprintf
+       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. To sort out the abandoned ones and remove them, run the script useful-scripts/marionnet-cleanup of the Marionnet sources with the option --purge-dirs.")
+       (Glib.Markup.escape_text dir) n)
+    ()
 
 (* Check that we're *not* running as root. Yes, this has been reversed
    since the last version: *)

@@ -444,6 +444,14 @@ let temporary_working_directory_automatically_set =
     ~default:false
     "MARIONNET_DISABLE_WARNING_TEMPORARY_WORKING_DIRECTORY_AUTOMATICALLY_SET"
 
+(* The startup notice about the run directories left behind by past sessions
+   (marionnet.ml). Provided for the same reason as the one above: a warning that
+   cannot be turned off becomes a warning nobody reads. *)
+let orphan_run_directories =
+  Configuration.extract_bool_variable_or
+    ~default:false
+    "MARIONNET_DISABLE_WARNING_ORPHAN_RUN_DIRECTORIES"
+
 end (* Warnings *)
 
 (* Default for the factory-set configuration address for routers.

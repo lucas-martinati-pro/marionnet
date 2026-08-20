@@ -287,6 +287,17 @@ des **liens** — sinon, les deux liens se font à la main dans la cible.
 > `journalisation-profonde` (`docs/journalisation-profonde.md` § 4.16), qui a ajouté le cinquième
 > exécutable de la famille.
 
+**Complément 2026-08-20 (venu de l'épisode 6 de `marionnet-todo-transverse`) : `marionnet-cleanup`
+non plus, et il est désormais nommé À L'ÉCRAN.** Même mesure, même résultat. Ce n'était jusqu'ici
+qu'un outil de dépannage réservé à qui a le dépôt ; depuis cet épisode, Marionnet **affiche au
+démarrage** un dialogue qui dit combien de répertoires de run les sessions passées ont laissés et
+renvoie explicitement à `useful-scripts/marionnet-cleanup --purge-dirs` — le seul geste proposé à
+l'utilisateur, et le seul autorisé à retirer ces répertoires (Marionnet n'en retire aucun de
+lui-même, par décision : ils contiennent la copie de travail non enregistrée). Un utilisateur qui a
+installé Marionnet lit donc, aujourd'hui, le nom d'une commande qu'il n'a pas. Le script rejoint
+la liste ci-dessus ; à la différence des clients du canal, il ne demande **ni `socat` ni `jq`**
+(bash + coreutils + `/proc`) et n'appelle aucun lien de compatibilité.
+
 ### 2.5 Satellites de `useful-scripts/` (strates historiques)
 
 - `marionnet_from_scratch.{VDI,2018.02.04,orig,NEW,up-to-0.94.sh,*.backup}` : versions

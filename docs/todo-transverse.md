@@ -157,7 +157,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/add-rollback-on-constructor-failure.sh` — **fait** |
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Vérifier **avant** de construire, dans `node_maker`, contre les `Const.port_no_{min,max}` que le constructeur reçoit déjà | `driven-sessions/add-ports-bounds.sh` — **fait** |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/set-distrib-unknown.sh` — **fait** |
-| 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable |
+| 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable — **fait** |
 | 7 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
 | 8 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
 | 9 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
@@ -424,3 +424,84 @@ cette garde (la liste dépend du filesystem **courant**, `""` et `aucune` sont d
 légitimes, et il faut une sixième méthode dans les 5 types de classes de `user_level.mli`).
 L'entrée `distrib` est **retirée** de `docs/TODO.md` : 10 défauts restants au périmètre du
 chantier, plus le voisin qui vient d'y entrer.
+
+### 2026-08-20 — épisode 6 : les répertoires laissés par les sessions passées se disent
+
+Rien ne balaie les `<tmp>/marionnet-<n>.dir/`. Le geste décidé au § 3.2 est tenu **tel quel** :
+Marionnet **dit** combien il y en a et **nomme l'outil**, il n'en retire **aucun**.
+
+**Le geste, en un seul endroit.** `bin/marionnet.ml`, juste après le bloc qui arrête le répertoire
+temporaire — donc en connaissant le répertoire **réellement retenu** (`MARIONNET_TMPDIR`,
+`TMPDIR`, `/tmp`, `/var/tmp`, …), jamais `/tmp` en dur. Le compte porte sur les entrées de nom
+`marionnet-*.dir` qui **nous appartiennent** (`st_uid`, `/tmp` est partagé). Journal toujours,
+dialogue sauf en **mode examen** (un élève n'a pas de ménage à faire) et sauf si l'avertissement
+est éteint — 4ᵉ drapeau `MARIONNET_DISABLE_WARNING_ORPHAN_RUN_DIRECTORIES`, patron exact de
+`temporary_working_directory_automatically_set` (déclaré aussi dans `bin/configuration.ml`, sans
+quoi la variable n'existe pas, et documenté dans `etc/marionnet.conf`).
+
+**Ce que le message ne dit pas, et pourquoi.** Il ne prétend **pas** que ces répertoires sont
+morts. Décider lequel est encore servi demande de lire `/proc` — ce que
+`useful-scripts/marionnet-cleanup` fait déjà, correctement ; le refaire en OCaml serait une
+seconde source de vérité au service d'un message dont le seul but est de **passer la main à ce
+script**. Le message dit donc le nombre, le répertoire, le fait que certains peuvent appartenir à
+un Marionnet en cours, et la commande. Pas de taille non plus : un `du` sur 359 répertoires au
+démarrage se paierait à chaque lancement, et le script l'affiche, lui.
+
+**Preuve** — banc **jetable** (`rundirs-notice.sh`) : le signal tombe **après**
+`GtkMain.Main.init`, il exige donc un `DISPLAY` (piège de l'ép. 2), ce qui l'exclut de
+`driven-sessions/` (§ 3.6). Chaque cas est une session pilotée complète, lue par la commande
+`notifications` du canal — `Simple_dialogs.warning` passe par `capture_and_dismiss`, qui notifie
+le script et referme la fenêtre tout seul.
+
+| Cas | avant le correctif | après |
+|---|---|---|
+| répertoire temporaire vide | rien | rien |
+| 3 répertoires (+ 1 nom mal formé, + 1 fichier homonyme) | **rien** | notification `warning`, compte **3**, répertoire et outil nommés |
+| les 3 répertoires après coup | intacts | **intacts** (Marionnet n'en retire aucun) |
+| `MARIONNET_DISABLE_WARNING_ORPHAN_RUN_DIRECTORIES=true` | rien | rien (journal seul) |
+| répertoire d'un autre uid | *non jouable sans privilège* | SKIP, jamais maquillé |
+
+Rouge/vert mesuré : `passed=3 failed=1 skipped=1` sur le binaire d'avant (`git stash` +
+`dune build`), `passed=4 failed=0 skipped=1` après restauration. Les trois cas qui passent des
+deux côtés sont les gardes anti-faux-positif : sans correctif ils passent **à vide**, c'est leur
+rôle.
+
+**i18n : les 2 chaînes neuves traduites ici même** (décision prise en cours d'épisode). L'ép. 9b de
+`modernisation-world-bridge` venait de rétablir l'invariant « on ne supporte que des catalogues
+complets » (423/423 aux 12) ; un dialogue neuf non traduit l'aurait cassé le jour même. Refresh POT
+(`make gettext-update-po`) → exactement **2 trous** par catalogue, puis versement par
+**`msgmerge --compendium`** (aucune édition à la main des 12 fichiers), essai à blanc d'abord :
+le diff ne touche **que** les 2 entrées. Résultat **425 traduits, 0 trou** aux 12, `msgfmt -c`
+propre. Gardes rejouées : audit d'arité sur les **12 catalogues entiers** (5 100 entrées, 0 écart,
+regex excluant `%%` et le drapeau espace — cf. les 7 faux positifs de l'ép. 9b), parse **Pango réel**
+des 24 traductions (48 parses : le corps tel quel et le titre enveloppé de `<b>…</b>` comme le fait
+`simple_dialogs.ml`), et interrogation des **`.mo` compilés** par clé exacte, les 12 répondent.
+Contrainte de fond respectée : OCaml n'a **pas** d'arguments positionnels dans `Printf`, donc
+l'ordre `%s` (le répertoire) puis `%d` (le compte) est le **même** dans les 12 traductions ; une
+langue dont l'ordre naturel diffère se **reformule**, elle ne se réordonne pas.
+
+Un mot sur ce libellé, qui a été **refait** en cours d'épisode : la première rédaction disait
+`%d run directories are lying in %s`, ce qui donne « 1 run directories » dès qu'il n'y a **qu'un**
+répertoire — le cas le plus courant, celui du crash unique. Marionnet n'utilise pas `ngettext`
+(et l'introduire imposerait les formes plurielles aux 12 catalogues) : le compte est donc passé
+**en fin de phrase, après un deux-points**, où aucun nom ne s'accorde avec lui. Les 12 traductions
+ont été refaites sur ce libellé (POT rejoué, compendiums réécrits) plutôt que gardées avec la
+faute — un `msgid` faux coûte les mêmes 12 traductions le jour où on le corrige.
+
+**Ce que la preuve ne peut pas montrer ici** : le texte **français à l'écran**. Mesuré au
+`strace -e openat` : un binaire de `_build` ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`
+et jamais le catalogue du dépôt — c'est l'entrée i18n de `docs/TODO.md`, épisode **14** de ce
+chantier même. La preuve des traductions est donc celle de l'ép. 9b : le `.mo` compilé, interrogé
+par clé exacte.
+
+**Ce qui n'est pas fait, et pourquoi.** (a) Le `quit` **du canal** continue de laisser son
+répertoire. Le lui faire nettoyer contredirait la politique de cet épisode : le *Quitter* de la GUI
+ne le retire qu'**après** avoir proposé d'enregistrer, ce que le canal ne fait pas — il détruirait
+donc la copie non enregistrée au lieu de la signaler. (b) `useful-scripts/marionnet-cleanup`
+**n'est installé par aucune cible** (vérifié : aucune occurrence dans `Makefile*`), d'où le message
+qui le nomme par son emplacement dans les sources. Le défaut d'installation est **écrit** au
+chantier `modernisation-installation-marionnet` (§ 2.4 ter, qui liste déjà les outils non
+installés), pas corrigé ici.
+
+L'entrée « Hygiène — les répertoires de run » est **retirée** de `docs/TODO.md` : 9 défauts
+restants au périmètre du chantier, plus le voisin `variant` entré à l'ép. 5.
