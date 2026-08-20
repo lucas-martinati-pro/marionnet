@@ -125,6 +125,8 @@ module User_level_machine : sig
       method supported_kernels_if_any        : string list option
       (* The filesystems installed on this host, in the GUI combo's order. *)
       method installed_distribs_if_any       : string list option
+      (* The variants installed for a given filesystem, in the GUI combo's order. *)
+      method variants_of_distrib_if_any      : string -> string list option
       method get_kernel                      : [ `kernel ] Disk.epithet
       method set_kernel                      : [ `kernel ] Disk.epithet -> unit
       (* --- *)

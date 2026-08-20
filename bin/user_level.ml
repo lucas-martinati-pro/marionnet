@@ -763,6 +763,20 @@ fun ~(network:< .. >)
      lets it speak. *)
   method installed_distribs_if_any : string list option = None
 
+  (* Which variants are installed for a given filesystem epithet (the "<prefix><epithet>_variants"
+     directories, read by Disk.virtual_machine_installations#variants_of). The argument is an
+     epithet rather than "the current one" because the control server needs both: the variants of
+     the *current* filesystem, to refuse [set <n> variant <unknown>], and those of a *target*
+     filesystem, to refuse a [set <n> distrib <d>] which would take the current variant away.
+     [None] means "this kind has no filesystem", which is an answer, not a hole, exactly as above;
+     REDEFINED in machine.ml and router.ml.
+     Read-only for the same reason as the two methods above: the model must keep accepting a
+     variant which is not installed here, because a .mar may name one -- that is what
+     remap_absent_variant_at_import is for. The refusal of an explicit write belongs to the
+     control server, which owns the message; this method is what lets it speak (episode 7 of
+     `marionnet-todo-transverse'). *)
+  method variants_of_distrib_if_any (_ : string) : string list option = None
+
   (* Where this component's rc files live (see [Rc_files] above): the states/ subdirectory of
      the project, the very one treeview_documents.ml writes its documents into. Taken from the
      network rather than from [Treeview_history], which only machines and routers reach — a

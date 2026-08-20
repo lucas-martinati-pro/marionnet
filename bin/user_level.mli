@@ -157,6 +157,7 @@ class virtual component :
        the GUI combo's order. Both are read-only: the refusal of an explicit write lives in the
        control server (see [component] in user_level.ml). *)
     method installed_distribs_if_any : string list option
+    method variants_of_distrib_if_any : string -> string list option
     (* --- Run-commands files (work-stream `migration-marshal-to-text', episodes 5 and 6) --- *)
     (* The states/ subdirectory of the project, where the rc scripts live. *)
     method states_directory : string
@@ -284,6 +285,7 @@ class virtual node_with_ports_card :
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
+    method variants_of_distrib_if_any : string -> string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -414,6 +416,7 @@ class virtual node_with_defects :
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
+    method variants_of_distrib_if_any : string -> string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -534,6 +537,7 @@ class virtual node_with_ledgrid_and_defects :
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
+    method variants_of_distrib_if_any : string -> string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -708,6 +712,7 @@ class type virtual cable =
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
+    method variants_of_distrib_if_any : string -> string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list

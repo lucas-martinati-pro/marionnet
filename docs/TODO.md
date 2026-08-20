@@ -36,37 +36,6 @@ placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
 
 ---
 
-## Canal — `set <n> variant <épithète inexistante>` est accepté **sans rien changer**
-
-**Constat.** `set m1 variant pas-une-variante` répond `ok:true` avec `changed:false`, et
-`add machine m3 --variant=pas-une-variante` construit une machine dont le champ `variant` vaut
-`""`. Mesuré le 2026-08-20. La cause est exactement celle du `distrib` soldé le même jour
-(ép. 5 de `marionnet-todo-transverse`) : `#eval_forest_attribute ("variant", …)` passe par
-`remap_absent_variant_at_import` (`bin/user_level.ml`), écrite pour le **chargement d'un `.mar`**
-— une variante disparue ne doit pas rendre le projet inouvrable, le composant retombe sur le
-filesystem vierge avec un avertissement d'import. Sur un `set` explicite, c'est une faute de
-frappe transformée en no-op.
-
-**Voulu.** Un `bad_argument` nommant les variantes disponibles **pour le filesystem courant**,
-comme la garde du noyau nomme les noyaux supportés et comme celle du filesystem nomme les
-distributions installées.
-
-**Ce que l'implémentation devra affronter.** Ce n'est **pas** une copie de la garde `distrib` :
-1. la liste dépend du filesystem **courant** du composant (`vm_installations#variants_of
-   self#get_epithet`), donc elle change quand `distrib` change — et `cmd_add` applique déjà
-   `distrib` en premier, ce qui rend l'ordre correct, mais un `set distrib` ultérieur peut
-   invalider la variante déjà posée (la GUI, elle, verrouille les deux combos après création) ;
-2. `""` et `aucune` sont des valeurs **légitimes** (« pas de variante ») et doivent rester
-   acceptées — le patron `unknown_distrib` refuserait tout ce qui n'est pas dans la liste ;
-3. il faut une méthode de lecture de plus sur `component` (patron d'`installed_distribs_if_any`,
-   ép. 5), donc les mêmes retouches dans les 5 types de classes de `bin/user_level.mli`.
-**Ne pas** toucher `remap_absent_variant_at_import` : son comportement est correct pour l'import,
-qui est sa raison d'être.
-
-*Repéré le 2026-08-20 par l'épisode 5 de `marionnet-todo-transverse`, qui soldait le défaut
-jumeau sur `distrib` et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
-s'écrit, il ne se corrige pas en passant).*
-
 ## Idée — **composer** deux projets (importer un `.mar` dans le projet courant)
 
 **Constat.** Il n'existe aucun moyen, ni en GUI ni ailleurs, de verser le contenu d'un projet dans
@@ -319,3 +288,33 @@ mort du parent posé sur les enfants directs (§ « Pièges globaux » du CLAUDE
 ne les atteint pas.
 
 *Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici.*
+
+---
+
+## Modèle — un `set` explicite peut déposer un **avertissement d'import** hors de tout import
+
+**Constat** (mesuré le 2026-08-20). `set r1 variant aucune` sur un **routeur** répond `ok:true` et
+retire bien la variante, mais dépose au passage un avertissement d'import — journal :
+`import remapping: router "r1": variant "aucune" removed (…)`. La cause est une asymétrie :
+`bin/machine.ml:710` traite `("variant", "aucune")` par une branche dédiée (rétro-compatibilité
+des vieux `.mar`), `bin/router.ml:1373` n'a que la branche `""`, si bien que le mot passe par
+`remap_absent_variant_at_import`, dont c'est la raison d'être… **à l'import**. Or ces
+avertissements ne sont pas jetés : ils s'empilent dans `network#add_import_warning` et sont lus
+par `get_and_reset_import_warnings` (`bin/state.ml:581,606`) **à la fin du prochain chargement de
+projet**, qui les présentera comme venant de ce chargement-là.
+
+**Voulu.** Qu'un avertissement d'import ne naisse que d'un import. Deux moitiés, la seconde plus
+importante : (1) le routeur reconnaît `aucune` comme la machine le fait ; (2) plus généralement,
+un `remap_*_at_import` appelé hors chargement ne devrait pas alimenter la liste récapitulative —
+ou celle-ci devrait être vidée à l'**ouverture** d'un chargement, et non seulement à sa fin.
+
+**Ce que l'implémentation devra affronter.** Le remap est appelé depuis `eval_forest_attribute`,
+qui est le **même chemin** pour l'import d'un `.mar` et pour une écriture du canal : les
+distinguer demande soit un drapeau porté par le chargement, soit de sortir du remap la
+reconnaissance des valeurs « pas de variante ». La première moitié (une branche dans `router.ml`)
+est un correctif d'une ligne, mais elle ne règle que le symptôme mesuré ici : les autres
+`remap_*_at_import` gardent la même porte.
+
+*Repéré le 2026-08-20 par l'épisode 7 de `marionnet-todo-transverse`, qui soldait le défaut du
+`variant` inexistant et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
+s'écrit, il ne se corrige pas en passant).*

@@ -139,10 +139,11 @@ l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-- **TODO transverse** (solder les **15 entrées de défaut** de `docs/TODO.md`, une par épisode,
-  chacune avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
+- **TODO transverse** (solder les entrées de défaut de `docs/TODO.md` — **15 à l'ouverture, 16**
+  depuis que l'ép. 5 y a écrit le jumeau `variant`, devenu l'ép. 7 —, une par épisode, chacune
+  avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
   deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
-  15 épisodes par coût croissant) ; mémoire `marionnet-todo-transverse` ;
+  16 épisodes par coût croissant, renumérotés à l'ép. 7) ; mémoire `marionnet-todo-transverse` ;
   `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20.
   Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
   **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
@@ -152,7 +153,10 @@ Reprise : appliquer le skill `chantier-long`.
   refusé par son propre constructeur ne laisse plus son nœud : le rattrapage de `cmd_add`
   **détruit** le nœud du nom demandé dans le même `st#network_change` que la création)** et
   **4 (`add … --ports=N` refuse exactement ce que `set … port_no` refuse, et le refuse **avant**
-  de construire)** faits —
+  de construire)**, **5 (`set/add … distrib` refuse un filesystem non installé)**, **6 (les
+  répertoires de run des sessions mortes sont *signalés* au démarrage, jamais purgés)** et
+  **7 (le jumeau `variant`, plus le refus du `set distrib` qui ferait perdre la variante portée)**
+  faits —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
   Piège durable de l'ép. 3 : détruire un objet **à moitié construit** se fait par `#destroy`
@@ -165,6 +169,12 @@ Reprise : appliquer le skill `chantier-long`.
   constructeur sur `--ports=0` ; (2) **déplacer une garde en amont peut vider de sa substance le
   banc d'un épisode antérieur sans jamais le faire échouer** (mesuré : les 2 cas du banc de
   l'ép. 3 ne touchaient plus le constructeur — un 3ᵉ cas, `add machine m-1`, l'exerce à nouveau).
+  Deux pièges durables de l'ép. 7 : (1) **la chaîne vide ne traverse pas le canal** — une requête
+  est découpée sur les espaces, les jetons vides jetés (`parse_request`), et `set <n> <champ>`
+  échoue sur l'arité : le seul mot qui **retire** une variante est `aucune` ; (2) un banc peut se
+  rendre **déterministe** en lançant le binaire avec `HOME` détourné dans son temporaire — les
+  filesystems et variantes *utilisateur* de l'hôte disparaissent alors du run, et le banc peut y
+  **fabriquer** ceux dont il a besoin (un fichier vide suffit, cf. `read_epithet_list`).
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :

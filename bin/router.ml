@@ -1110,6 +1110,14 @@ class router
   method! installed_distribs_if_any =
     Some (vm_installations#filesystems#get_epithet_list)
 
+  (* Redefinition (User_level.component answers None): the variants installed for the given
+     filesystem, in the order the GUI combo offers them. Guarded on purpose: #variants_of is a
+     String_map.find (disk.ml) which RAISES Not_found on an epithet which is not installed here.
+     Read by the two guards of episode 7 of `marionnet-todo-transverse'. *)
+  method! variants_of_distrib_if_any (d : string) =
+    if not (List.mem d vm_installations#filesystems#get_epithet_list) then None else
+    Some (vm_installations#variants_of d)#get_epithet_list
+
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.router."^(self#icon_suffix_of_state)^"."^iconsize^".png")

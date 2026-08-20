@@ -864,6 +864,11 @@ type editable = <
      the GUI combo's order. Read by the guard of episode 5 of `marionnet-todo-transverse' -- the
      model itself still remaps an absent epithet, which is what loading a .mar needs. *)
   installed_distribs_if_any : string list option;
+  (* [None] for everything but a machine and a router: the variants installed for the filesystem
+     epithet given as argument, in the GUI combo's order. Read by the two guards of episode 7 of
+     `marionnet-todo-transverse' -- the model itself still drops an absent variant in silence,
+     which is what loading a .mar needs. *)
+  variants_of_distrib_if_any : string -> string list option;
   (* The startup configurations this component owns, as (basename, content) pairs, and the way
      to replace one of them (user_level.ml). Since episode 5 of `migration-marshal-to-text' the
      *content* of a script is no longer an attribute of the forest — the forest carries the
@@ -1154,6 +1159,72 @@ let unknown_distrib (c : editable) (value : string) : string option =
               "no filesystem %S is installed here; installed filesystems: %s. The GUI dialog                offers no other one either (gui_bricks.ml, distribution_choices); the model would                have silently switched to a neighbour of the same family, as it does when loading                a project that names an absent filesystem"
               value (String.concat ", " ds))
 
+(* The filesystem this component sits on, as its forest publishes it. [None] for the kinds
+   which have none -- a switch carries no "distrib" attribute at all. *)
+let distrib_of (c : editable) : string option =
+  List.assoc_opt "distrib" (fields_of_tree c#to_tree)
+
+(* The two values the model reads as "no variant at all" (machine.ml, eval_forest_attribute).
+   Both stay acceptable: refusing them would take away the only way to REMOVE a variant. Of the
+   two, only "aucune" travels through the channel: a request is split on spaces and the empty
+   tokens are dropped ([parse_request] above), so [set m1 variant ""] would carry the two quote
+   characters, and [set m1 variant] fails the arity of [set]. Hence the messages below name
+   "aucune", the historical word a `v0 .mar may still carry, and not the empty string. *)
+let no_variant_values = [""; "aucune"]
+
+(* [Some detail] when the value is not a variant installed for the component's own filesystem.
+
+   The same story as [unknown_distrib] above, one attribute further: [eval_forest_attribute
+   ("variant", x)] goes through [remap_absent_variant_at_import] (user_level.ml), written for the
+   opposite need -- a variant which disappeared with its filesystem must not make the project
+   unloadable, the component simply boots the pristine filesystem, with an import warning.
+   Applied to an explicit write it turned [set m1 variant typo] into ok:true / changed:false, and
+   [add machine m3 --variant=typo] into a machine whose variant is "". Hence this guard, the
+   third of the family (kernel, distrib, variant): the channel refuses what it cannot honour, and
+   names what it would accept. The remap itself is left untouched -- it is right for the import,
+   which is its reason to exist. Episode 7 of `marionnet-todo-transverse'. *)
+let unknown_variant (c : editable) (value : string) : string option =
+  if List.mem value no_variant_values then None else
+  match distrib_of c with
+  | None -> None
+  | Some d ->
+      (match c#variants_of_distrib_if_any d with
+       | None -> None
+       | Some vs when List.mem value vs -> None
+       | Some [] ->
+           Some (Printf.sprintf
+                   "no variant is installed for the filesystem %S: the only value it accepts is \
+                    %S (no variant). The model would have dropped %S in silence, as it does when \
+                    loading a project which names a variant that disappeared"
+                   d "aucune" value)
+       | Some vs ->
+           Some (Printf.sprintf
+                   "no variant %S for the filesystem %S; available variants: %s (or %S for no \
+                    variant). The GUI dialog offers no other one either; the model would have \
+                    dropped it in silence, as it does when loading a project which names a \
+                    variant that disappeared"
+                   value d (String.concat ", " vs) "aucune"))
+
+(* [Some detail] when changing the filesystem to [value] would take the variant the component
+   currently carries away. The GUI never has to answer that question (it locks both combos once
+   the device exists, gui_bricks.ml:529-531); the channel can be asked it, and the answer chosen
+   here (episode 7) is to refuse, rather than to drop the variant in silence -- which is exactly
+   the defect this episode closes, one attribute away. The order is therefore constrained, and
+   the message says how to get out of it. *)
+let variant_lost_by_distrib_change (c : editable) (value : string) : string option =
+  match List.assoc_opt "variant" (fields_of_tree c#to_tree) with
+  | None -> None
+  | Some v when List.mem v no_variant_values -> None
+  | Some v ->
+      (match c#variants_of_distrib_if_any value with
+       | None -> None
+       | Some vs when List.mem v vs -> None
+       | Some _ ->
+           Some (Printf.sprintf
+                   "the component carries the variant %S, which does not exist for the filesystem \
+                    %S; remove it first (set <name> variant aucune), then change the filesystem"
+                   v value))
+
 (* Called inside the network_change that has just changed "distrib". Returns what it had to
    rewrite, in the (field, old, new) shape of [Co_set]. *)
 let adjust_kernel_after_distrib_change (c : editable) : (string * string * string) list =
@@ -1268,12 +1339,20 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
                        "a cable is not renamed in place: the GUI destroys it and creates it \
                         again (cable.ml:158-176). Use del + connect (§ 4.5)"))
     | Some old ->
-        (* The kernel and filesystem guards come before the write, like every other one here:
-           the model would accept the value and the component would simply never boot (episode
-           4f), or would not change at all (episode 5 of `marionnet-todo-transverse'). *)
+        (* The kernel, filesystem and variant guards come before the write, like every other one
+           here: the model would accept the value and the component would simply never boot
+           (episode 4f), or would not change at all (episodes 5 and 7 of
+           `marionnet-todo-transverse'). *)
         (match (match field with
                 | "kernel"  -> unsupported_kernel c value
-                | "distrib" -> unknown_distrib c value
+                | "distrib" ->
+                    (* Two refusals under one field: an epithet which is not installed here, and
+                       one which is, but whose variants do not include the one the component
+                       carries (episode 7). *)
+                    (match unknown_distrib c value with
+                     | Some _ as refused -> refused
+                     | None              -> variant_lost_by_distrib_change c value)
+                | "variant" -> unknown_variant c value
                 | _         -> None) with
          | Some detail -> Co_bad detail
          | None ->
@@ -1517,6 +1596,10 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                       (match (match k with
                               | "kernel"  -> unsupported_kernel component v
                               | "distrib" -> unknown_distrib component v
+                              (* Checked against the filesystem just applied, "distrib" coming
+                                 first below (episode 7). No cross guard here: the variant is
+                                 still empty when "distrib" is written. *)
+                              | "variant" -> unknown_variant component v
                               | _         -> None) with
                        | Some detail -> rollback detail
                        | None ->

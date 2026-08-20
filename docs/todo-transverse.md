@@ -1,7 +1,7 @@
 # Chantier `marionnet-todo-transverse` — solder la TODOLIST transverse
 
-> **Objectif.** Traiter, une par une et **chacune avec au moins un commit**, les 15 entrées de
-> défaut de `docs/TODO.md` : ce qui a été repéré au fil des chantiers, jugé réel, et laissé de
+> **Objectif.** Traiter, une par une et **chacune avec au moins un commit**, les entrées de
+> défaut de `docs/TODO.md` (15 à l'ouverture, **16** depuis l'épisode 5, cf. § 1) : ce qui a été repéré au fil des chantiers, jugé réel, et laissé de
 > côté parce qu'il n'appartenait à aucun d'eux. Une entrée est *soldée* quand son symptôme est
 > rejoué rouge avant / vert après, et **retirée de `docs/TODO.md` dans le commit qui la clôt**.
 
@@ -14,6 +14,12 @@ Ouvert le 2026-08-20. Reprise : appliquer le skill `chantier-long` (MODE B).
 Les **15 entrées de défaut** de `docs/TODO.md`, à la date d'ouverture. Chacune y porte déjà son
 constat, ce qu'on veut à la place, et l'obstacle repéré : ce document ne recopie pas cette
 analyse, il porte **les décisions de cadrage** (§ 3) et **l'ordre d'exécution** (§ 4).
+
+**Devenues 16 le 2026-08-20** : l'épisode 5 a mesuré, sans le corriger, le défaut **jumeau** de
+celui qu'il soldait (`set … variant <inexistante>` au lieu de `distrib`) et l'a écrit au TODO,
+comme l'exige le § 2. Un défaut écrit par ce chantier lui revient : cette 16ᵉ entrée est entrée
+dans le périmètre, et comme elle était la moins coûteuse des restantes, elle a pris le rang 7 —
+les épisodes non encore joués se décalant d'autant.
 
 **Hors périmètre, par décision explicite (2026-08-20)** : l'entrée *« Idée — composer deux
 projets (importer un `.mar` dans le projet courant) »*. Ce n'est pas un défaut mais une
@@ -126,7 +132,9 @@ Elle est **conservée par défaut**, avec une exception motivée par un critère
 | Un invité doit booter, ou il faut `sudo`, ou une plateforme absente ici | **jetables**, preuve recopiée dans le journal ci-dessous |
 
 Quatre entrées tombent dans la première colonne : *`add --ports`*, *rollback du constructeur*,
-*`distrib` inexistante*, *`--control-socket` trop long*.
+*`distrib` inexistante*, *`--control-socket` trop long* — **cinq** depuis l'épisode 7, qui y a
+ajouté *`variant` inexistante* (le titre de ce paragraphe, écrit avant la correction ci-dessous,
+redevient exact par accident).
 
 > **Corrigé à l'épisode 1** : le *label* y figurait, à tort. Le canal ne peut pas fournir un label
 > arbitraire à `update_with` — `update_structural_with` lui passe `self#get_label`, déjà validé, et
@@ -143,7 +151,7 @@ qu'il ne devienne pas un dépotoir d'exemples.
 
 ---
 
-## 4. Les 15 épisodes, par coût croissant
+## 4. Les 16 épisodes, par coût croissant
 
 L'ordre est celui du coût, pas de la gravité : les correctifs courts d'abord, les diagnostics
 ouverts à la fin. Une dépendance seulement : l'ép. 1 crée `driven-sessions/`. (On en annonçait
@@ -158,15 +166,16 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Vérifier **avant** de construire, dans `node_maker`, contre les `Const.port_no_{min,max}` que le constructeur reçoit déjà | `driven-sessions/add-ports-bounds.sh` — **fait** |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/set-distrib-unknown.sh` — **fait** |
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable — **fait** |
-| 7 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
-| 8 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
-| 9 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
-| 10 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
-| 11 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
-| 12 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
-| 13 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
-| 14 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
-| 15 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
+| 7 | `set … variant <inexistante>` accepté sans rien changer (entrée neuve, cf. § 1) | `bad_argument` nommant les variantes du filesystem **courant**, et refus du `set distrib` qui ferait perdre la variante portée | `driven-sessions/set-variant-unknown.sh` — **fait** |
+| 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
+| 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
+| 10 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
+| 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
+| 12 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
+| 13 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
+| 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
+| 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
+| 16 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
 
 ---
 
@@ -490,8 +499,8 @@ faute — un `msgid` faux coûte les mêmes 12 traductions le jour où on le cor
 
 **Ce que la preuve ne peut pas montrer ici** : le texte **français à l'écran**. Mesuré au
 `strace -e openat` : un binaire de `_build` ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`
-et jamais le catalogue du dépôt — c'est l'entrée i18n de `docs/TODO.md`, épisode **14** de ce
-chantier même. La preuve des traductions est donc celle de l'ép. 9b : le `.mo` compilé, interrogé
+et jamais le catalogue du dépôt — c'est l'entrée i18n de `docs/TODO.md`, épisode **15** de ce
+chantier même (numéroté 14 quand ces lignes ont été écrites : l'épisode 7 a décalé les rangs). La preuve des traductions est donc celle de l'ép. 9b : le `.mo` compilé, interrogé
 par clé exacte.
 
 **Ce qui n'est pas fait, et pourquoi.** (a) Le `quit` **du canal** continue de laisser son
@@ -505,3 +514,69 @@ installés), pas corrigé ici.
 
 L'entrée « Hygiène — les répertoires de run » est **retirée** de `docs/TODO.md` : 9 défauts
 restants au périmètre du chantier, plus le voisin `variant` entré à l'ép. 5.
+
+### 2026-08-20 — épisode 7 : une variante inexistante est refusée, plus avalée
+
+Le défaut **jumeau** de l’épisode 5, un attribut plus loin, et écrit au TODO par lui : `set m1
+variant pas-une-variante` répondait `ok:true / changed:false`, et `add machine m3
+--variant=pas-une-variante` construisait une machine dont le champ `variant` valait `""`. Même
+cause : `eval_forest_attribute ("variant", x)` passe par `remap_absent_variant_at_import`
+(`bin/user_level.ml`), écrite pour le **chargement d'un `.mar`** — une variante disparue avec son
+filesystem ne doit pas rendre le projet inouvrable, le composant retombe sur le filesystem vierge.
+Sur une écriture explicite, c'est une faute de frappe transformée en no-op poli.
+
+**Le geste, patron de l'ép. 5.** Le modèle publie, le serveur refuse : une méthode de lecture
+`variants_of_distrib_if_any` sur `component` (`None` par défaut), redéfinie dans `machine.ml` et
+`router.ml`, et déclarée dans les 5 types de classes de `user_level.mli` plus `machine.mli`. Elle
+prend **une épithète de filesystem en argument**, et non « le courant », parce que les deux gardes
+du serveur n'ont pas besoin du même : `unknown_variant` interroge le filesystem **courant**,
+`variant_lost_by_distrib_change` le filesystem **cible**. Elle est gardée : `#variants_of` est un
+`String_map.find` (`bin/disk.ml`) qui **lève** sur une épithète non installée.
+
+**La décision prise en cours d'épisode** (question posée avant d'écrire une ligne) : le cas croisé
+— un `set distrib` ultérieur rend inexistante la variante déjà posée — est **refusé**, plutôt que
+de laisser tomber la variante en silence, ce qui serait exactement le défaut soldé ici, un attribut
+plus loin. La GUI n'a jamais à répondre à cette question (elle verrouille les deux combos une fois
+le device créé) ; le canal, si. L'ordre des commandes devient donc contraignant, et le message dit
+comment en sortir.
+
+**Un fait mesuré qui a changé le message.** `""` n'est **pas** transmissible par le canal : une
+requête est découpée sur les espaces et les jetons vides sont jetés (`parse_request`), et `set m1
+variant` échoue sur l'arité de `set`. Le seul mot qui retire une variante est donc `aucune`
+(`bin/machine.ml`, branche de rétro-compatibilité) — les messages le nomment, au lieu de la chaîne
+vide qu'ils désignaient d'abord.
+
+**Preuve** — banc **versionné** `driven-sessions/set-variant-unknown.sh`, cinquième du répertoire,
+et le premier à jouer **deux sessions** : une variante doit *exister* pour prouver le cas nominal
+et la garde croisée, or la liste des filesystems installés n'est connue qu'une fois une session
+lancée. Le banc pilote donc le binaire avec `HOME` **détourné dans son propre répertoire
+temporaire** et y fabrique une variante entre les deux sessions (un fichier vide sous
+`$HOME/.marionnet/filesystems/machine-<épithète>_variants/` : `read_epithet_list` prend tout
+non-répertoire, et le répertoire utilisateur est bien dans la liste de recherche). Effet de bord
+recherché : les variantes de l'hôte deviennent **invisibles** au run, donc le banc est
+déterministe, et rien n'est écrit hors du temporaire.
+
+| | correctif désarmé | correctif en place |
+|---|---|---|
+| `set m1 variant pas-une-variante` | `ok:true`, `changed:false` | `ok:false`, variante inchangée |
+| `add machine m2 --variant=…` | `ok:true`, m2 construite | `ok:false`, m2 absente du réseau |
+| `add router r2 --variant=…` | `ok:true`, r2 construite | `ok:false`, r2 absente |
+| `set m1 distrib <autre>` en portant une variante | `ok:true`, variante perdue | `ok:false`, puis accepté après `variant aucune` |
+
+Mesure rouge/vert : **4 FAIL / 4 PASS** sur le code d'avant (`git stash` du seul `bin/`, rebuild),
+**9 PASS / 0 FAIL / 0 SKIP** après. Non-régression : les 4 bancs versionnés antérieurs rejoués
+verts (11 + 5 + 4 + 6 PASS), la branche `distrib` du serveur ayant dû être réécrite pour porter
+deux refus. `dune build` rc 0. Aucun processus survivant, aucun `/tmp/marionnet-<n>.dir/` laissé
+par les runs (vérifié : le plus récent des 20 restants date de six heures avant la séance).
+
+**Observé en chemin, non corrigé** (règle § 2), et **mesuré** plutôt que déduit : `set r1 variant
+aucune` sur un **routeur** dépose un avertissement d'import (`import remapping: router "r1":
+variant "aucune" removed`), là où une machine n'en dépose aucun — `bin/router.ml` n'a pas la
+branche `("variant", "aucune")` de `bin/machine.ml`. Ces avertissements ne sont pas jetés : ils
+s'empilent et sont lus **à la fin du prochain chargement de projet**, qui les présentera comme
+siens. Entrée neuve dans `docs/TODO.md` (« un `set` explicite peut déposer un avertissement
+d'import hors de tout import »), qui vaut au-delà de ce seul mot : `eval_forest_attribute` est le
+même chemin pour l'import et pour le canal.
+
+L'entrée « Canal — `set <n> variant <épithète inexistante>` » est **retirée** de `docs/TODO.md` :
+9 défauts restants au périmètre du chantier, plus le voisin entré ici.
