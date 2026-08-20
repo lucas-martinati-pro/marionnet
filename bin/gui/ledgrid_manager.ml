@@ -26,10 +26,77 @@ IFNDEF OCAML4_02_OR_LATER THEN
 module Bytes = struct  let create = String.create  let set = String.set  end
 ENDIF
 
+(* --- Sweeping the sockets that dead runs left behind ------------------------------------
+
+   The blinker's datagram socket is a real FILE in /tmp, made just below, and it is removed
+   only on the paths that RUN: the `please-die' branch of the loop and `kill_blinker_thread'.
+   A SIGKILL, a crash, or a freeze that has to be cut short leaves it there forever -- 85 of
+   them had piled up on a development machine by 2026-08-20, one per run since August 4th,
+   plus the client sockets of `kill_blinker_thread'. Nothing was ever sweeping them.
+
+   Sweeping at startup, rather than unlinking right after the bind: a unix datagram socket
+   does stay usable once its path is gone, but only for a peer that already holds it open --
+   and our peer, `wirefilter', resolves the path again on every sendto (the name is passed to
+   it on the command line, see `simulation_level.ml', --blink). So the file has to stay.
+
+   The safe test is NOT the file's date: /tmp is shared and two Marionnet sessions at once
+   are a known case (cf. docs/TODO.md). It is whether anybody is still bound to it. *)
+
+(* connect() on a unix DATAGRAM socket sends nothing; it answers ECONNREFUSED when the path
+   exists but no live process is bound to it, which is exactly "this one is dead". *)
+let nobody_is_bound_to (path : string) : bool =
+  let s = Unix.socket Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
+  Fun.protect ~finally:(fun () -> try Unix.close s with _ -> ())
+    (fun () ->
+       try Unix.connect s (Unix.ADDR_UNIX path); false with
+       | Unix.Unix_error (Unix.ECONNREFUSED, _, _) -> true
+       | _ -> false)
+;;
+
+let sweep_stale_blinker_sockets () =
+  let dir = Filename.get_temp_dir_name () in
+  let prefixes = [".marionnet-blinker-server-socket-"; "blinker-killer-client-socket-"] in
+  let mine = Unix.getuid () in
+  let removed = ref 0 in
+  let () =
+    Array.iter
+      (fun name ->
+         if List.exists (fun prefix -> String.starts_with ~prefix name) prefixes then
+           let path = Filename.concat dir name in
+           try
+             let stat = Unix.stat path in
+             (* A REGULAR file of the same name is debris too, and dead by construction: both
+                names are made by a temp_file, which creates an ordinary empty file that the
+                bind then replaces. One left as a regular file is one whose process died in
+                between -- no socket can ever be bound to it. *)
+             if stat.Unix.st_uid = mine
+             && ((stat.Unix.st_kind = Unix.S_SOCK && nobody_is_bound_to path)
+                 || (stat.Unix.st_kind = Unix.S_REG && stat.Unix.st_size = 0))
+             then (Unix.unlink path; incr removed)
+           with _ -> ())
+      (try Sys.readdir dir with _ -> [||])
+  in
+  if !removed > 0 then
+    Log.printf2 "ledgrid_manager: swept %d dead blinker socket(s) left in %s by previous runs\n" !removed dir
+;;
+
+let () = sweep_stale_blinker_sockets ();;
+
 let blinker_thread_socket_file_name =
   let result = UnixExtra.temp_file ~prefix:".marionnet-blinker-server-socket-" () in
   Log.printf1 "ledgrid_manager: The blinker server socket is %s\n" result;
   result;;
+
+(* Belt to the braces of `kill_blinker_thread': a clean exit that never gets round to killing
+   the blinker would otherwise leave its socket behind, like the crashes do. The pid guard is
+   the one of `lan_bridge_host.ml': at_exit also runs in whatever children we may fork. *)
+let () =
+  let owner_pid = Unix.getpid () in
+  at_exit
+    (fun () ->
+       if Unix.getpid () = owner_pid then
+         try Unix.unlink blinker_thread_socket_file_name with _ -> ())
+;;
 
 class ledgrid_manager =
 object (self)
@@ -324,7 +391,12 @@ object (self)
     Thread.create
       (fun () ->
         Log.printf ("ledgrid_manager: Making the socket\n");
-        let socket = Unix.socket Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
+        (* ~cloexec: measured on 2026-08-20, this descriptor was leaking into EVERY spawned
+           process (vde_switch, wirefilter, UML...), which kept the socket BOUND long after
+           Marionnet's death -- 21 of the 85 stale files in /tmp were still held that way, by
+           orphans that have no use for it: `wirefilter' is given the socket's PATH on its
+           command line (--blink) and opens its own. *)
+        let socket = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
         let _ = try Unix.unlink blinker_thread_socket_file_name with _ -> () in
         Log.printf ("ledgrid_manager: Binding the socket\n");
         let _ = Unix.bind socket (Unix.ADDR_UNIX blinker_thread_socket_file_name) in
@@ -444,7 +516,7 @@ object (self)
   (** This should be called before termination *)
   method kill_blinker_thread =
     let client_socket =
-      Unix.socket Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
+      Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_DGRAM 0 in
     let client_socket_file_name =
       Filename.temp_file "blinker-killer-client-socket-" "" in
     (try Unix.unlink client_socket_file_name with _ -> ());

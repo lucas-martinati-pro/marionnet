@@ -402,66 +402,52 @@ rencontrés de biais.*
 
 ---
 
-## Hygiène — les **fichiers de socket du blinker** s'accumulent dans `/tmp`, un par run
+## Invités — un `uml_mconsole … sysrq e` peut rester bloqué **pour toujours**
 
-**Constat.** `bin/gui/ledgrid_manager.ml` fabrique au chargement du module un chemin
-`/tmp/.marionnet-blinker-server-socket-<n>` (`UnixExtra.temp_file`), sur lequel le thread blinker
-se `bind`. Ce fichier n'est retiré que sur le **chemin de sortie propre** : la branche
-`please-die` de la boucle et `kill_blinker_thread`. Toute fin anormale — plantage, `SIGKILL`,
-gel de l'application — le laisse en place. Relevé le 2026-08-19 : **84 fichiers**, du 4 août au
-19 août, plus 2 `/tmp/blinker-killer-client-socket-*` (ceux-là créés par `Filename.temp_file`
-dans `kill_blinker_thread`). Rien ne les balaie, ni au démarrage ni ailleurs.
+**Constat** (mesuré le 2026-08-20, en balayant les survivants des sessions mortes). Cinq
+`/bin/sh -c "uml_mconsole <nom> sysrq e"` et leur `uml_mconsole`, échelonnés sur plusieurs
+jours, tournaient encore : ce sont des tentatives d'extinction propre d'un invité qui n'a
+jamais répondu. La commande est lancée sans échéance, et `uml_mconsole` attend une réponse
+qui ne viendra pas d'un noyau mort ou gelé. Ils ne coûtent presque pas de CPU, mais ils
+tiennent des descripteurs et ils s'accumulent, un par extinction manquée.
 
-**Voulu.** Qu'un run ne laisse pas de trace après lui, et qu'un run **de plus** ne coûte pas un
-fichier de plus dans `/tmp` indéfiniment. Deux gestes possibles, indépendants : retirer le fichier
-dès que le `bind` a réussi (une socket unix reste utilisable après `unlink` du chemin **tant que
-les deux extrémités le tiennent ouvert** — mais ici le pair, `wirefilter`, résout le chemin à
-chaque `sendto` : à vérifier avant de choisir cette voie), ou balayer au démarrage les fichiers du
-motif dont **aucun processus vivant** ne tient la socket.
+**Voulu.** Qu'une tentative d'extinction par mconsole ait une **échéance** — au-delà, on
+constate l'échec et on passe au moyen suivant (c'est déjà ce que fait le code appelant : il
+enchaîne sur le kill par pid quand mconsole échoue ; il ne sait simplement pas qu'il n'a pas
+échoué, mais qu'il attend).
 
-**Ce que l'implémentation devra affronter.** Le nom est calculé à l'initialisation du module,
-avant que quoi que ce soit ne soit lancé, et il est passé tel quel à `wirefilter` en `--blink`
-(`bin/simulation_level.ml:735-743`) : il ne peut donc pas devenir « anonyme » (socket abstraite)
-sans toucher aussi la ligne de commande de `wirefilter`. Un balayage au démarrage, lui, doit
-distinguer les fichiers morts des **sockets d'une autre instance de Marionnet tournant en
-parallèle** — `/tmp` est partagé, et deux sessions simultanées sont un cas connu du dépôt (voir
-l'entrée « deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps »). Le test
-sûr n'est pas la date du fichier mais le fait qu'aucun processus ne le tienne ouvert.
+**Ce que l'implémentation devra affronter.** Le point d'appel est le chemin d'arrêt de
+`bin/simulation_level.ml` (`kill_descendants_then_myself` et ses voisins), qui passe par un
+`/bin/sh -c` : un `timeout 5 uml_mconsole …` suffirait, au prix d'une dépendance hôte de plus
+(coreutils, déjà là partout). Le vrai arbitrage est la durée : trop courte, elle transforme un
+arrêt propre lent en kill brutal ; trop longue, elle ne sert à rien. À mesurer sur un invité
+sain avant de choisir. À noter que ces processus sont des **petits-enfants** : le signal de
+mort du parent posé sur les enfants directs (§ « Pièges globaux » du CLAUDE.md, `setpriv --pdeathsig`)
+ne les atteint pas.
 
-*Repéré le 2026-08-19, en instruisant le gel du blinker (`ledgrid_manager`) : chaque fin brutale
-laisse le sien, et le gel en question en est une.*
+*Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici.*
 
 ---
 
-## Hygiène — des `vde_switch` / `wirefilter` **survivent à la session** qui les a lancés
+## Hygiène — les **répertoires de run** `/tmp/marionnet-<n>.dir/` ne sont balayés par personne
 
-**Constat.** Relevé le 2026-08-19 sur cette machine de développement : **120 processus**
-(80 `vde_switch`, 40 `wirefilter`) sans parent Marionnet, tous réadoptés par `systemd --user`,
-et répartis en **17 identifiants de session distincts** échelonnés du 13 au 19 août. Marionnet
-possède pourtant ce qu'il faut (`at_exit: killing all current descendants` puis `killing all
-orphans before exiting`, plus le *descendants monitor*) : ces filets ne jouent que sur une sortie
-**qui s'exécute** — un `SIGKILL`, un plantage ou un gel qu'il faut trancher les met tous hors jeu
-d'un coup.
+**Constat.** Relevé le 2026-08-20 : **359 répertoires**, **1,8 Go**, un par run. Chacun porte
+la `teaching_copy/` du projet de sa session — c'est-à-dire sa **copie de travail non
+enregistrée**. Rien ne les retire : ni à la sortie, pour ceux dont la session est morte
+brutalement, ni au démarrage suivant.
 
-**Voulu.** Qu'une session tuée brutalement n'abandonne pas ses processus auxiliaires — ou, à
-défaut, qu'une session suivante sache les reconnaître et **proposer** de les balayer. Ils ne
-gênent pas une nouvelle session (chaque run a son propre répertoire de travail), mais ils tiennent
-des sockets et des descripteurs, et ils s'accumulent sans borne.
+**Voulu.** Qu'un run ne laisse pas 5 Mo dans `/tmp` à chaque fois. La difficulté n'est pas
+technique, elle est de **politique** : ce répertoire est exactement l'endroit où se trouve le
+travail que l'utilisateur n'a pas enregistré quand sa session est morte. Le balayer sans rien
+dire, c'est effacer la seule copie qui restait.
 
-**Ce que l'implémentation devra affronter.** Le seul mécanisme qui survive au `SIGKILL` du parent
-est côté noyau : `prctl(PR_SET_PDEATHSIG)` posé **par l'enfant, entre `fork` et `exec`**, ou un
-`cgroup` par session. Il n'y a pas de contradiction avec le `setsid` de `bin/marionnet.ml:51-58` —
-celui-là détache Marionnet du **terminal lançeur**, pas ses enfants de lui : vérifié, les
-`vde_switch` orphelins portent encore comme identifiant de session le **PID du Marionnet mort**
-qui les a lancés. Mais `PR_SET_PDEATHSIG` ne vaut que pour les enfants **directs** et n'existe pas
-dans le `Unix` d'OCaml : il faudrait un stub C sur le chemin de `Simulation_level.process#spawn`.
+**Ce que l'implémentation devra affronter.** `useful-scripts/marionnet-cleanup --purge-dirs`
+fait le geste à la demande, sous garde (rien tant qu'un Marionnet tourne, rien de plus jeune
+qu'une heure) : c'est le minimum, et il faut un humain pour le déclencher. Une reprise
+sérieuse doit d'abord répondre à « à partir de quand un projet non enregistré est-il
+perdu ? » — un âge, une confirmation à l'ouverture (« la session du 12 août a laissé un projet
+non enregistré, le récupérer ? »), ou une corbeille. Le tas de 359 est aussi la preuve qu'un
+utilisateur ne le fera jamais de lui-même.
 
-La voie de moindre risque est donc plutôt la seconde, et elle a un point d'appui : puisque
-l'identifiant de session de ces processus **est** le PID du Marionnet qui les a lancés, un
-balayage n'a pas à deviner — il regroupe par `sid` et ne retient que les groupes dont le processus
-`sid` n'existe plus. Reste à respecter la règle du dépôt (lister les PID, les montrer, ne tuer que
-par PID exact, jamais par motif), et à ne **jamais** balayer sans demander : deux sessions
-Marionnet simultanées sont un cas connu (voir l'entrée « deux sessions Marionnet simultanées
-partagent l'adresse hôte de leurs taps »).
-
-*Repéré le 2026-08-19, en nettoyant après la reproduction du gel du blinker.*
+*Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici : les
+sockets et les processus sont traités, ces répertoires ne le sont qu'à la main.*

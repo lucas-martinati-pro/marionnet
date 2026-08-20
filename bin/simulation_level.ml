@@ -50,7 +50,111 @@ let make_input_for_spawned_processes () =
   an_input_descriptor_never_sending_anything;;
 
 let an_input_descriptor_never_sending_anything =
-  make_input_for_spawned_processes ();
+  make_input_for_spawned_processes ();;
+
+(* --- Spawning, and the parent-death signal ---------------------------------------------
+
+   Every long-lived auxiliary of a simulation -- the `vde_switch' of a hublet, the
+   `wirefilter' of a cable, `slirpvde', the terminal emulators, and the UML guests themselves
+   -- is a DIRECT child of Marionnet, created by the single `Unix.create_process' of
+   `process#spawn' below. Marionnet does clean up after itself (`at_exit' kills the
+   descendants, plus the descendants monitor), but every one of those nets only plays on an
+   exit that RUNS: a SIGKILL, a crash, or a freeze that has to be cut short defeats them all
+   at once, and the children are then reparented to `systemd --user', where they go on
+   burning CPU and holding sockets for days. Measured on a development machine on
+   2026-08-20: 120 such orphans, from 17 distinct dead sessions.
+
+   The only mechanism that survives the brutal death of the parent lives in the kernel:
+   PR_SET_PDEATHSIG, by which the kernel signals the child when its parent dies. We do not
+   set it ourselves -- it has to be set IN THE CHILD, between fork and exec, and
+   `Unix.create_process' offers no hook there. `setpriv --pdeathsig KILL -- <cmd>' does
+   exactly that and then EXECS the command, so the pid we get back is still the pid of the
+   final process: `Death_monitor' and every kill-by-pid are unaffected.
+
+   THE TRAP, and the whole reason for the dedicated thread below: the parent-death signal is
+   relative to the THREAD that forked, not to the process. Components are started from
+   `Task_runner.do_in_parallel', that is to say from EPHEMERAL threads; had we forked from
+   them, each child would have been killed the instant its starter thread returned -- every
+   component dying at birth. So all the forking is delegated to one thread, created here,
+   which lives exactly as long as the process does. It also serialises fork/exec, which is
+   desirable in a multithreaded program. *)
+
+(* Absolute path of a `setpriv' that really understands --pdeathsig (the option appeared in
+   util-linux 2.33): the binary is probed once, for real, rather than assumed. When there is
+   none we spawn just as before -- no hard dependency, simply no safety net. Forced from the
+   spawner thread only, hence no concurrent Lazy.force. *)
+let pdeathsig_wrapper : string option Lazy.t =
+  lazy begin
+    let candidates = ["/usr/bin/setpriv"; "/bin/setpriv"; "/usr/local/bin/setpriv"] in
+    match List.find_opt (Sys.file_exists) candidates with
+    | None ->
+        Log.printf
+          "Simulation_level: no `setpriv' found: spawned processes will NOT be killed if Marionnet dies brutally.\n";
+        None
+    | Some setpriv ->
+        let probe = Printf.sprintf "%s --pdeathsig KILL -- /bin/true >/dev/null 2>&1" setpriv in
+        if Sys.command probe = 0 then begin
+          Log.printf1
+            "Simulation_level: `%s --pdeathsig KILL' works: spawned processes will not survive Marionnet.\n" setpriv;
+          Some setpriv
+          end
+        else begin
+          Log.printf1
+            "Simulation_level: `%s' does not support --pdeathsig (util-linux < 2.33?): spawning without a safety net.\n" setpriv;
+          None
+          end
+  end
+
+(* The (program, argv) couple as it will really be handed to execve. *)
+let with_pdeathsig (program : string) (argv : string array) : string * string array =
+  match Lazy.force pdeathsig_wrapper with
+  | None -> (program, argv)
+  | Some setpriv ->
+      (* setpriv execs its command, so argv.(0) of the final process is left untouched: *)
+      (setpriv, Array.append [| "setpriv"; "--pdeathsig"; "KILL"; "--" |] argv)
+
+type spawn_request = {
+  sr_program : string;
+  sr_argv    : string array;
+  sr_env     : string array option;
+  sr_stdin   : Unix.file_descr;
+  sr_stdout  : Unix.file_descr;
+  sr_stderr  : Unix.file_descr;
+  sr_reply   : (int, exn) result Message_passing.queue;
+  }
+
+let spawner_mailbox : spawn_request Message_passing.queue = new Message_passing.queue
+
+(* The permanent thread every child of Marionnet is forked from (see THE TRAP above). *)
+let () =
+  ignore
+    (Thread.create
+       (fun () ->
+          while true do
+            let r = spawner_mailbox#dequeue in
+            let reply =
+              try
+                let (program, argv) = with_pdeathsig (r.sr_program) (r.sr_argv) in
+                Ok (match r.sr_env with
+                    | None     -> Unix.create_process     program argv     (r.sr_stdin) (r.sr_stdout) (r.sr_stderr)
+                    | Some env -> Unix.create_process_env program argv env (r.sr_stdin) (r.sr_stdout) (r.sr_stderr))
+              with e -> Error e
+            in
+            r.sr_reply#enqueue reply
+          done)
+       ())
+
+(* Synchronous from the caller's point of view: the fork happens in the spawner thread, and
+   the exception (if any) is raised here, exactly where `Unix.create_process' used to raise
+   it. *)
+let spawn_process ?environment program argv stdin stdout stderr : int =
+  let reply = new Message_passing.queue in
+  spawner_mailbox#enqueue
+    { sr_program = program; sr_argv = argv; sr_env = environment;
+      sr_stdin = stdin; sr_stdout = stdout; sr_stderr = stderr; sr_reply = reply };
+  match reply#dequeue with
+  | Ok pid  -> pid
+  | Error e -> raise e
 
 (** {2 Lower-level interface to device-simulating processes} *)
 
@@ -109,9 +213,9 @@ fun program
         (* --- *)
         let new_pid =
           let argv = Array.of_list (program :: arguments) in
-          match environment with
-          | None     -> Unix.create_process (program) argv (stdin) (stdout) (stderr)
-          | Some env -> Unix.create_process_env (program) argv (env) (stdin) (stdout) (stderr)
+          (* The fork is delegated to the permanent spawner thread, which also arms the
+             parent-death signal: see the long comment at the head of this file. *)
+          spawn_process ?environment (program) argv (stdin) (stdout) (stderr)
         in
         (* --- *)
         pid := (Some new_pid);

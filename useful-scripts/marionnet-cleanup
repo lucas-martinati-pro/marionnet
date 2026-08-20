@@ -1,0 +1,355 @@
+#!/bin/bash
+
+# This file is part of Marionnet, a virtual network laboratory
+# Copyright (C) 2026  Jean-Vincent Loddo
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# marionnet-cleanup — find, and on request sweep, what a Marionnet session killed brutally has
+# left behind on this host: auxiliary processes, socket files, and run directories.
+#
+# WHY THIS EXISTS. Every auxiliary of a simulation (the vde_switch of a hublet, the wirefilter
+# of a cable, slirpvde, the terminal emulators, the UML guests) is a direct child of Marionnet,
+# and Marionnet does clean up after itself — but only on an exit that RUNS. A SIGKILL, a crash,
+# or a freeze that has to be cut short defeats every one of those nets at once; the children are
+# reparented to `systemd --user' and go on burning CPU and holding sockets for days. Measured on
+# a development machine on 2026-08-20: 120 orphans from 17 dead sessions, 85 stale socket files,
+# 359 run directories worth 1.8 GB.
+#
+# Since that same day, Marionnet arms a parent-death signal on each child it spawns (setpriv
+# --pdeathsig KILL, see bin/simulation_level.ml), so a brutal death should no longer leave
+# anything. This script remains the remedy for what is already there, for hosts without
+# `setpriv', and for grandchildren, which no parent-death signal can reach.
+#
+# HOW AN ORPHAN IS RECOGNISED, exactly and without guessing. A process is one of ours when its
+# command line names a Marionnet run directory ($TMPDIR/marionnet-<n>.dir/), OR when its working
+# directory is the one Marionnet gives to its whole descendance ($(PREFIX)/share/marionnet). The
+# second criterion is what catches the GRANDCHILDREN, which name no run directory and which no
+# parent-death signal can reach either: measured on 2026-08-20, seven `port-helper' and five
+# `uml_mconsole <name> sysrq e' (each with its `/bin/sh -c') had been stuck there for days, a
+# clean-shutdown attempt on a guest that never answered. Its only conceivable false positive is
+# a shell started by hand from that data directory -- which the report shows before anything is
+# signalled. It is an ORPHAN
+# when no live `marionnet' process shares its session id: setsid(2) makes the session id of
+# these processes the pid of the Marionnet that started them, and when setsid was refused
+# (interactive shell, EPERM) the session is the launching shell's, which a live Marionnet of
+# that shell still shares. The only blind spot is deliberate and conservative: two Marionnet in
+# the SAME shell, one dead one alive, and nothing is swept.
+#
+# NO bashbricks HERE, for the reason already written in mrn-check and marionnet-ctl: this script
+# is meant to sit in $(PREFIX)/bin next to marionnet-ctl, and nothing installs bashbricks there.
+# A relative source would work in the source tree and break once installed. Nothing below is
+# about collections or JSON anyway; it is /proc and signals.
+#
+# SAFETY, which is the whole point of a tool that kills things. Nothing is destroyed unless an
+# explicit option asks for it. Processes are listed first and killed BY EXACT PID — never by
+# pattern: `pkill -f marionnet' would match this very script (and has destroyed a KDE session
+# once). A cardinality fuse refuses to act on an implausible number of processes. Run
+# directories, which hold the unsaved working copy of a project, are behind their own option
+# that no other implies.
+#
+# Requires: nothing but a Linux /proc and bash.
+
+set -euo pipefail
+
+readonly PROGNAME="${0##*/}"
+readonly TMP="${TMPDIR:-/tmp}"
+
+# Calibrated well above the nominal case (120 orphans were the worst seen): a fuse that trips on
+# the normal case is worse than none, it leaves the orphans alive AND gives the illusion of a guard.
+readonly MAX_PROCESSES=500
+
+# A run directory younger than this is never touched, whatever else we believe about it.
+readonly DIR_MIN_AGE_MINUTES=60
+
+readonly EXIT_USAGE=2
+
+usage() {
+  cat <<EOF
+Usage: $PROGNAME [--kill] [--purge-sockets] [--purge-dirs] [--help]
+
+Reports what dead Marionnet sessions have left on this host. WITHOUT ANY OPTION IT ONLY
+REPORTS: nothing is killed, nothing is removed.
+
+  --kill            Terminate the orphan auxiliary processes (TERM, then KILL for those
+                    that survive), by exact pid. Refuses beyond $MAX_PROCESSES processes.
+  --purge-sockets   Remove the blinker socket files of $TMP that no live process is bound to.
+  --purge-dirs      Remove the run directories $TMP/marionnet-<n>.dir/ that no live process
+                    refers to and that are older than $DIR_MIN_AGE_MINUTES minutes. THEY HOLD THE UNSAVED
+                    WORKING COPY of the projects of those sessions. Implied by nothing, and
+                    refused outright while a Marionnet is running.
+  --help            This help.
+
+Typical use: run it with no option, read the report, then add the options you agree with.
+EOF
+}
+
+# --- Scanning /proc ------------------------------------------------------------------------
+#
+# The whole scan is done by reading /proc directly, in bash, on purpose: a `ps | grep <pattern>'
+# pipeline puts the pattern in the command line of its own processes, which then show up in
+# their own output.
+
+declare -a ORPHAN_PIDS=()          # pids of the auxiliaries of dead sessions
+declare -A ORPHAN_CMD=()           # pid -> command line
+declare -A ORPHAN_SID=()           # pid -> session id
+declare -A LIVE_RUNDIRS=()         # run directory -> 1, for every LIVE process referring to it
+declare -a LIVE_MARIONNETS=()      # pids of the live marionnet processes
+
+# Session id of a process, from field 6 of /proc/<pid>/stat. The command name (field 2) may
+# itself contain spaces and parentheses, hence the split on the LAST ')'.
+session_id_of() {
+  local pid="$1" stat rest
+  stat=$(< "/proc/$pid/stat") || return 1
+  rest="${stat##*) }"
+  # rest = state ppid pgrp session ...
+  echo "$rest" | { read -r _state _ppid _pgrp session _rest; echo "${session:-}"; }
+}
+
+# The run directories named by a command line, one per line.
+rundirs_of_cmdline() {
+  local cmd="$1"
+  grep -oE "${TMP}/marionnet-[0-9]+\.dir" <<< "$cmd" | sort -u || true
+}
+
+scan() {
+  local pid comm cmd cwd sid dir
+  local -a candidates=()
+  local -A live_sids=()
+
+  for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do
+    [ -r "/proc/$pid/cmdline" ] || continue
+    cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || continue
+    [ -n "$cmd" ] || continue                       # kernel thread
+    # NOT `$(< file 2>/dev/null)': bash only applies its read-the-file shortcut when the input
+    # redirection stands ALONE, so the extra 2> makes the substitution expand to the EMPTY
+    # STRING -- silently, which had every live Marionnet go unrecognised (and therefore
+    # unprotected) until it was measured on 2026-08-20.
+    read -r comm < "/proc/$pid/comm" 2>/dev/null || continue
+
+    # A live Marionnet: its session protects everything that shares it.
+    if [[ "$comm" == marionnet* ]]; then
+      sid=$(session_id_of "$pid") || continue
+      [ -n "$sid" ] && live_sids["$sid"]=1
+      LIVE_MARIONNETS+=("$pid")
+    fi
+
+    # (a) it names a run directory, or (b) it sits in the working directory Marionnet gives to
+    # its descendance -- the criterion that catches the grandchildren (see the header).
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
+    if [[ "$cmd" == *"${TMP}/marionnet-"*".dir/"* ]] || [[ "$cwd" == */share/marionnet ]]; then
+      candidates+=("$pid")
+      ORPHAN_CMD["$pid"]="$cmd"
+    fi
+  done
+
+  # Second pass: a candidate is an orphan unless a live Marionnet shares its session. The run
+  # directories of the SPARED ones are live, and must survive --purge-dirs.
+  for pid in "${candidates[@]:-}"; do
+    [ -n "$pid" ] || continue
+    [ -e "/proc/$pid" ] || continue
+    sid=$(session_id_of "$pid") || continue
+    if [ -n "${live_sids[${sid:-x}]:-}" ]; then
+      while read -r dir; do [ -n "$dir" ] && LIVE_RUNDIRS["$dir"]=1; done < <(rundirs_of_cmdline "${ORPHAN_CMD[$pid]}")
+      unset "ORPHAN_CMD[$pid]"
+    else
+      ORPHAN_SID["$pid"]="$sid"
+      ORPHAN_PIDS+=("$pid")
+    fi
+  done
+
+  # The run directory of a live Marionnet is live too, even when it has started nothing yet:
+  # its project's working copy is in there.
+  for pid in "${LIVE_MARIONNETS[@]:-}"; do
+    [ -n "$pid" ] || continue
+    [ -r "/proc/$pid/cmdline" ] || continue
+    while read -r dir; do [ -n "$dir" ] && LIVE_RUNDIRS["$dir"]=1
+    done < <(rundirs_of_cmdline "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)")
+  done
+}
+
+# --- Sockets -------------------------------------------------------------------------------
+#
+# The safe test is not the file's date — /tmp is shared and two Marionnet at once are a known
+# case — but whether a socket is still BOUND to that path. The last column of /proc/net/unix is
+# the path of every bound unix socket on the host; a file that is not in there is dead.
+
+bound_unix_paths() {
+  awk '{ print $NF }' /proc/net/unix 2>/dev/null | grep '^/' | sort -u || true
+}
+
+declare -a DEAD_SOCKETS=()
+declare -a LIVE_SOCKETS=()
+
+scan_sockets() {
+  local bound f
+  bound=$(bound_unix_paths)
+  for f in "$TMP"/.marionnet-blinker-server-socket-* "$TMP"/blinker-killer-client-socket-*; do
+    [ -O "$f" ] || continue                        # not ours: /tmp is shared
+    if [ -S "$f" ]; then
+      if grep -qxF "$f" <<< "$bound"; then LIVE_SOCKETS+=("$f"); else DEAD_SOCKETS+=("$f"); fi
+    elif [ -f "$f" ] && [ ! -s "$f" ]; then
+      # An ordinary empty file of the same name is debris too, and dead by construction: the
+      # name is made by a temp_file, which creates such a file before the bind replaces it.
+      DEAD_SOCKETS+=("$f")
+    fi
+  done
+}
+
+# --- Run directories -----------------------------------------------------------------------
+
+declare -a DEAD_DIRS=()
+
+scan_dirs() {
+  local d
+  for d in "$TMP"/marionnet-*.dir; do
+    [ -d "$d" ] || continue
+    [ -O "$d" ] || continue
+    [ -n "${LIVE_RUNDIRS[$d]:-}" ] && continue
+    # Too young to judge: a session may be starting up right now.
+    [ -n "$(find "$d" -maxdepth 0 -mmin "+$DIR_MIN_AGE_MINUTES" 2>/dev/null)" ] || continue
+    DEAD_DIRS+=("$d")
+  done
+}
+
+# --- Reporting ---------------------------------------------------------------------------
+
+report() {
+  local pid sid n
+  echo "== Orphan auxiliary processes =="
+  n=${#ORPHAN_PIDS[@]}
+  if [ "$n" -eq 0 ]; then
+    echo "  none."
+  else
+    for sid in $(for pid in "${ORPHAN_PIDS[@]}"; do echo "${ORPHAN_SID[$pid]}"; done | sort -un); do
+      echo "  session $sid (no live Marionnet in it):"
+      for pid in "${ORPHAN_PIDS[@]}"; do
+        [ "${ORPHAN_SID[$pid]}" = "$sid" ] || continue
+        printf '    %-8s %s\n' "$pid" "$(cut -c1-100 <<< "${ORPHAN_CMD[$pid]}")"
+      done
+    done
+    echo "  total: $n process(es) --- use --kill to terminate them."
+  fi
+
+  echo
+  echo "== Blinker socket files in $TMP =="
+  echo "  dead (nobody bound): ${#DEAD_SOCKETS[@]} --- use --purge-sockets to remove them."
+  echo "  still bound (spared): ${#LIVE_SOCKETS[@]}"
+
+  echo
+  echo "== Run directories in $TMP =="
+  if [ "${#DEAD_DIRS[@]}" -eq 0 ]; then
+    echo "  none to remove."
+  else
+    echo "  removable: ${#DEAD_DIRS[@]} directory(ies), $(du -sh --total "${DEAD_DIRS[@]}" 2>/dev/null | tail -1 | cut -f1) in total."
+    echo "  THEY HOLD THE UNSAVED WORKING COPY of the projects of those sessions."
+    echo "  oldest: $(ls -dt "${DEAD_DIRS[@]}" | tail -1)"
+    echo "  use --purge-dirs to remove them."
+  fi
+  echo "  in use by a live session (spared): ${#LIVE_RUNDIRS[@]}"
+}
+
+# --- Acting ------------------------------------------------------------------------------
+
+# Never signal these, whatever the scan believes. `systemd --user' matters most: it is the
+# reaper that adopted the orphans, hence their common parent -- killing it takes the whole
+# graphical session down with it.
+is_protected() {
+  local pid="$1" comm
+  [ "$pid" -eq 1 ] && return 0
+  [ "$pid" -eq "$$" ] && return 0
+  [ "$pid" -eq "$BASHPID" ] && return 0
+  [ "$pid" -eq "$PPID" ] && return 0
+  read -r comm < "/proc/$pid/comm" 2>/dev/null || return 0
+  [ "$comm" = "systemd" ] && return 0
+  return 1
+}
+
+do_kill() {
+  local pid n=${#ORPHAN_PIDS[@]}
+  local -a targets=() survivors=()
+  [ "$n" -eq 0 ] && { echo "$PROGNAME: no orphan process to kill."; return 0; }
+  if [ "$n" -gt "$MAX_PROCESSES" ]; then
+    echo "$PROGNAME: $n orphan processes is beyond the fuse of $MAX_PROCESSES: refusing to act." >&2
+    echo "$PROGNAME: check the list above, then raise MAX_PROCESSES in this script if it is really what you want." >&2
+    return 1
+  fi
+  for pid in "${ORPHAN_PIDS[@]}"; do
+    is_protected "$pid" && { echo "$PROGNAME: refusing to signal the protected pid $pid."; continue; }
+    # The pid may have been reused since the scan: check that it is still the process we saw.
+    [ "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)" = "${ORPHAN_CMD[$pid]}" ] || continue
+    targets+=("$pid")
+  done
+  echo "$PROGNAME: sending TERM to ${#targets[@]} process(es)..."
+  for pid in "${targets[@]:-}"; do [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null || true; done
+  sleep 2
+  for pid in "${targets[@]:-}"; do [ -n "$pid" ] && [ -e "/proc/$pid" ] && survivors+=("$pid"); done
+  if [ "${#survivors[@]}" -gt 0 ]; then
+    echo "$PROGNAME: ${#survivors[@]} process(es) ignored TERM; sending KILL..."
+    for pid in "${survivors[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
+    sleep 1
+  fi
+  local left=0
+  for pid in "${targets[@]:-}"; do [ -n "$pid" ] && [ -e "/proc/$pid" ] && left=$((left+1)); done
+  echo "$PROGNAME: done; $left of ${#targets[@]} still alive."
+}
+
+do_purge_sockets() {
+  local f n=0
+  for f in "${DEAD_SOCKETS[@]:-}"; do [ -n "$f" ] && rm -f -- "$f" && n=$((n+1)); done
+  echo "$PROGNAME: removed $n dead socket file(s); ${#LIVE_SOCKETS[@]} still bound, spared."
+}
+
+do_purge_dirs() {
+  local d n=0
+  if [ "${#LIVE_MARIONNETS[@]}" -gt 0 ]; then
+    echo "$PROGNAME: a Marionnet is running (pid ${LIVE_MARIONNETS[*]}); refusing to remove any run directory." >&2
+    echo "$PROGNAME: close it first -- its own working copy lives in one of these directories." >&2
+    return 1
+  fi
+  [ "${#DEAD_DIRS[@]}" -eq 0 ] && { echo "$PROGNAME: no run directory to remove."; return 0; }
+  echo "$PROGNAME: removing ${#DEAD_DIRS[@]} run directory(ies) and the unsaved work they hold..."
+  for d in "${DEAD_DIRS[@]}"; do
+    case "$d" in "$TMP"/marionnet-*.dir) rm -rf -- "$d" && n=$((n+1)) ;; *) ;; esac
+  done
+  echo "$PROGNAME: removed $n."
+}
+
+# --- Main --------------------------------------------------------------------------------
+
+main() {
+  local kill_them=0 purge_sockets=0 purge_dirs=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kill)           kill_them=1 ;;
+      --purge-sockets)  purge_sockets=1 ;;
+      --purge-dirs)     purge_dirs=1 ;;
+      -h|--help)        usage; return 0 ;;
+      *) echo "$PROGNAME: unknown option \`$1'" >&2; usage >&2; return $EXIT_USAGE ;;
+    esac
+    shift
+  done
+
+  scan
+  scan_sockets
+  scan_dirs
+  report
+
+  [ "$kill_them" -eq 1 ]      && { echo; do_kill; }
+  [ "$purge_sockets" -eq 1 ]  && { echo; do_purge_sockets; }
+  [ "$purge_dirs" -eq 1 ]     && { echo; do_purge_dirs; }
+  return 0
+}
+
+main "$@"
