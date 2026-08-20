@@ -37,6 +37,14 @@ That is the whole setup. The option does three things:
 Without the option no socket exists, so a Marionnet started normally cannot be driven — there
 is nothing to connect to.
 
+**The path must be absolute, and no longer than 107 bytes.** That second bound is not ours: the
+address of a unix socket carries its path in a field of 108 bytes, terminator included, and a
+longer path is rejected rather than truncated. Both are checked at startup, and a path which
+cannot be served — too long, relative, in a directory we cannot write into, or already served by
+a live Marionnet — makes Marionnet **refuse to start**, with the reason on stderr and a non-zero
+exit status. A driven session nobody can drive would only look alive; this way your script fails
+where it started, not ten commands later.
+
 Two options worth knowing right away:
 
 | Option | What it does |
@@ -1008,6 +1016,7 @@ switch table it does not know, connectivity) — the same information that would
 
 | Symptom | Cause and cure |
 |---|---|
+| `marionnet: --control-socket: …` (exit 1) | Marionnet refused to start: the path is relative, longer than 107 bytes, in a directory it cannot write into, or already served by a live session — the message says which |
 | `no control socket` (exit 2) | neither `--socket=` nor `$MARIONNET_CONTROL_SOCKET` is set |
 | `not a unix socket: …` (exit 2) | the path is wrong, or Marionnet was started without `--control-socket` — nothing is listening there, and there never was |
 | `no answer from …` (exit 3) | the socket file exists but nobody answers: Marionnet is gone and left it behind, or it is stuck in a modal dialog |

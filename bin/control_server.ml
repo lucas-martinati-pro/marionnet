@@ -4617,9 +4617,11 @@ let someone_is_listening (path:string) : bool =
   result
 
 let prepare_socketfile (path:string) : (unit, string) result =
-  if Filename.is_relative path then
-    Error (Printf.sprintf "an absolute path is required (got %S)" path)
-  else
+  (* Same check as the one already made when the option was read (initialization.ml): the
+     bound of sun_path has a single source, and [start] stays correct on its own. *)
+  match Initialization.check_control_socket_path path with
+  | Error _ as e -> e
+  | Ok () ->
   match check_or_make_parent_directory (Filename.dirname path) with
   | Error _ as e -> e
   | Ok () ->
@@ -4633,14 +4635,25 @@ let prepare_socketfile (path:string) : (unit, string) result =
            Ok ()
          with e -> Error (Printf.sprintf "cannot remove the stale %S: %s" path (Printexc.to_string e)))
 
+(* Printexc.to_string alone says "Ocamlbricks.Network.Binding(_)", which tells whoever
+   launched the session nothing at all: Network wraps the real cause (network.ml:190) and
+   a Unix_error prints its own constructor rather than its message. Unwrap both. *)
+let rec explain_failure : exn -> string = function
+  | Network.Binding e -> Printf.sprintf "bind failed: %s" (explain_failure e)
+  | Unix.Unix_error (code, fname, arg) ->
+      Printf.sprintf "%s%s: %s"
+        fname (if arg = "" then "" else Printf.sprintf " %S" arg) (Unix.error_message code)
+  | e -> Printexc.to_string e
+
 (* ~no_fork:() is mandatory: the default behaviour of Network.server is to fork per
    connection (network.ml:231), which in a GTK process owning UML children would be
    catastrophic. The bind happens in the calling thread (network.ml:223), so a failure is
-   reported here and now, and Marionnet goes on without a control channel. *)
-let start (st : State.globalState) ~(socketfile:string) : unit =
+   reported here and now — to the caller, which decides what to do with it. *)
+let start (st : State.globalState) ~(socketfile:string) : (unit, string) result =
   match prepare_socketfile socketfile with
   | Error detail ->
-      Log.printf1 "Control_server: NOT started: %s\n" detail
+      let () = Log.printf1 "Control_server: NOT started: %s\n" detail in
+      Error detail
   | Ok () ->
       (try
         let () = Log.printf1 "Control_server: about to start Network.stream_unix_server on socketfile %s\n" socketfile in
@@ -4661,11 +4674,30 @@ let start (st : State.globalState) ~(socketfile:string) : unit =
            try let () = Unix.chmod socketfile 0o600 in "0600"
            with e -> Printf.sprintf "left as created (%s)" (Printexc.to_string e)
          in
-         Log.printf2 "Control_server: listening on %s (socket mode %s)\n" socketfile socket_mode
+         let () = Log.printf2 "Control_server: listening on %s (socket mode %s)\n" socketfile socket_mode in
+         Ok ()
        with e ->
-         Log.print_exn ~prefix:"Control_server: NOT started: " e)
+         let () = Log.print_exn ~prefix:"Control_server: NOT started: " e in
+         Error (explain_failure e))
 
+(* A driven session which cannot be driven has no reason to run (--control-socket implies
+   script mode), and the failure must be seen by whoever launched it: the log is not under
+   the eyes of a bench. Hence a refusal to start, on stderr, whatever the cause — a path
+   we cannot write into, a socket already served by a live process, a bind failure. The
+   syntax of the path itself has already been refused much earlier, before any window
+   (initialization.ml).
+   No attempt is made to close a project opened from the command line before leaving:
+   st#close_project, called from the GTK main thread, merely spawns a thread (state.ml),
+   which exit would kill before it cleans anything. A run directory left behind in that
+   narrow case is the business of `useful-scripts/marionnet-cleanup` and of the TODO entry
+   about run directories. *)
 let start_if_requested (st : State.globalState) : unit =
   match !Initialization.option_control_socket with
   | None -> ()
-  | Some socketfile -> start st ~socketfile
+  | Some socketfile ->
+      (match start st ~socketfile with
+       | Ok () -> ()
+       | Error detail ->
+           Printf.kfprintf flush stderr
+             "%s: --control-socket: cannot serve %s: %s\n" Sys.argv.(0) socketfile detail;
+           exit 1)

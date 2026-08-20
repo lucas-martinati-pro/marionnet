@@ -53,9 +53,15 @@
 (** Start the control server if, and only if, the option [--control-socket PATH] was given
     ([Initialization.option_control_socket]); otherwise do nothing.
 
-    Called once by [marionnet.ml], after the GUI is built. It NEVER raises and never aborts
-    the startup: a bad path, a directory it cannot create, a socket file already served by a
-    live process, a [bind] failure — each is logged and Marionnet simply goes on without a
-    control channel. A stale socket file left behind by a brutal exit is removed and does
-    not prevent a restart. *)
+    Called once by [marionnet.ml], after the GUI is built. It never raises, but it does
+    {b abort the startup}: when the channel was requested and cannot be served — a directory
+    it cannot create or write into, a socket file already served by a live process, a [bind]
+    failure — the reason is logged {e and} printed on stderr, and the process exits with
+    status 1. A driven session which nobody can drive has no reason to run, and the log is
+    not under the eyes of the bench which launched it. The syntax of the path (absolute, and
+    short enough for [sun_path]) is refused much earlier, before any window
+    ([Initialization.check_control_socket_path]).
+
+    A stale socket file left behind by a brutal exit is removed and does not prevent a
+    restart. *)
 val start_if_requested : State.globalState -> unit

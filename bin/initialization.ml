@@ -125,6 +125,47 @@ let () =
 
 (* Now we may inspect the references: *)
 
+(* ***************************************** *
+    --control-socket: bounded by sun_path
+ * ***************************************** *)
+
+(* The unix address of a socket carries its path in a fixed-size field, [sun_path], of 108
+   bytes including the terminating NUL: 107 usable. A longer path is not truncated, the
+   [bind] simply fails. Checked here, where the option is read, because it is a property of
+   the argument and needs no side effect; control_server.ml calls this same function again
+   just before binding, so the bound has a single source. *)
+let sun_path_usable_bytes = 107
+
+let check_control_socket_path (path:string) : (unit, string) result =
+  if Filename.is_relative path then
+    Error (Printf.sprintf "an absolute path is required (got %S)" path)
+  else
+  let length = String.length path in
+  if length > sun_path_usable_bytes then
+    Error
+      (Printf.sprintf
+         "the path is %d bytes long, more than the %d bytes a unix socket address (sun_path) can hold"
+         length sun_path_usable_bytes)
+  else
+    Ok ()
+;;
+
+(* A driven session which cannot be driven has no reason to run: --control-socket implies
+   script mode (script_mode.ml), and it is a bench, not a human, which launches it. Hence a
+   refusal to start, on stderr, with the exit code Argv.parse itself uses for a bad argument
+   (lib/BASE/argv.ml). Failures which can only be seen later (permissions, a socket already
+   served) are refused in the same spirit by Control_server.start_if_requested. *)
+let () =
+  match !option_control_socket with
+  | None -> ()
+  | Some path ->
+      (match check_control_socket_path path with
+       | Ok () -> ()
+       | Error detail ->
+           Printf.kfprintf flush stderr "%s: --control-socket: %s\n" Sys.argv.(0) detail;
+           exit 1)
+;;
+
 let () = if !option_v = Some () then begin
   Printf.kfprintf flush stdout "marionnet version %s\n" (user_intelligible_version);
   exit 0;

@@ -143,11 +143,14 @@ Reprise : appliquer le skill `chantier-long`.
   chacune avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
   deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
   15 épisodes par coût croissant) ; mémoire `marionnet-todo-transverse` ;
-  `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20, ép. 0 (cadrage) fait.
+  `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20.
   Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
   **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
   doc), et un épisode qui découvre un défaut voisin l'**écrit** dans `docs/TODO.md` au lieu de
-  le corriger en passant.
+  le corriger en passant. Ép. 0 (cadrage), 1 (label) et **2 (`--control-socket` : refus de
+  démarrer quand le canal ne peut pas être servi, quelle qu'en soit la cause)** faits — l'ép. 2
+  a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
+  (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :

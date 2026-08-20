@@ -152,7 +152,7 @@ s'appuie sur le rollback de l'ép. 3.
 | N | Entrée de `docs/TODO.md` | Geste | Preuve |
 |---|---|---|---|
 | 1 | Le **label** se valide trop tard | `check_new_label` avant la première écriture des deux `update_with` (`bin/user_level.ml`), comme `check_new_name` | jetable (**patch témoin**, cf. § 3.6) — **fait** |
-| 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/` — **crée le répertoire et son README** |
+| 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/control-socket-refusal.sh` — **fait** (crée le répertoire et son README) |
 | 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/` |
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Construire, vérifier, détruire — en réutilisant le rollback de l'ép. 3 plutôt qu'une seconde table `kind → (min,max)` | `driven-sessions/` |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
@@ -211,3 +211,43 @@ pas. `dune build` rc 0 après retrait du témoin ; aucun processus survivant.
 `/tmp/marionnet-<n>.dir/`. Le `quit` **du canal** ne passe donc pas par `close_project`, alors que
 le *Quitter* de la GUI le fait (§ 3.2). L'épisode 6 devra en tenir compte : une session pilotée
 laisse son répertoire de run à *chaque* exécution, ce qui explique une bonne part du tas de 359.
+
+### 2026-08-20 — épisode 2 : le canal qui ne peut pas être servi fait refuser le démarrage
+
+Le TODO ne voyait que le chemin trop long ; le correctif porte, comme prévu au § 3.4, sur **toute**
+cause d'échec du canal.
+
+**Le geste, en deux endroits.** La borne est une propriété de l'**argument** : elle se vérifie là
+où l'option est lue. `Initialization.check_control_socket_path` (`bin/initialization.ml`) refuse un
+chemin relatif ou plus long que **107 octets** (`sun_path` en tient 108, terminaison comprise), et
+le refus tombe **avant toute fenêtre** — mesuré : sans `DISPLAY`, le binaire répond quand même. Les
+causes qui ne se voient qu'au `bind` (répertoire non inscriptible, socket déjà servi) sont refusées
+au même titre par `Control_server.start_if_requested`, qui écrit la raison sur **stderr** en plus
+du journal et sort avec le code 1. `start` rend maintenant un `(unit, string) result` au lieu
+d'avaler l'échec, et `prepare_socketfile` appelle la même fonction de validation (source unique de
+la borne). Le détail d'exception est déballé (`explain_failure`) : `Network.Binding(_)` ne disait
+rien à personne, on lit désormais `bind failed: bind: Permission non accordée`.
+
+**Ce qui n'est pas fait, et pourquoi.** Aucune tentative de fermer un projet ouvert avant de
+sortir : appelé depuis le thread GTK, `st#close_project` se contente de créer un thread
+(`bin/state.ml`), que l'`exit` tuerait avant qu'il nettoie. Le répertoire de run éventuellement
+laissé dans ce cas étroit reste l'affaire de l'épisode 6.
+
+**Preuve** — premier banc **versionné** du chantier, `driven-sessions/control-socket-refusal.sh`
+(le répertoire et son `README.md` naissent ici, cf. § 3.6). Quatre cas, dont le nominal en garde
+anti-faux-positif ; les deux cas syntaxiques ne demandent **ni X ni sudo**.
+
+| Cas | avant le correctif | après |
+|---|---|---|
+| chemin de 130 octets | démarre, aucun socket, jamais un mot | **exit 1**, stderr nomme la limite 107 et la longueur |
+| chemin relatif | démarre | **exit 1**, « an absolute path is required » |
+| répertoire non inscriptible | démarre en GUI seule | **exit 1**, « bind failed: … » |
+| chemin servable | sert, `quit` → exit 0 | **inchangé** |
+
+Rouge/vert mesuré en rejouant le banc sur le binaire d'avant (`git stash`) : `passed: 1, failed: 3`
+— le seul PASS étant le cas nominal, qui montre que le banc n'est pas rouge par construction.
+Après restauration : `passed: 4, failed: 0, skipped: 0`, `dune build` rc 0.
+
+**Documentation** : `doc-src/scripting/README.md` gagne la phrase manquante (chemin absolu **et**
+borné à 107 octets, refus de démarrer avec la raison sur stderr) et une ligne dans la table
+« When it does not work ». L'entrée est **retirée** de `docs/TODO.md` : 13 défauts restants.
