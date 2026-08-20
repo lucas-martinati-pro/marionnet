@@ -36,37 +36,6 @@ placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
 
 ---
 
-## Modèle — le **label** d'un composant se valide encore trop tard
-
-> Le volet **nom** de cette fiche est **CLOS** : `User_level.check_new_name` valide identifiant et
-> unicité en première instruction des cinq chemins destructeurs (chantier
-> `marionnet-pilotage-par-script`, ép. **4d-2c**, 2026-08-06 — banc témoin `rename-witness.sh`,
-> 4 assertions rouges avant / 6 vertes après). Ne subsiste que le résidu ci-dessous, de même forme.
-
-**Constat.** `update_with` (`user_level.ml`, `node_with_defects` et `node_with_ledgrid_and_defects`)
-applique les champs dans l'ordre `set_name` → `set_port_no` → `set_label`. Le `check_label` de
-`id_name_label` (`user_level.ml:519`, `526-530`) **peut refuser** un label contenant `<` ou `>` — après,
-donc, que le nom et le nombre de ports ont déjà été écrits, le device simulé détruit et (pour les
-hubs/switchs/routeurs) le ledgrid défait. Même défaut d'ordre que celui du nom, un cran plus bas.
-
-**Pourquoi ce n'est pas un bug observable aujourd'hui.** Le canal de contrôle écrit le label par
-`eval_forest_attribute` (`set label`), qui n'écrit rien avant : un refus y coûte zéro. Le seul
-chemin exposé est le dialogue « Properties » de la GUI, dont le champ label n'est pas filtré à la
-saisie — nul ne l'a signalé, le caractère `<` étant peu naturel dans un libellé.
-
-**Voulu.** Que `update_with` valide **tous** ses arguments avant d'écrire le premier, comme il le
-fait désormais pour le nom. Un `check_label` appelable (aujourd'hui `let` local au corps de
-`id_name_label`) rendrait la symétrie évidente ; à défaut, dupliquer son unique test
-(`StrExtra.First.matchingp (Str.regexp ".*[><].*")`) comme `check_new_name` duplique le sien.
-
-**Ce que l'implémentation devra affronter.** Rien de structurel : c'est deux lignes au même endroit
-que celles de l'ép. 4d-2c. Le coût réel est la **preuve** — comme pour le nom, le chemin fautif
-n'est atteignable qu'en désarmant l'appelant, donc par un banc témoin (`rename-witness.sh` en donne
-le patron). À faire à l'occasion d'un passage sur `update_with`, pas en campagne dédiée.
-
-*Volet « nom » repéré le 2026-08-06 (ép. 4d-2b), corrigé le même jour (ép. 4d-2c) ; résidu
-« label » repéré à cette occasion.*
-
 ## Canal — `set <n> distrib <épithète inexistante>` est accepté **sans rien changer**
 
 **Constat.** `set m1 distrib pas-une-distrib` répond `ok:true` avec `changed:false` : le champ passe
@@ -448,6 +417,12 @@ sérieuse doit d'abord répondre à « à partir de quand un projet non enregist
 perdu ? » — un âge, une confirmation à l'ouverture (« la session du 12 août a laissé un projet
 non enregistré, le récupérer ? »), ou une corbeille. Le tas de 359 est aussi la preuve qu'un
 utilisateur ne le fera jamais de lui-même.
+
+**Précision du 2026-08-20** (épisode 1 de `todo-transverse`, mesurée de biais) : une sortie
+**propre par la GUI** ne laisse rien — *Quitter* appelle bien `close_project`
+(`bin/gui/gui_menubar_MARIONNET.ml:435`), qui retire le répertoire. En revanche le `quit` **du
+canal de contrôle** ne passe pas par là : trois runs d'un banc ont laissé trois répertoires. Une
+session pilotée en laisse donc un **à chaque exécution**, ce qui explique une bonne part du tas.
 
 *Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici : les
 sockets et les processus sont traités, ces répertoires ne le sont qu'à la main.*

@@ -574,11 +574,14 @@ let generator = Counter.make_int_generator ();;
     - a (mutable) name; i.e. valid string identifier
     - a (mutable) label (string) not containing '<' and '>' (for prevent conflict with dot)
 *)
+(* A label may not contain '<' or '>' (they would conflict with dot's syntax, see above).
+   Hoisted out of the class so that [check_new_label] can share the very test [check_label]
+   applies: two copies of this regexp would be two chances to diverge. *)
+let wellFormedLabel x = not (StrExtra.First.matchingp (Str.regexp ".*[><].*") x)
+
 class id_name_label = fun ?(name="noname") ?(label="") () ->
 
   (* Some checks over used name and label *)
-  let wellFormedLabel x = not (StrExtra.First.matchingp (Str.regexp ".*[><].*") x) in
-
   let check_name  x =
   	if not (StrExtra.Class.identifierp x)
        	then failwith ("Setting component "^name^": invalid name")
@@ -921,6 +924,20 @@ let check_new_name ~network ~old_name new_name =
     then failwith ("Renaming component "^old_name^": the name "^new_name^" is already used in the network")
     else ()
 
+(** Check a candidate label for a component that already belongs to the network. The same net as
+    [check_new_name], one notch lower: [update_with] applies name, port number and label in that
+    order, so a label refused by [id_name_label#set_label] — its very last statement — was refused
+    *after* the name and the port number had been written and the simulated device destroyed (and,
+    for the ledgrid-bearing kinds, after the ledgrid had been undone). The model now refuses it
+    before writing anything, so that [update_with] validates all of its arguments before the first
+    of them is applied (episode 1 of docs/todo-transverse.md).
+    Callers that can phrase a better refusal are still expected to test first: this is their net,
+    not their replacement. *)
+let check_new_label ~old_name new_label =
+  if wellFormedLabel new_label
+    then ()
+    else failwith ("Setting component "^old_name^": invalid label "^new_label)
+
 (* *************************** *
           class node
  * *************************** *)
@@ -1160,8 +1177,11 @@ class virtual node_with_defects
   (* if self#update_really_needed ~name ~label ~port_no then *)
     begin
       (* Before the first write: [destroy_my_simulated_device] *schedules* a task on the task
-         runner (user_level.ml:206-209), which no later refusal could recall. *)
-      check_new_name ~network ~old_name:self#get_name name;
+         runner (user_level.ml:206-209), which no later refusal could recall. Both arguments that
+         can be refused are tested here, the label included: it is applied last, so its own check
+         would otherwise fire once the rest has been written. *)
+      check_new_name  ~network ~old_name:self#get_name name;
+      check_new_label ~old_name:self#get_name label;
       self#destroy_my_simulated_device;
       self#set_name name;
       self#set_port_no port_no;
@@ -1318,8 +1338,11 @@ class virtual node_with_ledgrid_and_defects
   (* if self#update_really_needed ~name ~label ~port_no then *)
     begin
       (* Before the first write: [destroy_my_simulated_device] *schedules* a task on the task
-         runner (user_level.ml:206-209), which no later refusal could recall. *)
-      check_new_name ~network ~old_name:self#get_name name;
+         runner (user_level.ml:206-209), which no later refusal could recall. Both arguments that
+         can be refused are tested here, the label included: it is applied last, so its own check
+         would otherwise fire once the rest has been written. *)
+      check_new_name  ~network ~old_name:self#get_name name;
+      check_new_label ~old_name:self#get_name label;
       self#destroy_my_simulated_device;
       self#destroy_my_ledgrid;
       self#set_name name;

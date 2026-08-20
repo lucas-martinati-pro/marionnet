@@ -125,8 +125,14 @@ Elle est **conservée par défaut**, avec une exception motivée par un critère
 | Le canal et le modèle suffisent : aucun invité ne boote, aucun privilège | **versionnés** dans `driven-sessions/` |
 | Un invité doit booter, ou il faut `sudo`, ou une plateforme absente ici | **jetables**, preuve recopiée dans le journal ci-dessous |
 
-Cinq entrées tombent dans la première colonne : *label*, *`add --ports`*, *rollback du
-constructeur*, *`distrib` inexistante*, *`--control-socket` trop long*.
+Quatre entrées tombent dans la première colonne : *`add --ports`*, *rollback du constructeur*,
+*`distrib` inexistante*, *`--control-socket` trop long*.
+
+> **Corrigé à l'épisode 1** : le *label* y figurait, à tort. Le canal ne peut pas fournir un label
+> arbitraire à `update_with` — `update_structural_with` lui passe `self#get_label`, déjà validé, et
+> `set <n> label` passe par `eval_forest_attribute`, qui n'atteint pas `update_with`. Seul le
+> dialogue *Properties* de la GUI a ce pouvoir. La preuve exige donc un **patch témoin**, donc un
+> banc jetable.
 
 **`driven-sessions/`** (nom retenu contre `tests/`, déjà pris par les tests unitaires OCaml sous
 `dune test`, et contre `bench`/`trial`, qui disent *benchmark* et *essai clinique* en anglais) :
@@ -145,8 +151,8 @@ s'appuie sur le rollback de l'ép. 3.
 
 | N | Entrée de `docs/TODO.md` | Geste | Preuve |
 |---|---|---|---|
-| 1 | Le **label** se valide trop tard | `check_label` avant la première écriture de `update_with` (`bin/user_level.ml`), comme `check_new_name` | `driven-sessions/` (crée le répertoire et son README) |
-| 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/` |
+| 1 | Le **label** se valide trop tard | `check_new_label` avant la première écriture des deux `update_with` (`bin/user_level.ml`), comme `check_new_name` | jetable (**patch témoin**, cf. § 3.6) — **fait** |
+| 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/` — **crée le répertoire et son README** |
 | 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/` |
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Construire, vérifier, détruire — en réutilisant le rollback de l'ép. 3 plutôt qu'une seconde table `kind → (min,max)` | `driven-sessions/` |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
@@ -179,3 +185,29 @@ Chantier officialisé. Périmètre arrêté à 15 entrées (la composition de pr
   pas seulement la longueur du chemin (§ 3.4).
 
 Aucun code modifié à cet épisode.
+
+### 2026-08-20 — épisode 1 : le label validé avant la première écriture
+
+`wellFormedLabel` hissé hors de `id_name_label` (une seule copie du motif `[><]`), `check_new_label`
+posé à côté de `check_new_name`, et les **deux** `update_with` (`node_with_defects`,
+`node_with_ledgrid_and_defects`) valident désormais leurs deux arguments refusables **avant** de
+détruire le device simulé et d'écrire quoi que ce soit.
+
+**Preuve** (banc jetable `label-witness.sh`, patron `rename-witness.sh`). Le canal ne pouvant pas
+fournir un label arbitraire à `update_with`, un **patch témoin** d'une ligne fait lire à
+`update_structural_with` la variable `MARIONNET_WITNESS_LABEL` — soit exactement le pouvoir qu'a le
+dialogue *Properties*. Le banc crée `m1` (1 port), demande `set m1 port_no 6` avec le label
+invalide `a<b`, puis **relit** le modèle :
+
+| | réponse du canal | `port_no` relu |
+|---|---|---|
+| correctif désarmé | `ok:false` — `invalid label` | **6** — écrit malgré le refus |
+| correctif en place | `ok:false` — `invalid label a<b` | **1** — inchangé |
+
+Le message y gagne au passage la valeur fautive (`invalid label a<b`), que `check_label` ne disait
+pas. `dune build` rc 0 après retrait du témoin ; aucun processus survivant.
+
+**Observé en chemin, non corrigé** (règle § 2) : les trois runs du banc ont laissé leurs trois
+`/tmp/marionnet-<n>.dir/`. Le `quit` **du canal** ne passe donc pas par `close_project`, alors que
+le *Quitter* de la GUI le fait (§ 3.2). L'épisode 6 devra en tenir compte : une session pilotée
+laisse son répertoire de run à *chaque* exécution, ce qui explique une bonne part du tas de 359.
