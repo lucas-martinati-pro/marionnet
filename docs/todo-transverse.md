@@ -103,19 +103,31 @@ de tourner, et c'est un banc, pas un humain, qui la lance.
 
 ### 3.5 Le device simulé qui survit à l'extinction : remède local, pas refonte
 
-Deux entrées (`wait --ready` au second démarrage, `rc-set` sur un switch) ont **une seule** cause :
-`poweroff` arrête les processus mais **ne détruit pas** l'objet device simulé, si bien que tout ce
-qu'un `initializer` calcule n'est calculé **qu'une fois**.
+> **Corrigé à l'épisode 10, par la mesure.** Ce paragraphe annonçait que deux entrées
+> (`wait --ready` au second démarrage, `rc-set` sur un switch) avaient **une seule** cause. C'est
+> faux, et la moitié qui l'est comptait : une **machine** et un **routeur** *détruisent* leur
+> device simulé en s'éteignant (`machine.ml`, `router.ml`, `#poweroff_right_now` →
+> `destroy_right_now`, « so that the next time we have to re-create the process command line can
+> use a new cow file » — du code de 2013), donc leur hostfs **est** réécrit à chaque démarrage.
+> La famille n'a jamais compté qu'un membre : les natures qui n'ont pas de fichier cow à renouveler
+> (le switch, et ses voisins), qui gardent bien leur device d'un démarrage à l'autre.
+> Le vrai défaut de `wait --ready` était **une course**, pas un état figé : cf. le journal § 5,
+> épisode 10.
 
-Décision : **remède local**, nature par nature — déplacer vers l'allumage ce qui doit être frais
-(`make_hostfs_content` dans `spawn` ; une **fonction** plutôt qu'une valeur pour le rc du switch).
-L'automate d'état n'est **pas** rouvert (`docs/refonte-automate-composants.md`, clos).
+Ce qui reste vrai : pour les natures **sans** fichier cow, `poweroff` arrête les processus mais
+**ne détruit pas** l'objet device simulé, si bien que tout ce qu'un `initializer` calcule n'est
+calculé **qu'une fois**.
+
+Décision : **remède local**, nature par nature — pour le rc du switch, une **fonction** plutôt
+qu'une valeur au constructeur du device. L'automate d'état n'est **pas** rouvert
+(`docs/refonte-automate-composants.md`, clos).
 
 La voie de fond — *le device simulé ne survit pas au `poweroff`* — guérirait la famille entière
 pour les huit natures, mais suppose d'établir d'abord ce qui **doit** survivre à l'extinction
 (identité, fichier cow, descripteurs de journaux, numéro d'instance, câbles branchés) : c'est
 précisément pourquoi l'objet survit aujourd'hui. Ce n'est pas un correctif, c'est un chantier.
-**La famille est nommée ici** pour qu'un futur passage sache où regarder.
+**La famille est nommée ici** pour qu'un futur passage sache où regarder — en sachant désormais
+qu'elle **exclut** machines et routeurs.
 
 ### 3.6 Preuve : bancs jetables, sauf cinq qui deviennent versionnés
 
@@ -169,7 +181,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 7 | `set … variant <inexistante>` accepté sans rien changer (entrée neuve, cf. § 1) | `bad_argument` nommant les variantes du filesystem **courant**, et refus du `set distrib` qui ferait perdre la variante portée | `driven-sessions/set-variant-unknown.sh` — **fait** |
 | 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) — **fait** |
 | 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable — **fait** |
-| 10 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
+| 10 | `wait --ready` ment au second démarrage | **Révisé par la mesure** : la cause n'était pas un hostfs figé mais une **course** avec un `start` asynchrone — `--ready` n'accorde plus foi à un marqueur tant que le composant ne tourne pas ; plus le `O_TRUNC` manquant | banc jetable (invité) — **fait** |
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
 | 12 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
@@ -756,3 +768,71 @@ boucle s'arrêter ; un banc s'en sort par `wait "$pid"`, un client du canal n'a 
 L'entrée « Réseau — deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps »
 est **retirée** de `docs/TODO.md` : 7 défauts restants au périmètre du chantier, plus les trois
 voisins entrés par les épisodes 7, 8 et 9.
+
+---
+
+### 2026-08-20 — épisode 10 : `wait --ready` ne parle plus que d'un invité qui tourne
+
+**Ce que l'entrée annonçait, et ce que la mesure a trouvé.** L'entrée (reversée à la clôture de
+`journalisation-profonde`, ép. 20) disait : `make_hostfs_content` est appelé dans l'`initializer`
+de `uml_process`, donc à la **création** du device simulé, lequel **survit au `poweroff`** ; ni
+`boot_parameters` ni le marqueur ne sont réécrits au démarrage suivant, donc la garde de fraîcheur
+compare deux fichiers également périmés. Le banc l'a démenti sur son premier cas : `boot_parameters`
+**est** réécrit au second démarrage (mesuré : `…285,21` → `…301,26`). La raison tient en huit lignes
+de 2013 — `machine#poweroff_right_now` et `router#poweroff_right_now` appellent `destroy_right_now`
+*« so that the next time we have to re-create the process command line can use a new cow file »*.
+Une machine et un routeur **détruisent** donc leur device simulé en s'éteignant ; le device qui
+survit est celui des natures sans fichier cow (le switch — d'où l'entrée jumelle, qui reste
+entière). Le § 3.5, qui donnait aux deux entrées « une seule cause », est corrigé en tête.
+
+**Le défaut, lui, est réel — c'est une course.** `start` **répond avant que le démarrage soit
+fait** : `cmd_transition` rend `accepted:true` et la tâche part sur le `Task_runner`. Entre cette
+réponse et la reconstruction du hostfs, le répertoire porte encore le **couple entier** du boot
+précédent — marqueur *et* `boot_parameters` —, la comparaison de fraîcheur tient, et `--ready`
+répond `ready:true`. Mesuré, sur une session pilotée à la main :
+
+```
+start m1          → {"ok":true,"action":"start","accepted":true}
+wait m1 --ready   → {"ok":true,"ready":true,"mtime":1787254504.941,"waited":0.050}   ← marqueur du boot PRÉCÉDENT
+wait m1 --state=on --timeout=1 → {"ok":false,"error":"timeout","detail":"\"m1\" was still \"off\""}
+```
+
+La fenêtre se referme dès que le `Task_runner` prend la tâche : le défaut est donc **intermittent**,
+ce qui explique qu'un banc puisse le manquer — celui-ci l'a manqué deux fois sur trois.
+
+**Le correctif : la garde n'est plus une seule condition mais deux, et la seconde ne dépend
+d'aucune horloge.** `wait --ready` n'accorde foi à un marqueur que si le composant est **`on`**,
+et seulement alors compare les dates. C'est exact par construction et non par chance :
+`startup_right_now` (`user_level.ml`) écrit `boot_parameters` — via `create_right_now` — **avant**
+de poser l'état `On`, donc « on » implique déjà « le `boot_parameters` du boot en cours ».
+`find_hostfs` rend désormais le couple *(hostfs, état)* en **un seul** coup d'œil dans le créneau
+Gtk+ : demander deux fois rouvrirait la fenêtre que la paire ferme. Un `Rp_not_running` neuf
+distingue en outre les deux façons de ne pas tourner — jamais démarré (pas de `boot_parameters`)
+ou arrêté depuis —, parce qu'elles appellent deux gestes différents côté appelant.
+
+**Le second défaut, trouvé au même endroit : `boot_parameters` s'ouvrait sans `O_TRUNC`.** Le
+chemin est **réutilisé** d'un démarrage à l'autre (le hostfs appartient au composant, pas au boot)
+et le contenu n'est pas de longueur fixe — le nom du tap et l'adresse IPv6 d'eth42 changent avec
+l'allocation. Une seconde écriture plus courte laissait donc la queue de la première, que l'invité
+`source` en entier. Prouvé en déposant 430 octets de garniture dans le fichier entre deux
+démarrages : **830 octets** conservés avant, **396** après.
+
+*Banc jetable* (il faut un invité qui boote : § 3.6). Rouge/vert mesuré sur le binaire d'avant
+(`git stash` + `dune build`) : **5 PASS / 2 FAIL**, puis **7 PASS / 0 FAIL** après restauration.
+Les deux cas qui échouaient sont les deux défauts ci-dessus ; le cas de la course est marqué
+**opportuniste** dans le banc, parce qu'il ne peut pas être rendu déterministe (deux tentatives
+d'élargir la fenêtre — une seconde machine mise en file d'attente devant — ne l'ont pas ouverte).
+Non-régression : `dune test` vert, et les **5 bancs versionnés** rejoués (11, 5, 4, 6, 9 — 35
+vérifications, 0 échec).
+
+**La doc utilisateur portait la mise en garde à cinq endroits**, tous devenus faux :
+`doc-src/scripting/README.md` (§ `--ready`), `doc-src/teacher-guide.md` (deux fois : les pièges et
+la table), son jumeau français, `doc-src/lab-design-skill.md` (§ 2.3, où la précision manquait) et
+le commentaire de `doc-src/labs/session-7/grade.sh`. Le contournement (`exec <c> -- true`) reste
+**valide** et le TP le garde — il prouve en plus que l'`exec` dont la clé se sert fonctionne — mais
+il cesse d'être **obligatoire**. Aucune chaîne i18n : les refus du canal ne sont pas traduits.
+
+L'entrée « Modèle — `wait --ready` ment au second démarrage » est **retirée** de `docs/TODO.md`, et
+la phrase de l'entrée jumelle qui s'y adossait (« même famille que l'entrée précédente ») est
+corrigée sur place : 6 défauts restants au périmètre du chantier, plus les trois voisins entrés par
+les épisodes 7, 8 et 9.

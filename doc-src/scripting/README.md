@@ -330,8 +330,12 @@ Three properties make it safe, and each one is a trap avoided:
     printf '%s\n' "$LINE" > /mnt/hostfs/marionnet-guest-ready
   ```
 
-* **A marker left by the previous run is ignored**, by date: it is compared against
-  `boot_parameters`, which Marionnet rewrites at every device construction. You have nothing
+* **A marker left by the previous run is ignored**, and it takes two conditions: the component
+  must be **running** (`--ready` answers about the guest of a component Marionnet holds `on`,
+  never about what a stopped one left on the disk), and the marker must be newer than
+  `boot_parameters`, which Marionnet rewrites at every start. The state matters because `start`
+  answers *before* the startup is done: without it, a `start` immediately followed by `--ready`
+  could still see the pair the previous boot left, and answer `true` in 50 ms. You have nothing
   to clean up between runs, and `start` gains no side effect.
 
 * **Do not rename it.** The guest relay sources every `/mnt/hostfs/…relay*` file at the end of

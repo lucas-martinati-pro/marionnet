@@ -373,8 +373,11 @@ Three things to know before you trust either, all of them measured rather than a
   its console and its terminal and *no* report. `mrnctl report <c>` writes the file the archiving
   looks for, so one command per machine makes the archive complete — and it costs nothing to do
   it anyway.
-* **After a restart, `wait --ready` answers immediately** on the marker of the *previous* boot.
-  `grade.sh` therefore waits for each guest to **answer** (`exec <c> -- true`) instead.
+* **`wait --ready` reports on a *running* guest.** On a component which is off — including one
+  which has just been sent a `start`, since `start` answers before the startup is done — it
+  waits instead of reading the marker the previous boot left. `grade.sh` goes one step further
+  and waits for each guest to **answer** (`exec <c> -- true`), which also proves that `exec`,
+  the verb the key uses next, works.
 
 One last trap belongs to the marking, not to the session: the titles of archived documents are
 **translated** — a French session files a report under *Rapport sur r1*. A key that greps for
@@ -488,7 +491,7 @@ Every line below has cost somebody a debugging session. The full table is § 6 o
 | A machine that was never shut down leaves **no documents** in the project | shut down before collecting; `wait <c> --state=off`, then wait for the row to appear in `documents` — archiving is the *last* thing a shutdown does |
 | An old SysV guest image (the shipped router image is one) produces **no report at shutdown** | ask for it **while the guest runs**: `report <c>`. It is written where the shutdown hook would have written it, so it is archived like any other |
 | A `rc-set` on a **switch** is only taken into account at its **first** start; a later one is accepted, `rc-get` shows the new text, and the next start replays the old | a lab that needs two switch configurations uses **two switches** |
-| `wait <c> --ready` answers `true` immediately on a **second** start of the same component (the marker of the previous boot is still there) | after a restart, wait for the guest to *answer* instead: `exec <c> -- true` |
+| `wait <c> --ready` waits, and finally refuses with *is "off", not "on"* | `start` answers before the startup is done: the component was not running yet, or never came up. Check `wait <c> --state=on` first — or wait for the guest to *answer*: `exec <c> -- true` |
 
 Two more, about reading answers rather than running things: a journal answer is capped at 400
 lines (`--tail=` moves the window, and `truncated` tells you there was more), and an `exec` output

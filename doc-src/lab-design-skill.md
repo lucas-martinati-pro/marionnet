@@ -250,6 +250,10 @@ its first line back to you — so a guest can return a *verdict*, not merely its
 rename that file: the guest relay sources everything matching `/mnt/hostfs/…relay*`, and a marker
 falling into that glob would be executed as bash.
 
+`--ready` reports on a component Marionnet holds **running**: on one which is off — including one
+which has just been sent a `start`, since `start` answers before the startup is done — it waits
+instead of reading whatever the previous boot left in the same directory.
+
 Put this at the end of every scenario you write:
 
 ```bash

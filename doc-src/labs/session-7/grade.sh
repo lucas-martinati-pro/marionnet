@@ -36,8 +36,9 @@ case $MODE in
   replay)
     "$MRNCTL" start-all
     for c in m1 r1 intruder; do
-      # NOT `wait --ready': on a second start of the same components the marker of the previous
-      # boot is still there and --ready answers immediately. Wait for the guest to ANSWER.
+      # `wait --ready' would do since it no longer answers on what the previous boot left, but
+      # waiting for the guest to ANSWER proves more: that `exec' works, which is the verb the
+      # key below uses for every check.
       until "$MRNCTL" exec "$c" --timeout=20 -- true >/dev/null 2>&1; do sleep 2; done
     done
     "$VERIFY" "$HERE/key.mrv"

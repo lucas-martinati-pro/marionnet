@@ -1583,9 +1583,14 @@ class uml_process =
           ("marionnet-watch",
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-watch.sh") ]
     in
-    (* Create the file `boot_parameters_pathname': *)
+    (* Create the file `boot_parameters_pathname'. [O_TRUNC] is not decoration: this path is
+       reused from one start to the next (the hostfs directory belongs to the component, not to
+       the boot), and the content is not of a fixed length -- the tap name and the IPv6 address
+       of eth42 change with the allocation. Without it, a second boot writing fewer bytes than
+       the first would leave the tail of the first behind, and the guest sources the whole file
+       (work-stream `marionnet-todo-transverse', episode 10). *)
     let descriptor =
-      Unix.openfile boot_parameters_pathname [Unix.O_WRONLY; Unix.O_CREAT] 0o777
+      Unix.openfile boot_parameters_pathname [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o777
     in
     let out_channel = Unix.out_channel_of_descr descriptor in
     let write (name, value) = Printf.fprintf out_channel "%s='%s'\n" name value in

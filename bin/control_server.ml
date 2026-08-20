@@ -2352,9 +2352,27 @@ let cmd_wait_all (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:fl
    - nothing is injected. [rc-set] puts back exactly what the script gave it (episode 4e), so
      the marker is written by the scenario, by hand, from the snippet documented in § 4.7;
    - nothing is stored between polls, and [start] gains no side effect. A marker left by the
-     *previous* run is ignored by comparing its mtime with the one of <hostfs>/boot_parameters,
-     which [uml_process] rewrites from its initializer — hence at every device construction,
-     hence at every startup (simulation_level.ml:1235, 1253-1256, 1331-1332).
+     *previous* run is ignored by two conditions, and it takes both (work-stream
+     `marionnet-todo-transverse', episode 10): the component must BE RUNNING, and the marker
+     must be newer than <hostfs>/boot_parameters.
+
+     The second alone used to be the whole guard, on the strength of "boot_parameters is
+     rewritten at every startup". That is true — [make_hostfs_content] runs from the
+     initializer of [uml_process], and a machine or a router destroys its simulated device
+     when it is powered off (machine.ml, router.ml: the next start must use a new cow file),
+     so a new [uml_process] is built, and a new boot_parameters written, at every start. What
+     the reasoning missed is WHEN: [start] only *queues* the startup on the task runner and
+     answers immediately, so between that answer and the rewrite there is a window in which
+     the hostfs still holds the pair of the PREVIOUS boot -- two files equally stale, hence a
+     comparison which holds, hence `ready: true' in 50 ms on a guest which is not even
+     launched. Measured: `start' then `--ready' answered in 0.050s on the previous marker
+     while [wait --state=on] was still timing out.
+
+     Requiring the state closes that window at its source rather than by luck of the clock:
+     [startup_right_now] (user_level.ml) writes boot_parameters -- through
+     [create_right_now] -- BEFORE it sets the state to On, so "on" already implies "the
+     boot_parameters of the boot now under way". A component which is off, sleeping or gone
+     is not ready, whatever it left on the disk.
 
    The name is deliberately not [marionnet-relay.*]: the guest relay sources
    /mnt/hostfs/{<fs>.,marionnet-}relay* at the end of its boot (marionnet-relay.trixie:486-494),
@@ -2370,6 +2388,7 @@ let max_ready_line_bytes = 4096
 type ready_probe =
   | Rp_gone                                       (* destroyed while we were waiting *)
   | Rp_no_hostfs                                  (* a switch, a hub, a cable: it cannot apply *)
+  | Rp_not_running of string * bool               (* state, and whether it ever booted here *)
   | Rp_waiting of float option * float option     (* mtimes of (marker, boot_parameters) *)
   | Rp_ready   of string * float * string option  (* marker path, its mtime, its first line *)
 
@@ -2399,18 +2418,18 @@ let first_line_of (path:string) : string option =
       let line = String.trim line in
       if line = "" || not (String.is_valid_utf_8 line) then None else Some line
 
-(* Where the guest of [name] writes, as far as the model knows: [None] if no component bears that
-   name, [Some None] if it bears it but runs no guest of its own (a switch, a hub, a cable),
-   [Some (Some dir)] otherwise. Reads the network, hence the GTK slot — and *only* this: the
-   observation itself ([stat], [open_in]) is I/O and belongs to the calling thread. Shared by
-   [wait --ready], which repolls it, and by [log] (episode 3 of `journalisation-profonde'), which
-   asks it once. *)
-let find_hostfs (st : State.globalState) ~(name:string) : string option option =
+(* Where the guest of [name] writes and in which state Marionnet holds it: [None] if no component
+   bears that name, [Some (None, _)] if it bears it but runs no guest of its own (a switch, a hub,
+   a cable), [Some (Some dir, state)] otherwise. Reads the network, hence the GTK slot — and
+   *only* this: the observation itself ([stat], [open_in]) is I/O and belongs to the calling
+   thread. The state travels with the directory because [wait --ready] needs both in the same
+   glance: asking twice would leave exactly the window this pair was made to close (episode 10). *)
+let find_hostfs (st : State.globalState) ~(name:string) : (string option * string) option =
   match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
-  | Some n -> Some (n#hostfs_directory_if_any)
+  | Some n -> Some (n#hostfs_directory_if_any, script_state_of_raw n#state_as_string)
   | None ->
   match List.find_opt (fun c -> c#get_name = name) (st#network#get_cable_list) with
-  | Some _ -> Some None
+  | Some c -> Some (None, script_state_of_raw c#state_as_string)
   | None   -> None
 
 let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:float)
@@ -2427,9 +2446,18 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
     match ask ~timeout:gtk_timeout (fun () -> find_hostfs st ~name) with
     | Failed e         -> Failed e
     | Timed_out t      -> Timed_out t
-    | Done None        -> Done (Rp_gone)
-    | Done (Some None) -> Done (Rp_no_hostfs)
-    | Done (Some (Some dir)) ->
+    | Done None               -> Done (Rp_gone)
+    | Done (Some (None, _))   -> Done (Rp_no_hostfs)
+    (* Not running: no file on the disk may say otherwise. This is the half of the guard which
+       does not depend on any clock — see the comment above the marker's name. The [stat] tells
+       apart the two ways of not running, which call for two different fixes on the caller's
+       side: never started at all, or started and stopped since. *)
+    | Done (Some (Some dir, state)) when state <> "on" ->
+        let ever_booted =
+          mtime_of_regular_file (Filename.concat dir boot_parameters_basename) <> None
+        in
+        Done (Rp_not_running (state, ever_booted))
+    | Done (Some (Some dir, _)) ->
         let marker = Filename.concat dir ready_marker_basename in
         let boot   = Filename.concat dir boot_parameters_basename in
         (* [>=] and not [>]: a stale marker was written by a previous run, seconds or minutes
@@ -2441,7 +2469,7 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
          | m, b                       -> Done (Rp_waiting (m, b)))
   in
   poll_until ~wait_timeout ~observe
-    ~reached:(function Rp_waiting _ -> false | _ -> true)
+    ~reached:(function Rp_waiting _ | Rp_not_running _ -> false | _ -> true)
     ~on_reached:(fun v elapsed ->
        match v with
        | Rp_gone ->
@@ -2459,14 +2487,18 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
                       ("marker",    jstr marker);
                       ("mtime",     jfloat mtime);
                       ("waited",    jfloat elapsed) ]
-       | Rp_waiting _ -> assert false (* [reached] said otherwise *))
+       | Rp_waiting _ | Rp_not_running _ -> assert false (* [reached] said otherwise *))
     ~on_expiry:(fun v elapsed ->
        let detail =
          match v with
+         (* Since episode 10 this is the defensive branch, not the ordinary one: a component
+            with no boot_parameters is not "on", so it is caught above, with the state in hand.
+            Kept because the two conditions are checked at two different moments -- the state in
+            the GTK slot, the file in this thread -- and nothing forbids the interval. *)
          | Rp_waiting (_, None) ->
              Printf.sprintf
-               "%S has not been started since this project was opened (no %s in its hostfs \
-                directory), hence nothing could have written %s (%.1fs waited)"
+               "%S has no %s in its hostfs directory, hence nothing could have written %s \
+                (%.1fs waited)"
                name boot_parameters_basename ready_marker_basename elapsed
          | Rp_waiting (None, Some _) ->
              Printf.sprintf
@@ -2479,6 +2511,22 @@ let cmd_wait_ready (st : State.globalState) ~(gtk_timeout:float) ~(wait_timeout:
                "%S has a %s, but it was written %.1fs *before* its current boot: it was left by \
                 a previous run and is ignored (%.1fs waited)"
                name ready_marker_basename (b -. m) elapsed
+         (* Episode 10 of `marionnet-todo-transverse'. Says the state, because that is the whole
+            answer: what a stopped component left in its hostfs proves nothing about a boot which
+            is not running. A script which sent [start] and lands here sent it to something which
+            never came up -- and [start] answers before the startup is even attempted. *)
+         | Rp_not_running (state, false) ->
+             Printf.sprintf
+               "%S has not been started since this project was opened (it is %S, and its hostfs \
+                directory holds no %s), hence nothing could have written %s (%.1fs waited)"
+               name state boot_parameters_basename ready_marker_basename elapsed
+         | Rp_not_running (state, true) ->
+             Printf.sprintf
+               "%S is %S, not \"on\": --ready reports on the guest of a RUNNING component, and \
+                what a stopped one left in its hostfs directory says nothing about a boot under \
+                way. Start it (and remember that start answers before the startup is done) \
+                (%.1fs waited)"
+               name state elapsed
          | _ -> assert false (* [reached] said otherwise *)
        in
        reply_error ~code:"timeout" ~detail)

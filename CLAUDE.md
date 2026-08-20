@@ -155,10 +155,18 @@ Reprise : appliquer le skill `chantier-long`.
   **4 (`add … --ports=N` refuse exactement ce que `set … port_no` refuse, et le refuse **avant**
   de construire)**, **5 (`set/add … distrib` refuse un filesystem non installé)**, **6 (les
   répertoires de run des sessions mortes sont *signalés* au démarrage, jamais purgés)** et
-  **7 (le jumeau `variant`, plus le refus du `set distrib` qui ferait perdre la variante portée)**
-  faits —
+  **7 (le jumeau `variant`, plus le refus du `set distrib` qui ferait perdre la variante portée)**,
+  **8 (toute tentative `uml_mconsole` a une échéance mesurée de 2 s)**, **9 (deux sessions
+  simultanées se disent, au démarrage et à la collision de route)** et **10 (`wait --ready` ne
+  parle plus que d'un invité qui *tourne*)** faits —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
+  Trois pièges durables de l'ép. 10 : (1) un `start` du canal **répond avant que le démarrage soit
+  fait** (la tâche part sur le `Task_runner`), donc toute garde qui lit le disque juste après lit
+  encore le boot précédent ; (2) `socat` **perd toute réponse plus lente qu'une demi-seconde**
+  sans `-t`/`-T` — un `wait` réel revient **vide**, sans erreur ; (3) machines et routeurs
+  **détruisent** leur device simulé en s'éteignant (fichier cow), contrairement au switch : la
+  « famille » du § 3.5 du doc se réduit donc à ce dernier.
   Piège durable de l'ép. 3 : détruire un objet **à moitié construit** se fait par `#destroy`
   (LIFO des callbacks enregistrés avant la levée, `OoExtra`), pas par `del_node_by_name`, et
   `network#get_node_by_name` **lève** quand le nom est absent.
