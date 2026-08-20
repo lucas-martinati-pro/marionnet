@@ -208,25 +208,30 @@ attendant, le remède coûte une commande — **demander le rapport avant d'éte
 
 ---
 
-## Réseau — deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps
+## Canal — le verbe `quit` rend la main **avant** que le processus soit parti
 
-**Constat** (vu le 2026-08-13, `journalisation-profonde` ép. 21, en cherchant pourquoi un boot
-n'aboutissait pas). Trois processus `marionnet.exe` tournaient ensemble — deux runs précédents
-survivants —, chacun avec ses UML, ses taps `mtap<pid>-*` et **la même** adresse hôte
-`172.23.0.254`. Rien n'interdit de lancer deux sessions, et **personne ne le signale** ; l'invité,
-lui, ne boote pas jusqu'à son relais.
+**Constat.** `cmd_quit` (`bin/control_server.ml:3562`) renvoie `{"ok":true,"quitting":true}` et
+laisse ensuite la boucle principale s'arrêter : quand le client lit la réponse, le processus, ses
+composants et ses taps sont **encore là**. Un script qui enchaîne `quit` puis relance une session
+en fait donc coexister deux sans le savoir — c'est ainsi que trois `marionnet.exe` ont été trouvés
+ensemble le 2026-08-13 (`journalisation-profonde` ép. 21). Un banc s'en sort parce qu'il possède le
+pid (`wait "$pid"`) ; un client du canal, non : il n'a que la socket, et la réponse ne porte que
+`quitting`.
 
-**Voulu.** Au minimum, que la collision soit **dite** (journal, dialogue) ; au mieux, que l'adresse
-d'extrémité des taps soit dérivée du processus, comme l'est déjà le nom du tap.
+**Voulu.** Que la fin d'une session soit **observable par le canal seul** : soit la réponse porte le
+pid, soit le contrat dit explicitement que la socket disparaît quand le processus est parti — et,
+dans les deux cas, que `doc-src/scripting/` l'écrive, puisque c'est ce qu'un script doit attendre
+avant d'en lancer une autre.
 
-**Ce que l'implémentation devra affronter.** L'adresse est une constante de configuration héritée
-(le contrat réseau du chantier `marionnet-daemon-elimination` la fixe côté `Tap_provider`), donc la
-dériver touche à ce qu'un TP écrit dans ses scénarios. Une **détection** est nettement moins
-risquée qu'un changement d'adresse. À noter au passage, et déjà connu du dépôt : le verbe qui quitte
-**rend la main sans garantir que le processus est parti** — c'est ainsi que trois sessions ont pu
-coexister.
+**Ce que l'implémentation devra affronter.** On ne peut pas répondre *après* être sorti : la réponse
+part forcément avant. Le seul point d'accroche est donc ce que le client peut observer ensuite (le
+pid, ou la disparition de la socket), pas un « quit synchrone ». Attention aussi au chemin d'examen
+de `cmd_quit`, qui refuse déjà de quitter dans certains cas : le contrat neuf doit valoir pour la
+réponse `quitting`, pas pour les refus.
 
-*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+*Écrit le 2026-08-20 par l'épisode 9 de `marionnet-todo-transverse` : la remarque vivait dans
+l'entrée « deux sessions partagent l'adresse hôte de leurs taps », soldée par cet épisode, et
+serait sinon partie avec elle.*
 
 ---
 

@@ -29,6 +29,17 @@
       MARIONNET_SUDOERS_SCRIPT=bin/scripts/marionnet-sudoers.sh \
         dune exec bin/tap_provider_test.exe -- --live
 
+    With --live-collision=ADDRESS it proves what happens when ANOTHER session already
+    routes ADDRESS: the collision is recognised and named, and no tap is created. The
+    caller must have fabricated the foreign side first, which the scoped sudoers rule
+    allows without a password:
+      sleep 900 & pid=$!
+      sudo ip tuntap add dev mtap$pid-0 mode tap user $(id -un)
+      sudo ip link set mtap$pid-0 up
+      sudo ip route add 172.23.0.42/32 dev mtap$pid-0
+      dune exec bin/tap_provider_test.exe -- --live-collision=172.23.0.42
+      sudo ip link del mtap$pid-0 ; kill $pid
+
     With --live-bridge=NAME it proves the world_bridge contract the same way
     (tap promisc, up, attached to the bridge NAME, destruction). NAME must be a
     PREEXISTING bridge: creating it is the admin's business, outside the scoped
@@ -77,6 +88,44 @@ let dry_run () =
    | Ok text -> print_string text
    | Error e -> printf "  UNAVAILABLE: %s\n" e);
   show "Marionnet taps currently on this host" "ip -o link show | grep -E 'mtap[0-9]+-' || echo '  (none)'";
+  (* --- *)
+  printf "\n-- Other Marionnet sessions running right now:\n";
+  (match Tap_provider.other_live_sessions () with
+   | [] -> printf "  (none)\n"
+   | sessions ->
+       List.iter (fun (pid, taps) -> printf "  process %d, taps: %d\n" pid taps) sessions);
+  (* --- *)
+  (* The decision behind the detection, proved WITHOUT creating a single interface: creating one
+     needs a privilege this test does not have, so the interface names are fabricated here. The
+     live foreign process is our own parent -- certainly alive, certainly not us, nothing to clean
+     up afterwards. *)
+  printf "\n-- The decision, on fabricated interface names:\n";
+  let alien = Unix.getppid () in
+  let deceased = dead_pid () in
+  let tap_of pid seq = Printf.sprintf "%s%d-%d" Tap_provider.tap_prefix pid seq in
+  let mine = Unix.getpid () in
+  check "nothing is reported when no tap is around"
+    (Tap_provider.sessions_of_taps [] = []);
+  check "a live foreign process is reported once, with its number of taps"
+    (Tap_provider.sessions_of_taps
+       [ tap_of alien 0; "eth0"; tap_of deceased 0; tap_of mine 0; tap_of alien 3;
+         "mtapfoo-1"; Printf.sprintf "%s%d" Tap_provider.tap_prefix alien ]
+     = [ (alien, 2) ]);
+  check "the taps of a dead process are not a session"
+    (Tap_provider.sessions_of_taps [ tap_of deceased 0; tap_of deceased 1 ] = []);
+  check "our own taps are not another session"
+    (Tap_provider.sessions_of_taps [ tap_of mine 0 ] = []);
+  (* --- *)
+  printf "\n-- Reading a route back to its tap:\n";
+  check "the device of a route line is found"
+    (Tap_provider.route_device_of_output "172.23.0.42 dev mtap4242-0 scope link \\"
+     = Some "mtap4242-0");
+  check "an empty output routes nowhere"
+    (Tap_provider.route_device_of_output "" = None);
+  check "a route without a device routes nowhere"
+    (Tap_provider.route_device_of_output "unreachable 172.23.0.42" = None);
+  (* --- *)
+  printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures);
   printf "\nRun with --live to actually exercise the tap creation.\n"
 
 let live_run () =
@@ -100,6 +149,8 @@ let live_run () =
        check "it is up" (contains "state UP" (output_of (Printf.sprintf "ip -o link show dev %s" tap))
                          || contains ",UP" (output_of (Printf.sprintf "ip -o link show dev %s" tap)));
        check (Printf.sprintf "%s is routed through it" ip42) (contains tap route);
+       check "the collision probe does not accuse ourselves"
+         (Tap_provider.colliding_session_of_address ip42 = None);
        show "the tap" (Printf.sprintf "ip addr show dev %s" tap);
        show "the route" (Printf.sprintf "ip route get %s" ip42);
        (* --- *)
@@ -139,6 +190,35 @@ let live_run () =
        Tap_provider.destroy_tap mine);
   (* --- *)
   printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
+
+(* Two simultaneous sessions number their machines from scratch and hand them addresses from
+   the same range: the second one to start finds its address already routed to a tap of the
+   first. This is what episode 9 of `marionnet-todo-transverse' makes visible. *)
+let live_collision_run (ip42 : string) =
+  printf "== Tap_provider, collision run (ip42=%s)\n\n" ip42;
+  match Tap_provider.colliding_session_of_address ip42 with
+  | None ->
+      incr failures;
+      printf "  [FAIL] no other live session routes %s: fabricate one first (see the header of this file)\n" ip42
+  | Some (foreign_tap, foreign_pid) ->
+      printf "  %s is routed to %s, owned by the process %d\n\n" ip42 foreign_tap foreign_pid;
+      check "the colliding tap belongs to another process" (foreign_pid <> Unix.getpid ());
+      check "that process is listed among the other live sessions"
+        (List.mem_assoc foreign_pid (Tap_provider.other_live_sessions ()));
+      (match Tap_provider.make_eth42_tap ~uid:(Unix.getuid ()) ~ip42 with
+       | Ok tap ->
+           incr failures;
+           printf "  [FAIL] a tap was created although %s is already routed elsewhere\n" ip42;
+           Tap_provider.destroy_tap tap
+       | Error e ->
+           check "no tap is created for an address another session already routes" true;
+           printf "  the failure reads: %s\n" e);
+      check "the foreign tap is left untouched"
+        (succeeds (Printf.sprintf "ip link show dev %s" foreign_tap));
+      check "our own failed attempt left nothing behind"
+        (not (contains (Printf.sprintf "%s%d-" Tap_provider.tap_prefix (Unix.getpid ()))
+                (output_of "ip -o link show")));
+      printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
 
 let live_bridge_run (bridge : string) =
   let uid = Unix.getuid () in
@@ -182,8 +262,17 @@ let () =
           else acc)
       None Sys.argv
   in
-  (match live, live_bridge with
-   | _, Some bridge -> (if live then live_run ()); live_bridge_run bridge
-   | true, None -> live_run ()
-   | false, None -> dry_run ());
+  let live_collision =
+    Array.fold_left
+      (fun acc x ->
+        if Ocamlbricks.StringExtra.is_prefix "--live-collision=" x
+          then Some (String.sub x 17 (String.length x - 17))
+          else acc)
+      None Sys.argv
+  in
+  (match live, live_bridge, live_collision with
+   | _, _, Some address -> live_collision_run address
+   | _, Some bridge, None -> (if live then live_run ()); live_bridge_run bridge
+   | true, None, None -> live_run ()
+   | false, None, None -> dry_run ());
   exit (if !failures = 0 then 0 else 1)

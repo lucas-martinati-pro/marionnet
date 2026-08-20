@@ -452,6 +452,15 @@ let orphan_run_directories =
     ~default:false
     "MARIONNET_DISABLE_WARNING_ORPHAN_RUN_DIRECTORIES"
 
+(* The two notices about another Marionnet running at the same time (marionnet.ml at
+   start-up, simulation_level.ml when a tap collision actually happens). A single flag
+   for both: they say the same thing at two moments, and somebody who knows why two
+   sessions coexist wants neither. *)
+let other_marionnet_sessions =
+  Configuration.extract_bool_variable_or
+    ~default:false
+    "MARIONNET_DISABLE_WARNING_OTHER_MARIONNET_SESSIONS"
+
 end (* Warnings *)
 
 (* Default for the factory-set configuration address for routers.

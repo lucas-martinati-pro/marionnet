@@ -99,6 +99,91 @@ let unregister_tap tap = with_mutex (fun () -> Hashtbl.remove  my_taps tap)
 let is_mine        tap = with_mutex (fun () -> Hashtbl.mem     my_taps tap)
 let my_tap_list   ()   = with_mutex (fun () -> Hashtbl.fold (fun tap () xs -> tap::xs) my_taps [])
 
+(* --- Inspecting the taps present on the host: ours, and the other instances' *)
+
+let our_tap_regexp = Str.regexp (Printf.sprintf "^%s\\([0-9]+\\)-[0-9]+$" tap_prefix)
+
+(* The pid embedded in a tap name of our scheme ("mtap<pid>-<seq>"), if the name
+   is one of ours at all. *)
+let pid_of_tap_name (name : tap_name) : int option =
+  if Str.string_match our_tap_regexp name 0
+    then (try Some (int_of_string (Str.matched_group 1 name)) with _ -> None)
+    else None
+
+(* Parse `ip -o link show' lines: "3: mtap1234-0: <NO-CARRIER,...> mtu 1500 ..."
+   Returns the taps matching our naming scheme, with the pid that created them. *)
+let existing_taps () : (tap_name * int) list =
+  match ip_command ~privileged:false "-o link show" with
+  | Error e ->
+      Log.printf1 "Tap_provider: cannot list the network links: %s\n" e;
+      []
+  | Ok output ->
+      let extract_tap line =
+        match String.split_on_char ':' line with
+        | _index :: name :: _ ->
+            (* An interface may be displayed as "name@parent": *)
+            let name = List.hd (String.split_on_char '@' (String.trim name)) in
+            (match pid_of_tap_name name with
+             | Some pid -> Some (name, pid)
+             | None     -> None)
+        | _ -> None
+      in
+      List.filter_map extract_tap (String.split_on_char '\n' output)
+
+let process_is_alive (pid : int) : bool =
+  try Unix.kill pid 0; true with
+  | Unix.Unix_error (Unix.ESRCH, _, _) -> false
+  | Unix.Unix_error (Unix.EPERM, _, _) -> true   (* alive, just not ours *)
+  | _ -> true                                    (* unclear: never purge on a doubt *)
+
+(* See tap_provider.mli. Exposed, with the parsing it relies on, because it is
+   the whole decision and the only part provable without creating interfaces
+   (bin/tap_provider_test.ml). *)
+let sessions_of_taps (taps : tap_name list) : (int * int) list =
+  let mine = Unix.getpid () in
+  let tally = Hashtbl.create 7 in
+  let add tap =
+    match pid_of_tap_name tap with
+    | Some pid when pid <> mine && process_is_alive pid ->
+        let previous = try Hashtbl.find tally pid with Not_found -> 0 in
+        Hashtbl.replace tally pid (previous + 1)
+    | _ -> ()
+  in
+  List.iter add taps;
+  (* Sorted: a message about "the other sessions" must not depend on a hash order. *)
+  List.sort compare (Hashtbl.fold (fun pid count xs -> (pid, count) :: xs) tally [])
+
+let other_live_sessions () : (int * int) list =
+  sessions_of_taps (List.map fst (existing_taps ()))
+
+(* The device an `ip -o route show ADDRESS' output routes to, if any: the word
+   following "dev" on the first line ("172.23.0.1 dev mtap42-0 scope link").
+   Exposed for the test, for the same reason as above. *)
+let route_device_of_output (output : string) : string option =
+  let first_line = List.hd (String.split_on_char '\n' output) in
+  let blank c = if c = '\t' then ' ' else c in
+  let words =
+    List.filter (fun w -> w <> "")
+      (String.split_on_char ' ' (String.trim (String.map blank first_line)))
+  in
+  let rec search = function
+    | "dev" :: device :: _ -> Some device
+    | _ :: rest            -> search rest
+    | []                   -> None
+  in
+  search words
+
+let colliding_session_of_address (address : string) : (tap_name * int) option =
+  match ip_command ~privileged:false (Printf.sprintf "-o route show %s/32" address) with
+  | Error _ -> None
+  | Ok output ->
+      (match route_device_of_output output with
+       | None -> None
+       | Some device ->
+           (match pid_of_tap_name device with
+            | Some pid when pid <> Unix.getpid () && process_is_alive pid -> Some (device, pid)
+            | _ -> None))
+
 (* Destroying the link destroys its address and its route with it. Unlike the
    daemon's `tunctl -d', which needed the obstinate retrying thread
    (marionnet_daemon.ml:148-193), `ip link del' on a tap nobody has open is
@@ -216,35 +301,8 @@ let () =
   at_exit (fun () ->
     if Unix.getpid () = owner_pid then List.iter destroy_tap (my_tap_list ()))
 
-(* --- Garbage collection of the taps of dead processes *)
-
-let our_tap_regexp = Str.regexp (Printf.sprintf "^%s\\([0-9]+\\)-[0-9]+$" tap_prefix)
-
-(* Parse `ip -o link show' lines: "3: mtap1234-0: <NO-CARRIER,...> mtu 1500 ..."
-   Returns the taps matching our naming scheme, with the pid that created them. *)
-let existing_taps () : (tap_name * int) list =
-  match ip_command ~privileged:false "-o link show" with
-  | Error e ->
-      Log.printf1 "Tap_provider: cannot list the network links: %s\n" e;
-      []
-  | Ok output ->
-      let extract_tap line =
-        match String.split_on_char ':' line with
-        | _index :: name :: _ ->
-            (* An interface may be displayed as "name@parent": *)
-            let name = List.hd (String.split_on_char '@' (String.trim name)) in
-            if Str.string_match our_tap_regexp name 0
-              then Some (name, int_of_string (Str.matched_group 1 name))
-              else None
-        | _ -> None
-      in
-      List.filter_map extract_tap (String.split_on_char '\n' output)
-
-let process_is_alive (pid : int) : bool =
-  try Unix.kill pid 0; true with
-  | Unix.Unix_error (Unix.ESRCH, _, _) -> false
-  | Unix.Unix_error (Unix.EPERM, _, _) -> true   (* alive, just not ours *)
-  | _ -> true                                    (* unclear: never purge on a doubt *)
+(* --- Garbage collection of the taps of dead processes (the inspection
+       primitives it stands on live in the section above) *)
 
 let purge_orphan_taps () : int =
   let is_orphan (_, pid) = not (process_is_alive pid) in

@@ -975,6 +975,45 @@ let predict_ipv6_link_local_address_of (tap) : string =
   | Some mac -> (try (ipv6_link_local_address_of_MAC mac) with _ -> "")
 
 
+(* Every session numbers its virtual machines from scratch, and every tap carries the same host
+   address, so the machines of two simultaneous sessions claim the same 172.23.x.y: the second one
+   to start finds the address already routed elsewhere and gets no tap at all. It used to boot
+   without network and without a word (chantier `marionnet-todo-transverse', episode 9). Now it
+   still boots -- refusing would make Marionnet unusable on any host lacking the sudoers rule --
+   but it says why. *)
+let collision_already_reported = ref false
+let collision_mutex = Mutex.create ()
+
+(* True the first time only: several machines may fail at once, in parallel threads, and one
+   dialog per machine would be unbearable. *)
+let first_collision_report () : bool =
+  Mutex.lock collision_mutex;
+  let first = not !collision_already_reported in
+  collision_already_reported := true;
+  Mutex.unlock collision_mutex;
+  first
+
+let report_eth42_tap_failure ~(umid:string) ~(ip42:string) (msg:string) : unit =
+  match Tap_provider.colliding_session_of_address ip42 with
+  | None ->
+      Log.printf2 "Simulation_level: uml_process: %s: no eth42 tap: %s\n" umid msg
+  | Some (tap, pid) ->
+      let () =
+        Log.printf4 ~force:true
+          "Simulation_level: uml_process: %s: no eth42 tap: %s is already routed to %s by another Marionnet session (process %d)\n"
+          umid ip42 tap pid
+      in
+      (* Not hidden in exam mode: like the "A process died unexpectedly" warning below, this one
+         explains a failure of the student's own machine, it is not housekeeping advice. *)
+      if Initialization.Disable_warnings.other_marionnet_sessions then () else
+      if not (first_collision_report ()) then () else
+      Simple_dialogs.warning
+        (s_ "Another Marionnet session is running")
+        (Printf.sprintf
+           (f_ "The virtual machine %s could not get its network address (%s): another Marionnet session, the process %d, already routes that address to one of its own taps. This machine is starting anyway, but without network. This message is shown only once per session.")
+           (Glib.Markup.escape_text umid) ip42 pid)
+        ()
+
 (** The UML process used to implement machines and routers: *)
 class uml_process =
   fun ~(kernel_file_name)
@@ -1072,7 +1111,7 @@ class uml_process =
     match Tap_provider.make_eth42_tap ~uid:(Unix.getuid ()) ~ip42 with
     | Stdlib.Ok tap_name -> tap_name
     | Stdlib.Error msg ->
-        Log.printf1 "Simulation_level: uml_process: no eth42 tap: %s\n" msg;
+        report_eth42_tap_failure ~umid ~ip42 msg;
         "wrong-tap-name"
   in
   (* Basic parameters: *)

@@ -252,6 +252,38 @@ let () =
       ()
 
 (* --- *)
+(** Two Marionnet sessions running at the same time are allowed, and nobody used to say a word
+    about it (chantier `marionnet-todo-transverse', episode 9): every session gives its taps the
+    same host address and numbers its virtual machines from scratch, so the machines of the second
+    session claim addresses already routed by the first, and boot without network. Detecting the
+    other sessions costs no privilege at all (`ip -o link show'), hence this block sits OUTSIDE
+    the is_usable() test above: making a diagnostic depend on a privilege probe is precisely what
+    kept this defect invisible. *)
+let () = Log.printf "Loading module bin/marionnet.ml: about to look for other Marionnet sessions\n"
+let () =
+  match Tap_provider.other_live_sessions () with
+  | [] -> ()
+  | sessions ->
+      let session_no = List.length sessions in
+      let tap_no = List.fold_left (fun total (_, taps) -> total + taps) 0 sessions in
+      let pids = String.concat ", " (List.map (fun (pid, _) -> string_of_int pid) sessions) in
+      let () =
+        Log.printf3 ~force:true
+          "marionnet: other Marionnet session(s) running right now: %d (process(es): %s), owning %d tap(s)\n"
+          session_no pids tap_no
+      in
+      (* Unlike the housekeeping notice about the run directories, this one is NOT advice: it
+         explains a failure of the user's own machines, so an exam is not a reason to hide it.
+         Only the explicit flag turns it off. *)
+      if Initialization.Disable_warnings.other_marionnet_sessions then () else
+      Simple_dialogs.warning
+        (s_ "Another Marionnet session is running")
+        (Printf.sprintf
+           (f_ "Marionnet is already running on this machine, in one or more other sessions. Number of other sessions: %d (processes: %s). All the sessions give their taps the same host address (%s) and number their virtual machines independently, so two machines belonging to two sessions can claim the same address: the second one to start is then left without network, although it boots normally. If a virtual machine has no network, this is the first thing to check.")
+           session_no pids Tap_provider.eth42_host_address)
+        ()
+
+(* --- *)
 (** Show the splash (only when there is no project to open): *)
 let () = Log.printf "Loading module bin/marionnet.ml: about to show the splash screen\n"
 let () =

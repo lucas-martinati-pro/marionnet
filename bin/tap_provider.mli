@@ -77,6 +77,34 @@ val destroy_tap : tap_name -> unit
     instance's -- are never touched. Meant to be called once at start-up. *)
 val purge_orphan_taps : unit -> int
 
+(** The OTHER Marionnet sessions running right now, as (pid, number of taps)
+    couples sorted by pid: the live processes -- ours excepted -- owning taps of
+    our prefix. Nothing forbids two simultaneous sessions, but every session
+    gives {!eth42_host_address} to its taps and numbers its virtual machines
+    from scratch, so two machines of two sessions end up claiming the very same
+    172.23.x.y address: the second one to start gets no route, hence no network,
+    although it boots. Detecting this costs no privilege at all (a plain
+    `ip -o link show'), which is why the caller must not hide it behind
+    {!is_usable}. *)
+val other_live_sessions : unit -> (int * int) list
+
+(** [colliding_session_of_address address] tells whether [address] is already
+    routed to a tap of ANOTHER live session, and names that tap and its process.
+    Meant to be called after a failure of {!make_eth42_tap}, to turn the raw
+    iproute2 diagnostic ("File exists") into the real reason. *)
+val colliding_session_of_address : string -> (tap_name * int) option
+
+(** [sessions_of_taps names] is the decision behind {!other_live_sessions},
+    applied to a list of interface names instead of the host's own: names that
+    are not ours are ignored, and so are the taps of dead processes and of this
+    very process. Exposed to be proved without creating real interfaces
+    (bin/tap_provider_test.ml), which needs a privilege the test does not have. *)
+val sessions_of_taps : tap_name list -> (int * int) list
+
+(** [route_device_of_output output] extracts the routed device from an
+    `ip -o route show ADDRESS' output. Exposed for the same reason. *)
+val route_device_of_output : string -> tap_name option
+
 (** Can we really run our privileged commands, i.e. is the sudoers rule in place?
     Probed by deleting a tap that does not exist: a successful no-op when the rule
     is there, a `sudo -n' refusal otherwise. It never prompts and creates nothing.

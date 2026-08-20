@@ -168,7 +168,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable — **fait** |
 | 7 | `set … variant <inexistante>` accepté sans rien changer (entrée neuve, cf. § 1) | `bad_argument` nommant les variantes du filesystem **courant**, et refus du `set distrib` qui ferait perdre la variante portée | `driven-sessions/set-variant-unknown.sh` — **fait** |
 | 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) — **fait** |
-| 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
+| 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable — **fait** |
 | 10 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
 | 12 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
@@ -651,3 +651,108 @@ neuve dans `docs/TODO.md`.
 L'entrée « Invités — un `uml_mconsole … sysrq e` peut rester bloqué **pour toujours** » est
 **retirée** de `docs/TODO.md` : 8 défauts restants au périmètre du chantier, plus les deux voisins
 entrés par les épisodes 7 et 8.
+
+### 2026-08-20 — épisode 9 : deux sessions simultanées se disent
+
+**Le défaut, dans son mécanisme.** L'entrée disait « rien ne le signale ». La lecture du code dit
+*pourquoi* le second invité ne boote pas : `bin/simulation_level.ml:1067` dérive l'adresse `ip42`
+d'un **identifiant de device**, compteur **par processus**, si bien que la première machine de
+chaque session réclame la **même** `172.23.0.x` ; `Tap_provider.make_eth42_tap` finit par
+`ip route add <ip42>/32 dev <tap>`, la seconde session reçoit un `File exists`, et le message
+partait au **journal seul** avant que la machine démarre avec `"wrong-tap-name"` — c'est-à-dire
+sans réseau, sans un mot à l'écran.
+
+**Le geste, en trois endroits.**
+
+1. `bin/tap_provider.ml(i)` — la détection. Les primitives d'inspection (`existing_taps`,
+   `process_is_alive`, et le pid extrait du nom `mtap<pid>-<seq>`) **remontent** avant la section
+   de création, où elles servent maintenant deux fois : `other_live_sessions ()` (les processus
+   vivants **autres que nous** possédant des taps, avec leur compte) et
+   `colliding_session_of_address` (qui détient déjà la route de cette adresse). La section de
+   ramasse-miettes ne garde que `purge_orphan_taps`, son seul client historique.
+2. `bin/marionnet.ml` — le signal au démarrage : journal `~force:true` toujours, dialogue sauf si
+   l'avertissement est éteint.
+3. `bin/simulation_level.ml` — le signal **au moment où la collision frappe** : journal forcé
+   nommant l'adresse, le tap et le pid de l'autre session, et **un** dialogue, au premier échec
+   seulement (`first_collision_report`, sous mutex : plusieurs machines échouent en parallèle et
+   un dialogue par machine serait insupportable). Décision de l'utilisateur, prise avant d'écrire
+   une ligne : l'autre session a pu démarrer **après** nous, donc le message du démarrage ne
+   suffit pas.
+
+**Ce que l'épisode ne fait pas, et pourquoi.** (a) L'adresse **n'est pas dérivée** du processus (le
+« au mieux » de l'entrée) : c'est le contrat réseau hérité de `marionnet-daemon-elimination`, celui
+qu'un TP écrit dans ses scénarios — non-objectif assumé, pas un reliquat. (b) Une machine dont le
+tap échoue **continue de démarrer**, contre la doctrine « refuser plutôt qu'avaler » des épisodes
+2-7 : sur un hôte où la règle sudoers n'est pas installée, refuser rendrait Marionnet inutilisable
+d'un coup. Elle démarre, et elle le **dit**.
+
+**Piège durable : ne pas mettre un diagnostic derrière une sonde de privilège.** Le bloc du
+démarrage est délibérément **hors** du garde `Tap_provider.is_usable ()` qui l'entoure : lister les
+interfaces (`ip -o link show`) ne coûte **aucun** privilège, alors que la purge des taps orphelins,
+elle, en exige un. Conditionner le diagnostic au privilège aurait reproduit exactement ce qui a
+rendu ce défaut invisible — et aurait rendu le banc injouable sur toute machine sans la règle.
+
+**Preuve — deux étages.**
+
+*Sans privilège, rejouable partout* (`bin/tap_provider_test.exe`, déjà branché sur `dune test`) :
+la décision est prouvée sur des noms d'interface **fabriqués**, le processus étranger vivant étant
+notre propre parent et le mort un fils déjà moissonné (`dead_pid`, qui existait). 7 vérifications :
+liste vide, une session étrangère comptée une fois avec ses 2 taps au milieu de noms mal formés,
+les taps d'un mort ignorés, les nôtres ignorés, et la lecture du `dev` d'une ligne de route.
+
+*Banc jetable* (il exige un `DISPLAY` **et** la règle sudoers : hors `driven-sessions/` par le
+§ 3.6). Il n'a besoin d'**aucun mot de passe** — fabriquer les taps d'une session étrangère est
+précisément ce que la règle scopée autorise (`ip tuntap add dev mtap* mode tap user <moi>`) :
+
+| cas | avant le correctif | après |
+|---|---|---|
+| 2 taps d'un pid **vivant** + 1 d'un pid **mort** | rien | notification `warning`, **1** session, pid nommé, le mort non compté |
+| `MARIONNET_DISABLE_WARNING_OTHER_MARIONNET_SESSIONS=true` | rien | rien (journal seul) |
+| le même drapeau, côté journal | **rien** | la ligne y est quand même |
+| **collision réelle** : la route de `172.23.0.42` tenue par la session étrangère | tap refusé, raison brute | refusé, collision **nommée** (5 vérifications, `--live-collision`) |
+| aucun tap étranger | rien | rien |
+
+Rouge/vert mesuré : **2 PASS / 3 FAIL** sur le binaire d'avant (`git stash` + `dune build`),
+**5 PASS / 0 FAIL** après restauration. Les deux cas qui passent des deux côtés sont les gardes
+anti-faux-positif. Un faux vert a été corrigé en cours de route, et mérite d'être noté : le pilote
+qui ne connaît pas `--live-collision` **retombe sur son essai à blanc et sort 0** — un banc ne peut
+donc pas conclure sur le seul code de retour d'un binaire dont il teste une option neuve ; il lit
+maintenant la vérification elle-même.
+
+**La collision réelle, prouvée sans invité.** `--live-collision=<adresse>` est le mode neuf du
+pilote : le banc fabrique le tap **et la route** de la session étrangère (les trois commandes sont
+dans la règle sudoers), puis le pilote vérifie que la collision est reconnue, que le pid est celui
+d'un autre vivant, qu'**aucun** tap n'est créé, que le tap étranger est intact et que la tentative
+ratée n'a rien laissé. Reste hors de portée ici : le **dialogue** de collision à l'écran, qui exige
+deux Marionnet avec des invités qui bootent.
+
+**i18n : les 3 chaînes neuves traduites ici même** (invariant « on ne supporte que des catalogues
+complets »). Refresh POT → exactement **3 trous** par catalogue : un titre, partagé par les deux
+dialogues, et les deux corps. Versement par `msgmerge --compendium` (aucune édition à la main),
+essai à blanc d'abord : le diff ne touche que ces 3 entrées, 12 à 15 lignes par catalogue. Les 12
+passent à **428 traduits, 0 trou**. Le compte est en fin de phrase après un deux-points (leçon de
+l'épisode 6 : pas de `ngettext` ici, donc jamais « 1 sessions ») et le vocabulaire suit l'habitude
+de chaque catalogue (*session* → `Sitzung`, `сеанс`, `relácia`, `sesio`… ; *tap* → `Taps`,
+`tap-uri`, `tapy`, selon ce qu'ils écrivaient déjà). Gardes rejouées : arité sur les **12
+catalogues entiers** (5 136 entrées, 0 écart), parse **Pango réel** des traductions neuves (72
+parses : le corps nu et le titre enveloppé de `<b>…</b>`), `msgfmt -c` propre, et les `.mo`
+**compilés** interrogés par clé exacte (36 réponses, 0 manquante). Le nom de machine interpolé dans
+le message de collision passe par `Glib.Markup.escape_text` (piège de l'ép. 9a de
+`modernisation-world-bridge`).
+
+**Un drapeau pour les deux dialogues** : `MARIONNET_DISABLE_WARNING_OTHER_MARIONNET_SESSIONS`
+(`bin/initialization.ml`, déclaré dans `bin/configuration.ml`, documenté dans `etc/marionnet.conf`)
+— ils disent la même chose à deux moments, et qui sait pourquoi deux sessions coexistent ne veut ni
+l'un ni l'autre. Ni l'un ni l'autre n'est caché en **mode examen**, à la différence de l'avis de
+ménage de l'épisode 6 : ce n'est pas un conseil d'entretien, c'est l'explication d'une panne de la
+machine de l'élève — même posture que l'avertissement « A process died unexpectedly » qui vit deux
+cents lignes plus bas dans le même fichier.
+
+**Observé en chemin, non corrigé** (règle § 2) : la remarque de fin d'entrée — le verbe `quit` du
+canal **rend la main avant que le processus soit parti** — serait partie avec l'entrée soldée. Elle
+devient une **entrée neuve** de `docs/TODO.md` (`cmd_quit` répond `quitting:true` puis laisse la
+boucle s'arrêter ; un banc s'en sort par `wait "$pid"`, un client du canal n'a que la socket).
+
+L'entrée « Réseau — deux sessions Marionnet simultanées partagent l'adresse hôte de leurs taps »
+est **retirée** de `docs/TODO.md` : 7 défauts restants au périmètre du chantier, plus les trois
+voisins entrés par les épisodes 7, 8 et 9.
