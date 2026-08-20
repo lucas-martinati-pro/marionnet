@@ -153,7 +153,7 @@ s'appuie sur le rollback de l'ép. 3.
 |---|---|---|---|
 | 1 | Le **label** se valide trop tard | `check_new_label` avant la première écriture des deux `update_with` (`bin/user_level.ml`), comme `check_new_name` | jetable (**patch témoin**, cf. § 3.6) — **fait** |
 | 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/control-socket-refusal.sh` — **fait** (crée le répertoire et son README) |
-| 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/` |
+| 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/add-rollback-on-constructor-failure.sh` — **fait** |
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Construire, vérifier, détruire — en réutilisant le rollback de l'ép. 3 plutôt qu'une seconde table `kind → (min,max)` | `driven-sessions/` |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable |
@@ -251,3 +251,52 @@ Après restauration : `passed: 4, failed: 0, skipped: 0`, `dune build` rc 0.
 **Documentation** : `doc-src/scripting/README.md` gagne la phrase manquante (chemin absolu **et**
 borné à 107 octets, refus de démarrer avec la raison sur stderr) et une ligne dans la table
 « When it does not work ». L'entrée est **retirée** de `docs/TODO.md` : 13 défauts restants.
+
+### 2026-08-20 — épisode 3 : un `add` refusé par son constructeur ne laisse plus rien
+
+**Le geste, en un seul endroit.** Un nœud s'enregistre auprès du réseau **dans son initializer**
+(`network#add_node (self :> node)`, `bin/user_level.ml:1138` et `:1231`), juste avant la suite qui
+peut lever — pour un `switch` ou un `world_gateway`, `add_my_ledgrid` et son assertion. Le
+rattrapage de `cmd_add` (`bin/control_server.ml`) se contentait de rapporter l'exception : le nœud
+à moitié construit restait. Il **cherche désormais le nœud du nom demandé et le détruit**, dans la
+**même** section critique `st#network_change` que la création — donc avant que le sketch ne soit
+rafraîchi et avant que quiconque puisse lire le réseau.
+
+Trois précisions que l'implémentation a imposées :
+
+- **`destroy` plutôt que `del_node_by_name`** : `destroy` (`OoExtra.destroy_methods`) rejoue les
+  callbacks enregistrés **jusqu'au point de levée**, dans l'ordre LIFO — exactement ce que l'objet
+  a eu le temps de faire (son inscription au réseau, sa ligne de défauts), et rien de plus. Retirer
+  le nœud de la liste aurait laissé le reste.
+- **`List.find_opt` plutôt que `get_node_by_name`** : ce dernier **lève** quand le nom est absent
+  (`failwith`, `bin/user_level.ml:2071`), ce qui aurait remplacé une exception par une autre. C'est
+  aussi le patron déjà employé vingt lignes plus bas dans `cmd_add`.
+- **`try … with _ -> ()` autour du `destroy`** : un callback peut à son tour lire un champ que
+  l'exception a laissé non posé. L'échec du nettoyage ne doit pas masquer l'échec initial, qui est
+  ce que le client doit lire.
+
+**Preuve** — banc versionné `driven-sessions/add-rollback-on-constructor-failure.sh`, quatre cas
+joués dans une **seule** session pilotée (donc un `DISPLAY` et `socat`, sinon SKIP 77).
+
+| Cas | avant le correctif | après |
+|---|---|---|
+| `add switch s0 --ports=0` | `ok:false` — et `s0` **figure dans `ls`** | `ok:false`, `s0` **absent** |
+| `add world_gateway g99 --ports=99` | `ok:false` — et `g99` figure dans `ls` | `ok:false`, `g99` absent |
+| `add switch s0` juste après le refus | `ok:false` — « the name "s0" is already used » | `ok:true`, `s0` reconstruit |
+| `add hub h1 --ports=8` (anti-faux-positif) | `ok:true` | **inchangé** |
+
+Rouge/vert mesuré : `passed: 1, failed: 3` sur le binaire d'avant, `passed: 4, failed: 0` après ;
+`dune build` rc 0 ; le banc de l'épisode 2 rejoué **4 PASS** (non-régression) ; aucun répertoire de
+run laissé (le banc retire **ceux qu'il a créés**, jamais un glob entier).
+
+Le troisième cas est le plus fort des quatre : il ne dit pas seulement que `ls` ne montre plus le
+nœud, mais que le **nom est libre** — c'est-à-dire que le réseau est bien celui d'avant, et qu'un
+script peut réessayer sous le même nom.
+
+**Documentation** : `doc-src/scripting/README.md` gagne la puce qui manquait — un `add` refusé, pour
+**quelque** raison que ce soit, laisse le réseau tel quel et le nom libre. L'entrée est **retirée**
+de `docs/TODO.md` : 12 défauts restants.
+
+**Observé en chemin, non corrigé** (règle § 2) : l'entrée de l'épisode 4 (`add … --ports=N` ne
+vérifie pas les bornes) devient franchement plus simple, puisque « construire, vérifier, détruire »
+peut maintenant s'appuyer sur un rattrapage qui détruit vraiment. Rien d'autre n'a été touché.

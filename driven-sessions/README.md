@@ -39,3 +39,4 @@ Le critère vient de `docs/todo-transverse.md` § 3.6.
 | Banc | Prouve | Épisode |
 |---|---|---|
 | `control-socket-refusal.sh` | `--control-socket` : refus de démarrer quand le canal ne peut pas être servi (chemin non absolu, chemin plus long que `sun_path`, répertoire non inscriptible), et non-régression du chemin nominal | `marionnet-todo-transverse` ép. 2 |
+| `add-rollback-on-constructor-failure.sh` | `add` : un composant refusé par son propre constructeur (`--ports=0`, `--ports=99`) ne laisse rien — ni dans `ls`, ni sur son nom — et un `add` légitime marche toujours | `marionnet-todo-transverse` ép. 3 |

@@ -1367,7 +1367,26 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
        | Error detail -> Co_bad detail
        | Ok create ->
            let failure = ref None in
-           let () = st#network_change (fun () -> try create () with e -> failure := Some e) () in
+           let () =
+             st#network_change
+               (fun () ->
+                  try create () with e ->
+                    let () = failure := Some e in
+                    (* A node registers itself with the network inside its constructor
+                       (user_level.ml:1138 and :1231), before the part which raised: without the
+                       following, a component the channel refused would stay in [ls], in the
+                       saved .mar, and its name taken. [destroy] plays the destroy callbacks
+                       registered *so far* (a LIFO, OoExtra.destroy_methods) — exactly what the
+                       half-built object got done, and nothing else; the [try] is there because
+                       one of them may in turn read a field the exception left unset. Undoing it
+                       here, in the same critical section as the creation, is what makes the
+                       promise of [rollback] below ("a failed add means an unchanged network")
+                       true of the constructor too. *)
+                    (match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+                     | Some n -> (try (n :> editable)#destroy with _ -> ())
+                     | None   -> ()))
+               ()
+           in
            (match !failure with
             (* check_name refuses anything that is not an identifier (user_level.ml:521-523);
                the constructor is the only place that knows it, so we let it speak. *)

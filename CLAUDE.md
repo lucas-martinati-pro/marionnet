@@ -147,10 +147,15 @@ Reprise : appliquer le skill `chantier-long`.
   Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
   **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
   doc), et un épisode qui découvre un défaut voisin l'**écrit** dans `docs/TODO.md` au lieu de
-  le corriger en passant. Ép. 0 (cadrage), 1 (label) et **2 (`--control-socket` : refus de
-  démarrer quand le canal ne peut pas être servi, quelle qu'en soit la cause)** faits — l'ép. 2
-  a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
+  le corriger en passant. Ép. 0 (cadrage), 1 (label), **2 (`--control-socket` : refus de
+  démarrer quand le canal ne peut pas être servi, quelle qu'en soit la cause)** et **3 (un `add`
+  refusé par son propre constructeur ne laisse plus son nœud : le rattrapage de `cmd_add`
+  **détruit** le nœud du nom demandé dans le même `st#network_change` que la création)** faits —
+  l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
+  Piège durable de l'ép. 3 : détruire un objet **à moitié construit** se fait par `#destroy`
+  (LIFO des callbacks enregistrés avant la levée, `OoExtra`), pas par `del_node_by_name`, et
+  `network#get_node_by_name` **lève** quand le nom est absent.
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :

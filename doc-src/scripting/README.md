@@ -369,6 +369,9 @@ Notes that save time:
   filesystem declares, like the dialog does. A machine added by the channel starts.
 * **A cable is not renamed** — neither by the GUI nor by the channel. Delete it and connect a
   new one.
+* **A refused `add` leaves nothing behind**: whatever the reason — an unknown field, a value the
+  model refuses, or the constructor itself (`add switch s0 --ports=0`) — the network is exactly
+  as it was, and the name is free again. So a script may retry under the same name.
 * **`new`, `close` and `open` refuse to throw away work**: if the current project has changes
   they answer `unsaved_changes` until you say `--save` or `--no-save`. That is deliberate —
   the script must state its intent, not inherit a default.

@@ -285,32 +285,6 @@ rencontré de biais.*
 
 ---
 
-## Canal — un constructeur qui échoue laisse quand même son nœud dans le réseau
-
-**Constat** (mesuré le 2026-08-18, `modernisation-world-bridge` ép. 10b). `add switch s0
---ports=0` répond `ok:false` (« creating "s0" failed: … ledgrid.ml, line 320: Assertion
-failed ») — et pourtant `s0` **figure ensuite dans `ls`**, puis dans le `.mar` sauvegardé.
-Même chose pour `add world_gateway g99 --ports=99`. La raison est que le nœud s'enregistre
-auprès du réseau **dans son constructeur**, avant la partie qui lève : quand `node_maker`
-rattrape l'exception, le mal est fait, et le `rollback` prévu pour les champs refusés ne
-s'applique pas à ce chemin-là.
-
-**Voulu.** Qu'un `add` refusé laisse le réseau **exactement** comme il était — c'est déjà la
-promesse écrite pour les options `--<champ>=<valeur>` (« un `add` échoué signifie un réseau
-inchangé »), et elle doit valoir aussi quand c'est le constructeur qui échoue.
-
-**Ce que l'implémentation devra affronter.** Le rattrapage ne peut pas se contenter de
-`Printexc.to_string` : il doit **chercher** le nœud du nom demandé et le détruire s'il existe
-(`st#network#get_node_by_name`, puis `destroy`), en sachant que l'objet est à moitié construit —
-c'est justement pourquoi il vaut mieux ne détruire que ce qui est enregistré, sans toucher à ce
-que l'exception a laissé en plan. À faire dans la même section critique
-(`st#network_change`) que la création.
-
-*Reversé ici le 2026-08-18 depuis le chantier `modernisation-world-bridge` (ép. 10b), qui l'a
-rencontré de biais.*
-
----
-
 ## GUI — les **autres** fenêtres de message s'étalent encore sur toute la largeur
 
 **Constat** (mesuré le 2026-08-19, à l'occasion du correctif `34393bb`, qui a plafonné le seul
