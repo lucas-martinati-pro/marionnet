@@ -1295,10 +1295,20 @@ class uml_process =
 (*   method continue = *)
 (*     ignore (Unix.system ("uml_mconsole " ^ umid ^ " go 1>/dev/null 2>/dev/null")); *)
 
-  method private gracefully_terminate_with_mconsole ?(command="cad") ?(tries=1) ?(delay=1.) () : bool =
+  (* A guest whose kernel no longer answers -- frozen, or stopped -- leaves `uml_mconsole'
+     waiting for ever: measured, both the shell and its uml_mconsole outlive the session, and
+     the calling thread never returns. Hence a deadline, whose value is measured too: on a
+     healthy guest every command of this path answers in less than 10 ms (cad 3, halt 4,
+     sysrq 9), a guest already dead is refused in ~10 ms, and during the early boot the socket
+     does not exist yet, which fails at once as well. Two seconds can therefore not turn a slow
+     clean shutdown into a brutal kill, and they keep the worst case of `gracefully_terminate'
+     (5 `cad' then 3 `halt' attempts, i.e. 8*timeout + 11 s) below the 30 s deadline of the
+     killing thread it starts. `timeout' comes from coreutils and exits 124 when it fires. *)
+  method private gracefully_terminate_with_mconsole
+    ?(command="cad") ?(tries=1) ?(delay=1.) ?(timeout=2.) () : bool =
     (* let redirection = Global_options.Debug_level.redirection () in *)
     let redirection = "1>/dev/null 2>/dev/null" in (* anyway silently *)
-    let cmdline = Printf.sprintf "uml_mconsole %s %s %s" umid command redirection in
+    let cmdline = Printf.sprintf "timeout %g uml_mconsole %s %s %s" timeout umid command redirection in
     let rec loop i =
       if i > tries then false (* abandon *) else (* retry *)
       let status = Unix.system cmdline in
@@ -1312,9 +1322,17 @@ class uml_process =
           end
         else
           begin
-            Log.printf5
-              "Simulation_level: %s#gracefully_terminate: uml_mconsole failed in sending a '%s' to %s. Trying again (loop no. %d/%d)...\n"
-              umid command umid i tries;
+            (* Say WHICH failure: before the deadline existed, "did not answer" was
+               indistinguishable from "answered no" -- and only the first one leaked. *)
+            let cause = match status with
+              | Unix.WEXITED 124  -> Printf.sprintf "no answer after %g s" timeout
+              | Unix.WEXITED code -> Printf.sprintf "exit code %d" code
+              | Unix.WSIGNALED s  -> Printf.sprintf "killed by signal %d" s
+              | Unix.WSTOPPED  s  -> Printf.sprintf "stopped by signal %d" s
+            in
+            Log.printf6
+              "Simulation_level: %s#gracefully_terminate: uml_mconsole failed in sending a '%s' to %s (%s). Trying again (loop no. %d/%d)...\n"
+              umid command umid cause i tries;
             Thread.delay delay;
             loop (i+1)
           end

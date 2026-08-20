@@ -167,7 +167,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/set-distrib-unknown.sh` — **fait** |
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable — **fait** |
 | 7 | `set … variant <inexistante>` accepté sans rien changer (entrée neuve, cf. § 1) | `bad_argument` nommant les variantes du filesystem **courant**, et refus du `set distrib` qui ferait perdre la variante portée | `driven-sessions/set-variant-unknown.sh` — **fait** |
-| 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
+| 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) — **fait** |
 | 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
 | 10 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
@@ -580,3 +580,74 @@ même chemin pour l'import et pour le canal.
 
 L'entrée « Canal — `set <n> variant <épithète inexistante>` » est **retirée** de `docs/TODO.md` :
 9 défauts restants au périmètre du chantier, plus le voisin entré ici.
+
+---
+
+### 2026-08-20 — épisode 8 : une tentative mconsole a une échéance, et le dit
+
+**Le défaut.** `bin/simulation_level.ml`, méthode `gracefully_terminate_with_mconsole` : un seul
+site, qui lance `uml_mconsole <umid> <commande>` par `/bin/sh` **sans échéance**. Un invité qui
+n'a plus de noyau pour répondre laisse `uml_mconsole` attendre pour toujours — cinq d'entre eux,
+échelonnés sur plusieurs jours, avaient été relevés à l'ouverture du chantier.
+
+**Ce que la mesure a corrigé du constat.** Le TODO disait « un noyau **mort ou gelé** ». Les deux
+cas ne se ressemblent pas :
+
+| situation de l'invité | réponse de `uml_mconsole` |
+|---|---|
+| sain, `version` (inoffensif) | OK en **3 ms** (100 relevés, max 7 ms) |
+| sain, `cad` | OK en **3 ms**, et la machine s'éteint pour de bon |
+| sain, `halt` | OK en **4 ms**, processus disparu dans la foulée |
+| sain, `sysrq e` / `sysrq i` | OK en **9 ms** / 3 ms — mais le noyau 6.12.95 répond `sysrq: This sysrq operation is disabled.` |
+| boot précoce (socket pas encore créé) | échec en **5 ms** (`No such file`) |
+| processus **mort**, socket résiduel | échec en **10 ms** (`Connection refused`) |
+| noyau **gelé** (`SIGSTOP`) | **aucune réponse** — mesuré 30 s, puis 44 s sur le banc, sans fin |
+
+Autrement dit : ce n'est pas la commande destructrice qui tue le noyau avant sa réponse (l'idée la
+plus naturelle, mesurée fausse : `halt` répond *puis* la machine meurt), et ce n'est pas non plus
+un socket résiduel (refusé aussitôt). **Seul le noyau gelé bloque**, et il bloque *tout*, y
+compris un `version`.
+
+**Le geste.** `timeout <t> uml_mconsole …` (coreutils) et, pour `t`, **2 s** : deux cents fois le
+pire cas mesuré sur un invité sain, donc hors d'état de transformer un arrêt propre lent en kill
+brutal ; et le pire cas de `gracefully_terminate` (5 `cad` puis 3 `halt`, soit `8·t + 11` s) reste
+**sous les 30 s** du fil de garde que cette méthode démarre elle-même. La branche d'échec **dit
+désormais laquelle** : `no answer after 2 s` (code 124 de `timeout`) au lieu d'un « failed » qui
+confondait « a répondu non » et « attend encore » — c'était précisément ce que le code ne savait
+pas.
+
+**Plus grave que ce que l'entrée disait.** Le TODO ne parlait que de processus qui s'accumulent.
+Mesuré : sur un invité gelé, `poweroff` (chemin `terminate`) restait bloqué à sa **première**
+tentative (`sysrq e`), donc n'atteignait jamais son `kill` — l'invité gelé n'était **jamais tué**.
+Contrairement à `gracefully_terminate`, `terminate` n'a pas de fil de garde à 30 s. Le correctif
+règle les deux d'un coup.
+
+**Preuve** — banc **jetable** (il faut un invité qui boote, donc hors des critères de
+`driven-sessions/`) : session pilotée par le canal, machine démarrée, noyau **gelé** par
+`kill -STOP` sur le pid du processus UML, puis `poweroff` par le canal.
+
+| | correctif désarmé | correctif en place |
+|---|---|---|
+| `uml_mconsole` survivants 15 s après | **2** (le `/bin/sh` et son `uml_mconsole`) | 0 |
+| processus UML gelé | **toujours vivant** | tué |
+| journal | rien sur l'attente | 3 lignes `no answer after 2 s` |
+
+Mesure rouge/vert : **0 PASS / 3 FAIL** sur le code d'avant (`git stash` du seul `bin/`, rebuild),
+**3 PASS / 0 FAIL** après. Non-régression : les 5 bancs versionnés rejoués verts (11 + 5 + 4 + 6 +
+9 PASS). `dune build` rc 0. Aucun processus ni répertoire de run laissé par les runs de mesure
+(vérifié par pid exact).
+
+**Vérifié, donc non écrit au TODO** : l'autre site du dépôt qui lance `uml_mconsole`
+(`bin/serial.ml`, `config <con>` pour retrouver un `/dev/pts`) a le même défaut *en théorie*, mais
+`grep` ne lui trouve **aucun appelant** — module mort. Rien à corriger, et une entrée de TODO
+l'aurait présenté comme un bug actif.
+
+**Observé en chemin, non corrigé** (règle § 2) : les répertoires `~/.uml/<umid>/` créés par les
+noyaux UML **survivent à la session** et ne sont balayés par personne — onze traînaient ici, dont
+des `probe-*` du 11 août ; `useful-scripts/marionnet-cleanup` ne connaît que
+`/tmp/marionnet-*.dir`. C'est le jumeau, côté `$HOME`, de l'entrée soldée à l'épisode 6. Entrée
+neuve dans `docs/TODO.md`.
+
+L'entrée « Invités — un `uml_mconsole … sysrq e` peut rester bloqué **pour toujours** » est
+**retirée** de `docs/TODO.md` : 8 défauts restants au périmètre du chantier, plus les deux voisins
+entrés par les épisodes 7 et 8.

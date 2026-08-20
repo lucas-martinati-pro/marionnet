@@ -264,30 +264,31 @@ rencontrés de biais.*
 
 ---
 
-## Invités — un `uml_mconsole … sysrq e` peut rester bloqué **pour toujours**
+## Hygiène — les répertoires mconsole de `~/.uml/` ne sont balayés par personne
 
-**Constat** (mesuré le 2026-08-20, en balayant les survivants des sessions mortes). Cinq
-`/bin/sh -c "uml_mconsole <nom> sysrq e"` et leur `uml_mconsole`, échelonnés sur plusieurs
-jours, tournaient encore : ce sont des tentatives d'extinction propre d'un invité qui n'a
-jamais répondu. La commande est lancée sans échéance, et `uml_mconsole` attend une réponse
-qui ne viendra pas d'un noyau mort ou gelé. Ils ne coûtent presque pas de CPU, mais ils
-tiennent des descripteurs et ils s'accumulent, un par extinction manquée.
+**Constat** (mesuré le 2026-08-20, en soldant l'entrée « un `uml_mconsole … sysrq e` peut
+rester bloqué »). Chaque invité fait créer par son noyau UML un répertoire `~/.uml/<umid>/`
+(socket `mconsole` et compagnie), et ce répertoire **survit à la session** : onze traînaient
+ici, dont des `probe-*` du 11 août et des noms de projets fermés depuis. Rien ne les enlève —
+ni Marionnet à la sortie, ni `useful-scripts/marionnet-cleanup`, qui ne connaît que
+`/tmp/marionnet-*.dir` (vérifié : le mot `.uml` n'y figure pas). Ils ne coûtent presque rien
+(quelques kio), mais ils s'accumulent indéfiniment et, surtout, **ils portent le nom de la
+machine** : un `~/.uml/m1/` résiduel est
+exactement ce qu'un `uml_mconsole m1` d'une session suivante trouvera — refusé aussitôt
+(« Connection refused », mesuré : ~10 ms), donc sans conséquence fonctionnelle, mais trompeur
+pour qui lit le journal.
 
-**Voulu.** Qu'une tentative d'extinction par mconsole ait une **échéance** — au-delà, on
-constate l'échec et on passe au moyen suivant (c'est déjà ce que fait le code appelant : il
-enchaîne sur le kill par pid quand mconsole échoue ; il ne sait simplement pas qu'il n'a pas
-échoué, mais qu'il attend).
+**Voulu.** Le même traitement que les répertoires de run (entrée soldée à l'épisode 6 du
+chantier `marionnet-todo-transverse`) : `marionnet-cleanup` sait les **repérer** et les proposer
+au retrait, Marionnet ne purge jamais tout seul.
 
-**Ce que l'implémentation devra affronter.** Le point d'appel est le chemin d'arrêt de
-`bin/simulation_level.ml` (`kill_descendants_then_myself` et ses voisins), qui passe par un
-`/bin/sh -c` : un `timeout 5 uml_mconsole …` suffirait, au prix d'une dépendance hôte de plus
-(coreutils, déjà là partout). Le vrai arbitrage est la durée : trop courte, elle transforme un
-arrêt propre lent en kill brutal ; trop longue, elle ne sert à rien. À mesurer sur un invité
-sain avant de choisir. À noter que ces processus sont des **petits-enfants** : le signal de
-mort du parent posé sur les enfants directs (§ « Pièges globaux » du CLAUDE.md, `setpriv --pdeathsig`)
-ne les atteint pas.
+**Ce que l'implémentation devra affronter.** Trancher le vivant du mort demande la même prudence
+qu'ailleurs : le répertoire appartient à un UML **peut-être encore en marche** (une autre session
+de l'utilisateur). Le socket lui-même donne la réponse sans `/proc` : un `uml_mconsole <umid>
+version` refusé en quelques millisecondes signe un noyau mort — mais un noyau **gelé** ne répond
+pas du tout, d'où l'échéance posée à l'épisode 8 sur toute tentative mconsole.
 
-*Repéré le 2026-08-20, en corrigeant les deux entrées « Hygiène » qui précédaient ici.*
+*Repéré le 2026-08-20, en soldant l'entrée « un `uml_mconsole … sysrq e` peut rester bloqué ».*
 
 ---
 
