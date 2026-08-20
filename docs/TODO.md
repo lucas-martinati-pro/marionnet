@@ -258,33 +258,6 @@ coexister.
 
 ---
 
-## Canal — `add … --ports=N` ne vérifie **pas** les bornes de la nature
-
-**Constat** (mesuré le 2026-08-18, `modernisation-world-bridge` ép. 10b). `set <n> port_no <N>`
-refuse proprement ce qui sort des bornes du composant (« a nat_bridge cannot have more than 16
-ports », « … fewer than 6 port(s) here : cables are plugged too high »). `add`, lui, ne vérifie
-que `N ≥ 0` (`cmd_add`, `bin/control_server.ml`) et passe la valeur telle quelle au constructeur :
-`add machine m0 --ports=0` et `add machine m99 --ports=99` sont **acceptés**, comme
-`add nat_bridge N --ports=0`. Deux natures s'en tirent par accident — `switch` et `world_gateway`
-meurent sur une assertion de `bin/gui/ledgrid.ml` — ce qui montre bien qu'aucun garde-fou n'est
-prévu là.
-
-**Voulu.** Que `add` refuse exactement ce que `set` refuse : les bornes appartiennent à la nature
-(`port_no_min` / `port_no_max`, déjà interrogées par le canal pour `set`), et un composant créé
-hors bornes est un composant que la GUI n'aurait jamais laissé construire.
-
-**Ce que l'implémentation devra affronter.** Les bornes sont lues sur un **nœud existant**
-(`n#port_no_min`, `n#port_no_max`), alors qu'`add` doit décider **avant** de construire :
-il faudra soit une table `kind → (min, max)` à côté de `node_maker` (une seconde source de
-vérité, ce que ce fichier évite par principe), soit construire puis vérifier puis détruire — le
-`rollback` d'`add` existe déjà pour les `--<champ>=<valeur>` refusés, et pourrait servir aussi à
-cela, à condition que le constructeur ne meure pas avant (cf. l'entrée suivante).
-
-*Reversé ici le 2026-08-18 depuis le chantier `modernisation-world-bridge` (ép. 10b), qui l'a
-rencontré de biais.*
-
----
-
 ## GUI — les **autres** fenêtres de message s'étalent encore sur toute la largeur
 
 **Constat** (mesuré le 2026-08-19, à l'occasion du correctif `34393bb`, qui a plafonné le seul

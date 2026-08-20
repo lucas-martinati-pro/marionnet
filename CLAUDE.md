@@ -150,12 +150,21 @@ Reprise : appliquer le skill `chantier-long`.
   le corriger en passant. Ép. 0 (cadrage), 1 (label), **2 (`--control-socket` : refus de
   démarrer quand le canal ne peut pas être servi, quelle qu'en soit la cause)** et **3 (un `add`
   refusé par son propre constructeur ne laisse plus son nœud : le rattrapage de `cmd_add`
-  **détruit** le nœud du nom demandé dans le même `st#network_change` que la création)** faits —
+  **détruit** le nœud du nom demandé dans le même `st#network_change` que la création)** et
+  **4 (`add … --ports=N` refuse exactement ce que `set … port_no` refuse, et le refuse **avant**
+  de construire)** faits —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
   Piège durable de l'ép. 3 : détruire un objet **à moitié construit** se fait par `#destroy`
   (LIFO des callbacks enregistrés avant la levée, `OoExtra`), pas par `del_node_by_name`, et
   `network#get_node_by_name` **lève** quand le nom est absent.
+  Deux pièges durables de l'ép. 4 : (1) les bornes de ports **sont** les
+  `<Kind>.Const.port_no_{min,max}` que reçoit le constructeur (`n#port_no_min` ne fait que les
+  renvoyer), donc les lire dans `node_maker` n'est pas une seconde source de vérité — et il faut
+  les lire **avant** de construire, `assert (ports > 1)` de `bin/gui/ledgrid.ml` tuant le
+  constructeur sur `--ports=0` ; (2) **déplacer une garde en amont peut vider de sa substance le
+  banc d'un épisode antérieur sans jamais le faire échouer** (mesuré : les 2 cas du banc de
+  l'ép. 3 ne touchaient plus le constructeur — un 3ᵉ cas, `add machine m-1`, l'exerce à nouveau).
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :

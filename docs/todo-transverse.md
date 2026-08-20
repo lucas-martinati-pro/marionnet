@@ -146,15 +146,16 @@ qu'il ne devienne pas un dépotoir d'exemples.
 ## 4. Les 15 épisodes, par coût croissant
 
 L'ordre est celui du coût, pas de la gravité : les correctifs courts d'abord, les diagnostics
-ouverts à la fin. Deux dépendances seulement : l'ép. 1 crée `driven-sessions/`, et l'ép. 4
-s'appuie sur le rollback de l'ép. 3.
+ouverts à la fin. Une dépendance seulement : l'ép. 1 crée `driven-sessions/`. (On en annonçait
+deux : l'ép. 4 devait s'appuyer sur le rollback de l'ép. 3 — il ne l'a finalement **pas** fait,
+cf. § 5, la vérification tombant *avant* la construction.)
 
 | N | Entrée de `docs/TODO.md` | Geste | Preuve |
 |---|---|---|---|
 | 1 | Le **label** se valide trop tard | `check_new_label` avant la première écriture des deux `update_with` (`bin/user_level.ml`), comme `check_new_name` | jetable (**patch témoin**, cf. § 3.6) — **fait** |
 | 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/control-socket-refusal.sh` — **fait** (crée le répertoire et son README) |
 | 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/add-rollback-on-constructor-failure.sh` — **fait** |
-| 4 | `add … --ports=N` ne vérifie pas les bornes | Construire, vérifier, détruire — en réutilisant le rollback de l'ép. 3 plutôt qu'une seconde table `kind → (min,max)` | `driven-sessions/` |
+| 4 | `add … --ports=N` ne vérifie pas les bornes | Vérifier **avant** de construire, dans `node_maker`, contre les `Const.port_no_{min,max}` que le constructeur reçoit déjà | `driven-sessions/add-ports-bounds.sh` — **fait** |
 | 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable |
 | 7 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
@@ -300,3 +301,75 @@ de `docs/TODO.md` : 12 défauts restants.
 **Observé en chemin, non corrigé** (règle § 2) : l'entrée de l'épisode 4 (`add … --ports=N` ne
 vérifie pas les bornes) devient franchement plus simple, puisque « construire, vérifier, détruire »
 peut maintenant s'appuyer sur un rattrapage qui détruit vraiment. Rien d'autre n'a été touché.
+
+---
+
+### 2026-08-20 — épisode 4 : `add … --ports=N` refuse ce que `set … port_no` refuse
+
+**Le défaut.** `cmd_add` (`bin/control_server.ml`) ne vérifiait que `N ≥ 0` puis passait la valeur
+au constructeur : `add machine m0 --ports=0`, `add machine m99 --ports=99` et
+`add nat_bridge n --ports=0` étaient **acceptés**, alors que `set <n> port_no <N>` refuse les mêmes
+valeurs proprement. Deux natures s'en tiraient par accident, en **mourant** sur `assert (ports > 1)`
+de `bin/gui/ledgrid.ml:320`.
+
+**Le geste, et pourquoi il n'est pas celui annoncé.** L'ouverture du chantier prévoyait
+« construire, vérifier, détruire », pour éviter une seconde table `kind → (min,max)`. Vérification
+faite, c'était le mauvais choix, pour trois raisons :
+
+- **il n'y a pas de seconde source de vérité à créer.** `node_maker` est déjà « le seul endroit de
+  ce fichier qui connaît les huit natures par leur nom », et il lit déjà
+  `<Kind>.Const.port_no_default` dans chaque branche. Or `Const.port_no_min` / `Const.port_no_max`
+  sont **exactement** les valeurs que chaque `user_level` passe à `node_with_ports_card`
+  (`machine.ml:591`, `hub.ml:309`, `switch.ml:409`, `router.ml:1077`, `world_gateway.ml:384`,
+  `cloud.ml:269`, `nat_bridge.ml:769`, `bridge_common.ml:105`), et que `n#port_no_min` — la borne
+  que lit `set` — se contente de **renvoyer** (`user_level.ml:984`). Lire la constante ou
+  interroger l'objet, c'est lire la même chose ;
+- **construire d'abord ne peut pas refuser poliment là où ça compte** : `--ports=0` sur une nature
+  à ledgrid tue le constructeur, donc le client recevrait un `Assert_failure` au lieu d'une
+  phrase — précisément ce que l'entrée du TODO dénonçait ;
+- **rien n'est perdu à vérifier tôt** : un nœud qui n'existe pas encore n'a aucun câble, donc la
+  borne basse *effective* de `set` (`network#port_no_lower_of`, `user_level.ml:2152`) vaut
+  exactement `port_no_min` à la création. Les deux portes du modèle comparent bien la même chose.
+
+D'où un helper local `with_ports ~min ~max ~default` dans `node_maker` : il refuse hors bornes
+(`Error`, donc `Co_bad`, sans que le réseau soit touché) et, sinon, résout le nombre de ports et
+rend la fonction de construction. Le message du dépassement **haut** est factorisé avec celui de
+`cmd_set` (`too_many_ports ~kind ~max`) : la même phrase, quelle que soit la porte à laquelle le
+client frappe. Le message du dépassement **bas** est propre à `add` et commenté : `set` énonce
+trois raisons possibles, dont **une seule** peut valoir pour un composant qui n'existe pas encore
+(rien n'est câblé, et la seule nature de taille fixe — le cloud — n'accepte pas `--ports` du tout).
+Le contrôle syntaxique de l'option (`--ports=abc`, `--ports=-3`) reste en amont, dans `cmd_add`.
+
+**Preuve** — banc versionné `driven-sessions/add-ports-bounds.sh`, onze cas dans une **seule**
+session pilotée (donc un `DISPLAY` et `socat`, sinon SKIP 77).
+
+| Cas | avant le correctif | après |
+|---|---|---|
+| `add machine m0 --ports=0` | `ok:true` — machine à **0 port** | `ok:false`, `m0` absent |
+| `add machine m99 --ports=99` | `ok:true` — machine à **99 ports** | `ok:false`, `m99` absent |
+| `add hub h3 --ports=3` | `ok:true` | `ok:false`, `h3` absent |
+| `add nat_bridge n0 --ports=0` | `ok:true` | `ok:false`, `n0` absent |
+| `add machine m1 --ports=1` / `m8 --ports=8` / `router r16 --ports=16` (bornes **incluses**) | `ok:true` | **inchangé** |
+| `add cloud c0 --ports=2` | `ok:false` (« fixed number of ports ») | **inchangé** |
+| `add machine m8 --ports=99` **et** `set m8 port_no 99` | l'un accepte, l'autre refuse | **la même phrase** des deux côtés |
+
+Rouge/vert mesuré : `passed: 6, failed: 5` sur le binaire d'avant, `passed: 11, failed: 0` après ;
+`dune build` rc 0 ; bancs des épisodes 2 et 3 rejoués verts (non-régression).
+
+**Le banc de l'ép. 3 a été complété, et il le fallait** : ses deux cas (`switch --ports=0`,
+`world_gateway --ports=99`) étaient les seuls à faire lever un constructeur *via* `add`, et cet
+épisode les intercepte désormais **avant** la construction — le rattrapage de l'ép. 3 se serait
+retrouvé sans aucune preuve, en silence, tout en restant vert. Un troisième cas l'exerce donc pour
+de bon : `add machine m-1`, dont le nom est refusé par `check_name` (`user_level.ml:521`) **après**
+que le nœud se soit inscrit au réseau. Mesuré : `ok:false`, et `ls` reste vide. C'est la leçon de
+méthode de l'épisode — **un correctif qui déplace une garde en amont peut vider de sa substance le
+banc d'un épisode antérieur sans jamais le faire échouer**.
+
+**Documentation** : `doc-src/scripting/README.md` gagne la puce des bornes de `--ports`, et son
+exemple de constructeur qui échoue (devenu faux) passe de `add switch s0 --ports=0` à
+`add machine m-1`. L'entrée est **retirée** de `docs/TODO.md` : 11 défauts restants.
+
+**Observé en chemin, non corrigé** (règle § 2) : rien. Le contrôle syntaxique `--ports` non entier
+double désormais partiellement la borne basse (un négatif est refusé par le parseur avant de l'être
+par la borne) ; c'est un doublon inoffensif — le message du parseur est plus précis pour
+`--ports=abc` — et non un défaut à inscrire.

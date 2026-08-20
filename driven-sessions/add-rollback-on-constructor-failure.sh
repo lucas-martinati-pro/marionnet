@@ -20,8 +20,14 @@
 #
 # A node registers itself with the network inside its constructor (user_level.ml), before the
 # part which may raise: `add switch s0 --ports=0' answers ok:false — and used to leave "s0" in
-# `ls', in the saved .mar, and its name taken. The four cases below play a real driven session,
+# `ls', in the saved .mar, and its name taken. The cases below play a real driven session,
 # hence they need a DISPLAY and socat; without either, everything is SKIPped, never faked.
+#
+# Episode 4 moved the port bounds *before* the construction, so the two --ports cases below no
+# longer reach the constructor at all: they now check the same invariant one guard earlier, which
+# is why a third case was added — an invalid name is what still makes a constructor raise
+# through `add' (check_name, user_level.ml:521), hence the one which really exercises the
+# rollback this bench was written for.
 #
 # Deliberately no `set -e': several commands here EXPECT a non-zero answer, and every status
 # that matters is tested explicitly. `set -u' and `pipefail' do apply.
@@ -148,9 +154,13 @@ if [[ "$(ask "new $tmpdir/bench.mar")" != *'"ok":true'* ]]; then
    exit 1
 fi
 
-# Both natures die in the same assertion (gui/ledgrid.ml), from both ends of the range.
+# Both natures used to die in the same assertion (gui/ledgrid.ml), from both ends of the range;
+# since episode 4 the bounds of the kind refuse them before the constructor is even called.
 case_refused_add_leaves_nothing "a switch with no port at all" s0 "switch s0 --ports=0"
 case_refused_add_leaves_nothing "a world_gateway with 99 ports" g99 "world_gateway g99 --ports=99"
+# The constructor itself: an invalid name is refused by check_name (user_level.ml:521) *after*
+# the node has registered itself with the network. This is the case the rollback exists for.
+case_refused_add_leaves_nothing "a machine with an invalid name" "m-1" "machine m-1"
 case_refused_name_is_free
 case_nominal
 

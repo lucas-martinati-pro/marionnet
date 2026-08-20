@@ -1151,6 +1151,12 @@ let adjust_kernel_after_distrib_change (c : editable) : (string * string * strin
            in
            [ ("kernel", k, now) ])
 
+(* Said once for the two doors of the model: [set <n> port_no N] below, and [add … --ports=N]
+   (node_maker). The upper bound is the kind's own, wherever the client knocks, so the sentence
+   is too — work-stream marionnet-todo-transverse, episode 4. *)
+let too_many_ports ~(kind:string) ~(max:int) : string =
+  Printf.sprintf "a %s cannot have more than %d ports" kind max
+
 (* The structural branch (episode 4d-2b). Every guard below is read from the model — none is a
    rule invented by the channel — and each one is tested *before* acting, because
    [update_structural_with] destroys the simulated device on its way: a refusal must cost
@@ -1204,7 +1210,7 @@ let set_structural (st : State.globalState) ~(kind:string) ~(field:string) ~(val
                       else
                         "this is the minimum of this kind of component"))
        | Some n when n > s.st_port_no_max ->
-           Co_bad (Printf.sprintf "a %s cannot have more than %d ports" kind s.st_port_no_max)
+           Co_bad (too_many_ports ~kind ~max:s.st_port_no_max)
        | Some n -> apply ~name:s.st_name ~port_no:n)
 
 let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:string)
@@ -1305,7 +1311,34 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
   : ((unit -> unit), string) result
   =
   let network = st#network in
-  let port_no default = match ports with Some n -> n | None -> default in
+  (* [--ports=N] is checked here, against the bounds of the kind, and *before* anything is built
+     (work-stream marionnet-todo-transverse, episode 4). Three things make this the right place:
+       - the bounds are not a second source of truth: [Const.port_no_min] / [Const.port_no_max]
+         are the very values each user_level constructor is given (machine.ml:591, hub.ml:309,
+         switch.ml:409, router.ml:1077, world_gateway.ml:384, cloud.ml:269, nat_bridge.ml:769,
+         bridge_common.ml:105), and [n#port_no_min] — which [set] reads — only hands them back
+         (user_level.ml:984). This branch already reads [Const.port_no_default] from the same
+         modules;
+       - building first and checking afterwards cannot refuse politely where it matters most:
+         --ports=0 on a kind with a ledgrid kills the constructor on an assertion
+         (gui/ledgrid.ml:320), so the client would get an Assert_failure instead of a sentence;
+       - and nothing is lost by being early: a node which does not exist yet has no cable, so the
+         *effective* lower bound [set] uses (network#port_no_lower_of, user_level.ml:2152) is
+         exactly [port_no_min] at creation time. *)
+  let with_ports ~(min:int) ~(max:int) ~(default:int) (make : port_no:int -> unit) =
+    match ports with
+    | Some n when n > max -> Error (too_many_ports ~kind ~max)
+    | Some n when n < min ->
+        (* [set] names three possible reasons for a refusal from below; only one of them can
+           apply to a component which does not exist yet: nothing is cabled, and the only
+           fixed-size kind (the cloud) does not take --ports at all. *)
+        Error (Printf.sprintf
+                 "a %s cannot have fewer than %d port(s): this is the minimum of this kind of \
+                  component" kind min)
+    | _ ->
+        let port_no = match ports with Some n -> n | None -> default in
+        Ok (fun () -> make ~port_no)
+  in
   (* Only the cloud has a fixed number of ports (cloud.ml:268): accepting --ports there
      would be accepting an argument we drop. Both bridges have the ports of their
      integrated switch (episode 10b for the NAT bridge, episode 12 for the LAN one). *)
@@ -1314,20 +1347,26 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
   in
   match kind with
   | "machine" ->
-      Ok (fun () -> ignore (new Machine.User_level_machine.machine ~network ~name
-                              ~port_no:(port_no Machine.Const.port_no_default) ()))
+      with_ports ~min:Machine.Const.port_no_min ~max:Machine.Const.port_no_max
+                 ~default:Machine.Const.port_no_default
+        (fun ~port_no -> ignore (new Machine.User_level_machine.machine ~network ~name ~port_no ()))
   | "router" ->
-      Ok (fun () -> ignore (new Router.User_level_router.router ~network ~name
-                              ~port_no:(port_no Router.Const.port_no_default) ()))
+      with_ports ~min:Router.Const.port_no_min ~max:Router.Const.port_no_max
+                 ~default:Router.Const.port_no_default
+        (fun ~port_no -> ignore (new Router.User_level_router.router ~network ~name ~port_no ()))
   | "switch" ->
-      Ok (fun () -> ignore (new Switch.User_level_switch.switch ~network ~name
-                              ~port_no:(port_no Switch.Const.port_no_default) ()))
+      with_ports ~min:Switch.Const.port_no_min ~max:Switch.Const.port_no_max
+                 ~default:Switch.Const.port_no_default
+        (fun ~port_no -> ignore (new Switch.User_level_switch.switch ~network ~name ~port_no ()))
   | "hub" ->
-      Ok (fun () -> ignore (new Hub.User_level_hub.hub ~network ~name
-                              ~port_no:(port_no Hub.Const.port_no_default) ()))
+      with_ports ~min:Hub.Const.port_no_min ~max:Hub.Const.port_no_max
+                 ~default:Hub.Const.port_no_default
+        (fun ~port_no -> ignore (new Hub.User_level_hub.hub ~network ~name ~port_no ()))
   | "world_gateway" ->
-      Ok (fun () -> ignore (new World_gateway.User_level_world_gateway.world_gateway ~network ~name
-                              ~port_no:(port_no World_gateway.Const.port_no_default) ()))
+      with_ports ~min:World_gateway.Const.port_no_min ~max:World_gateway.Const.port_no_max
+                 ~default:World_gateway.Const.port_no_default
+        (fun ~port_no -> ignore (new World_gateway.User_level_world_gateway.world_gateway
+                                   ~network ~name ~port_no ()))
   | "cloud" when ports <> None -> no_ports_here ()
   | "cloud" ->
       Ok (fun () -> ignore (new Cloud.User_level_cloud.cloud ~network ~name ()))
@@ -1335,11 +1374,15 @@ let node_maker (st : State.globalState) ~(kind:string) ~(name:string) ~(ports:in
       (* The kind is still spelled `world_bridge' in the grammar of this channel,
          and in the .mar files: only what a human reads says "LAN bridge"
          (work-stream modernisation-world-bridge, episode 7b). *)
-      Ok (fun () -> ignore (new Lan_bridge.User_level_lan_bridge.lan_bridge ~network ~name
-                              ~port_no:(port_no Bridge_common.Const.port_no_default) ()))
+      with_ports ~min:Bridge_common.Const.port_no_min ~max:Bridge_common.Const.port_no_max
+                 ~default:Bridge_common.Const.port_no_default
+        (fun ~port_no -> ignore (new Lan_bridge.User_level_lan_bridge.lan_bridge
+                                   ~network ~name ~port_no ()))
   | "nat_bridge" ->
-      Ok (fun () -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge ~network ~name
-                              ~port_no:(port_no Nat_bridge.Const.port_no_default) ()))
+      with_ports ~min:Nat_bridge.Const.port_no_min ~max:Nat_bridge.Const.port_no_max
+                 ~default:Nat_bridge.Const.port_no_default
+        (fun ~port_no -> ignore (new Nat_bridge.User_level_nat_bridge.nat_bridge
+                                   ~network ~name ~port_no ()))
   | "cable" ->
       Error "a cable is created by the connect command, which needs its two endpoints (§ 4.5)"
   | _ ->

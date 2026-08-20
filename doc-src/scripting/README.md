@@ -370,8 +370,13 @@ Notes that save time:
 * **A cable is not renamed** — neither by the GUI nor by the channel. Delete it and connect a
   new one.
 * **A refused `add` leaves nothing behind**: whatever the reason — an unknown field, a value the
-  model refuses, or the constructor itself (`add switch s0 --ports=0`) — the network is exactly
-  as it was, and the name is free again. So a script may retry under the same name.
+  model refuses, or the constructor itself (`add machine m-1`, whose name is not an identifier) —
+  the network is exactly as it was, and the name is free again. So a script may retry under the
+  same name.
+* **`--ports=` is checked against the bounds of the kind**, and checked *before* anything is
+  built: `add` refuses exactly what `set <name> port_no` refuses, in the same words (a machine
+  takes 1 to 8 ports, a hub, a switch, a router and a `world_gateway` 4 to 16, either bridge
+  1 to 16, and a cloud takes no `--ports` at all).
 * **`new`, `close` and `open` refuse to throw away work**: if the current project has changes
   they answer `unsaved_changes` until you say `--save` or `--no-save`. That is deliberate —
   the script must state its intent, not inherit a default.
