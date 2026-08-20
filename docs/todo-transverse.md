@@ -1,0 +1,181 @@
+# Chantier `marionnet-todo-transverse` — solder la TODOLIST transverse
+
+> **Objectif.** Traiter, une par une et **chacune avec au moins un commit**, les 15 entrées de
+> défaut de `docs/TODO.md` : ce qui a été repéré au fil des chantiers, jugé réel, et laissé de
+> côté parce qu'il n'appartenait à aucun d'eux. Une entrée est *soldée* quand son symptôme est
+> rejoué rouge avant / vert après, et **retirée de `docs/TODO.md` dans le commit qui la clôt**.
+
+Ouvert le 2026-08-20. Reprise : appliquer le skill `chantier-long` (MODE B).
+
+---
+
+## 1. Périmètre
+
+Les **15 entrées de défaut** de `docs/TODO.md`, à la date d'ouverture. Chacune y porte déjà son
+constat, ce qu'on veut à la place, et l'obstacle repéré : ce document ne recopie pas cette
+analyse, il porte **les décisions de cadrage** (§ 3) et **l'ordre d'exécution** (§ 4).
+
+**Hors périmètre, par décision explicite (2026-08-20)** : l'entrée *« Idée — composer deux
+projets (importer un `.mar` dans le projet courant) »*. Ce n'est pas un défaut mais une
+fonctionnalité, et le TODO en énumère lui-même quatre obstacles de fond (politique de renommage,
+fusion des treeviews persistées à part, répertoires `hostfs/`, remaps d'import à rejouer sur la
+seule partie importée). Elle **reste dans `docs/TODO.md`** et méritera son propre chantier.
+
+---
+
+## 2. Ce qui rend ce chantier différent des autres
+
+Il n'a **pas de sujet** : c'est un chantier de *solde*. Ses 15 épisodes ne construisent rien
+ensemble et se touchent à peine. La seule chose qui les relie est la discipline :
+
+1. **Un épisode = une entrée = au moins un commit**, portant le retrait de l'entrée du TODO.
+2. **La preuve précède l'annonce** : le symptôme exact du TODO, rejoué avant et après.
+3. **Aucune extension de périmètre** : si un épisode découvre un défaut voisin, il l'**écrit dans
+   `docs/TODO.md`**, il ne le corrige pas en passant. (L'inverse — la campagne qui s'étend —
+   est ce qui a fait que ces entrées ne sont pas déjà traitées.)
+
+---
+
+## 3. Décisions de cadrage (grill du 2026-08-20)
+
+### 3.1 Une entrée qu'une mesure bloque livre quand même sa mesure
+
+Deux entrées ne se règlent pas au clavier : le *rapport de fin de session* (« rien n'est
+instruit » — il faut mesurer le délai entre le marqueur de disponibilité et l'activation du hook
+systemd, sur plusieurs images) et la *durée du timeout mconsole*.
+
+Règle retenue : on mesure d'abord ; si la cause est établie, correctif + commit ; **si la mesure
+ne conclut pas, l'épisode livre la mesure** (commit : instrumentation, banc, paragraphe de
+journal) et l'entrée du TODO est **réduite à son reliquat** au lieu d'être supprimée. C'est la
+forme éprouvée à l'ép. 13 de `modernisation-world-bridge` : le geste impossible ici est *nommé*,
+pas escamoté.
+
+### 3.2 Répertoires de run : signaler, ne jamais purger tout seul
+
+Fait mesuré à l'ouverture : le répertoire `/tmp/marionnet-<n>.dir/` est créé par
+`project_paths#set_filename_and_create_the_project_working_directory` (`bin/state.ml:142`) et
+**détruit** par `reset_and_remove_the_project_working_directory` (`:196`), appelée par
+`close_project` — que le chemin *Quitter* invoque bien avant `quit_async`
+(`bin/gui/gui_menubar_MARIONNET.ml:435`). **Une sortie propre ne laisse donc rien.** Les 359
+répertoires relevés viennent tous de sessions mortes brutalement.
+
+Conséquence : il n'y a rien à corriger « à la sortie », et le seul levier est **au démarrage**.
+Décision : Marionnet **signale** les répertoires orphelins et **suggère la commande** —
+`useful-scripts/marionnet-cleanup` avec les options pertinentes — sans **jamais** rien retirer de
+lui-même. Motif : ce répertoire contient exactement la copie de travail que l'utilisateur n'a pas
+enregistrée. Une purge automatique, même vieille de trente jours, efface la seule copie qui
+restait.
+
+### 3.3 Noyau par défaut du routeur : la voie (b), pleine
+
+La voie (a) du TODO — réordonner `SUPPORTED_KERNELS` dans `router-guignol-18474.conf` — est
+**écartée** : ce fichier n'est pas versionné (le dépôt ne contient que `machine-{lenny,mandriva,
+pinocchio,template}.conf` et `router-pinocchio-09157.conf`), il vit sous `/usr/local/share/…`,
+et la prochaine reconstruction d'image l'écrase. Un chantier qui exige un commit par entrée ne
+peut pas s'y appuyer.
+
+Voie retenue : **(b) pleine** — la préférence qu'applique `remap_obsolete_kernel_at_import`
+devient le facteur commun, appliqué **aussi au constructeur**. « Premier noyau déclaré » devient
+« premier noyau déclaré *et* utilisable ici », pour la création comme pour l'import : une seule
+source de vérité, donc un défaut qui ne peut pas revenir par l'autre chemin. Le prix, assumé :
+cela touche le défaut de **toutes** les natures, d'où une preuve sur toutes les natures.
+
+### 3.4 `--control-socket` : refus de démarrer, généralisé à toute cause
+
+Le TODO ne voit que le chemin trop long ; la lecture du code montre plus large. `Control_server.start`
+attrape **déjà** l'échec et le journalise (`Control_server: NOT started: …`,
+`bin/control_server.ml:4643,4666`), puis Marionnet **continue en GUI seule** — pour la longueur
+comme pour une permission, un répertoire absent ou un socket occupé. Le silence perçu vient de ce
+que le journal n'est pas sous les yeux de qui lance un banc.
+
+Décision : quand `--control-socket` est donné et que le canal **ne peut pas** être ouvert, **quelle
+qu'en soit la cause**, Marionnet **refuse de démarrer**, avec un message sur **stderr**. Plus un
+contrôle de longueur **avant** le `bind`, nommant la limite (107 octets utiles de `sun_path`) et la
+longueur fournie. Motif : `--control-socket` **implique le mode script**
+(`bin/initialization.ml:92`) — une session pilotée que personne ne peut piloter n'a aucune raison
+de tourner, et c'est un banc, pas un humain, qui la lance.
+
+### 3.5 Le device simulé qui survit à l'extinction : remède local, pas refonte
+
+Deux entrées (`wait --ready` au second démarrage, `rc-set` sur un switch) ont **une seule** cause :
+`poweroff` arrête les processus mais **ne détruit pas** l'objet device simulé, si bien que tout ce
+qu'un `initializer` calcule n'est calculé **qu'une fois**.
+
+Décision : **remède local**, nature par nature — déplacer vers l'allumage ce qui doit être frais
+(`make_hostfs_content` dans `spawn` ; une **fonction** plutôt qu'une valeur pour le rc du switch).
+L'automate d'état n'est **pas** rouvert (`docs/refonte-automate-composants.md`, clos).
+
+La voie de fond — *le device simulé ne survit pas au `poweroff`* — guérirait la famille entière
+pour les huit natures, mais suppose d'établir d'abord ce qui **doit** survivre à l'extinction
+(identité, fichier cow, descripteurs de journaux, numéro d'instance, câbles branchés) : c'est
+précisément pourquoi l'objet survit aujourd'hui. Ce n'est pas un correctif, c'est un chantier.
+**La famille est nommée ici** pour qu'un futur passage sache où regarder.
+
+### 3.6 Preuve : bancs jetables, sauf cinq qui deviennent versionnés
+
+Convention du dépôt jusqu'ici : le banc est **jetable** (scratchpad), sa **sortie** est recopiée
+dans le doc du chantier. `git ls-files` ne contient en effet aucun banc — ni `components-bench.sh`,
+ni `rename-witness.sh`, ni les `selftest` des chantiers récents.
+
+Elle est **conservée par défaut**, avec une exception motivée par un critère unique :
+*le banc est-il déterministe et exécutable partout ?*
+
+| Bancs | Sort |
+|---|---|
+| Le canal et le modèle suffisent : aucun invité ne boote, aucun privilège | **versionnés** dans `driven-sessions/` |
+| Un invité doit booter, ou il faut `sudo`, ou une plateforme absente ici | **jetables**, preuve recopiée dans le journal ci-dessous |
+
+Cinq entrées tombent dans la première colonne : *label*, *`add --ports`*, *rollback du
+constructeur*, *`distrib` inexistante*, *`--control-socket` trop long*.
+
+**`driven-sessions/`** (nom retenu contre `tests/`, déjà pris par les tests unitaires OCaml sous
+`dune test`, et contre `bench`/`trial`, qui disent *benchmark* et *essai clinique* en anglais) :
+`driven` est le mot du dépôt pour une session pilotée par le canal
+(`bin/gui/gui_menubar_MARIONNET.ml:400`). Son `README.md` porte la règle d'entrée — *un script par
+défaut corrigé, rouge avant le correctif, vert après, sans invité qui boote ni privilège* — pour
+qu'il ne devienne pas un dépotoir d'exemples.
+
+---
+
+## 4. Les 15 épisodes, par coût croissant
+
+L'ordre est celui du coût, pas de la gravité : les correctifs courts d'abord, les diagnostics
+ouverts à la fin. Deux dépendances seulement : l'ép. 1 crée `driven-sessions/`, et l'ép. 4
+s'appuie sur le rollback de l'ép. 3.
+
+| N | Entrée de `docs/TODO.md` | Geste | Preuve |
+|---|---|---|---|
+| 1 | Le **label** se valide trop tard | `check_label` avant la première écriture de `update_with` (`bin/user_level.ml`), comme `check_new_name` | `driven-sessions/` (crée le répertoire et son README) |
+| 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/` |
+| 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/` |
+| 4 | `add … --ports=N` ne vérifie pas les bornes | Construire, vérifier, détruire — en réutilisant le rollback de l'ép. 3 plutôt qu'une seconde table `kind → (min,max)` | `driven-sessions/` |
+| 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
+| 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable |
+| 7 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
+| 8 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
+| 9 | `wait --ready` ment au second démarrage | `make_hostfs_content` au `spawn`, et le `O_TRUNC` manquant (§ 3.5) | banc jetable (invité) |
+| 10 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
+| 11 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
+| 12 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
+| 13 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
+| 14 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
+| 15 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
+
+---
+
+## 5. Journal d'avancement
+
+### 2026-08-20 — épisode 0 : ouverture
+
+Chantier officialisé. Périmètre arrêté à 15 entrées (la composition de projets reste au TODO,
+§ 1). Six décisions de cadrage prises avant toute édition (§ 3), dont trois reposent sur des faits
+**vérifiés dans le code à l'ouverture**, et non sur le TODO seul :
+
+- la sortie propre **retire déjà** le répertoire de run — le tas de `/tmp` vient des morts
+  brutales, pas d'une fuite à la sortie (§ 3.2) ;
+- `router-guignol-18474.conf` **n'est pas versionné** — la voie (a) du TODO n'est pas
+  committable (§ 3.3) ;
+- l'échec d'ouverture du canal est **déjà** attrapé et journalisé, et vaut pour **toute** cause,
+  pas seulement la longueur du chemin (§ 3.4).
+
+Aucun code modifié à cet épisode.

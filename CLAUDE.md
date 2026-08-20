@@ -139,6 +139,15 @@ l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
+- **TODO transverse** (solder les **15 entrées de défaut** de `docs/TODO.md`, une par épisode,
+  chacune avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
+  deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
+  15 épisodes par coût croissant) ; mémoire `marionnet-todo-transverse` ;
+  `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20, ép. 0 (cadrage) fait.
+  Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
+  **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
+  doc), et un épisode qui découvre un défaut voisin l'**écrit** dans `docs/TODO.md` au lieu de
+  le corriger en passant.
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :
@@ -274,6 +283,7 @@ Reprise : appliquer le skill `chantier-long`.
   (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
   `docs/daemon-elimination-study.md` (clos 2026-07-17).
 - **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours
+  (son solde est lui-même un chantier : `docs/todo-transverse.md`)
   (ce qui relève d'un chantier reste dans son doc, § « Reste au chantier »). Chaque entrée porte le
   constat, ce qu'on veut à la place, et l'obstacle d'implémentation déjà identifié.
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
