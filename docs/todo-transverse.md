@@ -146,7 +146,14 @@ Elle est **conservée par défaut**, avec une exception motivée par un critère
 Quatre entrées tombent dans la première colonne : *`add --ports`*, *rollback du constructeur*,
 *`distrib` inexistante*, *`--control-socket` trop long* — **cinq** depuis l'épisode 7, qui y a
 ajouté *`variant` inexistante* (le titre de ce paragraphe, écrit avant la correction ci-dessous,
-redevient exact par accident).
+redevient exact par accident), et **six** depuis l'épisode 11.
+
+> **Corrigé à l'épisode 11**, sur le critère lui-même et non sur son application : la table du § 4
+> annonçait un banc **jetable** pour le rc du switch, « parce qu'il faut démarrer quelque chose ».
+> Démarrer n'est pas la question — le critère dit *invité* et *privilège*. Un switch n'a ni l'un ni
+> l'autre : `vde_switch` est un processus utilisateur ordinaire, et le banc est **versionné**. Six,
+> donc, et une leçon : *ce qui décide n'est pas qu'une session tourne, mais ce qu'elle exige de la
+> plateforme.*
 
 > **Corrigé à l'épisode 1** : le *label* y figurait, à tort. Le canal ne peut pas fournir un label
 > arbitraire à `update_with` — `update_structural_with` lui passe `self#get_label`, déjà validé, et
@@ -182,7 +189,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 8 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) — **fait** |
 | 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable — **fait** |
 | 10 | `wait --ready` ment au second démarrage | **Révisé par la mesure** : la cause n'était pas un hostfs figé mais une **course** avec un `start` asynchrone — `--ready` n'accorde plus foi à un marqueur tant que le composant ne tourne pas ; plus le `O_TRUNC` manquant | banc jetable (invité) — **fait** |
-| 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | banc jetable (invité) |
+| 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | `driven-sessions/switch-rc-after-poweroff.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 12 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
@@ -836,3 +843,55 @@ L'entrée « Modèle — `wait --ready` ment au second démarrage » est **retir
 la phrase de l'entrée jumelle qui s'y adossait (« même famille que l'entrée précédente ») est
 corrigée sur place : 6 défauts restants au périmètre du chantier, plus les trois voisins entrés par
 les épisodes 7, 8 et 9.
+
+### 2026-08-20 — épisode 11 : le rc d'un switch est lu à chaque démarrage, non figé au premier
+
+**Le geste, en trois lignes utiles.** `make_simulated_device` (`bin/switch.ml`) ne calcule plus le
+contenu du rc, il passe la **fonction** qui le lira (`~get_rcfile_content`, § 3.5) ; la classe du
+niveau simulation reçoit un thunk au lieu d'une valeur ; et `spawn_internal_cables` l'appelle **une
+fois par `spawn`**, en tête, parce que la même réponse sert deux fois — la branche
+(`show_vde_terminal || rcfile_content <> None`) et l'envoi. Deux évaluations auraient rouvert, en
+petit, le défaut qu'on ferme : un switch dont le rc vient d'être activé aurait pris la branche
+« sans rc » puis tenté d'envoyer. Rien d'autre ne bouge : ni le `.mar`, ni `rc_contents`, ni le
+dialogue GUI — qui n'a jamais eu le défaut, `update_switch_with` détruisant le device.
+
+**Preuve — banc versionné `driven-sessions/switch-rc-after-poweroff.sh`**, et non jetable : le
+critère du § 3.6 parle d'**invité** et de **privilège**, pas de « démarrer quelque chose ». Trois
+cas, rejoués sur le binaire d'avant (`git stash` sur `bin/switch.ml` + `dune build`) puis après :
+
+| Cas | avant | après |
+|---|---|---|
+| 1er démarrage : le rc donné est joué (anti-faux-positif) | PASS | PASS |
+| 2ᵉ démarrage après `rc-set` : le **nouveau** rc, et plus l'ancien | **FAIL** | PASS |
+| rc **activé** après un démarrage sans rc (bascule de branche) | **FAIL** | PASS |
+
+soit **1 PASS / 2 FAIL** avant, **3 PASS / 0 FAIL** après. Ce que le banc lit n'est pas le modèle
+— qui n'a jamais menti — mais le journal `log <switch> rc_config`, c'est-à-dire ce que Marionnet a
+**réellement dit** à `vde_switch` : `> vlan/create 5` / `1000 Success` au premier démarrage,
+`vlan/create 7` au second. Le rc partant dans un thread après l'allocation des ports, le banc
+**attend** son apparition au lieu de lire une fois.
+
+**Le piège de l'épisode 10 s'est représenté, intact.** Le premier run est revenu avec trois échecs
+et des réponses **vides** : `socat` ferme la connexion une demi-seconde après avoir envoyé, et un
+`wait --state=on` est plus lent que cela. Aucun message, aucun code d'erreur — juste du vide, qu'un
+banc naïf lit comme un refus. `-t`/`-T` sont donc dans `ask`, avec le commentaire qui dit pourquoi.
+Ce piège est le premier du chantier à **frapper deux fois** : il est désormais dans un fichier
+versionné, pas seulement dans ce journal.
+
+**Le défaut voisin, mesuré et écrit, non corrigé** (règle § 2). Le même
+`make_simulated_device` lit **deux autres** réglages en valeur : `activate_fstp` et
+`show_vde_terminal`. Mesuré sur le premier — `set s1 activate_fstp true` répond `changed:true`,
+`get` relit `true`, et le démarrage suivant affiche toujours `FSTP IS DISABLED` — avec la preuve
+que `vde_switch` **a** été relancé (la racine annoncée change) : c'est sa ligne de commande qui est
+figée. Le remède du rc **ne s'y transpose pas** (`fstp` est un argument de ligne de commande,
+l'xterm un processus accessoire ajouté par un `initializer`), d'où une entrée neuve dans
+`docs/TODO.md` plutôt qu'une rallonge ici.
+
+**Non-régression** : `dune build` rc 0, `dune test` vert, et les **5** bancs versionnés antérieurs
+rejoués (4, 5, 11, 6, 9 — 35 vérifications, 0 échec), plus les 3 du banc neuf. Aucun processus
+survivant (`marionnet.exe`, `vde_switch`), aucun répertoire de run laissé par le banc. Aucune
+chaîne i18n : rien de visible n'a changé.
+
+L'entrée « Modèle — un `rc-set` sur un **switch** n'est pris en compte qu'au premier démarrage »
+est **retirée** de `docs/TODO.md` : **5 défauts restants** au périmètre du chantier, plus les
+**quatre** voisins entrés par les épisodes 7, 8, 9 et 11.

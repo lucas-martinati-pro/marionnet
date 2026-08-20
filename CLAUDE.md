@@ -157,10 +157,14 @@ Reprise : appliquer le skill `chantier-long`.
   répertoires de run des sessions mortes sont *signalés* au démarrage, jamais purgés)** et
   **7 (le jumeau `variant`, plus le refus du `set distrib` qui ferait perdre la variante portée)**,
   **8 (toute tentative `uml_mconsole` a une échéance mesurée de 2 s)**, **9 (deux sessions
-  simultanées se disent, au démarrage et à la collision de route)** et **10 (`wait --ready` ne
-  parle plus que d'un invité qui *tourne*)** faits —
+  simultanées se disent, au démarrage et à la collision de route)**, **10 (`wait --ready` ne
+  parle plus que d'un invité qui *tourne*)** et **11 (le rc d'un switch est lu à *chaque*
+  démarrage : une **fonction** au lieu d'une valeur au constructeur du device, évaluée une seule
+  fois par `spawn`)** faits —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
-  (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant).
+  (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
+  l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
+  chose mais d'exiger un **invité** ou un **privilège** — un switch n'exige ni l'un ni l'autre.
   Trois pièges durables de l'ép. 10 : (1) un `start` du canal **répond avant que le démarrage soit
   fait** (la tâche part sur le `Task_runner`), donc toute garde qui lit le disque juste après lit
   encore le boot précédent ; (2) `socat` **perd toute réponse plus lente qu'une demi-seconde**

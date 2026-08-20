@@ -490,7 +490,14 @@ class switch =
     let hublet_no = self#get_port_no in
     let show_vde_terminal = self#get_show_vde_terminal in
     let fstp = Option.of_bool (self#get_activate_fstp) in
-    let rcfile_content =
+    (* A function, not a value (episode 11 of `marionnet-todo-transverse'). Unlike a machine or a
+       router, a switch does NOT destroy its simulated device when it is powered off — there is no
+       cow file to renew — so the device outlives every start but the first one. A content read
+       here, once, would freeze the rc of the very first start: an `rc-set' accepted afterwards
+       (the channel writes it through [set_rc_content], without destroying anything) would be
+       replayed as the old one, in silence. Read at spawning time instead, which is when the
+       question is actually asked. *)
+    let get_rcfile_content () =
       match self#get_rc_config with
       | false, _ -> None
       | true, content -> Some content
@@ -501,7 +508,7 @@ class switch =
        ~hublet_no          (* TODO: why not accessible from parent? *)
        ~show_vde_terminal  (* TODO: why not accessible from parent? *)
        ?fstp
-       ?rcfile_content
+       ~get_rcfile_content
        ~working_directory:(network#project_working_directory)
        ~unexpected_death_callback
        ()) :> User_level.node Simulation_level.device)
@@ -1056,7 +1063,9 @@ class ['parent] switch =
       ?(show_vde_terminal=false)
       ?fstp
       ?rcfile (* Unused: vde_switch doesn't interpret correctly commands provided in this way! *)
-      ?rcfile_content
+      (* Episode 11 of `marionnet-todo-transverse': a function, because this device survives the
+         poweroff of its switch and is spawned again as it is. See [make_simulated_device]. *)
+      ?(get_rcfile_content = fun () -> None)
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -1081,6 +1090,10 @@ object(self)
     rc_journal_path ~working_directory ~name:(parent#get_name)
 
   method! spawn_internal_cables =
+    (* Asked once per spawn, and once only: the branch below and the sending further down must
+       see the same answer, or a switch whose rc was enabled in between would take the plain
+       branch and send nothing. *)
+    let rcfile_content = get_rcfile_content () in
     match show_vde_terminal || (rcfile_content <> None) with
     | false ->
         write_rc_journal_without_rc ~journal:(self#rc_journal) ~name:(parent#get_name) ();

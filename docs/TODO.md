@@ -138,28 +138,41 @@ fausse qu'on croit vraie**.
 
 ---
 
-## Modèle — un `rc-set` sur un **switch** n'est pris en compte qu'au premier démarrage
+## Modèle — sur un **switch**, tout ce qui n'est pas le rc reste celui du premier démarrage
 
-**Constat** (mesuré le 2026-08-12, `journalisation-profonde` ép. 17). Le contenu du rc est capturé à
-la **création du device simulé** (`switch.ml:460-468`, `make_simulated_device`), et ce device
-**survit à un `poweroff`** : un `rc-set` ultérieur est accepté (`changed: true`), `rc-get` rend bien
-le nouveau contenu, et le démarrage suivant rejoue **l'ancien** — sans que rien ne le signale. Pour
-une machine le problème n'existe pas : son rc est un fichier du hostfs, réécrit à chaque
-démarrage — parce qu'une machine ou un routeur **détruit** son device simulé en s'éteignant
-(`machine.ml`, `router.ml` : le démarrage suivant doit prendre un nouveau fichier cow). Le switch
-est justement celui qui ne le détruit pas : c'est ce qui rend le défaut possible ici et nulle part
-ailleurs, et c'est pourquoi l'entrée jumelle sur `wait --ready` (soldée le 2026-08-20, épisode 10
-de `docs/todo-transverse.md`) n'avait finalement **pas** la même cause.
+**Constat** (mesuré le 2026-08-20, `marionnet-todo-transverse` ép. 11, en soldant l'entrée jumelle
+sur le rc). `make_simulated_device` (`bin/switch.ml`) lit **trois** réglages à la création du device
+simulé : le contenu du rc — devenu une **fonction** à cet épisode —, `activate_fstp` et
+`show_vde_terminal`. Les deux derniers sont toujours des **valeurs**, et le device d'un switch
+survit à son extinction : ce qu'on change ensuite est accepté par le modèle et jamais joué.
 
-**Voulu.** Qu'un `rc-set` accepté soit celui qui sera joué au prochain démarrage, ou qu'il soit
-refusé en disant pourquoi.
+Mesuré sur `activate_fstp`, canal de contrôle, un switch éteint entre les deux démarrages :
 
-**Ce que l'implémentation devra affronter.** Deux remèdes, tous deux dans `switch.ml` : passer une
-**fonction** plutôt qu'une valeur au constructeur du device, ou détruire le device simulé quand le
-rc change. Comme ci-dessus, à trancher avec l'automate d'état en tête. En attendant, tout banc ou TP
-qui veut deux rc différents utilise **deux switchs**.
+```
+set s1 activate_fstp true   → {"ok":true,…,"old":"false","new":"true","changed":true}
+get s1 activate_fstp        → {"ok":true,…,"activate_fstp":"true"}
+switch-info s1 fstp         → "FST DATA VLAN 0000 ROOTSWITCH FSTP IS DISABLED"   ← 2e démarrage
+```
 
-*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+Le `vde_switch` **a bien** été relancé (la racine annoncée change d'un démarrage à l'autre) : c'est
+sa **ligne de commande**, figée avec le device, qui ne porte pas `-F`. `show_vde_terminal` n'a pas
+été mesuré mais partage le même point de capture, et pire : c'est un `initializer` qui ajoute le
+processus xterm à la création du device, donc l'activer plus tard ne peut rien produire.
+
+**Voulu.** Qu'un réglage accepté sur un switch éteint soit celui du prochain démarrage — comme le rc
+depuis l'ép. 11 —, ou qu'il soit refusé en disant pourquoi.
+
+**Ce que l'implémentation devra affronter.** Le remède du rc (une fonction plutôt qu'une valeur) ne
+se transpose pas tel quel : `fstp` est un **argument de la ligne de commande** de `vde_switch`,
+construite par `Simulation_level.hub_or_switch`, et l'xterm est un **processus accessoire** ajouté
+une fois pour toutes. Il faut donc soit recalculer les arguments dans le `spawn` (le patron du
+`slirpvde_process` de `modernisation-world-bridge` ép. 10a bis), soit détruire le device simulé
+quand un de ces champs change — ce qui rouvre l'automate d'état (`docs/refonte-automate-composants.md`,
+clos). Le dialogue GUI n'est **pas** concerné : il passe par `update_switch_with`, qui détruit le
+device.
+
+*Écrit ici le 2026-08-20 par l'ép. 11 de `marionnet-todo-transverse`, qui l'a rencontré sans le
+corriger (règle § 2 de `docs/todo-transverse.md`).*
 
 ---
 
