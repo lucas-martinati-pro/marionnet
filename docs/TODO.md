@@ -64,40 +64,6 @@ gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scr
 
 ---
 
-## Modèle — un **routeur créé aujourd'hui naît avec un noyau inutilisable**
-
-**Constat.** `add router r1` (canal) ou l'ajout d'un routeur par la GUI donne au composant le
-noyau **`3.2.64-ghost`**, dont Marionnet lui-même dit, au chargement d'un projet, qu'il est
-« unusable on this host » (série 3.2, stub SKAS0 cassé par les hôtes ≥ 6.x). Le routeur n'est donc
-pas bootable tant qu'on ne l'a pas **enregistré puis rouvert** : c'est la relecture qui déclenche
-le remap `3.2.64-ghost` → `6.12.95-i386`. Le même défaut frappe tout `.mar` antérieur à l'attribut
-`kernel` du routeur : son nœud n'en porte pas, le constructeur applique donc le même défaut, et le
-projet demande **deux** cycles d'ouverture/enregistrement pour converger.
-
-**Cause.** Deux règles justes se contredisent. (1) Le défaut de noyau suit le *filesystem* : c'est
-le **premier noyau déclaré** par son `.conf` (`user_level.ml:1151-1163`, règle posée à l'ép. 4f de
-`marionnet-pilotage-par-script` pour éviter les couples inbootables). (2) Le filesystem du routeur
-déclare `SUPPORTED_KERNELS='/3.2.[6-9]/ /-i386$/'`
-(`/usr/local/share/marionnet/filesystems/router-guignol-18474.conf`, ligne écrite à l'ép. 2 de
-`marionnet-retro-compat-kernels-images`) — le **premier** motif est donc la série 3.2. Le remap
-d'import, lui, **préfère** un `-i386` (`user_level.ml:remap_obsolete_kernel_at_import`), mais il
-n'est branché que sur `eval_forest_attribute` : jamais sur la création.
-
-**Voulu.** Qu'un routeur neuf soit bootable **sans** cycle enregistrement/relecture.
-
-**Ce que l'implémentation devra affronter.** Deux voies, et le choix n'est pas anodin.
-(a) *Réordonner* le `.conf` (`'/-i386$/ /3.2.[6-9]/'`) : une ligne, mais le fichier est **installé**
-(hors dépôt sur cette machine) et le même ordre gouverne la liste proposée par les dialogues.
-(b) Faire appliquer au **constructeur** la même préférence que le remap (facteur commun entre
-`user_level.ml:1151-1163` et `remap_obsolete_kernel_at_import`) : plus juste, mais cela change le
-défaut de **toutes** les natures, donc à valider contre `components-bench.sh`.
-
-*Repéré le 2026-08-09 par le banc de l'ép. 1 de `migration-marshal-to-text`, qui a d'abord signalé
-une adaptation « résiduelle » à la deuxième ouverture d'un projet déjà normalisé, puis l'a
-reproduite sur un projet **neuf** fabriqué par le canal.*
-
----
-
 ## i18n — en arbre de développement, Marionnet lit le catalogue d'un AUTRE Marionnet
 
 **Constat** (mesuré le 2026-08-10 à l'ép. 8b de `migration-marshal-to-text`, `strace -e openat`).

@@ -86,6 +86,17 @@ devient le facteur commun, appliqué **aussi au constructeur**. « Premier noyau
 source de vérité, donc un défaut qui ne peut pas revenir par l'autre chemin. Le prix, assumé :
 cela touche le défaut de **toutes** les natures, d'où une preuve sur toutes les natures.
 
+> **Sans objet depuis l'épisode 12**, et pour une raison qui vaut mieux que la voie (b) : le
+> défaut était déjà soldé, **à la racine**, par `79c25dd` (2026-08-13, hors chantier, prérequis
+> de l'épisode 20 de `journalisation-profonde`). Ce que le constructeur, le dialogue GUI et le
+> canal prennent tous les trois est la **tête** de `supported_kernels_of` ; cette liste vient de
+> `kernels#get_epithet_list`, désormais ordonnée du noyau le plus récent au plus ancien
+> (`?ordering`, `bin/disk.ml`) et non plus lexicographiquement. La tête est donc utilisable, sans
+> qu'aucun site d'appel ait eu à changer. La voie (b) aurait ajouté une **seconde** garde, en aval,
+> à une propriété déjà tenue en amont : l'épisode 12 ne l'écrit pas, il **verrouille** la propriété
+> par un banc (§ 5). Ce qui reste vrai du paragraphe ci-dessus : la voie (a) est écartée, et pour
+> le même motif.
+
 ### 3.4 `--control-socket` : refus de démarrer, généralisé à toute cause
 
 Le TODO ne voit que le chemin trop long ; la lecture du code montre plus large. `Control_server.start`
@@ -146,7 +157,8 @@ Elle est **conservée par défaut**, avec une exception motivée par un critère
 Quatre entrées tombent dans la première colonne : *`add --ports`*, *rollback du constructeur*,
 *`distrib` inexistante*, *`--control-socket` trop long* — **cinq** depuis l'épisode 7, qui y a
 ajouté *`variant` inexistante* (le titre de ce paragraphe, écrit avant la correction ci-dessous,
-redevient exact par accident), et **six** depuis l'épisode 11.
+redevient exact par accident), et **six** depuis l'épisode 11 — **sept** depuis l'épisode 12,
+dont le banc ne fait que créer, enregistrer et relire.
 
 > **Corrigé à l'épisode 11**, sur le critère lui-même et non sur son application : la table du § 4
 > annonçait un banc **jetable** pour le rc du switch, « parce qu'il faut démarrer quelque chose ».
@@ -190,7 +202,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 9 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable — **fait** |
 | 10 | `wait --ready` ment au second démarrage | **Révisé par la mesure** : la cause n'était pas un hostfs figé mais une **course** avec un `start` asynchrone — `--ready` n'accorde plus foi à un marqueur tant que le composant ne tourne pas ; plus le `O_TRUNC` manquant | banc jetable (invité) — **fait** |
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | `driven-sessions/switch-rc-after-poweroff.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
-| 12 | Un routeur neuf naît avec un noyau inutilisable | Voie (b) pleine (§ 3.3) | banc jetable, **toutes** les natures |
+| 12 | Un routeur neuf naît avec un noyau inutilisable | **Rien à corriger** : `79c25dd` (hors chantier) l'a soldé à la racine, l'entrée n'avait pas été retirée (§ 3.3, encadré) | `driven-sessions/default-kernel-needs-no-remap.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
 | 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
@@ -894,4 +906,76 @@ chaîne i18n : rien de visible n'a changé.
 
 L'entrée « Modèle — un `rc-set` sur un **switch** n'est pris en compte qu'au premier démarrage »
 est **retirée** de `docs/TODO.md` : **5 défauts restants** au périmètre du chantier, plus les
+**quatre** voisins entrés par les épisodes 7, 8, 9 et 11.
+
+---
+
+### 2026-08-20 — épisode 12 : le noyau d'un composant neuf n'a plus rien à remapper
+
+**L'entrée était déjà soldée — par un commit hors chantier, qui ne l'avait pas retirée.** Premier
+geste de l'épisode, avant toute ligne de code : rejouer le symptôme. Il n'existe plus. `add router
+r1` sur le binaire courant donne **`6.12.95-i386`**, non `3.2.64-ghost`, et la liste que le canal
+publie dans son refus (`set r1 kernel pas-un-noyau`) est ordonnée `6.12.95-i386, 3.2.64-ghost` :
+la tête de `supported_kernels_of` est utilisable.
+
+La cause de la guérison est **`79c25dd`** (2026-08-13, *fix(disk): the default kernel is now the
+most recent installed*), écrit comme prérequis de l'épisode 20 de `journalisation-profonde` :
+`kernels#get_epithet_list` reçoit un `?ordering` (`compare_epithets_by_decreasing_version`), donc
+la liste des noyaux n'est plus lexicographique. Elle l'était — parmi
+`{3.2.64-ghost, 6.12.95, 6.12.95-i386}`, la tête était la série 2014 — et *tous* les défauts sont
+alimentés par cette tête : le dialogue GUI, `User_level`, `Control_server`. Aucun site d'appel n'a
+eu à changer.
+
+Ce commit répare donc **à la racine** ce que l'entrée du TODO proposait de réparer en aval, par sa
+voie (b) : faire appliquer au constructeur la préférence de `remap_obsolete_kernel_at_import`. Le
+§ 3.3 est corrigé en conséquence ci-dessus : **la voie (b) n'a plus d'objet**, et l'écrire
+aujourd'hui serait une seconde garde redondante avec l'ordre de la liste — la source unique, elle,
+étant *en amont* (l'ordre) et non *en aval* (une préférence recopiée dans deux méthodes).
+
+**Ce que l'épisode livre alors : la preuve, et son verrou.** Une entrée ne se retire pas sur la
+foi d'un `git log` ; ce qui la retire, ici, est un banc qui **échoue sur le code d'avant**.
+
+**Le banc dit la propriété sans connaître la règle.** `driven-sessions/default-kernel-needs-no-remap.sh`
+ne compare aucune version, n'a aucune préférence pour `-i386`, ne lit aucun `SUPPORTED_KERNELS`.
+Il interroge Marionnet **deux fois** et compare : ce que le constructeur a choisi, et ce que
+`remap_obsolete_kernel_at_import` en fait au chargement suivant — la méthode dont c'est
+précisément le métier de remplacer un noyau que cet hôte ne peut pas faire tourner. Le désaccord,
+s'il existe, est **dit par Marionnet lui-même**, dans les `notifications` que porte la réponse à
+`open` : `router "r1": kernel "3.2.64-ghost" → "6.12.95-i386"`. La propriété prouvée est donc un
+**point fixe** : *créer, enregistrer, rouvrir ne change rien*.
+
+Trois cas, dont deux couvrent les deux moitiés de l'entrée du TODO :
+
+| Cas | avant (patch témoin) | après |
+|---|---|---|
+| 1. 6 composants créés ici (routeur et machine par défaut, puis un de chaque nature par filesystem installé) gardent leur noyau après enregistrement + relecture, sans un seul ajustement | **FAIL** | PASS |
+| 2. un `.mar` **sans attribut `kernel`** (projets antérieurs à l'attribut du routeur) converge en **un seul** cycle enregistrement/relecture | **FAIL** | PASS |
+| 3. contre-épreuve : un `.mar` qui nomme vraiment `3.2.64-ghost` est **toujours** réparé, et le dit | PASS | PASS |
+
+soit **1 PASS / 2 FAIL** avant, **3 PASS / 0 FAIL** après. Le « code d'avant » est ici un **patch
+témoin** — la ligne `~ordering:compare_epithets_by_decreasing_version` retirée de `bin/disk.ml`,
+`dune build`, banc, puis `git checkout` — c'est-à-dire exactement le code d'avant `79c25dd`.
+
+**Le cas 2 a failli être un faux vert, et c'est instructif.** Écrit d'abord comme le cas 1 (« le
+chargement ne rapporte aucun ajustement »), il passait **même sous le patch témoin** : sans
+attribut `kernel`, il n'y a rien à remapper, donc jamais rien à rapporter, quel que soit le noyau
+que le constructeur pose. Ce que l'entrée du TODO décrivait n'est pas un ajustement muet mais
+**deux cycles pour converger** — le banc joue donc le **second** cycle : ce que le constructeur a
+choisi est maintenant écrit comme attribut, et cette fois le chargeur parle. Leçon à ranger
+à côté de celle de l'épisode 4 : *un cas qui ne peut pas échouer ne prouve rien, et cela ne se voit
+pas en le lisant vert*.
+
+**Banc versionné** (§ 3.6) : ni invité ni privilège — on crée, on enregistre, on relit ; rien ne
+démarre. Il réécrit ses `.mar` avec `jq` (SKIP sans lui) plutôt que d'embarquer un vieux fichier
+binaire : ce qui compte est l'**absence** de l'attribut, que le lecteur `v3` traite comme les
+formats antérieurs. Deux pièges de bash s'y sont montrés : `add <kind> probe-distribs` est refusé
+par `check_name` (un tiret n'est pas un identifiant), et `local i=0` suivi de `i+=1` **concatène**
+(`0`, `01`, `011`) — `local -i` est nécessaire.
+
+**Non-régression** : `dune build` rc 0, `dune test` vert, les **6** bancs versionnés antérieurs
+rejoués, aucun processus survivant, aucun répertoire de run laissé. Aucune ligne d'OCaml touchée,
+donc aucune chaîne i18n.
+
+L'entrée « Modèle — un **routeur créé aujourd'hui naît avec un noyau inutilisable** » est
+**retirée** de `docs/TODO.md` : **4 défauts restants** au périmètre du chantier, plus les
 **quatre** voisins entrés par les épisodes 7, 8, 9 et 11.
