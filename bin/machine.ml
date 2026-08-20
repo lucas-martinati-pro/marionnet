@@ -619,6 +619,12 @@ class machine
   method! supported_kernels_if_any =
     Some (List.map fst (vm_installations#supported_kernels_of self#get_epithet))
 
+  (* Redefinition (User_level.component answers None): the filesystems installed on this host,
+     in the order the GUI combo offers them. Read by the control server to refuse an explicit
+     [set <n> distrib <unknown>] -- see there. *)
+  method! installed_distribs_if_any =
+    Some (vm_installations#filesystems#get_epithet_list)
+
   (** A machine will be started with a certain amount of memory *)
   val mutable memory : int = memory
   initializer ignore (self#check_memory memory)

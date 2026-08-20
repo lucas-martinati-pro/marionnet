@@ -751,6 +751,18 @@ fun ~(network:< .. >)
      server, which owns the message; this method is what lets it speak. *)
   method supported_kernels_if_any : string list option = None
 
+  (* Which filesystems ("distrib" epithets) are installed here, in the very order the GUI combo
+     offers them (gui_bricks.ml, distribution_choices) -- Disk already drops the ones without a
+     single compatible kernel (disk.ml). [None] means "this kind has no filesystem", which is an
+     answer, not a hole, exactly as above; REDEFINED in machine.ml and router.ml, which each hold
+     their own [vm_installations].
+     Read-only for the same reason as [supported_kernels_if_any]: the model must keep accepting an
+     epithet that is not installed, because a .mar may name one and refusing it would make the
+     project unloadable -- that is what remap_absent_distrib_at_import is for. The refusal of an
+     explicit write belongs to the control server, which owns the message; this method is what
+     lets it speak. *)
+  method installed_distribs_if_any : string list option = None
+
   (* Where this component's rc files live (see [Rc_files] above): the states/ subdirectory of
      the project, the very one treeview_documents.ml writes its documents into. Taken from the
      network rather than from [Treeview_history], which only machines and routers reach — a

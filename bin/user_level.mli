@@ -153,6 +153,10 @@ class virtual component :
     (* [None] unless the component has a filesystem (machines and routers do): the kernels its
        .conf declares as supported (SUPPORTED_KERNELS), in the GUI combo's order. *)
     method supported_kernels_if_any : string list option
+    (* [None] unless the component has a filesystem: the filesystems installed on this host, in
+       the GUI combo's order. Both are read-only: the refusal of an explicit write lives in the
+       control server (see [component] in user_level.ml). *)
+    method installed_distribs_if_any : string list option
     (* --- Run-commands files (work-stream `migration-marshal-to-text', episodes 5 and 6) --- *)
     (* The states/ subdirectory of the project, where the rc scripts live. *)
     method states_directory : string
@@ -279,6 +283,7 @@ class virtual node_with_ports_card :
     method rc_journal_file_if_any : string option
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
+    method installed_distribs_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -408,6 +413,7 @@ class virtual node_with_defects :
     method rc_journal_file_if_any : string option
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
+    method installed_distribs_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -527,6 +533,7 @@ class virtual node_with_ledgrid_and_defects :
     method rc_journal_file_if_any : string option
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
+    method installed_distribs_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -700,6 +707,7 @@ class type virtual cable =
     method rc_journal_file_if_any : string option
     method management_socket_if_running : string option
     method supported_kernels_if_any : string list option
+    method installed_distribs_if_any : string list option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list

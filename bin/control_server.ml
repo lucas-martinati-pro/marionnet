@@ -860,6 +860,10 @@ type editable = <
      supported (SUPPORTED_KERNELS), in the same order as the GUI combo. Read by the two guards
      of episode 4f — the model itself still accepts any installed kernel. *)
   supported_kernels_if_any : string list option;
+  (* [None] for everything but a machine and a router: the filesystems installed on this host, in
+     the GUI combo's order. Read by the guard of episode 5 of `marionnet-todo-transverse' -- the
+     model itself still remaps an absent epithet, which is what loading a .mar needs. *)
+  installed_distribs_if_any : string list option;
   (* The startup configurations this component owns, as (basename, content) pairs, and the way
      to replace one of them (user_level.ml). Since episode 5 of `migration-marshal-to-text' the
      *content* of a script is no longer an attribute of the forest — the forest carries the
@@ -1131,6 +1135,25 @@ let unsupported_kernel (c : editable) (value : string) : string option =
                list produces a component that never boots"
               distrib value (String.concat ", " ks))
 
+(* [Some detail] when the value is not the epithet of a filesystem installed here.
+
+   The model does NOT refuse it: [eval_forest_attribute ("distrib", x)] goes through
+   [remap_absent_distrib_at_import] (user_level.ml), which exists for the opposite need -- a .mar
+   may name a filesystem that is not installed here, and silently switching to a neighbour of the
+   same family (with an import warning) beats refusing to open the project. Applied to an explicit
+   write it turns a typo into a polite no-op: [set m1 distrib pas-une-distrib] used to answer
+   ok:true / changed:false. Hence this guard, symmetrical to [unsupported_kernel] above: the
+   channel refuses what it cannot do, and names what it would accept. The remap itself is left
+   untouched -- it is right for the import, which is its reason to exist. *)
+let unknown_distrib (c : editable) (value : string) : string option =
+  match c#installed_distribs_if_any with
+  | None | Some [] -> None
+  | Some ds when List.mem value ds -> None
+  | Some ds ->
+      Some (Printf.sprintf
+              "no filesystem %S is installed here; installed filesystems: %s. The GUI dialog                offers no other one either (gui_bricks.ml, distribution_choices); the model would                have silently switched to a neighbour of the same family, as it does when loading                a project that names an absent filesystem"
+              value (String.concat ", " ds))
+
 (* Called inside the network_change that has just changed "distrib". Returns what it had to
    rewrite, in the (field, old, new) shape of [Co_set]. *)
 let adjust_kernel_after_distrib_change (c : editable) : (string * string * string) list =
@@ -1245,9 +1268,13 @@ let cmd_set (st : State.globalState) ~(timeout:float) ~(name:string) ~(field:str
                        "a cable is not renamed in place: the GUI destroys it and creates it \
                         again (cable.ml:158-176). Use del + connect (§ 4.5)"))
     | Some old ->
-        (* The kernel guard comes before the write, like every other one here: the model would
-           accept the value and the component would simply never boot (episode 4f). *)
-        (match (if field = "kernel" then unsupported_kernel c value else None) with
+        (* The kernel and filesystem guards come before the write, like every other one here:
+           the model would accept the value and the component would simply never boot (episode
+           4f), or would not change at all (episode 5 of `marionnet-todo-transverse'). *)
+        (match (match field with
+                | "kernel"  -> unsupported_kernel c value
+                | "distrib" -> unknown_distrib c value
+                | _         -> None) with
          | Some detail -> Co_bad detail
          | None ->
              mutate_and_read_back st ~kind ~field ~old c
@@ -1483,9 +1510,14 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                                   "the field %S names the file holding a startup configuration; \
                                    the script itself is written by rc-set" k)
                   | (k, v) :: rest ->
-                      (* Same guard as [set]: a kernel the filesystem does not declare builds a
-                         component that never boots (episode 4f). *)
-                      (match (if k = "kernel" then unsupported_kernel component v else None) with
+                      (* Same guards as [set]: a kernel the filesystem does not declare builds a
+                         component that never boots (episode 4f), and a filesystem that is not
+                         installed would be remapped in silence (episode 5 of
+                         `marionnet-todo-transverse'). *)
+                      (match (match k with
+                              | "kernel"  -> unsupported_kernel component v
+                              | "distrib" -> unknown_distrib component v
+                              | _         -> None) with
                        | Some detail -> rollback detail
                        | None ->
                       let failure = ref None in

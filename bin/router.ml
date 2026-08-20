@@ -1104,6 +1104,12 @@ class router
   method! supported_kernels_if_any =
     Some (List.map fst (vm_installations#supported_kernels_of self#get_epithet))
 
+  (* Redefinition (User_level.component answers None): the filesystems installed on this host,
+     in the order the GUI combo offers them. Read by the control server to refuse an explicit
+     [set <n> distrib <unknown>] -- see there. *)
+  method! installed_distribs_if_any =
+    Some (vm_installations#filesystems#get_epithet_list)
+
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.router."^(self#icon_suffix_of_state)^"."^iconsize^".png")

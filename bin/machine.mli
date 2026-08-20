@@ -123,6 +123,8 @@ module User_level_machine : sig
       (* --- *)
       (* The kernels declared as supported by this machine's filesystem (SUPPORTED_KERNELS). *)
       method supported_kernels_if_any        : string list option
+      (* The filesystems installed on this host, in the GUI combo's order. *)
+      method installed_distribs_if_any       : string list option
       method get_kernel                      : [ `kernel ] Disk.epithet
       method set_kernel                      : [ `kernel ] Disk.epithet -> unit
       (* --- *)

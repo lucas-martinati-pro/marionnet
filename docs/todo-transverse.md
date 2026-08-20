@@ -156,7 +156,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 2 | `--control-socket` trop long échoue en silence | Refus de démarrer généralisé + contrôle de longueur avant le `bind` (§ 3.4) | `driven-sessions/control-socket-refusal.sh` — **fait** (crée le répertoire et son README) |
 | 3 | Un constructeur qui échoue laisse son nœud | Le rattrapage d'`add` cherche le nœud du nom demandé et le détruit, dans la même section critique | `driven-sessions/add-rollback-on-constructor-failure.sh` — **fait** |
 | 4 | `add … --ports=N` ne vérifie pas les bornes | Vérifier **avant** de construire, dans `node_maker`, contre les `Const.port_no_{min,max}` que le constructeur reçoit déjà | `driven-sessions/add-ports-bounds.sh` — **fait** |
-| 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/` |
+| 5 | `set … distrib <inexistante>` accepté sans rien changer | `bad_argument` nommant les distributions installées, patron de `supported_kernels_if_any` | `driven-sessions/set-distrib-unknown.sh` — **fait** |
 | 6 | Les répertoires de run ne sont balayés par personne | Signalement au démarrage + suggestion de `marionnet-cleanup` (§ 3.2) | banc jetable |
 | 7 | `uml_mconsole … sysrq e` peut rester bloqué | Échéance sur la tentative mconsole, durée **mesurée** sur un invité sain | banc jetable (invité) |
 | 8 | Deux sessions partagent l'adresse hôte de leurs taps | **Détection** et message ; l'adresse n'est pas dérivée (contrat réseau de `marionnet-daemon-elimination`) | banc jetable |
@@ -373,3 +373,54 @@ exemple de constructeur qui échoue (devenu faux) passe de `add switch s0 --port
 double désormais partiellement la borne basse (un négatif est refusé par le parseur avant de l'être
 par la borne) ; c'est un doublon inoffensif — le message du parseur est plus précis pour
 `--ports=abc` — et non un défaut à inscrire.
+
+### 2026-08-20 — épisode 5 : un filesystem non installé est refusé, plus remappé en silence
+
+**Le geste, en deux couches, sur le patron du noyau (ép. 4f de `pilotage-par-script`).** Le modèle
+n'apprend rien de neuf : il **publie** seulement ce qu'il savait déjà. `User_level.component` gagne
+`installed_distribs_if_any : string list option` (`None` par défaut — « cette nature n'a pas de
+filesystem » est une **réponse**, pas un trou), redéfinie dans `machine.ml` et `router.ml` par
+`Some vm_installations#filesystems#get_epithet_list` : chacune tient **son** jeu d'installations,
+et cette liste est littéralement celle que propose le combo de la GUI (`gui_bricks.ml`,
+`distribution_choices`), déjà débarrassée par `disk.ml` des filesystems sans noyau compatible. La
+méthode est **en lecture seule**, exactement comme `supported_kernels_if_any`, et pour la même
+raison : le modèle **doit** continuer d'accepter une épithète absente, sinon un `.mar` qui en nomme
+une devient inouvrable.
+
+Le refus vit donc dans le serveur, qui possède le message : `unknown_distrib`
+(`bin/control_server.ml`), jumelle de `unsupported_kernel`, appelée aux **deux** portes qui
+écrivent — `cmd_set` et `cmd_add` — chacune passant d'un `if … = "kernel"` à un `match` sur le nom
+du champ. Dans `cmd_add`, la garde tombe avant l'écriture, donc le rattrapage de l'ép. 3 rend le
+réseau intact. `remap_absent_distrib_at_import` n'est **pas** touchée : son comportement est correct
+pour l'import, qui est sa raison d'être — la consigne du TODO est respectée à la lettre.
+
+**Preuve** — banc versionné `driven-sessions/set-distrib-unknown.sh`, six cas dans une seule
+session pilotée (donc un `DISPLAY` et `socat`, sinon SKIP 77). Il ne connaît **aucun** chemin
+d'installation : la liste des filesystems, il la lit dans le refus lui-même — la garde nomme ce
+qu'elle accepterait, ce qui lui évite une seconde source de vérité.
+
+| Cas | avant le correctif | après |
+|---|---|---|
+| `set m1 distrib pas-une-distrib` | `ok:true`, `changed:false` — rien écrit, rien dit | `ok:false`, la valeur fautive **et** la liste des installés ; `m1` inchangé |
+| `add machine m2 --distrib=pas-une-distrib` | `ok:true` — machine créée sur le filesystem par défaut | `ok:false`, `m2` absent du réseau |
+| `add router r2 --distrib=pas-une-distrib` | `ok:true` | `ok:false`, `r2` absent (un routeur a **ses** filesystems) |
+| `set m1 distrib <son propre filesystem>` | `ok:true` | **inchangé** (anti-faux-positif) |
+| `set m1 kernel pas-un-noyau` | `ok:false` | **inchangé** (garde de l'ép. 4f, qui partage les deux sites d'appel) |
+| `set m1 distrib <un autre installé>` | *non jouable* : sans refus, le banc n'a pas de liste → SKIP | `ok:true`, relu depuis le modèle (`debian-trixie-47362` → `debian-wheezy-08367`) |
+
+Rouge/vert mesuré : `passed: 2, failed: 3, skipped: 1` sur le binaire d'avant (`git stash` +
+`dune build`), `passed: 6, failed: 0, skipped: 0` après restauration ; `dune build` rc 0.
+
+**Documentation** : `doc-src/scripting/README.md` gagne la puce « `distrib` et `kernel` doivent
+exister », qui dit aussi ce que la règle **n'est pas** (le chargement d'un `.mar` continue de
+remapper). `driven-sessions/README.md` gagne deux lignes : celle de ce banc **et** celle de
+`add-ports-bounds.sh`, oubliée à l'épisode 4.
+
+**Observé en chemin, non corrigé** (règle § 2) : `variant` a **exactement** le même défaut, mesuré
+au canal — `set m1 variant pas-une-variante` répond `ok:true`/`changed:false` et
+`add machine m3 --variant=pas-une-variante` construit une machine sans variante. Écrit dans
+`docs/TODO.md` comme entrée neuve, avec les trois obstacles qui l'empêchent d'être une copie de
+cette garde (la liste dépend du filesystem **courant**, `""` et `aucune` sont des valeurs
+légitimes, et il faut une sixième méthode dans les 5 types de classes de `user_level.mli`).
+L'entrée `distrib` est **retirée** de `docs/TODO.md` : 10 défauts restants au périmètre du
+chantier, plus le voisin qui vient d'y entrer.

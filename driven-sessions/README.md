@@ -40,3 +40,5 @@ Le critère vient de `docs/todo-transverse.md` § 3.6.
 |---|---|---|
 | `control-socket-refusal.sh` | `--control-socket` : refus de démarrer quand le canal ne peut pas être servi (chemin non absolu, chemin plus long que `sun_path`, répertoire non inscriptible), et non-régression du chemin nominal | `marionnet-todo-transverse` ép. 2 |
 | `add-rollback-on-constructor-failure.sh` | `add` : un composant refusé par son propre constructeur (`--ports=0`, `--ports=99`) ne laisse rien — ni dans `ls`, ni sur son nom — et un `add` légitime marche toujours | `marionnet-todo-transverse` ép. 3 |
+| `add-ports-bounds.sh` | `add … --ports=N` : les bornes sont celles de la nature (machine 1-8, hub 4-16…), vérifiées **avant** la construction, et `add` refuse dans les mêmes mots que `set … port_no` | `marionnet-todo-transverse` ép. 4 |
+| `set-distrib-unknown.sh` | `set … distrib` et `add … --distrib=` : un filesystem non installé est **refusé** (avec la liste de ceux qui le sont) au lieu d'être remplacé en silence ; une bascule légitime passe toujours | `marionnet-todo-transverse` ép. 5 |

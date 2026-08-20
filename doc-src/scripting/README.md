@@ -367,6 +367,12 @@ Notes that save time:
 * **A crossover cable** is `connect c3 m1:eth0 m2:eth0 --crossover`.
 * **`add machine` picks a bootable pair by itself**: it takes the first kernel the chosen
   filesystem declares, like the dialog does. A machine added by the channel starts.
+* **`distrib` and `kernel` must exist**: `set <name> distrib` (and `add … --distrib=`) refuses a
+  filesystem which is not installed on this host, and names the ones which are; `set <name>
+  kernel` refuses a kernel the filesystem does not declare. Neither is silently replaced. This is
+  the channel's rule, not the model's: *loading* a `.mar` which names an absent filesystem still
+  switches to a neighbour of the same family, with an import warning, rather than refusing to
+  open the project.
 * **A cable is not renamed** — neither by the GUI nor by the channel. Delete it and connect a
   new one.
 * **A refused `add` leaves nothing behind**: whatever the reason — an unknown field, a value the

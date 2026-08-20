@@ -36,33 +36,36 @@ placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
 
 ---
 
-## Canal — `set <n> distrib <épithète inexistante>` est accepté **sans rien changer**
+## Canal — `set <n> variant <épithète inexistante>` est accepté **sans rien changer**
 
-**Constat.** `set m1 distrib pas-une-distrib` répond `ok:true` avec `changed:false` : le champ passe
-par `#eval_forest_attribute ("distrib", …)`, qui appelle `remap_absent_distrib_at_import`
-(`machine.ml:660`, `router.ml:1228`). Cette méthode existe pour le **chargement d'un `.mar`** — un
-projet peut nommer un filesystem qui n'est pas installé ici, et le remplacer en silence (avec un
-avertissement d'import) vaut mieux que refuser d'ouvrir le projet. Employée sur un `set` explicite,
-elle transforme une faute de frappe en no-op poli.
+**Constat.** `set m1 variant pas-une-variante` répond `ok:true` avec `changed:false`, et
+`add machine m3 --variant=pas-une-variante` construit une machine dont le champ `variant` vaut
+`""`. Mesuré le 2026-08-20. La cause est exactement celle du `distrib` soldé le même jour
+(ép. 5 de `marionnet-todo-transverse`) : `#eval_forest_attribute ("variant", …)` passe par
+`remap_absent_variant_at_import` (`bin/user_level.ml`), écrite pour le **chargement d'un `.mar`**
+— une variante disparue ne doit pas rendre le projet inouvrable, le composant retombe sur le
+filesystem vierge avec un avertissement d'import. Sur un `set` explicite, c'est une faute de
+frappe transformée en no-op.
 
-**Pourquoi ce n'est pas grave aujourd'hui.** La réponse porte `changed:false` et la valeur **relue**
-(§ 4.3) : un script qui compare `new` à ce qu'il demandait le voit. Mais il doit y penser, alors que
-partout ailleurs le canal **refuse** ce qu'il ne peut pas faire (champ inconnu, noyau hors
-`SUPPORTED_KERNELS` depuis l'ép. 4f, nom non identifiant…).
+**Voulu.** Un `bad_argument` nommant les variantes disponibles **pour le filesystem courant**,
+comme la garde du noyau nomme les noyaux supportés et comme celle du filesystem nomme les
+distributions installées.
 
-**Voulu.** Un `bad_argument` nommant les distributions installées, comme la garde du noyau nomme les
-noyaux supportés. C'est la même exigence, sur le champ voisin.
+**Ce que l'implémentation devra affronter.** Ce n'est **pas** une copie de la garde `distrib` :
+1. la liste dépend du filesystem **courant** du composant (`vm_installations#variants_of
+   self#get_epithet`), donc elle change quand `distrib` change — et `cmd_add` applique déjà
+   `distrib` en premier, ce qui rend l'ordre correct, mais un `set distrib` ultérieur peut
+   invalider la variante déjà posée (la GUI, elle, verrouille les deux combos après création) ;
+2. `""` et `aucune` sont des valeurs **légitimes** (« pas de variante ») et doivent rester
+   acceptées — le patron `unknown_distrib` refuserait tout ce qui n'est pas dans la liste ;
+3. il faut une méthode de lecture de plus sur `component` (patron d'`installed_distribs_if_any`,
+   ép. 5), donc les mêmes retouches dans les 5 types de classes de `bin/user_level.mli`.
+**Ne pas** toucher `remap_absent_variant_at_import` : son comportement est correct pour l'import,
+qui est sa raison d'être.
 
-**Ce que l'implémentation devra affronter.** Le modèle ne publie pas la liste des filesystems
-installés : `vm_installations#filesystems#get_epithet_list` n'est accessible qu'aux classes qui
-tiennent `vm_installations`. Il faudrait une méthode de lecture de plus sur `component` (patron de
-`supported_kernels_if_any`, ép. 4f) — donc les trois pièges connus du `.mli` — pour un défaut dont
-personne n'a encore souffert. À faire au prochain passage sur ces gardes, pas avant. **Ne pas**
-toucher `remap_absent_distrib_at_import` : son comportement est correct pour l'import, qui est sa
-raison d'être.
-
-*Repéré le 2026-08-07 par le banc de l'ép. 4f (`components-bench.sh`, bloc C11), qui avait lui-même
-confondu un répertoire `…_variants` avec une épithète — l'erreur du banc a révélé celle du canal.*
+*Repéré le 2026-08-20 par l'épisode 5 de `marionnet-todo-transverse`, qui soldait le défaut
+jumeau sur `distrib` et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
+s'écrit, il ne se corrige pas en passant).*
 
 ## Idée — **composer** deux projets (importer un `.mar` dans le projet courant)
 
