@@ -659,6 +659,60 @@ let rec wait_child child_pid events =
              (wait_child child_pid events))
  ;;
 
+ (** {b The parent-death signal (PR_SET_PDEATHSIG)} *)
+
+ (* Ask the kernel to signal a child when its parent dies. We do not set it ourselves: it has to
+    be set IN THE CHILD, between fork and exec, and [Unix.create_process] offers no hook there.
+    `setpriv --pdeathsig <sig> -- <cmd>' does exactly that and then EXECS the command, so the pid
+    we get back is still the pid of the final process -- every kill-by-pid is unaffected. *)
+ type pdeathsig = [ `KILL | `TERM ]
+
+ let string_of_pdeathsig = function `KILL -> "KILL" | `TERM -> "TERM"
+
+ (* Is there a `setpriv' here that really understands --pdeathsig (the option appeared in
+    util-linux 2.33)? The binary is TRIED, once, rather than assumed: under an older setpriv
+    every process would die at birth instead of merely losing its safety net. The answer is
+    remembered, failure included, so the probe runs at most once. A race between two threads is
+    benign: at worst the probe runs twice, never with two different answers. *)
+ let setpriv_understands_pdeathsig : bool option ref = ref None
+
+ let setpriv_is_usable () =
+  match !setpriv_understands_pdeathsig with
+  | Some answer -> answer
+  | None ->
+      let answer =
+        try (Sys.command "setpriv --pdeathsig KILL -- /bin/true 1>/dev/null 2>/dev/null") = 0
+        with _ -> false
+      in
+      setpriv_understands_pdeathsig := (Some answer);
+      answer
+
+ (* The (program, argv) couple as it will really be handed to execvp. Note that argv.(0) becomes
+    the program's own pathname: setpriv has no --argv0, so a caller's chosen argv.(0) cannot
+    survive here. This is the reason why `?pseudo' is documented as having no effect together
+    with `?pdeathsig'. *)
+ let with_pdeathsig ?pdeathsig (program:program) (argv:string array) : program * (string array) =
+  match pdeathsig with
+  | None -> (program, argv)
+  | Some _ when not (setpriv_is_usable ()) -> (program, argv)
+  | Some signal ->
+      let rest =
+        if (Array.length argv) <= 1 then [||] else Array.sub argv 1 ((Array.length argv) - 1)
+      in
+      ("setpriv",
+       Array.append
+         [| "setpriv"; "--pdeathsig"; (string_of_pdeathsig signal); "--"; program |]
+         rest)
+
+ (** A drop-in replacement for [Unix.create_process] (and, providing [?environment], for
+     [Unix.create_process_env]) able to arm the parent-death signal. Without [?pdeathsig] it
+     relays the standard primitive verbatim. *)
+ let create_process ?pdeathsig ?environment (program:program) (argv:string array) stdin stdout stderr : int =
+  let (program, argv) = with_pdeathsig ?pdeathsig program argv in
+  match environment with
+  | None     -> Unix.create_process     program argv     stdin stdout stderr
+  | Some env -> Unix.create_process_env program argv env stdin stdout stderr
+
  (** Create process with [?stdin=Unix.stdin], [?stdout=Unix.stdout] and [?stderr=Unix.stderr] connected
      to a given source and sinks, then wait until its termination.
      During waiting, some signals could be forwarded by the father to the child specifying the argument [?(forward = [Sys.sigint; Sys.sigabrt; Sys.sigquit; Sys.sigterm; Sys.sigcont])].
@@ -667,6 +721,7 @@ let rec wait_child child_pid events =
      - [Signal_forward s] is raised if the father has transmitted a signal (certainly the reason of the violent termination of the child);
      - [Waitpid] is raised if the internal call to [Unix.waitpid] has failed for some unknown reasons.*)
  let create_process_and_wait
+ ?pdeathsig
  ?(stdin  = Source.Unix_descr Unix.stdin)
  ?(stdout = Sink.Unix_descr   Unix.stdout)
  ?(stderr = Sink.Unix_descr   Unix.stderr)
@@ -682,7 +737,7 @@ let rec wait_child child_pid events =
  let events = new_waiting_events () in
  let name = match pseudo with None -> program | Some name -> name in
  let argv = (Array.of_list (name :: arguments)) in
- let child_pid = (Unix.create_process program argv stdin stdout stderr) in
+ let child_pid = (create_process ?pdeathsig program argv stdin stdout stderr) in
  (match register_pid with None -> () | Some f -> f child_pid);
  let handler = new_handler child_pid events in
  let handler_backups = List.map  (fun s -> (s, (Sys.signal s handler))) forward in

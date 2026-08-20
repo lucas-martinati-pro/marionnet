@@ -121,9 +121,11 @@ l'**install** et le **RPM**.
    `bin/gui/*.ml-template`, `uml/startup.old/`, une partie de `Makefile.d/`,
    `bin/po/POTFILES.in` — ne pas les prendre comme référence sans vérifier.
 5. Répertoires vides attendus par le build (`bin/kernels/`) non suivis par git.
-6. **Aucun enfant n'est forké « en direct ».** Le seul `Unix.create_process` du dépôt vit dans
-   `bin/simulation_level.ml` et passe par un **thread spawner dédié et pérenne**, qui préfixe
-   chaque commande de `setpriv --pdeathsig KILL --` : c'est ce qui empêche les auxiliaires
+6. **Aucun enfant n'est forké « en direct ».** Le seul site de spawn du dépôt vit dans
+   `bin/simulation_level.ml` et passe par un **thread spawner dédié et pérenne**, qui appelle
+   `UnixExtra.create_process ~pdeathsig:`KILL` (ocamlbricks, `lib/EXTRA/unixExtra.ml` — c'est
+   là qu'est le préfixe `setpriv --pdeathsig` et la sonde qui décide s'il est utilisable) :
+   c'est ce qui empêche les auxiliaires
    (`vde_switch`, `wirefilter`, UML, xterm) de survivre à un Marionnet tué brutalement. Deux
    choses à ne pas défaire : le signal de mort du parent est relatif au **thread** qui a forké
    (d'où le thread pérenne — les composants démarrent depuis des threads éphémères de

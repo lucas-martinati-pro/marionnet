@@ -162,7 +162,39 @@ val kill_safe : int -> int -> unit
 exception Signal_forward of int
 exception Waitpid
 
+(** {b The parent-death signal (PR_SET_PDEATHSIG)}
+
+    Asking for [?pdeathsig] makes the kernel signal the child when its parent dies -- the only
+    mechanism that survives a [SIGKILL] of the parent, where [at_exit] and every user-space net
+    are defeated. It is implemented by prefixing the command with
+    [setpriv --pdeathsig <sig> --], which then {e execs} the program, so the returned pid is
+    still the pid of the final process.
+
+    Three things are paid at runtime, and must be known before asking for it:
+    - the signal goes off when the {b thread} that forked dies, not when the process dies. Fork
+      from an ephemeral thread and the child is killed as soon as that thread returns. Callers
+      needing long-lived children must fork from a thread that lives as long as the process;
+    - it reaches {b direct} children only. Grandchildren are unaffected;
+    - [?pseudo] has {b no effect} together with [?pdeathsig]: [setpriv] has no [--argv0], so
+      [argv.(0)] is necessarily the program's own pathname.
+
+    When no usable [setpriv] is found (absent, or older than util-linux 2.33 where the option
+    did not exist) the program is run exactly as it would have been without the option: the
+    parent-death signal is a bonus, never a precondition. The probe is real -- [setpriv] is
+    tried once, not assumed -- and its answer is remembered. *)
+type pdeathsig = [ `KILL | `TERM ]
+
+(** A drop-in replacement for [Unix.create_process], and for [Unix.create_process_env] when
+    [?environment] is provided, able to arm the parent-death signal. Without [?pdeathsig] it
+    relays the standard primitive verbatim. *)
+val create_process :
+  ?pdeathsig:pdeathsig ->
+  ?environment:string array ->
+  program -> string array ->
+  Unix.file_descr -> Unix.file_descr -> Unix.file_descr -> int
+
 val create_process_and_wait :
+  ?pdeathsig:pdeathsig ->
   ?stdin:Endpoint.Source.t ->
   ?stdout:Endpoint.Sink.t  ->
   ?stderr:Endpoint.Sink.t  ->

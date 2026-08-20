@@ -56,8 +56,8 @@ let an_input_descriptor_never_sending_anything =
 
    Every long-lived auxiliary of a simulation -- the `vde_switch' of a hublet, the
    `wirefilter' of a cable, `slirpvde', the terminal emulators, and the UML guests themselves
-   -- is a DIRECT child of Marionnet, created by the single `Unix.create_process' of
-   `process#spawn' below. Marionnet does clean up after itself (`at_exit' kills the
+   -- is a DIRECT child of Marionnet, created by the single spawn site of `process#spawn'
+   below. Marionnet does clean up after itself (`at_exit' kills the
    descendants, plus the descendants monitor), but every one of those nets only plays on an
    exit that RUNS: a SIGKILL, a crash, or a freeze that has to be cut short defeats them all
    at once, and the children are then reparented to `systemd --user', where they go on
@@ -69,7 +69,9 @@ let an_input_descriptor_never_sending_anything =
    set it ourselves -- it has to be set IN THE CHILD, between fork and exec, and
    `Unix.create_process' offers no hook there. `setpriv --pdeathsig KILL -- <cmd>' does
    exactly that and then EXECS the command, so the pid we get back is still the pid of the
-   final process: `Death_monitor' and every kill-by-pid are unaffected.
+   final process: `Death_monitor' and every kill-by-pid are unaffected. That part lives in
+   ocamlbricks, as `UnixExtra.create_process ~pdeathsig', which has nothing Marionnet-specific
+   about it.
 
    THE TRAP, and the whole reason for the dedicated thread below: the parent-death signal is
    relative to the THREAD that forked, not to the process. Components are started from
@@ -79,39 +81,9 @@ let an_input_descriptor_never_sending_anything =
    which lives exactly as long as the process does. It also serialises fork/exec, which is
    desirable in a multithreaded program. *)
 
-(* Absolute path of a `setpriv' that really understands --pdeathsig (the option appeared in
-   util-linux 2.33): the binary is probed once, for real, rather than assumed. When there is
-   none we spawn just as before -- no hard dependency, simply no safety net. Forced from the
-   spawner thread only, hence no concurrent Lazy.force. *)
-let pdeathsig_wrapper : string option Lazy.t =
-  lazy begin
-    let candidates = ["/usr/bin/setpriv"; "/bin/setpriv"; "/usr/local/bin/setpriv"] in
-    match List.find_opt (Sys.file_exists) candidates with
-    | None ->
-        Log.printf
-          "Simulation_level: no `setpriv' found: spawned processes will NOT be killed if Marionnet dies brutally.\n";
-        None
-    | Some setpriv ->
-        let probe = Printf.sprintf "%s --pdeathsig KILL -- /bin/true >/dev/null 2>&1" setpriv in
-        if Sys.command probe = 0 then begin
-          Log.printf1
-            "Simulation_level: `%s --pdeathsig KILL' works: spawned processes will not survive Marionnet.\n" setpriv;
-          Some setpriv
-          end
-        else begin
-          Log.printf1
-            "Simulation_level: `%s' does not support --pdeathsig (util-linux < 2.33?): spawning without a safety net.\n" setpriv;
-          None
-          end
-  end
-
-(* The (program, argv) couple as it will really be handed to execve. *)
-let with_pdeathsig (program : string) (argv : string array) : string * string array =
-  match Lazy.force pdeathsig_wrapper with
-  | None -> (program, argv)
-  | Some setpriv ->
-      (* setpriv execs its command, so argv.(0) of the final process is left untouched: *)
-      (setpriv, Array.append [| "setpriv"; "--pdeathsig"; "KILL"; "--" |] argv)
+(* The arming itself is not written here: `UnixExtra.create_process ~pdeathsig' does it, probing
+   for a usable `setpriv' once and falling back to a plain spawn when there is none. What stays
+   here is the part a library cannot do for its caller -- the permanent thread of THE TRAP. *)
 
 type spawn_request = {
   sr_program : string;
@@ -134,10 +106,9 @@ let () =
             let r = spawner_mailbox#dequeue in
             let reply =
               try
-                let (program, argv) = with_pdeathsig (r.sr_program) (r.sr_argv) in
-                Ok (match r.sr_env with
-                    | None     -> Unix.create_process     program argv     (r.sr_stdin) (r.sr_stdout) (r.sr_stderr)
-                    | Some env -> Unix.create_process_env program argv env (r.sr_stdin) (r.sr_stdout) (r.sr_stderr))
+                Ok (UnixExtra.create_process
+                      ~pdeathsig:`KILL ?environment:(r.sr_env)
+                      (r.sr_program) (r.sr_argv) (r.sr_stdin) (r.sr_stdout) (r.sr_stderr))
               with e -> Error e
             in
             r.sr_reply#enqueue reply
