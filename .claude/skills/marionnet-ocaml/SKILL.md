@@ -52,6 +52,19 @@ diagnostics — sans lire les fichiers en entier.
   telle quelle au serveur ; cf. `CLAUDE.md` § Build). Restent aveugles : les 7 sources de
   préprocesseurs elles-mêmes.
 
+## Graphe inter-modules : déjà installé ici
+
+Le graphe de dépendances **inter-modules** du dépôt existe : `make module-graph` produit
+`_build/module-graph/module-graph.{deps,dot,svg}` (156 nœuds, 975 arêtes, ~30 s), et
+`make module-graph-check` le revalide contre l'`ocamldep` de dune. À interroger **avant**
+tout refactor non trivial : appelants d'un module, appelés, rayon d'impact transitif.
+
+- Requêtes, pièges et procédure : skill global **`ocaml-code-graph`** — ne pas les redécouvrir ici.
+- Complément indispensable : **`make check`** (`dune build @check`) typecheck *tous* les modules,
+  ce que `dune build` ne fait pas (clôture atteignable depuis `marionnet.ml` seulement) ; il
+  conditionne `make ocaml-index`, donc les *references* exactes d'`ocamllsp` ci-dessus.
+- Granularité **module**. Pour « qui appelle cette fonction ? » → `ocamllsp`, pas le graphe.
+
 ## ocamlformat : inapplicable ici (fait établi, pas une préférence)
 
 `ocamlformat` **échoue** sur ce dépôt, il ne s'agit pas d'un choix de style :
