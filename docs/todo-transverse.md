@@ -56,6 +56,15 @@ journal) et l'entrée du TODO est **réduite à son reliquat** au lieu d'être s
 forme éprouvée à l'ép. 13 de `modernisation-world-bridge` : le geste impossible ici est *nommé*,
 pas escamoté.
 
+> **Fusible jamais employé, et c'est le résultat qui compte.** L'ép. 8 a mesuré le délai mconsole
+> (moins de 10 ms sur un invité sain) et l'ép. 16 le délai marqueur → hook : les deux ont
+> **conclu**, donc les deux ont livré un correctif et non un reliquat. Ce que le fusible a vraiment
+> servi à faire est plus discret — autoriser à **ouvrir** ces deux épisodes sans savoir s'ils
+> aboutiraient, au lieu de les repousser encore. Leçon de l'ép. 16 : une entrée « non instruite »
+> peut l'être **pour une raison fausse**. Sa prémisse (« les journaux `rc_config` se terminent à
+> l'identique, donc le relais est allé au bout ») ne prouvait rien du tout, ce journal s'arrêtant
+> précisément avant le code en cause.
+
 ### 3.2 Répertoires de run : signaler, ne jamais purger tout seul
 
 Fait mesuré à l'ouverture : le répertoire `/tmp/marionnet-<n>.dir/` est créé par
@@ -206,7 +215,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | **Constat retourné par la mesure** : elles ne s'étalent pas, elles se **rétrécissent** en colonne et s'allongent sans fin (`set_resizable true` + Gtk+ 3). Plafond dans le glade, zone défilante bornée, `set_resizable` retiré ; aucun `\n` manuel à toucher (mesuré sur les 12 catalogues) | `driven-sessions/message-window-geometry.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI, captures ») |
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile `sensitive_when_Saveable` ; la source de notification aux transitions **existait déjà** (`refresh_sketch_counter`), `user_level.ml` n'est pas touché | `driven-sessions/save-entries-greyed-while-running.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI ») |
 | 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | Instrumenter d'abord (fait : diagnostic **différé**, le journal n'existe pas encore quand la cascade décide), puis deux causes **mesurées** : `Sites.locale` est **vide** hors installation, et les `.mo` d'un site dune sont des **liens** que `find ~kind:'f'` rejette. Candidat « arbre de dev » + `~follow:()` | `driven-sessions/gettext-catalogue-in-dev-tree.sh` — **fait** (banc **versionné**, contre l'annonce « `strace -e openat` » jetable) |
-| 16 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
+| 16 | Le rapport de fin de session n'est pas garanti | **Instruit par la mesure, et la cause n'est pas celle qu'on suspectait** : l'unité systemd n'est pas mise en file, elle est armée par le **mauvais relais** — la `zz-journal` est sourcée **après** le `rcfile` de l'utilisateur, qui est ce qui écrit le marqueur de `wait --ready`. Le hook déménage dans le prologue `00-journal` | banc jetable (invité) — **fait** (fusible § 3.1 non employé : la mesure a conclu) |
 
 ---
 
@@ -1215,3 +1224,78 @@ au binaire de `_build` le **glade** et les **images** du Marionnet installé. Le
 transposable tel quel — `MARIONNET_PREFIX` pilote aussi `filesystems/` et `kernels/`, absents ou
 vides dans le préfixe que fabrique `dune build` (mesuré) — d'où une entrée neuve dans
 `docs/TODO.md` plutôt qu'une correction en passant.
+
+### 2026-08-21 — épisode 16 : le hook d'arrêt est armé avant que l'invité se dise prêt
+
+**La cause n'était pas celle que l'entrée supposait, et la preuve sur laquelle elle s'appuyait
+n'en était pas une.** Le TODO tenait pour acquis que « les trois avaient atteint la fin de leur
+relais (journaux `rc_config` identiques) », et en déduisait une unité systemd *mise en file
+jusqu'à la fin du boot*. Mesuré ici : `rc_config.log` s'arrête à
+`marionnet-relay.zz-journal:42`, c'est-à-dire au moment où l'épilogue **referme la capture** — soit
+environ deux cents lignes **avant** le code qui installait le hook. Trois journaux identiques ne
+disaient donc rien du tout de l'armement du hook. La prémisse est nulle, et l'hypothèse qu'elle
+portait aussi : sur `debian-trixie`, `marionnet-report.service` est active **13 s** après le
+`start`, en même seconde que `marionnet-watch.service` — aucune file d'attente, aucun retard de job.
+
+**La vraie cause est un ordre de sourçage, et elle se lit dans le nom des fichiers.** Le relais de
+l'invité source `/mnt/hostfs/marionnet-relay*` par ordre alphabétique :
+
+    marionnet-relay.00-journal   ← le prologue
+    marionnet-relay.rcfile       ← la configuration de démarrage de l'utilisateur
+    marionnet-relay.zz-journal   ← l'épilogue, qui armait le hook
+
+Or le **marqueur de disponibilité** — celui que `wait --ready` attend — est écrit par le `rcfile`,
+donc **avant** l'épilogue. Un banc (ou un enseignant) qui fait ce que tout le dépôt recommande,
+`wait --ready` puis extinction, court après l'armement de son propre hook. Le défaut ne se voit pas
+avec une configuration triviale (l'écart tombe sous la seconde) : il se voit dès qu'elle **travaille
+encore** après avoir écrit le marqueur, ce que fait n'importe quel scénario de TP.
+
+**Rouge, puis vert, sur le même cas.** Configuration de démarrage
+`: > /mnt/hostfs/marionnet-guest-ready ; sleep 40`, un `stop` (extinction *gracieuse*) envoyé dès la
+réponse de `wait --ready` :
+
+| | `wait --ready` | hook au moment du `stop` | `report.md` |
+|---|---|---|---|
+| avant | 8,6 s | pas armé | **absent** |
+| après | 11,6 s | armé | **présent**, 10 658 o, terminé (`_end of the report:_`) |
+
+**Le correctif tient en un déménagement.** Le bloc *SHUTDOWN HOOK* passe de
+`bin/scripts/marionnet-relay.zz-journal.sh` à `bin/scripts/marionnet-relay.00-journal.sh` (fin du
+prologue) ; l'épilogue garde à sa place une section qui ne dit plus que **où** le hook est parti et
+pourquoi. Rien d'autre ne change : ni l'unité, ni ses dépendances, ni la branche SysV. Trois points
+tenus délibérément :
+
+- le `systemctl start` reste **bloquant** — c'est ce que le déménagement achète : quand la ligne
+  rend la main, l'unité *est* active, donc armée. Le `--no-block` dont le veilleur a besoin
+  remettrait une petite course à la place de la grande ;
+- `After=network.target` est **gardé** : systemd arrête dans l'ordre inverse du démarrage, donc
+  c'est cette ligne qui maintient le réseau debout pendant que le rapport est pris. Elle n'est pas
+  là pour le démarrage ;
+- le veilleur (`marionnet-watch.service`), lui, **ne bouge pas** : il ne doit pas démarrer avant que
+  l'épilogue ait refermé la capture (son propre commentaire l'explique), et rien ne juge un invité
+  prêt sur lui.
+
+**Effet de bord favorable, et non recherché** : l'armement du hook se produit désormais **pendant**
+que la trace est ouverte, donc `rc_config.log` en porte la marque (`__mrn_journal_hook=…`,
+`[[ -r /mnt/hostfs/marionnet-report ]]`) avant que le bloc ne se taise. Le geste que l'épisode 21
+croyait pouvoir lire dans ce journal y est enfin.
+
+**Non-régression, mesurée.** Cas ordinaire à 1, 3 et 6 machines `debian-trixie` : rapport présent et
+complet pour chacune (10,2 à 10,5 ko), avant comme après. Sur `debian-wheezy-08367` (SysV, noyau
+`6.12.95-i386`) : le boot aboutit, la trace montre le bloc atteint à `00-journal:269`, et
+`report.md` reste **absent** — c'est la *limite connue* déjà documentée (l'extinction passe par
+`uml_mconsole cad`, auquel l'`inittab` de ces images répond par `/sbin/halt`, ce qui court-circuite
+`/etc/rc0.d`), inchangée par le déménagement.
+
+**Banc jetable**, conformément au § 3.6 (un invité doit booter) : les quatre scripts de mesure sont
+restés au scratchpad ; leurs sorties sont ci-dessus. Le binaire porte bien les scripts modifiés
+(`preprocessor_deps` de `bin/dune`, piège 7 du `CLAUDE.md` — vérifié par `strings` sur
+`marionnet.exe`).
+
+**Un défaut voisin, écrit et non corrigé** (règle du chantier) : les deux échéances qui encadrent le
+rapport se contredisent — `TimeoutStopSec=60` dans l'unité de l'invité, contre les **30 s** du fil
+que `gracefully_terminate` (`bin/simulation_level.ml`) arme *avant* d'envoyer le `cad` et qui SIGKILL
+toute la hiérarchie UML. L'enveloppe extérieure vaut la moitié de l'intérieure : un rapport lent est
+perdu avec son invité au lieu d'être tronqué proprement. Mesuré ici, hôte au repos : 4 à 8 s par
+machine — la marge existe, mais un facteur 4 de charge la mange, et c'est exactement la condition de
+l'épisode 21. Entrée neuve dans `docs/TODO.md` plutôt qu'une constante ajustée au jugé.

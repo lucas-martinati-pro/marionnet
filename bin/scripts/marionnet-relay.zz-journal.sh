@@ -35,6 +35,9 @@
 # has nothing to do with the user's startup configuration -- and it needed no
 # change at all to the prologue.
 #
+# The SHUTDOWN HOOK of episode 7 used to be grafted here as well, and that was a
+# defect: see the section which now only says where it went.
+#
 # Like its companion: plain Bash (no bashbricks inside a guest), everything
 # guarded, and never fatal to a boot.
 # ---------------------------------------------------------------------------
@@ -200,106 +203,19 @@ fi
 unset __mrn_journal_boot_log
 
 # ---------------------------------------------------------------------------
-# SHUTDOWN HOOK (episode 7).  What the session ENDED with.
+# SHUTDOWN HOOK (episode 7) -- NO LONGER HERE.  It is armed by the PROLOGUE,
+# `marionnet-relay.00-journal', and the move is the whole point of episode 16 of
+# `marionnet-todo-transverse': sourced from the epilogue, the hook was installed
+# AFTER the user's startup configuration, hence after the readiness marker that
+# `wait --ready' answers on -- so a session which shut a guest down as soon as it
+# said it was ready lost its report.  Measured, deterministically: a startup
+# configuration which writes the marker and then keeps working for 40s leaves NO
+# report.md at all.  The prologue is sourced before that configuration, so the
+# hook is armed before anything the guest can be judged ready by.
 #
-# The two files above are written at boot time.  The exam mode, however, imports
-# a report of the session at its END (machine.ml, router.ml), and nobody was
-# producing it any more.  The producer is /mnt/hostfs/marionnet-report, deposited
-# by the same host code as this file; all that is left to do here is to hook it
-# to the shutdown of this guest.  Hooking it from HERE, at the end of the boot,
-# is what makes it work on an image that knows nothing about it.
-#
-# The branch is decided by the GUEST, exactly as the collector above decides its
-# own: what a guest declares is worth less than what it runs.
-#
-# THE UNIT IS THE WHOLE DIFFICULTY, and both halves of it were measured, one
-# after the other, by a probe that got them wrong first:
-#
-#   1. `Conflicts=shutdown.target' is what makes the unit STOP -- hence run its
-#      ExecStop -- during the shutdown sequence.  Written with
-#      `DefaultDependencies=no' and no Conflicts, the unit is never stopped at
-#      all: it is simply killed at the end, and nothing is ever written.
-#      Measured: witness absent in that shape, present and dated without
-#      `DefaultDependencies=no' (which carries the Conflicts implicitly).
-#   2. But the implicit shape is not enough either: with the DEFAULT
-#      dependencies the ExecStop is ordered against nothing, so the rest of the
-#      shutdown runs in parallel and the guest powers off IN THE MIDDLE of the
-#      report.  Measured: a report cut in half, mid-command.  Hence the explicit
-#      shape below -- `Before=shutdown.target umount.target' puts our ExecStop
-#      first, and everything else waits for it -- with `After=network.target' so
-#      that the network configuration is still readable when we describe it.
-#
-# Never fatal, never noisy: a guest that refuses the hook simply has no report.
-#
-# KNOWN LIMIT, measured: on the old SysV images (wheezy, guignol), the shutdown
-# sequence is NOT played at all.  Marionnet extinguishes a guest with
-# `uml_mconsole cad', and their /etc/inittab answers it with `/sbin/halt'
-# directly -- a deliberate Marionnet workaround (a `-r' crashes 3.2.x kernels,
-# see the /sbin/shutdown wrapper of those images) which bypasses /etc/rc0.d
-# entirely.  The K01 link below therefore only fires when the shutdown is asked
-# from INSIDE the guest.  Those images still get their command history and their
-# two boot journals, which do not depend on any shutdown.
+# The watcher below stays here: it must not be started before the epilogue has
+# closed the capture (see its own comment), and nothing is judged ready on it.
 # ---------------------------------------------------------------------------
-
-__mrn_journal_hook=/mnt/hostfs/marionnet-report
-
-if [[ -r "$__mrn_journal_hook" ]]; then
-
-  case $- in *x*) __mrn_journal_x_hook=yes ;; *) __mrn_journal_x_hook=no ;; esac
-  { set +x ; } 2>/dev/null
-
-  if [[ -d /run/systemd/system ]] && type -p systemctl >/dev/null 2>&1; then
-    {
-      cat > /run/systemd/system/marionnet-report.service <<UNIT
-[Unit]
-Description=Marionnet: end-of-session report (journalisation-profonde)
-DefaultDependencies=no
-Conflicts=shutdown.target
-Before=shutdown.target umount.target
-After=network.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/true
-ExecStop=/bin/bash $__mrn_journal_hook
-TimeoutStopSec=60
-UNIT
-      systemctl daemon-reload
-      # `start' is enough: the unit exists only for its ExecStop, and it is the
-      # shutdown that will stop it.  No `enable' (nothing must survive a reboot
-      # of the guest: the host deposits everything again anyway).
-      systemctl start marionnet-report.service
-    } >/dev/null 2>&1
-  elif [[ -d /etc/rc0.d && -d /etc/init.d ]]; then
-    {
-      cat > /etc/init.d/marionnet-report <<INIT
-#!/bin/sh
-### BEGIN INIT INFO
-# Provides:          marionnet-report
-# Required-Start:
-# Required-Stop:
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: Marionnet: end-of-session report
-### END INIT INFO
-case "\$1" in
-  stop) /bin/bash $__mrn_journal_hook ;;
-  *)    : ;;
-esac
-INIT
-      chmod +x /etc/init.d/marionnet-report
-      # K01: as early as possible in the shutdown sequence, so that the hostfs is
-      # still mounted and the network still configured when the report is taken.
-      ln -sf ../init.d/marionnet-report /etc/rc0.d/K01marionnet-report
-      [[ -d /etc/rc6.d ]] && ln -sf ../init.d/marionnet-report /etc/rc6.d/K01marionnet-report
-    } >/dev/null 2>&1
-  fi
-
-  [[ "$__mrn_journal_x_hook" = yes ]] && { set -x ; } 2>/dev/null
-  unset __mrn_journal_x_hook
-fi
-unset __mrn_journal_hook
 
 # ---------------------------------------------------------------------------
 # ON-DEMAND WATCHER (episodes 16 and 18).  What the session is doing RIGHT NOW.

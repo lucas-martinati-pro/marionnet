@@ -75,26 +75,31 @@ corriger (règle § 2 de `docs/todo-transverse.md`).*
 
 ---
 
-## Invités — le rapport de fin de session n'est pas garanti
+## Invités — l'échéance de l'hôte est **deux fois plus courte** que celle du hook d'arrêt
 
-**Constat** (mesuré le 2026-08-13, `journalisation-profonde` ép. 21, sur trois machines
-`debian-trixie` d'une même session `--exam`) : les trois ont archivé leur console et leur terminal,
-**une seule** avait écrit son `report.md`, alors que les trois avaient atteint la fin de leur relais
-(journaux `rc_config` identiques). L'hypothèse la plus simple est celle que l'ép. 16 a déjà mesurée
-pour le veilleur : une unité systemd **démarrée depuis le relais** n'a son job exécuté qu'**à la fin
-du boot**, bien après le marqueur de disponibilité ; une extinction demandée quelques secondes après
-ce marqueur manque donc le hook d'arrêt.
+**Constat** (mesuré le 2026-08-21 par l'ép. 16 de `marionnet-todo-transverse`, en soldant l'entrée
+voisine) : deux échéances encadrent le rapport de fin de session, et elles se contredisent.
+Côté invité, l'unité `marionnet-report.service` s'accorde `TimeoutStopSec=60`. Côté hôte,
+`gracefully_terminate` (`bin/simulation_level.ml`) crée, **avant** d'envoyer le `cad`, un fil qui
+attend **30 s** puis SIGKILL toute la hiérarchie UML. L'enveloppe extérieure vaut donc la **moitié**
+de l'enveloppe intérieure : un rapport lent n'est pas coupé par systemd, qui lui laisse 60 s, mais
+par l'hôte, qui tue l'invité au milieu de l'écriture. Mesuré ici, hôte au repos : le rapport prend
+4 à 8 s par machine (1, 3 puis 6 machines) — donc la marge existe, mais un facteur 4 de charge la
+mange, et c'est exactement la condition dans laquelle le défaut voisin avait été observé (trois
+processus `marionnet.exe` concurrents, `journalisation-profonde` ép. 21).
 
-**Voulu.** Qu'une machine éteinte proprement laisse son rapport, quel que soit le délai depuis son
-démarrage — c'est une **copie à noter** qui manque, pas un journal de confort.
+**Voulu.** Que les deux échéances soient ordonnées dans le bon sens : l'invité doit renoncer
+**avant** que l'hôte ne tire, pour qu'un rapport lent soit *tronqué proprement par systemd*
+(et le reste de l'extinction joué) plutôt que perdu avec l'invité.
 
-**Ce que l'implémentation devra affronter.** Rien n'est instruit : il faudrait d'abord **mesurer**
-le délai réel entre le marqueur et l'activation du hook, sur plusieurs images, avant de choisir
-entre attendre, accrocher autrement, ou déclencher le rapport à l'extinction depuis l'hôte. En
-attendant, le remède coûte une commande — **demander le rapport avant d'éteindre** — ce que
-`doc-src/teacher-guide.md` § 5.5 conseille et que les bancs jouent.
+**Ce que l'implémentation devra affronter.** Le choix n'est pas neutre : abaisser
+`TimeoutStopSec` sous les 30 s de l'hôte coupe un rapport lent mais laisse l'extinction se finir ;
+relever les 30 s de l'hôte retarde l'extinction de **tout** invité gelé, or ce fil est précisément
+le filet qui rattrape un invité qui ignore le `cad`. Il faudrait donc mesurer le rapport sous
+charge réelle avant de choisir un couple, et non ajuster une constante au jugé.
 
-*Reversé ici le 2026-08-15 à la clôture de `journalisation-profonde`.*
+*Écrit ici le 2026-08-21 par l'ép. 16 de `marionnet-todo-transverse`, qui l'a rencontré sans le
+corriger (règle § 2 de `docs/todo-transverse.md`).*
 
 ---
 
