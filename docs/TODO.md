@@ -158,36 +158,6 @@ pas du tout, d'où l'échéance posée à l'épisode 8 sur toute tentative mcons
 
 ---
 
-## Modèle — un `set` explicite peut déposer un **avertissement d'import** hors de tout import
-
-**Constat** (mesuré le 2026-08-20). `set r1 variant aucune` sur un **routeur** répond `ok:true` et
-retire bien la variante, mais dépose au passage un avertissement d'import — journal :
-`import remapping: router "r1": variant "aucune" removed (…)`. La cause est une asymétrie :
-`bin/machine.ml:710` traite `("variant", "aucune")` par une branche dédiée (rétro-compatibilité
-des vieux `.mar`), `bin/router.ml:1373` n'a que la branche `""`, si bien que le mot passe par
-`remap_absent_variant_at_import`, dont c'est la raison d'être… **à l'import**. Or ces
-avertissements ne sont pas jetés : ils s'empilent dans `network#add_import_warning` et sont lus
-par `get_and_reset_import_warnings` (`bin/state.ml:581,606`) **à la fin du prochain chargement de
-projet**, qui les présentera comme venant de ce chargement-là.
-
-**Voulu.** Qu'un avertissement d'import ne naisse que d'un import. Deux moitiés, la seconde plus
-importante : (1) le routeur reconnaît `aucune` comme la machine le fait ; (2) plus généralement,
-un `remap_*_at_import` appelé hors chargement ne devrait pas alimenter la liste récapitulative —
-ou celle-ci devrait être vidée à l'**ouverture** d'un chargement, et non seulement à sa fin.
-
-**Ce que l'implémentation devra affronter.** Le remap est appelé depuis `eval_forest_attribute`,
-qui est le **même chemin** pour l'import d'un `.mar` et pour une écriture du canal : les
-distinguer demande soit un drapeau porté par le chargement, soit de sortir du remap la
-reconnaissance des valeurs « pas de variante ». La première moitié (une branche dans `router.ml`)
-est un correctif d'une ligne, mais elle ne règle que le symptôme mesuré ici : les autres
-`remap_*_at_import` gardent la même porte.
-
-*Repéré le 2026-08-20 par l'épisode 7 de `marionnet-todo-transverse`, qui soldait le défaut du
-`variant` inexistant et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
-s'écrit, il ne se corrige pas en passant).*
-
----
-
 ## Canal — `save` écrit le projet pendant que des composants tournent
 
 **Constat** (mesuré le 2026-08-21). En GUI, « Enregistrer » est refusé tant que quelque chose est

@@ -1491,16 +1491,32 @@ class virtual virtual_machine_with_history_and_ifconfig
     | false -> self#logged_failwith "unknown kernel \"%s\"" x
 
   (* --- Automatic remapping at project loading. ---
-     Called ONLY from the deserialization code (eval_forest_attribute in machine.ml and
-     router.ml). Old projects (.mar) may reference kernels of the 2.6.x/3.2.x "-ghost"
-     series, whose SKAS0 stub segfaults on modern hosts, as well as filesystem builds
-     that are not installed. These methods try to remap such references to something
-     bootable, informing the user via network#add_import_warning (the warnings are
-     displayed in a recapitulative dialog at the end of the project loading). *)
+     Old projects (.mar) may reference kernels of the 2.6.x/3.2.x "-ghost" series, whose
+     SKAS0 stub segfaults on modern hosts, as well as filesystem builds that are not
+     installed. These methods try to remap such references to something bootable, informing
+     the user via network#add_import_warning (the warnings are displayed in a recapitulative
+     dialog at the end of the project loading).
+
+     They are called from [eval_forest_attribute] (machine.ml and router.ml), which is the
+     deserialization code -- but NOT only: it is also the setter the control channel writes
+     through (control_server.ml, cmd_set and the writes of add). This comment used to claim
+     the opposite, and the claim was measured false at episode 17 of
+     `marionnet-todo-transverse'. What makes the distinction is
+     [network#import_in_progress]: outside an import the warning is journalled and dropped,
+     never queued for the next loading to display. *)
 
   method private add_import_warning_and_log ?(severity=`Warning) ~(summary:string) ~(detail:string) () : unit =
     let w = { iw_summary = summary; iw_detail = detail; iw_severity = severity } in
-    let () = Log.printf1 "import remapping: %s\n" (string_of_import_warning w) in
+    (* Journalled in both cases, but never under the same name: a remap which happens outside
+       any import is a defect of the caller, not an adaptation of a project, and saying so is
+       what keeps it visible now that the list no longer records it (episode 17). *)
+    let () =
+      Log.printf2 "%s: %s\n"
+        (if network#import_in_progress
+         then "import remapping"
+         else "remapping outside any import (NOT recorded)")
+        (string_of_import_warning w)
+    in
     network#add_import_warning w
 
   (* The build-number-less family of a filesystem epithet: "guignol-18474" -> "guignol-".
@@ -1913,9 +1929,34 @@ class network
 
  (* Warnings collected while deserializing a project (see the remap_*_at_import methods
     of virtual_machine_with_history_and_ifconfig); displayed by state#open_project_async
-    in a recapitulative dialog, then reset: *)
+    in a recapitulative dialog, then reset.
+
+    Recorded ONLY while an import is running, and only in the thread which runs it. Measured
+    (episode 17 of `marionnet-todo-transverse'): the remap_*_at_import methods are reachable
+    from an EXPLICIT write too -- [eval_forest_attribute] is also the setter the control
+    channel uses -- and a warning born that way was not thrown away: it waited in this list
+    and was displayed at the end of the NEXT project loading, as an adaptation of THAT
+    project. The flag holds a thread rather than a boolean because the channel writes from
+    its own thread while the GUI loads a project: a global boolean would count those writes
+    as part of the import. *)
  val mutable import_warnings : import_warning list = []
- method add_import_warning (w:import_warning) : unit = import_warnings <- w :: import_warnings
+ val mutable importing_thread : int option = None
+
+ method import_in_progress : bool =
+   match importing_thread with
+   | Some id -> (id = Thread.id (Thread.self ()))
+   | None    -> false
+
+ (* Called by Netmodel.Xml.load_network, the single entry point of the deserialization (which
+    is what makes this flag cheap to trust). The list is emptied on the way IN as well:
+    whatever is still there does not belong to the project being opened. *)
+ method with_import_in_progress : (unit -> unit) -> unit = fun f ->
+   let () = importing_thread <- Some (Thread.id (Thread.self ())) in
+   let () = import_warnings <- [] in
+   Fun.protect ~finally:(fun () -> importing_thread <- None) f
+
+ method add_import_warning (w:import_warning) : unit =
+   if self#import_in_progress then import_warnings <- w :: import_warnings
  method get_and_reset_import_warnings : import_warning list =
    let xs = List.rev import_warnings in
    let () = import_warnings <- [] in
@@ -2443,7 +2484,11 @@ module Xml = struct
   (* we are manually setting the verbosity 3 *)
   (if (Global_options.Debug_level.get ()) >= 3 then Xforest.print_xforest ~channel:stderr forest);
   match Forest.to_tree forest with
-  | (("network", attrs), children) -> net#from_tree ("network", attrs) children
+  (* Wrapped: everything the deserialization remaps is an adaptation of THIS project, and
+     nothing else is (episode 17 of `marionnet-todo-transverse'). This is the only place
+     which declares an import, because it is the only place which performs one. *)
+  | (("network", attrs), children) ->
+      net#with_import_in_progress (fun () -> net#from_tree ("network", attrs) children)
   | _ -> assert false
  ;;
 

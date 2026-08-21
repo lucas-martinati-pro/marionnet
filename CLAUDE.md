@@ -147,10 +147,13 @@ l'**install** et le **RPM**.
 
 Reprise : appliquer le skill `chantier-long`.
 - **TODO transverse** (solder les entrées de défaut de `docs/TODO.md` — **15 à l'ouverture, 16**
-  depuis que l'ép. 5 y a écrit le jumeau `variant`, devenu l'ép. 7 —, une par épisode, chacune
+  depuis que l'ép. 5 y a écrit le jumeau `variant`, devenu l'ép. 7, puis **23** depuis la
+  **deuxième tournée** du 2026-08-21, qui admet dans le périmètre les 7 entrées que les épisodes
+  ont eux-mêmes écrites en chemin —, une par épisode, chacune
   avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
   deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
-  16 épisodes par coût croissant, renumérotés à l'ép. 7) ; mémoire `marionnet-todo-transverse` ;
+  16 épisodes de la 1ʳᵉ tournée par coût croissant, renumérotés à l'ép. 7, **§ 4 bis = les 7 de
+  la 2ᵉ**) ; mémoire `marionnet-todo-transverse` ;
   `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20.
   Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
   **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
@@ -167,7 +170,10 @@ Reprise : appliquer le skill `chantier-long`.
   simultanées se disent, au démarrage et à la collision de route)**, **10 (`wait --ready` ne
   parle plus que d'un invité qui *tourne*)** et **11 (le rc d'un switch est lu à *chaque*
   démarrage : une **fonction** au lieu d'une valeur au constructeur du device, évaluée une seule
-  fois par `spawn`)** faits —
+  fois par `spawn`)** faits — la 1ʳᵉ tournée est **intégralement soldée** (ép. 12→16), et la 2ᵉ
+  a joué son **ép. 17** (un avertissement d'import ne naît que d'un import : la branche `aucune`
+  du routeur, **et** un avertissement enregistré seulement pendant un import — drapeau porté par
+  le **fil** qui importe, posé par l'unique porte de désérialisation `Xml.load_network`) —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque

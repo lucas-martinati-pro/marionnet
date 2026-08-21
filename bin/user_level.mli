@@ -590,7 +590,7 @@ class virtual node_with_ledgrid_and_defects :
   end
 
 class virtual virtual_machine_with_history_and_ifconfig :
-  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : import_warning -> unit; name_exists : string -> bool; .. > ->
+  network:< history : Treeview_history.t; ifconfig : Treeview_ifconfig.t; project_root_pathname : string; add_import_warning : import_warning -> unit; import_in_progress : bool; name_exists : string -> bool; .. > ->
   ?epithet:[ `distrib ] Disk.epithet ->
   ?variant:string ->
   ?kernel:[ `kernel ] Disk.epithet ->
@@ -768,6 +768,11 @@ class network :
     (* --- *)
     method add_import_warning : import_warning -> unit
     method get_and_reset_import_warnings : import_warning list
+    (* An import warning is recorded only while an import runs, in the thread which runs it
+       (episode 17 of `marionnet-todo-transverse'): the remap_*_at_import methods are reachable
+       from an explicit write too. *)
+    method import_in_progress : bool
+    method with_import_in_progress : (unit -> unit) -> unit
     (* --- *)
     method ledgrid_manager   : Ledgrid_manager.ledgrid_manager
     method dotoptions        : Sketch.tuning

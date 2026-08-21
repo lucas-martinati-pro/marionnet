@@ -21,6 +21,19 @@ comme l'exige le § 2. Un défaut écrit par ce chantier lui revient : cette 16�
 dans le périmètre, et comme elle était la moins coûteuse des restantes, elle a pris le rang 7 —
 les épisodes non encore joués se décalant d'autant.
 
+**Deuxième tournée, décidée le 2026-08-21.** Les 16 sont soldées ; mais les épisodes ont écrit
+**7 entrées neuves** dans `docs/TODO.md`, chacune un défaut voisin **mesuré** et volontairement
+non corrigé en passant (règle § 2.3) : ép. 7 (un `set` explicite dépose un avertissement
+d'import), ép. 8 (les `~/.uml/<umid>/` que personne ne balaie), ép. 9 (`quit` rend la main avant
+que le processus soit parti), ép. 11 (sur un switch, `activate_fstp` et `show_vde_terminal`
+restent ceux du premier démarrage), ép. 14 (`save` écrit le projet pendant que des composants
+tournent), ép. 15 (le glade et les images lus sont ceux du Marionnet installé), ép. 16 (les deux
+échéances qui encadrent le rapport se contredisent). Elles **entrent dans le périmètre**, mêmes
+règles, sous les numéros 17 et suivants (§ 4 bis) — même motif qu'au rang 7 : un défaut écrit par
+ce chantier lui revient. Le risque de ré-alimentation est assumé et **borné par la mesure** : les
+entrées neuves d'une tournée sont plus périphériques que celles de la précédente, et le chantier
+se clôt quand une tournée n'en produit plus qui vaille un épisode.
+
 **Hors périmètre, par décision explicite (2026-08-20)** : l'entrée *« Idée — composer deux
 projets (importer un `.mar` dans le projet courant) »*. Ce n'est pas un défaut mais une
 fonctionnalité, et le TODO en énumère lui-même quatre obstacles de fond (politique de renommage,
@@ -216,6 +229,24 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile `sensitive_when_Saveable` ; la source de notification aux transitions **existait déjà** (`refresh_sketch_counter`), `user_level.ml` n'est pas touché | `driven-sessions/save-entries-greyed-while-running.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI ») |
 | 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | Instrumenter d'abord (fait : diagnostic **différé**, le journal n'existe pas encore quand la cascade décide), puis deux causes **mesurées** : `Sites.locale` est **vide** hors installation, et les `.mo` d'un site dune sont des **liens** que `find ~kind:'f'` rejette. Candidat « arbre de dev » + `~follow:()` | `driven-sessions/gettext-catalogue-in-dev-tree.sh` — **fait** (banc **versionné**, contre l'annonce « `strace -e openat` » jetable) |
 | 16 | Le rapport de fin de session n'est pas garanti | **Instruit par la mesure, et la cause n'est pas celle qu'on suspectait** : l'unité systemd n'est pas mise en file, elle est armée par le **mauvais relais** — la `zz-journal` est sourcée **après** le `rcfile` de l'utilisateur, qui est ce qui écrit le marqueur de `wait --ready`. Le hook déménage dans le prologue `00-journal` | banc jetable (invité) — **fait** (fusible § 3.1 non employé : la mesure a conclu) |
+
+---
+
+## 4 bis. La deuxième tournée : 7 entrées, par coût croissant
+
+Écrites par les épisodes de la première (§ 1). L'ordre reste celui du coût ; les deux dernières
+sont des **diagnostics**, pas des correctifs (l'une demande une mesure sous charge réelle,
+l'autre un tri de préfixe).
+
+| N | Entrée de `docs/TODO.md` (épisode qui l'a écrite) | Geste | Preuve |
+|---|---|---|---|
+| 17 | Un `set` explicite dépose un avertissement d'import hors de tout import (ép. 7) | Deux moitiés : la branche `aucune` du routeur, **et** un avertissement qui n'est enregistré que pendant un import (drapeau porté par le **fil** qui importe, posé par l'unique porte de désérialisation) | `driven-sessions/import-warning-outside-import.sh` — **fait** (banc **versionné**) |
+| 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | À décider : le pid dans la réponse, ou la disparition de la socket contractualisée — plus `doc-src/scripting/` | — |
+| 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Trancher d'abord ce que **vaut** un `.mar` enregistré en marche ; le geste (un `ask_or_answer` + `reply_error`, patron de `cmd_quit`) est secondaire | — |
+| 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2) ; le tri vivant/mort par `uml_mconsole … version`, sous l'échéance de l'ép. 8 | — |
+| 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm est un `initializer`, donc un cas à part | — |
+| 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi | — |
+| 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesurer le rapport **sous charge réelle** avant de choisir un couple ; ni l'abaissement ni le relèvement n'est neutre | — |
 
 ---
 
@@ -1299,3 +1330,95 @@ toute la hiérarchie UML. L'enveloppe extérieure vaut la moitié de l'intérieu
 perdu avec son invité au lieu d'être tronqué proprement. Mesuré ici, hôte au repos : 4 à 8 s par
 machine — la marge existe, mais un facteur 4 de charge la mange, et c'est exactement la condition de
 l'épisode 21. Entrée neuve dans `docs/TODO.md` plutôt qu'une constante ajustée au jugé.
+
+---
+
+### 2026-08-21 — épisode 17 : un avertissement d'import ne naît que d'un import
+
+**Le premier de la deuxième tournée** (§ 4 bis), et le premier épisode à solder une entrée que
+le chantier avait lui-même écrite au TODO — celle de l'ép. 7.
+
+**Le symptôme, rejoué rouge.** `set r1 variant aucune` sur un **routeur** répond `ok:true`,
+retire bien la variante… et journalise
+`import remapping: router "r1" : variante "aucune" supprimée`. Ce n'est pas qu'une ligne de
+journal : l'avertissement est **empilé** dans `network#add_import_warning`, et la liste est lue
+par `state#open_project_async` **à la fin du prochain chargement**. Mesuré, dans la même
+session, sur un projet qui n'avait strictement rien à adapter :
+
+```
+open victim.mar → "notifications":[{"kind":"recap",
+                    "title":"1 ajustement(s) automatique(s) appliqué(s)",
+                    "items":[{"summary":"router \"r1\" : variante \"aucune\" supprimée", …}]}]
+```
+
+Le dialogue « Projet adapté au chargement » présente donc, comme une adaptation de *ce*
+projet-là, une conséquence d'une écriture explicite faite **avant** lui, sur un **autre** projet.
+
+**Deux moitiés, prouvées séparément.** L'ordre de la preuve n'est pas cosmétique : appliquée
+seule, chaque moitié laisse l'autre symptôme rouge, ce qui interdit qu'une seule d'entre elles
+suffise à faire passer le banc.
+
+| | banc, cas 1 (le journal) | banc, cas 3 (le récapitulatif) |
+|---|---|---|
+| avant | **FAIL** (`import remapping:`) | **FAIL** (`"kind":"recap"` sur un projet vierge) |
+| moitié 2 seule | **FAIL** (`remapping outside any import (NOT recorded)`) | PASS |
+| les deux | PASS | PASS |
+
+- **Moitié 1 — `bin/router.ml`.** Une branche `("variant", "aucune") -> self#set_variant None`,
+  celle que `bin/machine.ml` a depuis `v0`. Sans elle le mot tombait dans
+  `remap_absent_variant_at_import`, qui faisait ce pour quoi il existe : retirer la variante *et*
+  signaler une adaptation. `aucune` n'est pas une variante manquante, c'est **le mot qui retire
+  une variante** — le seul qui traverse le canal (la chaîne vide n'y survit pas, ép. 7).
+- **Moitié 2 — `bin/user_level.ml`, la plus importante** (la première ne règle que le symptôme
+  mesuré ; les trois `remap_*_at_import` gardaient la même porte). Un avertissement n'est
+  **enregistré que pendant un import** : `network` porte `importing_thread`, posé par
+  `with_import_in_progress`, que `Netmodel.Xml.load_network` enveloppe autour de son
+  `net#from_tree` — **l'unique** porte de désérialisation du réseau (`state#import_network` est
+  son seul appelant). Hors de là, `add_import_warning` n'enregistre rien.
+
+**Pourquoi un fil et non un booléen.** Le canal de contrôle écrit depuis **son** fil pendant que
+la GUI charge un projet dans le sien : un booléen global compterait ces écritures-là comme
+faisant partie de l'import — exactement le défaut qu'on ferme, à l'envers. Le drapeau retient
+donc `Thread.id (Thread.self ())`, et `Fun.protect` le retire quoi qu'il arrive.
+
+**Ce qui reste visible.** Un remap hors import est toujours journalisé, mais **jamais sous le
+même nom** : `remapping outside any import (NOT recorded)`. Sans quoi la moitié 2 aurait rendu
+le défaut *invisible* au lieu de le corriger. Le commentaire de `user_level.ml` qui affirmait
+« Called ONLY from the deserialization code » est corrigé : il énonçait une contre-vérité depuis
+l'ouverture du canal de contrôle.
+
+**Le banc, versionné** — `driven-sessions/import-warning-outside-import.sh`, 5 cas, ni invité ni
+privilège (aucun composant n'est démarré) :
+
+1. `set r1 variant aucune` (routeur) : accepté, **aucune** ligne de remap (des deux
+   formulations) ;
+2. le même geste sur une **machine**, témoin : n'a jamais rien écrit ;
+3. `open victim.mar` (rien à adapter) : **aucun** `"kind":"recap"` ;
+4. anti-faux-positif décisif — `open remapped.mar`, fabriqué par le banc en réécrivant
+   `[ "kernel", "3.2.64-ghost" ]` dans le `network.json` de l'archive : le récapitulatif est
+   **toujours** montré, et la ligne **toujours** journalisée. Sans ce cas, « plus jamais de
+   récapitulatif » passerait le banc ;
+5. rouvrir le projet vierge juste après : silencieux de nouveau (la liste ne survit pas à son
+   propre affichage).
+
+Deux détails du banc valent d'être notés : il lit le récapitulatif **par le canal**, dans le
+champ `notifications` de la réponse d'`open` (`Simple_dialogs.recapitulative` passe par
+`capture_and_dismiss`, genre `Recap`), donc sans un `xdotool` ni un clic ; et son `socat` porte
+`-t 60 -T 90`, sans quoi la réponse d'un `open` — qui charge un projet entier — serait perdue
+(piège de l'ép. 10).
+
+**Ce que la mesure a appris, et qu'il faut écrire.** Après la moitié 1, **plus aucun chemin
+atteignable** ne déclenche un `remap_*_at_import` hors import : les trois gardes du canal
+(kernel ép. 4f de `pilotage-par-script`, distrib ép. 5, variant ép. 7) couvrent exactement les
+trois remaps, et la GUI n'y passe pas. La moitié 2 est donc une garantie **structurelle** — elle
+ne se prouve que par l'étape intermédiaire du tableau ci-dessus, où elle est appliquée seule.
+C'est la mesure qui l'a établi, pas un pari : le banc ne peut pas exercer la moitié 2 sur le code
+final.
+
+**Vérifications.** `dune build` rc 0 ; `make check` (`dune build @check`, obligatoire ici :
+`user_level.ml` est en amont de tout) rc 0 ; banc 5 PASS / 0 FAIL. Zéro chaîne i18n neuve : tout
+ceci est du journal, et les `msgid` des remaps ne bougent pas. Le `.mli` de `user_level` suit
+(la ligne `network:< … >` du constructeur de `virtual_machine_with_history_and_ifconfig` liste
+les méthodes attendues : y ajouter `import_in_progress` fait partie du correctif).
+
+**Aucun défaut voisin écrit** à cet épisode.

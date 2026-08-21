@@ -1370,6 +1370,11 @@ class router
   | ("name"     , x ) -> self#set_name x
   | ("label"    , x ) -> self#set_label x
   | ("distrib"  , x ) -> self#set_epithet (self#remap_absent_distrib_at_import x)
+  (* "aucune" is the word the channel uses to remove a variant, and the one a `v0 .mar may
+     carry: a machine has read it as "no variant at all" since then (machine.ml), a router did
+     not, so it fell through to the remap below -- which dropped the variant all right, but as
+     an ADAPTATION OF AN IMPORT, warning included (episode 17 of `marionnet-todo-transverse'). *)
+  | ("variant"  , "aucune" ) -> self#set_variant None (* backward-compatibility *)
   | ("variant"  , "") -> self#set_variant None
   | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
   | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
