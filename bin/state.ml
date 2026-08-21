@@ -299,10 +299,17 @@ class globalState = fun () ->
   val sensitive_when_Active   : GObj.widget StackExtra.t = StackExtra.create ()
   val sensitive_when_Runnable : GObj.widget StackExtra.t = StackExtra.create ()
   val sensitive_when_NoActive : GObj.widget StackExtra.t = StackExtra.create ()
+  (* Widgets which must be sensitive only when the project may actually be written, i.e. when it
+     is active *and* nothing is running or sleeping (see is_project_saveable below). Unlike the
+     three stacks above, whose condition only changes when the project itself changes, this one
+     also follows the state transitions of components: it is updated by the reaction registered
+     on refresh_sketch_counter (motherboard_builder.ml). *)
+  val sensitive_when_Saveable : GObj.widget StackExtra.t = StackExtra.create ()
   (* --- *)
   method sensitive_when_Active   = sensitive_when_Active
   method sensitive_when_Runnable = sensitive_when_Runnable
   method sensitive_when_NoActive = sensitive_when_NoActive
+  method sensitive_when_Saveable = sensitive_when_Saveable
 
   val sensitive_cable_menu_entries : GObj.widget StackExtra.t = StackExtra.create ()
   method sensitive_cable_menu_entries = sensitive_cable_menu_entries
@@ -1006,6 +1013,13 @@ class globalState = fun () ->
   method refresh_sketch =
    let _ = Cortex.move (refresh_sketch_counter) (fun x -> x+1) in ()
 
+  (* This counter is also the only notification source we have about the state transitions of
+     components: every *_right_now of user_level.ml calls Sketch.refresh_sketch (), hence this
+     counter is moved, whatever the transition. The automaton state itself is carried by no
+     Cortex, so a reaction which must follow "is something running?" (the sensitiveness of the
+     saving entries, motherboard_builder.ml) subscribes here. *)
+  method refresh_sketch_counter = refresh_sketch_counter
+
   (* --- *)
   method network_change : 'a. ('a -> unit) -> 'a -> unit =
   fun action obj ->
@@ -1161,6 +1175,13 @@ class globalState = fun () ->
    Log.printf1 "is_there_something_on_or_sleeping: %s\n" (if result then "yes" else "no");
    result
   end
+
+(** May the project be written right now? This is the condition the callbacks of "Save",
+    "Save as" and "Copy to" test before refusing the action (gui_menubar_MARIONNET.ml), and
+    the condition of the sensitive_when_Saveable stack: the forbidding is thus read *before*
+    the gesture, not after it. *)
+ method is_project_saveable =
+   self#active_project && (not (self#is_there_something_on_or_sleeping ()))
 
  (* End of functions moved from talking.ml *)
 

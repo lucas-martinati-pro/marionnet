@@ -551,7 +551,17 @@ let help_apropos =
 
 let () = List.iter (* when a project is active *)
           (fun w -> StackExtra.push (w#coerce) st#sensitive_when_Active)
-          [project_save; project_save_as; project_copy_to; project_close; project_export]
+          [project_close; project_export]
+
+(* The three entries which write the project are not merely conditioned by an active project:
+   their callbacks refuse the action as soon as something is on or sleeping (see above,
+   Msg.error_saving_while_something_up). Being in this fourth stack, the forbidding is now read
+   *before* the gesture -- "Save as" and "Copy to" no longer ask for a filename in order to
+   refuse afterwards. The run-time guards stay where they are: neither the control channel nor
+   a keyboard shortcut goes through the sensitiveness of a widget. *)
+let () = List.iter (* when a project is active and nothing is running *)
+          (fun w -> StackExtra.push (w#coerce) st#sensitive_when_Saveable)
+          [project_save; project_save_as; project_copy_to]
 
 let () = List.iter (* when no project is active *)
           (fun w -> StackExtra.push (w#coerce) st#sensitive_when_NoActive)

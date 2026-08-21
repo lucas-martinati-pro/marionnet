@@ -9,33 +9,6 @@ l'implémentation devra affronter (pour que la reprise ne recommence pas l'analy
 
 ---
 
-## GUI — griser « Enregistrer » / « Enregistrer sous » quand quelque chose tourne
-
-**Constat.** Ces entrées restent actives alors que la sauvegarde est refusée dès que
-`st#is_there_something_on_or_sleeping ()` est vrai (`gui_menubar_MARIONNET.ml:160,186,227`). Pour
-« Enregistrer sous », l'utilisateur est donc invité à **choisir un nom de fichier**, puis
-l'opération est refusée par un dialogue d'erreur (`Msg.error_saving_while_something_up`) : on
-l'engage dans une action pour la lui refuser ensuite.
-
-**Voulu.** Que ces entrées soient **insensibles** (grisées) tant que quelque chose est allumé ou
-suspendu — l'interdit se lit alors *avant* le geste, comme pour les autres entrées conditionnelles
-de la barre de menus. Concerne au moins « Enregistrer », « Enregistrer sous » et « Copier vers »
-(les trois sites ci-dessus).
-
-**Ce que l'implémentation devra affronter.** Le mécanisme de sensibilité réactive existe déjà :
-piles `sensitive_when_Active` / `_Runnable` / `_NoActive` (`state.ml:260-269`), alimentées par des
-réactions `Cortex` dans `motherboard_builder.ml` — il suffirait d'une quatrième pile. Le point dur
-est ailleurs : ces réactions se branchent sur des `Cortex` (`project_paths#filename`,
-`network#nodes`, `network#cables`), or **l'état allumé/suspendu des composants n'est porté par
-aucun `Cortex`** — `is_there_something_on_or_sleeping` interroge la liste des nœuds à chaud. Il
-faut donc une **source de notification** aux transitions ; les points naturels sont les
-`*_right_now` de `user_level.ml`, où le chantier `marionnet-automate-composants` (épisode 3) a déjà
-placé les `Sketch.refresh_sketch ()` explicites de fin de transition.
-
-*Repéré le 2026-08-01, à l'occasion du rejeu GUI du journal 22.*
-
----
-
 ## Idée — **composer** deux projets (importer un `.mar` dans le projet courant)
 
 **Constat.** Il n'existe aucun moyen, ni en GUI ni ailleurs, de verser le contenu d'un projet dans
@@ -259,4 +232,34 @@ est un correctif d'une ligne, mais elle ne règle que le symptôme mesuré ici :
 
 *Repéré le 2026-08-20 par l'épisode 7 de `marionnet-todo-transverse`, qui soldait le défaut du
 `variant` inexistant et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
+s'écrit, il ne se corrige pas en passant).*
+
+---
+
+## Canal — `save` écrit le projet pendant que des composants tournent
+
+**Constat** (mesuré le 2026-08-21). En GUI, « Enregistrer » est refusé tant que quelque chose est
+allumé ou suspendu — le message le dit en toutes lettres : *« The project can't be saved right
+now. One or more network components are still running. Please stop them before saving. »*
+(`bin/gui/talking.ml:94`). Par le canal de contrôle, la même demande **passe** : un switch en
+marche, `save` répond `{"ok":true,"saved":true,…}`. `cmd_save` (`bin/control_server.ml:3572`) ne
+consulte pas `is_there_something_on_or_sleeping`, alors que `cmd_quit` le fait (en mode examen).
+Vaut aussi pour `save-as`, qui partage le même corps.
+
+**Voulu.** Une décision explicite, et la même des deux côtés. Soit le canal refuse comme la GUI
+(`ok:false`, code dédié, message nommant les composants encore en marche), soit — si l'on juge
+qu'une session pilotée doit pouvoir enregistrer en marche — la GUI cesse d'être seule à
+l'interdire et le canal le **dit** dans sa réponse (un avertissement, comme les
+`notifications`). Ce qu'on ne veut pas, c'est le silence : aujourd'hui le client ne peut pas
+savoir que ce qu'il vient d'écrire n'est pas ce que la GUI aurait écrit.
+
+**Ce que l'implémentation devra affronter.** Le refus GUI est ancien et sa raison n'est écrite
+nulle part : avant de la recopier dans le canal, il faut établir **ce que vaut** un `.mar`
+enregistré en marche (les fichiers cow des invités sont ouverts en écriture au moment de
+l'archivage, et le format `v3` archive aussi les treeviews). C'est cette question-là, pas la
+garde, qui coûte. Le geste, lui, est symétrique de `cmd_quit` : un `ask_or_answer` sur le
+prédicat, puis un `reply_error` ; la grammaire n'en est pas changée, donc aucun client ne bouge.
+
+*Repéré le 2026-08-21 par l'épisode 14 de `marionnet-todo-transverse`, qui grisait les entrées de
+menu correspondantes et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
 s'écrit, il ne se corrige pas en passant).*

@@ -69,6 +69,28 @@ module Make (S : sig val st:State.globalState end) = struct
     if cond then set_sensitive_with_opacity else unset_sensitive_with_opacity
   (* --- *)
 
+  (* The sensitiveness of the saving entries ("Save", "Save as", "Copy to") answers a condition
+     of its own -- the project is active *and* nothing is running or sleeping -- which two
+     independent things may invalidate: the project itself (opened, closed) and the state
+     transitions of the components. Hence a single function, called from the two reactions
+     below. Note that the condition is computed by the calling thread, before delegating: only
+     the widget update belongs to the GTK main thread. The line is logged when the answer
+     *changes*, the counter below being moved by every network change as well. *)
+  let update_save_entries_sensitiveness =
+    let previous_answer = ref None in
+    fun () ->
+      let saveable = S.st#is_project_saveable in
+      let () =
+        if (!previous_answer <> Some saveable) then begin
+          previous_answer := Some saveable;
+          Log.printf2
+            "Motherboard_builder: update_save_entries_sensitiveness: saveable=%b (%d widgets)\n"
+            (saveable) (StackExtra.length S.st#sensitive_when_Saveable)
+          end
+      in
+      GMain_actor.delegate (fun () ->
+        StackExtra.iter (conditional_sensitive_with_opacity saveable) (S.st#sensitive_when_Saveable)) ()
+
   (* Note: why the GC doesn't free this structure (and the related trigger)? *)
   let update_project_state_sensitiveness =
     (* --- *)
@@ -102,11 +124,25 @@ module Make (S : sig val st:State.globalState end) = struct
             StackExtra.iter (set_sensitive_with_opacity)   (wr);
             StackExtra.iter (unset_sensitive_with_opacity) (wn);
         (* --- *)
-        end) ()
+        end) ();
+        (* The saving entries are not simply "active": see update_save_entries_sensitiveness. *)
+        update_save_entries_sensitiveness ()
         ) (* end of ~on_commit *)
       (* --- *)
       (S.st#project_paths#filename)  (*  first member of the group *)
       (S.st#network#nodes)           (* second member of the group *)
+
+
+  (* Reactive setting: the state transitions of the components -> sensitiveness of the saving
+     entries. The automaton state of a component is carried by no Cortex, but every transition
+     of user_level.ml calls Sketch.refresh_sketch (), hence moves this counter: it is the
+     notification source we need, and the only one available. *)
+  let update_save_entries_sensitiveness_at_transitions : unit =
+    let _ =
+      Cortex.on_commit_append (S.st#refresh_sketch_counter)
+        (fun _ _ -> update_save_entries_sensitiveness ())
+    in
+    ()
 
 
   (* Reactive setting: S.st#network#nodes -> cable's menu sensitiveness.
@@ -137,6 +173,7 @@ module Make (S : sig val st:State.globalState end) = struct
       let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Runnable) in
       let () = StackExtra.iter (set_sensitive_with_opacity)   (S.st#sensitive_when_NoActive) in
       (* --- *)
+      let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_when_Saveable) in
       let () = StackExtra.iter (unset_sensitive_with_opacity) (S.st#sensitive_cable_menu_entries) in
       ()
     end) ()

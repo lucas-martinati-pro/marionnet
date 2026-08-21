@@ -204,7 +204,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | `driven-sessions/switch-rc-after-poweroff.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 12 | Un routeur neuf naît avec un noyau inutilisable | **Rien à corriger** : `79c25dd` (hors chantier) l'a soldé à la racine, l'entrée n'avait pas été retirée (§ 3.3, encadré) | `driven-sessions/default-kernel-needs-no-remap.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | **Constat retourné par la mesure** : elles ne s'étalent pas, elles se **rétrécissent** en colonne et s'allongent sans fin (`set_resizable true` + Gtk+ 3). Plafond dans le glade, zone défilante bornée, `set_resizable` retiré ; aucun `\n` manuel à toucher (mesuré sur les 12 catalogues) | `driven-sessions/message-window-geometry.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI, captures ») |
-| 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
+| 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile `sensitive_when_Saveable` ; la source de notification aux transitions **existait déjà** (`refresh_sketch_counter`), `user_level.ml` n'est pas touché | `driven-sessions/save-entries-greyed-while-running.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI ») |
 | 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
 | 16 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
 
@@ -1075,3 +1075,64 @@ L'entrée « GUI — les **autres** fenêtres de message s'étalent encore sur t
 **retirée** de `docs/TODO.md` : **3 défauts restants** au périmètre du chantier (les épisodes 14,
 15 et 16), plus les **quatre** voisins entrés par les épisodes 7, 8, 9 et 11.
 
+---
+
+### 2026-08-21 — épisode 14 : les entrées qui écrivent le projet sont grisées quand quelque chose tourne
+
+**Le point dur annoncé par le TODO n'existait plus.** L'entrée disait : *« ces réactions se
+branchent sur des `Cortex`, or l'état allumé/suspendu des composants n'est porté par aucun
+`Cortex` », d'où le besoin d'une source de notification aux transitions, à placer dans les
+`*_right_now` de `user_level.ml`.* Elle existe : `refresh_sketch_counter` (`bin/state.ml`) **est**
+un `Cortex`, que `st#refresh_sketch` déplace, et **toutes** les transitions appellent déjà
+`Sketch.refresh_sketch ()` — `create`, `destroy`, `startup`, `suspend`, `resume`,
+`gracefully_shutdown`, `poweroff`, plus `destroy_because_of_unexpected_death`. L'épisode n'a donc
+**pas touché `user_level.ml`** : il s'est abonné à un compteur qui était là depuis le début, en
+l'exposant (`method refresh_sketch_counter`) avec le commentaire disant *pourquoi* il devient
+public.
+
+**Le correctif, trois fichiers.** Une quatrième pile `sensitive_when_Saveable` (`bin/state.ml`) à
+côté des trois existantes, et la condition écrite **une seule fois**
+(`method is_project_saveable = active_project && not (is_there_something_on_or_sleeping ())`) —
+c'est mot pour mot ce que les trois callbacks testaient à la main. Dans
+`bin/motherboard_builder.ml`, une fonction `update_save_entries_sensitiveness` appelée par
+**deux** réactions, car deux choses indépendantes invalident la condition : le projet
+(`on_commit` du groupe `filename` × `nodes`) et les transitions (le compteur ci-dessus). Enfin
+`bin/gui/gui_menubar_MARIONNET.ml` : « Enregistrer », « Enregistrer sous » et « Copier vers »
+quittent `sensitive_when_Active` pour la nouvelle pile ; « Fermer » et « Exporter » y restent.
+
+**Deux précautions.** (1) La condition est calculée **avant** de déléguer au thread GTK : seule
+l'application aux widgets appartient au thread principal. Mesuré en chemin : les prédicats
+`can_gracefully_shutdown` / `can_resume` lisent `!state` **sans mutex** (`bin/user_level.ml:486`
+et `509`), donc l'appeler à chaque rafraîchissement ne peut geler personne — c'était la seule
+crainte sérieuse, le compteur bougeant aussi à chaque changement de modèle. (2) Les gardes
+d'exécution (`Msg.error_saving_while_something_up`) sont **conservées** : la sensibilité d'un
+widget ne protège que le menu.
+
+**La preuve : `driven-sessions/save-entries-greyed-while-running.sh`**, versionné (un switch
+n'exige ni invité ni privilège), **1 PASS / 3 FAIL** sur le code d'avant, **4 PASS / 0 FAIL**
+après. Il lit la réaction elle-même dans le journal de l'application (`--debug`) : la condition
+calculée **et le nombre de widgets** auxquels elle est appliquée — ce nombre est la moitié de la
+preuve, il dit que les trois entrées sont dans la pile et qu'aucune quatrième n'y a été traînée.
+Un cas est joué **avant** toute création de projet : rien ne doit y devenir sensible.
+
+**Ce que le banc ne lit pas : le pixel.** Le plan prévoyait de lire l'état `SENSITIVE` réel des
+trois items dans l'arbre d'accessibilité (AT-SPI). Mesuré le 2026-08-21, sur cette machine et
+après avoir installé le pont manquant : **une application lablgtk3 pilotée par `GtkThread.main`
+ne s'enregistre jamais sur le bus AT-SPI**, là où un programme GTK3 ordinaire (`zenity`) y
+apparaît en quelques secondes. Une sonde au niveau du widget se serait donc sautée partout ; le
+cas a été retiré plutôt que gardé en SKIP perpétuel. Le grisé à l'écran reste un geste de l'œil.
+
+**Défaut voisin mesuré, écrit au TODO, non corrigé** (règle du § 2) : par le canal de contrôle,
+`save` **écrit** le projet pendant qu'un switch tourne (`{"ok":true,"saved":true,…}`), là où la
+GUI refuse en toutes lettres. `cmd_save` ne consulte pas le prédicat, à la différence de
+`cmd_quit`. La question de fond — que vaut un `.mar` enregistré en marche ? — n'est pas
+tranchable en passant, d'où l'entrée neuve *« Canal — `save` écrit le projet pendant que des
+composants tournent »*.
+
+**Non-régression** : `dune build` rc 0, `dune test` vert, les **8** bancs versionnés antérieurs
+rejoués verts (45 cas, 0 échec), aucun `msgid` touché (donc aucun catalogue, l'invariant
+« catalogues complets » n'est pas concerné).
+
+L'entrée « GUI — griser « Enregistrer » / « Enregistrer sous » quand quelque chose tourne » est
+**retirée** de `docs/TODO.md` : **2 défauts restants** au périmètre du chantier (les épisodes 15
+et 16), plus les **cinq** voisins entrés par les épisodes 7, 8, 9, 11 et 14.
