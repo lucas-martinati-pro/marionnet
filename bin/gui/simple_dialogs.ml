@@ -58,7 +58,16 @@ let capture_and_dismiss ~(kind:Script_mode.kind) ~(title:string) ?items (body:st
 let message win_title ?modal ?(kind=`Info) (msg_title) (msg_content) (img_file) () =
   GMain_actor.apply_extract (fun () ->
   let d = new Gui.dialog_MESSAGE () in
-  d#toplevel#set_resizable true;
+  (* The dialog is deliberately left NON resizable, as dialog_QUESTION is. The glade marks it
+     visible, so the builder maps it while it is still empty, and the labels below are filled
+     afterwards: Gtk+ 3 does grow an already mapped window to its new NATURAL size when the
+     window is not resizable, but only to its new MINIMUM size when it is. The
+     [set_resizable true] that stood here since the lablgtk3 port therefore gave every message
+     the minimum width of a wrapping label -- the width of its longest word -- hence the narrow
+     column measured before this episode on the real application: 398x512 pixels for a single
+     paragraph, and 398x2672 for a long one, which puts the Close button off any classroom
+     screen. Nothing is clipped by the loss of resizability: the
+     body now lives in a height-capped scrolled window (see gui_glade3.xml). *)
   Option.iter (d#toplevel#set_modal) modal;
   let _ = d#closebutton_MESSAGE#connect#clicked ~callback:(d#toplevel#destroy) in
   d#toplevel#set_icon (Some Icon.icon_pixbuf);
@@ -119,11 +128,19 @@ let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * st
     let img = GMisc.image ~packing:(header_box#pack ~expand:false) () in
     img#set_file (Initialization.Path.images ^ "ico.warning.orig.png")
   in
-  let _ =
-    GMisc.label
-      ~markup:("<b>" ^ Glib.Markup.escape_text header ^ "</b>")
-      ~xalign:0.0 ~line_wrap:true
-      ~packing:(header_box#pack ~expand:true ~fill:true) ()
+  let () =
+    let l =
+      GMisc.label
+        ~markup:("<b>" ^ Glib.Markup.escape_text header ^ "</b>")
+        ~xalign:0.0 ~line_wrap:true
+        ~packing:(header_box#pack ~expand:true ~fill:true) ()
+    in
+    (* Same cure as in ask_password below, and for the same reason: the ~width:640 of the window
+       is only a MINIMUM request, while a wrapping label still asks for its longest paragraph as
+       its natural width -- and this window, unlike a message dialog, is shown once it is fully
+       built, so that natural width is what it gets. Measured on a structural replica: 3840
+       pixels wide (the whole screen) without the cap, 877 with it. *)
+    l#set_max_width_chars 72
   in
   (* Optional preamble: a longer sentence introducing the list, full width below the
      headline. *)
@@ -131,10 +148,11 @@ let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * st
     match preamble with
     | None -> ()
     | Some text ->
-        let _ =
+        let l =
           GMisc.label ~text ~xalign:0.0 ~line_wrap:true
             ~packing:(outer#pack ~expand:false) ()
-        in ()
+        in
+        l#set_max_width_chars 72
   in
   (* Height-capped scrollable list: this is what keeps CLOSE reachable no matter how many
      items there are. *)
@@ -157,13 +175,13 @@ let recapitulative ?(modal=false) ~title ~header ?preamble (items : (string * st
            ~label:(marker ^ summary)
            ~packing:(list_box#pack ~expand:false) ()
        in
-       let _ =
+       let l =
          GMisc.label
            ~text:detail
            ~xalign:0.0 ~xpad:18 ~line_wrap:true ~selectable:true
            ~packing:expander#add ()
        in
-       ())
+       l#set_max_width_chars 72)
     items;
   (* Fixed action area (outside the scrolled window): CLOSE is always visible. *)
   let action = GPack.button_box `HORIZONTAL ~layout:`END ~packing:(outer#pack ~expand:false) () in
@@ -379,7 +397,12 @@ let ask_text_dialog
       ~resizable:false
       () in
   let vbox = GPack.vbox ~packing:window#add ~border_width ~spacing () in
-  let _ = GMisc.label ~text:label ~packing:vbox#add ~line_wrap:true () in
+  let () =
+    let l = GMisc.label ~text:label ~packing:vbox#add ~line_wrap:true () in
+    (* Non resizable window, hence natural sizing: without a cap on the natural width a long
+       instruction would take the whole screen. Same value as everywhere else. *)
+    l#set_max_width_chars 72
+  in
   let entry = GEdit.entry ~text:initial_text ?max_length ~packing:vbox#add () in
   ignore (entry#connect#changed
             ~callback:(fun () -> changed_callback entry#text));

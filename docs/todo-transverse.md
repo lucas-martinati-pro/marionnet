@@ -203,7 +203,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 10 | `wait --ready` ment au second démarrage | **Révisé par la mesure** : la cause n'était pas un hostfs figé mais une **course** avec un `start` asynchrone — `--ready` n'accorde plus foi à un marqueur tant que le composant ne tourne pas ; plus le `O_TRUNC` manquant | banc jetable (invité) — **fait** |
 | 11 | Un `rc-set` sur un switch n'est pris qu'au premier démarrage | Fonction plutôt que valeur au constructeur du device (§ 3.5) | `driven-sessions/switch-rc-after-poweroff.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 12 | Un routeur neuf naît avec un noyau inutilisable | **Rien à corriger** : `79c25dd` (hors chantier) l'a soldé à la racine, l'entrée n'avait pas été retirée (§ 3.3, encadré) | `driven-sessions/default-kernel-needs-no-remap.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
-| 13 | Les autres fenêtres de message s'étalent sur toute la largeur | Plafonds dans le glade et en OCaml, **message par message** (des `\n` manuels préexistent) | run GUI, captures |
+| 13 | Les autres fenêtres de message s'étalent sur toute la largeur | **Constat retourné par la mesure** : elles ne s'étalent pas, elles se **rétrécissent** en colonne et s'allongent sans fin (`set_resizable true` + Gtk+ 3). Plafond dans le glade, zone défilante bornée, `set_resizable` retiré ; aucun `\n` manuel à toucher (mesuré sur les 12 catalogues) | `driven-sessions/message-window-geometry.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI, captures ») |
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile de sensibilité + source de notification aux transitions | run GUI |
 | 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
 | 16 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
@@ -979,3 +979,99 @@ donc aucune chaîne i18n.
 L'entrée « Modèle — un **routeur créé aujourd'hui naît avec un noyau inutilisable** » est
 **retirée** de `docs/TODO.md` : **4 défauts restants** au périmètre du chantier, plus les
 **quatre** voisins entrés par les épisodes 7, 8, 9 et 11.
+
+### 2026-08-21 — épisode 13 : la fenêtre d'un message cesse d'être une colonne sans fin
+
+**L'entrée du TODO se trompait de sens, et la mesure l'a retournée.** Elle annonçait des fenêtres
+qui « s'étalent sur toute la largeur » et citait 1 814 px pour le label `content` de
+`dialog_MESSAGE`. Mesuré sur l'application réelle (serveur X, `xwininfo`), un avertissement d'un
+seul paragraphe donnait **398 × 512** : pas une bannière, une **colonne étroite** — et le même
+message allongé (~2 500 caractères) donnait **398 × 2 672**, c'est-à-dire un bouton *Fermer* hors
+de tout écran de salle de TP. C'est le défaut décrit par le commentaire de `recapitulative`
+(« un seul label qui grandit sans borne et pas de barre de défilement »), mais pour la forme
+générique de **tous** les `Simple_dialogs.error / warning / info / help`.
+
+**Pourquoi, exactement.** Le glade marque `dialog_MESSAGE` `visible`, donc le builder la **mappe
+vide**, et `Simple_dialogs.message` remplit les labels **ensuite**. Or Gtk+ 3 ne fait grandir une
+fenêtre déjà mappée jusqu'à sa **taille naturelle** que si elle n'est **pas** redimensionnable ;
+redimensionnable, elle n'en honore que le **minimum** — et le minimum d'un label enveloppant est
+la largeur de son **plus long mot**. Le `set_resizable true` posé au portage lablgtk3
+(`6cb0289`, 2022) figeait donc chaque message à cette largeur-là. Le chiffre de 1 814 px du TODO
+n'était pas faux : il avait été relevé **sans** cet appel, donc en régime naturel.
+
+**Corollaire mesuré, contre-intuitif :** sur cette fenêtre, `max-width-chars` **ne fait rien**
+(350 × 568 avant, 350 × 568 après) — il ne plafonne que la largeur *naturelle*, qui n'est pas
+celle que Gtk+ utilise ici. Cela n'infirme en rien `34393bb` : `dialog_QUESTION`, elle, n'est
+jamais rendue redimensionnable, donc elle est dimensionnée au naturel et `max-width-chars` y est
+le bon levier. **Le levier dépend du régime de dimensionnement de la fenêtre, pas du label.**
+
+**Le correctif tient en trois pièces, et les trois sont nécessaires** (chacune mesurée seule) :
+
+1. `bin/gui/simple_dialogs.ml` : `set_resizable true` **retiré** (la fenêtre repasse au régime
+   naturel, comme `dialog_QUESTION`). Rien n'est tronqué en échange, grâce à la pièce 3.
+2. `bin/gui/gui_glade3.xml` : `max-width-chars` = 72 sur `content` (et `wrap` + le même plafond
+   sur `title`, qui n'avait ni l'un ni l'autre — l'état exact de `title_QUESTION` avant
+   `34393bb`).
+3. Une `GtkScrolledWindow` (+ `GtkViewport`, l'idiome déjà employé dans ce fichier) autour de
+   `content` : `hscrollbar-policy` `never`, `propagate-natural-height` et
+   `max-content-height` 400 — un message court garde sa hauteur, seul un long est borné et
+   défile. **`propagate-natural-width` n'est pas décoratif** : sans lui la largeur naturelle du
+   label ne remonte pas et la fenêtre retombe à ~200 px (mesuré).
+
+Valeur 400 : la fenêtre la plus haute mesure alors 532 px, décorations comprises, donc tient sur
+un portable **1366 × 768** — l'écran de référence retenu, et non les 3840 × 2160 de la machine de
+développement, où le défaut ne se voit pas.
+
+**Deux autres fenêtres, construites en OCaml, avaient le même défaut sous l'autre régime.**
+`ask_text_dialog` et `recapitulative` ne sont pas redimensionnables (ou le sont mais sont
+montrées une fois **construites**), donc elles sont dimensionnées au **naturel** : c'est le défaut
+de `7192aa3`, et le remède est bien `set_max_width_chars`. Mesuré sur une réplique structurelle
+de `recapitulative` : **3 840 px** de large (tout l'écran) sans plafond, **877** avec. Le
+`~width:640` de sa fenêtre ne protégeait de rien, c'est un **minimum**. Quatre labels plafonnés
+au total (en-tête, préambule et détail de dépliant de `recapitulative`, consigne de
+`ask_text_dialog`).
+
+**Les `\n` posés à la main : le « point dur » annoncé n'existe pas.** Audit des 429 `msgid` du
+POT puis des **12 catalogues** : 36 `msgid` portent un `\n`, 24 ont au moins une ligne de plus de
+72 caractères — mais ce sont des **séparateurs de paragraphe**, pas des coupures calculées ; un
+plafond les enveloppe, il ne les recoupe pas. Les seuls candidats à une coupure manuelle sont des
+**listes à puces** (2 traductions sur 12 pour un seul `msgid`), dont toutes les lignes font moins
+de 72 caractères : le plafond ne les touche pas. Le **tableau préformaté** de l'aide du routeur
+(`zebra\t\t2601/tcp…`) est intact pour la même raison (30 caractères par ligne au plus).
+**Aucun `msgid` retouché, donc aucun catalogue : `git diff bin/po/` est vide.**
+
+**Preuve — rouge/vert sur l'application réelle**, pas sur une réplique :
+
+| cas | avant | après |
+|---|---|---|
+| message d'un paragraphe (~400 car.) | 398 × 512 | **888 × 302** |
+| message long (~2 500 car.) | 398 × **2 672** | **888 × 532** |
+
+**Banc versionné** : `driven-sessions/message-window-geometry.sh`, **1 PASS / 3 FAIL** sur le code
+d'avant, **4 PASS / 0 FAIL** après. Il ne réplique rien : il lance la **vraie** GUI et lit la
+géométrie de la **vraie** fenêtre au serveur X, **sans un seul clic** — l'avertissement de
+démarrage de l'épisode 6 **nomme** le répertoire temporaire, donc la **profondeur** de ce
+répertoire choisit la longueur du message (27 caractères de chemin pour le cas court, 2 070 pour
+le cas long). Il n'exige ni invité ni privilège, seulement un **affichage** : sans `DISPLAY`,
+`xdotool` ou `xwininfo`, il se **saute** (77). Il précise ainsi le critère du § 3.6 une fois de
+plus : *X est une plateforme, pas un privilège*.
+
+**Piège durable découvert en chemin, écrit au TODO** (entrée i18n, qui est l'épisode 15 de ce
+chantier) : un binaire de `_build` ne lit pas que le catalogue d'un autre Marionnet — il lit
+aussi son **glade** et ses **images**, `Initialization.Path.marionnet_home_gui` dérivant de
+`Meta.prefix`. Sans installation, on croit mesurer l'interface du dépôt et on en mesure une
+autre. Mais `MARIONNET_PREFIX`, elle, **fonctionne** : un préfixe fabriqué (`gui/` et `images/`
+en liens vers le dépôt) suffit, et c'est ce que fait le banc à chaque exécution. Le contraste
+avec `MARIONNET_LOCALEPREFIX`, réputée sans effet alors que les deux passent par le même
+`Configuration.extract_string_variable_or`, est la première piste que l'épisode 15 devra tirer.
+
+**Non-régression** : `xmllint --noout` rc 0, `dune build` rc 0 (la copie de `_build` porte bien
+les propriétés), `dune test` vert, les **7** bancs versionnés antérieurs rejoués verts, aucun
+processus survivant. `bin/gui.ml` **n'est pas touché** : la classe générée lie ses widgets **par
+identifiant** (`builder#get_object "content"`), pas par position, donc un niveau d'imbrication de
+plus ne la casse pas — vérifié avant d'écrire, ce fichier étant interdit de régénération.
+
+L'entrée « GUI — les **autres** fenêtres de message s'étalent encore sur toute la largeur » est
+**retirée** de `docs/TODO.md` : **3 défauts restants** au périmètre du chantier (les épisodes 14,
+15 et 16), plus les **quatre** voisins entrés par les épisodes 7, 8, 9 et 11.
+
