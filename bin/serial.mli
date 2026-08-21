@@ -27,4 +27,4 @@ val send_command_and_wait_answer :
   ?umid:string ->
   ?con:string ->
   ?pts:string ->
-  string -> (StringExtra.Text.t * int)
+  string -> (Ocamlbricks.StringExtra.Text.t * int)

@@ -1,4 +1,4 @@
-n(* This file is part of Marionnet, a virtual network laboratory
+(* This file is part of Marionnet, a virtual network laboratory
    Copyright (C) 2009, 2010  Jean-Vincent Loddo
    Copyright (C) 2009  Luca Saiu
    Copyright (C) 2009, 2010  Université Paris 13
@@ -16,12 +16,20 @@ n(* This file is part of Marionnet, a virtual network laboratory
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Environments = Ocamlbricks.Environments
+
 open Gettext;;
 
 (** Common tools for setting labels and tips in a dialog. *)
 module Make (Toplevel : sig val toplevel : GWindow.dialog_any end) = struct
 
  open Toplevel
+
+ (* GTK3 attaches a tooltip to the widget itself, so the toplevel is no longer
+    needed by Tooltip below; it remains a parameter of the functor because it is
+    part of its interface. *)
+ let () = ignore toplevel
 
  module Label = struct
 
@@ -33,14 +41,13 @@ module Make (Toplevel : sig val toplevel : GWindow.dialog_any end) = struct
 
  module Tooltip = struct
 
-  let setter =
-    let result = (GData.tooltips ()) in
-    let _ = toplevel#connect#destroy ~callback:(fun _ -> result#destroy ())
-    in result
+  (* lablgtk3: GTK3 dropped GtkTooltips (a single object holding every tip), the
+     tip is now a property of each widget.  Same idiom as the lablgtk3 version of
+     `append_image_menu' in gui_toolbar_COMPONENTS_layouts.ml. *)
+  let set w text = GtkBase.Widget.Tooltip.set_text w#coerce#as_widget text
 
-  let set w text = setter#set_tip w#coerce ~text
-
-  let set_both w1 w2 text = List.iter (fun w -> setter#set_tip w ~text) [w1#coerce;w2#coerce]
+  let set_both w1 w2 text =
+    List.iter (fun w -> GtkBase.Widget.Tooltip.set_text w#as_widget text) [w1#coerce; w2#coerce]
 
   (* Common text for dialog's tooltips *)
   module Text = struct
@@ -75,7 +82,7 @@ module Make (Toplevel : sig val toplevel : GWindow.dialog_any end) = struct
                  let (action,name,oldname) = (r#get("action"),r#get("name"),r#get("oldname")) in
 
                  (* OK only if the name is not already used in the network (and not empty). *)
-                 if ((action="add")    && (st#network#name_exists name)) or
+                 if ((action="add")    && (st#network#name_exists name)) ||
                     ((action="update") && (not (name=oldname)) && (st#network#name_exists name))
 
                  then

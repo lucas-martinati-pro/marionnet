@@ -14,6 +14,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
+(* --- *)
+module Log = Marionnet_log
+module StrExtra = Ocamlbricks.StrExtra
+module StringExtra = Ocamlbricks.StringExtra
+module UnixExtra = Ocamlbricks.UnixExtra
+
 
 IFNDEF OCAML4_02_OR_LATER THEN
 module Bytes = struct  let create = String.create  let set = String.set  end
@@ -98,7 +104,7 @@ let send_command ?umid ?con ?pts cmd : unit =
   let pts = get_pts_from_optional_pts_umid_con ?umid ?con ?pts "Serial.send_command" in
   let fd = Unix.openfile pts [ Unix.O_RDWR; Unix.O_NOCTTY; ] 0o640  in
   let cmd = if String.get cmd ((String.length cmd) - 1) = '\n' then cmd else (cmd^"\n") in
-  let _ = Unix.write fd cmd 0 (String.length cmd) in
+  let _ = Unix.write_substring fd cmd 0 (String.length cmd) in
   Unix.close fd
 ;;
 
@@ -111,7 +117,7 @@ let get_unread_chars_from ?blocking ~fd ~buffer () : int * int =
   let x = Bytes.create 100 in
   let rec loop count =
     let n = try Unix.read fd' x 0 100 with Unix.Unix_error (Unix.EAGAIN,_,_) -> 0 in
-    let () = Buffer.add_substring buffer x 0 n in
+    let () = Buffer.add_subbytes buffer x 0 n in
     let count = count + n in
     if n < 100 then count
     else begin
@@ -154,12 +160,12 @@ let send_command_and_wait_answer ?(timeout=10.) ?(buffer_size=1024) ?umid ?con ?
   in
   (* The command will be echoed replacing '\n' by '\r\n', so: *)
   let echoed_cmd =
-    let result = cmd^"\n" in
+    let result = Bytes.of_string (cmd^"\n") in
     let () = Bytes.set result (cmd_length-1) '\r' in
-    result
+    Bytes.to_string result
   in
   let (_, offset_answer) = get_unread_chars_from ~buffer ~fd () in
-  let _ = Unix.write fd cmd 0 cmd_length in
+  let _ = Unix.write_substring fd cmd 0 cmd_length in
   let _ = Unix.select [fd] [] [] timeout in
   (* Now we will try to detect the end of answer with an ad-hoc echo command: *)
   let delimiter, delimiter_pattern =
@@ -171,7 +177,7 @@ let send_command_and_wait_answer ?(timeout=10.) ?(buffer_size=1024) ?umid ?con ?
   let echoed_echo_command = Printf.sprintf "echo \"%s\"\r\n" delimiter
   in
   (* Note that the echo_command may be echoed one or two times by the terminal... *)
-  let _ = Unix.write fd echo_command 0 (String.length echo_command) in
+  let _ = Unix.write_substring fd echo_command 0 (String.length echo_command) in
   let rec loop ?blocking () =
        (* Wait a bit for the answer: *)
        Thread.delay 0.1;

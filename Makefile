@@ -107,7 +107,7 @@ OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-ex
 # one checks whether `ocamlbricks' already provides a function before writing it again.
 # `ocamlformat' is listed for completeness only: it cannot parse the camlp4 syntax of this
 # source tree (IFDEF, where_p4, INCLUDE DEFINITIONS), so it stays unused until `camlp4-to-ppx'.
-OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server sherlodoc
+OPAM_PACKAGES_DEV = utop odoc ocamlformat ocaml-lsp-server sherlodoc codept codept-lib
 
 # ---
 # Verify a list of `apt' packages, calling `sudo apt' only if something is actually missing
@@ -318,6 +318,35 @@ edit:
 
 edit-gui:
 	glade bin/gui/gui_glade3.xml
+
+
+# =============================================================
+#                  code intelligence (OCaml)
+# =============================================================
+# `dune build' only compiles the module closure reachable from marionnet.ml, so a
+# module nobody references is never typechecked -- and no .cmt/.ocaml-index file is
+# produced for it.  `make check' compiles EVERY module of every stanza, and is the
+# prerequisite of anything that reads the compiler's own knowledge of the code.
+
+check:
+	dune build @check
+
+# Project-wide occurrences for ocamllsp / merlin (needs OCaml >= 5.2, dune >= 3.16).
+ocaml-index: check
+	dune build @ocaml-index
+
+# Inter-module dependency graph (_build/module-graph/*.dot|svg|deps), computed by
+# `codept' read through camlp4 -- see Makefile.d/module-graph.sh, which documents
+# why ocamldep is not enough here.  The `-check' variant compares the graph against
+# dune's own ocamldep output and fails if codept missed an edge.
+module-graph:
+	bash Makefile.d/module-graph.sh
+
+module-graph-check: check
+	bash Makefile.d/module-graph.sh --check
+
+# ---
+.PHONY: check ocaml-index module-graph module-graph-check
 
 
 # =============================================================
