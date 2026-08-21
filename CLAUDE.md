@@ -13,6 +13,13 @@ préprocesseurs **camlp4**, les stubs C, `bin/version.ml` et `bin/meta.ml` sont 
 dans `lib/_build/` ni de hand-link. `make` ne reste requis que pour l'**i18n gettext**,
 l'**install** et le **RPM**.
 
+- **Mais `dune build` n'est PAS un typecheck du projet** : pour un exécutable, dune ne compile
+  que la clôture atteignable depuis `marionnet.ml`. Un module mort peut donc être cassé sans que
+  le build s'en aperçoive (c'est arrivé : cf. `d265946`). `make check` (`dune build @check`)
+  compile *tous* les modules ; il conditionne `make ocaml-index` — donc les *references* exactes
+  d'`ocamllsp` — et `make module-graph` / `make module-graph-check`, qui produisent le graphe de
+  dépendances inter-modules. Mode d'emploi : skill global `ocaml-code-graph`.
+
 - Toolchain : **OCaml 5.4.1** (chantier `migration-ocaml5`) — depuis le 2026-07-27 le build est
   vert, le **runtime est validé** (cycle GUI réel) et l'**installation en profil *testing*** aussi ;
   le gel 4.13.1 est levé. Reste non joué : `make install-final-as-root` (root, `/usr/local`).
