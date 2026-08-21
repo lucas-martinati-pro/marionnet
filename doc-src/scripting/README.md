@@ -345,6 +345,44 @@ The first line of the marker comes back in the answer (`line`), so the guest can
 verdict, not merely its presence. `wait-all --ready` does not exist: machines boot in
 parallel, so waiting for them one after another costs the same total time.
 
+### `quit` — the answer leaves before the process does
+
+The same rule holds at the other end of a session, and it bites harder because nothing looks
+wrong: `quit` answers, and the process is **still there**. It cannot be otherwise — the answer
+has to go out before the shutdown starts. Measured on this machine, the session survives its own
+answer by about half a second, its components and its taps with it.
+
+So the answer hands you what to watch:
+
+```json
+{"ok":true,"quitting":true,"pid":31872}
+```
+
+```bash
+pid=$(mrnctl -q .pid quit)
+while kill -0 "$pid" 2>/dev/null; do sleep 0.05; done
+# here, and not before: the session, its components and its taps are gone
+```
+
+Wait for it before starting another session. Two Marionnet sessions which coexist without
+knowing it fight over the same host resources, and the second one inherits problems nobody can
+attribute.
+
+Three details worth knowing:
+
+* **`status` publishes the same `pid`**, so a script may arm its watch before it quits — and
+  it is the only source when `quit` is *refused*: in exam mode a refusal carries neither
+  `quitting` nor `pid`, because it promises no ending at all (§ 12).
+
+* **Do not watch the socket file.** It is removed on a clean exit, but a session killed
+  brutally leaves it behind: its absence proves an ending, its presence proves nothing. The pid
+  tells the truth in both cases.
+
+* **If your own script launched Marionnet**, `kill -0` is not enough: a child which has exited
+  but has not been waited for stays a zombie, and `kill -0` keeps succeeding on it. Use the
+  shell's `wait "$pid"` there — a client which merely connects to the channel never meets that
+  case.
+
 ---
 
 ## 7. Recipe A — build a lab, save it, replay it

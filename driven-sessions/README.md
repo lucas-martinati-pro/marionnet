@@ -35,6 +35,14 @@ Le critère vient de `docs/todo-transverse.md` § 3.6.
   ne laisse rien).
 - Un banc doit **échouer** sur le code d'avant le correctif qu'il prouve. Un banc qui passe des
   deux côtés ne prouve rien : la mesure rouge/vert est consignée dans le journal du chantier.
+- **Une session lancée par un banc se termine par le canal (`quit`) ou par `SIGKILL`.** Marionnet
+  **neutralise SIGTERM** délibérément (`bin/marionnet.ml` : un `halt` dans un invité en envoie
+  un), donc un `kill` suivi d'un `wait` **ne rend jamais la main** — mesuré à l'ép. 18.
+- **Un banc qui matche un texte de l'application fige la langue** (`LANGUAGE=C LC_ALL=C` au
+  lancement). Depuis l'ép. 15, un binaire de `_build` lit les catalogues du dépôt : un motif
+  anglais ne matche plus rien sous locale française, et un banc qui cherche une **absence** ne
+  s'en aperçoit pas — il passe en ne prouvant plus rien (mesuré sur
+  `default-kernel-needs-no-remap.sh`, dont 2 cas sur 3 étaient devenus vides).
 
 ## Les bancs
 
@@ -51,3 +59,4 @@ Le critère vient de `docs/todo-transverse.md` § 3.6.
 | `save-entries-greyed-while-running.sh` | Les trois entrées qui écrivent le projet (« Enregistrer », « Enregistrer sous », « Copier vers ») sont sensibles **exactement** quand le projet est ouvert et que rien ne tourne : rien avant qu'un projet existe, insensibles dès qu'un switch démarre, sensibles de nouveau une fois tout éteint. Le banc lit la réaction dans le journal de l'application (`--debug`) — la condition calculée **et** le nombre de widgets auxquels elle s'applique, qui dit qu'aucune entrée n'a été oubliée ni ajoutée. Il ne lit pas le pixel : une application lablgtk3 ne s'enregistre pas sur le bus AT-SPI (mesuré) | `marionnet-todo-transverse` ép. 14 |
 | `gettext-catalogue-in-dev-tree.sh` | Un binaire lancé depuis `_build` lit les catalogues **du dépôt** : le `.mo` réellement ouvert (lu dans les `openat` de l'application, pas dans ce que le code croit) est celui de l'arbre de développement et non celui d'un autre Marionnet installé sous `/usr` ; un `MARIONNET_LOCALEPREFIX` explicite l'emporte sur cette découverte, **lien symbolique compris** — c'est la disposition que dune donne à son site `locale` ; et le journal `--debug` nomme le répertoire retenu **et** son origine | `marionnet-todo-transverse` ép. 15 |
 | `import-warning-outside-import.sh` | Un avertissement d'import ne naît **que** d'un import : une écriture explicite (`set … variant aucune` sur un routeur) n'en dépose plus, et le chargement suivant d'un projet qui n'a rien à adapter n'affiche **aucun** récapitulatif — tandis qu'un `.mar` nommant vraiment un noyau inutilisable, fabriqué par le banc, est toujours adapté **et** récapitulé. Le banc lit le récapitulatif dans le champ `notifications` de la réponse d'`open`, donc sans clic ni `xdotool` | `marionnet-todo-transverse` ép. 17 |
+| `quit-is-observable.sh` | La fin d'une session est observable **par le canal seul** : `quit` (et `status`) publient le **pid** de la session, et attendre ce pid suffit — alors que la réponse de `quit`, elle, précède la mort du processus d'environ une demi-seconde (mesuré). Le banc mesure aussi ce qui **justifie** ce choix : le fichier socket disparaît après une sortie propre mais **survit** à un `SIGKILL`, donc son absence prouve une fin et sa présence ne prouve rien ; et un `quit` **refusé** (mode examen) ne promet aucune fin. Le seul banc à lire une réponse par un **coprocess** : `socat` ne rend la main qu'à la fermeture de la connexion, c'est-à-dire à la mort du processus — précisément ce qu'il s'agit de mesurer | `marionnet-todo-transverse` ép. 18 |

@@ -596,6 +596,11 @@ let cmd_status (st : State.globalState) ~(timeout:float) : string =
                Published here so that a client learns the mode instead of deducing it from a
                refusal — the same reason § 4.10 gives for publishing the model's predicates. *)
             ("exam",     jbool Initialization.are_we_in_exam_mode);
+            (* Episode 18 of marionnet-todo-transverse: the same handle as the one [quit]
+               answers with (see there), published before there is anything to quit. A client
+               which means to watch this session end should not have to end it first to learn
+               what to watch — and when [quit] is refused (exam mode) this is the only source. *)
+            ("pid",      jint (Unix.getpid ()));
             ])
 
 (* --- eligibility: what a component allows right now -------------- *)
@@ -3607,8 +3612,24 @@ let cmd_save (st : State.globalState) ~(timeout:float) ~(filename: string option
    order (graceful shutdown, then save), and [quit] passes right after it. Not refused outright:
    a driven exam session must still be able to end itself, which is how the teacher's guide
    closes one. *)
+(* Episode 18 of marionnet-todo-transverse: the pid, and why the answer carries it. The reply
+   necessarily leaves BEFORE the process does — [quit_async] only *schedules* the shutdown
+   (state.ml) and one cannot answer after leaving — so when the client reads this line the
+   process, its components and its taps are all still there (measured: half a second of them). The end
+   of a session is therefore not something this answer can wait for: it is something the client
+   must be able to WATCH, and the pid is the handle which stays true whatever kills us. Without
+   it a script holds a socket and nothing else, and chaining [quit] with the launch of the next
+   session makes two coexist unnoticed — which is how three marionnet.exe were once found
+   together (journalisation-profonde, episode 21). The socket *file* is not that handle: it is
+   unlinked on a clean exit (ocamlbricks, network.ml, at_exit of the server thread) and left
+   behind by a brutal one, so its absence proves an ending while its presence proves nothing.
+   Published by [cmd_status] as well, so that a client may arm its watch before quitting — and
+   because the refusals below carry no pid: the contract belongs to the "quitting" answer, as
+   the entry of docs/TODO.md required. *)
 let cmd_quit (st : State.globalState) ~(timeout:float) : string * [ `Continue | `Quit ] =
-  let quitting () = (reply_ok [ ("quitting", jbool true) ], `Quit) in
+  let quitting () =
+    (reply_ok [ ("quitting", jbool true); ("pid", jint (Unix.getpid ())) ], `Quit)
+  in
   if not Initialization.are_we_in_exam_mode then quitting () else
   match
     ask_or_answer ~extra:(fun () -> []) ~timeout

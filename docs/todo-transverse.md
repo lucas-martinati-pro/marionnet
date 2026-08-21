@@ -241,7 +241,7 @@ l'autre un tri de préfixe).
 | N | Entrée de `docs/TODO.md` (épisode qui l'a écrite) | Geste | Preuve |
 |---|---|---|---|
 | 17 | Un `set` explicite dépose un avertissement d'import hors de tout import (ép. 7) | Deux moitiés : la branche `aucune` du routeur, **et** un avertissement qui n'est enregistré que pendant un import (drapeau porté par le **fil** qui importe, posé par l'unique porte de désérialisation) | `driven-sessions/import-warning-outside-import.sh` — **fait** (banc **versionné**) |
-| 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | À décider : le pid dans la réponse, ou la disparition de la socket contractualisée — plus `doc-src/scripting/` | — |
+| 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | Le **pid**, publié par `quit` **et** par `status` : le seul signal qui dise vrai aussi bien après une sortie propre qu'après une mort brutale — plus la section de `doc-src/scripting/` qui l'écrit | `driven-sessions/quit-is-observable.sh` — **fait** (banc **versionné**) |
 | 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Trancher d'abord ce que **vaut** un `.mar` enregistré en marche ; le geste (un `ask_or_answer` + `reply_error`, patron de `cmd_quit`) est secondaire | — |
 | 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2) ; le tri vivant/mort par `uml_mconsole … version`, sous l'échéance de l'ép. 8 | — |
 | 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm est un `initializer`, donc un cas à part | — |
@@ -1422,3 +1422,66 @@ ceci est du journal, et les `msgid` des remaps ne bougent pas. Le `.mli` de `use
 les méthodes attendues : y ajouter `import_in_progress` fait partie du correctif).
 
 **Aucun défaut voisin écrit** à cet épisode.
+
+### 2026-08-21 — épisode 18 : la fin d'une session s'observe par le canal seul
+
+**Le symptôme, rejoué rouge.** `quit` répond `{"ok":true,"quitting":true}` et le processus est
+**encore là** quand le client lit cette ligne — mesuré : il lui survit de **559 ms**, ses
+composants et ses taps avec lui. Un banc s'en sort parce qu'il possède le pid ; un client du
+canal n'a qu'une socket, donc il enchaîne sur la session suivante et les deux coexistent sans
+que personne le sache.
+
+**Ce qui ne pouvait pas être le geste.** Un `quit` synchrone : la réponse part forcément avant
+la sortie (`st#quit_async` ne fait que *planifier* l'arrêt sur le `Task_runner`). Le seul point
+d'accroche est donc ce que le client peut **observer ensuite** — d'où le choix, tranché avant
+d'écrire, entre le **pid** et la **disparition de la socket**.
+
+**La mesure a démenti la prémisse, et le choix a tenu quand même.** On croyait le fichier socket
+survivant au processus ; il ne l'est pas : ocamlbricks l'`unlink` depuis le thread serveur
+(`ThreadExtra.at_exit`, `lib/STRUCTURES/network.ml:386`). La socket **est** donc un signal — mais
+seulement de la sortie *propre*. Une session tuée brutalement laisse son fichier derrière elle
+(cas 6 du banc, `kill -9`) : l'**absence** du fichier prouve une fin, sa **présence** ne prouve
+rien. Le pid, lui, dit vrai des deux côtés. C'est ce que la doc écrit, au lieu de laisser
+chacun le découvrir.
+
+**Le geste.** `("pid", jint (Unix.getpid ()))` dans la réponse de `cmd_quit` — et le même dans
+`cmd_status`, pour deux raisons : un client arme sa surveillance **avant** de quitter, et un
+`quit` **refusé** (mode examen) ne porte par construction ni `quitting` ni `pid`, le contrat
+neuf valant pour la seule réponse `quitting`, comme l'exigeait l'entrée. Trois lignes d'OCaml,
+zéro chaîne i18n (le canal n'est pas traduit), plus une section de `doc-src/scripting/` au § 6
+« `accepted` is not `done` » — le chapitre qui porte déjà la même leçon pour `--state` et
+`--ready`.
+
+**Rouge/vert** (banc **versionné** `driven-sessions/quit-is-observable.sh`, ni invité ni
+privilège — aucun composant n'est démarré) : **5 PASS / 2 FAIL** avant, **7 PASS** après. Les
+deux cas rouges sont exactement les deux affirmations du correctif (`status` et `quit` publient
+le pid de la session, comparé à celui que le banc a réellement lancé) ; les cinq autres
+mesurent le contrat autour et passent des deux côtés — c'est leur rôle.
+
+**Quatre pièges mesurés en chemin, tous du côté de la mesure.**
+
+1. **`socat` ne peut pas mesurer ce cas** : il rend la main quand la **connexion** se ferme,
+   c'est-à-dire quand le processus meurt — un banc écrit avec l'`ask()` des dix autres aurait
+   trouvé le processus toujours mort, pour une raison sans rapport avec ce qu'il mesure. D'où un
+   **coprocess** pour la seule requête `quit`. (`mrnctl`, lui, s'en tire : son `| head -1` ferme
+   le tuyau dès la première ligne, donc il rend la main **avant** la mort — c'est bien le
+   comportement que la doc décrit.)
+2. **SIGTERM ne tue pas Marionnet**, et c'est **délibéré** (`bin/marionnet.ml` : un `halt` dans
+   un invité en envoie un, via la connexion X rompue d'un programme graphique). Le premier run
+   du banc est resté bloqué sur `kill "$pid"; wait "$pid"` jusqu'à son propre fusible, en
+   laissant une session vivante. Ce qu'un banc lance se termine donc **par le canal** (`quit`)
+   ou **par SIGKILL** — noté dans `driven-sessions/README.md`.
+3. **`kill -0` réussit sur un zombie** : un enfant sorti mais non récolté reste dans la table
+   des processus. Le banc, qui a lancé la session lui-même, doit lire l'état dans
+   `/proc/<pid>/stat` ; un client du canal, qui n'est pas le parent, ne rencontre jamais ce cas
+   — la doc le dit à qui lance Marionnet depuis son propre script.
+4. **`EPOCHREALTIME` suit la locale** : sous `fr_FR` son séparateur est une **virgule**, et
+   `${EPOCHREALTIME/./}` laisse alors une chaîne qu'aucun contexte arithmétique ne lit.
+
+**Vérifications.** `dune build` rc 0, `make check` (`dune build @check`) rc 0, banc 7 PASS / 0
+FAIL, les **11 bancs versionnés** antérieurs rejoués, aucun processus survivant, aucun
+répertoire de run laissé.
+
+**Aucun défaut voisin écrit** à cet épisode : les deux surprises rencontrées sont un
+comportement d'ocamlbricks (correct) et une neutralisation de signal voulue et commentée depuis
+longtemps.

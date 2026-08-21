@@ -103,33 +103,6 @@ corriger (règle § 2 de `docs/todo-transverse.md`).*
 
 ---
 
-## Canal — le verbe `quit` rend la main **avant** que le processus soit parti
-
-**Constat.** `cmd_quit` (`bin/control_server.ml:3562`) renvoie `{"ok":true,"quitting":true}` et
-laisse ensuite la boucle principale s'arrêter : quand le client lit la réponse, le processus, ses
-composants et ses taps sont **encore là**. Un script qui enchaîne `quit` puis relance une session
-en fait donc coexister deux sans le savoir — c'est ainsi que trois `marionnet.exe` ont été trouvés
-ensemble le 2026-08-13 (`journalisation-profonde` ép. 21). Un banc s'en sort parce qu'il possède le
-pid (`wait "$pid"`) ; un client du canal, non : il n'a que la socket, et la réponse ne porte que
-`quitting`.
-
-**Voulu.** Que la fin d'une session soit **observable par le canal seul** : soit la réponse porte le
-pid, soit le contrat dit explicitement que la socket disparaît quand le processus est parti — et,
-dans les deux cas, que `doc-src/scripting/` l'écrive, puisque c'est ce qu'un script doit attendre
-avant d'en lancer une autre.
-
-**Ce que l'implémentation devra affronter.** On ne peut pas répondre *après* être sorti : la réponse
-part forcément avant. Le seul point d'accroche est donc ce que le client peut observer ensuite (le
-pid, ou la disparition de la socket), pas un « quit synchrone ». Attention aussi au chemin d'examen
-de `cmd_quit`, qui refuse déjà de quitter dans certains cas : le contrat neuf doit valoir pour la
-réponse `quitting`, pas pour les refus.
-
-*Écrit le 2026-08-20 par l'épisode 9 de `marionnet-todo-transverse` : la remarque vivait dans
-l'entrée « deux sessions partagent l'adresse hôte de leurs taps », soldée par cet épisode, et
-serait sinon partie avec elle.*
-
----
-
 ## Hygiène — les répertoires mconsole de `~/.uml/` ne sont balayés par personne
 
 **Constat** (mesuré le 2026-08-20, en soldant l'entrée « un `uml_mconsole … sysrq e` peut

@@ -173,11 +173,20 @@ Reprise : appliquer le skill `chantier-long`.
   fois par `spawn`)** faits — la 1ʳᵉ tournée est **intégralement soldée** (ép. 12→16), et la 2ᵉ
   a joué son **ép. 17** (un avertissement d'import ne naît que d'un import : la branche `aucune`
   du routeur, **et** un avertissement enregistré seulement pendant un import — drapeau porté par
-  le **fil** qui importe, posé par l'unique porte de désérialisation `Xml.load_network`) —
+  le **fil** qui importe, posé par l'unique porte de désérialisation `Xml.load_network`) et son
+  **ép. 18** (la fin d'une session s'observe par le canal seul : `quit` **et** `status` publient
+  le **pid**, seul signal vrai après une sortie propre *comme* après un `SIGKILL` — le fichier
+  socket, lui, n'est retiré qu'à la sortie propre, donc son absence prouve une fin et sa présence
+  ne prouve rien ; contrat écrit au § 6 de `doc-src/scripting/README.md`) —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
-  chose mais d'exiger un **invité** ou un **privilège** — un switch n'exige ni l'un ni l'autre.
+  chose mais d'exiger un **invité** ou un **privilège** — un switch n'exige ni l'un ni l'autre ;
+  l'ép. 18 y a ajouté deux règles payées par la mesure : une session lancée par un banc se termine
+  **par le canal ou par SIGKILL** (Marionnet **neutralise SIGTERM**, `bin/marionnet.ml`, donc
+  `kill` puis `wait` ne rend jamais la main), et un banc qui matche un **texte** de l'application
+  **fige la langue** (`LANGUAGE=C LC_ALL=C` — depuis l'ép. 15 un binaire de `_build` est traduit,
+  et un motif anglais qui ne matche plus rien laisse passer un banc qui ne prouve plus rien).
   Trois pièges durables de l'ép. 10 : (1) un `start` du canal **répond avant que le démarrage soit
   fait** (la tâche part sur le `Task_runner`), donc toute garde qui lit le disque juste après lit
   encore le boot précédent ; (2) `socat` **perd toute réponse plus lente qu'une demi-seconde**
