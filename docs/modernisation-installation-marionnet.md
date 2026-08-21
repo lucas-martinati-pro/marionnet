@@ -234,6 +234,25 @@ est ignoré sauf une liste) :
 | `useful-scripts/mrn-verify` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
 | `useful-scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert `marionnet-ctl`, `mrnctl`, `mrn-check`, `mrn2sh`, `mrn-verify` |
 
+> **RÉSOLU (partiellement) le 2026-08-21 — `useful-scripts/dune`.** Cinq des six fichiers du
+> tableau ci-dessus, **plus `useful-scripts/marionnet-cleanup`**, sont désormais installés par
+> **dune** : une stanza `install` neuve (`useful-scripts/dune`, patron `bashbricks/dune`) les pose
+> dans `share/marionnet/scripts/`, que le `Makefile` **mirroir déjà** dans `$(PREFIX)/bin/` en les
+> rendant exécutables (liens durs pour `install-final-as-root`, symboliques pour
+> `install-for-testing`) — d'où **aucune ligne de `Makefile` à ajouter**. La voie « stanza dune »
+> tranche donc l'alternative laissée ouverte plus bas.
+> Ce qui a forcé la décision : Marionnet **nomme** `marionnet-cleanup` à l'écran depuis l'ép. 6 de
+> `marionnet-todo-transverse`, et **le lance lui-même** depuis les deux boutons de cet
+> avertissement (2026-08-21) — un programme qui dit à l'utilisateur de lancer une commande doit
+> lui laisser cette commande sur le `PATH`.
+> **Restent à faire ici** : la **complétion bash** (`marionnet-completion.bash` n'est pas une
+> commande et ne va pas dans `bin/` — cf. la ligne du tableau), la déclaration de **`socat`** et
+> **`jq`** comme dépendances **hôte** dans les paquets (`Depends`/`Requires`/image Docker), et le
+> même travail pour la **documentation d'usage** (complément 2026-08-13 ci-dessous).
+> Note sur les liens : dune installe `mrnctl` et `mrn2sh` en **copies**, ce qui préserve le
+> comportement (les deux scripts lisent `${0##*/}`, jamais l'inode), mais ne dispense pas les
+> paquets de poser de vrais liens s'ils préfèrent.
+
 ⚠️ **Les liens ne sont pas décoratifs** : `mrn2sh` est `mrn-check` sous un autre nom, et le script
 lit `$0` pour en déduire son mode (`mrn2sh` ⇒ `--to-bash` implicite) ; `mrnctl` est le nom court
 de `marionnet-ctl`. Une installation qui les **copie sous un autre nom**, ou qui n'en pose qu'un
@@ -463,3 +482,13 @@ clôture des enfants.
   `marionnet-ctl` côté **hôte** — et **`jq`**, requis par les deux vérificateurs. Voie
   d'implémentation à trancher (stanza `install` de dune, ou copie dans `install-final-as-root`).
   Aucun code touché.
+- **2026-08-21 — contrainte levée pour `$(PREFIX)/bin/` : les clients du canal et
+  `marionnet-cleanup` sont installés** (§ 2.4 ter, encadré « RÉSOLU »). Déclencheur : hors
+  chantier, l'avertissement de démarrage sur les répertoires de session laissés en place a reçu
+  **deux boutons** (récupérer les projets en `.mar`, puis supprimer les répertoires) qui **lancent**
+  `marionnet-cleanup` ; Marionnet ne peut pas nommer et exécuter un outil que l'installation ne
+  pose nulle part. Fait : `useful-scripts/dune` (stanza `install`, section `share`, destination
+  `scripts/`) pour `marionnet-cleanup`, `marionnet-ctl`, `mrnctl`, `mrn-check`, `mrn2sh`,
+  `mrn-verify` ; le mirroir `share/marionnet/scripts/* → $(PREFIX)/bin/` du `Makefile` fait le
+  reste, `chmod +x` compris. Restent au chantier : la complétion bash, `socat`/`jq` en dépendances
+  **hôte** des paquets, et l'installation de `doc-src/`.

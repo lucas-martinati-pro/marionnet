@@ -52,6 +52,14 @@
 # A relative source would work in the source tree and break once installed. Nothing below is
 # about collections or JSON anyway; it is /proc and signals.
 #
+# RECOVERING BEFORE REMOVING. A run directory holds the UNSAVED working copy of a project, which
+# is why Marionnet never removes one by itself and why --purge-dirs is implied by nothing. Since
+# this script is also the one Marionnet's startup warning hands over to, it can now save that
+# work instead of destroying it: --archive-dirs writes each removable run directory as an
+# ordinary .mar project file (a tar.gz), built exactly the way state#private_save_project builds
+# it (bin/state.ml), so that Project -> Open reopens it. Archiving first is what makes a purge
+# lossless.
+#
 # SAFETY, which is the whole point of a tool that kills things. Nothing is destroyed unless an
 # explicit option asks for it. Processes are listed first and killed BY EXACT PID — never by
 # pattern: `pkill -f marionnet' would match this very script (and has destroyed a KDE session
@@ -77,7 +85,8 @@ readonly EXIT_USAGE=2
 
 usage() {
   cat <<EOF
-Usage: $PROGNAME [--kill] [--purge-sockets] [--purge-dirs] [--help]
+Usage: $PROGNAME [--kill] [--purge-sockets] [--archive-dirs DEST] [--purge-dirs]
+                 [--caller-marionnet PID] [--spare-dir DIR] [--help]
 
 Reports what dead Marionnet sessions have left on this host. WITHOUT ANY OPTION IT ONLY
 REPORTS: nothing is killed, nothing is removed.
@@ -85,11 +94,26 @@ REPORTS: nothing is killed, nothing is removed.
   --kill            Terminate the orphan auxiliary processes (TERM, then KILL for those
                     that survive), by exact pid. Refuses beyond $MAX_PROCESSES processes.
   --purge-sockets   Remove the blinker socket files of $TMP that no live process is bound to.
+  --archive-dirs DEST
+                    Save each removable run directory as a Marionnet project file
+                    DEST/recovered-<project>.<date>.<hh>h<mm>.mar (a .mar is a tar.gz), which
+                    Project -> Open reopens. Removes NOTHING; it is what makes a later
+                    --purge-dirs lossless, and it runs before it when both are given.
   --purge-dirs      Remove the run directories $TMP/marionnet-<n>.dir/ that no live process
                     refers to and that are older than $DIR_MIN_AGE_MINUTES minutes. THEY HOLD THE UNSAVED
                     WORKING COPY of the projects of those sessions. Implied by nothing, and
                     refused outright while a Marionnet is running.
   --help            This help.
+
+Options passed by Marionnet itself, from the buttons of its startup warning; rarely useful by
+hand, and never a way to act on somebody else's session:
+
+  --caller-marionnet PID
+                    PID -- which must really be a live Marionnet -- stops counting as a reason
+                    to refuse --purge-dirs. Any OTHER live Marionnet still forbids it.
+  --spare-dir DIR   Treat DIR as a live run directory: never archived, never removed. This is
+                    how the calling Marionnet names its own working copy, which nothing else on
+                    this host names as long as it has started no component.
 
 Typical use: run it with no option, read the report, then add the options you agree with.
 EOF
@@ -100,6 +124,27 @@ EOF
 # The whole scan is done by reading /proc directly, in bash, on purpose: a `ps | grep <pattern>'
 # pipeline puts the pattern in the command line of its own processes, which then show up in
 # their own output.
+
+# --- What the calling Marionnet tells us about itself
+#
+# --purge-dirs refuses to act while a Marionnet is running, and rightly so: a live session's own
+# working copy lives in one of these directories and NOTHING else on the host names it --
+# Marionnet does not put it on its command line, and it has no child naming it until a component
+# is started. The startup warning of Marionnet (bin/marionnet.ml) offers buttons that recover and
+# clean, so the caller must be able to say `that one is me': it gives its pid AND its own run
+# directory. Any other live Marionnet still forbids the purge -- two simultaneous sessions are a
+# supported case, and the second one's directory would be just as invisible.
+CALLER_MARIONNET=""
+ARCHIVE_DEST=""
+declare -a SPARE_DIRS=()
+
+# By the EXECUTABLE, never by the name: bash puts a script's name into /proc/<pid>/comm, which is
+# what once made this very script count as a live Marionnet (see the second pass of scan below).
+is_a_marionnet_exe() {
+  local exe
+  exe=$(readlink "/proc/$1/exe" 2>/dev/null) || return 1
+  [[ "${exe##*/}" == marionnet || "${exe##*/}" == marionnet.* ]]
+}
 
 declare -a ORPHAN_PIDS=()          # pids of the auxiliaries of dead sessions
 declare -A ORPHAN_CMD=()           # pid -> command line
@@ -124,7 +169,7 @@ rundirs_of_cmdline() {
 }
 
 scan() {
-  local pid comm cmd cwd exe sid dir
+  local pid comm cmd cwd sid dir
   local -a candidates=()
   local -A live_sids=()
 
@@ -143,8 +188,7 @@ scan() {
     # `marionnet-cleanup' itself matched a `marionnet*' test on comm -- this very script then
     # counted as a live Marionnet, refused every --purge-dirs, and spared any orphan sharing
     # the terminal it was run from. Measured on 2026-08-20.
-    exe=$(readlink "/proc/$pid/exe" 2>/dev/null || true)
-    if [[ "${exe##*/}" == marionnet || "${exe##*/}" == marionnet.* ]]; then
+    if is_a_marionnet_exe "$pid"; then
       sid=$(session_id_of "$pid") || continue
       [ -n "$sid" ] && live_sids["$sid"]=1
       LIVE_MARIONNETS+=("$pid")
@@ -228,6 +272,17 @@ scan_dirs() {
   done
 }
 
+# The run directories the caller vouches for are live by decree. Added to the set the scan
+# builds, hence honoured by scan_dirs -- so by --archive-dirs and --purge-dirs alike, which both
+# read DEAD_DIRS and nothing else.
+apply_spare_dirs() {
+  local d
+  for d in "${SPARE_DIRS[@]:-}"; do
+    [ -n "$d" ] && LIVE_RUNDIRS["$d"]=1
+  done
+  return 0
+}
+
 # --- Reporting ---------------------------------------------------------------------------
 
 report() {
@@ -260,9 +315,16 @@ report() {
     echo "  removable: ${#DEAD_DIRS[@]} directory(ies), $(du -sh --total "${DEAD_DIRS[@]}" 2>/dev/null | tail -1 | cut -f1) in total."
     echo "  THEY HOLD THE UNSAVED WORKING COPY of the projects of those sessions."
     echo "  oldest: $(ls -dt "${DEAD_DIRS[@]}" | tail -1)"
-    echo "  use --purge-dirs to remove them."
+    echo "  use --archive-dirs DIR to save them as .mar project files, --purge-dirs to remove them."
   fi
   echo "  in use by a live session (spared): ${#LIVE_RUNDIRS[@]}"
+  if [ -n "$CALLER_MARIONNET" ]; then
+    echo "  caller: pid $CALLER_MARIONNET is the Marionnet asking, and does not forbid the purge."
+  fi
+  if [ "${#SPARE_DIRS[@]}" -gt 0 ]; then
+    echo "  spared on request: ${SPARE_DIRS[*]}"
+  fi
+  return 0
 }
 
 # --- Acting ------------------------------------------------------------------------------
@@ -317,9 +379,17 @@ do_purge_sockets() {
 }
 
 do_purge_dirs() {
-  local d n=0
-  if [ "${#LIVE_MARIONNETS[@]}" -gt 0 ]; then
-    echo "$PROGNAME: a Marionnet is running (pid ${LIVE_MARIONNETS[*]}); refusing to remove any run directory." >&2
+  local d pid n=0
+  local -a blocking=()
+  # The caller identified itself and named the directory to spare (--caller-marionnet,
+  # --spare-dir), so it is not a reason to refuse. Every OTHER live Marionnet still is.
+  for pid in "${LIVE_MARIONNETS[@]:-}"; do
+    [ -n "$pid" ] || continue
+    [ "$pid" = "$CALLER_MARIONNET" ] && continue
+    blocking+=("$pid")
+  done
+  if [ "${#blocking[@]}" -gt 0 ]; then
+    echo "$PROGNAME: a Marionnet is running (pid ${blocking[*]}); refusing to remove any run directory." >&2
     echo "$PROGNAME: close it first -- its own working copy lives in one of these directories." >&2
     return 1
   fi
@@ -331,15 +401,99 @@ do_purge_dirs() {
   echo "$PROGNAME: removed $n."
 }
 
+# A .mar project file is a tar.gz of the run directory's single subdirectory -- the project root
+# -- with `tmp' excluded and sparse files preserved: exactly what state#private_save_project
+# writes (bin/state.ml), which is what makes the result openable by Project -> Open. Nothing is
+# removed here, and DEAD_DIRS is the same list --purge-dirs works on, so what is archived is
+# precisely what a purge would destroy.
+#
+# A run directory of an unexpected shape (no subdirectory, or more than one) is SKIPPED rather
+# than archived whole: Marionnet takes the tarball's root directory for the project root, so an
+# archive of the run directory itself would load into nonsense instead of failing.
+do_archive_dirs() {
+  local d root stamp target i n=0 skipped=0
+  local -a roots=()
+  if [ ! -d "$ARCHIVE_DEST" ] || [ ! -w "$ARCHIVE_DEST" ]; then
+    echo "$PROGNAME: --archive-dirs: \`$ARCHIVE_DEST' is not a writable directory." >&2
+    return 1
+  fi
+  [ "${#DEAD_DIRS[@]}" -eq 0 ] && { echo "$PROGNAME: no run directory to archive."; return 0; }
+  stamp=$(date +%Y-%m-%d.%Hh%M)
+  for d in "${DEAD_DIRS[@]}"; do
+    roots=()
+    while read -r root; do [ -n "$root" ] && roots+=("$root")
+    done < <(find "$d" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null)
+    if [ "${#roots[@]}" -ne 1 ]; then
+      echo "$PROGNAME: skipping $d: it holds ${#roots[@]} project directories (exactly 1 expected)."
+      skipped=$((skipped+1))
+      continue
+    fi
+    root="${roots[0]}"
+    target="$ARCHIVE_DEST/recovered-$root.$stamp.mar"
+    i=2
+    while [ -e "$target" ]; do target="$ARCHIVE_DEST/recovered-$root.$stamp-$i.mar"; i=$((i+1)); done
+    if tar -cSzf "$target" -C "$d" --exclude tmp "$root"; then
+      echo "$PROGNAME: wrote $target ($(du -h "$target" | cut -f1)), from $d"
+      n=$((n+1))
+    else
+      echo "$PROGNAME: FAILED to archive $d" >&2
+      rm -f -- "$target"
+      skipped=$((skipped+1))
+    fi
+  done
+  if [ "$skipped" -eq 0 ]
+  then echo "$PROGNAME: archived $n run directory(ies); nothing was removed."
+  else echo "$PROGNAME: archived $n run directory(ies), skipped $skipped; nothing was removed."
+  fi
+  return 0
+}
+
 # --- Main --------------------------------------------------------------------------------
 
+# An option that takes a value: fails loudly on a missing one rather than swallowing the next
+# option as its argument.
+value_of() {  # value_of <option-name> <remaining args...>
+  local opt="$1"; shift
+  if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+    echo "$PROGNAME: $opt needs a value" >&2
+    return $EXIT_USAGE
+  fi
+  echo "$2"
+}
+
 main() {
-  local kill_them=0 purge_sockets=0 purge_dirs=0
+  local kill_them=0 purge_sockets=0 purge_dirs=0 value
   while [ $# -gt 0 ]; do
     case "$1" in
       --kill)           kill_them=1 ;;
       --purge-sockets)  purge_sockets=1 ;;
       --purge-dirs)     purge_dirs=1 ;;
+      # --- The three options below take a value.
+      --archive-dirs)
+        value=$(value_of "$1" "$@") || return $EXIT_USAGE
+        ARCHIVE_DEST="$value"
+        shift ;;
+      --caller-marionnet)
+        value=$(value_of "$1" "$@") || return $EXIT_USAGE
+        case "$value" in ''|*[!0-9]*)
+          echo "$PROGNAME: --caller-marionnet: \`$value' is not a pid" >&2; return $EXIT_USAGE ;;
+        esac
+        # Only a LIVE Marionnet may excuse itself, and it is checked here, not taken on trust:
+        # the option lifts a guard, so an arbitrary pid must not be able to lift it.
+        is_a_marionnet_exe "$value" || {
+          echo "$PROGNAME: --caller-marionnet: pid $value is not a live Marionnet" >&2
+          return $EXIT_USAGE; }
+        CALLER_MARIONNET="$value"
+        shift ;;
+      --spare-dir)
+        value=$(value_of "$1" "$@") || return $EXIT_USAGE
+        value="${value%/}"
+        case "$value" in "$TMP"/marionnet-*.dir) ;; *)
+          echo "$PROGNAME: --spare-dir: \`$value' is not a run directory of $TMP" >&2
+          return $EXIT_USAGE ;;
+        esac
+        SPARE_DIRS+=("$value")
+        shift ;;
       -h|--help)        usage; return 0 ;;
       *) echo "$PROGNAME: unknown option \`$1'" >&2; usage >&2; return $EXIT_USAGE ;;
     esac
@@ -347,12 +501,16 @@ main() {
   done
 
   scan
+  apply_spare_dirs
   scan_sockets
   scan_dirs
   report
 
   [ "$kill_them" -eq 1 ]      && { echo; do_kill; }
   [ "$purge_sockets" -eq 1 ]  && { echo; do_purge_sockets; }
+  # Archiving first, always: a purge that follows in the same run then destroys nothing that has
+  # not been saved.
+  [ -n "$ARCHIVE_DEST" ]      && { echo; do_archive_dirs; }
   [ "$purge_dirs" -eq 1 ]     && { echo; do_purge_dirs; }
   return 0
 }

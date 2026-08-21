@@ -54,8 +54,16 @@ let capture_and_dismiss ~(kind:Script_mode.kind) ~(title:string) ?items (body:st
        ~callback:(fun () -> (try destroy () with _ -> ()); false))
 ;;
 
-(** Generic constructor for message dialog *)
-let message win_title ?modal ?(kind=`Info) (msg_title) (msg_content) (img_file) () =
+(** Generic constructor for message dialog.
+    ---
+    [actions] adds buttons that DO something, to the left of the Close button of the glade: a
+    message that tells the user to run a command can then offer to run it. Each one closes the
+    dialog and calls its callback -- which must not block, since it runs in the GTK main loop
+    (see bin/marionnet.ml, where the callbacks of the startup warning about run directories
+    hand the work to a thread). They are packed into the action area exposed by the generated
+    bin/gui.ml, so the glade file is not touched: an added widget only has to be shown
+    explicitly, the dialog being mapped already. *)
+let message win_title ?modal ?(kind=`Info) ?(actions : (string * (unit -> unit)) list = []) (msg_title) (msg_content) (img_file) () =
   GMain_actor.apply_extract (fun () ->
   let d = new Gui.dialog_MESSAGE () in
   (* The dialog is deliberately left NON resizable, as dialog_QUESTION is. The glade marks it
@@ -70,6 +78,16 @@ let message win_title ?modal ?(kind=`Info) (msg_title) (msg_content) (img_file) 
      body now lives in a height-capped scrolled window (see gui_glade3.xml). *)
   Option.iter (d#toplevel#set_modal) modal;
   let _ = d#closebutton_MESSAGE#connect#clicked ~callback:(d#toplevel#destroy) in
+  (* --- *)
+  List.iteri
+    (fun i (label, callback) ->
+       let button = GButton.button ~label ~show:true ~packing:(d#dialog_action_area3#add) () in
+       (* #add appends, i.e. after Close: put them back in front, in the given order. *)
+       let () = d#dialog_action_area3#reorder_child (button#coerce) ~pos:i in
+       ignore
+         (button#connect#clicked
+            ~callback:(fun () -> d#toplevel#destroy (); callback ())))
+    actions;
   d#toplevel#set_icon (Some Icon.icon_pixbuf);
   d#toplevel#set_title (utf8 win_title);
   d#title#set_use_markup true;
@@ -91,9 +109,11 @@ let help ?modal title msg () =
 let error ?modal title msg () =
   message ?modal ~kind:`Error (s_ "Error") title msg "ico.error.orig.png" ();;
 
-(** Specific constructor for warning messages *)
-let warning ?modal title msg () =
-  message ?modal ~kind:`Warning (s_ "Warning") title msg "ico.warning.orig.png" ();;
+(** Specific constructor for warning messages. [actions] (see [message]) is what makes a
+    warning actionable: the startup notice about the run directories left behind offers to
+    recover and to clean, instead of only naming the tool. *)
+let warning ?modal ?actions title msg () =
+  message ?modal ?actions ~kind:`Warning (s_ "Warning") title msg "ico.warning.orig.png" ();;
 
 (** Specific constructor for info messages *)
 let info ?modal title msg () =

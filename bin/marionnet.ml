@@ -384,17 +384,135 @@ let () =
   if n = 0 then () else
   let () =
     Log.printf2 ~force:true
-      "marionnet: %d run directory(ies) of other sessions found in %s (use `useful-scripts/marionnet-cleanup --purge-dirs' to review and remove the abandoned ones)\n"
+      "marionnet: %d run directory(ies) of other sessions found in %s (use `marionnet-cleanup --archive-dirs <dir> --purge-dirs' to recover and remove the abandoned ones)\n"
       n dir
   in
   (* An exam is not the place for housekeeping advice, and the student cannot act on it. *)
   if Initialization.are_we_in_exam_mode || Initialization.Disable_warnings.orphan_run_directories
   then () else
+  (* --- The tool, if this host has it.
+     ---
+     It is installed in $PREFIX/bin/ (useful-scripts/dune puts it among the scripts of the share
+     section, which the Makefile mirrors into bin/), hence reachable by name -- exactly like
+     marionnet-lanbridge.sh. In the source tree, where nothing is installed, set
+     MARIONNET_CLEANUP_SCRIPT to its ABSOLUTE path: Marionnet chdir's to its own home at startup,
+     so a relative one would no longer mean what it says. No tool, no buttons: the text alone
+     then remains, and it says what to run. *)
+  let cleanup_command () : string option =
+    let name = try Sys.getenv "MARIONNET_CLEANUP_SCRIPT" with Not_found -> "marionnet-cleanup" in
+    if String.contains name '/' then (if Sys.file_exists name then Some name else None) else
+    match UnixExtra.run (Printf.sprintf "command -v %s" (Filename.quote name)) with
+    | (output, Unix.WEXITED 0) when String.trim output <> "" -> Some (String.trim output)
+    | _ -> None
+  in
+  (* Where the recovered projects are written: the folder `Project -> Save as' opens on
+     (gui/talking.ml), so that a recovered project shows up where the user looks for projects. *)
+  let archive_destination () =
+    let candidates = [ Initialization.cwd_at_startup_time; Initialization.Path.user_home ] in
+    try List.find (fun d -> (try Unix.access d [Unix.W_OK]; true with _ -> false)) candidates
+    with Not_found -> Initialization.Path.user_home
+  in
+  (* --- Running it.
+     ---
+     A full /proc scan costs seconds (2.9 s measured on the development machine), so it must not
+     run in the GTK main loop, where the button click lands: hence a thread. The dialogs opened
+     from it are safe, every Simple_dialogs entry going back to the main thread by itself
+     (GMain_actor.apply_extract).
+     ---
+     Two arguments say who is asking. --caller-marionnet <pid>: the script refuses --purge-dirs
+     while a Marionnet is running, and rightly so -- we are that Marionnet, and it checks the pid
+     rather than trusting it; any OTHER live session still forbids the purge. --spare-dir <dir>:
+     our own run directory, which nothing else on this host names as long as we have started no
+     component. It is read at CLICK time, not now: this dialog is not modal, and a project may
+     have been created in between. *)
+  let run_cleanup (script : string) (args : string list) : string * bool =
+    let identity =
+      (Printf.sprintf "--caller-marionnet %d" (Unix.getpid ())) ::
+      (match st#project_paths#get_working_directory with
+       | Some d -> [Printf.sprintf "--spare-dir %s" (Filename.quote d)]
+       | None   -> [])
+    in
+    let command = String.concat " " ((Filename.quote script) :: args @ identity) in
+    let () = Log.printf1 "marionnet: running the cleanup tool: %s\n" command in
+    let (output, status) = UnixExtra.run (command ^ " 2>&1") in
+    (output, status = Unix.WEXITED 0)
+  in
+  (* The confirmation shows what the tool sees about the DIRECTORIES, not its whole report (the
+     orphan processes and the socket files are another matter, and the question dialog has no
+     scrolled area). The marker is the section header the script prints, both sides of which live
+     in this repository; should it ever change, the whole report is shown instead of nothing. *)
+  let directories_section (report : string) : string =
+    let lines = String.split_on_char '\n' report in
+    let rec from_marker = function
+      | [] -> lines
+      | line :: rest when StringExtra.is_prefix "== Run directories" line -> line :: rest
+      | _ :: rest -> from_marker rest
+    in
+    String.concat "\n" (from_marker lines)
+  in
+  (* What the tool DID, as opposed to what it saw: every line it prints about its own actions is
+     prefixed with its name, the report is not. Showing the whole output would bury the two lines
+     that matter under the list of orphan processes -- measured on the real dialog. Falls back to
+     the whole output if nothing matches, so a change in the script cannot make the result empty. *)
+  let action_lines (script : string) (output : string) : string =
+    let prefix = (Filename.basename script) ^ ":" in
+    match List.filter (StringExtra.is_prefix prefix) (String.split_on_char '\n' output) with
+    | []    -> output
+    | lines -> String.concat "\n" lines
+  in
+  let in_a_thread (f : unit -> unit) () =
+    ignore (Thread.create (fun () ->
+      try f () with e ->
+        Log.printf1 "marionnet: the cleanup tool raised: %s\n" (Printexc.to_string e)) ())
+  in
+  let show ~script ~title (output : string) =
+    Simple_dialogs.info title (Glib.Markup.escape_text (action_lines script output)) ()
+  in
+  (* A failure is shown whole: the reason may well be in a line the filter would drop. *)
+  let failed (output : string) =
+    Simple_dialogs.error (s_ "The cleanup tool failed") (Glib.Markup.escape_text output) ()
+  in
+  (* Recovering: writes one .mar per abandoned run directory and removes NOTHING, so it needs no
+     confirmation -- and it is offered first, so that cleaning after it loses nothing. *)
+  let recover script () =
+    let destination = archive_destination () in
+    let (output, ok) =
+      run_cleanup script [Printf.sprintf "--archive-dirs %s" (Filename.quote destination)]
+    in
+    if ok
+      then show ~script ~title:(Printf.sprintf (f_ "Projects recovered into %s") (Glib.Markup.escape_text destination)) output
+      else failed output
+  in
+  (* Cleaning: destroys unsaved work, so the report comes first and the user answers a question
+     whose text is the tool's own words. *)
+  let clean script () =
+    let (report, _) = run_cleanup script [] in
+    let question =
+      Printf.sprintf
+        (f_ "About to remove the run directories that no live session is using. THE UNSAVED WORK THEY HOLD WILL BE LOST -- recover it first if you have not. This is what the cleanup tool sees:\n\n%s\n\nRemove them?")
+        (Glib.Markup.escape_text (directories_section report))
+    in
+    match Simple_dialogs.confirm_dialog ~question ~script_answer:false () with
+    | Some true ->
+        let (output, ok) = run_cleanup script ["--purge-dirs"] in
+        if ok then show ~script ~title:(s_ "Run directories removed") output else failed output
+    | _ -> ()
+  in
+  let actions =
+    match cleanup_command () with
+    | None -> []
+    | Some script ->
+        [ ((s_ "Recover the projects"), in_a_thread (recover script));
+          ((s_ "Remove the directories"), in_a_thread (clean script)) ]
+  in
   Simple_dialogs.warning
+    ~actions
     (s_ "Run directories left behind")
     (Printf.sprintf
-       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. To sort out the abandoned ones and remove them, run the script useful-scripts/marionnet-cleanup of the Marionnet sources with the option --purge-dirs.")
-       (Glib.Markup.escape_text dir) n)
+       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. You may sort them out whenever you like, with the command:\n\nmarionnet-cleanup --archive-dirs DIRECTORY --purge-dirs\n\nwhich first saves each of those projects as a .mar file into DIRECTORY, then removes the directories no live session is using.%s")
+       (Glib.Markup.escape_text dir) n
+       (if actions = [] then "" else
+          "\n\n" ^ (s_ "The buttons below do exactly that, right now.")))
     ()
 
 (* Check that we're *not* running as root. Yes, this has been reversed

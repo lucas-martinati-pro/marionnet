@@ -1,0 +1,59 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2026  Jean-Vincent Loddo
+;; Copyright (C) 2026  Université Sorbonne Paris Nord (USPN)
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; ---
+;; --- Install the user-facing scripts of this directory.
+;; ---
+;; Until now nothing installed them, and the documentation -- written for people who do NOT
+;; have the sources -- called them by their bare names all the same. Marionnet itself now
+;; NAMES one of them on screen (bin/marionnet.ml, the startup warning about the run
+;; directories left behind) and RUNS it from a button, which settles the question: the tool
+;; a program tells the user to run has to exist on the user's PATH.
+;;
+;; They go into the scripts/ subdirectory of the share section, i.e. where the scripts of
+;; bin/dune and bashbricks.sh land -- for an ordinary install
+;;   /usr/local/share/marionnet/scripts/
+;; -- because the Makefile mirrors ALL of share/marionnet/scripts/* into $(PREFIX)/bin/ (hard
+;; links for `install-final-as-root', symlinks for `install-for-testing'), making them
+;; executable on the way. That mirror is the whole point here, and it is why nothing has to
+;; be added to the Makefile.
+;;
+;; mrnctl and mrn2sh are SYMLINKS in the source tree; dune installs them as copies, which
+;; changes nothing: both scripts choose their behaviour from `${0##*/}' (see PROGNAME in
+;; marionnet-ctl and mrn-check), never from the inode they were reached through.
+;;
+;; Deliberately not installed: marionnet_from_scratch (a dead installer, see
+;; docs/modernisation-installation-marionnet.md), its two satellites, prepare_bridge.sh
+;; (superseded by bin/scripts/marionnet-lanbridge.sh), which_ocamlbricks and
+;; make_marionnet_bytecode_revno (development-time tools). The bash completion
+;; (marionnet-completion.bash) is not a command and belongs to a completion directory, not
+;; to bin/: it is written down as a remaining task of the installation work-stream.
+;; ---
+(install
+  (files
+     ;; --- Marionnet names it on screen and runs it from the buttons of its startup warning:
+     (marionnet-cleanup as scripts/marionnet-cleanup)
+     ;; --- The clients of the control channel (work-stream `pilotage-par-script'), which the
+     ;; --- delivered documentation (doc-src/scripting/) calls by their bare names. The two
+     ;; --- links are part of the interface: they select the behaviour by $0.
+     (marionnet-ctl as scripts/marionnet-ctl)
+     (mrnctl as scripts/mrnctl)
+     (mrn-check as scripts/mrn-check)
+     (mrn2sh as scripts/mrn2sh)
+     (mrn-verify as scripts/mrn-verify))
+  (section share)
+  (package marionnet))

@@ -102,4 +102,7 @@ useful-scripts/*
 # Inventaire et balayage de ce qu'une session tuée brutalement laisse derrière elle
 # (processus auxiliaires, sockets, répertoires de run) — cf. docs/TODO.md.
 !useful-scripts/marionnet-cleanup
+# Stanza `install' de dune qui pose les scripts ci-dessus dans share/marionnet/scripts/, donc
+# (par le mirroir du Makefile) dans $(PREFIX)/bin/.
+!useful-scripts/dune
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf
