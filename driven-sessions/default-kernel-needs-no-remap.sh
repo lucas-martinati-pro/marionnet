@@ -102,8 +102,14 @@ skip() { echo "SKIP: $*"; skipped+=1; }
 ask() { echo "$1" | timeout 30 socat -t 30 -T 30 - "UNIX-CONNECT:$sock" 2>/dev/null; }
 
 # Start a session on the socket, and wait for the socket to appear.
+# LANGUAGE/LC_ALL are pinned because [kernel_adjustments_in] matches the WORDS of a summary the
+# application writes. Since episode 15 of marionnet-todo-transverse a binary run from _build
+# reads this repository's catalogues, so under a French locale that summary says "noyau" and an
+# English pattern silently matches nothing -- which does not make the bench fail where it looks
+# for an ABSENCE of adjustment: two of its three cases then pass while proving nothing.
 start_session() {
-  timeout -k 5 240 "$BIN" --control-socket "$sock" >>"$tmpdir/stdout" 2>>"$tmpdir/stderr" &
+  LANGUAGE=C LC_ALL=C timeout -k 5 240 "$BIN" --control-socket "$sock" \
+     >>"$tmpdir/stdout" 2>>"$tmpdir/stderr" &
   pid=$!
   local i
   for ((i = 0; i < 90; i++)); do [[ -S "$sock" ]] && return 0; sleep 1; done
