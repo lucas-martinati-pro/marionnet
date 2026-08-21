@@ -37,59 +37,6 @@ gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scr
 
 ---
 
-## i18n — en arbre de développement, Marionnet lit le catalogue d'un AUTRE Marionnet
-
-**Constat** (mesuré le 2026-08-10 à l'ép. 8b de `migration-marshal-to-text`, `strace -e openat`).
-Le binaire de `_build` ouvre `/usr/share/locale/fr/LC_MESSAGES/marionnet.mo` — le catalogue du
-Marionnet **installé sur la machine**, qui peut avoir plusieurs versions de retard — et jamais
-celui du dépôt, alors même que la cascade de `bin/gettext.ml` explore le site dune-site
-(25 `openat` sous `_build/install/default/share/marionnet/locale`, dont les `.mo` sont des **liens
-symboliques** vers `_build/default/i18n/`). Conséquence : on ne peut **pas** vérifier une
-traduction sans installer, et pire, on croit la vérifier alors qu'on lit le catalogue d'un autre
-binaire — exactement le piège que le chantier i18n clos avait nommé (« preuve du `.mo` réellement
-chargé »).
-
-**Voulu.** Qu'un binaire lancé depuis `_build` lise les catalogues du dépôt, pour que
-`LC_ALL=fr_FR.UTF-8 ./_build/default/bin/marionnet.exe` montre les traductions **qu'on vient
-d'écrire**.
-
-**Ce que l'implémentation devra affronter.** Deux pistes ont été essayées à l'ép. 8b et
-**retirées faute d'effet mesuré** : (a) `MARIONNET_LOCALEPREFIX` — la cascade la place pourtant en
-deuxième position (`gettext.ml:47-52`), mais la fixer ne change pas le fichier ouvert, ce qui
-demande d'abord de vérifier que `Configuration.get_string_variable` lit bien l'environnement pour
-cette variable ; (b) `~follow:()` sur le `find` de la cascade, l'hypothèse étant qu'un lien
-symbolique n'est pas un `'f'` pour `UnixExtra.find` (qui utilise `lstat` sans `~follow`) — sans
-effet non plus. Le diagnostic reste donc **ouvert** : il faudra instrumenter `localeprefix`
-(le `Log.printf` de `gettext.ml:59` est écrit **avant** que le journal ne soit prêt, donc perdu —
-c'est la première chose à corriger pour voir quoi que ce soit) plutôt que de continuer à deviner.
-Le repli final `try_to_infer_localeprefix_searching_marionnet_dot_mo_in_usr` est le suspect
-principal : il cherche dans `/usr` et trouve toujours quelque chose sur un poste où Marionnet est
-installé.
-
-**Confirmé le 2026-08-15** (clôture de `journalisation-profonde`, ép. 24) : ce défaut a **produit
-un faux constat**. Une session française classait « Rapport sur m1 » à côté de « Console of m1 », ce
-qui a été consigné comme une incohérence de traduction ; les quatre titres sont pourtant traduits
-dans `bin/po/fr.po` **et** dans le catalogue installé du switch courant. C'est
-`/usr/share/locale/fr/LC_MESSAGES/marionnet.mo`, **daté du 8 juillet 2023**, qui était lu : il porte
-`Report on ` (msgid ancien) et pas `Console of ` / `Terminal of ` (msgid de 2026). Le coût de ce
-défaut n'est donc pas seulement « on ne peut pas vérifier une traduction » : c'est **une mesure
-fausse qu'on croit vraie**.
-
-**Le catalogue n'est pas seul dans ce cas** (mesuré le 2026-08-21, ép. 13 de
-`marionnet-todo-transverse`). Un binaire de `_build` lit aussi le **glade** et les **images** du
-Marionnet installé : `Initialization.Path.marionnet_home_gui` dérive de
-`Meta.prefix ^ "/share/" ^ Meta.name`, si bien qu'une modification de `bin/gui/gui_glade3.xml`
-reste invisible au run tant qu'on n'a pas installé. Deux conséquences pour le diagnostic à
-mener ici : (a) sans `make install`, on croit mesurer l'interface du dépôt alors qu'on mesure
-celle d'un autre Marionnet — exactement le piège du `.mo`, un cran plus haut ; (b) mais la
-variable `MARIONNET_PREFIX`, elle, **fonctionne** — lancer le binaire avec un préfixe fabriqué
-(`gui/` et `images/` en liens vers le dépôt) suffit à lui faire lire les sources, ce que le banc
-`driven-sessions/message-window-geometry.sh` fait à chaque exécution. Le contraste avec
-`MARIONNET_LOCALEPREFIX`, réputée sans effet, est donc **la première piste à instruire** : les
-deux variables passent par le même `Configuration.extract_string_variable_or`, et l'une marche.
-
----
-
 ## Modèle — sur un **switch**, tout ce qui n'est pas le rc reste celui du premier démarrage
 
 **Constat** (mesuré le 2026-08-20, `marionnet-todo-transverse` ép. 11, en soldant l'entrée jumelle
@@ -263,3 +210,34 @@ prédicat, puis un `reply_error` ; la grammaire n'en est pas changée, donc aucu
 *Repéré le 2026-08-21 par l'épisode 14 de `marionnet-todo-transverse`, qui grisait les entrées de
 menu correspondantes et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
 s'écrit, il ne se corrige pas en passant).*
+
+---
+
+## Développement — le glade et les images lus sont ceux du Marionnet **installé**
+
+**Constat** (mesuré le 2026-08-21, ép. 15 de `marionnet-todo-transverse`, en soldant le jumeau
+du catalogue). `Initialization.Path.marionnet_home` vaut `Meta.prefix ^ "/share/" ^ Meta.name`
+sauf surcharge par `MARIONNET_PREFIX` ; en arbre de développement, `Meta.prefix` désigne le
+préfixe d'installation, si bien qu'un binaire de `_build` lit le `gui/gui_glade3.xml` et les
+`images/` d'un **autre** Marionnet — celui installé sur la machine, éventuellement vieux de
+plusieurs versions. Une modification du glade reste donc invisible au run tant qu'on n'a pas
+fait `make install` ; c'est le piège que l'ép. 15 vient de fermer pour le `.mo`, un cran plus
+haut. Le banc `driven-sessions/message-window-geometry.sh` s'en protège déjà, mais à la main :
+il **fabrique** un préfixe temporaire dont `gui/` et `images/` sont des liens vers le dépôt.
+
+**Voulu.** La même chose que pour le catalogue depuis l'ép. 15 : qu'un binaire lancé depuis
+`_build` lise le glade et les images **du dépôt**, sans variable ni installation, et que le
+journal dise d'où il les prend.
+
+**Ce que l'implémentation devra affronter.** Le remède du catalogue n'est **pas** transposable
+tel quel. `MARIONNET_PREFIX` ne pilote pas que `gui/` et `images/` : `Path.filesystems` et
+`Path.kernels` en dérivent aussi (`bin/initialization.ml`), et le préfixe que `dune build`
+fabrique (`_build/install/default/share/marionnet/`) contient un `filesystems/` **vide** et
+**aucun** `kernels/` — mesuré. Basculer le préfixe entier en arbre de développement priverait
+donc Marionnet de ses systèmes invités et de ses noyaux : il faut choisir **par répertoire**
+(les données versionnées viennent du dépôt, les données installées de l'hôte), ou bien poser un
+candidat de repli plutôt qu'un remplacement. C'est ce tri, pas la détection de `_build`, qui
+coûte — cette dernière existe déjà, dans `Gettext.locale_directory_of_the_development_tree`.
+
+*Repéré le 2026-08-21 par l'épisode 15 de `marionnet-todo-transverse`, qui l'a mesuré sans le
+corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*

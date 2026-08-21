@@ -205,7 +205,7 @@ cf. § 5, la vérification tombant *avant* la construction.)
 | 12 | Un routeur neuf naît avec un noyau inutilisable | **Rien à corriger** : `79c25dd` (hors chantier) l'a soldé à la racine, l'entrée n'avait pas été retirée (§ 3.3, encadré) | `driven-sessions/default-kernel-needs-no-remap.sh` — **fait** (banc **versionné**, contre l'annonce « jetable » : cf. § 3.6) |
 | 13 | Les autres fenêtres de message s'étalent sur toute la largeur | **Constat retourné par la mesure** : elles ne s'étalent pas, elles se **rétrécissent** en colonne et s'allongent sans fin (`set_resizable true` + Gtk+ 3). Plafond dans le glade, zone défilante bornée, `set_resizable` retiré ; aucun `\n` manuel à toucher (mesuré sur les 12 catalogues) | `driven-sessions/message-window-geometry.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI, captures ») |
 | 14 | Griser « Enregistrer » / « Sous » / « Copier vers » | Quatrième pile `sensitive_when_Saveable` ; la source de notification aux transitions **existait déjà** (`refresh_sketch_counter`), `user_level.ml` n'est pas touché | `driven-sessions/save-entries-greyed-while-running.sh` — **fait** (banc **versionné**, contre l'annonce « run GUI ») |
-| 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | **Instrumenter d'abord** (le `Log.printf` de `gettext.ml:59` est écrit avant que le journal soit prêt, donc perdu) ; fusible § 3.1 | `strace -e openat` |
+| 15 | En arbre de dev, Marionnet lit le catalogue d'un AUTRE Marionnet | Instrumenter d'abord (fait : diagnostic **différé**, le journal n'existe pas encore quand la cascade décide), puis deux causes **mesurées** : `Sites.locale` est **vide** hors installation, et les `.mo` d'un site dune sont des **liens** que `find ~kind:'f'` rejette. Candidat « arbre de dev » + `~follow:()` | `driven-sessions/gettext-catalogue-in-dev-tree.sh` — **fait** (banc **versionné**, contre l'annonce « `strace -e openat` » jetable) |
 | 16 | Le rapport de fin de session n'est pas garanti | **Mesurer d'abord** le délai marqueur → hook ; fusible § 3.1 | banc jetable (invités) |
 
 ---
@@ -1136,3 +1136,82 @@ rejoués verts (45 cas, 0 échec), aucun `msgid` touché (donc aucun catalogue, 
 L'entrée « GUI — griser « Enregistrer » / « Enregistrer sous » quand quelque chose tourne » est
 **retirée** de `docs/TODO.md` : **2 défauts restants** au périmètre du chantier (les épisodes 15
 et 16), plus les **cinq** voisins entrés par les épisodes 7, 8, 9, 11 et 14.
+
+---
+
+### 2026-08-21 — épisode 15 : un binaire de `_build` lit les catalogues du dépôt
+
+**Le diagnostic était impossible, littéralement.** L'entrée du TODO le disait sans en tirer la
+conséquence : le `Log.printf` de `gettext.ml:59` est *« écrit avant que le journal soit prêt,
+donc perdu »*. Ce n'est pas une malchance de mise en page, c'est structurel — `bin/marionnet_log.ml`
+donne au journal le niveau **constant 0** jusqu'à ce que `bin/initialization.ml` y branche
+`Debug_level.get`, et la cascade du catalogue s'exécute à l'**initialisation du module**, donc
+avant. Aucun `--debug` ne pouvait montrer quoi que ce soit. Le premier geste de l'épisode est
+donc un **diagnostic différé** : `gettext.ml` accumule ce qu'il décide, `Gettext.log_diagnosis ()`
+l'imprime, et `initialization.ml` l'appelle juste après avoir posé le niveau réel. Ce
+renversement est le seul moyen d'avoir une mesure plutôt qu'une hypothèse.
+
+**Deux causes, mesurées, dont aucune n'était celle qu'on croyait.** Les deux pistes de l'ép. 8b
+de `migration-marshal-to-text` avaient été retirées « faute d'effet » ; elles étaient justes
+toutes les deux, mais seules et sans instrument elles ne pouvaient rien montrer.
+
+1. **`Sites.locale` est vide en arbre de développement.** `_build/default/i18n/Locations.ml`
+   passe à `Dune_site` un `%%DUNE_PLACEHOLDER:…%%` que **seul `dune install` réécrit** ; le
+   placeholder est intact dans `_build/default/bin/marionnet.exe` (`strings`), et la trace
+   `strace` ne montre **aucun** répertoire sondé au titre du site. Le premier candidat de la
+   cascade ne peut donc rien donner tant qu'on n'a pas installé.
+2. **Les `.mo` d'un site dune sont des liens symboliques.**
+   `_build/install/default/share/marionnet/locale/fr/LC_MESSAGES/marionnet.mo` pointe vers
+   `_build/default/i18n/fr.mo`, et `UnixExtra.find ~kind:'f'` fait un `lstat` quand `~follow`
+   est absent (`lib/EXTRA/unixExtra.ml:411`) : un lien n'est alors **pas** un fichier régulier.
+   Mesuré directement dans la trace : `newfstatat(…marionnet.mo, {st_mode=S_IFLNK}, AT_SYMLINK_NOFOLLOW)`
+   — le fichier est vu, reconnu comme lien, et rejeté. C'est **exactement** pourquoi
+   `MARIONNET_LOCALEPREFIX` semblait sans effet : la variable était lue, le répertoire parcouru,
+   le catalogue trouvé… et écarté.
+
+Le repli `try_to_infer_localeprefix_searching_marionnet_dot_mo_in_usr` ramassait ensuite le
+`.mo` de `/usr` — daté du 8 juillet 2023 sur cette machine — en silence.
+
+**Le correctif, deux fichiers et quatre gestes.** (a) `~follow:()` sur la recherche de la
+cascade, **pas** sur celle du repli (qui balaye tout `/usr`, où suivre les liens revient à le
+parcourir plusieurs fois) ; (b) un candidat *arbre de développement*, dérivé de
+`Sys.executable_name` : un exécutable en `<racine>/_build/default/bin/` désigne
+`<racine>/_build/install/default/share/marionnet/locale`, que `dune build` fabrique de toute
+façon — la forme est reconnue explicitement, et un binaire installé ne la rencontre jamais ;
+(c) l'ordre des candidats devient site, **variable**, arbre de dev, `Meta.localeprefix` : une
+surcharge explicite l'emporte sur une inférence ; (d) le repli `/usr` est **gardé** (décision de
+l'utilisateur) mais cesse d'être muet — il dit désormais, en toutes lettres, que le catalogue
+retenu appartient à un **autre** Marionnet.
+
+**La preuve.** `driven-sessions/gettext-catalogue-in-dev-tree.sh`, versionné (ni invité ni
+privilège), **0 PASS / 3 FAIL** sur le code d'avant, **3 PASS / 0 FAIL** après. Il ne lit pas ce
+que le code croit mais ce que le noyau fait : le `marionnet.mo` réellement ouvert, extrait des
+`openat` de l'application. Ses trois cas sont les trois propriétés voulues — le catalogue du
+dépôt en run nu, la variable honorée **lien compris**, et la décision visible dans le journal.
+S'y ajoute une preuve jetable, celle que l'entrée du TODO réclamait mot pour mot : `msgstr
+"Avertissement"` remplacé par un marqueur dans `bin/po/fr.po`, `dune build`, et le titre de la
+fenêtre d'avertissement lu au serveur X — `PREUVE-EPISODE-15`, **sans `make install`**.
+`bin/po/fr.po` a été restauré aussitôt (`git diff` vide).
+
+**Trois pièges durables.**
+
+1. **Un `.mli` de trois `val` protège plus qu'il ne coûte.** `bin/gettext.mli` existe et
+   n'exportait que `s_`, `f_` et `localeprefix` : les valeurs internes ajoutées ici
+   (`diagnosis_lines`, la cascade, la détection de `_build`) restent invisibles aux **dizaines**
+   de modules qui font `open Gettext`. Sans lui, chacune aurait été un nom de plus dans leur
+   portée.
+2. **`strace` détache au lieu de tuer.** Une première version du banc signalait le PID de
+   `strace` : sur `SIGTERM`, strace se **détache** et laisse l'application vivre — six fenêtres
+   ont survécu au banc. Le banc lit donc les PID **dans la trace** (strace préfixe chaque ligne
+   du PID appelant) et les vérifie un à un dans `/proc` (identité exacte, jamais un motif) avant
+   de signaler.
+3. **Un fusible de cardinalité se calibre sur une mesure, pas sur une intuition.** Le premier
+   seuil (20 PID) s'est déclenché sur le cas **nominal** — une session ordinaire en trace 45 —,
+   donc le banc ne tuait plus rien tout en affichant PASS : pire que pas de fusible. Seuil porté
+   à 500, la vraie garde étant le contrôle d'identité.
+
+**Un défaut voisin, écrit et non corrigé** (règle du chantier) : `Path.marionnet_home` fait lire
+au binaire de `_build` le **glade** et les **images** du Marionnet installé. Le remède n'est pas
+transposable tel quel — `MARIONNET_PREFIX` pilote aussi `filesystems/` et `kernels/`, absents ou
+vides dans le préfixe que fabrique `dune build` (mesuré) — d'où une entrée neuve dans
+`docs/TODO.md` plutôt qu'une correction en passant.

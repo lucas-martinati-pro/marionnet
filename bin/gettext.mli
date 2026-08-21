@@ -19,3 +19,13 @@ val s_ : string -> string
 val f_ : ('a, 'b, 'c) format -> ('a, 'b, 'c) format
 
 val localeprefix : string
+
+(** Print, on the log, what the cascade choosing [localeprefix] decided: the candidate
+    directories of each origin (dune-site, MARIONNET_LOCALEPREFIX, the development tree,
+    Meta.localeprefix), the directory finally retained and the origin it comes from — and a
+    warning when the retained catalogue is one found under /usr, which belongs to another
+    Marionnet. The cascade runs at link time, when the log's debug level is still the constant
+    0 of [Marionnet_log]; its messages are therefore kept aside and printed by this function,
+    which [Initialization] calls as soon as the real level is set. Calling it twice prints
+    twice: it has no other effect. *)
+val log_diagnosis : unit -> unit

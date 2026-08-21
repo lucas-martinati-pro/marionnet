@@ -258,6 +258,11 @@ let () = Log.printf2
   (Debug_level.get ())
 ;;
 
+(* Now, and not before, the catalogue's cascade may tell what it decided: it ran while this
+   module was still being linked, when the log's level was the constant 0 of marionnet_log.ml.
+   Cf. Gettext.log_diagnosis (episode 15 of `marionnet-todo-transverse'). *)
+let () = Gettext.log_diagnosis () ;;
+
 (* Student exam mode: *)
 let are_we_in_exam_mode = (!option_exam = Some ()) ;;
 let () = Log.printf1 "Student exam mode: %b\n" are_we_in_exam_mode ;;
