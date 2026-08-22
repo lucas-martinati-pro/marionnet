@@ -242,7 +242,7 @@ l'autre un tri de préfixe).
 |---|---|---|---|
 | 17 | Un `set` explicite dépose un avertissement d'import hors de tout import (ép. 7) | Deux moitiés : la branche `aucune` du routeur, **et** un avertissement qui n'est enregistré que pendant un import (drapeau porté par le **fil** qui importe, posé par l'unique porte de désérialisation) | `driven-sessions/import-warning-outside-import.sh` — **fait** (banc **versionné**) |
 | 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | Le **pid**, publié par `quit` **et** par `status` : le seul signal qui dise vrai aussi bien après une sortie propre qu'après une mort brutale — plus la section de `doc-src/scripting/` qui l'écrit | `driven-sessions/quit-is-observable.sh` — **fait** (banc **versionné**) |
-| 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Trancher d'abord ce que **vaut** un `.mar` enregistré en marche ; le geste (un `ask_or_answer` + `reply_error`, patron de `cmd_quit`) est secondaire | — |
+| 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Ce que **vaut** un `.mar` enregistré en marche, tranché d'abord (le cow d'un invité est archivé en plein vol) ; puis le geste, symétrique de `cmd_quit` : un `ask_or_answer` + `reply_error ~code:"components_running"` | `driven-sessions/save-refused-while-running.sh` — **fait** (banc **versionné**) |
 | 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2) ; le tri vivant/mort par `uml_mconsole … version`, sous l'échéance de l'ép. 8 | — |
 | 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm est un `initializer`, donc un cas à part | — |
 | 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi | — |
@@ -1485,3 +1485,70 @@ répertoire de run laissé.
 **Aucun défaut voisin écrit** à cet épisode : les deux surprises rencontrées sont un
 comportement d'ocamlbricks (correct) et une neutralisation de signal voulue et commentée depuis
 longtemps.
+
+
+### 2026-08-22 — épisode 19 : `save` refuse ce que la GUI refuse
+
+**Ce qu'il fallait trancher avant d'écrire une ligne** — l'entrée le disait elle-même : « c'est
+cette question-là, pas la garde, qui coûte ». Ce que **vaut** un `.mar` enregistré en marche se
+lit dans `private_save_project` (`bin/state.ml`) : l'archive est un `tar` du répertoire de
+travail, et la seule exclusion qui touche aux disques est `get_files_may_not_be_saved`
+(`bin/treeview_history.ml`) — dont le nom trompe, ce sont les **anciens** snapshots, jamais le
+cow courant. Le cow d'un invité en marche est donc archivé **pendant que son noyau écrit
+dedans** : le disque restitué vaut celui d'un débranchement. Le refus que la GUI oppose depuis
+toujours (`Msg.error_saving_while_something_up`, `bin/gui/talking.ml`) est fondé, et sa raison
+n'était écrite nulle part — elle l'est maintenant, dans le commentaire de la garde.
+
+**Décision** (utilisateur, avant l'implémentation) : le canal **refuse**, comme la GUI. Des deux
+voies que l'entrée laissait ouvertes, celle-ci ne change pas la grammaire — aucun client ne
+bouge — et surtout elle ne demande pas à un script de savoir ce que même la GUI ne l'autorise pas
+à faire.
+
+**Le geste**, une seule addition dans `cmd_save` (`bin/control_server.ml`), donc valable pour
+`save` **et** `save-as`, qui partagent le corps :
+
+```
+ask_ (fun () -> List.filter_map
+        (fun n -> if n#can_gracefully_shutdown || n#can_resume then Some n#get_name else None)
+        (st#network#get_node_list))
+```
+
+La **liste des noms est le prédicat** — vide si et seulement si
+`is_there_something_on_or_sleeping` est faux, puisqu'elle parcourt les mêmes nœuds avec le même
+test (`bin/state.ml`) — donc pas de seconde source de vérité à faire diverger, et le refus
+**nomme** les composants (`components_running`, détail : `… (s1) …`). Placé **avant** tout appel
+à `save_project`/`save_project_as` : ce dernier **renomme** le projet avant de sauver, et un
+refus tardif aurait laissé la session portant le nom d'un fichier jamais écrit. Zéro chaîne
+i18n : le message part sur le canal, pas à l'écran.
+
+**Rouge/vert** (banc **versionné** `driven-sessions/save-refused-while-running.sh` — un switch,
+ni invité ni privilège) : **2 PASS / 2 FAIL** avant, **4 PASS** après. Les deux cas rouges sont
+les deux moitiés du symptôme du TODO (`save` puis `save-as` avec `s1` en marche) ; les deux
+autres sont la non-régression, jouée **avant et après** — une garde qui refuserait toujours
+passerait les deux premiers et rendrait `save` inutilisable. Le banc lit la réponse du canal
+seule : le code, les noms qu'elle porte, et pour `save-as` les deux choses qu'un refus doit
+laisser intactes — aucun fichier créé, et le projet portant toujours son propre nom (relu par
+`status`).
+
+**Défaut voisin, mesuré et écrit au TODO** (règle § 2.3). Le refus neuf rend visible une
+asymétrie qui existait déjà : sur la même session, un switch en marche,
+
+```
+save         -> {"ok":false,"error":"components_running",…}
+close --save -> {"ok":true,"closed":true,"saved":true}
+```
+
+`leave_current_project` (corps commun de `close`, `new` et `open`) appelle `shutdown_everything ()`,
+qui ne fait que **planifier** les extinctions (`Task_runner#schedule_parallel`), puis enchaîne
+`save_project` tout de suite : le `tar` part **pendant** que les invités descendent. Le menu GUI
+joue la même séquence, donc les deux se corrigent ensemble ou pas du tout — c'est ce que dit la
+nouvelle entrée de `docs/TODO.md`, qui remplace celle que cet épisode solde.
+
+**Vérifications.** `dune build` rc 0, `make check` (`dune build @check`) rc 0, banc **4 PASS /
+0 FAIL**, et les **14 bancs versionnés** rejoués en séquence — tous rc 0, aucun FAIL, aucun SKIP.
+Aucun processus survivant et aucun répertoire de run laissé par les runs de cet épisode (les
+seuls UML relevés sur la machine dataient de treize heures, d'une session antérieure sans
+rapport). Les deux scripts livrés qui enregistrent après un démarrage
+(`doc-src/scripting/examples/05-exam-session.sh`, `doc-src/labs/session-7/play.sh`) le font déjà
+l'un après un `stop` suivi de `wait --state=off`, l'autre **avant** son `start-all` : rien à y
+corriger, et les recettes du § 7 et du § 13 du README enregistrent un réseau jamais démarré.

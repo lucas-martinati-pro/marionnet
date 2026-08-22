@@ -131,33 +131,43 @@ pas du tout, d'où l'échéance posée à l'épisode 8 sur toute tentative mcons
 
 ---
 
-## Canal — `save` écrit le projet pendant que des composants tournent
+## Canal et GUI — `--save` enregistre **pendant** que l'extinction descend
 
-**Constat** (mesuré le 2026-08-21). En GUI, « Enregistrer » est refusé tant que quelque chose est
-allumé ou suspendu — le message le dit en toutes lettres : *« The project can't be saved right
-now. One or more network components are still running. Please stop them before saving. »*
-(`bin/gui/talking.ml:94`). Par le canal de contrôle, la même demande **passe** : un switch en
-marche, `save` répond `{"ok":true,"saved":true,…}`. `cmd_save` (`bin/control_server.ml:3572`) ne
-consulte pas `is_there_something_on_or_sleeping`, alors que `cmd_quit` le fait (en mode examen).
-Vaut aussi pour `save-as`, qui partage le même corps.
+**Constat** (mesuré le 2026-08-22). Depuis l'épisode 19, `save` et `save-as` refusent d'écrire le
+projet tant que quelque chose tourne. `close --save`, lui, accepte — mesuré sur la même session,
+un switch en marche :
 
-**Voulu.** Une décision explicite, et la même des deux côtés. Soit le canal refuse comme la GUI
-(`ok:false`, code dédié, message nommant les composants encore en marche), soit — si l'on juge
-qu'une session pilotée doit pouvoir enregistrer en marche — la GUI cesse d'être seule à
-l'interdire et le canal le **dit** dans sa réponse (un avertissement, comme les
-`notifications`). Ce qu'on ne veut pas, c'est le silence : aujourd'hui le client ne peut pas
-savoir que ce qu'il vient d'écrire n'est pas ce que la GUI aurait écrit.
+```
+save         -> {"ok":false,"error":"components_running","detail":"… (s1) …"}
+close --save -> {"ok":true,"closed":true,"saved":true}
+```
 
-**Ce que l'implémentation devra affronter.** Le refus GUI est ancien et sa raison n'est écrite
-nulle part : avant de la recopier dans le canal, il faut établir **ce que vaut** un `.mar`
-enregistré en marche (les fichiers cow des invités sont ouverts en écriture au moment de
-l'archivage, et le format `v3` archive aussi les treeviews). C'est cette question-là, pas la
-garde, qui coûte. Le geste, lui, est symétrique de `cmd_quit` : un `ask_or_answer` sur le
-prédicat, puis un `reply_error` ; la grammaire n'en est pas changée, donc aucun client ne bouge.
+Ce n'est pas une exception assumée mais une **course**, lue dans le code : `leave_current_project`
+(`bin/control_server.ml`, corps commun de `close`, `new` et `open`) appelle `st#shutdown_everything ()`,
+qui ne fait que **planifier** les extinctions (`do_something_with_every_node_in_parallel` →
+`Task_runner#schedule_parallel`, `bin/state.ml:1079,1144`), puis enchaîne `st#save_project`
+**tout de suite** : le `tar` part donc pendant que les invités descendent, ce qui est exactement
+la situation que le refus de l'épisode 19 écarte. Seul `close_project`, plus loin, attend le
+*task runner*. Le menu GUI joue la **même** séquence (« éteindre, enregistrer si oui, fermer »,
+`bin/gui/gui_menubar_MARIONNET.ml`), donc le défaut n'est pas propre au canal.
 
-*Repéré le 2026-08-21 par l'épisode 14 de `marionnet-todo-transverse`, qui grisait les entrées de
-menu correspondantes et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin
-s'écrit, il ne se corrige pas en passant).*
+**Voulu.** Que `--save` sauve un réseau **arrêté** : attendre que les extinctions planifiées
+soient terminées avant d'appeler `save_project`. Pour un switch la fenêtre est courte, pour un
+invité UML elle dure ce que dure un arrêt propre — des dizaines de secondes pendant lesquelles
+le cow est encore écrit.
+
+**Ce que l'implémentation devra affronter.** Le point d'attente existe déjà
+(`Task_runner#wait_for_all_currently_scheduled_tasks`, que `close_project` utilise), mais
+l'insérer entre l'extinction et l'enregistrement change la **durée** de `close --save` sans
+changer sa réponse : un client qui pilotait avec un `--timeout` court verra un `timeout` là où
+il voyait un succès (l'échéance ne borne que les allers-retours vers le fil GTK, pas la commande
+— § 15 de `doc-src/scripting/README.md`). Et comme le menu partage la séquence, corriger le seul
+canal recréerait l'asymétrie GUI/canal que l'épisode 19 vient de fermer : les deux se corrigent
+ensemble, ou aucun.
+
+*Repéré le 2026-08-22 par l'épisode 19 de `marionnet-todo-transverse`, qui alignait `save` sur la
+GUI et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin s'écrit, il ne se
+corrige pas en passant).*
 
 ---
 

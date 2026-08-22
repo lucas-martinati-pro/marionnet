@@ -177,7 +177,10 @@ Reprise : appliquer le skill `chantier-long`.
   **ép. 18** (la fin d'une session s'observe par le canal seul : `quit` **et** `status` publient
   le **pid**, seul signal vrai après une sortie propre *comme* après un `SIGKILL` — le fichier
   socket, lui, n'est retiré qu'à la sortie propre, donc son absence prouve une fin et sa présence
-  ne prouve rien ; contrat écrit au § 6 de `doc-src/scripting/README.md`) —
+  ne prouve rien ; contrat écrit au § 6 de `doc-src/scripting/README.md`) et son **ép. 19**
+  (`save` et `save-as` refusent d'écrire le projet tant qu'un composant est allumé ou suspendu,
+  comme la GUI : le `.mar` étant un `tar` du répertoire de travail, le cow d'un invité en marche
+  y serait archivé **en plein vol** — le refus nomme les composants, code `components_running`) —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque

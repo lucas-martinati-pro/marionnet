@@ -3589,6 +3589,33 @@ let cmd_save (st : State.globalState) ~(timeout:float) ~(filename: string option
     Error (reply_error_with ~extra:(extra ()) ~code:"no_active_project"
              ~detail:"no project is open")
   else
+  (* Episode 19 of marionnet-todo-transverse: what a .mar written while things run is worth.
+     The archive is a plain [tar] of the working directory (state.ml, `private_save_project'),
+     and the only exclusion which touches the disks is [get_files_may_not_be_saved]
+     (treeview_history.ml) whose name misleads: those are the *older* snapshots, never the
+     current cow. The cow of a running guest is therefore archived WHILE its kernel writes into
+     it — the restored disk is worth the one of a power cut. That is the reason, written nowhere
+     until now, of the refusal the GUI has always opposed to "Save", "Save as" and "Copy to"
+     (Msg.error_saving_while_something_up, talking.ml). The channel now opposes the same one:
+     the answer is a refusal a client can read, not a silent .mar the GUI would never have
+     written.
+     The list of names *is* the predicate — empty iff [is_there_something_on_or_sleeping] is
+     false, since it walks the same nodes with the same test (state.ml) — so there is no second
+     source of truth to drift. Refused BEFORE anything is called: [save_project_as] changes the
+     project name before saving (state.ml), and a refusal must leave even that untouched. *)
+  ask_ (fun () ->
+          List.filter_map
+            (fun n -> if n#can_gracefully_shutdown || n#can_resume then Some n#get_name else None)
+            (st#network#get_node_list))
+  >>= fun running ->
+  if running <> [] then
+    Error (reply_error_with ~extra:(extra ()) ~code:"components_running"
+             ~detail:(Printf.sprintf
+                        "the project cannot be written while components are on or sleeping \
+(%s): their disks would be archived in mid-flight. Stop them first, or use \"close --save\", \
+which shuts everything down and then saves."
+                        (String.concat ", " running)))
+  else
   (* save_project_as re-raises what change_filename_and_root_basename may throw
      (state.ml:820-828); save_project does not throw at all. *)
   (try Ok (match filename with

@@ -183,6 +183,7 @@ The codes you can branch on:
 | `constraint_violated` | the value is refused by the same check the GUI applies |
 | `restart_choice_required` | the change needs a running node restarted, and you did not say whether to |
 | `unsaved_changes` | the project has changes and you did not say `--save` or `--no-save` |
+| `components_running` | something is on or sleeping, and the project may not be written in that state (the detail names them) |
 | `timeout` | the deadline expired (the answer says what was last observed) |
 | `internal` | a bug on our side; the detail carries what was captured |
 
@@ -428,6 +429,12 @@ Notes that save time:
 * **`new`, `close` and `open` refuse to throw away work**: if the current project has changes
   they answer `unsaved_changes` until you say `--save` or `--no-save`. That is deliberate —
   the script must state its intent, not inherit a default.
+* **`save` and `save-as` refuse while anything runs**, exactly as the GUI greys its three
+  writing entries: the answer is `components_running` and its detail names the components which
+  are on or sleeping. The reason is the disks: a `.mar` is a tarball of the working directory,
+  so the cow file of a running guest would be archived *in mid-flight* — restoring it would be
+  worth restoring a power cut. Stop what runs, or use `close --save`, which shuts everything
+  down and then saves.
 
 There is no file format to generate. **Marionnet is the only legitimate producer of a `.mar`**
 (it is a binary image, not XML): a lab is built through the channel and written by `save-as`.
@@ -1079,6 +1086,7 @@ switch table it does not know, connectivity) — the same information that would
 | exit 3 after a long request | the GUI thread is busy; retry with a larger `--timeout=` — the transport sizes itself on it automatically |
 | `no_active_project` | open or create a project first; the network only exists inside one |
 | `unsaved_changes` | say `--save` or `--no-save` explicitly; the channel will not guess |
+| `components_running` on `save`/`save-as` | stop the components the detail names (or `close --save`): their disks cannot be archived while they run |
 | `forbidden_transition` | ask `can <component>` first — the state machine is the same one the GUI obeys |
 | `restart_choice_required` | add `--restart` or `--no-restart` to the write |
 | `timeout` on `wait … --ready` | the guest never wrote the marker: check the startup configuration is `--enable`d, and that the machine really booted (`wait --state=on` first) |
