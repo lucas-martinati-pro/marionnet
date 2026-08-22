@@ -103,34 +103,6 @@ corriger (règle § 2 de `docs/todo-transverse.md`).*
 
 ---
 
-## Hygiène — les répertoires mconsole de `~/.uml/` ne sont balayés par personne
-
-**Constat** (mesuré le 2026-08-20, en soldant l'entrée « un `uml_mconsole … sysrq e` peut
-rester bloqué »). Chaque invité fait créer par son noyau UML un répertoire `~/.uml/<umid>/`
-(socket `mconsole` et compagnie), et ce répertoire **survit à la session** : onze traînaient
-ici, dont des `probe-*` du 11 août et des noms de projets fermés depuis. Rien ne les enlève —
-ni Marionnet à la sortie, ni `useful-scripts/marionnet-cleanup`, qui ne connaît que
-`/tmp/marionnet-*.dir` (vérifié : le mot `.uml` n'y figure pas). Ils ne coûtent presque rien
-(quelques kio), mais ils s'accumulent indéfiniment et, surtout, **ils portent le nom de la
-machine** : un `~/.uml/m1/` résiduel est
-exactement ce qu'un `uml_mconsole m1` d'une session suivante trouvera — refusé aussitôt
-(« Connection refused », mesuré : ~10 ms), donc sans conséquence fonctionnelle, mais trompeur
-pour qui lit le journal.
-
-**Voulu.** Le même traitement que les répertoires de run (entrée soldée à l'épisode 6 du
-chantier `marionnet-todo-transverse`) : `marionnet-cleanup` sait les **repérer** et les proposer
-au retrait, Marionnet ne purge jamais tout seul.
-
-**Ce que l'implémentation devra affronter.** Trancher le vivant du mort demande la même prudence
-qu'ailleurs : le répertoire appartient à un UML **peut-être encore en marche** (une autre session
-de l'utilisateur). Le socket lui-même donne la réponse sans `/proc` : un `uml_mconsole <umid>
-version` refusé en quelques millisecondes signe un noyau mort — mais un noyau **gelé** ne répond
-pas du tout, d'où l'échéance posée à l'épisode 8 sur toute tentative mconsole.
-
-*Repéré le 2026-08-20, en soldant l'entrée « un `uml_mconsole … sysrq e` peut rester bloqué ».*
-
----
-
 ## Canal et GUI — `--save` enregistre **pendant** que l'extinction descend
 
 **Constat** (mesuré le 2026-08-22). Depuis l'épisode 19, `save` et `save-as` refusent d'écrire le
@@ -198,4 +170,46 @@ candidat de repli plutôt qu'un remplacement. C'est ce tri, pas la détection de
 coûte — cette dernière existe déjà, dans `Gettext.locale_directory_of_the_development_tree`.
 
 *Repéré le 2026-08-21 par l'épisode 15 de `marionnet-todo-transverse`, qui l'a mesuré sans le
+corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
+
+---
+
+## Invités — un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole
+
+**Constat** (mesuré le 2026-08-22, en soldant l'entrée « les répertoires mconsole de `~/.uml/`
+ne sont balayés par personne »). Un UML `linux-6.12.95` démarré la veille (`umid=m1`, vivant
+depuis 13 h, orphelin d'une session morte) n'a **ni** `~/.uml/m1/` **ni** `/tmp/uml/m1/` :
+
+```
+$ timeout 2 uml_mconsole m1 version
+Warning: couldn't stat file: /home/jean/.uml/m1/mconsole - No such file or directory
+Warning: couldn't stat file: /tmp/uml/m1/mconsole - No such file or directory
+Sending command to '' : Invalid argument           # rc=1, immédiat
+```
+
+Ce n'est ni un `uml_dir=` détourné (sa ligne de commande n'en porte aucun), ni un `HOME` exotique
+(son environnement dit `HOME=/home/jean`), ni un noyau sans la fonction (`strings` sur le noyau :
+`CONFIG_MCONSOLE=y`, `mconsole_register_dev`, `mconsole (version %d) initialized on %s`). Aucune
+socket unix liée ne nomme `mconsole` dans `/proc/net/unix`. Les huit répertoires `~/.uml/<umid>/`
+résiduels de cet hôte datent tous des noyaux **précédents** (11 au 14 août).
+
+**Conséquence.** Sur ce noyau, tout le chemin `gracefully_terminate_with_mconsole`
+(`bin/simulation_level.ml`, l'échéance de l'épisode 8) échoue **d'emblée** : l'extinction propre
+d'un invité — `cad`, `halt`, `sysrq e` — ne peut atteindre personne, et l'arrêt retombe
+systématiquement sur le kill. C'est exactement ce que l'épisode 8 croyait réserver au noyau gelé.
+
+**Voulu.** Que l'extinction propre par mconsole marche sur le noyau courant, ou — si UML 6.12 a
+changé de convention — que Marionnet lui dise explicitement où poser sa socket (`uml_dir=` sur la
+ligne de commande du noyau, qui a l'avantage de rendre le chemin **connu** au lieu de dépendre de
+`$HOME`).
+
+**Ce que l'implémentation devra affronter.** La cause reste à établir, et elle se mesure sur un
+**boot neuf** : le noyau écrit `mconsole (version N) initialized on <chemin>` sur sa console au
+démarrage, et le journal profond de l'invité (chantier `journalisation-profonde`) le capte. Deux
+hypothèses à départager — `mconsole_init` échoue à créer le répertoire (droits, `$HOME` non vu par
+le noyau au moment de l'initcall), ou le noyau de `marionnet-kernel-rootfs` a perdu l'option au
+build. Tant que ce n'est pas tranché, ne pas « corriger » l'échéance de l'épisode 8 : elle fait ce
+qu'on lui demande, c'est sa cible qui manque.
+
+*Repéré le 2026-08-22 par l'épisode 20 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*

@@ -243,7 +243,7 @@ l'autre un tri de préfixe).
 | 17 | Un `set` explicite dépose un avertissement d'import hors de tout import (ép. 7) | Deux moitiés : la branche `aucune` du routeur, **et** un avertissement qui n'est enregistré que pendant un import (drapeau porté par le **fil** qui importe, posé par l'unique porte de désérialisation) | `driven-sessions/import-warning-outside-import.sh` — **fait** (banc **versionné**) |
 | 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | Le **pid**, publié par `quit` **et** par `status` : le seul signal qui dise vrai aussi bien après une sortie propre qu'après une mort brutale — plus la section de `doc-src/scripting/` qui l'écrit | `driven-sessions/quit-is-observable.sh` — **fait** (banc **versionné**) |
 | 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Ce que **vaut** un `.mar` enregistré en marche, tranché d'abord (le cow d'un invité est archivé en plein vol) ; puis le geste, symétrique de `cmd_quit` : un `ask_or_answer` + `reply_error ~code:"components_running"` | `driven-sessions/save-refused-while-running.sh` — **fait** (banc **versionné**) |
-| 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2) ; le tri vivant/mort par `uml_mconsole … version`, sous l'échéance de l'ép. 8 | — |
+| 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2). Le tri vivant/mort ne passe **pas** par `uml_mconsole` comme annoncé ici : socket encore liée (`/proc/net/unix`, que le script lit déjà) **ou** pid vivant portant le même `umid=` — aucune dépendance, aucune échéance, et un noyau gelé reste **vivant** | `driven-sessions/uml-dirs-reported.sh` — **fait** (banc **versionné**) |
 | 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm est un `initializer`, donc un cas à part | — |
 | 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi | — |
 | 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesurer le rapport **sous charge réelle** avant de choisir un couple ; ni l'abaissement ni le relèvement n'est neutre | — |
@@ -1552,3 +1552,72 @@ rapport). Les deux scripts livrés qui enregistrent après un démarrage
 (`doc-src/scripting/examples/05-exam-session.sh`, `doc-src/labs/session-7/play.sh`) le font déjà
 l'un après un `stop` suivi de `wait --state=off`, l'autre **avant** son `start-all` : rien à y
 corriger, et les recettes du § 7 et du § 13 du README enregistrent un réseau jamais démarré.
+
+
+### 2026-08-22 — épisode 20 : les répertoires mconsole des invités morts se disent
+
+**L'entrée** (écrite par l'ép. 8) demandait pour `~/.uml/<umid>/` le traitement que l'ép. 6 a
+donné aux répertoires de run : `marionnet-cleanup` sait les **repérer** et les proposer, Marionnet
+ne purge jamais tout seul (§ 3.2).
+
+**Deux décisions de cadrage, prises avant d'écrire une ligne.**
+
+1. **Le script seul, pas d'avertissement au démarrage.** L'ép. 6 en avait un parce qu'un
+   répertoire de run contient la **copie de travail non enregistrée** d'un projet ; un
+   `~/.uml/<umid>/` contient une socket et un fichier `pid`, rien d'autre — rien qui justifie
+   d'alarmer qui ouvre Marionnet. D'où : zéro OCaml, zéro chaîne i18n.
+2. **Le tri vivant/mort ne passe pas par `uml_mconsole`**, contrairement à ce que le § 4 bis
+   annonçait. Écart assumé, et il simplifie : le script sait **déjà** lire `/proc/net/unix`
+   (`bound_unix_paths`, écrit pour les sockets du blinker), donc aucune dépendance externe,
+   aucune échéance à armer — et surtout un noyau **gelé**, le cas même qui avait imposé
+   l'échéance de l'ép. 8, est classé **vivant** : il ne répond rien mais il tient sa socket.
+
+**Le geste**, tout entier dans `useful-scripts/marionnet-cleanup` (+115 lignes) : une base
+`UML_DIR_BASE="${UML_DIR:-$HOME/.uml}"` (la variable est celle d'UML ; Marionnet ne la fixe nulle
+part, vérifié), un `scan_uml_dirs` calqué sur `scan_dirs`, une section de rapport, et
+`--purge-uml-dirs` que rien n'implique. Trois paniers, pas deux :
+
+- **vivant** si sa socket `mconsole` est encore liée, **ou** si le pid qu'il porte est vivant
+  **et** que la ligne de commande de ce processus porte le même `umid=`. Le pid seul ne suffirait
+  pas : un pid recyclé rendrait un répertoire mort **immortel** ;
+- **d'une autre forme** (autre chose que `mconsole` et `pid`) : ni l'un ni l'autre, `$UML_DIR` est
+  partagé avec tout autre usage d'UML de l'utilisateur ;
+- **trop jeune** (moins d'une heure, la garde des répertoires de run) : jamais jugé, ce qui couvre
+  l'instant entre le `mkdir` du noyau et le `bind` de sa socket.
+
+Pas de refus global « un Marionnet tourne », contrairement à `--purge-dirs` : ce refus-là existe
+parce que la copie de travail d'une session vivante n'est nommée **nulle part**, alors qu'ici
+l'appartenance est exacte — les répertoires d'une session en marche sont déjà dans le panier des
+vivants.
+
+**Rouge/vert** (banc **versionné** `driven-sessions/uml-dirs-reported.sh` : ni invité, ni
+privilège, ni affichage) : **3 PASS / 7 FAIL** avant, **9 PASS / 0 FAIL** après. Le banc joue les
+deux moitiés du test **pour de vrai** — une socket unix réellement liée à `<dir>/mconsole`, et un
+processus dont l'`argv[0]` porte réellement `umid=livepid` — plus le pid recyclé, la forme
+étrangère et le répertoire trop jeune, le tout dans un `$UML_DIR` temporaire, ce qui prouve du
+même coup que l'outil honore la variable. Le banc de l'ép. 6
+(`run-directories-recover-and-purge.sh`, même script) reste à **15 PASS**.
+
+**Piège payé par la mesure, à garder** : le premier binder du banc était
+`socat UNIX-RECV:<chemin> /dev/null`, qui **lit** `/dev/null`, reçoit EOF aussitôt, sort — et
+**supprime la socket qu'il vient de créer**. Le banc voyait bien la socket liée (fenêtre de
+quelques dizaines de millisecondes), et l'outil, lui, ne trouvait plus rien : le répertoire
+tombait dans le panier « trop jeune » (l'unlink avait rafraîchi son mtime) au lieu de vivant, et
+le décompte des vivants était faux sans que rien ne dise pourquoi. D'où un binder qui ne lit
+rien : `python3` (bind + sleep) en premier, `socat -u` en repli, et une vérification que le
+binder est **encore vivant** après l'attente — un état mesuré une fois n'est pas un état qui dure.
+
+**Défaut voisin, mesuré et écrit au TODO** (règle § 2.3), et il est plus gros que l'entrée
+soldée : un UML `linux-6.12.95` vivant depuis treize heures sur cette machine n'a **aucune**
+socket mconsole — ni `~/.uml/m1/`, ni `/tmp/uml/m1/` —, alors que sa ligne de commande ne porte
+aucun `uml_dir=`, que son environnement dit `HOME=/home/jean` et que le noyau porte
+`CONFIG_MCONSOLE=y`. Sur ce noyau, tout le chemin `gracefully_terminate_with_mconsole` de l'ép. 8
+échoue donc d'emblée et l'extinction retombe sur le kill. La cause se mesurera sur un **boot
+neuf** (le noyau écrit `mconsole (version N) initialized on <chemin>` sur sa console) : ce n'est
+pas ce chantier qui la tranchera. Corollaire pour l'entrée soldée ici : les huit répertoires
+résiduels de cet hôte datent tous des noyaux précédents.
+
+**Vérifications.** `bash -n` rc 0 et `shellcheck -S warning` sans avertissement neuf (le
+`SC2318` que la première rédaction avait introduit — deux affectations dans un même `local`, où
+`$d` n'est pas encore posé — est corrigé), banc **9 PASS / 0 FAIL**, run réel sur cette machine
+(les 8 répertoires réels rapportés **removable**, et **rien** retiré sans option).

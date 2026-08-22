@@ -17,7 +17,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # marionnet-cleanup — find, and on request sweep, what a Marionnet session killed brutally has
-# left behind on this host: auxiliary processes, socket files, and run directories.
+# left behind on this host: auxiliary processes, socket files, run directories, and the per-guest
+# directories of the UML kernels.
 #
 # WHY THIS EXISTS. Every auxiliary of a simulation (the vde_switch of a hublet, the wirefilter
 # of a cable, slirpvde, the terminal emulators, the UML guests) is a direct child of Marionnet,
@@ -60,6 +61,23 @@
 # it (bin/state.ml), so that Project -> Open reopens it. Archiving first is what makes a purge
 # lossless.
 #
+# UML MCONSOLE DIRECTORIES, the fourth kind of debris. Every guest makes its UML kernel create
+# $UML_DIR/<umid>/ (default ~/.uml/<umid>/), holding a `mconsole' socket and a `pid' file, and
+# nothing has ever removed one: not Marionnet on exit, not this script, which knew only about
+# $TMP/marionnet-<n>.dir. Measured on this development host on 2026-08-22: eight of them, the
+# oldest three weeks old, all dead. They cost a few kio, but they accumulate for ever and they
+# bear the NAME OF THE MACHINE, so the residual ~/.uml/m1/ of a closed project is exactly what
+# an `uml_mconsole m1' of a later session finds -- refused in milliseconds, hence harmless, but
+# misleading to whoever reads the log.
+#
+# Alive or dead is told without asking the guest anything, and without a deadline to arm. A
+# directory is LIVE when its `mconsole' socket is still bound (/proc/net/unix, as for the
+# blinker sockets), OR when the pid it holds is alive AND that process's command line names the
+# same `umid=' (the second half is what a recycled pid cannot fake). A FROZEN kernel -- the case
+# that forced a deadline on every mconsole attempt (bin/simulation_level.ml) -- answers nothing,
+# yet its socket is bound: it counts as live, which is exactly what we want. Removal is behind
+# its own option, --purge-uml-dirs, implied by nothing, like everything else here.
+#
 # SAFETY, which is the whole point of a tool that kills things. Nothing is destroyed unless an
 # explicit option asks for it. Processes are listed first and killed BY EXACT PID — never by
 # pattern: `pkill -f marionnet' would match this very script (and has destroyed a KDE session
@@ -74,6 +92,11 @@ set -euo pipefail
 readonly PROGNAME="${0##*/}"
 readonly TMP="${TMPDIR:-/tmp}"
 
+# Where the UML kernels put their per-guest directory. The variable is UML's own (Marionnet sets
+# it nowhere, so guests get the default), and honouring it here is also what lets the bench of
+# driven-sessions/ play the whole thing in a temporary directory, without a guest.
+readonly UML_DIR_BASE="${UML_DIR:-$HOME/.uml}"
+
 # Calibrated well above the nominal case (120 orphans were the worst seen): a fuse that trips on
 # the normal case is worse than none, it leaves the orphans alive AND gives the illusion of a guard.
 readonly MAX_PROCESSES=500
@@ -86,7 +109,7 @@ readonly EXIT_USAGE=2
 usage() {
   cat <<EOF
 Usage: $PROGNAME [--kill] [--purge-sockets] [--archive-dirs DEST] [--purge-dirs]
-                 [--caller-marionnet PID] [--spare-dir DIR] [--help]
+                 [--purge-uml-dirs] [--caller-marionnet PID] [--spare-dir DIR] [--help]
 
 Reports what dead Marionnet sessions have left on this host. WITHOUT ANY OPTION IT ONLY
 REPORTS: nothing is killed, nothing is removed.
@@ -105,6 +128,10 @@ REPORTS: nothing is killed, nothing is removed.
                     refused outright while a Marionnet is running.
                     TOGETHER WITH --archive-dirs it removes ONLY what was really archived: a run
                     directory that could not be saved is kept, whatever else it looks like.
+  --purge-uml-dirs  Remove the per-guest directories $UML_DIR_BASE/<umid>/ whose UML kernel is
+                    gone (socket no longer bound, and no live process bearing that umid). They
+                    hold a socket and a pid file, NO work of yours. Directories of another shape
+                    are left alone: this one is shared with any other UML use of yours.
   --help            This help.
 
 Options passed by Marionnet itself, from the buttons of its startup warning; rarely useful by
@@ -285,6 +312,60 @@ apply_spare_dirs() {
   return 0
 }
 
+# --- UML mconsole directories --------------------------------------------------------------
+#
+# See the header for what these are and why they survive. Three baskets, not two: what does not
+# have the expected shape is neither live nor removable, it is simply none of our business.
+
+declare -a DEAD_UML_DIRS=()
+declare -a LIVE_UML_DIRS=()
+declare -a ODD_UML_DIRS=()
+
+# $UML_DIR is shared with every other UML the user may run, and this script must not become a
+# general-purpose remover of directories it does not understand. Ours hold `mconsole' and `pid',
+# and nothing else.
+uml_dir_shape_is_ours() {
+  local d="$1" f
+  for f in "$d"/* "$d"/.[!.]* "$d"/..?*; do
+    [ -e "$f" ] || continue
+    case "${f##*/}" in mconsole|pid) ;; *) return 1 ;; esac
+  done
+  return 0
+}
+
+# Live by either half, and the two halves cover different failures: the bound socket answers for
+# a kernel which is frozen (it says nothing, but it still holds its socket), the pid answers for
+# the instant between the mkdir and the bind. The pid alone would not do -- a recycled pid would
+# make a dead directory immortal -- hence the `umid=' of the command line, which only the real
+# kernel bears.
+uml_dir_is_live() {
+  local d="$1" bound="$2" pid
+  local umid="${d##*/}"          # two `local's on purpose: within one, $d is not assigned yet
+  grep -qxF "$d/mconsole" <<< "$bound" && return 0
+  [ -r "$d/pid" ] || return 1
+  read -r pid < "$d/pid" 2>/dev/null || return 1
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qF "umid=$umid"
+}
+
+scan_uml_dirs() {
+  local d bound
+  [ -d "$UML_DIR_BASE" ] || return 0
+  bound=$(bound_unix_paths)
+  for d in "$UML_DIR_BASE"/*/; do
+    d="${d%/}"
+    [ -d "$d" ] || continue
+    [ -O "$d" ] || continue                        # not ours
+    if ! uml_dir_shape_is_ours "$d"; then ODD_UML_DIRS+=("$d"); continue; fi
+    if uml_dir_is_live "$d" "$bound"; then LIVE_UML_DIRS+=("$d"); continue; fi
+    # Too young to judge, exactly as for the run directories: a guest may be starting right now,
+    # its directory made and its socket not bound yet.
+    [ -n "$(find "$d" -maxdepth 0 -mmin "+$DIR_MIN_AGE_MINUTES" 2>/dev/null)" ] || continue
+    DEAD_UML_DIRS+=("$d")
+  done
+}
+
 # --- Reporting ---------------------------------------------------------------------------
 
 report() {
@@ -325,6 +406,20 @@ report() {
   fi
   if [ "${#SPARE_DIRS[@]}" -gt 0 ]; then
     echo "  spared on request: ${SPARE_DIRS[*]}"
+  fi
+
+  echo
+  echo "== UML mconsole directories in $UML_DIR_BASE =="
+  if [ "${#DEAD_UML_DIRS[@]}" -eq 0 ]; then
+    echo "  none to remove."
+  else
+    echo "  removable: ${#DEAD_UML_DIRS[@]} directory(ies) --- a socket and a pid file, NO work of yours."
+    echo "  oldest: $(ls -dt "${DEAD_UML_DIRS[@]}" | tail -1)"
+    echo "  use --purge-uml-dirs to remove them."
+  fi
+  echo "  still holding a live UML (spared): ${#LIVE_UML_DIRS[@]}"
+  if [ "${#ODD_UML_DIRS[@]}" -gt 0 ]; then
+    echo "  not of the expected shape, none of our business: ${#ODD_UML_DIRS[@]}"
   fi
   return 0
 }
@@ -378,6 +473,20 @@ do_purge_sockets() {
   local f n=0
   for f in "${DEAD_SOCKETS[@]:-}"; do [ -n "$f" ] && rm -f -- "$f" && n=$((n+1)); done
   echo "$PROGNAME: removed $n dead socket file(s); ${#LIVE_SOCKETS[@]} still bound, spared."
+}
+
+# No global refusal here, unlike --purge-dirs: a live Marionnet is not a reason to spare
+# anything. What that refusal protects is the working copy of a session which NOTHING on the
+# host names; here the belonging is exact, told by the bound socket or by the umid of a live
+# command line, so a running session's own directories are already in LIVE_UML_DIRS.
+do_purge_uml_dirs() {
+  local d n=0
+  [ "${#DEAD_UML_DIRS[@]}" -eq 0 ] && { echo "$PROGNAME: no UML mconsole directory to remove."; return 0; }
+  echo "$PROGNAME: removing ${#DEAD_UML_DIRS[@]} UML mconsole directory(ies) of dead guests..."
+  for d in "${DEAD_UML_DIRS[@]}"; do
+    case "$d" in "$UML_DIR_BASE"/?*) rm -rf -- "$d" && n=$((n+1)) ;; *) ;; esac
+  done
+  echo "$PROGNAME: removed $n; ${#LIVE_UML_DIRS[@]} still holding a live UML, spared."
 }
 
 do_purge_dirs() {
@@ -484,12 +593,13 @@ value_of() {  # value_of <option-name> <remaining args...>
 }
 
 main() {
-  local kill_them=0 purge_sockets=0 purge_dirs=0 value
+  local kill_them=0 purge_sockets=0 purge_dirs=0 purge_uml_dirs=0 value
   while [ $# -gt 0 ]; do
     case "$1" in
       --kill)           kill_them=1 ;;
       --purge-sockets)  purge_sockets=1 ;;
       --purge-dirs)     purge_dirs=1 ;;
+      --purge-uml-dirs) purge_uml_dirs=1 ;;
       # --- The three options below take a value.
       --archive-dirs)
         value=$(value_of "$1" "$@") || return $EXIT_USAGE
@@ -526,10 +636,12 @@ main() {
   apply_spare_dirs
   scan_sockets
   scan_dirs
+  scan_uml_dirs
   report
 
   [ "$kill_them" -eq 1 ]      && { echo; do_kill; }
   [ "$purge_sockets" -eq 1 ]  && { echo; do_purge_sockets; }
+  [ "$purge_uml_dirs" -eq 1 ] && { echo; do_purge_uml_dirs; }
   # Archiving first, always: a purge that follows in the same run then destroys nothing that has
   # not been saved.
   [ -n "$ARCHIVE_DEST" ]      && { echo; do_archive_dirs; }

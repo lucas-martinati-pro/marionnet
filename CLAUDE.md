@@ -180,7 +180,12 @@ Reprise : appliquer le skill `chantier-long`.
   ne prouve rien ; contrat écrit au § 6 de `doc-src/scripting/README.md`) et son **ép. 19**
   (`save` et `save-as` refusent d'écrire le projet tant qu'un composant est allumé ou suspendu,
   comme la GUI : le `.mar` étant un `tar` du répertoire de travail, le cow d'un invité en marche
-  y serait archivé **en plein vol** — le refus nomme les composants, code `components_running`) —
+  y serait archivé **en plein vol** — le refus nomme les composants, code `components_running`)
+  et son **ép. 20** (`useful-scripts/marionnet-cleanup` connaît enfin les répertoires par invité
+  des noyaux UML, `$UML_DIR/<umid>/` — `~/.uml/` par défaut : il les *rapporte*, et
+  `--purge-uml-dirs`, que rien n'implique, ne retire que les morts. Vivant ⟺ socket `mconsole`
+  encore liée **ou** pid vivant portant le même `umid=` — donc **sans** `uml_mconsole`, sans
+  échéance, et un noyau *gelé* compte pour vivant) —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
