@@ -18,14 +18,67 @@
 module Log = Marionnet_log
 module Configuration_files = Ocamlbricks.Configuration_files
 (* --- *)
+
+(* The cascade below runs at module initialization time, and this module is initialized
+   very early -- it is what reads MARIONNET_PREFIX, hence it comes BEFORE Initialization,
+   which is what gives the log its level. A Log.printf issued here would be dropped,
+   whatever verbosity the user asked for. Hence the same deferred diagnosis as Gettext
+   (episode 15 of `marionnet-todo-transverse'): the lines are built now and printed by
+   [log_diagnosis], which Initialization calls as soon as the level is set. The blindness
+   is not theoretical: it is what let a configuration file be looked for at a path which
+   never existed, unnoticed (episode 25). *)
+let diagnosis_lines = ref []
+let diagnosis_say fmt = Printf.ksprintf (fun s -> diagnosis_lines := s :: !diagnosis_lines) fmt
+
+(** Print which configuration files were looked for and which of them were really there,
+    now that the log is able to print. Called by Initialization. *)
+let log_diagnosis () =
+  List.iter (fun line -> Log.printf1 "%s\n" line) (List.rev !diagnosis_lines)
+
+(* The `~' of the last candidate is expanded by the shell which Configuration_files sources;
+   the diagnosis has to expand it too, or it would call the user's own file absent. *)
+let expand_tilde path =
+  if String.length path >= 2 && (String.sub path 0 2) = "~/"
+    then Filename.concat (try Sys.getenv "HOME" with Not_found -> "~") (String.sub path 2 (String.length path - 2))
+    else path
+
+(* The copy shipped with the software, the lowest priority of all. dune installs it under
+   <prefix>/share/marionnet/share/, one `share' DEEPER than the path this list used to name
+   (as does <prefix>/etc/marionnet/, where nothing is installed at all): the values shipped
+   with Marionnet were therefore never read, and the cascade reduced in practice to
+   /etc/marionnet/ and ~/.marionnet/. Measured and corrected at episode 25 of
+   `marionnet-todo-transverse'. Its single source in the repository is etc/marionnet.conf,
+   which etc/dune installs here -- there is no second copy left to keep in step. *)
+let failsafe_copy_of_the_installation =
+  Printf.sprintf "%s/share/%s/share/%s.conf" Meta.prefix Meta.name Meta.name
+
+(* And the copy of THIS repository, when the binary runs from the build tree: it must win
+   over the installed one, which is the rule episode 22 set for the glade and the images.
+   This module cannot ask Initialization.Path (it is evaluated before it, being what reads
+   MARIONNET_PREFIX), so it asks Development_tree directly -- that module depends on nothing
+   here, which is precisely why it was isolated. *)
+let failsafe_copy_of_the_development_tree () =
+  Option.map
+    (fun share -> Filename.concat share (Printf.sprintf "share/%s.conf" Meta.name))
+    (Development_tree.share_directory ())
+
 (** Read configuration files: *)
 let configuration =
   (* Lowest priority first: *)
   let file_names =
-     [ Printf.sprintf "%s/share/marionnet/marionnet.conf" Meta.prefix; (* failsafe copy *)
-       Printf.sprintf "%s/etc/marionnet/marionnet.conf" Meta.prefix;
-       "/etc/marionnet/marionnet.conf";
-       "~/.marionnet/marionnet.conf" ]
+     [ failsafe_copy_of_the_installation ]                              (* failsafe copy *)
+     @ (Option.to_list (failsafe_copy_of_the_development_tree ()))      (* ...of this repository *)
+     @ [ Printf.sprintf "%s/etc/%s/%s.conf" Meta.prefix Meta.name Meta.name;
+         "/etc/marionnet/marionnet.conf";
+         "~/.marionnet/marionnet.conf" ]
+  in
+  let () =
+    diagnosis_say "Configuration: candidate files, lowest priority first:";
+    List.iter
+      (fun f ->
+         let there = Sys.file_exists (expand_tilde f) in
+         diagnosis_say "Configuration:   %s %s" (if there then "[read]  " else "[absent]") f)
+      file_names
   in
   Configuration_files.make
     ~file_names

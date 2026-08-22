@@ -193,7 +193,10 @@ Reprise : appliquer le skill `chantier-long`.
   **3ᵉ tournée ouverte le 2026-08-22** (n° 24 → 27) — **ép. 24** : le fil différé qui tue toute la
   hiérarchie UML journalise enfin son armement, son **tir** (identité `(pid, starttime)` + nombre
   de descendants tués) et son **non-tir**, cette dernière ligne étant ce qui rend l'**absence** de
-  la précédente signifiante —
+  la précédente signifiante ; **ép. 25** : la copie de secours de `marionnet.conf` est lue — le
+  chemin cherché était faux (dune installe un `share/` plus bas) **et** le fichier installé était
+  le périmé de **deux** copies versionnées, d'où la suppression du doublon `bin/share/` et
+  l'`etc/dune` qui installe la source unique `etc/marionnet.conf` —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
@@ -203,6 +206,10 @@ Reprise : appliquer le skill `chantier-long`.
   `kill` puis `wait` ne rend jamais la main), et un banc qui matche un **texte** de l'application
   **fige la langue** (`LANGUAGE=C LC_ALL=C` — depuis l'ép. 15 un binaire de `_build` est traduit,
   et un motif anglais qui ne matche plus rien laisse passer un banc qui ne prouve plus rien).
+  Deux pièges durables de l'ép. 25 : (1) **deux défauts peuvent s'annuler** — n'en corriger qu'un
+  est une régression (réparer le chemin seul aurait activé un `MARIONNET_BRIDGE=br0` oublié) ;
+  (2) un module de **bibliothèque** (`marionnet_base`) ne voit pas un module de l'exécutable, donc
+  lui faire appeler `Development_tree` a exigé de **déplacer** celui-ci dans la bibliothèque.
   Piège durable de l'ép. 24 : un banc qui observe un journal **différé** (écrit par un
   `Thread.create` à retardement) doit **survivre au délai qu'il observe** — quitter la session
   juste après le geste tue le processus qui devait écrire la ligne cherchée.

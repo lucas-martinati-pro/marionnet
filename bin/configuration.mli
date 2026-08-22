@@ -1,5 +1,12 @@
 type varname = string
 
+(** Print which configuration files were looked for, and which of them were really there.
+    The cascade runs at module initialization time -- before Initialization, which is what
+    gives the log its level -- so its diagnosis is built then and printed here, when
+    Initialization calls this. Same deferred shape, and same reason, as Gettext.log_diagnosis
+    (episodes 15 and 25 of the work-stream `marionnet-todo-transverse'). *)
+val log_diagnosis : unit -> unit
+
 val extract_string_variable_or :
   ?k:(string -> string) ->               (** An optional continuation *)
   ?unsuitable_value:(string -> bool) ->  (** Filter unsuitable values *)

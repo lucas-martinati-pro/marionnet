@@ -87,7 +87,12 @@
   ;; counters of `ifconfig') together with their JSON codec, which the (tests) stanza of
   ;; test/dune links - hence a library module rather than a module of the GUI executable
   ;; (work-stream `migration-marshal-to-text', episode 3). Neither knows about Gtk+.
-  (modules marionnet_log configuration meta treeview_row treeview_counters)
+  ;; development_tree: "am I running from _build?", the single answer of the whole
+  ;; application (episode 22 of `marionnet-todo-transverse'). It landed here at episode 25,
+  ;; when `configuration' had to ask it where the failsafe copy of marionnet.conf of THIS
+  ;; repository is: a module of the executable cannot be seen from a library. It depends on
+  ;; nothing but Meta and ocamlbricks, and knows nothing about Gtk+.
+  (modules marionnet_log configuration meta development_tree treeview_row treeview_counters)
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -166,7 +171,8 @@
 (executable
   (public_name marionnet.native)
   (name marionnet)
-  (modules (:standard \ marionnet_log configuration meta treeview_row treeview_counters
+  (modules (:standard \ marionnet_log configuration meta development_tree
+                        treeview_row treeview_counters
                         tap_provider tap_provider_test))
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)

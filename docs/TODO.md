@@ -124,31 +124,3 @@ socket disparue avec la session qui l'a créée — avant de mettre en cause le 
 *Repéré le 2026-08-22 par l'épisode 20 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
 
----
-
-## Développement — le fichier de configuration « failsafe » est cherché là où **rien** n'est installé
-
-**Constat** (mesuré le 2026-08-22, ép. 22 de `marionnet-todo-transverse`, en soldant le voisin du
-glade). `bin/configuration.ml:25` cherche la copie de secours de `marionnet.conf` dans
-`<prefix>/share/marionnet/marionnet.conf`, et `:26` dans `<prefix>/etc/marionnet/marionnet.conf`.
-**Aucun des deux n'existe**, ni ici ni ailleurs : dune installe ce fichier un cran plus bas,
-dans `<prefix>/share/marionnet/**share**/marionnet.conf` (vérifié sur l'installation courante,
-où les deux chemins cherchés sont absents et le troisième présent). La liste de priorité
-croissante se réduit donc en pratique à `/etc/marionnet/marionnet.conf` puis
-`~/.marionnet/marionnet.conf` — la valeur livrée avec le logiciel n'est jamais lue.
-
-**Voulu.** Que la copie livrée soit lue là où elle est réellement installée, et — comme pour le
-glade depuis l'ép. 22 — que ce soit **celle du dépôt** (`etc/marionnet.conf`, versionnée) quand le
-binaire tourne depuis `_build`.
-
-**Ce que l'implémentation devra affronter.** Le remède de l'ép. 22 n'est **pas** réutilisable tel
-quel : `Configuration` est évalué **avant** `Initialization.Path` — c'est même `Configuration` qui
-sert à lire `MARIONNET_PREFIX` —, donc il ne peut pas passer par `Path.versioned_data_home`. Il
-peut en revanche appeler directement `Development_tree.share_directory` (`bin/development_tree.ml`,
-sans dépendance sur `Configuration`), ce pour quoi ce module a été isolé. Reste à trancher si l'on
-corrige le chemin cherché ou le chemin installé (`bin/dune`) : changer l'installation déplacerait
-un fichier que les paquets `.deb`/RPM et le `Makefile` connaissent peut-être par son emplacement.
-
-*Repéré le 2026-08-22 par l'épisode 22 de `marionnet-todo-transverse`, qui l'a mesuré sans le
-corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
-

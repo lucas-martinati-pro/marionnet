@@ -58,7 +58,7 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #                         (which pts is assigned to a serial console). NOT for `uml_switch',
 #                         which is no longer used anywhere.
 #  - xterm              : default terminal used to open a console on a virtual machine
-#                         (MARIONNET_TERMINAL, see bin/share/marionnet.conf)
+#                         (MARIONNET_TERMINAL, see etc/marionnet.conf)
 #  - iproute2           : `ip', used by bin/tap_provider.ml (tap creation, `sudo -n ip tuntap ...')
 #                         and by many host network inspections
 #  - sudo               : the scoped-privileges model that replaced the former root daemon
@@ -383,12 +383,13 @@ clean:
 #      GETTEXT      #
 #####################
 
-# install-data-local: copy-failsafe-marionnet.conf
 # install-local: install-mo
 # uninstall-local: uninstall-mo
 
-copy-failsafe-marionnet.conf:
-	cp etc/marionnet.conf share/
+# The failsafe copy of marionnet.conf used to be produced here, by copying etc/marionnet.conf
+# into a `share/' directory -- a rule already unhooked (and pointing at a directory which does
+# not exist) when episode 25 of `marionnet-todo-transverse' looked at it. dune installs that
+# single source directly now, see etc/dune.
 
 # ---
 PO_DIR = ./bin/po

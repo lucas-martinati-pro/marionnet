@@ -278,7 +278,7 @@ ce chantier du tout.
 | N | Entrée de `docs/TODO.md` (épisode qui l'a écrite) | Geste | Preuve |
 |---|---|---|---|
 | 24 | Le filet qui tue toute la hiérarchie UML **ne dit rien** (ép. 23) | Trois lignes de journal dans le fil différé de `gracefully_terminate` : armement, tir (umid, `(pid, starttime)`, échéance, descendants tués), **et non-tir** — sans cette dernière, l'absence de la première ne veut rien dire | banc **jetable** (invité requis) + **patch témoin** pour la branche du tir — **fait** |
-| 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Corriger le **chemin cherché** plutôt que le chemin installé (que les paquets connaissent), et le faire venir du dépôt en arbre de dev par `Development_tree.share_directory` — seul appel possible, `Configuration` étant évalué **avant** `Initialization.Path` | banc **versionné** (ni invité ni privilège) |
+| 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Le chemin cherché corrigé (`<prefix>/share/marionnet/**share**/marionnet.conf`) *et* le **doublon supprimé** : le dépôt portait deux `marionnet.conf`, et celui qui était installé était le **périmé**. Copie du dépôt en arbre de dev par `Development_tree.share_directory` (monté dans `marionnet_base`), plus un **diagnostic différé** — patron de l'ép. 15 | `driven-sessions/failsafe-configuration-is-read.sh` — **fait** (banc **versionné**) |
 | 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | Attendre les extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`, déjà employé par `close_project`) avant `save_project`, dans le corps commun `leave_current_project` — donc **canal et menu GUI ensemble**, ou aucun des deux | banc **versionné** (un switch suffit) |
 | 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic d'abord** (§ 3.1) : lire `mconsole (version N) initialized on …` sur un boot neuf. Si la cause est le noyau lui-même, le correctif **migre** vers `marionnet-kernel-rootfs` et l'entrée le dit | banc jetable (invité) |
 
@@ -1975,3 +1975,73 @@ runs ci-dessus, l'invité `debian-trixie` sous **`linux-6.12.95`** a répondu au
 sorti en 0, donc socket présente et servie). L'entrée 27 a été écrite sur un invité **orphelin
 d'une session morte** ; le diagnostic devra donc commencer par départager les deux situations
 plutôt que d'accuser le noyau d'emblée.
+
+### 2026-08-22 — épisode 25 : la copie livrée avec le logiciel est enfin lue
+
+**Le constat, vérifié avant de toucher quoi que ce soit.** `bin/configuration.ml` cherchait la
+copie de secours dans `<prefix>/share/marionnet/marionnet.conf` puis
+`<prefix>/etc/marionnet/marionnet.conf`. **Aucun des deux n'existe** : dune installe ce fichier
+un cran plus bas, `<prefix>/share/marionnet/**share**/marionnet.conf` (mesuré sur les deux
+installations présentes, `/usr/local` et le préfixe *testing* `~/.opam/5.4.1`). La cascade se
+réduisait donc à `/etc/marionnet/` puis `~/.marionnet/` : les valeurs livrées avec Marionnet
+n'étaient jamais lues.
+
+**Et la moitié que l'entrée ne disait pas — celle qui rendait le correctif dangereux.** Le dépôt
+portait **deux** `marionnet.conf` versionnés : `etc/marionnet.conf`, entretenu (dernière retouche
+le 2026-08-20), et `bin/share/marionnet.conf`, figé depuis le 2026-07-16 — et c'est **celui-là**
+que dune installait (`glob_files "share/*"` de `bin/dune`). Le second porte encore
+`MARIONNET_BRIDGE=br0`, la ligne que l'ép. 7b de `modernisation-world-bridge` a justement mise en
+commentaire dans le premier parce qu'elle **éteint le LAN bridge automatique**. Corriger le seul
+chemin cherché aurait donc *activé* un fichier périmé : les deux défauts s'annulaient. C'est
+pourquoi l'épisode supprime le doublon (`bin/share/marionnet.conf`) et fait installer la source
+unique par un `etc/dune` neuf (`(files (marionnet.conf as share/marionnet.conf)) (section share)`).
+
+**Le geste, en quatre points :**
+
+1. **Chemin cherché** corrigé, exprimé avec `Meta.name` plutôt qu'en dur.
+2. **Copie du dépôt** quand le binaire tourne depuis `_build`, insérée juste au-dessus de la copie
+   installée — la règle de l'ép. 22 (les données versionnées priment) — via
+   `Development_tree.share_directory ()`. `Configuration` ne peut **pas** passer par
+   `Path.versioned_data_home` : il est évalué **avant** `Initialization`, étant ce qui lit
+   `MARIONNET_PREFIX`.
+3. **`development_tree` déménage dans la bibliothèque `marionnet_base`** (`bin/dune`) : obstacle
+   non prévu par l'entrée — `configuration` est un module de bibliothèque, et une bibliothèque ne
+   voit pas un module de l'exécutable. Le module ne dépend que de `Meta` et d'ocamlbricks, la
+   bascule est donc gratuite, et la réponse à « est-ce que je tourne depuis `_build` ? » reste
+   unique dans toute l'application.
+4. **Diagnostic différé**, patron exact de l'ép. 15 : la cascade tourne à l'initialisation du
+   module, quand le journal a encore le niveau constant 0 — les lignes sont donc construites là et
+   imprimées par `Configuration.log_diagnosis ()`, que `Initialization` appelle juste après
+   `Gettext.log_diagnosis ()`. Sans lui, rien n'était observable — c'est très exactement ce qui a
+   permis à ce défaut de vivre si longtemps.
+
+```
+Configuration: candidate files, lowest priority first:
+Configuration:   [read]   /home/jean/.opam/5.4.1/share/marionnet/share/marionnet.conf
+Configuration:   [read]   …/_build/install/default/share/marionnet/share/marionnet.conf
+Configuration:   [absent] /home/jean/.opam/5.4.1/etc/marionnet/marionnet.conf
+Configuration:   [read]   /etc/marionnet/marionnet.conf
+Configuration:   [read]   ~/.marionnet/marionnet.conf
+```
+
+**Banc versionné** `driven-sessions/failsafe-configuration-is-read.sh` (ni invité ni privilège) :
+il vérifie la **disposition** (le fichier là où dune le met, l'ancien chemin absent), que la copie
+installée **est** `etc/marionnet.conf`, qu'il n'y a **qu'une** copie versionnée — le garde-fou
+contre le retour du doublon —, que le fichier livré **ne fixe pas** `MARIONNET_BRIDGE`, puis, sur
+une session réelle : que la cascade **nomme** le bon chemin et **plus** l'ancien, que la copie du
+dépôt est lue, et que la copie livrée reste **sous** `/etc/marionnet/` dans l'ordre de priorité.
+
+| Code | passed | failed | skipped |
+|---|---|---|---|
+| avant | 2 | **5** | 2 |
+| après | **8** | 0 | 1 |
+
+Le seul `SKIP` est assumé et honnête : **chaque** variable du fichier livré est aussi posée par le
+`/etc/marionnet/marionnet.conf` de cet hôte (installé en 2023), donc sa *valeur* y est
+structurellement masquée. Le cas cherche une variable non masquée et **saute** en le disant, au
+lieu de faire semblant ; sur un hôte propre, il s'exécute.
+
+**Non-régression** : `dune build` rc 0, `make check` rc 0, les **18** bancs versionnés rejoués
+(0 FAIL). Le `Makefile` perd la règle morte `copy-failsafe-marionnet.conf` (elle copiait vers un
+`share/` inexistant et n'était plus accrochée à rien) et son commentaire qui nommait encore
+`bin/share/marionnet.conf`. Zéro chaîne i18n. **Aucun défaut voisin écrit** cette fois.

@@ -1,0 +1,31 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2026  Jean-Vincent Loddo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; --- The failsafe copy of the configuration file, the one shipped with the software and
+;; --- the lowest priority of the cascade read by bin/configuration.ml. It lands in
+;; --- <prefix>/share/marionnet/share/marionnet.conf, which is where that cascade looks for
+;; --- it since episode 25 of the work-stream `marionnet-todo-transverse'.
+;; ---
+;; --- Why from HERE and not from bin/share/, with the other shared files: until that episode
+;; --- the repository carried TWO copies of this file, and the one which was installed
+;; --- (bin/share/marionnet.conf) was the stale one -- it still set MARIONNET_BRIDGE=br0,
+;; --- commented out here since episode 7b of `modernisation-world-bridge', which turns the
+;; --- automatic LAN bridge off. Nobody noticed because the path being looked for did not
+;; --- exist either: two defects cancelling each other. One file, one place, one source.
+(install
+ (files (marionnet.conf as share/marionnet.conf))
+ (section share)
+ (package marionnet))
