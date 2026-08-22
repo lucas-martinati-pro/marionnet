@@ -84,10 +84,15 @@ let () =
 (* --- *)
 let () = Log.printf1 "Loading module bin/marionnet.ml: cwd: %s\n" (Sys.getcwd ())
 
-(* Enter the right directory: *)
+(* Enter the right directory: the one holding the data versioned in this repository, which is
+   the installation prefix for an installed binary and the build tree for a binary of `_build'
+   (episode 22 of `marionnet-todo-transverse'). Nothing changes for an installed run; what this
+   allows is a development run on a machine where Marionnet is NOT installed at all -- there the
+   installation prefix does not exist, and this chdir used to be fatal. *)
 let _enter_the_right_directory =
-  try Sys.chdir (Initialization.Path.marionnet_home)
-  with _ -> failwith ("Could not enter the directory (" ^ Initialization.Path.marionnet_home ^ ")")
+  let dir = Initialization.Path.versioned_data_home in
+  try Sys.chdir dir
+  with _ -> failwith ("Could not enter the directory (" ^ dir ^ ")")
 
 (** The global state containing the main window (st#mainwin) and all relevant dynamic
     attributes of the application *)

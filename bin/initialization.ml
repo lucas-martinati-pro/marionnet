@@ -377,10 +377,50 @@ module Path = struct
    Configuration.extract_string_variable_or ~k:append_slash ~default "MARIONNET_KERNELS_PATH"
 
  (* --- *)
- let marionnet_home_gui = marionnet_home^"gui/"
+ (* Where the data VERSIONED in this repository (the glade, the images) are read from.
+    This is not the same question as `marionnet_home', and that is the whole point: the
+    prefix that `dune build' produces holds the versioned data, but an EMPTY `filesystems/'
+    and NO `kernels/' at all (measured 2026-08-22). Switching the prefix as a whole would
+    therefore deprive a development run of its guest filesystems and of its kernels. Hence a
+    choice made directory by directory: versioned data from this repository when we run from
+    the build tree, installed data (`filesystems/', `kernels/') from the installation prefix
+    as before.
+    ---
+    Before this (episode 22 of the work-stream `marionnet-todo-transverse'), a binary of
+    `_build' read the `gui/gui_glade3.xml' and the `images/' of ANOTHER Marionnet -- the one
+    installed on this machine, possibly years old -- so that a modification of the glade
+    stayed invisible until `make install'. Same defect, one notch higher, as the catalogue
+    one of episode 15 (bin/gettext.ml).
+    ---
+    MARIONNET_PREFIX comes first: an explicit override must win over an inference, exactly as
+    MARIONNET_LOCALEPREFIX does for the catalogues. And a directory of the development tree
+    is retained only if it really holds the glade -- a build tree on which `dune build' has
+    not run yet holds nothing, and there the installed prefix is still the best we have. *)
+ let versioned_data_home =
+   let from_the_development_tree () =
+     match Development_tree.share_directory () with
+     | Some dir when Sys.file_exists (Filename.concat dir "gui/gui_glade3.xml") -> Some (append_slash dir)
+     | _ -> None
+   in
+   match Configuration.get_string_variable "MARIONNET_PREFIX" with
+   | Some _ ->
+       Log.printf1 "Path: glade and images taken from MARIONNET_PREFIX: %s\n" marionnet_home;
+       marionnet_home
+   | None ->
+      (match from_the_development_tree () with
+       | Some dir ->
+           Log.printf1 "Path: glade and images taken from the development tree (_build): %s\n" dir;
+           dir
+       | None ->
+           Log.printf1 "Path: glade and images taken from the installation prefix: %s\n" marionnet_home;
+           marionnet_home
+       )
+
  (* --- *)
- let images = marionnet_home^"images/"
- let leds   = marionnet_home^"images/leds/"
+ let marionnet_home_gui = versioned_data_home^"gui/"
+ (* --- *)
+ let images = versioned_data_home^"images/"
+ let leds   = versioned_data_home^"images/leds/"
 
  (* The prefix to prepend to VDE executables; this allows us to install
     patched versions in an easy way, before our changes are integrated
@@ -426,6 +466,7 @@ let () = if !option_paths = Some () then
   let filesystems      = prettify Path.filesystems in
   let kernels          = prettify Path.kernels in
   let binaries         = Filename.concat Meta.prefix "bin" in
+  let gui              = prettify Path.marionnet_home_gui in
   let images           = prettify Path.images in
   let user_filesystems = prettify Path.user_filesystems in
   let user_kernels     = prettify Path.user_kernels in
@@ -434,6 +475,7 @@ let () = if !option_paths = Some () then
     Printf.printf "filesystems      : %s\n" filesystems;
     Printf.printf "kernels          : %s\n" kernels;
     Printf.printf "binaries         : %s\n" binaries;
+    Printf.printf "gui              : %s\n" gui;
     Printf.printf "images           : %s\n" images;
     Printf.printf "user-filesystems : %s\n" user_filesystems;
     Printf.printf "user-kernels     : %s\n" user_kernels;

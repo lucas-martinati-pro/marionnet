@@ -245,7 +245,7 @@ l'autre un tri de préfixe).
 | 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Ce que **vaut** un `.mar` enregistré en marche, tranché d'abord (le cow d'un invité est archivé en plein vol) ; puis le geste, symétrique de `cmd_quit` : un `ask_or_answer` + `reply_error ~code:"components_running"` | `driven-sessions/save-refused-while-running.sh` — **fait** (banc **versionné**) |
 | 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2). Le tri vivant/mort ne passe **pas** par `uml_mconsole` comme annoncé ici : socket encore liée (`/proc/net/unix`, que le script lit déjà) **ou** pid vivant portant le même `umid=` — aucune dépendance, aucune échéance, et un noyau gelé reste **vivant** | `driven-sessions/uml-dirs-reported.sh` — **fait** (banc **versionné**) |
 | 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm, ajouté par un `initializer`, devient un accessoire **ajouté ou retiré à chaque démarrage** | `driven-sessions/switch-settings-after-poweroff.sh` — **fait** (banc **versionné**) |
-| 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi | — |
+| 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi. La reconnaissance de l'arbre de dev, jusque-là enfermée dans `Gettext`, devient le module `bin/development_tree.ml` — une seule réponse dans toute l'application à « est-ce que je tourne depuis `_build` ? » | `driven-sessions/glade-and-images-from-the-repository.sh` — **fait** (banc **versionné**) |
 | 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesurer le rapport **sous charge réelle** avant de choisir un couple ; ni l'abaissement ni le relèvement n'est neutre | — |
 
 ---
@@ -1695,3 +1695,85 @@ touché, `simulation_level.ml`, est celui de tous les composants). Zéro chaîne
 ceci est du comportement, aucun texte d'écran.
 
 **Aucun défaut voisin écrit** à cet épisode.
+
+### 2026-08-22 — épisode 22 : le glade et les images viennent du dépôt
+
+**L'entrée** (écrite par l'ép. 15, en soldant le jumeau du catalogue) constatait que
+`Initialization.Path.marionnet_home` vaut `Meta.prefix ^ "/share/" ^ Meta.name` : un binaire de
+`_build` lit donc le `gui/gui_glade3.xml` et les `images/` du Marionnet **installé** sur la
+machine — éventuellement vieux de plusieurs versions. Une modification du glade restait invisible
+au run tant qu'on n'avait pas fait `make install`. Mesuré avant correctif :
+
+```
+$ _build/default/bin/marionnet.exe --paths
+images           : /home/jean/.opam/5.4.1/share/marionnet/images
+```
+
+**Ce que l'entrée annonçait comme difficulté était juste, et c'est ce qui décide de la forme.**
+Le remède du catalogue n'était pas transposable : `MARIONNET_PREFIX` ne pilote pas que `gui/` et
+`images/`, `Path.filesystems` et `Path.kernels` en dérivent aussi, et le préfixe que `dune build`
+fabrique (`_build/install/default/share/marionnet/`) contient un `filesystems/` **vide** et
+**aucun** `kernels/` — re-mesuré ici. Basculer le préfixe entier aurait privé un run de
+développement de ses systèmes invités et de ses noyaux.
+
+**Le tri, donc, et pas la bascule.** Un `Path.versioned_data_home` neuf, distinct de
+`marionnet_home` : il porte les données **versionnées dans ce dépôt** (`gui/`, `images/`,
+`images/leds/`) et rien d'autre. `filesystems` et `kernels` — les données **installées sur
+l'hôte** — continuent de dériver de `marionnet_home`, inchangés. Trois origines, dans cet ordre,
+chacune **nommée dans le journal** : `MARIONNET_PREFIX` explicite (une surcharge doit gagner sur
+une inférence, comme `MARIONNET_LOCALEPREFIX` à l'ép. 15), puis l'arbre de développement, puis le
+préfixe d'installation. Le candidat « arbre de dev » n'est retenu que s'il **porte réellement** le
+glade : un arbre où `dune build` n'a pas encore tourné ne porte rien, et là le préfixe installé
+reste ce qu'on a de mieux.
+
+**Une seule réponse à « est-ce que je tourne depuis `_build` ? ».** La reconnaissance de la forme
+`<racine>/_build/default/bin/<exe>` existait déjà, enfermée dans
+`Gettext.locale_directory_of_the_development_tree` (ép. 15). Elle est hissée dans
+**`bin/development_tree.ml`** (`share_directory : unit -> string option`), que `Gettext` et
+`Initialization` appellent tous deux — sans quoi le dépôt aurait porté deux définitions
+concurrentes de ce qu'est un arbre de développement. Le module ne dépend de rien d'autre que de
+`Meta`, ce qui le rend appelable **avant** `Configuration` (cf. le voisin écrit au TODO).
+
+**Deux effets de bord assumés, tous deux dans la direction de l'entrée.**
+
+- Le `Sys.chdir` de `bin/marionnet.ml` vise désormais `versioned_data_home`. Identique en run
+  installé ; ce qu'il rend possible, c'est un run de développement sur une machine où Marionnet
+  n'est **pas installé du tout** — jusqu'ici ce `chdir` y était fatal (`failwith`), bien avant
+  qu'aucun glade ne soit lu, alors que le « voulu » de l'entrée dit *sans variable ni
+  installation*.
+- `--paths` gagne une ligne `gui`. C'est elle qui rend le défaut, et sa correction, observables
+  **sans DISPLAY ni strace** : `--paths` sort pendant l'initialisation, avant toute fenêtre.
+
+**Rouge/vert** (banc **versionné** `driven-sessions/glade-and-images-from-the-repository.sh` :
+ni invité, ni privilège) : **1 PASS / 5 FAIL** avant, **6 PASS / 0 FAIL** après. Cinq cas, dont
+quatre ne coûtent ni DISPLAY ni `strace` :
+
+1. `--paths` montre `gui` et `images` **dans** le dépôt (avant : pas de ligne `gui` du tout) ;
+2. dans le **même** run, `filesystems` et `kernels` ne viennent **pas** de `_build` — c'est la
+   moitié « par répertoire », et elle échouerait tout autant si on avait basculé le préfixe
+   entier ;
+3. ce que fait le noyau, pas ce que croit le code (`strace -e trace=openat`, patron du banc de
+   l'ép. 15) : le `gui_glade3.xml` et l'image réellement ouverts sont dans le dépôt. La preuve est
+   un **chemin**, jamais un contenu — le banc ne touche pas au glade du dépôt ;
+4. `MARIONNET_PREFIX` explicite gagne encore, pour **tous** les répertoires ;
+5. le journal `--debug` nomme l'origine retenue.
+
+**La preuve que l'entrée demandait vraiment**, elle, se joue à la main : un **témoin** posé dans
+`bin/gui/gui_glade3.xml` du dépôt (un commentaire XML), `dune build`, puis un run GUI réel de
+20 s — le témoin est dans le fichier que l'application ouvre, il n'est **pas** dans le glade
+installé, la fenêtre principale se monte (210 lignes de journal jusqu'à *about to starting the
+application*) et Gtk+ n'émet ni `CRITICAL` ni `WARNING`. Témoin retiré ensuite (`git diff` vide).
+
+**Vérifications.** `dune build` rc 0, `make check` (`dune build @check`) rc 0, banc **6 PASS /
+0 FAIL** sur le code corrigé et **5 FAIL** sur le code d'avant (`git stash` du seul correctif,
+binaire reconstruit), et les **17 bancs versionnés** rejoués en séquence. Zéro chaîne i18n neuve :
+tout ceci est de la localisation de fichiers, aucun texte d'écran.
+
+**Le voisin, mesuré et écrit au TODO** (règle § 2.3) : la copie de secours de `marionnet.conf`
+est cherchée par `bin/configuration.ml:25` dans `<prefix>/share/marionnet/marionnet.conf`, là où
+dune l'installe un cran plus bas (`<prefix>/share/marionnet/share/marionnet.conf`) — **aucun** des
+deux chemins cherchés n'existe sur l'installation courante, donc la valeur livrée avec le logiciel
+n'est **jamais** lue, installé ou pas. Non corrigé ici : `Configuration` est évalué **avant**
+`Initialization.Path` — c'est lui qui lit `MARIONNET_PREFIX` — donc le remède ne peut pas passer
+par `versioned_data_home` ; il devra appeler `Development_tree.share_directory` directement, ce
+pour quoi ce module a justement été isolé.

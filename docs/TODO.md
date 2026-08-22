@@ -104,37 +104,6 @@ corrige pas en passant).*
 
 ---
 
-## Développement — le glade et les images lus sont ceux du Marionnet **installé**
-
-**Constat** (mesuré le 2026-08-21, ép. 15 de `marionnet-todo-transverse`, en soldant le jumeau
-du catalogue). `Initialization.Path.marionnet_home` vaut `Meta.prefix ^ "/share/" ^ Meta.name`
-sauf surcharge par `MARIONNET_PREFIX` ; en arbre de développement, `Meta.prefix` désigne le
-préfixe d'installation, si bien qu'un binaire de `_build` lit le `gui/gui_glade3.xml` et les
-`images/` d'un **autre** Marionnet — celui installé sur la machine, éventuellement vieux de
-plusieurs versions. Une modification du glade reste donc invisible au run tant qu'on n'a pas
-fait `make install` ; c'est le piège que l'ép. 15 vient de fermer pour le `.mo`, un cran plus
-haut. Le banc `driven-sessions/message-window-geometry.sh` s'en protège déjà, mais à la main :
-il **fabrique** un préfixe temporaire dont `gui/` et `images/` sont des liens vers le dépôt.
-
-**Voulu.** La même chose que pour le catalogue depuis l'ép. 15 : qu'un binaire lancé depuis
-`_build` lise le glade et les images **du dépôt**, sans variable ni installation, et que le
-journal dise d'où il les prend.
-
-**Ce que l'implémentation devra affronter.** Le remède du catalogue n'est **pas** transposable
-tel quel. `MARIONNET_PREFIX` ne pilote pas que `gui/` et `images/` : `Path.filesystems` et
-`Path.kernels` en dérivent aussi (`bin/initialization.ml`), et le préfixe que `dune build`
-fabrique (`_build/install/default/share/marionnet/`) contient un `filesystems/` **vide** et
-**aucun** `kernels/` — mesuré. Basculer le préfixe entier en arbre de développement priverait
-donc Marionnet de ses systèmes invités et de ses noyaux : il faut choisir **par répertoire**
-(les données versionnées viennent du dépôt, les données installées de l'hôte), ou bien poser un
-candidat de repli plutôt qu'un remplacement. C'est ce tri, pas la détection de `_build`, qui
-coûte — cette dernière existe déjà, dans `Gettext.locale_directory_of_the_development_tree`.
-
-*Repéré le 2026-08-21 par l'épisode 15 de `marionnet-todo-transverse`, qui l'a mesuré sans le
-corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
-
----
-
 ## Invités — un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole
 
 **Constat** (mesuré le 2026-08-22, en soldant l'entrée « les répertoires mconsole de `~/.uml/`
@@ -173,4 +142,32 @@ build. Tant que ce n'est pas tranché, ne pas « corriger » l'échéance de l'�
 qu'on lui demande, c'est sa cible qui manque.
 
 *Repéré le 2026-08-22 par l'épisode 20 de `marionnet-todo-transverse`, qui l'a mesuré sans le
+corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
+
+---
+
+## Développement — le fichier de configuration « failsafe » est cherché là où **rien** n'est installé
+
+**Constat** (mesuré le 2026-08-22, ép. 22 de `marionnet-todo-transverse`, en soldant le voisin du
+glade). `bin/configuration.ml:25` cherche la copie de secours de `marionnet.conf` dans
+`<prefix>/share/marionnet/marionnet.conf`, et `:26` dans `<prefix>/etc/marionnet/marionnet.conf`.
+**Aucun des deux n'existe**, ni ici ni ailleurs : dune installe ce fichier un cran plus bas,
+dans `<prefix>/share/marionnet/**share**/marionnet.conf` (vérifié sur l'installation courante,
+où les deux chemins cherchés sont absents et le troisième présent). La liste de priorité
+croissante se réduit donc en pratique à `/etc/marionnet/marionnet.conf` puis
+`~/.marionnet/marionnet.conf` — la valeur livrée avec le logiciel n'est jamais lue.
+
+**Voulu.** Que la copie livrée soit lue là où elle est réellement installée, et — comme pour le
+glade depuis l'ép. 22 — que ce soit **celle du dépôt** (`etc/marionnet.conf`, versionnée) quand le
+binaire tourne depuis `_build`.
+
+**Ce que l'implémentation devra affronter.** Le remède de l'ép. 22 n'est **pas** réutilisable tel
+quel : `Configuration` est évalué **avant** `Initialization.Path` — c'est même `Configuration` qui
+sert à lire `MARIONNET_PREFIX` —, donc il ne peut pas passer par `Path.versioned_data_home`. Il
+peut en revanche appeler directement `Development_tree.share_directory` (`bin/development_tree.ml`,
+sans dépendance sur `Configuration`), ce pour quoi ce module a été isolé. Reste à trancher si l'on
+corrige le chemin cherché ou le chemin installé (`bin/dune`) : changer l'installation déplacerait
+un fichier que les paquets `.deb`/RPM et le `Makefile` connaissent peut-être par son emplacement.
+
+*Repéré le 2026-08-22 par l'épisode 22 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
