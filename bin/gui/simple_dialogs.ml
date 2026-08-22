@@ -88,6 +88,11 @@ let message win_title ?modal ?(kind=`Info) ?(actions : (string * (unit -> unit))
          (button#connect#clicked
             ~callback:(fun () -> d#toplevel#destroy (); callback ())))
     actions;
+  (* The keyboard must not be able to fire an action by accident: a dialog that has just appeared
+     under the pointer, and a Return typed at the wrong moment, would otherwise run whatever the
+     first button does -- and one of them removes directories. Close keeps the focus, so Return
+     and space close the window, as they did before there were any buttons. *)
+  (if actions <> [] then d#closebutton_MESSAGE#misc#grab_focus ());
   d#toplevel#set_icon (Some Icon.icon_pixbuf);
   d#toplevel#set_title (utf8 win_title);
   d#title#set_use_markup true;

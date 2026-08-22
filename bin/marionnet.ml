@@ -472,15 +472,22 @@ let () =
   let failed (output : string) =
     Simple_dialogs.error (s_ "The cleanup tool failed") (Glib.Markup.escape_text output) ()
   in
-  (* Recovering: writes one .mar per abandoned run directory and removes NOTHING, so it needs no
-     confirmation -- and it is offered first, so that cleaning after it loses nothing. *)
+  (* Recovering: one .mar per abandoned run directory, and then the directories that were really
+     saved are removed -- the whole point being to end with the work kept and the disk clean. No
+     confirmation is asked because nothing is lost: the tool removes ONLY what it has just written
+     into an archive, and keeps whatever it could not save (see do_purge_dirs, which narrows its
+     victims to ARCHIVED_DIRS as soon as --archive-dirs is given). The button says so. *)
   let recover script () =
     let destination = archive_destination () in
     let (output, ok) =
-      run_cleanup script [Printf.sprintf "--archive-dirs %s" (Filename.quote destination)]
+      run_cleanup script [Printf.sprintf "--archive-dirs %s" (Filename.quote destination); "--purge-dirs"]
     in
     if ok
-      then show ~script ~title:(Printf.sprintf (f_ "Projects recovered into %s") (Glib.Markup.escape_text destination)) output
+      then show ~script
+             ~title:(Printf.sprintf
+                       (f_ "Projects recovered into %s, and their run directories removed")
+                       (Glib.Markup.escape_text destination))
+             output
       else failed output
   in
   (* Cleaning: destroys unsaved work, so the report comes first and the user answers a question
@@ -502,14 +509,14 @@ let () =
     match cleanup_command () with
     | None -> []
     | Some script ->
-        [ ((s_ "Recover the projects"), in_a_thread (recover script));
+        [ ((s_ "Recover and clean up"), in_a_thread (recover script));
           ((s_ "Remove the directories"), in_a_thread (clean script)) ]
   in
   Simple_dialogs.warning
     ~actions
     (s_ "Run directories left behind")
     (Printf.sprintf
-       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. You may sort them out whenever you like, with the command:\n\nmarionnet-cleanup --archive-dirs DIRECTORY --purge-dirs\n\nwhich first saves each of those projects as a .mar file into DIRECTORY, then removes the directories no live session is using.%s")
+       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. You may sort them out whenever you like, with the command:\n\nmarionnet-cleanup --archive-dirs DIRECTORY --purge-dirs\n\nwhich first saves each of those projects as a .mar file into DIRECTORY, then removes the directories it could save.%s")
        (Glib.Markup.escape_text dir) n
        (if actions = [] then "" else
           "\n\n" ^ (s_ "The buttons below do exactly that, right now.")))

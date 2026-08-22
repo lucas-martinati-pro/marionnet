@@ -128,9 +128,14 @@ stop_traced() {
 # then stops it and everything it started.
 run_and_trace() {
   local trace="$1" log="$2"; shift 2
-  local pid i
+  local pid i tmp
   : >"$trace"
-  env "$@" strace -f -e trace=openat -o "$trace" "$BIN" --debug >/dev/null 2>"$log" &
+  # A temporary directory of its own, and not the user's: the startup warning about the run
+  # directories left behind now carries buttons that ARCHIVE and REMOVE them (bin/marionnet.ml),
+  # so a bench that lets the application see the real /tmp puts the user's own leftovers one
+  # stray click away from being swept. Nothing here depends on which directory it is.
+  tmp="$(mktemp -d "$workdir/tmpdir.XXXXXX")"
+  env TMPDIR="$tmp" "$@" strace -f -e trace=openat -o "$trace" "$BIN" --debug >/dev/null 2>"$log" &
   pid=$!
   disown "$pid" 2>/dev/null
   for ((i = 0; i < RUN_TIMEOUT; i++)); do

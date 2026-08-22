@@ -92,7 +92,7 @@ else
 
   # Nothing was removed: recovering is not cleaning.
   left=$(ls -d "$T1"/marionnet-*.dir 2>/dev/null | wc -l)
-  if [ "$left" -eq 3 ]; then ok "--archive-dirs removed nothing (3 run directories still there)"
+  if [ "$left" -eq 3 ]; then ok "--archive-dirs alone removed nothing (3 run directories still there)"
   else ko "--archive-dirs left $left run directories, expected 3"; fi
 
   # The shape of a .mar: its root is the PROJECT directory (Marionnet takes the tarball root for
@@ -115,6 +115,35 @@ else
   else
     ko "the shapeless run directory was not reported as skipped"
   fi
+fi
+
+# --- 1 bis. Recovering AND cleaning: only what was really archived goes ------------------------
+#
+# This is what the "Recover the projects and clean up" button asks for. The two options together
+# must not degenerate into a plain purge: a run directory the archiving had to skip still holds
+# work nobody has a copy of, and losing it is exactly what the archiving exists to prevent.
+T1B="$WORK/t1b"; D1B="$WORK/dest1b"; mkdir -p "$T1B" "$D1B"
+make_rundir "$T1B" 111 delta >/dev/null
+make_rundir "$T1B" 112 epsilon >/dev/null
+mkdir -p "$T1B/marionnet-113.dir"; touch -d "5 hours ago" "$T1B/marionnet-113.dir"   # unarchivable
+TMPDIR="$T1B" "$SCRIPT" --archive-dirs "$D1B" --purge-dirs >/dev/null 2>&1
+rc1b=$?
+if [ "$rc1b" -ne 0 ]; then
+  ko "--archive-dirs --purge-dirs returned $rc1b"
+else
+  if [ -d "$T1B/marionnet-111.dir" ] || [ -d "$T1B/marionnet-112.dir" ]; then
+    ko "--archive-dirs --purge-dirs left a run directory it had archived"
+  else
+    ok "--archive-dirs --purge-dirs removes the run directories it has archived"
+  fi
+  if [ -d "$T1B/marionnet-113.dir" ]; then
+    ok "--archive-dirs --purge-dirs keeps the run directory it could NOT archive"
+  else
+    ko "--archive-dirs --purge-dirs removed a run directory that was never archived"
+  fi
+  mars=$(ls "$D1B"/*.mar 2>/dev/null | wc -l)
+  if [ "$mars" -eq 2 ]; then ok "--archive-dirs --purge-dirs wrote the 2 archives before removing"
+  else ko "--archive-dirs --purge-dirs wrote $mars archive(s), expected 2"; fi
 fi
 
 # --- 2. --spare-dir: named, hence untouchable ---------------------------------------------------

@@ -103,6 +103,8 @@ REPORTS: nothing is killed, nothing is removed.
                     refers to and that are older than $DIR_MIN_AGE_MINUTES minutes. THEY HOLD THE UNSAVED
                     WORKING COPY of the projects of those sessions. Implied by nothing, and
                     refused outright while a Marionnet is running.
+                    TOGETHER WITH --archive-dirs it removes ONLY what was really archived: a run
+                    directory that could not be saved is kept, whatever else it looks like.
   --help            This help.
 
 Options passed by Marionnet itself, from the buttons of its startup warning; rarely useful by
@@ -393,9 +395,26 @@ do_purge_dirs() {
     echo "$PROGNAME: close it first -- its own working copy lives in one of these directories." >&2
     return 1
   fi
-  [ "${#DEAD_DIRS[@]}" -eq 0 ] && { echo "$PROGNAME: no run directory to remove."; return 0; }
-  echo "$PROGNAME: removing ${#DEAD_DIRS[@]} run directory(ies) and the unsaved work they hold..."
-  for d in "${DEAD_DIRS[@]}"; do
+  # With --archive-dirs in the same run, the purge is restricted to what the archiving REALLY
+  # saved: a run directory it had to skip (an unexpected shape) still holds work nobody has a copy
+  # of, and removing it because it was in the same list would be exactly the loss this option
+  # exists to prevent. Without --archive-dirs, nothing changes: the whole list goes.
+  local -a victims=()
+  local x
+  if [ -n "$ARCHIVE_DEST" ]; then
+    for x in "${ARCHIVED_DIRS[@]:-}"; do [ -n "$x" ] && victims+=("$x"); done
+    if [ "${#victims[@]}" -lt "${#DEAD_DIRS[@]}" ]; then
+      echo "$PROGNAME: keeping $(( ${#DEAD_DIRS[@]} - ${#victims[@]} )) run directory(ies) that could not be archived."
+    fi
+  else
+    for x in "${DEAD_DIRS[@]:-}"; do [ -n "$x" ] && victims+=("$x"); done
+  fi
+  [ "${#victims[@]}" -eq 0 ] && { echo "$PROGNAME: no run directory to remove."; return 0; }
+  if [ -n "$ARCHIVE_DEST" ]
+  then echo "$PROGNAME: removing ${#victims[@]} run directory(ies), whose work is now in $ARCHIVE_DEST..."
+  else echo "$PROGNAME: removing ${#victims[@]} run directory(ies) and the unsaved work they hold..."
+  fi
+  for d in "${victims[@]}"; do
     case "$d" in "$TMP"/marionnet-*.dir) rm -rf -- "$d" && n=$((n+1)) ;; *) ;; esac
   done
   echo "$PROGNAME: removed $n."
@@ -410,6 +429,8 @@ do_purge_dirs() {
 # A run directory of an unexpected shape (no subdirectory, or more than one) is SKIPPED rather
 # than archived whole: Marionnet takes the tarball's root directory for the project root, so an
 # archive of the run directory itself would load into nonsense instead of failing.
+declare -a ARCHIVED_DIRS=()        # run directories really saved by do_archive_dirs
+
 do_archive_dirs() {
   local d root stamp target i n=0 skipped=0
   local -a roots=()
@@ -434,6 +455,7 @@ do_archive_dirs() {
     while [ -e "$target" ]; do target="$ARCHIVE_DEST/recovered-$root.$stamp-$i.mar"; i=$((i+1)); done
     if tar -cSzf "$target" -C "$d" --exclude tmp "$root"; then
       echo "$PROGNAME: wrote $target ($(du -h "$target" | cut -f1)), from $d"
+      ARCHIVED_DIRS+=("$d")
       n=$((n+1))
     else
       echo "$PROGNAME: FAILED to archive $d" >&2
@@ -442,8 +464,8 @@ do_archive_dirs() {
     fi
   done
   if [ "$skipped" -eq 0 ]
-  then echo "$PROGNAME: archived $n run directory(ies); nothing was removed."
-  else echo "$PROGNAME: archived $n run directory(ies), skipped $skipped; nothing was removed."
+  then echo "$PROGNAME: archived $n run directory(ies)."
+  else echo "$PROGNAME: archived $n run directory(ies), skipped $skipped."
   fi
   return 0
 }
