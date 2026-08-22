@@ -5,7 +5,8 @@
 > côté parce qu'il n'appartenait à aucun d'eux. Une entrée est *soldée* quand son symptôme est
 > rejoué rouge avant / vert après, et **retirée de `docs/TODO.md` dans le commit qui la clôt**.
 
-Ouvert le 2026-08-20. Reprise : appliquer le skill `chantier-long` (MODE B).
+Ouvert le 2026-08-20, **CLOS le 2026-08-22** (29 épisodes, 0 → 28 plus la clôture). Ce document
+est désormais une **archive** : le résultat et l'index des pièges durables sont au **§ 6**.
 
 ---
 
@@ -2272,4 +2273,61 @@ intercepter, donc **SIGKILL passe à côté de son enfant**, et SIGTERM ne « ma
 le SIGTERM, seul signal qu'il sait transmettre. Corollaire second, valable pour toute mesure de ce
 genre : un job lancé en arrière-plan par un shell **non interactif** ignore SIGINT — un banc ne se
 « Ctrl-C » pas depuis un script, il se SIGTERM.
+
+### 2026-08-22 — épisode 29 : clôture
+
+La destination du § 1 est atteinte (§ 6). Rien de neuf dans le code : le document est marqué clos,
+la fiche mémoire réduite à ses pièges transverses, et le pointeur de `CLAUDE.md` déplacé des
+« chantiers longs » vers les archives — le paragraphe de 113 lignes que le chantier y avait
+accumulé cesse d'être relu à chaque session.
+
+---
+
+## 6. Résultat (clôture du 2026-08-22)
+
+**Destination visée** (§ 1) : solder, une par une et chacune avec au moins un commit, les entrées
+de défaut de `docs/TODO.md` — une entrée est soldée quand son symptôme est rejoué rouge avant /
+vert après et **retirée du TODO dans le commit qui la clôt**.
+
+**Atteinte.** Quatre tournées, **28 entrées** soldées en 28 épisodes (plus l'ép. 0 de cadrage et
+celui-ci) : 16 à l'ouverture, puis les entrées que les épisodes ont eux-mêmes écrites en chemin —
+7, puis 4, puis 1, puis **aucune**. C'est le critère d'arrêt posé au § 1 (« le chantier se clôt
+quand une tournée n'en produit plus qui vaille un épisode »), et la décrue **16 → 7 → 4 → 1 → 0**
+le documente. `docs/TODO.md` ne contient plus qu'une entrée, l'**idée** *« composer deux projets »*
+— déclarée hors périmètre le 2026-08-20 parce que c'est une fonctionnalité, pas un défaut ; elle
+mérite son propre chantier.
+
+**Ce que le chantier laisse derrière lui, au-delà des correctifs :**
+
+- **`driven-sessions/`** — 19 bancs versionnés, rejouables sans invité ni privilège, avec leur
+  `README.md` : les conventions (PASS 0 / SKIP 77 / FAIL autre ; un banc doit échouer sur le code
+  d'avant) et les quatre règles payées par la mesure (fin d'une session par le canal ou SIGKILL ;
+  langue figée quand on matche un texte ; ce qui rend un banc jetable ; et, depuis l'ép. 28, le
+  pid qu'il faut viser sous `timeout`). Créé à l'ép. 2, précisé aux ép. 11, 15, 18 et 28.
+- **Une discipline** : un défaut voisin rencontré en chemin s'**écrit** au TODO, il ne se corrige
+  pas en passant (§ 2.3) — c'est ce qui a produit les tournées 2, 3 et 4, et ce qui a permis de
+  mesurer leur décrue au lieu de la supposer.
+
+### 6.1 Index des pièges durables (par épisode)
+
+| Piège | Épisode(s) |
+|---|---|
+| Une entrée du TODO est un **constat daté**, pas l'état du code : vérifier la prémisse avant de dimensionner l'épisode (3 fois sur 28) | 13, 16, 26 |
+| **Deux défauts peuvent s'annuler** : n'en corriger qu'un est une régression (chemin faux + fichier périmé) | 25 |
+| Un module de **bibliothèque** ne voit pas un module de l'exécutable — faire appeler l'un par l'autre exige de **déplacer** le module | 25 |
+| Détruire un objet **à moitié construit** se fait par `#destroy` (LIFO des callbacks, `OoExtra`), pas par `del_node_by_name` ; `get_node_by_name` **lève** | 3 |
+| Les bornes de ports **sont** les `<Kind>.Const.port_no_{min,max}` reçues par le constructeur : les lire en amont n'est pas une seconde source de vérité | 4 |
+| **Déplacer une garde en amont peut vider de sa substance le banc d'un épisode antérieur** sans jamais le faire échouer | 4 |
+| La **chaîne vide ne traverse pas le canal** (jetons vides jetés par `parse_request`) : le seul mot qui retire une variante est `aucune` | 7 |
+| Un banc se rend **déterministe** en détournant `HOME` dans son temporaire — et peut alors **fabriquer** filesystems et variantes | 7 |
+| Un `start` du canal **répond avant que le démarrage soit fait** (la tâche part sur le `Task_runner`) | 10 |
+| `socat` **perd toute réponse plus lente qu'une demi-seconde** sans `-t`/`-T` — le client revient vide, sans erreur | 10 |
+| Machines et routeurs **détruisent** leur device simulé en s'éteignant (fichier cow) ; le switch, non | 10 |
+| Une session ne se termine que **par le canal ou par SIGKILL** : marionnet **neutralise SIGTERM** (`bin/marionnet.ml`) | 18 |
+| Un binaire de `_build` est **traduit** : un banc qui matche un texte fige la langue (`LANGUAGE=C LC_ALL=C`), sans quoi il passe en ne prouvant plus rien | 15 |
+| Un banc qui observe un journal **différé** doit **survivre au délai qu'il observe** | 24 |
+| Une ligne de commande `umid=<nom>` désigne une **famille** (une douzaine de processus), pas un invité : seul le pid de `~/.uml/<umid>/pid` est le noyau | 20, 27 |
+| Le noyau UML retire son répertoire **s'il meurt de sa belle mort** ; mort par signal, tout reste et `uml_mconsole` **bloque** | 27 |
+| Un `timeout` n'est **pas un mandataire de signaux** : SIGKILL passe à côté de son enfant, SIGTERM ne « marche » que grâce à `--kill-after` — viser l'enfant, laisser SIGTERM au `timeout` | 28 |
+| Un job lancé en arrière-plan par un shell **non interactif ignore SIGINT** (POSIX) : pour interrompre un banc depuis un script, c'est SIGTERM | 28 |
 

@@ -146,119 +146,6 @@ l'**install** et le **RPM**.
 ## Chantiers longs (work-streams)
 
 Reprise : appliquer le skill `chantier-long`.
-- **TODO transverse** (solder les entrées de défaut de `docs/TODO.md` — **15 à l'ouverture, 16**
-  depuis que l'ép. 5 y a écrit le jumeau `variant`, devenu l'ép. 7, puis **23** depuis la
-  **deuxième tournée** du 2026-08-21 et **27** depuis la **troisième** du 2026-08-22, chacune
-  admettant dans le périmètre les entrées que les épisodes ont eux-mêmes écrites en chemin —,
-  une par épisode, chacune
-  avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
-  deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
-  16 épisodes de la 1ʳᵉ tournée par coût croissant, renumérotés à l'ép. 7, **§ 4 bis = les 7 de
-  la 2ᵉ, § 4 ter = les 4 de la 3ᵉ**) ; mémoire `marionnet-todo-transverse` ;
-  `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20.
-  Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
-  **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
-  doc), et un épisode qui découvre un défaut voisin l'**écrit** dans `docs/TODO.md` au lieu de
-  le corriger en passant. Ép. 0 (cadrage), 1 (label), **2 (`--control-socket` : refus de
-  démarrer quand le canal ne peut pas être servi, quelle qu'en soit la cause)** et **3 (un `add`
-  refusé par son propre constructeur ne laisse plus son nœud : le rattrapage de `cmd_add`
-  **détruit** le nœud du nom demandé dans le même `st#network_change` que la création)** et
-  **4 (`add … --ports=N` refuse exactement ce que `set … port_no` refuse, et le refuse **avant**
-  de construire)**, **5 (`set/add … distrib` refuse un filesystem non installé)**, **6 (les
-  répertoires de run des sessions mortes sont *signalés* au démarrage, jamais purgés)** et
-  **7 (le jumeau `variant`, plus le refus du `set distrib` qui ferait perdre la variante portée)**,
-  **8 (toute tentative `uml_mconsole` a une échéance mesurée de 2 s)**, **9 (deux sessions
-  simultanées se disent, au démarrage et à la collision de route)**, **10 (`wait --ready` ne
-  parle plus que d'un invité qui *tourne*)** et **11 (le rc d'un switch est lu à *chaque*
-  démarrage : une **fonction** au lieu d'une valeur au constructeur du device, évaluée une seule
-  fois par `spawn`)** faits — la 1ʳᵉ tournée est **intégralement soldée** (ép. 12→16), et la 2ᵉ
-  a joué son **ép. 17** (un avertissement d'import ne naît que d'un import : la branche `aucune`
-  du routeur, **et** un avertissement enregistré seulement pendant un import — drapeau porté par
-  le **fil** qui importe, posé par l'unique porte de désérialisation `Xml.load_network`) et son
-  **ép. 18** (la fin d'une session s'observe par le canal seul : `quit` **et** `status` publient
-  le **pid**, seul signal vrai après une sortie propre *comme* après un `SIGKILL` — le fichier
-  socket, lui, n'est retiré qu'à la sortie propre, donc son absence prouve une fin et sa présence
-  ne prouve rien ; contrat écrit au § 6 de `doc-src/scripting/README.md`) et son **ép. 19**
-  (`save` et `save-as` refusent d'écrire le projet tant qu'un composant est allumé ou suspendu,
-  comme la GUI : le `.mar` étant un `tar` du répertoire de travail, le cow d'un invité en marche
-  y serait archivé **en plein vol** — le refus nomme les composants, code `components_running`)
-  et son **ép. 20** (`useful-scripts/marionnet-cleanup` connaît enfin les répertoires par invité
-  des noyaux UML, `$UML_DIR/<umid>/` — `~/.uml/` par défaut : il les *rapporte*, et
-  `--purge-uml-dirs`, que rien n'implique, ne retire que les morts. Vivant ⟺ socket `mconsole`
-  encore liée **ou** pid vivant portant le même `umid=` — donc **sans** `uml_mconsole`, sans
-  échéance, et un noyau *gelé* compte pour vivant), puis **21 → 23** (les réglages d'un switch
-  recomposés à *chaque* `spawn` ; le glade et les images d'un binaire de `_build` venus du dépôt
-  par `bin/development_tree.ml` ; les deux échéances du rapport remises dans l'ordre, 45 s côté
-  invité — déposés par l'hôte dans le hostfs — contre 75 s côté hôte) : **2ᵉ tournée soldée**.
-  **3ᵉ tournée ouverte le 2026-08-22** (n° 24 → 27) — **ép. 24** : le fil différé qui tue toute la
-  hiérarchie UML journalise enfin son armement, son **tir** (identité `(pid, starttime)` + nombre
-  de descendants tués) et son **non-tir**, cette dernière ligne étant ce qui rend l'**absence** de
-  la précédente signifiante ; **ép. 25** : la copie de secours de `marionnet.conf` est lue — le
-  chemin cherché était faux (dune installe un `share/` plus bas) **et** le fichier installé était
-  le périmé de **deux** copies versionnées, d'où la suppression du doublon `bin/share/` et
-  l'`etc/dune` qui installe la source unique `etc/marionnet.conf` ; **ép. 26** : `close --save`
-  enregistre un réseau **arrêté** — l'attente du *task runner*
-  (`wait_for_all_currently_scheduled_tasks`) insérée entre `shutdown_everything` et
-  `save_project` dans `leave_current_project` (`bin/control_server.ml`, corps commun de `close`,
-  `new` et `open`), **canal seul** : contrairement à ce que disait l'entrée, le menu GUI attendait
-  déjà (`Common_dialogs.shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`) ;
-  **ép. 27** : le *diagnostic* mconsole, sans une ligne de code — les deux soupçons de l'entrée
-  sont faux (la socket **est** créée et servie sur un boot neuf ; une session tuée laisse au
-  contraire son répertoire **derrière** elle), et ce qu'on prenait pour un invité vivant sans
-  mconsole est un **auxiliaire** survivant d'un noyau mort proprement : un invité porte une
-  douzaine de processus affichant tous `umid=<nom>`, dont **un seul** est le noyau — celui nommé
-  par `~/.uml/<umid>/pid`, le seul aussi à retirer le répertoire en mourant. **3ᵉ tournée soldée**,
-  une entrée neuve écrite (le `cleanup` d'un banc tue `timeout`, pas la session : `pid=$!` ne
-  nomme pas Marionnet et SIGKILL ne se relaie pas) → **4ᵉ tournée, une seule entrée** :
-  **ép. 28** — les 13 bancs qui lancent sous `timeout` tuent désormais la **session**, par son
-  propre pid (celui que `status` publie depuis l'ép. 18 ; à défaut l'unique enfant du `timeout`,
-  `/proc/<pid>/task/<pid>/children`, ce qui couvre les 90 s d'attente de socket) et **après**
-  contrôle d'identité dans `/proc/<pid>/cmdline` ; le mandataire, lui, ne reçoit plus que
-  **SIGTERM** — jamais SIGKILL, sans quoi on détruit le seul relais capable d'atteindre une session
-  qu'on n'a pas su nommer (mesuré : la 1ʳᵉ version du correctif régressait sur ce point). **4ᵉ
-  tournée soldée, aucune entrée neuve** : `docs/TODO.md` ne porte plus que l'entrée hors périmètre,
-  donc **clôture (MODE C) à décider** —
-  l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
-  (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
-  l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
-  chose mais d'exiger un **invité** ou un **privilège** — un switch n'exige ni l'un ni l'autre ;
-  l'ép. 18 y a ajouté deux règles payées par la mesure : une session lancée par un banc se termine
-  **par le canal ou par SIGKILL** (Marionnet **neutralise SIGTERM**, `bin/marionnet.ml`, donc
-  `kill` puis `wait` ne rend jamais la main), et un banc qui matche un **texte** de l'application
-  **fige la langue** (`LANGUAGE=C LC_ALL=C` — depuis l'ép. 15 un binaire de `_build` est traduit,
-  et un motif anglais qui ne matche plus rien laisse passer un banc qui ne prouve plus rien).
-  Deux pièges durables de l'ép. 25 : (1) **deux défauts peuvent s'annuler** — n'en corriger qu'un
-  est une régression (réparer le chemin seul aurait activé un `MARIONNET_BRIDGE=br0` oublié) ;
-  (2) un module de **bibliothèque** (`marionnet_base`) ne voit pas un module de l'exécutable, donc
-  lui faire appeler `Development_tree` a exigé de **déplacer** celui-ci dans la bibliothèque.
-  Piège durable de l'ép. 26 : une entrée du TODO est un **constat daté**, pas l'état du code —
-  la sienne affirmait que la GUI partageait le défaut, alors qu'elle était corrigée depuis un
-  mois ; vérifier la prémisse **avant** de dimensionner l'épisode (3ᵉ cas, cf. ép. 13 et 16).
-  Piège durable de l'ép. 24 : un banc qui observe un journal **différé** (écrit par un
-  `Thread.create` à retardement) doit **survivre au délai qu'il observe** — quitter la session
-  juste après le geste tue le processus qui devait écrire la ligne cherchée.
-  Trois pièges durables de l'ép. 10 : (1) un `start` du canal **répond avant que le démarrage soit
-  fait** (la tâche part sur le `Task_runner`), donc toute garde qui lit le disque juste après lit
-  encore le boot précédent ; (2) `socat` **perd toute réponse plus lente qu'une demi-seconde**
-  sans `-t`/`-T` — un `wait` réel revient **vide**, sans erreur ; (3) machines et routeurs
-  **détruisent** leur device simulé en s'éteignant (fichier cow), contrairement au switch : la
-  « famille » du § 3.5 du doc se réduit donc à ce dernier.
-  Piège durable de l'ép. 3 : détruire un objet **à moitié construit** se fait par `#destroy`
-  (LIFO des callbacks enregistrés avant la levée, `OoExtra`), pas par `del_node_by_name`, et
-  `network#get_node_by_name` **lève** quand le nom est absent.
-  Deux pièges durables de l'ép. 4 : (1) les bornes de ports **sont** les
-  `<Kind>.Const.port_no_{min,max}` que reçoit le constructeur (`n#port_no_min` ne fait que les
-  renvoyer), donc les lire dans `node_maker` n'est pas une seconde source de vérité — et il faut
-  les lire **avant** de construire, `assert (ports > 1)` de `bin/gui/ledgrid.ml` tuant le
-  constructeur sur `--ports=0` ; (2) **déplacer une garde en amont peut vider de sa substance le
-  banc d'un épisode antérieur sans jamais le faire échouer** (mesuré : les 2 cas du banc de
-  l'ép. 3 ne touchaient plus le constructeur — un 3ᵉ cas, `add machine m-1`, l'exerce à nouveau).
-  Deux pièges durables de l'ép. 7 : (1) **la chaîne vide ne traverse pas le canal** — une requête
-  est découpée sur les espaces, les jetons vides jetés (`parse_request`), et `set <n> <champ>`
-  échoue sur l'arité : le seul mot qui **retire** une variante est `aucune` ; (2) un banc peut se
-  rendre **déterministe** en lançant le binaire avec `HOME` détourné dans son temporaire — les
-  filesystems et variantes *utilisateur* de l'hôte disparaissent alors du run, et le banc peut y
-  **fabriquer** ceux dont il a besoin (un fichier vide suffit, cf. `read_epithet_list`).
 - **camlp4 → ppx** (sortir des 7 extensions camlp4 ; crux = `where_p4`) :
   `docs/camlp4-to-ppx.md` ; mémoire `marionnet-camlp4-ppx` ;
   `git log --grep="marionnet-camlp4-ppx"`. **NON entamé**, **priorité fortement abaissée** :
@@ -384,6 +271,10 @@ Reprise : appliquer le skill `chantier-long`.
   déposés dans le hostfs (`bin/scripts/marionnet-*.sh`), un journal servi par le canal, ou
   l'archivage du mode examen ; notes utilisateur : `doc-src/teacher-guide.md`,
   `doc-src/exam-mode.md`, `doc-src/lab-design-skill.md`),
+  `docs/todo-transverse.md` (**solde de la TODOLIST transverse** — 28 défauts indépendants,
+  4 tournées, clos 2026-08-22 ; **§ 6 = résultat + § 6.1 index des pièges durables**, § 4/4 bis/
+  4 ter/4 quater = les tournées ; à lire avant de rouvrir un défaut qu'on croit neuf, ou avant
+  de toucher un banc de `driven-sessions/`),
   `docs/pilotage-par-script.md` (**canal de contrôle scriptable** — serveur in-process sur socket
   unix, requête = ligne texte, réponse = ligne **JSON** ; 14 épisodes, clos 2026-08-15 ; § 12 =
   résultat + **index des pièges durables**, § 9 = table des épisodes ; à lire avant de toucher
@@ -393,10 +284,18 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/migration-ocaml5.md`
   (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
   `docs/daemon-elimination-study.md` (clos 2026-07-17).
+- **Bancs de session pilotée** (preuves rejouables, sans invité ni privilège) :
+  `driven-sessions/README.md` — conventions (PASS 0 / SKIP 77 / FAIL autre ; un banc doit
+  **échouer** sur le code d'avant) et les règles payées par la mesure : une session se termine par
+  le canal ou par **SIGKILL** (SIGTERM est neutralisé), un banc qui matche un texte **fige la
+  langue**, et sous `timeout` le pid à viser est celui de la **session**, jamais celui du
+  mandataire. Ajouter un banc ici quand la preuve d'un correctif est rejouable partout.
 - **TODOLIST transverse** : `docs/TODO.md` — améliorations repérées hors de tout chantier en cours
-  (son solde est lui-même un chantier : `docs/todo-transverse.md`)
   (ce qui relève d'un chantier reste dans son doc, § « Reste au chantier »). Chaque entrée porte le
-  constat, ce qu'on veut à la place, et l'obstacle d'implémentation déjà identifié.
+  constat, ce qu'on veut à la place, et l'obstacle d'implémentation déjà identifié. **Son solde a
+  été un chantier, clos le 2026-08-22** (28 entrées, archive `docs/todo-transverse.md`) : il n'y
+  reste que l'idée *« composer deux projets »*, hors périmètre parce qu'elle est une
+  fonctionnalité. Une entrée neuve **rouvre la question**, elle ne se traite plus par ce chantier.
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,
   `marionnet-gui`, `marionnet-pupisto` (`.claude/skills/`).
