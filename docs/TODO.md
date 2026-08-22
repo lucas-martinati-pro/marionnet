@@ -36,51 +36,38 @@ gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scr
 
 ---
 
-## Invités — un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole
+## Bancs — le `cleanup` d'un banc versionné ne tue pas la session qu'il a lancée
 
-**Constat** (mesuré le 2026-08-22, en soldant l'entrée « les répertoires mconsole de `~/.uml/`
-ne sont balayés par personne »). Un UML `linux-6.12.95` démarré la veille (`umid=m1`, vivant
-depuis 13 h, orphelin d'une session morte) n'a **ni** `~/.uml/m1/` **ni** `/tmp/uml/m1/` :
+**Constat** (mesuré le 2026-08-22 par l'épisode 27 de `marionnet-todo-transverse`, en jouant ses
+bancs jetables sur le patron des bancs versionnés). Le patron est
 
-```
-$ timeout 2 uml_mconsole m1 version
-Warning: couldn't stat file: /home/jean/.uml/m1/mconsole - No such file or directory
-Warning: couldn't stat file: /tmp/uml/m1/mconsole - No such file or directory
-Sending command to '' : Invalid argument           # rc=1, immédiat
+```bash
+timeout -k 5 300 "$BIN" --debug --control-socket "$sock" >/dev/null 2>"$stderr" &
+pid=$!            # <-- le pid de `timeout', PAS celui de Marionnet
 ```
 
-Ce n'est ni un `uml_dir=` détourné (sa ligne de commande n'en porte aucun), ni un `HOME` exotique
-(son environnement dit `HOME=/home/jean`), ni un noyau sans la fonction (`strings` sur le noyau :
-`CONFIG_MCONSOLE=y`, `mconsole_register_dev`, `mconsole (version %d) initialized on %s`). Aucune
-socket unix liée ne nomme `mconsole` dans `/proc/net/unix`. Les huit répertoires `~/.uml/<umid>/`
-résiduels de cet hôte datent tous des noyaux **précédents** (11 au 14 août).
+et le `cleanup` fait ensuite `kill -9 "$pid"`. `timeout` relaie les signaux qu'il **peut**
+intercepter ; SIGKILL n'en fait pas partie : le relais meurt, la session lui survit. Mesuré : une
+session tuée de cette façon était encore vivante **266 s** plus tard, avec son invité UML
+`linux-6.12.95` et la douzaine de processus de celui-ci — jusqu'à ce qu'on la tue par son vrai pid.
 
-**Conséquence.** Sur ce noyau, tout le chemin `gracefully_terminate_with_mconsole`
-(`bin/simulation_level.ml`, l'échéance de l'épisode 8) échoue **d'emblée** : l'extinction propre
-d'un invité — `cad`, `halt`, `sysrq e` — ne peut atteindre personne, et l'arrêt retombe
-systématiquement sur le kill. C'est exactement ce que l'épisode 8 croyait réserver au noyau gelé.
+**Conséquence.** Un banc interrompu (ou dont un cas échoue avant le `quit` du canal) laisse tourner
+une session **complète** jusqu'à l'expiration de son propre `timeout`, soit 300 à 900 s selon le
+banc, et le run suivant hérite de ses orphelins. C'est exactement le genre de résidu qui a fait
+naître l'entrée « un invité vivant n'a aucune socket mconsole » (écrite par l'ép. 20, soldée par
+l'ép. 27 : le processus qu'on croyait vivant était la poussière d'un invité mort).
 
-**Voulu.** Que l'extinction propre par mconsole marche sur le noyau courant, ou — si UML 6.12 a
-changé de convention — que Marionnet lui dise explicitement où poser sa socket (`uml_dir=` sur la
-ligne de commande du noyau, qui a l'avantage de rendre le chemin **connu** au lieu de dépendre de
-`$HOME`).
+**Voulu.** Que le `cleanup` d'un banc tue la **session**, et que le `timeout` reste ce qu'il est :
+un garde-fou de durée, pas un mandataire.
 
-**Ce que l'implémentation devra affronter.** La cause reste à établir, et elle se mesure sur un
-**boot neuf** : le noyau écrit `mconsole (version N) initialized on <chemin>` sur sa console au
-démarrage, et le journal profond de l'invité (chantier `journalisation-profonde`) le capte. Deux
-hypothèses à départager — `mconsole_init` échoue à créer le répertoire (droits, `$HOME` non vu par
-le noyau au moment de l'initcall), ou le noyau de `marionnet-kernel-rootfs` a perdu l'option au
-build. Tant que ce n'est pas tranché, ne pas « corriger » l'échéance de l'épisode 8 : elle fait ce
-qu'on lui demande, c'est sa cible qui manque.
+**Ce que l'implémentation devra affronter.** Le vrai pid est **publié par le canal** depuis
+l'épisode 18 : `status` (comme `quit`) le renvoie dans son JSON, donc un banc peut le lire une fois
+la socket ouverte et le garder à côté du pid de `timeout`. Restent deux cas : (a) une session qui
+meurt **avant** d'ouvrir son canal n'a pas de pid à publier — il faut alors s'en remettre au pid de
+`timeout` comme aujourd'hui, ce qui suffit puisqu'il n'y a rien à tuer ; (b) `timeout --foreground`
+(ou un `setsid` + `kill -- -<pgid>`) tuerait le groupe entier, mais c'est un kill **large**, contre
+la discipline du dépôt (tuer par pid exact, liste affichée d'abord). 13 des 19 bancs versionnés
+portent le patron.
 
-**Précision mesurée gratuitement le 2026-08-22** (épisode 24, qui journalisait le filet de kill et
-a lu ses propres runs) : un invité `debian-trixie` sous **le même `linux-6.12.95`**, mais **de la
-session vivante qui l'a démarré**, répond parfaitement — `uml_mconsole succeeded in sending a
-'cad' to m1`, où « succeeded » signifie `uml_mconsole` sorti en 0, donc socket présente et servie
-(trois runs sur trois). Le constat ci-dessus porte sur un invité **orphelin d'une session morte** :
-le diagnostic doit donc commencer par départager les deux situations — socket jamais créée, ou
-socket disparue avec la session qui l'a créée — avant de mettre en cause le build du noyau.
-
-*Repéré le 2026-08-22 par l'épisode 20 de `marionnet-todo-transverse`, qui l'a mesuré sans le
+*Repéré le 2026-08-22 par l'épisode 27 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
-

@@ -280,7 +280,7 @@ ce chantier du tout.
 | 24 | Le filet qui tue toute la hiérarchie UML **ne dit rien** (ép. 23) | Trois lignes de journal dans le fil différé de `gracefully_terminate` : armement, tir (umid, `(pid, starttime)`, échéance, descendants tués), **et non-tir** — sans cette dernière, l'absence de la première ne veut rien dire | banc **jetable** (invité requis) + **patch témoin** pour la branche du tir — **fait** |
 | 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Le chemin cherché corrigé (`<prefix>/share/marionnet/**share**/marionnet.conf`) *et* le **doublon supprimé** : le dépôt portait deux `marionnet.conf`, et celui qui était installé était le **périmé**. Copie du dépôt en arbre de dev par `Development_tree.share_directory` (monté dans `marionnet_base`), plus un **diagnostic différé** — patron de l'ép. 15 | `driven-sessions/failsafe-configuration-is-read.sh` — **fait** (banc **versionné**) |
 | 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | L'attente des extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`) insérée dans le corps commun `leave_current_project` — **canal seul** : le menu GUI attendait **déjà** (`shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`), donc la prémisse « les deux jouent la même séquence » était fausse | `driven-sessions/close-save-waits.sh` — **fait** (banc **versionné**) |
-| 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic d'abord** (§ 3.1) : lire `mconsole (version N) initialized on …` sur un boot neuf. Si la cause est le noyau lui-même, le correctif **migre** vers `marionnet-kernel-rootfs` et l'entrée le dit | banc jetable (invité) |
+| 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic** : les deux soupçons sont **faux** — la socket est créée et servie sur un boot neuf, et une session tuée laisse le répertoire **derrière** elle. Ce qu'on prenait pour un invité vivant est un **auxiliaire** survivant d'un noyau mort proprement (seul le noyau, nommé par `~/.uml/<umid>/pid`, retire le répertoire). Entrée retirée, sans correctif ni migration | 3 bancs jetables (invité) — **fait** |
 
 ---
 
@@ -2121,3 +2121,68 @@ rien qui tourne, pour vérifier que l'attente inconditionnelle ne coûte rien au
 **Non-régression** : `dune build` rc 0, les **19** bancs versionnés rejoués (0 FAIL), dont celui
 de l'ép. 19 qui garde le même sujet par l'autre bout. Zéro chaîne i18n. **Aucun défaut voisin
 écrit** : `new` et `open` partagent le corps corrigé, donc rien ne reste ouvert de ce côté.
+
+### 2026-08-22 — épisode 27 : l'invité « vivant sans mconsole » était un invité mort
+
+L'entrée ne demandait pas un correctif mais un **diagnostic** (§ 3.1) : sous `linux-6.12.95`, un
+processus vivant portant `umid=m1` n'avait ni `~/.uml/m1/` ni socket liée. Deux soupçons à
+départager — le noyau aurait perdu sa mconsole au build (auquel cas le remède **migrait** vers
+`marionnet-kernel-rootfs`), ou la socket disparaîtrait avec la session qui l'a créée.
+
+**Les deux sont faux**, et la mesure dit ce qui est vrai à leur place. Trois bancs **jetables** (un
+invité qui boote — ~200 s ici — donc rien de versionnable, § 3.6), joués sur un binaire de
+`_build`, `LANGUAGE=C LC_ALL=C`.
+
+**M1 — le boot neuf.** La socket est créée, et elle est servie :
+
+| observation | résultat |
+|---|---|
+| `ls ~/.uml/<umid>/` | `mconsole` (socket unix) et `pid` |
+| `/proc/net/unix` | une socket liée : `/home/jean/.uml/<umid>/mconsole` |
+| `timeout 2 uml_mconsole <umid> version` | `OK Linux <umid> 6.12.95 …`, **rc 0** |
+
+Le noyau n'a donc rien perdu au build : le premier soupçon tombe, et avec lui la migration
+éventuelle du sujet vers le chantier des noyaux.
+
+**M2 — la mort brutale de la session.** SIGKILL sur le **vrai** pid de Marionnet — celui que le
+canal publie dans `status` depuis l'ép. 18, et non celui de `timeout` (cf. le voisin écrit au TODO
+ci-dessous). Le noyau de l'invité meurt aussitôt (le `pdeathsig` du spawner l'atteint), mais il
+meurt **par signal** : il ne retire donc rien, et son répertoire **survit**, socket comprise et
+toujours liée trente secondes après, pendant que **cinq** de ses processus auxiliaires restent
+vivants. `uml_mconsole` y répond **rc 124** — la socket est là, plus personne ne la sert : c'est
+très exactement le cas que l'échéance de 2 s de l'ép. 8 est faite pour ne pas subir. Le second
+soupçon tombe à son tour, et par l'inverse exact de ce qu'il affirmait.
+
+**M3 — l'extinction propre, échantillonnée à la seconde.** Le noyau vit jusqu'à t+5 s, meurt à
+t+6 s, et **le répertoire et la socket disparaissent dans le même échantillon que lui** : c'est le
+noyau qui les retire en s'en allant. Il reste alors **un** processus auxiliaire, réparenté à
+`systemd --user` — disparu à t+7 s. Ensuite plus rien, et `uml_mconsole` rend **rc 1**
+(« Invalid argument », faute de socket) et non 124.
+
+**La cause, donc.** Un invité `linux-6.12.95` porte une **douzaine** de processus dont la ligne de
+commande affiche tous `umid=<nom>` : le noyau — celui-là seul dont le pid est écrit dans
+`~/.uml/<umid>/pid` — et ses auxiliaires, la plupart en état `t` (tracés). Le noyau retire son
+répertoire en mourant ; ses auxiliaires, eux, peuvent lui survivre : un seconde pour une seconde
+dans l'extinction propre, cinq encore vivants trente secondes après une mort brutale. Le tableau du
+constat — « un processus vivant porte `umid=`, le répertoire n'existe pas » — est donc exactement ce
+que laisse un invité **mort proprement** dont un auxiliaire s'attarde. Ce n'était pas un invité
+vivant sans mconsole : c'était la poussière d'un invité mort.
+
+**Ce que le diagnostic ne remet pas en cause.** La sonde de l'ép. 20 (`uml_dir_is_live`,
+`useful-scripts/marionnet-cleanup`) ne s'y laisse **pas** prendre : elle ne compte pas « un pid
+portant `umid=` », elle lit le pid **du fichier `pid`** et vérifie *sa* ligne de commande — c'est
+bien le noyau qu'elle interroge. Et l'échéance de l'ép. 8 garde tout son objet, M2 l'ayant vue
+tirer sur une socket restée derrière une mort brutale.
+
+**Ce que devient l'entrée.** Retirée, sans correctif ni migration : l'extinction propre par
+mconsole marche sur le noyau courant, `gracefully_terminate_with_mconsole` n'a jamais visé à côté,
+et ce que l'ép. 20 a vu s'explique entièrement par la cohabitation d'un noyau et de ses auxiliaires
+sous une même ligne de commande. **Zéro ligne d'OCaml**, zéro i18n, aucun banc versionné (le sujet
+en interdit un).
+
+**Le voisin, mesuré et écrit au TODO** (règle § 2.3) : le `cleanup` des bancs versionnés ne tue pas
+la session qu'il a lancée. `timeout -k … "$BIN" … &` suivi de `pid=$!` capture le pid de `timeout`,
+qui relaie les signaux qu'il peut intercepter — pas SIGKILL. Mesuré en chemin, sur ce patron même :
+une session ainsi « tuée » vivait encore **266 s** plus tard, avec son invité et ses douze
+processus. Treize des dix-neuf bancs portent le patron ; le vrai pid, lui, est publié par `status`
+depuis l'ép. 18.

@@ -201,7 +201,15 @@ Reprise : appliquer le skill `chantier-long`.
   (`wait_for_all_currently_scheduled_tasks`) insérée entre `shutdown_everything` et
   `save_project` dans `leave_current_project` (`bin/control_server.ml`, corps commun de `close`,
   `new` et `open`), **canal seul** : contrairement à ce que disait l'entrée, le menu GUI attendait
-  déjà (`Common_dialogs.shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`) —
+  déjà (`Common_dialogs.shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`) ;
+  **ép. 27** : le *diagnostic* mconsole, sans une ligne de code — les deux soupçons de l'entrée
+  sont faux (la socket **est** créée et servie sur un boot neuf ; une session tuée laisse au
+  contraire son répertoire **derrière** elle), et ce qu'on prenait pour un invité vivant sans
+  mconsole est un **auxiliaire** survivant d'un noyau mort proprement : un invité porte une
+  douzaine de processus affichant tous `umid=<nom>`, dont **un seul** est le noyau — celui nommé
+  par `~/.uml/<umid>/pid`, le seul aussi à retirer le répertoire en mourant. **3ᵉ tournée soldée**,
+  une entrée neuve écrite (le `cleanup` d'un banc tue `timeout`, pas la session : `pid=$!` ne
+  nomme pas Marionnet et SIGKILL ne se relaie pas) — 4ᵉ tournée ou clôture à décider —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
