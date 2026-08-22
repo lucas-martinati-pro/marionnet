@@ -36,34 +36,6 @@ gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scr
 
 ---
 
-## Invités — l'échéance de l'hôte est **deux fois plus courte** que celle du hook d'arrêt
-
-**Constat** (mesuré le 2026-08-21 par l'ép. 16 de `marionnet-todo-transverse`, en soldant l'entrée
-voisine) : deux échéances encadrent le rapport de fin de session, et elles se contredisent.
-Côté invité, l'unité `marionnet-report.service` s'accorde `TimeoutStopSec=60`. Côté hôte,
-`gracefully_terminate` (`bin/simulation_level.ml`) crée, **avant** d'envoyer le `cad`, un fil qui
-attend **30 s** puis SIGKILL toute la hiérarchie UML. L'enveloppe extérieure vaut donc la **moitié**
-de l'enveloppe intérieure : un rapport lent n'est pas coupé par systemd, qui lui laisse 60 s, mais
-par l'hôte, qui tue l'invité au milieu de l'écriture. Mesuré ici, hôte au repos : le rapport prend
-4 à 8 s par machine (1, 3 puis 6 machines) — donc la marge existe, mais un facteur 4 de charge la
-mange, et c'est exactement la condition dans laquelle le défaut voisin avait été observé (trois
-processus `marionnet.exe` concurrents, `journalisation-profonde` ép. 21).
-
-**Voulu.** Que les deux échéances soient ordonnées dans le bon sens : l'invité doit renoncer
-**avant** que l'hôte ne tire, pour qu'un rapport lent soit *tronqué proprement par systemd*
-(et le reste de l'extinction joué) plutôt que perdu avec l'invité.
-
-**Ce que l'implémentation devra affronter.** Le choix n'est pas neutre : abaisser
-`TimeoutStopSec` sous les 30 s de l'hôte coupe un rapport lent mais laisse l'extinction se finir ;
-relever les 30 s de l'hôte retarde l'extinction de **tout** invité gelé, or ce fil est précisément
-le filet qui rattrape un invité qui ignore le `cad`. Il faudrait donc mesurer le rapport sous
-charge réelle avant de choisir un couple, et non ajuster une constante au jugé.
-
-*Écrit ici le 2026-08-21 par l'ép. 16 de `marionnet-todo-transverse`, qui l'a rencontré sans le
-corriger (règle § 2 de `docs/todo-transverse.md`).*
-
----
-
 ## Canal et GUI — `--save` enregistre **pendant** que l'extinction descend
 
 **Constat** (mesuré le 2026-08-22). Depuis l'épisode 19, `save` et `save-as` refusent d'écrire le
@@ -170,4 +142,36 @@ corrige le chemin cherché ou le chemin installé (`bin/dune`) : changer l'insta
 un fichier que les paquets `.deb`/RPM et le `Makefile` connaissent peut-être par son emplacement.
 
 *Repéré le 2026-08-22 par l'épisode 22 de `marionnet-todo-transverse`, qui l'a mesuré sans le
+corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
+
+---
+
+## Invités — le filet qui tue toute la hiérarchie UML **ne dit rien**
+
+**Constat** (mesuré le 2026-08-22 par l'ép. 23 de `marionnet-todo-transverse`, en soldant l'entrée
+voisine). `gracefully_terminate` (`bin/simulation_level.ml`) crée, avant d'envoyer le `cad`, un fil
+qui attend `uml_hierarchy_kill_deadline` puis SIGKILL le processus UML et toute sa descendance.
+Ce fil **ne journalise rien** : ni son armement, ni son déclenchement, ni ce qu'il a tué. La phrase
+`killing whole hierarchy of pid …` que l'on trouve dans le journal appartient à l'*action 4* du
+même chemin (le cas où `uml_mconsole` a échoué), pas à ce fil.
+
+Conséquence, vérifiée à ses dépens par l'épisode qui a corrigé l'échéance : chercher cette phrase
+dans un journal `--debug` rend **zéro** alors que le kill a bel et bien eu lieu, et donne à croire
+que l'invité est mort de sa propre initiative. Un invité tué au milieu de son extinction ne laisse
+donc, côté hôte, **aucune trace** de ce qui l'a tué — et côté invité, un `report.md` tronqué qui
+ressemble à un rapport ordinaire pour qui ne vérifie pas la présence du marqueur de fin.
+
+**Voulu.** Que ce kill différé se journalise comme tout le reste : une ligne quand il tire, disant
+le pid, l'échéance atteinte et le nombre de descendants tués — et, tant qu'à faire, une ligne de
+plus quand il ne tire pas parce que le processus est déjà mort (le cas nominal), pour que
+l'absence de la première veuille dire quelque chose.
+
+**Ce que l'implémentation devra affronter.** Trois fois rien en volume (deux `Log.printf` dans le
+fil), mais deux précautions : le fil tourne **après** que le reste de `gracefully_terminate` a
+rendu la main, donc son journal arrive hors séquence et doit se suffire à lui-même (nommer l'umid,
+pas seulement le pid) ; et l'identité `(pid, starttime)` qu'il revérifie avant de tuer doit
+apparaître dans le message, sans quoi la ligne ne permettra pas de distinguer « tué » de
+« abandonné parce que le pid a été recyclé ».
+
+*Repéré le 2026-08-22 par l'épisode 23 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*

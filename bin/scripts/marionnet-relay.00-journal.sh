@@ -270,6 +270,29 @@ __mrn_journal_hook=/mnt/hostfs/marionnet-report
 
 if [[ -r "$__mrn_journal_hook" ]]; then
 
+  # --- How long systemd gives the report to be written (TimeoutStopSec below).
+  #
+  # This number is NOT free, and it is not ours: the host runs a deadline of its own
+  # (`uml_hierarchy_kill_deadline', bin/simulation_level.ml) after which it SIGKILLs the
+  # whole UML hierarchy, silently.  The two used to be written independently -- 60 here,
+  # 30 there -- so the outer envelope was half the inner one and killed a healthy guest in
+  # the middle of its report; measured, and fixed at episode 23 of the work-stream
+  # `marionnet-todo-transverse'.  The host therefore owns both, and deposits ours in
+  # <hostfs>/report_deadline at every start.
+  #
+  # What is read is validated rather than trusted: a hostfs without the file (an old run
+  # directory, a read failure) falls back on the SAME default as the host, and a value out
+  # of a sane range is refused.  The floor is 40 s: below that the report of a loaded guest
+  # (20 to 34 s measured) would be cut for nothing.
+  #
+  # These four lines sit deliberately BEFORE the `set +x' below: they are the only place
+  # where the value actually used becomes readable in rc_config.log, guest unopened.
+  __mrn_report_deadline_default=45
+  __mrn_report_deadline="$(cat /mnt/hostfs/report_deadline 2>/dev/null)"
+  [[ "$__mrn_report_deadline" =~ ^[0-9]+$ ]] && (( __mrn_report_deadline <= 600 )) \
+    || __mrn_report_deadline=$__mrn_report_deadline_default
+  (( __mrn_report_deadline >= 40 )) || __mrn_report_deadline=40
+
   case $- in *x*) __mrn_journal_x_hook=yes ;; *) __mrn_journal_x_hook=no ;; esac
   { set +x ; } 2>/dev/null
 
@@ -288,7 +311,7 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
 ExecStop=/bin/bash $__mrn_journal_hook
-TimeoutStopSec=60
+TimeoutStopSec=$__mrn_report_deadline
 UNIT
       systemctl daemon-reload
       # `start' is enough: the unit exists only for its ExecStop, and it is the
@@ -322,7 +345,7 @@ INIT
   fi
 
   [[ "$__mrn_journal_x_hook" = yes ]] && { set -x ; } 2>/dev/null
-  unset __mrn_journal_x_hook
+  unset __mrn_journal_x_hook __mrn_report_deadline __mrn_report_deadline_default
 fi
 unset __mrn_journal_hook
 

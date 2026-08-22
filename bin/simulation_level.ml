@@ -1039,6 +1039,36 @@ let report_eth42_tap_failure ~(umid:string) ~(ip42:string) (msg:string) : unit =
            (Glib.Markup.escape_text umid) ip42 pid)
         ()
 
+(* --- The two deadlines which frame the end-of-session report (work-stream
+   `marionnet-todo-transverse', episode 23).  They used to live in two files, in two
+   languages, and had drifted into contradicting each other: the guest gave its report
+   60 s (TimeoutStopSec) while the host killed the whole hierarchy after 30 s.  Measured
+   here on six `debian-trixie' guests shut down together, host loaded (16 busy loops on
+   8 cores): a report takes 20 to 34 s per guest (4 to 8 s on an idle host) and the rest
+   of the shutdown ~11 s more -- so the outer envelope was cutting healthy guests in the
+   middle of their writing, and TimeoutStopSec was never reached.  Nothing said a word:
+   the killing thread below logs nothing.
+
+   Now the host owns BOTH numbers.  [guest_report_deadline] is deposited in the hostfs at
+   every start ([make_hostfs_content]) and read back by the relay, which writes it into
+   TimeoutStopSec: one source of truth for a value the two sides must agree on.  The
+   relay keeps a default of its own, equal to the one below, for a guest whose hostfs
+   does not carry the file (an old project directory, a read failure), and never goes
+   under 40 s.
+
+   The invariant to preserve if these values are ever touched:
+
+     mconsole worst case (episode 8: 8 x 2 s + 11 s = 27 s)
+       <  guest_report_deadline + the tail of the shutdown
+       <  uml_hierarchy_kill_deadline                                                   *)
+let guest_report_deadline : int = 45
+
+(* How long the host waits, after asking for a clean shutdown, before killing the whole UML
+   hierarchy.  It is the net which catches a guest ignoring the `cad' -- and the price of
+   raising it is exactly that: a FROZEN guest is held that much longer.  It must stay above
+   [guest_report_deadline] plus the tail of the shutdown, or it kills healthy guests too. *)
+let uml_hierarchy_kill_deadline : float = 75.
+
 (** The UML process used to implement machines and routers: *)
 class uml_process =
   fun ~(kernel_file_name)
@@ -1366,8 +1396,9 @@ class uml_process =
      sysrq 9), a guest already dead is refused in ~10 ms, and during the early boot the socket
      does not exist yet, which fails at once as well. Two seconds can therefore not turn a slow
      clean shutdown into a brutal kill, and they keep the worst case of `gracefully_terminate'
-     (5 `cad' then 3 `halt' attempts, i.e. 8*timeout + 11 s) below the 30 s deadline of the
-     killing thread it starts. `timeout' comes from coreutils and exits 124 when it fires. *)
+     (5 `cad' then 3 `halt' attempts, i.e. 8*timeout + 11 s) below the deadline of the killing
+     thread it starts ([uml_hierarchy_kill_deadline]). `timeout' comes from coreutils and exits
+     124 when it fires. *)
   method private gracefully_terminate_with_mconsole
     ?(command="cad") ?(tries=1) ?(delay=1.) ?(timeout=2.) () : bool =
     (* let redirection = Global_options.Debug_level.redirection () in *)
@@ -1422,7 +1453,7 @@ class uml_process =
    | Some current_pid ->
        Log.printf2 "Simulation_level: %s#gracefully_terminate: about to terminate !!! the UML process with pid %d...\n" umid current_pid;
        (* PIDs are recycled by the kernel: capture (pid, starttime) pairs now, and
-          re-check this identity at the 30 s deadline before any deferred SIGKILL —
+          re-check this identity at the deadline below, before any deferred SIGKILL —
           otherwise a kill decided now may hit an unrelated process later. *)
        let descendants : (int * int64) list =
          List.map
@@ -1432,10 +1463,13 @@ class uml_process =
        let current_starttime : int64 option =
          Option.map (fun s -> s.Linux.Process.starttime) (Linux.Process.stat current_pid)
        in
-       (* We set here a sort of timeout: we will wait no more than 30 seconds to kill the whole hierarchy.
-          This is very ugly, but needed: sometimes uml_console succeeds when sending a 'cad'
-          message, but the UML process is just in an early stage of boot, and ignores the
-          message. *)
+       (* We set here a sort of timeout: we will wait no more than [uml_hierarchy_kill_deadline]
+          seconds to kill the whole hierarchy. This is very ugly, but needed: sometimes
+          uml_console succeeds when sending a 'cad' message, but the UML process is just in an
+          early stage of boot, and ignores the message. The value is NOT free: it must stay above
+          the deadline the guest gives to its own end-of-session report (episode 23, see
+          [guest_report_deadline]), otherwise this thread kills a guest which is shutting down
+          properly -- and it does so silently: nothing here logs the kill. *)
        let _ =
          Thread.create
            begin fun delay ->
@@ -1451,7 +1485,7 @@ class uml_process =
                       then (try Unix.kill pid Sys.sigkill with _ -> ()))
                  descendants);
            end
-           (30.) (* timeout: no more than 30 seconds *)
+           (uml_hierarchy_kill_deadline)
        in
        (* Action 1: release some resources (in a distinct thread): *)
        Log.printf2 "Simulation_level: %s#gracefully_terminate: about to stop monitoring pid %d...\n" umid current_pid;
@@ -1607,6 +1641,15 @@ class uml_process =
              hostfs costs a wakeup per second and per guest. *)
           ("marionnet-watch",
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-watch.sh") ]
+    in
+    (* Episode 23: the deadline the guest gives to its report travels WITH the scripts, so
+       that the two sides cannot disagree (see [guest_report_deadline]). Rewritten at every
+       start, like everything else here; never fatal, the relay has a default of its own. *)
+    let () =
+      let dest = Filename.concat (hostfs_directory) "report_deadline" in
+      try UnixExtra.rewrite dest (Printf.sprintf "%d\n" guest_report_deadline) with e ->
+        Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
+          dest (Printexc.to_string e)
     in
     (* Create the file `boot_parameters_pathname'. [O_TRUNC] is not decoration: this path is
        reused from one start to the next (the hostfs directory belongs to the component, not to

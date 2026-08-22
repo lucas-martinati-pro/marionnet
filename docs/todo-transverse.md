@@ -246,7 +246,19 @@ l'autre un tri de préfixe).
 | 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2). Le tri vivant/mort ne passe **pas** par `uml_mconsole` comme annoncé ici : socket encore liée (`/proc/net/unix`, que le script lit déjà) **ou** pid vivant portant le même `umid=` — aucune dépendance, aucune échéance, et un noyau gelé reste **vivant** | `driven-sessions/uml-dirs-reported.sh` — **fait** (banc **versionné**) |
 | 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm, ajouté par un `initializer`, devient un accessoire **ajouté ou retiré à chaque démarrage** | `driven-sessions/switch-settings-after-poweroff.sh` — **fait** (banc **versionné**) |
 | 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi. La reconnaissance de l'arbre de dev, jusque-là enfermée dans `Gettext`, devient le module `bin/development_tree.ml` — une seule réponse dans toute l'application à « est-ce que je tourne depuis `_build` ? » | `driven-sessions/glade-and-images-from-the-repository.sh` — **fait** (banc **versionné**) |
-| 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesurer le rapport **sous charge réelle** avant de choisir un couple ; ni l'abaissement ni le relèvement n'est neutre | — |
+| 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesuré d'abord (20 à 34 s par rapport sous charge, contre 4 à 8 s au repos), puis **45 s côté invité / 75 s côté hôte** — et surtout l'ordre garanti par construction : l'hôte dépose sa valeur dans le hostfs, le relais la lit (défaut identique des deux côtés, plancher 40 s) | banc **jetable** (invités requis) ; rouge/vert dans le journal ci-dessous |
+
+**Bilan de la deuxième tournée (2026-08-22).** Les 7 entrées (17→23) sont soldées, chacune avec son
+commit et son retrait du TODO. Elle a elle-même écrit **4 entrées neuves**, toutes mesurées et
+volontairement non corrigées en passant (règle § 2.3) : `close --save` enregistre pendant que
+l'extinction descend (ép. 19), un invité vivant sous `linux-6.12.95` n'a aucune socket mconsole —
+donc l'extinction propre de l'ép. 8 n'atteint personne sur ce noyau (ép. 20), la copie de secours
+de `marionnet.conf` est cherchée là où rien n'est installé (ép. 22), et le fil qui tue toute la
+hiérarchie UML ne journalise rien (ép. 23). Quatre contre sept : la décrue annoncée au § 1 se
+vérifie, mais l'une d'elles (celle de l'ép. 20) est **plus grosse** que l'entrée qui l'a fait
+naître. **Ouvrir une troisième tournée ou clore le chantier est une décision à prendre** — le
+critère posé au § 1 est qu'il se clôt quand une tournée ne produit plus d'entrée qui vaille un
+épisode, ce qui n'est pas le cas ici.
 
 ---
 
@@ -1777,3 +1789,104 @@ n'est **jamais** lue, installé ou pas. Non corrigé ici : `Configuration` est �
 `Initialization.Path` — c'est lui qui lit `MARIONNET_PREFIX` — donc le remède ne peut pas passer
 par `versioned_data_home` ; il devra appeler `Development_tree.share_directory` directement, ce
 pour quoi ce module a justement été isolé.
+
+### 2026-08-22 — épisode 23 : l'invité renonce avant que l'hôte ne tire
+
+**Ce que l'entrée demandait — mesurer avant de choisir — a d'abord servi à corriger l'entrée
+elle-même.** Elle décrivait deux échéances mal ordonnées (60 s côté invité, 30 s côté hôte) et en
+déduisait qu'« un rapport lent est coupé par l'hôte ». C'est vrai, mais le détail qui manquait est
+celui qui rendait le défaut invisible : **le fil qui tue ne journalise rien**. Le premier réflexe
+— chercher `killing whole hierarchy` dans le journal `--debug` — rend **zéro** alors que le kill a
+bien lieu : cette phrase appartient à l'*action 4* de `gracefully_terminate`, pas au fil différé,
+qui appelle `kill_descendants_then_myself` sans un mot.
+
+**Banc jetable** (il exige des invités : `docs/todo-transverse.md` § 3.6) : une session pilotée
+par le canal, N machines `debian-trixie` démarrées ensemble, `wait --ready` sur chacune (le
+marqueur est écrit par une configuration de démarrage que le banc pose lui-même — ép. 16), charge
+CPU de l'hôte allumée juste avant, puis `shutdown-all`. Ce qui est relevé par machine ne demande
+**aucune instrumentation** : le rapport porte sa propre date de début (`- date:`) et sa propre date
+de fin (`_end of the report:_`), donc sa durée se lit dedans, et sa troncature se voit à l'absence
+de la seconde.
+
+**Combien coûte un rapport, vraiment** (`debian-trixie`, hôte à 8 cœurs, charge = 16 boucles de
+calcul) :
+
+| Run | Rapports complets | Durée du rapport | Extinction totale |
+|---|---|---|---|
+| 3 machines, hôte au repos | 3/3 | **4 s** | 8 s |
+| 6 machines, charge ×16, échéance hôte de 30 s | **3/6** | 16-20 s (les autres coupés) | 34 s |
+| 6 machines, charge ×16, **échéance hôte neutralisée** (témoin à 120 s) | **6/6** | **20 à 34 s** | 51 s |
+
+La troisième ligne est celle qui tranche : sous charge, le rapport seul dépasse les 30 s que
+l'hôte accordait à **toute** l'extinction. Les 60 s de `TimeoutStopSec` n'ont jamais servi à rien.
+
+**Qui coupe, prouvé sans ambiguïté.** Un patch témoin rend le rapport artificiellement lent (une
+trace par seconde, dans un fichier du hostfs, plus un `trap` sur TERM/HUP/INT/QUIT et sur EXIT),
+une seule machine, hôte au repos :
+
+| | attendu si c'est l'invité | mesuré |
+|---|---|---|
+| instant de la coupure | ~60 s (`TimeoutStopSec`) | **30,4 s après le `stop`** |
+| signal reçu | `SIGNAL TERM` puis EXIT | **aucun** — la trace s'arrête net au tick 28/100 |
+
+C'est donc le fil différé de l'hôte, et lui seul. Un invité **sain** qui s'éteint lentement était
+traité exactement comme un invité **gelé** qui ignore le `cad`.
+
+**Le correctif : l'hôte possède désormais les deux nombres.** Décision de l'utilisateur, prise sur
+les chiffres ci-dessus : **45 s côté invité, 75 s côté hôte** (45 + les ~11 s de queue
+d'extinction mesurées + une marge pour une machine plus chargée que celle-ci). Et l'ordre n'est
+plus une convention entre deux fichiers de deux langages : `guest_report_deadline`
+(`bin/simulation_level.ml`) est **déposée dans le hostfs** à chaque démarrage
+(`make_hostfs_content`, fichier `report_deadline`), et le relais la **lit** pour écrire son
+`TimeoutStopSec` — une seule source de vérité, et le commentaire croisé énonce l'invariant à tenir :
+
+    pire cas mconsole (ép. 8 : 8×2 s + 11 s = 27 s)
+      < guest_report_deadline + queue d'extinction
+      < uml_hierarchy_kill_deadline
+
+Ce que le relais lit, il ne le croit pas : hors plage ou non numérique (hostfs d'un ancien
+répertoire, lecture en échec) il retombe sur **le même défaut que l'hôte** (45), et il ne descend
+**jamais sous 40 s** — en dessous, le rapport d'un invité chargé serait coupé pour rien.
+Vérifié table en main : `45→45`, `60→60`, `10→40`, `40→40`, absent`→45`, `abc→45`, `99999→45`,
+`-5→45`.
+
+**Rouge, puis vert** :
+
+| Run | rapports complets | extinction |
+|---|---|---|
+| avant, 6 machines, charge ×16 | **3/6** (coupés en pleine section `iptables`, 1,6 à 5 ko) | 34 s, **invités tués** |
+| après, 6 machines, charge ×16 | **6/6** (10,3 à 10,5 ko, marque de fin), 14 à 22 s | 37 s |
+| après, 6 machines, charge ×16, hôte plus chargé encore (*load* 14,6) | 4/6 complets ; les 2 autres **tronqués à ~45 s**, c'est-à-dire par systemd | 54 s, **toutes éteintes** |
+| après, 8 machines, charge ×24 | **8/8** (25 à 47 s de rapport) | toutes éteintes |
+
+La troisième ligne est celle qui montre le comportement *voulu* plutôt que le confort : sous une
+charge que 45 s ne suffisent plus à absorber, le rapport est **amputé par l'invité**, et
+l'extinction va jusqu'au bout. Avant, le même cas perdait l'invité *et* le rapport.
+
+**Les deux enveloppes, mesurées dans le bon ordre, à la seconde près.** Témoin d'une seule machine
+dont le rapport est rendu artificiellement long (90 s de ticks) et dont les signaux sont tracés :
+
+| | attendu | mesuré |
+|---|---|---|
+| l'invité renonce (`TimeoutStopSec=45`) | 45 s après le `stop` | **`SIGNAL TERM` à 45,5 s** |
+| l'hôte tire (`uml_hierarchy_kill_deadline`) | 75 s après le `stop` | **coupure nette, sans trace, à 75,0 s** |
+
+Le témoin *attrape* le `SIGTERM` au lieu d'en mourir — c'est pour cela qu'on voit ensuite la
+seconde échéance, que le code réel n'atteint jamais. L'ordre, lui, est exactement celui que
+l'entrée réclamait.
+
+**Le nombre traverse vraiment**, prouvé du côté où il compte : une machine dont la configuration
+de démarrage recopie l'unité que systemd a chargée — `<hostfs>/report_deadline` = `45`,
+`TimeoutStopSec=45` dans `/run/systemd/system/marionnet-report.service`, et
+`systemctl show -p TimeoutStopUSec` = `45s`.
+
+**Non-régression.** Cas ordinaire (3 machines, hôte au repos) : 3/3 rapports complets en 3 s,
+extinction totale **6 s** — relever l'échéance hôte ne coûte rien à qui s'éteint normalement, elle
+n'est qu'un plafond. `dune build` rc 0. La branche SysV du hook (`/etc/rc0.d/K01…`, images
+`wheezy`) n'a **pas** d'échéance et n'est pas touchée. Prix assumé de la décision, et il est réel :
+un invité **gelé** est désormais retenu 75 s au lieu de 30 avant le SIGKILL.
+
+**Le voisin, mesuré et écrit au TODO** (règle § 2.3) : le fil qui tue toute la hiérarchie UML ne
+laisse **aucune trace** dans le journal. C'est ce silence qui a fait vivre ce défaut si longtemps —
+et qui a failli m'induire en erreur ici même, un `grep` dans le journal ayant d'abord semblé
+disculper l'hôte.
