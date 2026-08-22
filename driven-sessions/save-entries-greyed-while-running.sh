@@ -56,7 +56,7 @@ readonly JOURNAL_TIMEOUT=20
 readonly LINGER=90
 
 declare -i passed=0 failed=0 skipped=0
-declare tmpdir="" sock="" stderr="" pid=""
+declare tmpdir="" sock="" stderr="" pid="" mrn_pid=""
 
 # The `quit' of the channel does not close the project, so a session which opened one leaves
 # its /tmp/marionnet-<n>.dir/ behind. Remove the ones THIS run created -- never a whole glob:
@@ -70,7 +70,42 @@ remove_our_run_directories() {
   done < <(comm -13 "$before" <(ls -d /tmp/marionnet-*.dir 2>/dev/null | sort))
 }
 
+# The pid captured by `pid=$!' is the pid of `timeout', not the one of the session: timeout
+# relays the signals it can catch, and SIGKILL is not one of them, so a session "killed" through
+# the proxy outlives its bench (measured at episode 27: 266 s, guest included). Two sources give
+# the real one: the channel publishes it in `status' since episode 18, and until it answers --
+# a bench waits up to 90 s for its socket -- the single child of `timeout' IS the session.
+session_pid_from_channel() {
+  local answer
+  answer=$(ask status)
+  [[ "$answer" =~ \"pid\"[[:space:]]*:[[:space:]]*([0-9]+) ]] && echo "${BASH_REMATCH[1]}"
+}
+
+session_pid() {
+  local candidate="${mrn_pid:-}"
+  [[ -n "$candidate" ]] || candidate=$(cat "/proc/${pid:-0}/task/${pid:-0}/children" 2>/dev/null)
+  echo "${candidate%% *}"
+}
+
+# Kill the session itself, by exact pid, and only once /proc has confirmed it still is ours: a
+# pid gets recycled (the lesson of episode 20), and the socket path -- unique to this run -- is
+# what tells our session from anything else. SIGKILL because marionnet neutralises SIGTERM
+# (bin/marionnet.ml, episode 18); no `wait' here: this is timeout's child, not the shell's.
+kill_the_session() {
+  local -i target="${1:-0}" i
+  (( target > 1 )) || return 0
+  kill -0 "$target" 2>/dev/null || return 0
+  grep -qz -- "$sock" "/proc/$target/cmdline" 2>/dev/null || return 0
+  kill -9 "$target" 2>/dev/null
+  for ((i = 0; i < 100; i++)); do kill -0 "$target" 2>/dev/null || return 0; sleep 0.1; done
+}
+
 cleanup() {
+  # The session first, by its own pid.
+  kill_the_session "$(session_pid)"
+  # Then its proxy -- SIGTERM, never SIGKILL: timeout relays what it can catch, so a SIGTERM
+  # still reaches a session we failed to identify (and its --kill-after finishes the job),
+  # whereas a SIGKILL here would kill the proxy alone and leave that session behind.
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
      kill "$pid" 2>/dev/null
      wait "$pid" 2>/dev/null
@@ -236,6 +271,7 @@ if [[ ! -S "$sock" ]]; then
    echo "FAIL: no socket at $sock after 90s"
    exit 1
 fi
+mrn_pid=$(session_pid_from_channel)
 
 # Before anything is opened (see the case itself for why it comes first).
 sleep 2
@@ -257,7 +293,7 @@ case_saveable_again_once_everything_is_off
 # Leave nothing running behind: the channel's `quit' does not power the network off.
 ask "poweroff s1" >/dev/null
 ask quit >/dev/null
-wait "$pid"; pid=""
+wait "$pid"; pid=""; mrn_pid=""
 
 echo "---"
 echo "passed: $passed, failed: $failed, skipped: $skipped"

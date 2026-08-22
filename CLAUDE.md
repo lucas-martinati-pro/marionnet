@@ -209,7 +209,15 @@ Reprise : appliquer le skill `chantier-long`.
   douzaine de processus affichant tous `umid=<nom>`, dont **un seul** est le noyau — celui nommé
   par `~/.uml/<umid>/pid`, le seul aussi à retirer le répertoire en mourant. **3ᵉ tournée soldée**,
   une entrée neuve écrite (le `cleanup` d'un banc tue `timeout`, pas la session : `pid=$!` ne
-  nomme pas Marionnet et SIGKILL ne se relaie pas) — 4ᵉ tournée ou clôture à décider —
+  nomme pas Marionnet et SIGKILL ne se relaie pas) → **4ᵉ tournée, une seule entrée** :
+  **ép. 28** — les 13 bancs qui lancent sous `timeout` tuent désormais la **session**, par son
+  propre pid (celui que `status` publie depuis l'ép. 18 ; à défaut l'unique enfant du `timeout`,
+  `/proc/<pid>/task/<pid>/children`, ce qui couvre les 90 s d'attente de socket) et **après**
+  contrôle d'identité dans `/proc/<pid>/cmdline` ; le mandataire, lui, ne reçoit plus que
+  **SIGTERM** — jamais SIGKILL, sans quoi on détruit le seul relais capable d'atteindre une session
+  qu'on n'a pas su nommer (mesuré : la 1ʳᵉ version du correctif régressait sur ce point). **4ᵉ
+  tournée soldée, aucune entrée neuve** : `docs/TODO.md` ne porte plus que l'entrée hors périmètre,
+  donc **clôture (MODE C) à décider** —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque

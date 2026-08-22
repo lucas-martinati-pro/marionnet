@@ -32,9 +32,45 @@ readonly BIN="${1:-$ROOT/_build/default/bin/marionnet.exe}"
 readonly SUN_PATH_USABLE_BYTES=107
 
 declare -i passed=0 failed=0 skipped=0
-declare tmpdir=""
+# pid/sock/mrn_pid are global on purpose: an interrupted bench runs cleanup(), not the body of
+# case_nominal, so what that case knows about its session has to be reachable from here.
+declare tmpdir="" sock="" pid="" mrn_pid=""
+
+# The pid captured by `pid=$!' is the pid of `timeout', not the one of the session: timeout
+# relays the signals it can catch, and SIGKILL is not one of them, so a session "killed" through
+# the proxy outlives its bench (measured at episode 27: 266 s, guest included). Two sources give
+# the real one: the channel publishes it in `status' since episode 18 -- case_nominal reads it
+# out of the answer it sends anyway -- and until then the single child of `timeout' IS it.
+session_pid() {
+  local candidate="${mrn_pid:-}"
+  [[ -n "$candidate" ]] || candidate=$(cat "/proc/${pid:-0}/task/${pid:-0}/children" 2>/dev/null)
+  echo "${candidate%% *}"
+}
+
+# Kill the session itself, by exact pid, and only once /proc has confirmed it still is ours: a
+# pid gets recycled (the lesson of episode 20), and the socket path -- unique to this run -- is
+# what tells our session from anything else. SIGKILL because marionnet neutralises SIGTERM
+# (bin/marionnet.ml, episode 18); no `wait' here: this is timeout's child, not the shell's.
+kill_the_session() {
+  local -i target="${1:-0}" i
+  (( target > 1 )) || return 0
+  [[ -n "$sock" ]] || return 0
+  kill -0 "$target" 2>/dev/null || return 0
+  grep -qz -- "$sock" "/proc/$target/cmdline" 2>/dev/null || return 0
+  kill -9 "$target" 2>/dev/null
+  for ((i = 0; i < 100; i++)); do kill -0 "$target" 2>/dev/null || return 0; sleep 0.1; done
+}
 
 cleanup() {
+  # The session first, by its own pid.
+  kill_the_session "$(session_pid)"
+  # Then its proxy -- SIGTERM, never SIGKILL: timeout relays what it can catch, so a SIGTERM
+  # still reaches a session we failed to identify (and its --kill-after finishes the job),
+  # whereas a SIGKILL here would kill the proxy alone and leave that session behind.
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+     kill "$pid" 2>/dev/null
+     wait "$pid" 2>/dev/null
+  fi
   local d="$tmpdir"
   # Guard: never let an empty or short variable turn this into a wide removal.
   if [[ -n "$d" && "$d" == /tmp/marionnet-bench.* && -d "$d" ]]; then
@@ -115,18 +151,23 @@ case_unwritable_directory() {
 
 case_nominal() {
   # Anti-false-positive: a refusal which refused everything would pass the three cases above.
-  local path="$tmpdir/ok.sock" rc pid i answer
+  local path="$tmpdir/ok.sock" rc i answer
+  sock="$path"
   timeout -k 5 120 "$BIN" --control-socket "$path" >/dev/null 2>"$tmpdir/stderr-ok" &
   pid=$!
   for ((i = 0; i < 90; i++)); do [[ -S "$path" ]] && break; sleep 1; done
   if [[ ! -S "$path" ]]; then
      fail "a serviceable path is served: no socket after 90s"
-     kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+     kill_the_session "$(session_pid)"
+     kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; pid=""
      return
   fi
   answer=$(echo 'status' | timeout 10 socat - "UNIX-CONNECT:$path" 2>/dev/null)
+  [[ "$answer" =~ \"pid\"[[:space:]]*:[[:space:]]*([0-9]+) ]] && mrn_pid="${BASH_REMATCH[1]}"
   echo 'quit' | timeout 10 socat - "UNIX-CONNECT:$path" >/dev/null 2>&1
   wait "$pid"; rc=$?
+  pid=""
+  mrn_pid=""
   if [[ "$answer" != *'"ok":true'* ]]; then
      fail "a serviceable path is served: the channel answered $answer"
   elif [[ $rc -ne 0 ]]; then

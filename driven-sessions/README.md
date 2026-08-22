@@ -38,6 +38,19 @@ Le critère vient de `docs/todo-transverse.md` § 3.6.
 - **Une session lancée par un banc se termine par le canal (`quit`) ou par `SIGKILL`.** Marionnet
   **neutralise SIGTERM** délibérément (`bin/marionnet.ml` : un `halt` dans un invité en envoie
   un), donc un `kill` suivi d'un `wait` **ne rend jamais la main** — mesuré à l'ép. 18.
+- **Le pid de `$!` n'est pas celui de la session** quand elle est lancée sous `timeout` : c'est
+  celui du **mandataire**, qui ne relaie que les signaux qu'il peut intercepter — et SIGKILL n'en
+  fait pas partie. Un `cleanup` qui tue ce pid-là laisse la session vivre jusqu'à l'expiration du
+  `timeout` (mesuré à l'ép. 27 : **266 s**, invité compris), et le run suivant hérite des
+  orphelins. Donc : un banc tue la session **par son propre pid** — celui que le canal publie dans
+  `status` depuis l'ép. 18, ou, tant que le canal n'a pas répondu (l'attente de la socket dure
+  jusqu'à 90 s), l'**unique enfant** du `timeout`, lu dans `/proc/<pid>/task/<pid>/children` —,
+  et seulement **après** avoir vérifié dans `/proc/<pid>/cmdline` que c'est bien la sienne (un pid
+  se recycle : leçon de l'ép. 20 ; le chemin de socket, unique au run, suffit à l'identifier). Le
+  mandataire, lui, se termine ensuite par **SIGTERM** et jamais par SIGKILL : ainsi il relaie
+  encore le signal à une session qu'on n'aurait pas su nommer, et son `--kill-after` achève le
+  travail. Le `wait` ne vaut que pour lui : la session, elle, est l'enfant du `timeout`, pas celui
+  du banc (ép. 28).
 - **Un banc qui matche un texte de l'application fige la langue** (`LANGUAGE=C LC_ALL=C` au
   lancement). Depuis l'ép. 15, un binaire de `_build` lit les catalogues du dépôt : un motif
   anglais ne matche plus rien sous locale française, et un banc qui cherche une **absence** ne

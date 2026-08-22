@@ -41,6 +41,14 @@ périmètre sous les numéros **24 à 27** (§ 4 ter). La décrue se poursuit (1
 réserve qu'au tour précédent : l'une d'elles (celle de l'ép. 20, le noyau `linux-6.12.95` sans
 socket mconsole) est **plus grosse** que l'entrée qui l'a fait naître.
 
+**Quatrième tournée, décidée le 2026-08-22.** Les 4 entrées de la troisième sont soldées et
+n'en ont écrit qu'**une** (ép. 27 : le `cleanup` d'un banc versionné ne tue pas la session qu'il a
+lancée). La décrue est nette — **16 → 7 → 4 → 1** — et cette dernière entrée ne touche plus le
+logiciel du tout : elle porte sur l'**outillage de preuve** du chantier. Elle entre néanmoins dans
+le périmètre, sous le n° **28** (§ 4 quater), au même motif que les tournées précédentes ; mais
+c'est le **dernier** épisode possible tant qu'aucune entrée neuve n'est écrite, et la clôture
+(MODE C) se décide juste après.
+
 **Hors périmètre, par décision explicite (2026-08-20)** : l'entrée *« Idée — composer deux
 projets (importer un `.mar` dans le projet courant) »*. Ce n'est pas un défaut mais une
 fonctionnalité, et le TODO en énumère lui-même quatre obstacles de fond (politique de renommage,
@@ -281,6 +289,17 @@ ce chantier du tout.
 | 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Le chemin cherché corrigé (`<prefix>/share/marionnet/**share**/marionnet.conf`) *et* le **doublon supprimé** : le dépôt portait deux `marionnet.conf`, et celui qui était installé était le **périmé**. Copie du dépôt en arbre de dev par `Development_tree.share_directory` (monté dans `marionnet_base`), plus un **diagnostic différé** — patron de l'ép. 15 | `driven-sessions/failsafe-configuration-is-read.sh` — **fait** (banc **versionné**) |
 | 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | L'attente des extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`) insérée dans le corps commun `leave_current_project` — **canal seul** : le menu GUI attendait **déjà** (`shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`), donc la prémisse « les deux jouent la même séquence » était fausse | `driven-sessions/close-save-waits.sh` — **fait** (banc **versionné**) |
 | 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic** : les deux soupçons sont **faux** — la socket est créée et servie sur un boot neuf, et une session tuée laisse le répertoire **derrière** elle. Ce qu'on prenait pour un invité vivant est un **auxiliaire** survivant d'un noyau mort proprement (seul le noyau, nommé par `~/.uml/<umid>/pid`, retire le répertoire). Entrée retirée, sans correctif ni migration | 3 bancs jetables (invité) — **fait** |
+
+---
+
+## 4 quater. La quatrième tournée : 1 entrée
+
+Écrite par l'épisode 27 de la troisième (§ 1). Une seule, et la seule du chantier à ne pas viser
+le logiciel : elle vise les **bancs** eux-mêmes.
+
+| N | Entrée de `docs/TODO.md` (épisode qui l'a écrite) | Geste | Preuve |
+|---|---|---|---|
+| 28 | Le `cleanup` d'un banc versionné ne tue pas la session qu'il a lancée (ép. 27) | Les 13 bancs qui lancent sous `timeout` tuent la session **par son propre pid** — publié par `status` (ép. 18), ou, tant que le canal se tait, l'unique enfant du `timeout` — après contrôle d'identité dans `/proc/<pid>/cmdline` ; le mandataire, lui, ne reçoit plus que SIGTERM | mesure avant/après sur banc interrompu + les 13 rejoués intégralement — **fait** |
 
 ---
 
@@ -2186,3 +2205,71 @@ qui relaie les signaux qu'il peut intercepter — pas SIGKILL. Mesuré en chemin
 une session ainsi « tuée » vivait encore **266 s** plus tard, avec son invité et ses douze
 processus. Treize des dix-neuf bancs portent le patron ; le vrai pid, lui, est publié par `status`
 depuis l'ép. 18.
+
+### 2026-08-22 — épisode 28 : le `cleanup` d'un banc tue la session, pas son mandataire
+
+Entrée écrite par l'ép. 27, et **seule** de la quatrième tournée. Elle ne vise pas le logiciel
+mais l'outillage de preuve : `timeout -k … "$BIN" … &` suivi de `pid=$!` capture le pid du
+**mandataire**, et le `cleanup` d'un banc tue celui-là.
+
+**Ce que la mesure a ajouté au constat, avant tout correctif.** L'entrée dit « le `cleanup` fait
+`kill -9 "$pid"` » : c'est vrai de **2** bancs sur 13 ; les 11 autres envoient un SIGTERM. Un banc
+interrompu (SIGTERM au banc, ce qui déclenche son `trap EXIT` — un job asynchrone d'un shell non
+interactif **ignore** SIGINT, POSIX) donne deux comportements distincts, tous deux fautifs :
+
+| banc interrompu (code de HEAD) | ce que fait son `cleanup` | résultat mesuré |
+|---|---|---|
+| `save-refused-while-running.sh` | `kill -9` sur le mandataire | mandataire mort en **0,013 s**, **session survivante** (tuée à la main ensuite) |
+| `add-ports-bounds.sh` | `kill` (SIGTERM) sur le mandataire | banc **bloqué 5,01 s** dans son propre trap, session morte à **+6,2 s** |
+
+Le premier est le défaut de l'entrée. Le second ne « marche » que par un **effet de bord** :
+`timeout` relaie le SIGTERM à une session qui le **neutralise** délibérément
+(`bin/marionnet.ml:669`, dont le handler retourne dans `GtkThread.main`), et c'est le
+`--kill-after=5` qui finit par tirer — d'où les 5 s pendant lesquelles le banc, lui, attend dans
+`wait`.
+
+**Un troisième cas, payé en chemin.** La première version du correctif tuait aussi le mandataire
+par SIGKILL, par symétrie avec la session. Mesurée, elle **régressait** : interrompu à l'instant
+précis où sa socket apparaît — le banc est alors dans `sleep 1`, le canal n'a rien publié encore —,
+le banc perdait à la fois le pid publié **et** le filet du relais, et laissait un orphelin là où le
+code d'avant n'en laissait pas. D'où la forme finale : **deux** sources pour le pid, et un
+mandataire tué en douceur.
+
+**Le correctif**, trois gestes homogènes dans les 13 bancs :
+
+- `session_pid_from_channel` — le pid que `status` publie depuis l'ép. 18, capturé dès que la
+  socket répond ;
+- `session_pid` — ce pid s'il est connu, **sinon** l'unique enfant du `timeout`
+  (`/proc/<pid>/task/<pid>/children`), ce qui couvre toute la fenêtre d'attente de la socket
+  (jusqu'à 90 s), là où le canal ne peut rien dire ;
+- `kill_the_session` — SIGKILL **par pid exact**, et seulement après que `/proc/<pid>/cmdline` a
+  confirmé qu'il porte le chemin de socket **de ce run** (un pid se recycle : leçon de l'ép. 20),
+  puis attente de la disparition (10 s) ; aucun `wait`, la session étant l'enfant du `timeout` et
+  non celui du banc.
+
+Le `cleanup` prend la session d'abord, le mandataire ensuite — en **SIGTERM**, jamais en SIGKILL,
+précisément pour garder le relais quand le pid de la session n'a pas pu être établi. Deux bancs
+avaient un `kill_and_reap` (SIGKILL + `wait`) qui n'était appelé que de là : devenu du code mort
+et **trompeur** (il visait le mandataire en invoquant la neutralisation de SIGTERM par la session),
+il a été retiré.
+
+**Preuve.**
+
+| geste | avant (HEAD) | après |
+|---|---|---|
+| banc interrompu à l'ouverture de sa socket (canal muet, repli sur l'enfant du `timeout`) | session survivante | banc sorti en **0,12 s**, session disparue à **+1,15 s** |
+| banc interrompu en plein travail (canal interrogé, pid publié) | 5,01 s de blocage, mort à +6,2 s | banc sorti en **0,12 s**, session disparue à **+1,07 s** |
+| les 13 bancs rejoués intégralement | — | **72 PASS, 0 FAIL**, 1 SKIP (celui, propre à l'hôte, de `failsafe-configuration-is-read.sh`) |
+
+`bash -n` sur les **19** bancs : rc 0. Aucun résidu (`/tmp/marionnet-bench.*`, `/tmp/marionnet-*.dir`)
+ni processus survivant après la campagne. **Zéro ligne d'OCaml, zéro i18n**, et **pas de banc
+versionné neuf** : l'objet corrigé *est* le banc — la règle est écrite à sa place, dans
+`driven-sessions/README.md`.
+
+**Piège durable.** Un `timeout` n'est pas un mandataire de signaux : il ne relaie que ce qu'il peut
+intercepter, donc **SIGKILL passe à côté de son enfant**, et SIGTERM ne « marche » que grâce à
+`--kill-after`. Corollaire : viser l'**enfant** quand on veut tuer, et ne laisser au `timeout` que
+le SIGTERM, seul signal qu'il sait transmettre. Corollaire second, valable pour toute mesure de ce
+genre : un job lancé en arrière-plan par un shell **non interactif** ignore SIGINT — un banc ne se
+« Ctrl-C » pas depuis un script, il se SIGTERM.
+
