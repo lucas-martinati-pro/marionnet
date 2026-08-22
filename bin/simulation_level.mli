@@ -80,7 +80,7 @@ class vde_switch_process :
   ?tap_name:process_name ->
   ?socket_name_prefix:string ->
   ?management_socket:unit ->
-  ?fstp:unit ->
+  ?get_fstp:(unit -> bool) ->
   ?rcfile:string ->
   working_directory:string ->
   unexpected_death_callback:(int -> process_name -> unit) ->
@@ -327,7 +327,8 @@ class virtual ['parent] main_process_with_n_hublets_and_cables_and_accessory_pro
     method spawn_internal_cables        : unit
     method get_internal_cable_processes : ethernet_cable_process list
     (* --- *)
-    method add_accessory_process : process -> unit
+    method add_accessory_process    : process -> unit
+    method remove_accessory_process : process -> unit
   end
 
 class virtual ['parent] hub_or_switch :
@@ -336,7 +337,7 @@ class virtual ['parent] hub_or_switch :
   ?last_user_visible_port_index:int ->
   hub:bool ->
   ?management_socket:unit ->
-  ?fstp:unit ->
+  ?get_fstp:(unit -> bool) ->
   ?rcfile:string ->
   working_directory:string ->
   unexpected_death_callback:(unit -> unit) ->
@@ -432,5 +433,6 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   object
     inherit ['parent] machine_or_router
     (* --- *)
-    method add_accessory_process : process -> unit
+    method add_accessory_process    : process -> unit
+    method remove_accessory_process : process -> unit
   end

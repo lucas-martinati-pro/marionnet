@@ -244,7 +244,7 @@ l'autre un tri de préfixe).
 | 18 | Le verbe `quit` rend la main avant que le processus soit parti (ép. 9) | Le **pid**, publié par `quit` **et** par `status` : le seul signal qui dise vrai aussi bien après une sortie propre qu'après une mort brutale — plus la section de `doc-src/scripting/` qui l'écrit | `driven-sessions/quit-is-observable.sh` — **fait** (banc **versionné**) |
 | 19 | `save` écrit le projet pendant que des composants tournent (ép. 14) | Ce que **vaut** un `.mar` enregistré en marche, tranché d'abord (le cow d'un invité est archivé en plein vol) ; puis le geste, symétrique de `cmd_quit` : un `ask_or_answer` + `reply_error ~code:"components_running"` | `driven-sessions/save-refused-while-running.sh` — **fait** (banc **versionné**) |
 | 20 | Les répertoires mconsole de `~/.uml/` ne sont balayés par personne (ép. 8) | `marionnet-cleanup` sait les **repérer** et les proposer, jamais purger tout seul (§ 3.2). Le tri vivant/mort ne passe **pas** par `uml_mconsole` comme annoncé ici : socket encore liée (`/proc/net/unix`, que le script lit déjà) **ou** pid vivant portant le même `umid=` — aucune dépendance, aucune échéance, et un noyau gelé reste **vivant** | `driven-sessions/uml-dirs-reported.sh` — **fait** (banc **versionné**) |
-| 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm est un `initializer`, donc un cas à part | — |
+| 21 | Sur un switch, `activate_fstp` et `show_vde_terminal` restent ceux du premier démarrage (ép. 11) | Recalculer les arguments dans le `spawn` (patron du `slirpvde_process`) ; l'xterm, ajouté par un `initializer`, devient un accessoire **ajouté ou retiré à chaque démarrage** | `driven-sessions/switch-settings-after-poweroff.sh` — **fait** (banc **versionné**) |
 | 22 | Le glade et les images lus sont ceux du Marionnet installé (ép. 15) | Choisir **par répertoire** (données versionnées ↔ données installées), pas basculer `MARIONNET_PREFIX` entier : `filesystems/` et `kernels/` en dérivent aussi | — |
 | 23 | Les deux échéances qui encadrent le rapport se contredisent (ép. 16) | Mesurer le rapport **sous charge réelle** avant de choisir un couple ; ni l'abaissement ni le relèvement n'est neutre | — |
 
@@ -1621,3 +1621,77 @@ résiduels de cet hôte datent tous des noyaux précédents.
 `SC2318` que la première rédaction avait introduit — deux affectations dans un même `local`, où
 `$d` n'est pas encore posé — est corrigé), banc **9 PASS / 0 FAIL**, run réel sur cette machine
 (les 8 répertoires réels rapportés **removable**, et **rien** retiré sans option).
+
+---
+
+### 2026-08-22 — épisode 21 : ce qu'on donne à un switch est celui de chaque démarrage
+
+**L'entrée** (écrite par l'ép. 11, en soldant l'entrée jumelle sur le rc) constatait que
+`make_simulated_device` de `bin/switch.ml` lisait **trois** réglages à la naissance du device
+simulé, et que l'ép. 11 n'en avait rendu qu'**un** — le rc — relisible. Restaient
+`activate_fstp` et `show_vde_terminal`, deux **valeurs**, sur un device qui, contrairement à
+celui d'une machine ou d'un routeur, **survit à l'extinction** de son composant (pas de cow à
+renouveler).
+
+**Le patron, et pourquoi celui-là.** L'entrée laissait deux voies : recalculer dans le `spawn`,
+ou détruire le device quand un de ces champs change. La seconde rouvrirait l'automate d'état
+(`docs/refonte-automate-composants.md`, clos) pour deux booléens ; la première est déjà en place
+deux fois dans ce dépôt — `slirpvde_process` (`modernisation-world-bridge` ép. 10a bis) et le
+`get_rcfile_content` de l'ép. 11. C'est donc la première, avec la même signature : une fonction
+`unit -> bool` là où passait une valeur.
+
+**Les deux moitiés n'ont pas la même forme, et c'est tout le sujet.**
+
+- **`activate_fstp` est un argument de ligne de commande.** `vde_switch_process`
+  (`bin/simulation_level.ml`) construisait sa liste d'arguments une fois, à la construction. La
+  partie stable devient un `fixed_arguments`, l'`initializer` retient dans `socket_arguments` ce
+  qu'il appendait (`-unix …`, `--mgmt …` — connus seulement une fois le parent construit), et un
+  `spawn` redéfini recompose `fixed_arguments @ [--fstp]? @ socket_arguments`. **Sans
+  `?get_fstp`, rien ne bouge** : les quatre autres instanciations de cette classe (hub, hublet,
+  gateway hub, `bridge_common`) gardent exactement les arguments qu'on leur a donnés.
+- **`show_vde_terminal` est un processus accessoire**, et il était ajouté par un `initializer`,
+  c'est-à-dire *à la naissance du device*. Activer le terminal ensuite ne pouvait donc **rien**
+  produire — pas même au démarrage suivant. Le terminal est désormais décidé dans un
+  `spawn_processes` redéfini (`bin/switch.ml`, `Simulation_level_switch.switch`), qui **ajoute**
+  l'accessoire s'il est demandé et ne l'est pas encore, ou le **retire** s'il ne l'est plus. D'où
+  la seule méthode neuve du chantier, `remove_accessory_process` (égalité **physique** :
+  `accessory_processes_stuff`). Un `process#terminate` remettant `pid := None`, l'xterm gardé
+  d'un démarrage à l'autre est re-spawnable tel quel.
+  La branche de `spawn_internal_cables` qui dépendait de `show_vde_terminal` lit la fonction
+  **une fois par spawn**, comme le fait déjà `rcfile_content` depuis l'ép. 11, et pour la même
+  raison : la branche prise et l'envoi qui suit doivent voir la même réponse.
+
+**Ce que le `.mli` a imposé.** `simulation_level.mli` publie ces classes : `?fstp:unit` devient
+`?get_fstp:(unit -> bool)` aux deux endroits, et `remove_accessory_process` doit être déclarée
+**deux fois** — dans `main_process_with_n_hublets_and_cables_and_accessory_processes` *et* dans
+`machine_or_router_with_accessory_processes`, qui héritent tous deux de
+`accessory_processes_stuff`. `make check` (`dune build @check`) est obligatoire ici :
+`simulation_level.ml` est en amont de tout.
+
+**Le défaut du monde extérieur est resté hors du correctif.** `world_gateway` hérite de la classe
+`switch` sans offrir aucun des deux réglages : les valeurs par défaut deviennent des fonctions
+constantes (`fun () -> false`), et son comportement est inchangé.
+
+**Rouge/vert** (banc **versionné** `driven-sessions/switch-settings-after-poweroff.sh` : un
+switch n'exige ni invité ni privilège) : **4 PASS / 2 FAIL** avant, **6 PASS / 0 FAIL** après.
+Les deux FAIL sont exactement les deux moitiés, et les quatre PASS d'avant sont les témoins qui
+interdisent la fausse correction : un switch démarré sans `--fstp` ne doit pas l'avoir (sinon
+« toujours `--fstp` » passerait), et un réglage **retiré** pendant l'extinction doit être retiré
+du processus suivant.
+
+Ce que le banc lit n'est pas le modèle — qui n'a jamais menti — mais ce que **vde_switch** dit de
+lui-même (`switch-info <switch> fstp`, champ `"fstp_enabled"` de la réponse JSON, plus sûr que la
+ligne de texte `FSTP IS DISABLED` du rapport) et, pour le terminal, la **table des processus** de
+l'hôte : un `xterm` dont la ligne de commande porte la socket de gestion **de ce switch-là**
+(publiée par `switch-info`, fixée à la naissance du device, donc immunisée contre une autre
+session Marionnet qui tournerait sur la même machine). Lecture seule : le banc ne tue jamais rien
+par motif. Les trois cas du terminal ouvrent une vraie fenêtre quelques secondes et sont
+**sautés** si `xterm` n'est pas installé.
+
+**Vérifications.** `dune build` rc 0, `make check` rc 0, banc **6 PASS / 0 FAIL** sur le code
+corrigé et **2 FAIL** sur le code d'avant (`git stash` du seul correctif, binaire reconstruit),
+et les **16 bancs versionnés** rejoués en séquence — tous rc 0, aucun FAIL, aucun SKIP (le cœur
+touché, `simulation_level.ml`, est celui de tous les composants). Zéro chaîne i18n neuve : tout
+ceci est du comportement, aucun texte d'écran.
+
+**Aucun défaut voisin écrit** à cet épisode.

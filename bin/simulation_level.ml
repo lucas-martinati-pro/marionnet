@@ -513,7 +513,11 @@ class vde_switch_process =
      ?tap_name
      ?socket_name_prefix
      ?management_socket
-     ?fstp
+     (* A function, not a value (episode 21 of `marionnet-todo-transverse'), for the same reason
+        as [get_rcfile_content] at episode 11: a switch does NOT destroy its simulated device when
+        it is powered off, so a `--fstp' decided here, once, would be the one of the FIRST start
+        for ever. Asked again in [spawn] below, which is when the question is really asked. *)
+     ?(get_fstp : (unit -> bool) option)
      ?rcfile
      ~working_directory
      ~unexpected_death_callback
@@ -523,34 +527,35 @@ class vde_switch_process =
   | Some p -> p
     | None -> Printf.sprintf "%s-socket-" (if hub then "hub" else "switch")
  in
+ (* Everything but `--fstp' and the socket-related arguments (appended by the initializer, as
+    the names are known only once the parent has been built). *)
+ let fixed_arguments =
+   let tap_name_related =
+     match tap_name with
+     | None -> []
+     | Some tap_name -> ["-tap"; tap_name]
+   in
+   let hub_related = (if hub then ["-x"] else []) in
+   let port_no_related = [ "-n"; (string_of_int (port_no + 1)) ] in
+   (* TODO: find a reasonable value for this: *)
+   let permissions_related = [ "-mod"; "777" ] in
+   let rcfile_related =
+     match rcfile with
+     | None -> []
+     | Some rcfile -> ["--rcfile"; rcfile]
+   in
+   List.concat [
+     tap_name_related;
+     hub_related;
+     port_no_related;
+     permissions_related;
+     rcfile_related;
+     ]
+ in
  object(self)
   inherit process_which_creates_a_socket_at_spawning_time
       (Initialization.Path.vde_prefix ^ "vde_switch")
-      (let arguments =
-         let tap_name_related =
-           match tap_name with
-           | None -> []
-           | Some tap_name -> ["-tap"; tap_name]
-         in
-         let hub_related = (if hub then ["-x"] else []) in
-         let port_no_related = [ "-n"; (string_of_int (port_no + 1)) ] in
-         (* TODO: find a reasonable value for this: *)
-         let permissions_related = [ "-mod"; "777" ] in
-         let fstp_related = (if fstp=Some () then ["--fstp"] else []) in
-         let rcfile_related =
-           match rcfile with
-           | None -> []
-           | Some rcfile -> ["--rcfile"; rcfile]
-         in
-         List.concat [
-           tap_name_related;
-           hub_related;
-           port_no_related;
-           permissions_related;
-           fstp_related;
-           rcfile_related;
-           ]
-      in arguments)
+      fixed_arguments
       ~stdin:an_input_descriptor_never_sending_anything
       ~stdout:dev_null_out
       ~stderr:dev_null_out
@@ -559,13 +564,33 @@ class vde_switch_process =
       ~working_directory
       ~unexpected_death_callback
       ()
+      as super
+
+  (* What the initializer appends below. Remembered because [spawn] recomposes the whole
+     command line, and these arguments must survive that recomposition. *)
+  val mutable socket_arguments : string list = []
+
   initializer
     let optional_mgmt =
       List.concat
         (Option.to_list
            (Option.map (fun name -> ["--mgmt"; (Shell.escaped_filename name)]) self#get_management_socket_name))
     in
-    self#append_arguments ("-unix" :: (Shell.escaped_filename self#get_socket_name) :: optional_mgmt);
+    socket_arguments <- ("-unix" :: (Shell.escaped_filename self#get_socket_name) :: optional_mgmt);
+    self#append_arguments socket_arguments;
+
+  (* Episode 21 of `marionnet-todo-transverse': the pattern of [slirpvde_process] above --
+     recompute the command line at every start, instead of destroying the simulated device
+     (which would reopen the state automaton, cf. docs/refonte-automate-composants.md).
+     Without [get_fstp] nothing moves: the arguments stay exactly what they were built with. *)
+  method! spawn =
+    (match get_fstp with
+     | None -> ()
+     | Some get_fstp ->
+         let fstp_related = (if get_fstp () then ["--fstp"] else []) in
+         arguments <- List.concat [ fixed_arguments; fstp_related; socket_arguments ]
+     );
+    super#spawn
 
 end;; (* class vde_switch_process *)
 
@@ -1950,6 +1975,12 @@ class accessory_processes_stuff () = object
   method add_accessory_process (p:process) =
     accessory_processes <- p::accessory_processes
 
+  (* Episode 21 of `marionnet-todo-transverse': the terminal of a switch is decided at every
+     start, so a process added for one start must be removable before the next one. Physical
+     equality: two accessory processes are the same only if they are the same object. *)
+  method remove_accessory_process (p:process) =
+    accessory_processes <- List.filter (fun q -> not (q == p)) accessory_processes
+
   method private terminate_accessory_processes =
     List.iter (fun p -> try p#terminate with _ -> ()) accessory_processes
 
@@ -2020,7 +2051,7 @@ class virtual ['parent] hub_or_switch =
       ?(last_user_visible_port_index:int option)
       ~(hub:bool)
       ?management_socket
-      ?fstp
+      ?get_fstp
       ?rcfile
       ~working_directory
       ~unexpected_death_callback
@@ -2046,7 +2077,7 @@ class virtual ['parent] hub_or_switch =
                    (parent#get_name))
               ~port_no:hublet_no
               ?management_socket
-              ?fstp
+              ?get_fstp
               ?rcfile
               ~working_directory
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback

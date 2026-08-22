@@ -488,15 +488,14 @@ class switch =
   (** Create the simulated device *)
   method private make_simulated_device =
     let hublet_no = self#get_port_no in
-    let show_vde_terminal = self#get_show_vde_terminal in
-    let fstp = Option.of_bool (self#get_activate_fstp) in
-    (* A function, not a value (episode 11 of `marionnet-todo-transverse'). Unlike a machine or a
-       router, a switch does NOT destroy its simulated device when it is powered off — there is no
-       cow file to renew — so the device outlives every start but the first one. A content read
-       here, once, would freeze the rc of the very first start: an `rc-set' accepted afterwards
-       (the channel writes it through [set_rc_content], without destroying anything) would be
-       replayed as the old one, in silence. Read at spawning time instead, which is when the
-       question is actually asked. *)
+    (* Functions, not values (episodes 11 and 21 of `marionnet-todo-transverse'). Unlike a machine
+       or a router, a switch does NOT destroy its simulated device when it is powered off — there
+       is no cow file to renew — so the device outlives every start but the first one. A value read
+       here, once, would freeze the setting of the very first start: a `set' accepted afterwards
+       (the channel writes the model without destroying anything) would be replayed as the old one,
+       in silence. Read at spawning time instead, which is when the question is actually asked. *)
+    let get_show_vde_terminal () = self#get_show_vde_terminal in
+    let get_fstp () = self#get_activate_fstp in
     let get_rcfile_content () =
       match self#get_rc_config with
       | false, _ -> None
@@ -505,9 +504,9 @@ class switch =
     let unexpected_death_callback = self#destroy_because_of_unexpected_death in
     ((new Simulation_level_switch.switch
        ~parent:self
-       ~hublet_no          (* TODO: why not accessible from parent? *)
-       ~show_vde_terminal  (* TODO: why not accessible from parent? *)
-       ?fstp
+       ~hublet_no              (* TODO: why not accessible from parent? *)
+       ~get_show_vde_terminal  (* TODO: why not accessible from parent? *)
+       ~get_fstp
        ~get_rcfile_content
        ~working_directory:(network#project_working_directory)
        ~unexpected_death_callback
@@ -1060,11 +1059,13 @@ class ['parent] switch =
   fun ~(parent:'parent)
       ~hublet_no
       ?(last_user_visible_port_index:int option)
-      ?(show_vde_terminal=false)
-      ?fstp
+      (* Episodes 11 and 21 of `marionnet-todo-transverse': functions, because this device survives
+         the poweroff of its switch and is spawned again as it is. See [make_simulated_device].
+         The defaults are those of a world_gateway, which inherits this class without offering
+         either setting to the user. *)
+      ?(get_show_vde_terminal = fun () -> false)
+      ?get_fstp
       ?rcfile (* Unused: vde_switch doesn't interpret correctly commands provided in this way! *)
-      (* Episode 11 of `marionnet-todo-transverse': a function, because this device survives the
-         poweroff of its switch and is spawned again as it is. See [make_simulated_device]. *)
       ?(get_rcfile_content = fun () -> None)
       ~working_directory
       ~unexpected_death_callback
@@ -1076,7 +1077,7 @@ object(self)
       ?last_user_visible_port_index
       ~hub:false
       ~management_socket:()
-      ?fstp
+      ?get_fstp
       ?rcfile
       ~working_directory
       ~unexpected_death_callback
@@ -1094,6 +1095,7 @@ object(self)
        see the same answer, or a switch whose rc was enabled in between would take the plain
        branch and send nothing. *)
     let rcfile_content = get_rcfile_content () in
+    let show_vde_terminal = get_show_vde_terminal () in
     match show_vde_terminal || (rcfile_content <> None) with
     | false ->
         write_rc_journal_without_rc ~journal:(self#rc_journal) ~name:(parent#get_name) ();
@@ -1137,21 +1139,37 @@ object(self)
                  (send_commands_to_vde_switch_and_journal ~socketfile ~commands ~name ~journal) ())
 
 
-  initializer
+  (* Episode 21 of `marionnet-todo-transverse': the terminal used to be added here by an
+     `initializer', hence at the birth of the simulated device — which a switch keeps across its
+     poweroff. Enabling [show_vde_terminal] afterwards could therefore never produce anything.
+     The accessory process is now added (or withdrawn) at every start, according to what the
+     model says at that moment. *)
+  val mutable terminal_process : Simulation_level.process option = None
 
-  match show_vde_terminal with
-  | false -> ()
-  | true ->
+  method private make_terminal_process =
     let name = parent#get_name in
-    self#add_accessory_process
-      (new Simulation_level.unixterm_process
+    ((new Simulation_level.unixterm_process
         ~xterm_title:(name^" terminal")
         ~management_socket_name:(Option.extract self#get_management_socket_name)
  	~unexpected_death_callback:
  	   (fun i _ ->
  	      Death_monitor.stop_monitoring i;
  	      Log.printf2 "Terminal of switch %s closed (pid %d).\n" name i)
-	())
+	()) :> Simulation_level.process)
+
+  method! spawn_processes =
+    (* Before the accessory processes are spawned by the superclass, of course. *)
+    (match get_show_vde_terminal (), terminal_process with
+     | true, None ->
+         let p = self#make_terminal_process in
+         terminal_process <- Some p;
+         self#add_accessory_process p
+     | false, Some p ->
+         self#remove_accessory_process p;
+         terminal_process <- None
+     | (true, Some _ | false, None) -> ()
+     );
+    super#spawn_processes
 
 end;;
 
