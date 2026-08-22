@@ -196,7 +196,12 @@ Reprise : appliquer le skill `chantier-long`.
   la précédente signifiante ; **ép. 25** : la copie de secours de `marionnet.conf` est lue — le
   chemin cherché était faux (dune installe un `share/` plus bas) **et** le fichier installé était
   le périmé de **deux** copies versionnées, d'où la suppression du doublon `bin/share/` et
-  l'`etc/dune` qui installe la source unique `etc/marionnet.conf` —
+  l'`etc/dune` qui installe la source unique `etc/marionnet.conf` ; **ép. 26** : `close --save`
+  enregistre un réseau **arrêté** — l'attente du *task runner*
+  (`wait_for_all_currently_scheduled_tasks`) insérée entre `shutdown_everything` et
+  `save_project` dans `leave_current_project` (`bin/control_server.ml`, corps commun de `close`,
+  `new` et `open`), **canal seul** : contrairement à ce que disait l'entrée, le menu GUI attendait
+  déjà (`Common_dialogs.shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`) —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
@@ -210,6 +215,9 @@ Reprise : appliquer le skill `chantier-long`.
   est une régression (réparer le chemin seul aurait activé un `MARIONNET_BRIDGE=br0` oublié) ;
   (2) un module de **bibliothèque** (`marionnet_base`) ne voit pas un module de l'exécutable, donc
   lui faire appeler `Development_tree` a exigé de **déplacer** celui-ci dans la bibliothèque.
+  Piège durable de l'ép. 26 : une entrée du TODO est un **constat daté**, pas l'état du code —
+  la sienne affirmait que la GUI partageait le défaut, alors qu'elle était corrigée depuis un
+  mois ; vérifier la prémisse **avant** de dimensionner l'épisode (3ᵉ cas, cf. ép. 13 et 16).
   Piège durable de l'ép. 24 : un banc qui observe un journal **différé** (écrit par un
   `Thread.create` à retardement) doit **survivre au délai qu'il observe** — quitter la session
   juste après le geste tue le processus qui devait écrire la ligne cherchée.

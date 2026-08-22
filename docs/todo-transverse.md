@@ -279,7 +279,7 @@ ce chantier du tout.
 |---|---|---|---|
 | 24 | Le filet qui tue toute la hiérarchie UML **ne dit rien** (ép. 23) | Trois lignes de journal dans le fil différé de `gracefully_terminate` : armement, tir (umid, `(pid, starttime)`, échéance, descendants tués), **et non-tir** — sans cette dernière, l'absence de la première ne veut rien dire | banc **jetable** (invité requis) + **patch témoin** pour la branche du tir — **fait** |
 | 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Le chemin cherché corrigé (`<prefix>/share/marionnet/**share**/marionnet.conf`) *et* le **doublon supprimé** : le dépôt portait deux `marionnet.conf`, et celui qui était installé était le **périmé**. Copie du dépôt en arbre de dev par `Development_tree.share_directory` (monté dans `marionnet_base`), plus un **diagnostic différé** — patron de l'ép. 15 | `driven-sessions/failsafe-configuration-is-read.sh` — **fait** (banc **versionné**) |
-| 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | Attendre les extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`, déjà employé par `close_project`) avant `save_project`, dans le corps commun `leave_current_project` — donc **canal et menu GUI ensemble**, ou aucun des deux | banc **versionné** (un switch suffit) |
+| 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | L'attente des extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`) insérée dans le corps commun `leave_current_project` — **canal seul** : le menu GUI attendait **déjà** (`shutdown_then_save`, posé par l'ép. 23 de `journalisation-profonde`), donc la prémisse « les deux jouent la même séquence » était fausse | `driven-sessions/close-save-waits.sh` — **fait** (banc **versionné**) |
 | 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic d'abord** (§ 3.1) : lire `mconsole (version N) initialized on …` sur un boot neuf. Si la cause est le noyau lui-même, le correctif **migre** vers `marionnet-kernel-rootfs` et l'entrée le dit | banc jetable (invité) |
 
 ---
@@ -2045,3 +2045,79 @@ lieu de faire semblant ; sur un hôte propre, il s'exécute.
 (0 FAIL). Le `Makefile` perd la règle morte `copy-failsafe-marionnet.conf` (elle copiait vers un
 `share/` inexistant et n'était plus accrochée à rien) et son commentaire qui nommait encore
 `bin/share/marionnet.conf`. Zéro chaîne i18n. **Aucun défaut voisin écrit** cette fois.
+
+### 2026-08-22 — épisode 26 : `close --save` enregistre un réseau arrêté
+
+**Le constat, mesuré avant de toucher quoi que ce soit.** Une session pilotée, un switch en
+marche, `close --save`, journal `--debug` — l'ordre est sans appel :
+
+```
+[…]: Control_server: leaving the current project (save: true).
+[…]: state#save_project BEGIN                                     ← le tar part…
+[…]: task_runner: Executing the task "In parallel: Shut down s1 || "   ← …avant même que
+[…]: state#save_project END. Success.                                    l'extinction commence
+[…]: I have joined "Shut down s1" with success
+```
+
+`leave_current_project` (`bin/control_server.ml`, corps commun de `close`, `new` et `open`)
+appelait `st#shutdown_everything ()` — qui ne fait que **planifier** ses tâches
+(`schedule_parallel`) et rend la main aussitôt — puis enchaînait `st#save_project`. Le `.mar`
+était donc écrit pendant que les composants descendaient : exactement ce que le refus
+`components_running` de l'ép. 19 écarte pour `save` et `save-as`.
+
+**La prémisse de l'entrée était fausse, et c'est le résultat le plus utile.** Le TODO affirmait
+que « le menu GUI joue la **même** séquence, donc le défaut n'est pas propre au canal », et en
+tirait la contrainte « les deux se corrigent ensemble, ou aucun ». Or
+`Common_dialogs.shutdown_then_save` (`bin/gui/gui_menubar_MARIONNET.ml`) intercale **déjà**
+`Task_runner#wait_for_all_currently_scheduled_tasks` entre l'extinction et l'enregistrement —
+posé par l'**ép. 23 de `journalisation-profonde`** (« l'autre moitié »), pour une raison voisine :
+l'archivage du mode examen est la toute dernière chose que fait une extinction propre, donc
+sauver trop tôt écrivait un `.mar` sans les documents que la sauvegarde visait. Ses trois
+appelants (*New*, *Open*, *Close*) et le *Quitter* passent tous par là. La GUI était donc déjà du
+bon côté et le canal seul en retard : **troisième épisode du chantier** dont l'entrée reposait sur
+une prémisse fausse (cf. ép. 13 et 16). La contrainte « ensemble ou aucun » reste vraie — elle est
+simplement déjà satisfaite.
+
+**Le geste : une ligne**, et le commentaire qui la précède réécrit (il documentait le défaut :
+« the saving happens while the components go down »).
+
+```ocaml
+let () = st#shutdown_everything () in
+let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
+```
+
+Deux choix, tous deux copiés sur le menu :
+
+1. **Inconditionnel**, comme `shutdown_then_save` qui attend avant de tester `must_be_saved` :
+   sans `--save`, `close_project` attendait de toute façon le *task runner* un cran plus loin
+   (`bin/state.ml`) — l'attente ne change donc que l'**ordre**, jamais la réponse.
+2. **Légitime dans ce fil, et seulement là** : `wait_for_all_currently_scheduled_tasks` ne doit
+   pas s'exécuter dans le fil GTK (`bin/task_runner.ml` le journalise en WARNING, et l'archivage
+   passant par `GMain_actor` il y aurait interblocage). Le commentaire de tête de la section
+   *projet* de `control_server.ml` établit précisément que tout y tourne dans le **fil de
+   service** — c'est ce qui rend l'insertion possible ici et impossible ailleurs.
+
+**Le prix, assumé et documenté.** `close --save` dure désormais ce que dure l'extinction — une
+fraction de seconde pour un switch, des dizaines de secondes avec des invités. `--timeout` ne
+borne pas cette attente (il ne borne que les allers-retours vers le fil GTK, § 15 de
+`doc-src/scripting/README.md`) : c'est le *read timeout* du client qui doit être généreux. Le
+README affirmait déjà que `close --save` « shuts everything down and then saves » — la phrase
+décrivait l'intention, le code ne la tenait pas ; elle est complétée du prix.
+
+**Banc versionné** `driven-sessions/close-save-waits.sh` (un switch : ni invité ni privilège).
+Ce qu'il lit est un **ordre de lignes** dans le journal, pas une durée — la seule façon de rester
+discriminant sur un switch, dont l'extinction dure une fraction de seconde, alors que le défaut
+visait la fenêtre longue d'un invité UML. Quatre cas : la réponse inchangée
+(`ok`/`closed`/`saved`), l'enregistrement **après** la fin de la tâche d'extinction, l'attente du
+*task runner* effectivement présente entre les deux (sans quoi l'ordre serait de la chance et non
+de la garantie), le `.mar` réellement écrit, et — dans une seconde session — `close --save` sans
+rien qui tourne, pour vérifier que l'attente inconditionnelle ne coûte rien au chemin nominal.
+
+| Code | passed | failed | skipped |
+|---|---|---|---|
+| avant | 3 | **1** | 0 |
+| après | **4** | 0 | 0 |
+
+**Non-régression** : `dune build` rc 0, les **19** bancs versionnés rejoués (0 FAIL), dont celui
+de l'ép. 19 qui garde le même sujet par l'autre bout. Zéro chaîne i18n. **Aucun défaut voisin
+écrit** : `new` et `open` partagent le corps corrigé, donc rien ne reste ouvert de ce côté.

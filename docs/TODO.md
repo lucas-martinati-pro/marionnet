@@ -36,46 +36,6 @@ gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scr
 
 ---
 
-## Canal et GUI — `--save` enregistre **pendant** que l'extinction descend
-
-**Constat** (mesuré le 2026-08-22). Depuis l'épisode 19, `save` et `save-as` refusent d'écrire le
-projet tant que quelque chose tourne. `close --save`, lui, accepte — mesuré sur la même session,
-un switch en marche :
-
-```
-save         -> {"ok":false,"error":"components_running","detail":"… (s1) …"}
-close --save -> {"ok":true,"closed":true,"saved":true}
-```
-
-Ce n'est pas une exception assumée mais une **course**, lue dans le code : `leave_current_project`
-(`bin/control_server.ml`, corps commun de `close`, `new` et `open`) appelle `st#shutdown_everything ()`,
-qui ne fait que **planifier** les extinctions (`do_something_with_every_node_in_parallel` →
-`Task_runner#schedule_parallel`, `bin/state.ml:1079,1144`), puis enchaîne `st#save_project`
-**tout de suite** : le `tar` part donc pendant que les invités descendent, ce qui est exactement
-la situation que le refus de l'épisode 19 écarte. Seul `close_project`, plus loin, attend le
-*task runner*. Le menu GUI joue la **même** séquence (« éteindre, enregistrer si oui, fermer »,
-`bin/gui/gui_menubar_MARIONNET.ml`), donc le défaut n'est pas propre au canal.
-
-**Voulu.** Que `--save` sauve un réseau **arrêté** : attendre que les extinctions planifiées
-soient terminées avant d'appeler `save_project`. Pour un switch la fenêtre est courte, pour un
-invité UML elle dure ce que dure un arrêt propre — des dizaines de secondes pendant lesquelles
-le cow est encore écrit.
-
-**Ce que l'implémentation devra affronter.** Le point d'attente existe déjà
-(`Task_runner#wait_for_all_currently_scheduled_tasks`, que `close_project` utilise), mais
-l'insérer entre l'extinction et l'enregistrement change la **durée** de `close --save` sans
-changer sa réponse : un client qui pilotait avec un `--timeout` court verra un `timeout` là où
-il voyait un succès (l'échéance ne borne que les allers-retours vers le fil GTK, pas la commande
-— § 15 de `doc-src/scripting/README.md`). Et comme le menu partage la séquence, corriger le seul
-canal recréerait l'asymétrie GUI/canal que l'épisode 19 vient de fermer : les deux se corrigent
-ensemble, ou aucun.
-
-*Repéré le 2026-08-22 par l'épisode 19 de `marionnet-todo-transverse`, qui alignait `save` sur la
-GUI et a mesuré le voisin sans le corriger (règle du chantier : un défaut voisin s'écrit, il ne se
-corrige pas en passant).*
-
----
-
 ## Invités — un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole
 
 **Constat** (mesuré le 2026-08-22, en soldant l'entrée « les répertoires mconsole de `~/.uml/`

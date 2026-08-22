@@ -3503,10 +3503,19 @@ let leave_current_project (st : State.globalState) ~(timeout:float)
   (* Logged here and not at the entry of the commands: a refused close must not leave a line
      saying the project was being closed (N4's rule — an instrument may not lie). *)
   let () = Log.printf1 "Control_server: leaving the current project (save: %b).\n" want_save in
-  (* Same order as the menu: the shutdown is only *scheduled* (schedule_parallel,
-     state.ml:956-960), the saving happens while the components go down, and close_project is
-     what waits for the task runner (state.ml:346). *)
+  (* Same order as the menu (Common_dialogs.shutdown_then_save, gui_menubar_MARIONNET.ml), and
+     the waiting in between is the whole point: [shutdown_everything] only *schedules* its tasks
+     (schedule_parallel, state.ml) and returns at once, so saving right after it wrote a .mar
+     while the components were still going down — a tar of a working directory whose cow files
+     are still being written, exactly what `save' refuses since episode 19. The wait is
+     unconditional, as in the menu: without --save, close_project waited for the task runner one
+     step further anyway (state.ml), so this changes the order, never the answer.
+     Legitimate in this thread, and only here: [wait_for_all_currently_scheduled_tasks] must not
+     run in the GTK main thread (task_runner.ml), which the header of this section establishes it
+     is not. The price is written above: with --save, this command now lasts as long as the
+     shutdown does. *)
   let () = st#shutdown_everything () in
+  let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
   (if not want_save then Ok true else
    let () = st#save_project in
    ask_ (fun () -> st#project_already_saved))
