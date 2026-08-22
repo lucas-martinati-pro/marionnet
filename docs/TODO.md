@@ -113,6 +113,14 @@ le noyau au moment de l'initcall), ou le noyau de `marionnet-kernel-rootfs` a pe
 build. Tant que ce n'est pas tranché, ne pas « corriger » l'échéance de l'épisode 8 : elle fait ce
 qu'on lui demande, c'est sa cible qui manque.
 
+**Précision mesurée gratuitement le 2026-08-22** (épisode 24, qui journalisait le filet de kill et
+a lu ses propres runs) : un invité `debian-trixie` sous **le même `linux-6.12.95`**, mais **de la
+session vivante qui l'a démarré**, répond parfaitement — `uml_mconsole succeeded in sending a
+'cad' to m1`, où « succeeded » signifie `uml_mconsole` sorti en 0, donc socket présente et servie
+(trois runs sur trois). Le constat ci-dessus porte sur un invité **orphelin d'une session morte** :
+le diagnostic doit donc commencer par départager les deux situations — socket jamais créée, ou
+socket disparue avec la session qui l'a créée — avant de mettre en cause le build du noyau.
+
 *Repéré le 2026-08-22 par l'épisode 20 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
 
@@ -144,34 +152,3 @@ un fichier que les paquets `.deb`/RPM et le `Makefile` connaissent peut-être pa
 *Repéré le 2026-08-22 par l'épisode 22 de `marionnet-todo-transverse`, qui l'a mesuré sans le
 corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*
 
----
-
-## Invités — le filet qui tue toute la hiérarchie UML **ne dit rien**
-
-**Constat** (mesuré le 2026-08-22 par l'ép. 23 de `marionnet-todo-transverse`, en soldant l'entrée
-voisine). `gracefully_terminate` (`bin/simulation_level.ml`) crée, avant d'envoyer le `cad`, un fil
-qui attend `uml_hierarchy_kill_deadline` puis SIGKILL le processus UML et toute sa descendance.
-Ce fil **ne journalise rien** : ni son armement, ni son déclenchement, ni ce qu'il a tué. La phrase
-`killing whole hierarchy of pid …` que l'on trouve dans le journal appartient à l'*action 4* du
-même chemin (le cas où `uml_mconsole` a échoué), pas à ce fil.
-
-Conséquence, vérifiée à ses dépens par l'épisode qui a corrigé l'échéance : chercher cette phrase
-dans un journal `--debug` rend **zéro** alors que le kill a bel et bien eu lieu, et donne à croire
-que l'invité est mort de sa propre initiative. Un invité tué au milieu de son extinction ne laisse
-donc, côté hôte, **aucune trace** de ce qui l'a tué — et côté invité, un `report.md` tronqué qui
-ressemble à un rapport ordinaire pour qui ne vérifie pas la présence du marqueur de fin.
-
-**Voulu.** Que ce kill différé se journalise comme tout le reste : une ligne quand il tire, disant
-le pid, l'échéance atteinte et le nombre de descendants tués — et, tant qu'à faire, une ligne de
-plus quand il ne tire pas parce que le processus est déjà mort (le cas nominal), pour que
-l'absence de la première veuille dire quelque chose.
-
-**Ce que l'implémentation devra affronter.** Trois fois rien en volume (deux `Log.printf` dans le
-fil), mais deux précautions : le fil tourne **après** que le reste de `gracefully_terminate` a
-rendu la main, donc son journal arrive hors séquence et doit se suffire à lui-même (nommer l'umid,
-pas seulement le pid) ; et l'identité `(pid, starttime)` qu'il revérifie avant de tuer doit
-apparaître dans le message, sans quoi la ligne ne permettra pas de distinguer « tué » de
-« abandonné parce que le pid a été recyclé ».
-
-*Repéré le 2026-08-22 par l'épisode 23 de `marionnet-todo-transverse`, qui l'a mesuré sans le
-corriger (règle du chantier : un défaut voisin s'écrit, il ne se corrige pas en passant).*

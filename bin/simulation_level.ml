@@ -1046,8 +1046,8 @@ let report_eth42_tap_failure ~(umid:string) ~(ip42:string) (msg:string) : unit =
    here on six `debian-trixie' guests shut down together, host loaded (16 busy loops on
    8 cores): a report takes 20 to 34 s per guest (4 to 8 s on an idle host) and the rest
    of the shutdown ~11 s more -- so the outer envelope was cutting healthy guests in the
-   middle of their writing, and TimeoutStopSec was never reached.  Nothing said a word:
-   the killing thread below logs nothing.
+   middle of their writing, and TimeoutStopSec was never reached.  Nothing said a word at
+   the time: the killing thread below was silent -- episode 24 gave it a voice.
 
    Now the host owns BOTH numbers.  [guest_report_deadline] is deposited in the hostfs at
    every start ([make_hostfs_content]) and read back by the relay, which writes it into
@@ -1469,21 +1469,52 @@ class uml_process =
           early stage of boot, and ignores the message. The value is NOT free: it must stay above
           the deadline the guest gives to its own end-of-session report (episode 23, see
           [guest_report_deadline]), otherwise this thread kills a guest which is shutting down
-          properly -- and it does so silently: nothing here logs the kill. *)
+          properly.
+
+          This thread SAYS what it does (episode 24 of `marionnet-todo-transverse'): it used to
+          kill in complete silence, so a guest killed in the middle of its shutdown left no
+          host-side trace of what had killed it -- and the phrase `killing whole hierarchy of
+          pid ...' one does find in the log belongs to action 4 below, not here.  Three
+          precautions: its lines arrive OUT OF SEQUENCE (long after the rest of this method has
+          returned), hence the umid in each of them; the identity (pid, starttime) appears too,
+          without which the line could not tell `killed' from `given up because the pid had
+          been recycled'; and the nominal case (nothing left to kill) is logged as well, which
+          is what makes the absence of the killing line mean something. *)
+       let starttime_as_string =
+         match current_starttime with
+         | Some starttime -> Int64.to_string starttime
+         | None           -> "unknown"
+       in
+       Log.printf5
+         "Simulation_level: %s#gracefully_terminate: deferred hierarchy kill ARMED for pid %d (starttime %s) and its %d captured descendant(s), deadline %.0fs\n"
+         umid current_pid starttime_as_string (List.length descendants) uml_hierarchy_kill_deadline;
        let _ =
          Thread.create
            begin fun delay ->
               (Thread.delay delay);
               (match current_starttime with
                | Some starttime when Linux.Process.is_same_process ~pid:current_pid ~starttime ->
+                   Log.printf4
+                     "Simulation_level: %s#gracefully_terminate: deferred hierarchy kill FIRING after %.0fs: pid %d (starttime %s) is still there => SIGKILL on it and its descendants\n"
+                     umid delay current_pid starttime_as_string;
                    self#kill_descendants_then_myself ~pid:current_pid
-               | _ -> ());
+               | _ ->
+                   Log.printf4
+                     "Simulation_level: %s#gracefully_terminate: deferred hierarchy kill NOT fired after %.0fs: pid %d is gone or recycled (starttime was %s), nothing to kill\n"
+                     umid delay current_pid starttime_as_string);
               (* Kill anyway remaining descendants which may be now orphan: *)
-              (List.iter
-                 (fun (pid, starttime) ->
-                    if Linux.Process.is_same_process ~pid ~starttime
-                      then (try Unix.kill pid Sys.sigkill with _ -> ()))
-                 descendants);
+              let orphans_killed =
+                List.fold_left
+                  (fun killed (pid, starttime) ->
+                     if Linux.Process.is_same_process ~pid ~starttime
+                       then ((try Unix.kill pid Sys.sigkill with _ -> ()); killed + 1)
+                       else killed)
+                  0 descendants
+              in
+              if orphans_killed > 0 then
+                Log.printf3
+                  "Simulation_level: %s#gracefully_terminate: deferred hierarchy kill: %d of the %d captured descendant(s) were still alive and have been SIGKILLed\n"
+                  umid orphans_killed (List.length descendants);
            end
            (uml_hierarchy_kill_deadline)
        in

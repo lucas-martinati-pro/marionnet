@@ -34,6 +34,13 @@ ce chantier lui revient. Le risque de ré-alimentation est assumé et **borné p
 entrées neuves d'une tournée sont plus périphériques que celles de la précédente, et le chantier
 se clôt quand une tournée n'en produit plus qui vaille un épisode.
 
+**Troisième tournée, décidée le 2026-08-22.** Les 7 entrées de la deuxième sont soldées et en ont
+écrit **4 neuves** (ép. 19, 20, 22 et 23). Le critère de clôture posé ci-dessus — une tournée qui
+ne produit plus d'entrée qui vaille un épisode — n'est donc **pas** atteint : ces 4 entrent dans le
+périmètre sous les numéros **24 à 27** (§ 4 ter). La décrue se poursuit (16 → 7 → 4), avec la même
+réserve qu'au tour précédent : l'une d'elles (celle de l'ép. 20, le noyau `linux-6.12.95` sans
+socket mconsole) est **plus grosse** que l'entrée qui l'a fait naître.
+
 **Hors périmètre, par décision explicite (2026-08-20)** : l'entrée *« Idée — composer deux
 projets (importer un `.mar` dans le projet courant) »*. Ce n'est pas un défaut mais une
 fonctionnalité, et le TODO en énumère lui-même quatre obstacles de fond (politique de renommage,
@@ -259,6 +266,21 @@ vérifie, mais l'une d'elles (celle de l'ép. 20) est **plus grosse** que l'entr
 naître. **Ouvrir une troisième tournée ou clore le chantier est une décision à prendre** — le
 critère posé au § 1 est qu'il se clôt quand une tournée ne produit plus d'entrée qui vaille un
 épisode, ce qui n'est pas le cas ici.
+
+---
+
+## 4 ter. La troisième tournée : 4 entrées, par coût croissant
+
+Écrites par les épisodes de la deuxième (§ 1). Ordre de coût, comme aux deux tours précédents.
+La dernière n'est pas un correctif mais un **diagnostic**, et son remède pourrait ne pas être de
+ce chantier du tout.
+
+| N | Entrée de `docs/TODO.md` (épisode qui l'a écrite) | Geste | Preuve |
+|---|---|---|---|
+| 24 | Le filet qui tue toute la hiérarchie UML **ne dit rien** (ép. 23) | Trois lignes de journal dans le fil différé de `gracefully_terminate` : armement, tir (umid, `(pid, starttime)`, échéance, descendants tués), **et non-tir** — sans cette dernière, l'absence de la première ne veut rien dire | banc **jetable** (invité requis) + **patch témoin** pour la branche du tir — **fait** |
+| 25 | La copie de secours de `marionnet.conf` est cherchée là où **rien** n'est installé (ép. 22) | Corriger le **chemin cherché** plutôt que le chemin installé (que les paquets connaissent), et le faire venir du dépôt en arbre de dev par `Development_tree.share_directory` — seul appel possible, `Configuration` étant évalué **avant** `Initialization.Path` | banc **versionné** (ni invité ni privilège) |
+| 26 | `close --save` enregistre **pendant** que l'extinction descend (ép. 19) | Attendre les extinctions planifiées (`Task_runner#wait_for_all_currently_scheduled_tasks`, déjà employé par `close_project`) avant `save_project`, dans le corps commun `leave_current_project` — donc **canal et menu GUI ensemble**, ou aucun des deux | banc **versionné** (un switch suffit) |
+| 27 | Un invité vivant sous `linux-6.12.95` n'a **aucune** socket mconsole (ép. 20) | **Diagnostic d'abord** (§ 3.1) : lire `mconsole (version N) initialized on …` sur un boot neuf. Si la cause est le noyau lui-même, le correctif **migre** vers `marionnet-kernel-rootfs` et l'entrée le dit | banc jetable (invité) |
 
 ---
 
@@ -1890,3 +1912,66 @@ un invité **gelé** est désormais retenu 75 s au lieu de 30 avant le SIGKILL.
 laisse **aucune trace** dans le journal. C'est ce silence qui a fait vivre ce défaut si longtemps —
 et qui a failli m'induire en erreur ici même, un `grep` dans le journal ayant d'abord semblé
 disculper l'hôte.
+
+### 2026-08-22 — épisode 24 : le filet qui tue dit enfin ce qu'il tue
+
+**Ouverture de la troisième tournée** (§ 1 et § 4 ter) : les 4 entrées écrites par la deuxième
+entrent dans le périmètre sous les numéros 24 à 27. Celle-ci est la moins chère — trois lignes de
+journal — et c'est celle que l'ép. 23 réclamait le plus fort, ayant lui-même perdu du temps à
+disculper l'hôte sur la foi d'un `grep` qui rendait zéro.
+
+**Ce qu'il y avait.** Le fil différé de `uml_process#gracefully_terminate`
+(`bin/simulation_level.ml`) attendait `uml_hierarchy_kill_deadline`, revérifiait l'identité
+`(pid, starttime)`, appelait `kill_descendants_then_myself`, puis SIGKILLait les descendants
+capturés encore identiques — **sans une seule ligne**. La phrase `killing whole hierarchy of
+pid …` que l'on trouve dans les journaux appartient à l'*action 4* du même chemin (le cas où
+`uml_mconsole` a échoué) : la chercher pour savoir si le filet a tiré est un faux ami.
+
+**Ce qu'il y a.** Trois lignes, aucun changement de comportement :
+
+1. **armement**, hors du fil (elle date le point de départ) : umid, pid, starttime, nombre de
+   descendants capturés, échéance ;
+2. **tir** : umid, échéance atteinte, pid et starttime *encore le même* — plus, ligne suivante,
+   le nombre de descendants qui étaient encore vivants et ont été SIGKILLés ;
+3. **non-tir** : l'échéance est atteinte, le pid est parti ou recyclé, il n'y a rien à tuer.
+
+La troisième n'est pas du confort : sans elle, l'**absence** de la deuxième ne prouve rien (le
+fil a-t-il renoncé, ou le journal a-t-il été coupé ?). Et l'identité `(pid, starttime)` figure
+dans les deux, parce que c'est le seul moyen de distinguer « tué » de « abandonné parce que le pid
+avait été recyclé ». Chaque ligne nomme l'**umid** : elle arrive **hors séquence**, longtemps
+après que le reste de la méthode a rendu la main.
+
+**Banc jetable** (il exige un invité, § 3.6) : une session pilotée par le canal, une machine
+`debian-trixie`, `start`, boot, `stop`, puis — et c'est le piège du banc — **l'attente de
+l'échéance avant de quitter**.
+
+> **Piège mesuré, à ne pas refaire.** Le fil parle *à l'échéance*, pas à l'extinction. Le premier
+> run du banc quittait la session 10 s après l'arrêt de l'invité : la ligne de non-tir n'existait
+> pas, non parce que le correctif était faux, mais parce que le processus qui devait l'écrire
+> avait été tué 65 s trop tôt. Un banc qui observe un journal différé doit **survivre au délai
+> qu'il observe**.
+
+**Rouge, puis vert** (même banc, même invité) :
+
+| Code | armement | tir | non-tir |
+|---|---|---|---|
+| avant (correctif remisé) | 0 | 0 | 0 |
+| après, extinction normale | 1 | 0 | **1** (`NOT fired after 75s: pid 913197 is gone or recycled (starttime was 154864803)`) |
+| après, **patch témoin** `uml_hierarchy_kill_deadline = 2.` | 1 | **1** (`FIRING after 2s: pid 917409 (starttime 154879800) is still there`) | 0 |
+
+Le patch témoin est la seule façon d'observer la branche du tir sur cet hôte : un invité sain
+s'éteint en 3 à 10 s, très en deçà des 75 s. Il a aussi fait apparaître la ligne des orphelins —
+`5 of the 13 captured descendant(s) were still alive and have been SIGKILLed` — c'est-à-dire
+exactement le comptage que l'entrée réclamait. Patch retiré, `dune build` rc 0, rejeu du cas
+nominal : échéance revenue à 75 s.
+
+**Corollaire tenu à jour** : le commentaire de l'ép. 23 qui disait « le fil qui tue ne journalise
+rien » a été corrigé en même temps — un commentaire qui décrit un défaut soldé est un piège de
+plus.
+
+**Mesure gratuite versée à l'épisode 27** (pas de correction en passant, § 2.3) : dans les trois
+runs ci-dessus, l'invité `debian-trixie` sous **`linux-6.12.95`** a répondu au `cad`
+(`uml_mconsole succeeded in sending a 'cad' to m1`, et « succeeded » veut dire `uml_mconsole`
+sorti en 0, donc socket présente et servie). L'entrée 27 a été écrite sur un invité **orphelin
+d'une session morte** ; le diagnostic devra donc commencer par départager les deux situations
+plutôt que d'accuser le noyau d'emblée.

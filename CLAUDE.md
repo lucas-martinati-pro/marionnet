@@ -148,12 +148,13 @@ l'**install** et le **RPM**.
 Reprise : appliquer le skill `chantier-long`.
 - **TODO transverse** (solder les entrées de défaut de `docs/TODO.md` — **15 à l'ouverture, 16**
   depuis que l'ép. 5 y a écrit le jumeau `variant`, devenu l'ép. 7, puis **23** depuis la
-  **deuxième tournée** du 2026-08-21, qui admet dans le périmètre les 7 entrées que les épisodes
-  ont eux-mêmes écrites en chemin —, une par épisode, chacune
+  **deuxième tournée** du 2026-08-21 et **27** depuis la **troisième** du 2026-08-22, chacune
+  admettant dans le périmètre les entrées que les épisodes ont eux-mêmes écrites en chemin —,
+  une par épisode, chacune
   avec au moins un commit qui **retire l'entrée du TODO** ; hors périmètre : « composer
   deux projets ») : `docs/todo-transverse.md` (**§ 3 = décisions de cadrage**, § 4 = table des
   16 épisodes de la 1ʳᵉ tournée par coût croissant, renumérotés à l'ép. 7, **§ 4 bis = les 7 de
-  la 2ᵉ**) ; mémoire `marionnet-todo-transverse` ;
+  la 2ᵉ, § 4 ter = les 4 de la 3ᵉ**) ; mémoire `marionnet-todo-transverse` ;
   `git log --grep="marionnet-todo-transverse"`. Ouvert le 2026-08-20.
   Deux conventions posées ici : les bancs **rejouables sans invité ni privilège** sont
   **versionnés dans `driven-sessions/`** (les autres restent jetables, preuve dans le journal du
@@ -185,7 +186,14 @@ Reprise : appliquer le skill `chantier-long`.
   des noyaux UML, `$UML_DIR/<umid>/` — `~/.uml/` par défaut : il les *rapporte*, et
   `--purge-uml-dirs`, que rien n'implique, ne retire que les morts. Vivant ⟺ socket `mconsole`
   encore liée **ou** pid vivant portant le même `umid=` — donc **sans** `uml_mconsole`, sans
-  échéance, et un noyau *gelé* compte pour vivant) —
+  échéance, et un noyau *gelé* compte pour vivant), puis **21 → 23** (les réglages d'un switch
+  recomposés à *chaque* `spawn` ; le glade et les images d'un binaire de `_build` venus du dépôt
+  par `bin/development_tree.ml` ; les deux échéances du rapport remises dans l'ordre, 45 s côté
+  invité — déposés par l'hôte dans le hostfs — contre 75 s côté hôte) : **2ᵉ tournée soldée**.
+  **3ᵉ tournée ouverte le 2026-08-22** (n° 24 → 27) — **ép. 24** : le fil différé qui tue toute la
+  hiérarchie UML journalise enfin son armement, son **tir** (identité `(pid, starttime)` + nombre
+  de descendants tués) et son **non-tir**, cette dernière ligne étant ce qui rend l'**absence** de
+  la précédente signifiante —
   l'ép. 2 a créé **`driven-sessions/`**, le répertoire des bancs versionnés, avec son `README.md`
   (conventions : PASS 0 / SKIP 77 / FAIL autre, et un banc doit échouer sur le code d'avant) ;
   l'ép. 11 y a **précisé le critère** : ce qui rend un banc jetable n'est pas de *démarrer* quelque
@@ -195,6 +203,9 @@ Reprise : appliquer le skill `chantier-long`.
   `kill` puis `wait` ne rend jamais la main), et un banc qui matche un **texte** de l'application
   **fige la langue** (`LANGUAGE=C LC_ALL=C` — depuis l'ép. 15 un binaire de `_build` est traduit,
   et un motif anglais qui ne matche plus rien laisse passer un banc qui ne prouve plus rien).
+  Piège durable de l'ép. 24 : un banc qui observe un journal **différé** (écrit par un
+  `Thread.create` à retardement) doit **survivre au délai qu'il observe** — quitter la session
+  juste après le geste tue le processus qui devait écrire la ligne cherchée.
   Trois pièges durables de l'ép. 10 : (1) un `start` du canal **répond avant que le démarrage soit
   fait** (la tâche part sur le `Task_runner`), donc toute garde qui lit le disque juste après lit
   encore le boot précédent ; (2) `socat` **perd toute réponse plus lente qu'une demi-seconde**
