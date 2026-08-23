@@ -84,4 +84,12 @@ lib/modules.lst
 useful-scripts/*
 !useful-scripts/make_marionnet_bytecode_revno
 !useful-scripts/marionnet_from_scratch
+!useful-scripts/marionnet-install.sh
+
+# --- website-repo/ : copie de travail du site marionnet.org — le répertoire que
+#     `make {filesystem,kernel}.prepare-to-publish' alimente et que
+#     useful-scripts/marionnet-install.sh consomme via --from. Des GIBIOCTETS
+#     d'artefacts publiés : rien de tout cela n'a sa place dans ce dépôt.
+website-repo/
+
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

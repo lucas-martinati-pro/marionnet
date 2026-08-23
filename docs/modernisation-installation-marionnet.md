@@ -438,6 +438,16 @@ deux formes** : décompressée (ce que sert un `wget` direct) et empaquetée
 Bénéfice immédiat : les tarballs de couples régénérés incluent les `.conf` patchés
 (fin du « patch à rejouer si l'image est retéléchargée » des ép. 2-3 retro-compat).
 
+Note (2026-08-23, épisode 6) : **une source d'artefacts est un mot, pas un mode**. Le script
+v2 prend un `--from` qui est soit l'URL ci-dessus, soit un **répertoire local** jouant le rôle
+de miroir de cette URL. Ce n'est pas un artifice de test : c'est ce qui permet de construire et
+de prouver toute la mécanique **pendant que le serveur est en panne**, et c'est aussi ce dont a
+besoin une salle de TP sans accès Internet (miroir sur clé USB ou sur un partage local). Seules
+deux fonctions du script connaissent la différence — `catalog_list` et `artifact_stream` — tout
+l'aval est commun, de sorte qu'un run sur miroir exerce le **vrai** chemin et non une variante.
+Le répertoire de travail employé ici est `website-repo/download/marionnet-install.sh/1.0.x/`
+(ignoré par git : plusieurs gibioctets d'artefacts publiés).
+
 ### 3.2 Matrice canaux × publics
 
 | Canal | Public privilégié | Contenu | Chantier |
@@ -827,3 +837,68 @@ clôture des enfants.
   **Reste ouvert** (étape 1 du § 5) : ces tarballs sont fabriqués *localement*. Rien ne les
   dépose encore sur le serveur, et rien ne vérifie que ce qui y est servi correspond à ce que le
   dépôt sait produire — c'est le vrai contenu de la remise à niveau du serveur.
+
+- **2026-08-23 — épisode 6 : consommer une release, et le miroir local.** Les deux commandes de
+  publication existaient (ép. 3 et 5) ; **personne ne savait consommer** ce qu'elles produisent.
+  Le seul consommateur du dépôt, `useful-scripts/marionnet_from_scratch` (l. 812-899), ne connaît
+  que `.tar.gz`, extrait par `tar xvzf` — le facteur 4 mesuré à l'ép. 3 — et ne sait lire qu'un
+  listing HTML d'Apache. L'étape 1 du § 5 (« remise à niveau du serveur ») étant **bloquée par
+  l'extérieur** (`www.marionnet.org` en panne), cet épisode construit la moitié qui ne l'est pas :
+  la couche d'approvisionnement du script v2, avec une source **interchangeable**.
+  Livrable : `useful-scripts/marionnet-install.sh`, germe du script v2, n'implémentant que son
+  mode `--fetch-only` (toute autre invocation sort en **2** en renvoyant au chantier enfant
+  `…-par-script`, qui n'est pas ouvert). Options : `-F|--from URL|DIR`, `-s|--series`,
+  `-p|--prefix`, `-l|--list`, `-n|--dry-run`, `-o|--only` / `-x|--exclude` (répétables,
+  sous-chaîne), `--no-kernels` / `--no-filesystems`, `--gz`, `-f|--force`, `-y|--yes`.
+  Six décisions, chacune payée par un fait :
+  1. **La source est un mot, pas un mode** (cf. la note du § 3.1) : `://` ⇒ réseau, sinon
+     répertoire, qui doit exister. Deux fonctions seulement en dépendent.
+  2. **`.tar.xz` par défaut, extrait par `xz -dc -T0 | tar xf -`, jamais `tar xJf`** — la mesure
+     de l'ép. 3 (5,1 s contre 21,6 s) est ici **reproduite** sur l'image wheezy : 5,2 s de temps
+     réel pour 32 s de CPU, soit un parallélisme de 6,1. `--gz` existe pour une machine sans `xz`.
+     Les deux formes d'un même artefact sont dédupliquées par leur **nom logique** ; le catalogue
+     réel en contient trois qui ont les deux.
+  3. **`tar xf` sans `-m`/`--touch`, jamais** : le `mtime` est ce que user-mode-linux vérifie sur
+     un backing file — raison d'être du champ `MTIME` du `.conf`, et pendant exact du
+     `--owner=root --group=root` posé à la **création** (ép. 3).
+  4. **Idempotence par le nom, pas par une somme.** `filesystems_<X>.tar.*` pose
+     `share/marionnet/filesystems/<X>` et `kernels_<X>.tar.*` pose `share/marionnet/kernels/<X>` :
+     la régularité du nommage suffit, aucune lecture du tarball n'est nécessaire pour savoir si
+     l'artefact est déjà là. Rien n'est refait sans `--force`.
+  5. **Le lien du router est nommé, pas résolu.** `filesystems_router-guignol-18474.tar.xz` ne
+     contient qu'un **lien symbolique** vers `machine-guignol-18474`, fourni par un **autre**
+     tarball (ép. 3, post-scriptum 2). Deux conséquences dans le script : les images *machine*
+     sont extraites **avant** les *router* (le lien résout dès sa création), et une sélection qui
+     retient un router sans son image — ni installée, ni sélectionnée — reçoit un **avertissement**
+     nommant le lien qui serait posé cassé.
+  6. **Le privilège est demandé là où il sert** : `sudo` seulement si la destination n'est pas
+     inscriptible. Un `--prefix` sous `/tmp` rend le script entièrement testable **sans aucun
+     privilège** — c'est ainsi qu'il a été prouvé.
+  **`bashbricks` délibérément écarté**, contre la consigne par défaut du `CLAUDE.md` : ce fichier
+  est destiné à être **téléchargé seul** et exécuté sur une machine où le dépôt n'existe pas. Il
+  ne peut sourcer aucune bibliothèque de l'arbre. C'est le précédent des clients du canal, en plus
+  fort — et c'est écrit en tête du script pour que la question ne se repose pas.
+  Preuve : banc jouet (miroir de 4 tarballs fabriqués sur mesure, dont un `.gz` concurrent d'un
+  `.xz` et un fichier parasite `README.txt`) — `--list`, `--list --gz`, `--dry-run`, extraction,
+  **idempotence** (2ᵉ run : « nothing to do »), `--force`, `--only`/`--exclude`/`--no-kernels`,
+  l'avertissement du router orphelin, l'absence de mode (rc 2) et le `--from` inexistant (rc 2).
+  Puis **run réel sur le miroir** : guignol + les deux noyaux (4 artefacts, 16 Mio, 0,7 s) →
+  image et noyau **identiques octet pour octet** aux originaux (`cmp`), lien `router-guignol-18474`
+  qui **résout**, les deux `.conf` bien **différents**, `mtime` de l'image à `2017-06-09` ; puis
+  wheezy en `.tar.xz` (403 Mio → 1,9 Gio) → image identique, `mtime` à `2014-06-29`.
+  `bash -n` et `shellcheck -S warning` propres.
+  **Ce qui n'est PAS prouvé, et ne peut pas l'être aujourd'hui** : le chemin **réseau**
+  (`catalog_list` par listing HTML, `artifact_stream` par `wget -O -`) — le serveur est en panne.
+  Il est écrit, il n'est pas mesuré ; à jouer dès le retour du serveur, en même temps que
+  l'étape 1. Ce que la panne a tout de même appris : **« source injoignable » et « source qui
+  répond mais ne contient rien » sont deux échecs différents**, et les confondre envoie chercher
+  un défaut de publication là où il n'y a qu'un serveur éteint. `catalog_list` échoue donc
+  franchement quand la source ne se lit pas (le listing est récupéré **avant** d'être filtré,
+  sans quoi `pipefail` fait passer un `grep` sans occurrence pour une panne de réseau), et le
+  catalogue vide a son propre message.
+  **Restes ouverts** relevés en chemin : (a) aucun `SHA256SUMS` n'est publié, donc rien ne
+  vérifie l'intégrité d'un artefact téléchargé — à faire produire par les deux scripts
+  `*.prepare-to-publish.sh`, puis à consommer ici ; (b) la découverte du catalogue par **parsing
+  du listing HTML d'Apache** est ce qu'on hérite de 2005 : un fichier d'index publié à côté des
+  artefacts serait plus sûr, et se déciderait à l'étape 1 ; (c) `wget` est présumé présent (pas de
+  repli `curl`).
