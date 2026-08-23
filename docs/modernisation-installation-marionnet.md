@@ -668,3 +668,37 @@ clôture des enfants.
   source, `_variants/` vide, `filesystems_machine-debian-trixie-39212.tar.gz` (1,5 Gio) aux entrées
   préfixées `filesystems/`. Le montage `loop,ro` n'a **pas** bougé le `mtime` de l'image, comme
   voulu. Pas de `.relay` : cette image n'en a pas.
+- **2026-08-23 — épisode 3 (fin) : empaqueter une image DÉJÀ publiée, et le `.tar.xz`.** Le script
+  ne savait partir que d'un snapshot ; or « donne-moi le tarball de `machine-debian-wheezy-08367` »
+  est un besoin distinct et récurrent (image publiée en 2014, image reçue d'ailleurs, `.conf`
+  simplement corrigé) pour lequel il n'existait aucun chemin — le détour par un COW vide aurait
+  écrit 1,8 Gio pour jeter aussitôt le résultat. L'argument positionnel accepte donc désormais
+  **soit** un snapshot **soit** une image publiée ; les deux se distinguent par le **magic COW**,
+  pas par un drapeau (rien à retenir), et le mode est **annoncé sur la sortie**. Un nom nu est
+  résolu dans le répertoire de sortie, de sorte que `… machine-debian-wheezy-08367` marche depuis
+  n'importe où ; en mode image, le répertoire de sortie **suit l'image** sauf `-o` explicite, et
+  les membres du tarball sont ceux qui **existent** (une image ancienne peut n'avoir ni `.relay`
+  ni `_variants/`). L'option **`--xz`** produit un `.tar.xz` (`xz -T0`, sans quoi la compression
+  de plusieurs gibioctets est désespérément monothread) — avec un **avertissement** : l'installeur
+  encore en service extrait par `tar xvzf`, donc gzip seulement ; un `.tar.xz` suppose le script
+  v2. Preuve : les cinq cas joués au banc (snapshot idempotent, image par chemin complet, `--xz`,
+  image par **nom nu** résolu dans `-o`, argument qui n'est ni l'un ni l'autre → refus explicite,
+  rc 2), puis la construction réelle des quatre tarballs.
+  **Défaut de packaging relevé et corrigé dans la foulée** : le premier tarball wheezy portait
+  `jean/jean`, parce que tar recopie l'appartenance des fichiers. Ce qui atterrit dans
+  `$PREFIX/share/marionnet/` est de la **donnée système**, extraite par un installeur privilégié
+  sur une machine où le compte du empaqueteur ne signifie rien : une archive portant l'uid 1000
+  donne ces fichiers soit à un inconnu qui détient cet uid, soit à personne. D'où
+  `--owner=root --group=root` à la création. Les **dates**, elles, ne se touchent surtout pas —
+  user-mode-linux refuse un backing file dont le `mtime` a bougé, ce qui est toute la raison
+  d'être du champ `MTIME` du `.conf` — et le listing le confirme : l'image wheezy garde son
+  `2014-06-29 19:02`.
+  Mesures des quatre archives (image + `.conf` + `_variants/` + `.relay` s'il existe) :
+
+  | archive | gzip | xz (`-T0`) | gain |
+  |---|---|---|---|
+  | `filesystems_machine-debian-wheezy-08367` (1,8 Gio) | 560 Mio — 50 s | 404 Mio — 2 min 23 | −28 % |
+  | `filesystems_machine-debian-trixie-39212` (5,4 Gio) | 1,5 Gio — 2 min 35 | 1,1 Gio — 7 min 53 | −31 % |
+
+  Le `.tar.xz` **ne remplace pas** le `.tar.gz` tant que l'installeur en service extrait par
+  `tar xvzf` : les deux formes cohabitent, et c'est au script v2 de savoir choisir.
