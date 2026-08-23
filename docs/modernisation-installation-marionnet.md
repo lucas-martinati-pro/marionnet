@@ -702,3 +702,24 @@ clôture des enfants.
 
   Le `.tar.xz` **ne remplace pas** le `.tar.gz` tant que l'installeur en service extrait par
   `tar xvzf` : les deux formes cohabitent, et c'est au script v2 de savoir choisir.
+- **2026-08-23 — épisode 3 (post-scriptum) : xz devient le DÉFAUT, sur mesure.** L'option a été
+  retournée (`--gz` pour du gzip, `--xz` gardé pour l'explicite) après avoir mesuré ce qui
+  comptait vraiment : non pas la compression, faite une fois chez nous, mais la **dé**compression,
+  faite par chaque étudiant dans le pipeline `wget -O - | tar`. Sur l'image wheezy (1,9 Gio en
+  sortie, hôte à 8 cœurs) :
+
+  | décompresseur | temps | CPU |
+  |---|---|---|
+  | `gzip -dc` | 8,3 s | 99 % (monothread par construction) |
+  | `xz -dc -T1` — *ce que fait `tar xJf`* | 21,6 s | 99 % |
+  | `xz -dc -T0` | **5,1 s** | 656 % |
+
+  La clé est que **`xz -T0` ne fait pas que comprimer en parallèle : il découpe le flux en
+  BLOCS** (76 pour wheezy, `xz --list` le montre), ce qui rend la **décompression** parallèle
+  possible — et xz devient alors *plus rapide que gzip*, monothread par nature. En pipeline, la
+  seule question est de savoir si le décompresseur suit le réseau : débit d'entrée compressée
+  soutenu de 19 Mio/s (`xz -T1`), 68 Mio/s (`gzip`), 80 Mio/s (`xz -T0`). Même au pire cas
+  monothread, xz n'est le goulot qu'au-delà de ~150 Mb/s, tout en faisant télécharger 28-31 % de
+  moins. **Conséquence pour le script v2** : extraire par `xz -dc -T0 | tar xf -`, jamais par
+  `tar xJf -`, sous peine de laisser un facteur 4 sur la table. Le script imprime désormais la
+  commande d'extraction qui correspond au format qu'il vient de produire.

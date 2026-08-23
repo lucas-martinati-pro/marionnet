@@ -24,7 +24,7 @@
 #   machine-debian-wheezy-08367.conf       SUM/MD5SUM/DATE/MTIME/BINARY_LIST of THAT image
 #   machine-debian-wheezy-08367.relay      only when the source image has one
 #   machine-debian-wheezy-08367_variants/  empty directory
-#   filesystems_machine-debian-wheezy-08367.tar.gz    what the installer downloads
+#   filesystems_machine-debian-wheezy-08367.tar.xz    what the installer downloads
 #
 # The name of the produced image carries the first field of `sum' (5 zero-padded digits),
 # exactly like every image already published; MTIME is the `stat -L -c %Y' of the produced
@@ -44,7 +44,8 @@
 #       --do-not-update-binary-list
 #                                keep the BINARY_LIST inherited from the source .conf
 #                                (no loop mount, no sudo)
-#       --xz                     build a .tar.xz instead of a .tar.gz
+#       --gz                     build a .tar.gz instead of the default .tar.xz
+#       --xz                     build a .tar.xz (the default; kept to be explicit)
 #   -y, --yes                    do not ask before building the tarball
 #       --no-tarball             stop before the tarball
 #   -h, --help                   this help
@@ -110,7 +111,7 @@ FORCE=0
 UPDATE_BINARY_LIST=1
 ASSUME_YES=0
 MAKE_TARBALL=1
-USE_XZ=0
+USE_XZ=1
 
 while (($#)); do
   case "$1" in
@@ -122,6 +123,7 @@ while (($#)); do
     -y|--yes)        ASSUME_YES=1; shift ;;
     --no-tarball)    MAKE_TARBALL=0; shift ;;
     --xz)            USE_XZ=1; shift ;;
+    --gz|--gzip)     USE_XZ=0; shift ;;
     -h|--help)       usage; exit 0 ;;
     -*)              die "unknown option '$1' (try --help)" ;;
     *)               test -z "$ARGUMENT" || die "at most one file expected"; ARGUMENT="$1"; shift ;;
@@ -443,12 +445,26 @@ fi
 # point of the MTIME field of the .conf.
 # ---
 TAR_OWNERSHIP=(--owner=root --group=root)
+# xz is the DEFAULT, and the reason is measured, not assumed. `xz -T0' does not merely compress
+# in parallel: it cuts the stream into BLOCKS (76 of them for the wheezy image), which is what
+# makes parallel DEcompression possible afterwards. On this 8-core host, expanding the 1.9 GiB
+# wheezy image took:
+#
+#     gzip -dc      8.3 s   (99% cpu, single-threaded by construction)
+#     xz -dc -T1   21.6 s   (99% cpu)  <- what `tar xJf' does today
+#     xz -dc -T0    5.1 s  (656% cpu)  <- FASTER than gzip
+#
+# In the `wget | tar' pipeline the question is only whether the decompressor keeps up with the
+# network. Sustained compressed input: 19 MiB/s for xz -T1, 68 MiB/s for gzip, 80 MiB/s for
+# xz -T0. Even in the worst case (single-threaded), xz becomes the bottleneck only above roughly
+# 150 Mb/s, while it makes 28-31% less to download. Hence the default -- and hence the advice
+# printed below: the v2 installer should pipe through `xz -dc -T0' rather than use `tar xJf'.
+# `--gz' remains, for the installer in the field, whose `tar xvzf' reads gzip only.
+# ---
 if ((USE_XZ)); then
   command -v xz >/dev/null || die "\`xz' not found (package xz-utils)"
   TARBALL="$OUTDIR/filesystems_$IMAGE_NAME.tar.xz"
-  # -T0 is one thread per core: xz over several gibibytes is otherwise painfully serial.
   TAR_COMPRESS=(-I "xz -T0")
-  warn "the installer in the field extracts with \`tar xvzf' (gzip only): a .tar.xz needs the v2 script"
 else
   TARBALL="$OUTDIR/filesystems_$IMAGE_NAME.tar.gz"
   TAR_COMPRESS=(-z)
@@ -488,3 +504,9 @@ tar -C "$OUTDIR" --transform 's,^,filesystems/,' "${TAR_OWNERSHIP[@]}" "${TAR_CO
 mv -f -- "$TARBALL.partial" "$TARBALL"
 trap - EXIT
 info "tarball produced: $TARBALL ($(du -h -- "$TARBALL" | awk '{print $1}'))"
+if ((USE_XZ)); then
+  info "to extract it: wget -O - <url> | xz -dc -T0 | tar xf -    (\`tar xJf' would be 4x slower,"
+  info "               and the installer in the field only knows \`tar xvzf': see --gz)"
+else
+  info "to extract it: wget -O - <url> | tar xzf -"
+fi
