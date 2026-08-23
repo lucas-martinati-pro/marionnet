@@ -252,8 +252,27 @@ Reprise : appliquer le skill `chantier-long`.
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
   essaimera des chantiers enfants par canal) : `docs/modernisation-installation-marionnet.md` ;
   mémoire `modernisation-installation-marionnet` ;
-  `git log --grep="modernisation-installation-marionnet"`. Ép. 0 (autopsie + officialisation)
-  fait 2026-07-18.
+  `git log --grep="modernisation-installation-marionnet"`. **Ép. 0→6 faits** : autopsie et
+  décisions (0, 2026-07-18/19), la source de vérité des dépendances remise d'aplomb dans le
+  `Makefile` (1 et 2 — `REQUIRED_PACKAGES_RUNTIME` += `jq socat dnsmasq-base`, `bridge-utils`
+  retiré), puis **la chaîne de release, des deux côtés** :
+  - **publier** — `make filesystem.prepare-snapshot-to-publish` (ép. 3 : un snapshot COW devient
+    les 4 éléments publiables + le tarball) et `make kernel.prepare-to-publish KERNEL=<nom>`
+    (ép. 5) ; ép. 4 = la régression de 2014 de `sudo_fcall` qui polluait `BINARY_LIST` ;
+  - **consommer** — `useful-scripts/marionnet-install.sh` (ép. 6, `ab92b8d`), germe du script v2
+    n'implémentant que `--fetch-only`. **`--from` prend une URL OU un répertoire local** (miroir) :
+    seules `catalog_list` et `artifact_stream` connaissent la différence, donc un run sur miroir
+    exerce le vrai chemin. C'est ce qui permet de travailler **pendant que `www.marionnet.org`
+    est en panne**, et ce dont a besoin une salle de TP hors ligne.
+  **Invariants posés par ces trois scripts, à ne pas casser en publiant un artefact autrement** :
+  le nommage est la seule clef (`filesystems_<X>.tar.*` ⇒ `share/marionnet/filesystems/<X>`,
+  idem `kernels_`), d'où une idempotence sans somme ; `.tar.xz` par défaut, extrait par
+  **`xz -dc -T0 | tar xf -` et jamais `tar xJf`** (facteur 4 mesuré) ; **jamais `-m`/`--touch`**
+  à l'extraction et `--owner=root --group=root` à la création (le `mtime` d'un backing file est
+  ce qu'UML vérifie) ; une image *router* est un **lien** vers l'image *machine* d'un **autre**
+  tarball. `website-repo/` (copie de travail du site) est gitignoré.
+  **Bloqué par l'extérieur** : le chemin **réseau** de l'installeur est écrit mais non mesuré, et
+  l'étape « serveur » (dépôt des artefacts) attend le retour du site.
 
 ## Où puiser
 
