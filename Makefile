@@ -375,6 +375,31 @@ module-graph-check: check
 
 
 # =============================================================
+#                        publication
+# =============================================================
+# Work-stream `modernisation-installation-marionnet'.
+
+# The publication series. META is the single source of truth for the version of the
+# project (bin/version.ml.maker.sh reads it to generate Version.version, and so does
+# useful-scripts/make_a_release_from_trunk.sh); the rule which turns a version into a
+# series lives in ONE place, the script below, which prints it on demand. Override it
+# on the command line if needed: make <target> PUBLICATION_SERIES=1.1.x
+PUBLICATION_SERIES := $(shell bash Makefile.d/filesystem.prepare-snapshot-to-publish.sh --print-series)
+
+# Turn the most recent guest filesystem snapshot of ~/.marionnet/filesystems/ (a COW
+# file, produced by Marionnet's disk export) into the artefacts a release directory is
+# made of: the merged image named after its `sum', its .conf (checksums, MTIME and
+# BINARY_LIST recomputed), its .relay when there is one, an empty _variants/ and the
+# tarball the installer downloads. Nothing already there is recomputed (--force does).
+# Options (another snapshot, another output directory, no sudo, no tarball): --help.
+filesystem.prepare-snapshot-to-publish:
+	bash Makefile.d/filesystem.prepare-snapshot-to-publish.sh --series $(PUBLICATION_SERIES)
+
+# ---
+.PHONY: filesystem.prepare-snapshot-to-publish
+
+
+# =============================================================
 #                           help
 # =============================================================
 

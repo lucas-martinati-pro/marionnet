@@ -411,20 +411,29 @@ versionnement est interne aux paquets) :
 
 ```
 download/
+├── marionnet-install.sh/       # le script v2 ET ce qu'il télécharge, par série
+│   └── 1.0.x/                  # (les anciennes URLs marionnet_from_scratch restent
+│       │                       #  servies avec un message de redirection)
+│       ├── kernels_linux-6.12.95.tar.gz
+│       ├── kernels_linux-6.12.95-i386.tar.gz
+│       ├── machine-debian-trixie-<SUM>{,.conf,.relay,_variants/}
+│       ├── filesystems_machine-debian-trixie-<SUM>.tar.gz
+│       ├── machine-debian-wheezy-08367{,.conf,.relay,_variants/}
+│       ├── filesystems_machine-debian-wheezy-08367.tar.gz
+│       └── filesystems_{machine,router}-guignol-18474.tar.gz  (.conf patchés inclus)
 ├── 1.0.x/
-│   ├── couples/                # kernels + filesystems modernes (tar.gz, MTIME préservés)
-│   │   ├── kernels_linux-6.12.95.tar.gz
-│   │   ├── kernels_linux-6.12.95-i386.tar.gz
-│   │   ├── filesystems_machine-debian-trixie-<SUM>.tar.gz     (+ .conf, variants)
-│   │   ├── filesystems_machine-debian-wheezy-08367.tar.gz     (.conf patché + .relay inclus)
-│   │   └── filesystems_{machine,router}-guignol-18474.tar.gz  (.conf patchés inclus)
 │   ├── binaries/               # Marionnet précompilé (par famille de distro/glibc)
 │   └── src/                    # tarballs sources du port dune (git archive)
 ├── apt/                        # dépôt apt signé (canal .deb)
-├── rpm/                        # canal RPM
-└── marionnet-install.sh        # script v2 (les anciennes URLs marionnet_from_scratch
-                                #  restent servies avec un message de redirection)
+└── rpm/                        # canal RPM
 ```
+
+Note (2026-08-23) : les couples ne vivent pas dans un `couples/` séparé, comme le dessinait
+la première version de ce §, mais **à côté du script qui les télécharge**, dans
+`download/marionnet-install.sh/<série>/` — arborescence déjà en place sur le serveur, et que
+`make filesystem.prepare-snapshot-to-publish` alimente. Chaque image y est publiée **sous ses
+deux formes** : décompressée (ce que sert un `wget` direct) et empaquetée
+`filesystems_<image>.tar.gz` (ce que consomme l'installeur, entrées préfixées `filesystems/`).
 
 Bénéfice immédiat : les tarballs de couples régénérés incluent les `.conf` patchés
 (fin du « patch à rejouer si l'image est retéléchargée » des ép. 2-3 retro-compat).
@@ -439,7 +448,7 @@ Bénéfice immédiat : les tarballs de couples régénérés incluent les `.conf
 | **Docker** | démo rapide, environnements verrouillés | image VNC/noVNC XFCE (MarioNUM g3) avec Marionnet moderne sans daemon | enfant `…-par-docker` |
 | **From source** | experts, distros exotiques, dev | opam switch 4.13.1 (chaîne actuelle documentée) | parent (doc INSTALL) |
 
-Tous les canaux consomment les **mêmes couples** (`download/couples/`) et la **même
+Tous les canaux consomment les **mêmes couples** (`download/marionnet-install.sh/<série>/`) et la **même
 config** — factorisation au parent.
 
 ### 3.3 Outillage release commun (parent)
@@ -501,7 +510,7 @@ clôture des enfants.
 - **Granularité .deb : app + kernels + petites images en .deb, grosses images à part** —
   le dépôt apt porte `marionnet` (binaire + ressources + conf + sudoers),
   `marionnet-kernels` (~20 Mo) et les petites images (guignol, 16 Mo) ; les grosses
-  (wheezy 560 Mo, trixie ~5 Go) restent dans `download/1.0.x/couples/`, récupérées par
+  (wheezy 560 Mo, trixie ~5 Go) restent dans `download/marionnet-install.sh/1.0.x/`, récupérées par
   un outil dédié (commande type `marionnet-get-images`, proposée en postinst).
 - **Toolchain système : essai borné à une session** (épisode 3 ci-dessus).
 - **Registre Docker : Docker Hub** — standard de facto (`docker pull`), découvrabilité,
@@ -598,3 +607,41 @@ clôture des enfants.
   complétion. **Le reste à faire de ce chantier est inchangé** : la complétion bash n'est
   installée nulle part, `socat`/`jq` ne sont pas déclarés dans les paquets, et `doc-src/` n'est
   pas installé.
+- **2026-08-23 — épisode 3 (hors plan) : publier une image invitée devient une commande.**
+  `Makefile.d/filesystem.prepare-snapshot-to-publish.sh` (neuf) + cible
+  `filesystem.prepare-snapshot-to-publish`. Le geste qu'il remplace était manuel et nulle part
+  écrit : prendre le **snapshot** d'un export disque de Marionnet
+  (`~/.marionnet/filesystems/<image>_variants/snapshot-*`, un fichier COW), le fusionner avec son
+  backing file (`uml_moo`, paquet `uml-utilities` — **déjà** dans `REQUIRED_PACKAGES_RUNTIME`),
+  puis reconstituer autour de lui les quatre éléments dont la référence publiée
+  `machine-debian-wheezy-08367` donne la forme : l'image nommée par le **premier champ de `sum`**,
+  son `.conf` aux empreintes recalculées, son `.relay` s'il y en a un, un `_variants/` vide — plus
+  le `.tar.gz` que l'installeur télécharge, aux entrées préfixées `filesystems/` (forme exigée par
+  `download_our_large_filesystems`, qui extrait depuis `$PREFIX/share/marionnet/`).
+  Trois choix qui ont demandé une mesure, et qu'il faut connaître avant de toucher au script :
+  1. **`BINARY_LIST` est recalculée par défaut**, en montant l'image produite en `loop,ro`
+     (sudo), sur la définition de `binary_list` de `uml/pupisto.common/toolkit_chroot.sh` élargie
+     à `/usr/local/{bin,sbin}` ; `--do-not-update-binary-list` s'en dispense, et le script **dit
+     alors explicitement** que la liste héritée peut mentir. Le montage est lecture seule et a
+     lieu **avant** le relevé du `MTIME`, que le `.conf` doit porter exactement.
+  2. **Le backing file se lit dans l'en-tête du COW, pas dans `file(1)`** : en version 3, le
+     chemin est une chaîne NUL-terminée à l'**offset 32** ; `file` tronque le sien vers 96
+     caractères, ce qui rend un chemin profond inutilisable (mesuré). `file` ne sert plus que de
+     repli, avec le nom du répertoire `<image>_variants` en dernier recours.
+  3. **L'idempotence a besoin d'un témoin**, parce que le nom du produit n'est connu qu'**après**
+     la fusion (il porte la somme du fichier fusionné) : refaire le `uml_moo` pour découvrir qu'il
+     existe déjà coûterait plusieurs gibioctets d'écriture. D'où le fichier caché
+     `.<image>.origin`, qui note quel snapshot a produit quelle image ; il n'entre jamais dans le
+     tarball. Sans lui, `-f|--force` serait le seul mode utilisable.
+  La **série** (`1.0.x`) n'est pas écrite en dur : elle se dérive de `META`, source unique de
+  vérité de la version (`X.Y.Z` → `X.Y.x` ; `trunk` → `1.0.x`, la série ouverte par le port dune,
+  § 6). La règle a **une seule** implémentation, dans le script (`--print-series`), que le
+  `Makefile` interroge pour définir `PUBLICATION_SERIES` — surchargeable
+  (`make … PUBLICATION_SERIES=1.1.x`). Le § 3.1 est corrigé en conséquence : les couples vivent
+  dans `download/marionnet-install.sh/<série>/`, pas dans un `couples/` séparé.
+  Preuve : banc de bout en bout sur une image ext4 synthétique de 16 Mio (`mke2fs -d`, COW par
+  `uml_mkcow`) — image nommée par son `sum`, `.conf` dont `SUM`/`MD5SUM`/`MTIME`/`DATE` sont
+  **égaux** aux empreintes du fichier produit et dont la structure de clés est identique à celle
+  de la source, `.relay` recopié, `_variants/` vide, tarball aux 4 entrées bien préfixées
+  `filesystems/` ; deuxième passe → tout sauté, image **inchangée à l'octet et à la date** ;
+  `--force` → tout refait. `shellcheck -S warning` : propre.
