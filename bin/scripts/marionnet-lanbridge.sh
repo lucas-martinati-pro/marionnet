@@ -25,7 +25,8 @@
 # behind a private NAT (that is marionnet-natbridge.sh, option A).
 #
 # It replaces useful-scripts/prepare_bridge.sh (2007: brctl, ifconfig, mii-tool,
-# all three dead tools), and above all it replaces the GESTURE that script stood
+# all three dead tools; that script was itself retired from the source tree on
+# 2026-08-23, archived outside git), and above all it replaces the GESTURE that script stood
 # for: an administrator building `br0' by hand before Marionnet could be used at
 # all. Here the bridge is built and undone by Marionnet itself, on demand.
 #

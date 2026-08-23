@@ -154,7 +154,7 @@ scindée en deux variables, et **chaque canal de diffusion la dérive** :
 | Variable | Contenu | Consommateurs |
 |---|---|---|
 | `REQUIRED_PACKAGES_BUILD` | `opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev gettext glade` | `make dependencies` ; `Build-Depends` du `.deb` ; image de build Docker |
-| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils x11-xserver-utils xauth` **`jq socat dnsmasq-base`** | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
+| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo x11-xserver-utils xauth jq socat dnsmasq-base` (`bridge-utils` **retiré** le 2026-08-23) | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
 | `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
 | `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
 | `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
@@ -189,13 +189,15 @@ port 53 à l'hôte, alors que le premier fournit le binaire seul (`dpkg -L dnsma
 `/usr/sbin/dnsmasq`). Et ce n'est pas une dépendance facultative : le service DHCP est actif **par
 défaut** sur un NAT bridge, sans aucun repli quand le binaire manque (décision de l'ép. 10c.2).
 
-**Point ouvert relevé en chemin — `bridge-utils` est probablement mort.** Mesuré le 2026-08-23 :
-`brctl` n'a plus **aucun site d'appel** dans le code (`bin/*.ml` et `bin/scripts/*.sh` ne le citent
-plus qu'en commentaire historique ; l'existence d'un bridge se lit désormais dans sysfs, cf.
-`bin/global_options.ml:99`). Le seul appelant survivant est `useful-scripts/prepare_bridge.sh`,
-que `bin/scripts/marionnet-lanbridge.sh` remplace et que `useful-scripts/dune` **n'installe
-délibérément pas**. Le paquet reste dans la liste tant que ce retrait n'a pas été tranché : ce
-n'était pas l'objet de cet épisode, et un `Depends` en trop coûte moins qu'un `Depends` manquant.
+**Retrait du 2026-08-23 (épisode 2) — `bridge-utils`.** Relevé à l'épisode 1, tranché à l'épisode 2 :
+`brctl` n'a plus **aucun site d'appel**. L'existence d'un bridge se lit dans sysfs
+(`bin/global_options.ml`), le LAN bridge se construit à l'`ip link` seul
+(`bin/scripts/marionnet-lanbridge.sh`), et le dernier appelant — `useful-scripts/prepare_bridge.sh`
+(2007 : `brctl`, `ifconfig`, `mii-tool`, trois outils morts) — a été **retiré de l'arbre versionné**
+par le ménage du même épisode. `iproute2`, déjà requis, couvre tout ce qu'on lui demandait. La
+raison du retrait est écrite dans le `Makefile` lui-même, à la place du paquet : une liste de
+dépendances ne dit rien sur ce qu'elle ne contient pas, et c'est précisément ce qui fait
+re-déclarer un paquet mort au canal suivant.
 
 Cibles : `apt-build-dependencies`, `apt-runtime-dependencies` (les deux appelées par
 `apt-dependencies`, donc par `make dependencies`) et l'opt-in `apt-runtime-dependencies-i386`.
@@ -212,12 +214,12 @@ commenté dans le `Makefile`) : `vde2` → `vde_switch`/`slirpvde` (vérifiés a
 `uml-utilities` → **`uml_mconsole`** (`simulation_level.ml#gracefully_terminate`, `serial.ml`) —
 et **non** `uml_switch`, qui n'est plus utilisé nulle part ; `xterm` → terminal par défaut ;
 `iproute2` → `ip` (`tap_provider.ml`) ; `sudo` → privilèges scopés post-daemon-elimination ;
-`bridge-utils` → `brctl` (`world_bridge`) — **plus aucun site d'appel depuis 2026-08**, voir le
-point ouvert ci-dessus ; `x11-xserver-utils` → `xhost` ; `xauth` → MIT-MAGIC-COOKIE-1 lu au
+`x11-xserver-utils` → `xhost` ; `xauth` → MIT-MAGIC-COOKIE-1 lu au
 lancement (`bin/x.ml`) et transmis aux invités ; `jq`, `socat`, `dnsmasq-base` → ajout du
 2026-08-23, table ci-dessus.
 
-**Écartés** par rapport au tableau § 2.4 et au script (`socat` figurait ici jusqu'au 2026-08-23,
+**Écartés** par rapport au tableau § 2.4 et au script : `bridge-utils` (retiré le 2026-08-23, voir
+ci-dessus — `brctl` n'a plus d'appelant), (`socat` figurait ici jusqu'au 2026-08-23,
 comme dépendance **invité** : il l'est toujours, mais il est devenu aussi une dépendance **hôte**,
 d'où sa remontée dans la liste) : `rlwrap`/`rlfe`/`ledit` (confort du terminal de gestion, `simulation_level.ml:542` : absence sans
 conséquence → au plus `Suggests`), `fonts-noto` (cosmétique → au plus `Recommends`),
@@ -348,6 +350,23 @@ la liste ci-dessus ; à la différence des clients du canal, il ne demande **ni 
 
 ### 2.5 Satellites de `useful-scripts/` (strates historiques)
 
+> **Mise à jour du 2026-08-23 (épisode 2) : les strates ci-dessous ne sont plus dans l'arbre.**
+> Le ménage de `useful-scripts/` — étape 5 du plan § 5, « archivage explicite des strates
+> historiques » — a été fait : elles vivent maintenant dans `useful-scripts/BACKUP/`, **hors git**
+> (le `.gitignore` du dépôt couvre `useful-scripts/*` depuis toujours ; ce que git suit ici n'a
+> jamais été le contenu du répertoire, mais la courte liste des fichiers qu'on a choisi de suivre).
+> Il ne reste **10 fichiers suivis** : `dune`, `marionnet_from_scratch` (gardé comme pièce à
+> conviction de l'autopsie § 2), `make_marionnet_bytecode_revno`, `marionnet-completion.bash` et
+> les 6 exécutables installés. Quatre fichiers **versionnés** ont été retirés à cette occasion :
+> `prepare_bridge.sh` (conséquence : `bridge-utils` quitte les dépendances, § 2.4 bis),
+> `which_ocamlbricks`, `marionnet_from_scratch.up-to-0.94.sh` et
+> `marionnet_from_scratch_weights_of_log`.
+> ⚠️ Les entrées ci-dessous restent **utiles au chantier** (`…_fedora_Sami.sh` = référence du canal
+> RPM, `install_on_site` = germe de l'outillage release, `required_debian_packages.sh` /
+> `search_runtime_dependencies.sh` = idée de dérivation des deps) : les chercher désormais dans
+> `useful-scripts/BACKUP/`, et **ne pas compter sur git pour les restituer** — seuls les quatre
+> fichiers ci-dessus ont un passé versionné.
+
 - `marionnet_from_scratch.{VDI,2018.02.04,orig,NEW,up-to-0.94.sh,*.backup}` : versions
   antérieures (0.94.x : OCaml 3.11/3.12, lablgtk2, ocamlbricks séparé, compilés from
   source). **Valeur d'archive uniquement.** La `.VDI` servait à fabriquer la VM (canal abandonné).
@@ -444,8 +463,9 @@ clôture des enfants.
    en reste à opam (la levée du gel reste au chantier `marionnet-camlp4-ppx`).
 4. **Essaimage des enfants, dans l'ordre** : `…-par-script` (déverrouille aussi le
    Dockerfile MarioNUM) → `…-par-paquet-deb` → `…-par-docker` → `…-par-paquet-rpm`.
-5. **Doc INSTALL** moderne (from source + renvois canaux) ; nettoyage des vestiges
-   `useful-scripts/` (archivage explicite des strates historiques) ; clôture.
+5. **Doc INSTALL** moderne (from source + renvois canaux) ; ~~nettoyage des vestiges
+   `useful-scripts/` (archivage explicite des strates historiques)~~ **fait le 2026-08-23**
+   (épisode 2, § 2.5) ; clôture.
 
 ## 6. Décisions sur les questions ouvertes (grill du 2026-07-19)
 
@@ -536,3 +556,15 @@ clôture des enfants.
   `make apt-runtime-dependencies` sort en « nothing to do » (les trois sont installés ici).
   **Relevé en chemin, non tranché** : `bridge-utils` n'a plus de site d'appel (`brctl` a disparu du
   code au profit de sysfs) — candidat au retrait, hors périmètre de cet épisode.
+- **2026-08-23 — épisode 2 : `bridge-utils` retiré, et les vestiges de `useful-scripts/`
+  archivés.** Deux gestes qui n'en font qu'un. Le ménage (fait par l'auteur) sort de l'arbre
+  versionné quatre fichiers, dont `prepare_bridge.sh`, le **dernier appelant de `brctl`** ; le
+  paquet `bridge-utils`, relevé la veille comme sans site d'appel, perd donc son dernier
+  prétexte et quitte `REQUIRED_PACKAGES_RUNTIME` — avec, à sa place dans le `Makefile`, la raison
+  du retrait, parce qu'une liste de dépendances ne dit rien sur ce qu'elle ne contient pas.
+  Renvois remis d'aplomb dans la foulée : `useful-scripts/dune` ne justifiait plus sa liste
+  « deliberately not installed » que par des fichiers absents, et les deux scripts de bridge
+  citaient `prepare_bridge.sh` sans dire qu'il n'existe plus. Effet de bord documentaire : ce
+  ménage réalise la moitié de l'**étape 5 du plan** (§ 5), et le § 2.5 dit maintenant où chercher
+  les satellites encore utiles au chantier (`…_fedora_Sami.sh` pour le RPM, `install_on_site` pour
+  l'outillage release) — dans `useful-scripts/BACKUP/`, hors git, sans filet de restitution.

@@ -24,7 +24,8 @@
 # access to the Internet WITHOUT EVER TOUCHING THE HOST INTERFACE. That is what
 # makes the setup barrier disappear: until now an admin had to create
 # MARIONNET_BRIDGE by hand, enslave the physical card and move the host address
-# onto the bridge -- the last two being destructive (useful-scripts/prepare_bridge.sh).
+# onto the bridge -- the last two being destructive (useful-scripts/prepare_bridge.sh,
+# retired from the source tree on 2026-08-23 and archived outside git).
 #
 # THIS SCRIPT IS THE IMPLEMENTATION, NOT A PROOF OF CONCEPT (it was one, at
 # episode 2, under the name marionnet-natbridge-poc.sh in useful-scripts/). The

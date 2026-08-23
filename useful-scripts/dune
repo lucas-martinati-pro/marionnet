@@ -37,9 +37,11 @@
 ;; marionnet-ctl and mrn-check), never from the inode they were reached through.
 ;;
 ;; Deliberately not installed: marionnet_from_scratch (a dead installer, see
-;; docs/modernisation-installation-marionnet.md), its two satellites, prepare_bridge.sh
-;; (superseded by bin/scripts/marionnet-lanbridge.sh), which_ocamlbricks and
-;; make_marionnet_bytecode_revno (development-time tools). The bash completion
+;; docs/modernisation-installation-marionnet.md), its two satellites and
+;; make_marionnet_bytecode_revno (a development-time tool). Note that the whole directory is
+;; covered by a `useful-scripts/*' line of .gitignore: what git tracks here is the short list
+;; of files someone chose to track, not what the directory happens to contain. The bash
+;; completion
 ;; (marionnet-completion.bash) is not a command and belongs to a completion directory, not
 ;; to bin/: it is written down as a remaining task of the installation work-stream.
 ;; ---

@@ -62,7 +62,6 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #  - iproute2           : `ip', used by bin/tap_provider.ml (tap creation, `sudo -n ip tuntap ...')
 #                         and by many host network inspections
 #  - sudo               : the scoped-privileges model that replaced the former root daemon
-#  - bridge-utils       : `brctl', bridge check and setup for the `world_bridge' component
 #  - x11-xserver-utils  : `xhost', granting the X server access to the guests (X11 forwarding)
 #  - xauth              : `xauth list', read at startup by bin/x.ml to get the MIT-MAGIC-COOKIE-1
 #                         then provided to the guests (see bin/simulation_level.ml)
@@ -87,12 +86,17 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #                         the binary alone. The service is enabled BY DEFAULT on a nat_bridge and
 #                         has NO fallback when the binary is missing.
 # NOTES:
+#  - `bridge-utils' WAS listed here, for `brctl'. Removed on 2026-08-23: not a single call site
+#    is left. The existence of a bridge is now read from sysfs (bin/global_options.ml), the LAN
+#    bridge is built by bin/scripts/marionnet-lanbridge.sh with `ip link' alone, and the last
+#    caller of `brctl' -- useful-scripts/prepare_bridge.sh (2007) -- has been retired from the
+#    source tree. `iproute2', already required, covers everything that was asked of it;
 #  - `socat' is needed on BOTH sides, for unrelated reasons: inside the GUEST systems (the
 #    historical reason why it was once excluded from this list) and on the host, since the
 #    control channel exists -- hence its presence above;
 #  - the commands `getent', `cat', `cp', `rm', `tar', `grep', `du' also called by the code come
 #    from `Essential: yes' packages (libc-bin, coreutils, tar, grep): nothing to declare.
-REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils \
+REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo \
                             x11-xserver-utils xauth jq socat dnsmasq-base
 
 # The whole set (historical name, kept for compatibility):
