@@ -87,9 +87,6 @@ useful-scripts/*
 # Client du canal de contrôle (docs/pilotage-par-script.md § 5) et son nom court.
 !useful-scripts/marionnet-ctl
 !useful-scripts/mrnctl
-# Vérificateur de fichiers .mrn (§ 5.6) et son second nom, qui implique --to-bash (§ 5.8).
-!useful-scripts/mrn-check
-!useful-scripts/mrn2sh
 # Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
 !useful-scripts/marionnet-completion.bash
 # Stanza `install' de dune qui pose les scripts ci-dessus dans share/marionnet/scripts/, donc

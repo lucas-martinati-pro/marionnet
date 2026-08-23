@@ -137,3 +137,38 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   identique modulo `$PROGNAME` (48 lignes chacun), et le contrôle hors-ligne d'un `.mrv`
   livré (`doc-src/scripting/examples/lab.mrv`, `--grammar=` sur un instantané de grammaire)
   rendant **le même verdict** par les trois noms — « 7 assertion(s), well formed », rc 0.
+
+- **2026-08-23 — épisode 3 : `mrn-check`.** `git mv` vers `bin/scripts/marionnet-check.sh`, plus
+  les **quatre** liens `marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh` (mode `120000`).
+  `useful-scripts/mrn2sh` était déjà un lien, mais vers `mrn-check` : il a été `git rm` et refait à
+  destination plutôt que déplacé — un lien vers un lien, dont la cible relative allait disparaître,
+  aurait été fragile pour rien. Déclarations suivies : `bin/dune` gagne les cinq noms,
+  `useful-scripts/dune` en perd deux, la liste blanche du `.gitignore` aussi (D10).
+
+  **`mrnck` est un nom neuf** (table D2) : il n'a demandé **aucune ligne de code**, le dispatch ne
+  testant que `[[ $PROGNAME == mrn2sh ]]` — tout autre nom retombe sur le mode normal. Son revers
+  est qu'il n'est encore annoncé nulle part : l'usage n'a **pas** été touché (le § 5 met « changer
+  une sortie » hors périmètre), c'est la complétion de l'**épisode 5** qui déclarera les noms.
+
+  **Un renvoi de l'épisode 1 rattrapé au passage** : l'en-tête de `useful-scripts/dune` justifiait
+  encore l'installation par « Marionnet nomme **l'un d'eux** à l'écran et le lance depuis un
+  bouton » — or ce script-là (`marionnet-cleanup`) avait quitté le répertoire à l'épisode 1. Le
+  motif est conservé (c'est bien lui qui a tranché la question de l'installation) mais énoncé au
+  passé, et le paragraphe dit désormais que la stanza **rétrécit** à mesure que les scripts
+  complémentaires du binaire s'en vont.
+
+  **Preuve, plus forte que celle des deux premiers épisodes** : `dune build` rc 0 ;
+  `dune build @install` rc 0 avec les **cinq** noms dans `share/marionnet/scripts/` ; `--help`
+  identique par les cinq noms (aux trois mentions littérales de `mrn2sh` près, que seul le mode
+  `--to-bash` doit voir) ; le contrôle hors ligne de `doc-src/scripting/examples/lab.mrn`
+  (`--grammar=` sur un instantané) rendant **le même verdict** — « 9 request(s), no error », rc 0 —
+  par `marionnet-check.sh`, `marionnet-check`, `mrn-check` et `mrnck`, tandis que `mrn2sh` sort du
+  **bash** sur le même fichier ; et surtout les **deux bancs de l'épisode 9 de
+  `pilotage-par-script` rejoués** contre un vrai serveur : **32 assertions / 0 échec** chacun,
+  dont le discriminant « le vérificateur et le serveur s'arrêtent à la même ligne, pour le même
+  motif ».
+
+  **Leçon de méthode** : ces deux bancs vivent dans `_claude-local/`, **gitignoré** — ils portaient
+  donc des chemins durs `useful-scripts/…` que l'inventaire des épisodes précédents, mené sur le
+  versionné, n'avait pas vus ; l'un d'eux (`useful-scripts/mrn-verify`) était cassé **depuis
+  l'épisode 2**. Le relevé des chemins doit couvrir l'arbre de travail, pas seulement l'index.

@@ -250,6 +250,17 @@
      (glob_files "scripts/marionnet-verify.sh")
      (glob_files "scripts/marionnet-verify")
      (glob_files "scripts/mrn-verify")
+     ;; --- The static checker of a .mrn lab description (work-stream `pilotage-par-script'):
+     ;; --- it validates a file against the grammar PUBLISHED BY THE SERVER, and translates it
+     ;; --- to the shell script it is the declarative half of. Companion of the binary, hence
+     ;; --- its move out of useful-scripts/. Same form again -- but here the symlinks are not
+     ;; --- mere aliases: the script reads `${0##*/}' (PROGNAME) and the name `mrn2sh' IMPLIES
+     ;; --- --to-bash, so removing that link would silently change what the tool does.
+     (glob_files "scripts/marionnet-check.sh")
+     (glob_files "scripts/marionnet-check")
+     (glob_files "scripts/mrn-check")
+     (glob_files "scripts/mrnck")
+     (glob_files "scripts/mrn2sh")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")
