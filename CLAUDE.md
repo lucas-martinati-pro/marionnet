@@ -247,7 +247,7 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/move-and-rename-useful-scripts-to-bin-scripts.md` (§ 3 invariants, § 4 plan) + amorce
   figée `…decisions.md` ; mémoire `move-and-rename-useful-scripts-to-bin-scripts` ;
   `git log --grep="move-and-rename-useful-scripts-to-bin-scripts"`. Amorce close 2026-08-23,
-  6 épisodes, **aucun joué**.
+  6 épisodes, **2 joués** (`marionnet-cleanup`, `mrn-verify`).
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :

@@ -241,6 +241,15 @@
      (glob_files "scripts/marionnet-cleanup.sh")
      (glob_files "scripts/marionnet-cleanup")
      (glob_files "scripts/mrn-cleanup")
+     ;; --- The declarative verifier of a RUNNING lab (work-stream `journalisation-profonde'):
+     ;; --- it reads a .mrv of assertions and asks the control channel, which makes it a
+     ;; --- companion of the binary, not a tool to manage the project -- hence its move out of
+     ;; --- useful-scripts/. Same form as above: the real file carries the .sh extension, the
+     ;; --- names the user types are SYMLINKS beside it. `mrn-verify' is the one the delivered
+     ;; --- documentation and the example scripts call by its bare name.
+     (glob_files "scripts/marionnet-verify.sh")
+     (glob_files "scripts/marionnet-verify")
+     (glob_files "scripts/mrn-verify")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

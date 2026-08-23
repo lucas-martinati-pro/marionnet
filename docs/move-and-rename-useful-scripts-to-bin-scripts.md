@@ -114,3 +114,26 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   `share/marionnet/scripts/` ; les trois noms exécutables et équivalents depuis l'arbre source ;
   et les **deux bancs rejoués** — `uml-dirs-reported.sh` **9 PASS / 0 FAIL**,
   `run-directories-recover-and-purge.sh` **15 PASS / 0 FAIL**.
+
+- **2026-08-23 — épisode 2 : `mrn-verify`.** `git mv` vers
+  `bin/scripts/marionnet-verify.sh`, plus les liens `marionnet-verify` et `mrn-verify`
+  (mode `120000`). Déclarations suivies : `bin/dune` gagne les trois noms,
+  `useful-scripts/dune` perd le sien, la liste blanche du `.gitignore` aussi (D10). Un seul
+  renvoi corrigé ailleurs : le commentaire des dépendances du `Makefile`, qui nommait
+  `useful-scripts/mrn-check and mrn-verify` — il nomme désormais les deux vérificateurs
+  **sans chemin**, énoncé qui restera vrai après l'épisode 3.
+
+  **L'inventaire a démenti le plan** : le § 4 annonçait « 12 fichiers de `doc-src/` », mais
+  aucun d'eux — pas plus que le skill `marionnet-lab-design` — ne construit un chemin vers
+  `useful-scripts/` : les trois scripts d'exemple prennent le **nom nu** comme défaut
+  (`MRN_VERIFY="${MRN_VERIFY:-mrn-verify}"` dans `06-assert-a-lab.sh`, `play.sh`,
+  `grade.sh`) et les `.mrv` livrés le citent en commentaire d'en-tête. Aucun banc de
+  `driven-sessions/` ne l'appelle non plus. Cet épisode n'a donc rien eu à corriger dans la
+  documentation livrée — ce qui est exactement ce que la forme « fichier `.sh` + liens »
+  achète, et ce que le § 4 sur-estimait en comptant les **citations** au lieu des **chemins**.
+
+  **Preuve** : `dune build` rc 0 ; `dune build @install` rc 0 avec les trois noms dans
+  `share/marionnet/scripts/` ; les trois noms exécutables depuis l'arbre source, `--help`
+  identique modulo `$PROGNAME` (48 lignes chacun), et le contrôle hors-ligne d'un `.mrv`
+  livré (`doc-src/scripting/examples/lab.mrv`, `--grammar=` sur un instantané de grammaire)
+  rendant **le même verdict** par les trois noms — « 7 assertion(s), well formed », rc 0.

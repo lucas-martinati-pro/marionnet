@@ -53,7 +53,6 @@
      (marionnet-ctl as scripts/marionnet-ctl)
      (mrnctl as scripts/mrnctl)
      (mrn-check as scripts/mrn-check)
-     (mrn2sh as scripts/mrn2sh)
-     (mrn-verify as scripts/mrn-verify))
+     (mrn2sh as scripts/mrn2sh))
   (section share)
   (package marionnet))

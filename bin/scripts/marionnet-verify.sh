@@ -16,7 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# mrn-verify — check what a running lab *is*, against a file of assertions (.mrv).
+# marionnet-verify.sh — check what a running lab *is*, against a file of assertions (.mrv).
+#
+# NAMES. This file is the implementation; the names a user types are the symlinks beside it,
+# `marionnet-verify' and `mrn-verify'. The second one is the one the delivered documentation
+# calls by its bare name (doc-src/scripting/, doc-src/labs/session-7/, the teacher guide), and
+# the one the example scripts default to (MRN_VERIFY:-mrn-verify), so it has to keep resolving
+# whatever the file itself is called.
 #
 # mrn-check reads a .mrn and says whether it can be sent; this reads a .mrv and says whether the
 # lab it describes holds. The two are the halves of the same idea: a lab is built declaratively,
