@@ -238,6 +238,16 @@ Reprise : appliquer le skill `chantier-long`.
   `--enable-natbridge`), `selftest --assume-ipv6-uplink`, **sortie NAT66** (seule preuve
   *bloquée par l'environnement*), les deux ports du LAN bridge sur une carte physique, les
   textes à l'écran, et les rejeux différés des ép. 6 et 8. Le chantier **ne se clôt pas** avant.
+- **move-and-rename-useful-scripts-to-bin-scripts** (règle fondatrice jamais écrite :
+  `useful-scripts/` = gestion/installation du projet et guides développeurs, `bin/scripts/` =
+  scripts **complémentaires du binaire** ; les 5 écrits du mauvais côté migrent, chacun en fichier
+  `.sh` réel entouré de **liens symboliques** qui conservent **tous** les noms actuels — d'où une
+  migration **non cassante par construction** : l'i18n ×12 ne bouge pas alors que
+  `marionnet-cleanup` est dans les `msgid`, et le dispatch par `${0##*/}` de `mrn2sh` survit) :
+  `docs/move-and-rename-useful-scripts-to-bin-scripts.md` (§ 3 invariants, § 4 plan) + amorce
+  figée `…decisions.md` ; mémoire `move-and-rename-useful-scripts-to-bin-scripts` ;
+  `git log --grep="move-and-rename-useful-scripts-to-bin-scripts"`. Amorce close 2026-08-23,
+  6 épisodes, **aucun joué**.
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
