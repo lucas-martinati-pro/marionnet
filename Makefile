@@ -66,12 +66,34 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #  - x11-xserver-utils  : `xhost', granting the X server access to the guests (X11 forwarding)
 #  - xauth              : `xauth list', read at startup by bin/x.ml to get the MIT-MAGIC-COOKIE-1
 #                         then provided to the guests (see bin/simulation_level.ml)
+#  - jq                 : JSON processor, required on the HOST by three distinct users: the
+#                         `Json_*' module of bashbricks/bashbricks.sh -- an INSTALLED file since
+#                         the work-stream `modernisation-world-bridge', sourced by
+#                         bin/scripts/marionnet-{nat,lan}bridge.sh, hence needed as soon as a
+#                         bridge component is started -- and the two verifiers of the control
+#                         channel, useful-scripts/mrn-check and mrn-verify, which both refuse to
+#                         start without it.
+#  - socat              : the transport of useful-scripts/marionnet-ctl, the client of the
+#                         control channel (`socat - UNIX-CONNECT:<socket>'), which the delivered
+#                         documentation calls by its bare name. See the NOTE below: this package
+#                         used to be dismissed here as a GUEST-only dependency, which stopped
+#                         being true when the work-stream `pilotage-par-script' gave the host a
+#                         client of its own.
+#  - dnsmasq-base       : the DHCP/DNS service which bin/scripts/marionnet-dnsmasq.sh binds to
+#                         the bridge of a `nat_bridge' component (work-stream
+#                         `modernisation-world-bridge'), and which also emits the IPv6 router
+#                         advertisements (--enable-ra). NOT the `dnsmasq' package: that one adds
+#                         a system service competing for port 53, whereas `dnsmasq-base' provides
+#                         the binary alone. The service is enabled BY DEFAULT on a nat_bridge and
+#                         has NO fallback when the binary is missing.
 # NOTES:
-#  - `socat' is NOT listed here: it is required in the GUEST systems, not on the host;
+#  - `socat' is needed on BOTH sides, for unrelated reasons: inside the GUEST systems (the
+#    historical reason why it was once excluded from this list) and on the host, since the
+#    control channel exists -- hence its presence above;
 #  - the commands `getent', `cat', `cp', `rm', `tar', `grep', `du' also called by the code come
 #    from `Essential: yes' packages (libc-bin, coreutils, tar, grep): nothing to declare.
 REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils \
-                            x11-xserver-utils xauth
+                            x11-xserver-utils xauth jq socat dnsmasq-base
 
 # The whole set (historical name, kept for compatibility):
 REQUIRED_PACKAGES = $(REQUIRED_PACKAGES_BUILD) $(REQUIRED_PACKAGES_RUNTIME)

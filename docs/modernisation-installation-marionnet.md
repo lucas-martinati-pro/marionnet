@@ -154,7 +154,7 @@ scindée en deux variables, et **chaque canal de diffusion la dérive** :
 | Variable | Contenu | Consommateurs |
 |---|---|---|
 | `REQUIRED_PACKAGES_BUILD` | `opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev gettext glade` | `make dependencies` ; `Build-Depends` du `.deb` ; image de build Docker |
-| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils x11-xserver-utils xauth` | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
+| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo bridge-utils x11-xserver-utils xauth` **`jq socat dnsmasq-base`** | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
 | `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
 | `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
 | `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
@@ -171,6 +171,32 @@ les équivalents RPM restent à vérifier le moment venu.
 aucune bibliothèque `yojson` ni `base64`, les bibliothèques OCaml étant liées statiquement. Rien
 à ajouter au `Depends` du `.deb`, au `Requires` du RPM ni à la couche runtime Docker.
 
+**Ajout du 2026-08-23 (épisode 1) — `jq`, `socat`, `dnsmasq-base` : la source de vérité avait
+décroché du code.** Trois chantiers postérieurs au 2026-07-27 ont fait appeler par l'hôte des
+binaires que `REQUIRED_PACKAGES_RUNTIME` ne déclarait pas ; le § 2.4 ter les avait consignés comme
+« contraintes entrantes » pour les futurs paquets, mais la variable dont tous les canaux vont
+**dériver** leur `Depends` ne les portait pas — donc `make dependencies` laissait une machine
+fraîche incapable de démarrer un bridge ou d'utiliser un client du canal. Corrigé à la source :
+
+| Paquet | Site d'appel mesuré | Chantier d'origine |
+|---|---|---|
+| `jq` | `bashbricks/bashbricks.sh` (module `Json_*`, **fichier installé**, sourcé par `bin/scripts/marionnet-{nat,lan}bridge.sh`) ; `useful-scripts/mrn-check` et `mrn-verify`, qui **refusent de démarrer** sans lui (`command -v jq \|\| die`) | `modernisation-world-bridge`, `pilotage-par-script` |
+| `socat` | `useful-scripts/marionnet-ctl` (`socat - UNIX-CONNECT:<socket>`, garde `command -v socat \|\| die`) | `pilotage-par-script` |
+| `dnsmasq-base` | `bin/scripts/marionnet-dnsmasq.sh` (service DHCP/DNS lié au seul bridge d'un `nat_bridge`, et RA IPv6 via `--enable-ra`) | `modernisation-world-bridge` (ép. 10c, 11) |
+
+⚠️ **`dnsmasq-base`, jamais `dnsmasq`** : le second ajoute un service système qui dispute le
+port 53 à l'hôte, alors que le premier fournit le binaire seul (`dpkg -L dnsmasq-base` →
+`/usr/sbin/dnsmasq`). Et ce n'est pas une dépendance facultative : le service DHCP est actif **par
+défaut** sur un NAT bridge, sans aucun repli quand le binaire manque (décision de l'ép. 10c.2).
+
+**Point ouvert relevé en chemin — `bridge-utils` est probablement mort.** Mesuré le 2026-08-23 :
+`brctl` n'a plus **aucun site d'appel** dans le code (`bin/*.ml` et `bin/scripts/*.sh` ne le citent
+plus qu'en commentaire historique ; l'existence d'un bridge se lit désormais dans sysfs, cf.
+`bin/global_options.ml:99`). Le seul appelant survivant est `useful-scripts/prepare_bridge.sh`,
+que `bin/scripts/marionnet-lanbridge.sh` remplace et que `useful-scripts/dune` **n'installe
+délibérément pas**. Le paquet reste dans la liste tant que ce retrait n'a pas été tranché : ce
+n'était pas l'objet de cet épisode, et un `Depends` en trop coûte moins qu'un `Depends` manquant.
+
 Cibles : `apt-build-dependencies`, `apt-runtime-dependencies` (les deux appelées par
 `apt-dependencies`, donc par `make dependencies`) et l'opt-in `apt-runtime-dependencies-i386`.
 
@@ -186,11 +212,14 @@ commenté dans le `Makefile`) : `vde2` → `vde_switch`/`slirpvde` (vérifiés a
 `uml-utilities` → **`uml_mconsole`** (`simulation_level.ml#gracefully_terminate`, `serial.ml`) —
 et **non** `uml_switch`, qui n'est plus utilisé nulle part ; `xterm` → terminal par défaut ;
 `iproute2` → `ip` (`tap_provider.ml`) ; `sudo` → privilèges scopés post-daemon-elimination ;
-`bridge-utils` → `brctl` (`world_bridge`) ; `x11-xserver-utils` → `xhost` ; `xauth` →
-MIT-MAGIC-COOKIE-1 lu au lancement (`bin/x.ml`) et transmis aux invités.
+`bridge-utils` → `brctl` (`world_bridge`) — **plus aucun site d'appel depuis 2026-08**, voir le
+point ouvert ci-dessus ; `x11-xserver-utils` → `xhost` ; `xauth` → MIT-MAGIC-COOKIE-1 lu au
+lancement (`bin/x.ml`) et transmis aux invités ; `jq`, `socat`, `dnsmasq-base` → ajout du
+2026-08-23, table ci-dessus.
 
-**Écartés** par rapport au tableau § 2.4 et au script : `socat` (dépendance **invité**, pas hôte),
-`rlwrap`/`rlfe`/`ledit` (confort du terminal de gestion, `simulation_level.ml:542` : absence sans
+**Écartés** par rapport au tableau § 2.4 et au script (`socat` figurait ici jusqu'au 2026-08-23,
+comme dépendance **invité** : il l'est toujours, mais il est devenu aussi une dépendance **hôte**,
+d'où sa remontée dans la liste) : `rlwrap`/`rlfe`/`ledit` (confort du terminal de gestion, `simulation_level.ml:542` : absence sans
 conséquence → au plus `Suggests`), `fonts-noto` (cosmétique → au plus `Recommends`),
 `liblablgtk3-ocaml-dev`/`camlp4` système/`bzr`/`libtool` (voie opam), les paquets
 `Essential: yes` (coreutils, tar, grep, libc-bin).
@@ -492,3 +521,18 @@ clôture des enfants.
   `mrn-verify` ; le mirroir `share/marionnet/scripts/* → $(PREFIX)/bin/` du `Makefile` fait le
   reste, `chmod +x` compris. Restent au chantier : la complétion bash, `socat`/`jq` en dépendances
   **hôte** des paquets, et l'installation de `doc-src/`.
+- **2026-08-23 — épisode 1 (hors plan, avant le serveur) : la source de vérité des dépendances
+  remise en phase avec le code.** `REQUIRED_PACKAGES_RUNTIME` gagne **`jq`, `socat`,
+  `dnsmasq-base`** (§ 2.4 bis, encadré « Ajout du 2026-08-23 »), avec leur justification par site
+  d'appel dans le `Makefile` comme pour les neuf autres. Motif : depuis le 2026-07-27, le § 2.4 bis
+  fait de cette variable la **seule** source dont dériveront le `Depends` du `.deb`, le `Requires`
+  du RPM, la couche runtime Docker et le `apt install` du script v2 — or trois chantiers y avaient
+  ajouté des appels hôte sans l'amender, de sorte que `make dependencies` laissait une machine
+  fraîche sans DHCP de NAT bridge (`dnsmasq-base`), sans client du canal (`socat`) et sans les deux
+  vérificateurs ni les scripts de bridge (`jq`). La NOTE qui écartait `socat` comme dépendance
+  *invité* est corrigée sur place plutôt que supprimée : elle disait vrai en 2026-07, elle a cessé
+  de l'être quand le canal de contrôle a donné un client à l'hôte. Aucun code applicatif touché ;
+  preuve : `make -n -p | grep REQUIRED_PACKAGES_RUNTIME` montre les douze paquets, et
+  `make apt-runtime-dependencies` sort en « nothing to do » (les trois sont installés ici).
+  **Relevé en chemin, non tranché** : `bridge-utils` n'a plus de site d'appel (`brctl` a disparu du
+  code au profit de sysfs) — candidat au retrait, hors périmètre de cet épisode.
