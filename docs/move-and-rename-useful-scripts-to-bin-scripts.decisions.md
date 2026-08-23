@@ -33,7 +33,17 @@ sans qu'un nom appelé quelque part cesse de résoudre.
 
 ## Décisions prises
 
-*(aucune : l'amorce vient d'être ouverte)*
+- **D10** — *Quand nettoyer la liste blanche `!useful-scripts/…` du `.gitignore` ?* → **au fil de
+  l'eau, pas en une fois à la fin** : les six entrées mortes ont été retirées le jour même.
+  *Pourquoi :* une entrée blanche qui nomme un fichier absent ne fait rien de mal
+  mécaniquement, mais elle **ment au lecteur** — elle laisse croire que le fichier est encore là
+  et versionné, ce qui est exactement l'erreur qu'on vient de payer (le ménage du 2026-08-23 a
+  retiré quatre fichiers versionnés en laissant leurs quatre lignes). La règle est donc écrite
+  dans le `.gitignore` lui-même, à côté de celle qui existait déjà pour les ajouts : un fichier
+  retiré du versionnement sort de la liste blanche. Reste cohérent avec la suite du chantier —
+  chaque script migré vers `bin/scripts/` fera sortir sa ligne au moment de sa migration, et non
+  dans une passe finale. Vérifié après coup : la liste blanche compte 10 entrées, et
+  `git ls-files useful-scripts/` en compte 10, les mêmes. (2026-08-23)
 
 ## Questions ouvertes
 
@@ -112,14 +122,6 @@ Le **front** (rien ne les bloque) : **D1**, **D3**, **D5**, **D6**, **D8**.
 - **D9** `arbitrage` — **Les PDF déjà produits.** `doc-src/teacher-guide.pdf` et
   `teacher-guide.FR.pdf` (non versionnés) citent les noms actuels. On les régénère dans ce
   chantier, ou est-ce hors périmètre ? *(bloquée par D3)*
-
-- **D10** `préalable` — **Nettoyage de la whitelist `.gitignore`.** `useful-scripts/` est ignoré en
-  bloc avec une whitelist `!useful-scripts/...` — elle contient aujourd'hui **six entrées mortes**
-  (`etc_init.d_marionnet-daemon`, `marionnet_from_scratch.up-to-0.94.sh`,
-  `marionnet_from_scratch_weights_of_log`, `prepare_bridge.sh`, `which_ocamlbricks`,
-  `marionnet-natbridge-poc.sh`), reliquat du ménage du 2026-08-23. La migration videra encore
-  cette liste : question de **calendrier** (nettoyer maintenant, ou en une fois à la fin ?), pas
-  de contenu.
 
 ## Pas encore spécifié
 

@@ -77,15 +77,13 @@ lib/modules.lst
 
 # --- useful-scripts/ : approche inverse — tout est ignoré SAUF les fichiers
 #     versionnés listés ci-dessous. Attention : tout NOUVEAU fichier à versionner
-#     ici devra être ajouté en `!useful-scripts/...`.
+#     ici devra être ajouté en `!useful-scripts/...`, et tout fichier RETIRÉ du
+#     versionnement devra en être enlevé — sinon la liste blanche accumule des
+#     entrées mortes, qui laissent croire que le fichier est encore là (six d'entre
+#     elles ont survécu au ménage du 2026-08-23, retirées le même jour).
 useful-scripts/*
-!useful-scripts/etc_init.d_marionnet-daemon
 !useful-scripts/make_marionnet_bytecode_revno
 !useful-scripts/marionnet_from_scratch
-!useful-scripts/marionnet_from_scratch.up-to-0.94.sh
-!useful-scripts/marionnet_from_scratch_weights_of_log
-!useful-scripts/prepare_bridge.sh
-!useful-scripts/which_ocamlbricks
 # Client du canal de contrôle (docs/pilotage-par-script.md § 5) et son nom court.
 !useful-scripts/marionnet-ctl
 !useful-scripts/mrnctl
@@ -97,8 +95,6 @@ useful-scripts/*
 !useful-scripts/mrn-verify
 # Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
 !useful-scripts/marionnet-completion.bash
-# Banc d'essai du bridge NAT privé automatique (docs/modernisation-world-bridge.md § 2.1 bis).
-!useful-scripts/marionnet-natbridge-poc.sh
 # Inventaire et balayage de ce qu'une session tuée brutalement laisse derrière elle
 # (processus auxiliaires, sockets, répertoires de run) — cf. docs/TODO.md.
 !useful-scripts/marionnet-cleanup
