@@ -33,7 +33,7 @@ MRNCTL="${MRNCTL:-mrnctl}"
 LAB="${1:-/tmp/lab.mar}"
 
 command -v "$MRNCTL" >/dev/null ||
-  { echo "$0: no mrnctl: set \$MRNCTL to useful-scripts/mrnctl" >&2; exit 2; }
+  { echo "$0: no mrnctl: set \$MRNCTL to bin/scripts/mrnctl" >&2; exit 2; }
 [[ -n ${MARIONNET_CONTROL_SOCKET:-} ]] ||
   { echo "$0: set \$MARIONNET_CONTROL_SOCKET first" >&2; exit 2; }
 

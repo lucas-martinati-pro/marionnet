@@ -53,7 +53,7 @@ l'**install** et le **RPM**.
 | `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
-| `useful-scripts/` | scripts d'exploitation/release (7 versionnés, le reste ignoré) | — |
+| `useful-scripts/` | scripts de gestion/installation du projet (liste blanche du `.gitignore`, le reste ignoré) | — |
 | `etc/`, `Makefile.d/`, `RPMS/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging | `docs/ARCHITECTURE.md` § Build |
 
 ## Fichiers générés — ne jamais éditer

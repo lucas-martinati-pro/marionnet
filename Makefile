@@ -71,7 +71,7 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #                         bin/scripts/marionnet-{nat,lan}bridge.sh, hence needed as soon as a
 #                         bridge component is started -- and the two verifiers of the control
 #                         channel, mrn-check and mrn-verify, which both refuse to start without it.
-#  - socat              : the transport of useful-scripts/marionnet-ctl, the client of the
+#  - socat              : the transport of marionnet-ctl, the client of the
 #                         control channel (`socat - UNIX-CONNECT:<socket>'), which the delivered
 #                         documentation calls by its bare name. See the NOTE below: this package
 #                         used to be dismissed here as a GUEST-only dependency, which stopped

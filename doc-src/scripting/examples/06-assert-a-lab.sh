@@ -41,7 +41,7 @@ NODE="${1:-m1}"
 
 for tool in "$MRNCTL" "$MRN_VERIFY"; do
   command -v "$tool" >/dev/null ||
-    { echo "$0: no $tool: set \$MRNCTL / \$MRN_VERIFY to the ones in useful-scripts/" >&2; exit 2; }
+    { echo "$0: no $tool: set \$MRNCTL / \$MRN_VERIFY to the ones in bin/scripts/" >&2; exit 2; }
 done
 [[ -n ${MARIONNET_CONTROL_SOCKET:-} ]] ||
   { echo "$0: set \$MARIONNET_CONTROL_SOCKET first" >&2; exit 2; }

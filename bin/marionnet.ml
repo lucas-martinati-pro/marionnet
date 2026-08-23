@@ -397,8 +397,8 @@ let () =
   then () else
   (* --- The tool, if this host has it.
      ---
-     It is installed in $PREFIX/bin/ (useful-scripts/dune puts it among the scripts of the share
-     section, which the Makefile mirrors into bin/), hence reachable by name -- exactly like
+     It is installed in $PREFIX/bin/ (bin/dune puts it among the scripts of the share section,
+     which the Makefile mirrors into bin/), hence reachable by name -- exactly like
      marionnet-lanbridge.sh. In the source tree, where nothing is installed, set
      MARIONNET_CLEANUP_SCRIPT to its ABSOLUTE path: Marionnet chdir's to its own home at startup,
      so a relative one would no longer mean what it says. No tool, no buttons: the text alone

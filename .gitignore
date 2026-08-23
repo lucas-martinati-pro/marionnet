@@ -84,12 +84,8 @@ lib/modules.lst
 useful-scripts/*
 !useful-scripts/make_marionnet_bytecode_revno
 !useful-scripts/marionnet_from_scratch
-# Client du canal de contrôle (docs/pilotage-par-script.md § 5) et son nom court.
-!useful-scripts/marionnet-ctl
-!useful-scripts/mrnctl
-# Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
+# Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7). Elle n'est
+# installée nulle part : ce n'est pas une commande, elle relève d'un répertoire de complétion —
+# tâche restante du chantier `modernisation-installation-marionnet' (§ 2.4 ter).
 !useful-scripts/marionnet-completion.bash
-# Stanza `install' de dune qui pose les scripts ci-dessus dans share/marionnet/scripts/, donc
-# (par le mirroir du Makefile) dans $(PREFIX)/bin/.
-!useful-scripts/dune
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

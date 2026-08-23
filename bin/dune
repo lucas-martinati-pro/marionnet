@@ -261,6 +261,18 @@
      (glob_files "scripts/mrn-check")
      (glob_files "scripts/mrnck")
      (glob_files "scripts/mrn2sh")
+     ;; --- The client of the control channel itself (work-stream `pilotage-par-script'): one
+     ;; --- line of text in, one line of JSON out, over `socat - UNIX-CONNECT:<socket>'. It is
+     ;; --- the companion of --control-socket, so it belongs beside the binary and no longer in
+     ;; --- useful-scripts/. Same form: the real file carries the .sh extension, the names the
+     ;; --- user types are SYMLINKS beside it. `mrnctl' is the one the delivered documentation
+     ;; --- (doc-src/scripting/) calls by its bare name, in prose and in its example scripts.
+     ;; --- The client holds NO copy of the grammar: it is the server which publishes it, so
+     ;; --- these names never have to follow a change of vocabulary.
+     (glob_files "scripts/marionnet-ctl.sh")
+     (glob_files "scripts/marionnet-ctl")
+     (glob_files "scripts/mrnctl")
+     (glob_files "scripts/mrn-control")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

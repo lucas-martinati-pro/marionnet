@@ -13,7 +13,7 @@ deliberately does **not** list the commands: the running Marionnet publishes its
 vocabulary (see [§ 4](#4-the-command-list-is-not-in-this-guide)).
 
 * Design and rationale (in French, for developers): `docs/pilotage-par-script.md`.
-* The client script: `useful-scripts/marionnet-ctl`, also reachable as `mrnctl`.
+* The client script: `marionnet-ctl`, also reachable as `mrnctl` (in the sources: `bin/scripts/marionnet-ctl.sh`).
 
 ---
 

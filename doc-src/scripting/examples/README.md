@@ -10,10 +10,10 @@ marionnet --control-socket /tmp/marionnet.sock &
 export MARIONNET_CONTROL_SOCKET=/tmp/marionnet.sock
 ```
 
-`mrnctl` is taken from `$PATH`, or from `useful-scripts/` of a source tree via `$MRNCTL`:
+`mrnctl` is taken from `$PATH`, or from `bin/scripts/` of a source tree via `$MRNCTL`:
 
 ```bash
-MRNCTL=../../../useful-scripts/mrnctl ./01-build-a-lab.sh
+MRNCTL=../../../bin/scripts/mrnctl ./01-build-a-lab.sh
 ```
 
 | File | What it shows |
@@ -37,4 +37,4 @@ and stops rather than collecting nothing.
 repository, which is otherwise the rule for new scripts here. An example is meant to be copied
 out of the source tree and edited; a dependency on the tree's layout would be the first thing
 to break, and would hide behind helpers what the reader came to see. Same reasoning, and same
-precedent, as `useful-scripts/marionnet-ctl`.
+precedent, as `bin/scripts/marionnet-ctl.sh`.

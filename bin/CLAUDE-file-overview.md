@@ -56,7 +56,7 @@
 - `sketch.ml/.mli` — état du dessin du réseau (image dot, tailles, `dotoptions`, refresh par thunk global).
 
 ## Pilotage par script (chantier `marionnet-pilotage-par-script`)
-- `control_server.ml/.mli` — serveur de contrôle in-process sur socket unix (`--control-socket`) : requête = ligne texte, réponse = ligne JSON. **1 seul `val` exporté** ; le vocabulaire est publié par la commande `help`, pas par l'OCaml. Client : `useful-scripts/marionnet-ctl`.
+- `control_server.ml/.mli` — serveur de contrôle in-process sur socket unix (`--control-socket`) : requête = ligne texte, réponse = ligne JSON. **1 seul `val` exporté** ; le vocabulaire est publié par la commande `help`, pas par l'OCaml. Client : `bin/scripts/marionnet-ctl.sh` (noms d'usage `marionnet-ctl`, `mrnctl`, `mrn-control`).
 - `script_mode.ml/.mli` — les fenêtres que Marionnet ouvre de lui-même sont **capturées puis fermées** ; `in_command` marque le thread qui sert une commande, ce qui évite d'auto-répondre aux questions posées à l'humain.
 
 ## Privilèges (taps)

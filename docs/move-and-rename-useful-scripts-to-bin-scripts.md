@@ -172,3 +172,50 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   donc des chemins durs `useful-scripts/…` que l'inventaire des épisodes précédents, mené sur le
   versionné, n'avait pas vus ; l'un d'eux (`useful-scripts/mrn-verify`) était cassé **depuis
   l'épisode 2**. Le relevé des chemins doit couvrir l'arbre de travail, pas seulement l'index.
+
+- **2026-08-23 — épisode 4 : `marionnet-ctl`.** `git mv` vers `bin/scripts/marionnet-ctl.sh`, plus
+  les **trois** liens `marionnet-ctl`, `mrnctl`, `mrn-control` (mode `120000`).
+  `useful-scripts/mrnctl` était un lien relatif vers `marionnet-ctl` : `git rm` puis refait à
+  destination, comme `mrn2sh` à l'épisode 3. `mrn-control` est un nom neuf (table D2) et n'a coûté
+  **aucune ligne de code** — ce client ne dispatche pas sur `$0`, il ne s'en sert que pour son
+  `Usage:` — mais, comme `mrnck`, il n'est encore annoncé nulle part : c'est la complétion de
+  l'épisode 5 qui déclarera les noms.
+
+  **`useful-scripts/dune` a disparu, avec un épisode d'avance sur le § 4.** Sa stanza `install`
+  n'installait plus que ce client : l'épisode la vidait, et une stanza vide est une déclaration qui
+  ment. Ce que son en-tête portait encore de vivant — *pourquoi* la complétion bash n'est installée
+  nulle part — est passé dans le commentaire de la liste blanche du `.gitignore`, à côté de la
+  seule entrée qui reste ; le fond de la question appartient de toute façon à
+  `modernisation-installation-marionnet` (§ 2.4 ter). Il ne reste donc **plus aucune déclaration de
+  build** dans `useful-scripts/`, et rien n'y est installé — ce qui est cohérent avec la règle
+  fondatrice : ce répertoire gère le **projet**, il n'accompagne pas le **binaire**.
+
+  **L'inventaire a de nouveau corrigé le plan** : le § 4 annonçait « les 7 exemples qui construisent
+  `useful-scripts/mrnctl` en dur ». Il y en a **six** (`01`–`05`, `07`) ; le septième (`06`) ne
+  nomme pas le chemin du client mais dit « the ones in `useful-scripts/` » — vrai jusqu'à
+  l'épisode 2, faux depuis. Corrigés avec eux : les trois renvois de
+  `doc-src/scripting/examples/README.md` (dont le `MRNCTL=../../../useful-scripts/mrnctl` de son
+  mode d'emploi), la ligne de `doc-src/scripting/README.md` — qui, documentation **livrée**, nomme
+  désormais la **commande** et ne donne le chemin des sources qu'entre parenthèses —, le
+  commentaire `socat` du `Makefile` (nom nu, précédent de l'épisode 2) et
+  `bin/CLAUDE-file-overview.md`.
+
+  **Deux renvois d'épisodes précédents rattrapés** : `bin/marionnet.ml` justifiait encore
+  l'installation de `marionnet-cleanup` par « `useful-scripts/dune` puts it among the scripts »
+  (faux depuis l'épisode 1, et le fichier disparaît ici) ; et `CLAUDE.md` annonçait « 7 versionnés »
+  dans `useful-scripts/` alors qu'il en restait 6 — le chiffre a été retiré plutôt que corrigé,
+  puisqu'il vieillit à chaque épisode.
+
+  **Bancs locaux** : la leçon de l'épisode 3 a été appliquée d'emblée — les six chemins durs de
+  `_claude-local/bench/` (`bench-lib.sh`, `check-bench.sh`, `doc-bench.sh`, `mrn2sh-bench.sh`,
+  `completion-bench.sh` ×2) ont été suivis, **et** les deux `useful-scripts/mrn-verify` de
+  `verify-bench.sh` et `exec-bench.sh`, cassés depuis l'épisode 2 et oubliés par l'épisode 3.
+
+  **Preuve** : `dune build` rc 0 ; `dune build @install` rc 0 avec les **quatre** noms dans
+  `share/marionnet/scripts/` ; `--help` identique par les quatre noms (29 lignes, `diff` vide après
+  normalisation du `PROGNAME`) ; et **trois bancs rejoués contre un vrai serveur** —
+  `ctl-bench.sh` **36 assertions / 0 échec**, `doc-bench.sh` (qui joue les exemples livrés)
+  **66 / 0**, `completion-bench.sh` **60 assertions, 3 échecs**. Ces trois échecs sont **antérieurs
+  et étrangers** à cet épisode : le banc attend **7** natures de composants là où le serveur en
+  publie **8** depuis la 9ᵉ nature `nat_bridge` (chantier `modernisation-world-bridge`, ép. 7a.3.b,
+  2026-08-18). Le banc étant celui de l'épisode 5, sa remise à jour se fera là.
