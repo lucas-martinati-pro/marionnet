@@ -645,3 +645,26 @@ clôture des enfants.
   de la source, `.relay` recopié, `_variants/` vide, tarball aux 4 entrées bien préfixées
   `filesystems/` ; deuxième passe → tout sauté, image **inchangée à l'octet et à la date** ;
   `--force` → tout refait. `shellcheck -S warning` : propre.
+- **2026-08-23 — épisode 3 (suite) : ce que le run réel a appris, et que le banc ne pouvait pas
+  dire.** Le premier passage sur le vrai snapshot trixie (5,4 Gio) s'est **arrêté sur son propre
+  garde-fou** (`bash -n` du `.conf` produit) plutôt que de publier un fichier cassé. Deux défauts
+  derrière, et un seul était le mien :
+  1. **`user_config_set` ne sait pas remplacer une valeur de 30 ko** : il laisse l'ancienne
+     affectation en place et en ajoute une seconde, mal formée (anciennes et nouvelles entrées
+     entrelacées, quote fermante perdue). Il reste juste pour les scalaires courts — et pupisto ne
+     rencontre jamais que son chemin d'**ajout** (il remplit un gabarit où la clé est absente),
+     jamais la mise à jour d'une grosse valeur existante. `BINARY_LIST` a donc son propre écrivain
+     dans le script.
+  2. **Découvert en corrigeant** : la `BINARY_LIST` du `.conf` de `machine-debian-trixie-47362`
+     s'étend sur **deux lignes** et s'ouvre sur un `set -hxBE` parasite (un `$-` capturé par erreur
+     du côté de pupisto quand l'image a été fabriquée), entrées **dupliquées** de surcroît. Une
+     substitution de la seule première ligne laissait donc une queue orpheline et une quote
+     déséquilibrée : l'écrivain remplace **toute l'affectation quotée, quel que soit son nombre de
+     lignes**. L'image republiée en sort assainie (liste `sort -u`, une ligne, 2 060 binaires),
+     mais **le défaut reste dans l'image installée** : à corriger côté `uml/pupisto.debian` à
+     l'occasion, sinon chaque nouvelle image le reconduira.
+  Résultat du run : `machine-debian-trixie-39212` (5,4 Gio), `.conf` dont `SUM`/`MD5SUM`/`MTIME`
+  /`DATE` **égalent** les empreintes du fichier et dont la structure de clés est identique à la
+  source, `_variants/` vide, `filesystems_machine-debian-trixie-39212.tar.gz` (1,5 Gio) aux entrées
+  préfixées `filesystems/`. Le montage `loop,ro` n'a **pas** bougé le `mtime` de l'image, comme
+  voulu. Pas de `.relay` : cette image n'en a pas.

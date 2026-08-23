@@ -232,6 +232,7 @@ function published_image_of_this_cow {
 }
 
 IMAGE_NAME=""
+SUM=""
 if ((! FORCE)); then
   IMAGE_NAME=$(published_image_of_this_cow "$COW" "$COW_MTIME" "$COW_SIZE") || IMAGE_NAME=""
   test -n "$IMAGE_NAME" && info "already merged, skipped: $OUTDIR/$IMAGE_NAME (use --force to redo)" || true
@@ -289,6 +290,12 @@ BINARY_LIST=""
 if ((UPDATE_BINARY_LIST)); then
   info "rebuilding BINARY_LIST from the image (read-only loop mount, sudo required)..."
   BINARY_LIST=$(binary_list_of_image "$IMAGE") || BINARY_LIST=""
+  # A name carrying a single quote would break the quoting of the assignment we are about to
+  # write; such a name has no business in a guest's PATH anyway, so drop it and say so.
+  if [[ "$BINARY_LIST" == *"'"* ]]; then
+    warn "some binary names carry a single quote and are left out of BINARY_LIST"
+    BINARY_LIST=$(tr -d "'" <<<"$BINARY_LIST")
+  fi
   if test -n "$BINARY_LIST"; then
     info "BINARY_LIST: $(wc -w <<<"$BINARY_LIST") binaries found"
   else
@@ -316,13 +323,42 @@ function conf_set {
   return $rc
 }
 
+# ... but NOT for BINARY_LIST. Two reasons, both measured on the trixie image (2 060 binaries,
+# ~30 kB). (a) user_config_set leaves the old assignment in place and appends a mangled second
+# one (old and new lists interleaved, closing quote lost): it is fine for the short scalars
+# above, and pupisto only ever meets its APPEND path (it fills a template where the key is
+# absent), never the update of a huge existing value. (b) the assignment we replace may SPAN
+# SEVERAL LINES -- the .conf of machine-debian-trixie-47362 opens its list with a stray
+# `set -hxBE' then wraps -- so replacing only the first line would leave an orphan tail and an
+# unbalanced quote. Hence: substitute the whole quoted assignment, however many lines it takes.
+function conf_set_binary_list {
+  local value="$1" conf="$2" tmp
+  tmp=$(mktemp)
+  BINARY_LIST_VALUE="$value" awk '
+    function emit() { print "BINARY_LIST=\047" ENVIRON["BINARY_LIST_VALUE"] "\047" }
+    skipping { quotes += gsub(/\047/, "\047"); if (quotes % 2 == 0) skipping = 0; next }
+    /^[ \t]*BINARY_LIST[ \t]*=/ && !done {
+      emit(); done = 1
+      quotes = gsub(/\047/, "\047")
+      if (quotes % 2 == 1) skipping = 1
+      next
+    }
+    { print }
+    END { if (!done) emit() }
+  ' "$conf" > "$tmp"
+  cat "$tmp" > "$conf"
+  rm -f "$tmp"
+}
+
 CONF="$IMAGE.conf"
 if test -f "$CONF" && ((! FORCE)); then
   info "already there, skipped: $CONF (use --force to redo)"
 else
   info "computing MD5SUM..."
   MD5SUM=$(md5sum -- "$IMAGE" | awk '{print $1}')
-  SUM=$(sum -- "$IMAGE" | awk '{print $1}')
+  # SUM is already known when we merged in this very run; recompute it otherwise, rather than
+  # trusting the name of a file we did not produce.
+  test -n "${SUM:-}" || SUM=$(sum -- "$IMAGE" | awk '{print $1}')
   MTIME=$(stat -L -c "%Y" -- "$IMAGE")
   DATE=$(date -d "@$MTIME" +"%Y-%m-%d")
   cp -f -- "$SRC_CONF" "$CONF"
@@ -330,7 +366,7 @@ else
   conf_set "SUM"    "$SUM"      "$CONF"
   conf_set "DATE"   "$DATE"     "$CONF"
   conf_set "MTIME"  "$MTIME"    "$CONF"
-  test -n "$BINARY_LIST" && conf_set "BINARY_LIST" "'$BINARY_LIST'" "$CONF" || true
+  test -n "$BINARY_LIST" && conf_set_binary_list "$BINARY_LIST" "$CONF" || true
   bash -n "$CONF" || die "the produced configuration file is not valid Bash: $CONF"
   info "configuration produced: $CONF (SUM=$SUM MD5SUM=$MD5SUM MTIME=$MTIME DATE=$DATE)"
 fi
