@@ -405,3 +405,50 @@ Conséquence pratique tant que ce n'est pas corrigé : **tout script qui attend 
 invité trixie attendra pour rien**, y compris les bancs de TP (`marionnet-lab-design`) et les
 scripts d'exemple de `doc-src/scripting/`. Le contournement employé à l'épisode 2 est d'attendre
 `--state=on` puis d'enchaîner directement sur les `exec`, qui fonctionnent.
+
+## Constat entrant — `BINARY_LIST` polluée et dupliquée, par une redirection manquante (2026-08-23)
+
+Relevé **hors de ce chantier**, par l'épisode 3 de `modernisation-installation-marionnet`, en
+publiant l'image trixie : le `.conf` de `machine-debian-trixie-47362` **installé** porte une
+`BINARY_LIST` qui (a) commence par un `set -hxBE` qui n'est pas un binaire, (b) tient sur **deux
+lignes**, et (c) **répète chaque entrée** (`7z 7z 7za 7za Crack Crack …`).
+
+Deux causes distinctes, toutes deux dans la chaîne de fabrication des images :
+
+**1. Une redirection manquante** — `uml/pupisto.common/toolkit_chroot.sh`, dans `sudo_fcall` :
+
+```bash
+ # Put all current set-options (-e, -x, ..):
+ echo "set -$-";                    # <-- il manque  >> $COOL_SUDO
+```
+
+Toutes les autres lignes de la fabrication du script temporaire sont redirigées vers
+`$COOL_SUDO` ; **celle-ci ne l'est pas**. Le défaut est donc double, et le second est le plus
+grave parce qu'il est muet :
+- la ligne part sur la **sortie standard** de `sudo_fcall`, donc dans toute capture — c'est ainsi
+  que `BINARY_LIST=$(sudo_chroot_binary_list $DEBIANROOT)` (`pupisto.debian.sh:1514`) reçoit
+  `set -hxBE` comme premier « binaire » ;
+- les options du shell appelant (`-e`, `-x`…) **n'atteignent jamais** le script exécuté en root,
+  qui tourne donc sans elles alors que le code croit les lui transmettre. Aucun message ne le
+  signale.
+
+Vaut pour **tout** appelant de `sudo_fcall` / `sudo_chroot_fcall` dont on capture la sortie, pas
+seulement `binary_list`.
+
+**2. Le doublon vient du `PATH`, pas de la capture** — `binary_list`
+(`uml/pupisto.common/toolkit_chroot.sh:328`) balaie les répertoires du `PATH` et termine par
+`sort` **sans `-u`**. Sur une Debian à `/usr` fusionné, le `PATH` contient à la fois `/bin` et
+`/usr/bin` (le premier étant un lien vers le second) : chaque binaire est donc trouvé deux fois.
+C'est neuf par rapport aux images d'avant la fusion — wheezy (2014) n'a pas le problème, sa
+`BINARY_LIST` est propre et sur une seule ligne.
+
+Pourquoi cela appartient à ce chantier : `uml/pupisto.*` est la chaîne qui **fabrique** les
+images invitées, et l'image trixie en est le produit courant. Tant que ce n'est pas corrigé,
+**chaque nouvelle image reconduira le défaut**.
+
+Portée réelle, à ne pas surestimer : Marionnet ne lit `BINARY_LIST` que pour proposer la
+complétion des binaires disponibles dans un invité (`bin/disk.ml:458`) ; une entrée fantôme et
+des doublons dégradent cette liste, ils ne cassent rien. Le script de publication
+(`Makefile.d/filesystem.prepare-snapshot-to-publish.sh`) **reconstruit** la liste par un montage
+`loop,ro` de l'image produite, avec `sort -u` : les images **republiées** sortent donc assainies
+(2 060 binaires, une ligne). Cela masque le défaut sans le corriger — la source, elle, le garde.

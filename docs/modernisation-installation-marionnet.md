@@ -723,3 +723,21 @@ clôture des enfants.
   moins. **Conséquence pour le script v2** : extraire par `xz -dc -T0 | tar xf -`, jamais par
   `tar xJf -`, sous peine de laisser un facteur 4 sur la table. Le script imprime désormais la
   commande d'extraction qui correspond au format qu'il vient de produire.
+- **2026-08-23 — épisode 3 (post-scriptum 2) : les images ROUTER, qui sont des liens.** Appelé
+  avec `router-guignol-18474`, le script produisait `filesystems_machine-guignol-18474.tar.xz` —
+  il republiait la machine sous le nom de la machine, et le router n'était jamais empaqueté. Deux
+  défauts, tous deux dus au fait qu'une image *router* **est un lien symbolique** vers l'image
+  *machine* dont elle partage les octets, avec son **propre** `.conf` et son **propre**
+  `_variants/` :
+  1. `readlink -f` **résolvait le dernier composant** du chemin donné, donc l'identité demandée
+     était perdue avant même de commencer. L'argument est désormais rendu absolu **sans**
+     déréférencer sa dernière composante.
+  2. Une fois le lien archivé, `tar --transform` réécrivait **aussi la cible du lien** (c'est son
+     comportement par défaut) : l'archive portait
+     `router-guignol-18474 -> filesystems/machine-guignol-18474`, lien **cassé** dès l'extraction.
+     Le drapeau **`S`** (`--transform 's,^,filesystems/,S'`) restreint la substitution aux noms
+     des membres.
+  Le script annonce désormais qu'il empaquette un lien et que l'image pointée doit être installée
+  à côté. Preuve : les deux archives guignol extraites côte à côte reconstituent exactement la
+  disposition publiée, `.conf` du router **différent** de celui de la machine, et le lien
+  **résout**. Les archives wheezy et trixie ne contiennent aucun lien : rien à reconstruire.

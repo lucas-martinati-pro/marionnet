@@ -56,7 +56,9 @@
 #  - an ALREADY PUBLISHED IMAGE (a plain image with its .conf next to it): nothing is merged,
 #    only the tarball is built. A bare name is looked up in the output directory, so
 #    `... machine-debian-wheezy-08367' works from anywhere. This is the case of an image
-#    published long ago, or received from elsewhere, which just needs to be packaged.
+#    published long ago, or received from elsewhere, which just needs to be packaged. A ROUTER
+#    image is such a case, and a symbolic link to its machine image: it is packaged AS a link,
+#    with its own .conf and its own _variants/, so its machine must be installed beside it.
 # The two are told apart by the COW magic, not by a flag, and the mode is announced on stdout.
 # ---
 
@@ -168,7 +170,11 @@ if test -z "$ARGUMENT"; then
 fi
 test -f "$ARGUMENT" || { test -f "$OUTDIR/$ARGUMENT" && ARGUMENT="$OUTDIR/$ARGUMENT"; } \
   || die "no such file: $ARGUMENT"
-ARGUMENT=$(readlink -f -- "$ARGUMENT")
+# Absolute, but WITHOUT resolving the last component: a router image IS a symbolic link to the
+# machine image it shares its bytes with (router-guignol-18474 -> machine-guignol-18474), and it
+# carries its OWN .conf and its own _variants/. Resolving it would silently publish the machine
+# again under the machine's name -- measured, and it is exactly what `readlink -f' did here.
+ARGUMENT="$(cd -- "$(dirname -- "$ARGUMENT")" && pwd)/$(basename -- "$ARGUMENT")"
 
 # Snapshot or already published image? The COW magic decides.
 TARBALL_ONLY=0
@@ -435,7 +441,10 @@ fi
 # Name and layout of the existing installer: download_our_large_filesystems() of
 # useful-scripts/marionnet_from_scratch extracts with `wget -O - "$URL" | tar 1>&2 xvzf -'
 # from $PREFIX/share/marionnet/, so the entries must be prefixed with `filesystems/'.
-# --transform gives that prefix without copying gibibytes around.
+# --transform gives that prefix without copying gibibytes around. Its `S' flag matters: by
+# default tar rewrites SYMBOLIC LINK TARGETS too, so a router image would come out pointing at
+# `filesystems/machine-guignol-18474' instead of `machine-guignol-18474', i.e. dangling once
+# extracted (measured). `S' restricts the substitution to the member names.
 #
 # Ownership is FORCED to root:root. What ends up in $PREFIX/share/marionnet/ is system data,
 # extracted by a privileged installer on a machine where the packager's account means nothing:
@@ -484,6 +493,9 @@ fi
 # image published long ago may not even have its _variants/ directory yet.
 test -f "$IMAGE"  || die "no such image: $IMAGE"
 test -f "$CONF"   || die "the image has no configuration file: $CONF"
+# An image which is a symbolic link (a router image) is archived AS a link, not as a copy of
+# the machine it points to: that is the whole point of publishing the two separately.
+test -L "$IMAGE" && info "$IMAGE_NAME is a link to $(readlink -- "$IMAGE"): the archive carries the link, so that image must be installed too" || true
 MEMBERS=("$IMAGE_NAME" "$IMAGE_NAME.conf")
 test -d "${IMAGE}_variants" && MEMBERS+=("${IMAGE_NAME}_variants") || true
 test -f "$IMAGE.relay"      && MEMBERS+=("$IMAGE_NAME.relay")      || true
@@ -499,7 +511,7 @@ fi
 
 info "building $TARBALL ..."
 trap 'rm -f -- "$TARBALL.partial"' EXIT
-tar -C "$OUTDIR" --transform 's,^,filesystems/,' "${TAR_OWNERSHIP[@]}" "${TAR_COMPRESS[@]}" \
+tar -C "$OUTDIR" --transform 's,^,filesystems/,S' "${TAR_OWNERSHIP[@]}" "${TAR_COMPRESS[@]}" \
     -cf "$TARBALL.partial" -- "${MEMBERS[@]}"
 mv -f -- "$TARBALL.partial" "$TARBALL"
 trap - EXIT
