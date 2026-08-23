@@ -273,6 +273,14 @@
      (glob_files "scripts/marionnet-ctl")
      (glob_files "scripts/mrnctl")
      (glob_files "scripts/mrn-control")
+     ;; --- Not listed, and deliberately so: scripts/marionnet-completion.bash. The Bash
+     ;; --- completion of the four clients above (work-stream `pilotage-par-script', episode 10)
+     ;; --- followed them out of useful-scripts/ -- it reads the grammar the SERVER publishes,
+     ;; --- and it looks for the client BESIDE ITSELF, so it belongs where they now live. But it
+     ;; --- is not a command: it is sourced, and its place on an installed system is a completion
+     ;; --- directory, not $(PREFIX)/bin/. Naming it here would install it where nothing sources
+     ;; --- it. Choosing that directory and installing it there is a remaining task of the
+     ;; --- work-stream `modernisation-installation-marionnet' (§ 2.4 ter).
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

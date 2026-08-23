@@ -84,8 +84,4 @@ lib/modules.lst
 useful-scripts/*
 !useful-scripts/make_marionnet_bytecode_revno
 !useful-scripts/marionnet_from_scratch
-# Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7). Elle n'est
-# installée nulle part : ce n'est pas une commande, elle relève d'un répertoire de complétion —
-# tâche restante du chantier `modernisation-installation-marionnet' (§ 2.4 ter).
-!useful-scripts/marionnet-completion.bash
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf

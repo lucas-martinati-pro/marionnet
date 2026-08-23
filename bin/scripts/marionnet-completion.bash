@@ -14,7 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Bash completion for marionnet-ctl (mrnctl), mrn-check and mrn2sh.
+# Bash completion for the three clients of the control channel, under every name they answer
+# to: marionnet-ctl (mrnctl, mrn-control), marionnet-check (mrn-check, mrnck, mrn2sh) and
+# marionnet-verify (mrn-verify) -- the real .sh files and their symlinks, all in this very
+# directory.
 #
 #   . /path/to/marionnet-completion.bash      # or drop it in /etc/bash_completion.d/
 #
@@ -38,6 +41,9 @@
 #                     The vocabulary, fetched once
 # --------------------------------------------------------------------------
 
+# Where the client is: the variable wins, then THIS directory -- which is bin/scripts/, where
+# marionnet-ctl and its symlinks live -- then the PATH. The middle branch is what makes the
+# completion work straight from a source tree, with nothing installed.
 _mrn_ctl_program() {
   local here
   if [[ -n ${MARIONNET_CTL:-} ]]; then printf '%s' "$MARIONNET_CTL"; return 0; fi
@@ -396,6 +402,9 @@ _mrn_verify_completion() {
   return 0
 }
 
-complete -F _marionnet_ctl_completion marionnet-ctl mrnctl
-complete -F _mrn_check_completion mrn-check mrn2sh
-complete -F _mrn_verify_completion mrn-verify
+# Every name the three tools answer to, real file and symlinks alike (work-stream
+# `move-and-rename-useful-scripts-to-bin-scripts'): a name nothing declares here is a name which
+# completes nothing, which is exactly how `mrnck' and `mrn-control' went unannounced until now.
+complete -F _marionnet_ctl_completion marionnet-ctl.sh marionnet-ctl mrnctl mrn-control
+complete -F _mrn_check_completion marionnet-check.sh marionnet-check mrn-check mrnck mrn2sh
+complete -F _mrn_verify_completion marionnet-verify.sh marionnet-verify mrn-verify

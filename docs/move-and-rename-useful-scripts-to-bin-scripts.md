@@ -219,3 +219,47 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   et étrangers** à cet épisode : le banc attend **7** natures de composants là où le serveur en
   publie **8** depuis la 9ᵉ nature `nat_bridge` (chantier `modernisation-world-bridge`, ép. 7a.3.b,
   2026-08-18). Le banc étant celui de l'épisode 5, sa remise à jour se fera là.
+
+- **2026-08-23 — épisode 5 : `marionnet-completion.bash`.** `git mv` vers
+  `bin/scripts/marionnet-completion.bash`, **sans aucun lien** : ce n'est pas une commande, on ne
+  l'appelle pas, on la source (D6). Déclarations suivies : la liste blanche du `.gitignore` perd sa
+  dernière entrée de ce chantier (D10 — il n'y reste que `make_marionnet_bytecode_revno` et
+  `marionnet_from_scratch`), et **`bin/dune` ne la nomme pas** — c'est le mécanisme même qui la
+  garde hors de `$(PREFIX)/bin/`. Mais une absence ne se lit pas : le motif qui vivait dans le
+  commentaire du `.gitignore` a **déménagé dans `bin/dune`**, à la place exacte où on chercherait
+  la ligne manquante, avec sa raison (sa place est un répertoire de complétion) et son renvoi
+  (`modernisation-installation-marionnet`, § 2.4 ter).
+
+  **Le déplacement répare un défaut que l'épisode 4 avait créé.** `_mrn_ctl_program` cherche le
+  client dans trois endroits : `$MARIONNET_CTL`, puis **`$here/marionnet-ctl`** où `$here` est le
+  répertoire du fichier de complétion, puis le `PATH`. La deuxième branche — celle qui fait marcher
+  la complétion depuis un arbre de sources, sans rien installer — était **morte depuis que le lien
+  a quitté `useful-scripts/`** ; elle redevient vraie ici, sans une ligne de code, parce que le
+  fichier a rejoint les clients. Mesuré : `_mrn_ctl_program` répond `bin/scripts/marionnet-ctl`.
+
+  **Les noms déclarés ont été remis à niveau** — la dette que l'épisode 3 avait explicitement
+  renvoyée ici. Les trois lignes `complete -F` ne connaissaient que 5 noms sur 12 : `mrnck` et
+  `mrn-control`, créés aux épisodes 3 et 4, **n'étaient annoncés nulle part**, et les noms
+  `marionnet-*` non plus. Elles nomment désormais **les 12** — les trois fichiers `.sh` réels
+  compris, qui sont invocables. Ce n'est pas un changement de comportement (hors périmètre) : les
+  fonctions de complétion, elles, n'ont pas bougé d'une ligne. `marionnet-cleanup`/`mrn-cleanup`
+  restent hors sujet : ils n'ont pas de fonction de complétion.
+
+  **Inventaire** : aucune correction dans la documentation livrée. `doc-src/scripting/README.md` et
+  l'en-tête du fichier disent `. /path/to/marionnet-completion.bash` — générique, donc toujours
+  vrai (l'en-tête a néanmoins été mis au niveau des noms desservis). Les archives de chantiers clos
+  (`docs/pilotage-par-script.md` § 5.7) ne se corrigent pas ; le doc de
+  `modernisation-installation-marionnet` cite le chemin, mais c'est la matière de l'**épisode 6**.
+
+  **Preuve** : `dune build` rc 0 ; `dune install --prefix` rc 0 avec les **14** noms des épisodes
+  1-4 dans `share/marionnet/scripts/` et **`marionnet-completion.bash` absente**, comme voulu ;
+  `complete -p` sur les 12 noms après avoir sourcé le fichier ; le repli `$here` résolu ; et
+  **deux bancs rejoués contre un vrai serveur** — `completion-bench.sh` **60 assertions / 0 échec**
+  (les 3 échecs de l'épisode 4 éteints : le banc attendait 7 natures là où le serveur en publie 8
+  depuis `nat_bridge`) et `verify-bench.sh` **84 / 0**.
+
+  **Un banc a failli mentir.** `verify-bench.sh` vérifiait le branchement de la complétion par un
+  `grep` **littéral** — `complete -F _mrn_verify_completion mrn-verify` — que l'ajout d'un nom
+  **avant** `mrn-verify` sur la ligne aurait fait échouer, alors que le branchement, lui, est
+  intact. Motif rendu robuste (`grep -qE … (^| )mrn-verify( |$)`). Leçon générale : un banc qui
+  cherche une **ligne entière** mesure sa mise en page autant que son sens.
