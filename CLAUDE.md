@@ -49,11 +49,12 @@ l'**install** et le **RPM**.
 |---|---|---|
 | `bin/` | cœur applicatif (40 .ml) : modèle réseau à 2 niveaux + composants + Tap_provider | `bin/CLAUDE.md` |
 | `bin/gui/` | complétion GTK (foncteurs `Make(State)`), glade | `bin/gui/CLAUDE.md` |
+| `bin/scripts/` | scripts **complémentaires du binaire** : portes privilégiées, scripts déposés dans les invités, clients du canal (`.sh` réels + liens qui portent les noms d'usage), complétion bash | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
 | `lib/` | **ocamlbricks vendored** (bibliothèque support OCaml, 12 sous-dossiers) | `lib/CLAUDE.md` |
 | `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
-| `useful-scripts/` | scripts de gestion/installation du projet (liste blanche du `.gitignore`, le reste ignoré) | — |
+| `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré) | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
 | `etc/`, `Makefile.d/`, `RPMS/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging | `docs/ARCHITECTURE.md` § Build |
 
 ## Fichiers générés — ne jamais éditer
@@ -238,16 +239,6 @@ Reprise : appliquer le skill `chantier-long`.
   `--enable-natbridge`), `selftest --assume-ipv6-uplink`, **sortie NAT66** (seule preuve
   *bloquée par l'environnement*), les deux ports du LAN bridge sur une carte physique, les
   textes à l'écran, et les rejeux différés des ép. 6 et 8. Le chantier **ne se clôt pas** avant.
-- **move-and-rename-useful-scripts-to-bin-scripts** (règle fondatrice jamais écrite :
-  `useful-scripts/` = gestion/installation du projet et guides développeurs, `bin/scripts/` =
-  scripts **complémentaires du binaire** ; les 5 écrits du mauvais côté migrent, chacun en fichier
-  `.sh` réel entouré de **liens symboliques** qui conservent **tous** les noms actuels — d'où une
-  migration **non cassante par construction** : l'i18n ×12 ne bouge pas alors que
-  `marionnet-cleanup` est dans les `msgid`, et le dispatch par `${0##*/}` de `mrn2sh` survit) :
-  `docs/move-and-rename-useful-scripts-to-bin-scripts.md` (§ 3 invariants, § 4 plan) + amorce
-  figée `…decisions.md` ; mémoire `move-and-rename-useful-scripts-to-bin-scripts` ;
-  `git log --grep="move-and-rename-useful-scripts-to-bin-scripts"`. Amorce close 2026-08-23,
-  6 épisodes, **3 joués** (`marionnet-cleanup`, `mrn-verify`, `mrn-check`).
 - **bug-critique-crash-host** (crash rare non reproductible de l'hôte — reboot machine
   physique / arrêt net du conteneur Docker — corrélé à la terminaison des composants ;
   causes candidates C1-C5 classées, checklist post-mortem à exécuter au prochain crash) :
@@ -288,9 +279,14 @@ Reprise : appliquer le skill `chantier-long`.
   `docs/pilotage-par-script.md` (**canal de contrôle scriptable** — serveur in-process sur socket
   unix, requête = ligne texte, réponse = ligne **JSON** ; 14 épisodes, clos 2026-08-15 ; § 12 =
   résultat + **index des pièges durables**, § 9 = table des épisodes ; à lire avant de toucher
-  `bin/control_server.ml`, `bin/script_mode.ml` ou un client de `useful-scripts/`. **Invariant à
+  `bin/control_server.ml`, `bin/script_mode.ml` ou un client du canal (`bin/scripts/`). **Invariant à
   ne jamais enfreindre** : la grammaire a **une seule** source de vérité — le serveur, publiée par
   `help` ; aucun client ne la recopie. Notes utilisateur : `doc-src/scripting/`),
+  `docs/move-and-rename-useful-scripts-to-bin-scripts.md` (**où va un script, et pourquoi les
+  liens** — les 5 compléments du binaire ramenés de `useful-scripts/` vers `bin/scripts/`,
+  6 épisodes, clos 2026-08-23 ; § 1 = la règle fondatrice, § 2 = la forme « `.sh` réel + liens »
+  qui rend la migration non cassante, § 3 = les invariants ; à lire avant de créer, déplacer ou
+  renommer un script du dépôt — et avant de croire qu'un nom d'usage a disparu),
   `docs/migration-ocaml5.md`
   (OCaml 5.4.1, clos 2026-07-27), `docs/finitions-port-dune.md` (clos 2026-07-18),
   `docs/daemon-elimination-study.md` (clos 2026-07-17).

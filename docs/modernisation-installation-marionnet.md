@@ -180,8 +180,8 @@ fraîche incapable de démarrer un bridge ou d'utiliser un client du canal. Corr
 
 | Paquet | Site d'appel mesuré | Chantier d'origine |
 |---|---|---|
-| `jq` | `bashbricks/bashbricks.sh` (module `Json_*`, **fichier installé**, sourcé par `bin/scripts/marionnet-{nat,lan}bridge.sh`) ; `useful-scripts/mrn-check` et `mrn-verify`, qui **refusent de démarrer** sans lui (`command -v jq \|\| die`) | `modernisation-world-bridge`, `pilotage-par-script` |
-| `socat` | `useful-scripts/marionnet-ctl` (`socat - UNIX-CONNECT:<socket>`, garde `command -v socat \|\| die`) | `pilotage-par-script` |
+| `jq` | `bashbricks/bashbricks.sh` (module `Json_*`, **fichier installé**, sourcé par `bin/scripts/marionnet-{nat,lan}bridge.sh`) ; `bin/scripts/marionnet-check.sh` et `marionnet-verify.sh` (alias `mrn-check`, `mrn-verify`), qui **refusent de démarrer** sans lui (`command -v jq \|\| die`) | `modernisation-world-bridge`, `pilotage-par-script` |
+| `socat` | `bin/scripts/marionnet-ctl.sh` (alias `marionnet-ctl`, `mrnctl`) (`socat - UNIX-CONNECT:<socket>`, garde `command -v socat \|\| die`) | `pilotage-par-script` |
 | `dnsmasq-base` | `bin/scripts/marionnet-dnsmasq.sh` (service DHCP/DNS lié au seul bridge d'un `nat_bridge`, et RA IPv6 via `--enable-ra`) | `modernisation-world-bridge` (ép. 10c, 11) |
 
 ⚠️ **`dnsmasq-base`, jamais `dnsmasq`** : le second ajoute un service système qui dispute le
@@ -236,8 +236,10 @@ côté `.deb`, il relève au mieux d'un `Recommends`, à trancher quand le canal
 **Constat mesuré** (`grep -rn 'useful-scripts' Makefile Makefile.d/*.mk` : aucun résultat) :
 **aucun** client du canal de contrôle n'est installé, par aucune cible. `install-final-as-root`
 fait `dune install --prefix` puis copie `$(SHARE_DIR)/scripts/*` dans `$(PREFIX_INSTALL)/bin/` —
-ce sont les scripts **invités** (`bin/scripts/`), pas ceux de `useful-scripts/`. Aujourd'hui, les
-outils ne sont donc utilisables que **depuis un clone du dépôt**.
+ce sont les scripts déclarés par `bin/dune`, qui en 2026-08 ne comptaient que les scripts
+**déposés dans les invités**, pas les clients de `useful-scripts/`. Les outils n'étaient donc
+utilisables que **depuis un clone du dépôt**. *(Les deux encadrés ci-dessous lèvent ce constat :
+le mirroring n'a pas changé, c'est le contenu de `bin/scripts/` qui a changé.)*
 
 C'est un défaut, et pas seulement une commodité manquante, pour trois raisons vérifiables :
 
@@ -253,31 +255,43 @@ C'est un défaut, et pas seulement une commodité manquante, pour trois raisons 
 3. **Un binaire installé sans ses clients n'est pas pilotable par script**, ce qui est exactement
    ce que les chantiers `marionnet-pilotage-par-script` et `journalisation-profonde` ont construit.
 
-**À installer** (nommer chacun, l'inventaire n'est pas déductible du dossier — cf. § 2.5, où tout
-est ignoré sauf une liste) :
+**À installer** (nommer chacun : `bin/dune` nomme ses fichiers installés **un par un**, et un
+fichier non nommé n'est pas installé — c'est ainsi que la complétion reste hors de
+`$(PREFIX)/bin/`) :
 
 | Fichier | Destination | Remarque |
 |---|---|---|
-| `useful-scripts/marionnet-ctl` | `$(PREFIX)/bin/` | le client |
-| `useful-scripts/mrnctl` | `$(PREFIX)/bin/` | **lien** vers le précédent — nom court |
-| `useful-scripts/mrn-check` | `$(PREFIX)/bin/` | vérificateur d'un `.mrn` |
-| `useful-scripts/mrn2sh` | `$(PREFIX)/bin/` | **lien** vers `mrn-check` : le **nom implique `--to-bash`** |
-| `useful-scripts/mrn-verify` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
-| `useful-scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert `marionnet-ctl`, `mrnctl`, `mrn-check`, `mrn2sh`, `mrn-verify` |
+| `bin/scripts/marionnet-ctl.sh` | `$(PREFIX)/bin/` | le client |
+| `bin/scripts/marionnet-ctl`, `mrnctl`, `mrn-control` | `$(PREFIX)/bin/` | **liens** vers le précédent — dont le nom court historique |
+| `bin/scripts/marionnet-check.sh` | `$(PREFIX)/bin/` | vérificateur d'un `.mrn` |
+| `bin/scripts/marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh` | `$(PREFIX)/bin/` | **liens** vers le précédent ; `mrn2sh` : le **nom implique `--to-bash`** |
+| `bin/scripts/marionnet-verify.sh` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
+| `bin/scripts/marionnet-verify`, `mrn-verify` | `$(PREFIX)/bin/` | **liens** vers le précédent |
+| `bin/scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert les **12** noms ci-dessus (`.sh` compris) |
 
-> **RÉSOLU (partiellement) le 2026-08-21 — `useful-scripts/dune`.** Cinq des six fichiers du
-> tableau ci-dessus, **plus `useful-scripts/marionnet-cleanup`**, sont désormais installés par
-> **dune** : une stanza `install` neuve (`useful-scripts/dune`, patron `bashbricks/dune`) les pose
-> dans `share/marionnet/scripts/`, que le `Makefile` **mirroir déjà** dans `$(PREFIX)/bin/` en les
-> rendant exécutables (liens durs pour `install-final-as-root`, symboliques pour
-> `install-for-testing`) — d'où **aucune ligne de `Makefile` à ajouter**. La voie « stanza dune »
-> tranche donc l'alternative laissée ouverte plus bas.
+> **RÉSOLU (partiellement) le 2026-08-21 — par une stanza `install` de dune.** Tous les
+> exécutables du tableau ci-dessus, **plus `marionnet-cleanup`** (et ses liens), sont désormais
+> installés par **dune** : la stanza les pose dans `share/marionnet/scripts/`, que le `Makefile`
+> **mirroir déjà** dans `$(PREFIX)/bin/` en les rendant exécutables (liens durs pour
+> `install-final-as-root`, symboliques pour `install-for-testing`) — d'où **aucune ligne de
+> `Makefile` à ajouter**. La voie « stanza dune » tranche donc l'alternative laissée ouverte plus bas.
+>
+> **Mise à jour du 2026-08-23 — la stanza a changé de fichier, pas de comportement.** Le chantier
+> `move-and-rename-useful-scripts-to-bin-scripts` a ramené les cinq fichiers complémentaires du
+> binaire dans `bin/scripts/` (chacun en `.sh` réel entouré de liens qui gardent **tous** les noms
+> d'usage) : `useful-scripts/dune` s'est vidé, puis **a été supprimé** — il n'y a plus aucune
+> déclaration de build dans `useful-scripts/`, et c'est `bin/dune` qui installe, **vers la même
+> destination**. Rien à refaire ici : seuls les **chemins** de ce paragraphe et du tableau
+> changent. Deux noms neufs sont apparus au passage (`mrnck`, `mrn-control`), déclarés par la
+> complétion.
 > Ce qui a forcé la décision : Marionnet **nomme** `marionnet-cleanup` à l'écran depuis l'ép. 6 de
 > `marionnet-todo-transverse`, et **le lance lui-même** depuis les deux boutons de cet
 > avertissement (2026-08-21) — un programme qui dit à l'utilisateur de lancer une commande doit
 > lui laisser cette commande sur le `PATH`.
-> **Restent à faire ici** : la **complétion bash** (`marionnet-completion.bash` n'est pas une
-> commande et ne va pas dans `bin/` — cf. la ligne du tableau), la déclaration de **`socat`** et
+> **Restent à faire ici** : la **complétion bash** (`bin/scripts/marionnet-completion.bash` n'est
+> pas une commande et ne va pas dans `bin/` — cf. la ligne du tableau ; le motif de son absence
+> vit désormais dans un commentaire de `bin/dune`, là où on chercherait la ligne manquante), la
+> déclaration de **`socat`** et
 > **`jq`** comme dépendances **hôte** dans les paquets (`Depends`/`Requires`/image Docker), et le
 > même travail pour la **documentation d'usage** (complément 2026-08-13 ci-dessous).
 > Note sur les liens : dune installe `mrnctl` et `mrn2sh` en **copies**, ce qui préserve le
@@ -289,8 +303,8 @@ lit `$0` pour en déduire son mode (`mrn2sh` ⇒ `--to-bash` implicite) ; `mrnct
 de `marionnet-ctl`. Une installation qui les **copie sous un autre nom**, ou qui n'en pose qu'un
 seul, change le comportement. Poser des liens (symboliques ou durs), jamais renommer.
 
-Pour la complétion, un seul fichier dessert les cinq noms (il finit par autant de `complete -F`) :
-l'installer une fois et, si la distribution l'exige, créer des liens par nom de commande.
+Pour la complétion, un seul fichier dessert les **12** noms (trois `complete -F` en fin de
+fichier) : l'installer une fois et, si la distribution l'exige, créer des liens par nom de commande.
 
 **Deux dépendances runtime en découlent**, et elles corrigent le § 2.4 bis :
 
@@ -341,7 +355,7 @@ des **liens** — sinon, les deux liens se font à la main dans la cible.
 non plus, et il est désormais nommé À L'ÉCRAN.** Même mesure, même résultat. Ce n'était jusqu'ici
 qu'un outil de dépannage réservé à qui a le dépôt ; depuis cet épisode, Marionnet **affiche au
 démarrage** un dialogue qui dit combien de répertoires de run les sessions passées ont laissés et
-renvoie explicitement à `useful-scripts/marionnet-cleanup --purge-dirs` — le seul geste proposé à
+renvoie explicitement à la commande `marionnet-cleanup --purge-dirs` — le seul geste proposé à
 l'utilisateur, et le seul autorisé à retirer ces répertoires (Marionnet n'en retire aucun de
 lui-même, par décision : ils contiennent la copie de travail non enregistrée). Un utilisateur qui a
 installé Marionnet lit donc, aujourd'hui, le nom d'une commande qu'il n'a pas. Le script rejoint
@@ -355,9 +369,13 @@ la liste ci-dessus ; à la différence des clients du canal, il ne demande **ni 
 > historiques » — a été fait : elles vivent maintenant dans `useful-scripts/BACKUP/`, **hors git**
 > (le `.gitignore` du dépôt couvre `useful-scripts/*` depuis toujours ; ce que git suit ici n'a
 > jamais été le contenu du répertoire, mais la courte liste des fichiers qu'on a choisi de suivre).
-> Il ne reste **10 fichiers suivis** : `dune`, `marionnet_from_scratch` (gardé comme pièce à
+> Il restait alors **10 fichiers suivis** : `dune`, `marionnet_from_scratch` (gardé comme pièce à
 > conviction de l'autopsie § 2), `make_marionnet_bytecode_revno`, `marionnet-completion.bash` et
-> les 6 exécutables installés. Quatre fichiers **versionnés** ont été retirés à cette occasion :
+> les 6 exécutables installés. **Depuis le 2026-08-23 (fin du chantier
+> `move-and-rename-useful-scripts-to-bin-scripts`), il n'en reste que 2** :
+> `make_marionnet_bytecode_revno` et `marionnet_from_scratch` — les cinq fichiers complémentaires
+> du binaire (avec leurs liens) sont partis dans `bin/scripts/`, et `useful-scripts/dune`, devenu
+> vide, a été supprimé. Quatre fichiers **versionnés** avaient été retirés à cette occasion :
 > `prepare_bridge.sh` (conséquence : `bridge-utils` quitte les dépendances, § 2.4 bis),
 > `which_ocamlbricks`, `marionnet_from_scratch.up-to-0.94.sh` et
 > `marionnet_from_scratch_weights_of_log`.
@@ -568,3 +586,15 @@ clôture des enfants.
   ménage réalise la moitié de l'**étape 5 du plan** (§ 5), et le § 2.5 dit maintenant où chercher
   les satellites encore utiles au chantier (`…_fedora_Sami.sh` pour le RPM, `install_on_site` pour
   l'outillage release) — dans `useful-scripts/BACKUP/`, hors git, sans filet de restitution.
+- **2026-08-23 — répercussion (pas un épisode de ce chantier) : les clients ont déménagé dans
+  `bin/scripts/`.** Le chantier `move-and-rename-useful-scripts-to-bin-scripts` a appliqué la
+  règle fondatrice — `useful-scripts/` = gestion/installation du **projet**, `bin/scripts/` =
+  compléments du **binaire** — en ramenant les cinq fichiers concernés, chacun en `.sh` réel
+  entouré de **liens symboliques** qui conservent tous les noms d'usage. Conséquences pour ici,
+  toutes documentaires : les chemins des § 2.4 bis, 2.4 ter et 2.5 ; `useful-scripts/dune`
+  **n'existe plus** (vidé puis supprimé — c'est `bin/dune` qui installe, **vers la même
+  destination** `share/marionnet/scripts/`, donc rien à refaire) ; `useful-scripts/` ne suit plus
+  que **2** fichiers ; et deux noms neufs (`mrnck`, `mrn-control`) s'ajoutent aux 12 que dessert la
+  complétion. **Le reste à faire de ce chantier est inchangé** : la complétion bash n'est
+  installée nulle part, `socat`/`jq` ne sont pas déclarés dans les paquets, et `doc-src/` n'est
+  pas installé.

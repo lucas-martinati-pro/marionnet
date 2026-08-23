@@ -3,6 +3,7 @@
 **Slug (commits, mémoire, grep)** : `move-and-rename-useful-scripts-to-bin-scripts`
 **Amorce (archive figée)** : `docs/move-and-rename-useful-scripts-to-bin-scripts.decisions.md`
 **Nature** : chantier long d'exécution, un script par épisode.
+**État** : **clos le 2026-08-23** (6 épisodes) — destination atteinte, cf. § 6.
 
 ## Destination
 
@@ -85,6 +86,53 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   option, ni une sortie, ni la grammaire du canal.
 - **Installer `doc-src/`** ou décider où va la complétion bash : tâches du chantier
   `modernisation-installation-marionnet`.
+
+## 6. Résultat (chantier clos le 2026-08-23)
+
+**La destination est atteinte.** Les cinq fichiers complémentaires du binaire ont quitté
+`useful-scripts/` : ils vivent dans `bin/scripts/`, chacun en fichier `.sh` réel entouré de ses
+liens (mode `120000`), et **aucun nom d'usage n'a disparu**.
+
+| Fichier réel | Liens | Épisode |
+|---|---|---|
+| `bin/scripts/marionnet-cleanup.sh` | `marionnet-cleanup`, `mrn-cleanup` | 1 |
+| `bin/scripts/marionnet-verify.sh` | `marionnet-verify`, `mrn-verify` | 2 |
+| `bin/scripts/marionnet-check.sh` | `marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh` | 3 |
+| `bin/scripts/marionnet-ctl.sh` | `marionnet-ctl`, `mrnctl`, `mrn-control` | 4 |
+| `bin/scripts/marionnet-completion.bash` | *(aucun)* | 5 |
+
+Soit **15 noms installés** (3 + 3 + 5 + 4) dans `share/marionnet/scripts/`, la complétion restant
+volontairement en dehors — `bin/dune` nomme ses fichiers un par un, et ne la nomme pas.
+
+**Ce que le chantier laisse derrière lui**, au-delà des fichiers déplacés :
+
+- **La règle fondatrice est écrite** — table de cartographie du `CLAUDE.md` racine, une ligne pour
+  chaque répertoire, là où on la cherchera avant de créer un script.
+- **`useful-scripts/` ne suit plus que 2 fichiers** (`make_marionnet_bytecode_revno`,
+  `marionnet_from_scratch`) et **plus aucune déclaration de build** : `useful-scripts/dune`,
+  vidé par l'épisode 4, a été supprimé ; c'est `bin/dune` qui installe, **vers la même
+  destination** (`share/marionnet/scripts/`, que le `Makefile` mirroir dans `$(PREFIX)/bin/`).
+- **Deux noms neufs** (`mrnck`, `mrn-control`) et **douze noms déclarés** par la complétion, qui
+  n'en connaissait que cinq.
+- **Deux réparations non prévues** : le repli `$here/marionnet-ctl` de la complétion, mort entre
+  les épisodes 4 et 5, est redevenu vrai **sans une ligne de code** (épisode 5) ; et six chemins
+  durs de bancs locaux gitignorés, dont un cassé depuis l'épisode 2 (épisodes 3 et 4).
+
+**Ce que la forme « `.sh` réel + liens » a effectivement acheté**, vérifié épisode par épisode :
+zéro `msgid` touché (les 12 catalogues nomment toujours `marionnet-cleanup`), zéro correction dans
+la documentation livrée pour `mrn-verify`, dispatch `${0##*/}` de `mrn2sh` intact, et
+`doc-src/scripting/` corrigé seulement là où il **construisait un chemin** — jamais là où il
+nommait une commande.
+
+**Répercussions sorties du chantier** : `docs/modernisation-installation-marionnet.md` (§ 2.4 bis,
+§ 2.4 ter, § 2.5 et son journal) porte les nouveaux chemins ; son reste à faire est inchangé
+(complétion bash non installée, `socat`/`jq` absents des paquets, `doc-src/` non installé).
+
+**Non corrigé, délibérément** : les archives de chantiers clos (`docs/pilotage-par-script.md`,
+`docs/journalisation-profonde.md`, `docs/todo-transverse.md`,
+`docs/migration-marshal-to-text.md`) et les entrées obsolètes `#~` des 12 `.po` nomment encore
+`useful-scripts/<script>`. Elles décrivent un état passé — et les noms qu'elles citent existent
+toujours, ce qui est exactement l'effet recherché.
 
 ## Journal d'avancement
 
@@ -251,8 +299,8 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   (`docs/pilotage-par-script.md` § 5.7) ne se corrigent pas ; le doc de
   `modernisation-installation-marionnet` cite le chemin, mais c'est la matière de l'**épisode 6**.
 
-  **Preuve** : `dune build` rc 0 ; `dune install --prefix` rc 0 avec les **14** noms des épisodes
-  1-4 dans `share/marionnet/scripts/` et **`marionnet-completion.bash` absente**, comme voulu ;
+  **Preuve** : `dune build` rc 0 ; `dune install --prefix` rc 0 avec les **15** noms des épisodes
+  1-4 dans `share/marionnet/scripts/` (« 14 » à la rédaction : mécompte, corrigé à l'épisode 6) et **`marionnet-completion.bash` absente**, comme voulu ;
   `complete -p` sur les 12 noms après avoir sourcé le fichier ; le repli `$here` résolu ; et
   **deux bancs rejoués contre un vrai serveur** — `completion-bench.sh` **60 assertions / 0 échec**
   (les 3 échecs de l'épisode 4 éteints : le banc attendait 7 natures là où le serveur en publie 8
@@ -263,3 +311,35 @@ les **chemins relatifs en dur** vers `useful-scripts/<script>` (les 7 exemples d
   **avant** `mrn-verify` sur la ligne aurait fait échouer, alors que le branchement, lui, est
   intact. Motif rendu robuste (`grep -qE … (^| )mrn-verify( |$)`). Leçon générale : un banc qui
   cherche une **ligne entière** mesure sa mise en page autant que son sens.
+
+- **2026-08-23 — épisode 6 : la finition, et la règle enfin écrite.** Aucun fichier déplacé, aucun
+  code touché : cet épisode solde ce que les cinq précédents avaient laissé en dehors d'eux-mêmes.
+
+  **La règle fondatrice est écrite là où on la cherche** — la table de cartographie du `CLAUDE.md`
+  racine, qui n'avait **aucune ligne** pour `bin/scripts/` alors que ce répertoire compte 28
+  entrées. `useful-scripts/` y gagne « **rien qui accompagne le binaire** ». C'était la raison
+  d'être du chantier : les cinq scripts n'ont pas atterri du mauvais côté par négligence, mais
+  parce que le critère n'était écrit nulle part.
+
+  **Répercussion sur `modernisation-installation-marionnet`** (chantier parent, vivant — le seul
+  document non archivé qui nommait encore ces chemins) : § 2.4 bis (sites d'appel de `jq` et
+  `socat`), § 2.4 ter (le tableau « à installer », réécrit sur la forme réelle *fichier `.sh` +
+  liens*, avec une mise à jour datée dans l'encadré « RÉSOLU » : la stanza a changé de fichier,
+  **pas de comportement** — même destination, donc rien à refaire), § 2.5 (« 10 fichiers suivis »
+  → **2**), le constat daté du 2026-08-12 (nuancé : c'est le **contenu** de `bin/scripts/` qui a
+  changé, pas le mirroring) et une entrée de journal. Son **reste à faire est inchangé**.
+
+  **Un pointeur faux rattrapé** : le `CLAUDE.md` renvoyait à « un client de `useful-scripts/` »
+  dans la consigne de lecture de l'archive `pilotage-par-script` — une **instruction actionnable**,
+  pas une phrase d'archive, donc corrigée (les archives, elles, ne le sont pas).
+
+  **Clôture (MODE C)** : § 6 « Résultat » ci-dessus, entrée du chantier retirée de la section
+  « Chantiers longs » du `CLAUDE.md` et ce document ajouté aux archives de « Où puiser » (avec son
+  critère d'usage : *avant de créer, déplacer ou renommer un script du dépôt*), fiche mémoire
+  réduite à ses pièges durables, ligne de `MEMORY.md` passée en « Chantiers clos ».
+
+  **Preuve** : `dune build` rc 0 ; `dune build @install` rc 0 avec les **15** noms des quatre
+  familles dans `share/marionnet/scripts/` (3 + 3 + 5 + 4) et la complétion absente — au passage,
+  le « 14 » de l'épisode 5 était un mécompte, corrigé dans son entrée ; et l'inventaire final des chemins
+  `useful-scripts/<script>` encore présents dans le versionné — **il n'en reste que des archives
+  de chantiers clos et des entrées obsolètes `#~` des catalogues**, aucune ligne vivante.
