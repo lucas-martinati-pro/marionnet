@@ -1119,7 +1119,9 @@ set_X11_SUPPORT_and_related_variables_according_to_choosed_packages "$BUILDROOT/
 TARGET_DIR=$BUILDROOT/output/target
 pushd $TARGET_DIR
 BIN_OR_SBIN_DIRS=$(find . -type d \( -name "bin" -o -name "sbin" \) )
-BINARY_LIST=$(find $BIN_OR_SBIN_DIRS -perm -u=x ! -type d ! -name "*[.]so*" -exec basename {} \; | sort)
+# `sort -u': a busybox-like target has /bin, /usr/bin, /sbin and /usr/sbin full of
+# the same basenames, and a BINARY_LIST is a *set* of available commands:
+BINARY_LIST=$(find $BIN_OR_SBIN_DIRS -perm -u=x ! -type d ! -name "*[.]so*" -exec basename {} \; | sort -u)
 # Some binaries like '[' or '[[' will provoke some problems applying `sed' or `awk' (see above), so:
 BINARY_LIST=$(echo $BINARY_LIST | tr ' ' '\n' | \grep "[a-zA-Z][a-zA-Z_.]*")
 BINARY_LIST=$(echo $BINARY_LIST)

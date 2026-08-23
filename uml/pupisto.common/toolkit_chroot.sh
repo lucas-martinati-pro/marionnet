@@ -168,8 +168,20 @@ function sudo_fcall {
  echo 'PATH=$PATH_BACKUP:$PATH';  # restore the root's setting;
  } >> $COOL_SUDO
  # ---
- # Put all current set-options (-e, -x, ..):
- echo "set -$-";
+ # Put the current set-options (-x, -B, ..), except those that would change the
+ # control flow of the root script (`e', `u') and those that `set' would reject
+ # (`c', `i', `s', `r'). The redirection had been lost in 2014 (commit 77fb25a,
+ # while wrapping the `export -p' block above), so the line was going to the
+ # *standard output* of `sudo_fcall' --- hence the stray `set -hxBE' opening an
+ # image's BINARY_LIST --- and no option reached the root script at all, which
+ # silently disabled tracing (PS4 without `set -x' traces nothing). Restoring it
+ # without `e' is deliberate: the functions called here (careful_chroot and its
+ # umount epilogue, apt-get in the chroot) never ran under errexit since.
+ local SET_OPTIONS="$-"
+ SET_OPTIONS="${SET_OPTIONS//[eucisr]/}"
+ if [[ -n $SET_OPTIONS ]]; then
+   echo "set -$SET_OPTIONS" >> $COOL_SUDO
+ fi
  # ---
  # Put the definition of the called function:
  type $FUNC | tail -n +2 >> $COOL_SUDO
@@ -328,7 +340,10 @@ function copy_content_into_directory {
 function binary_list {
  local i DIRS BINARY_LIST
  DIRS=$(for i in ${PATH//:/ }; do [[ -d $i ]] && echo $i; done)
- find $DIRS -perm -u=x ! -type d ! -name "*[.]so*" -exec basename {} \; | sort | tr '\n' ' '
+ # `sort -u': the same basename is usually found several times (/bin and /usr/bin
+ # are the same directory on a merged-/usr system, and $PATH names both), and a
+ # BINARY_LIST is a *set* of available commands, not a census of inodes.
+ find $DIRS -perm -u=x ! -type d ! -name "*[.]so*" -exec basename {} \; | sort -u | tr '\n' ' '
 }
 
 function make_shellshock_somewhere {

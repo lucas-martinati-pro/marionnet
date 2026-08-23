@@ -408,6 +408,15 @@ scripts d'exemple de `doc-src/scripting/`. Le contournement employé à l'épiso
 
 ## Constat entrant — `BINARY_LIST` polluée et dupliquée, par une redirection manquante (2026-08-23)
 
+> **CLOS le 2026-08-23 par l'épisode 4 de `modernisation-installation-marionnet`** — corrigé
+> là-bas et non ici, la faute étant dans `uml/pupisto.common/`, commune aux deux pupisto. Le
+> diagnostic ci-dessous est exact et reste comme trace ; il lui manquait une date : `git log -L`
+> montre que la redirection existait (`8b814aa`) et a été perdue en **2014** par `77fb25a`, en
+> emballant le bloc `export -p` voisin dans un `{ … } >> $COOL_SUDO`. La réparation ne restaure
+> **pas** la propagation à l'identique : `e` et `u` en sont retirés, parce que douze ans de
+> fonctions appelées par `sudo_fcall` — `careful_chroot` et son démontage d'épilogue en tête —
+> n'ont jamais tourné sous `errexit`. Détail : `docs/modernisation-installation-marionnet.md`.
+
 Relevé **hors de ce chantier**, par l'épisode 3 de `modernisation-installation-marionnet`, en
 publiant l'image trixie : le `.conf` de `machine-debian-trixie-47362` **installé** porte une
 `BINARY_LIST` qui (a) commence par un `set -hxBE` qui n'est pas un binaire, (b) tient sur **deux

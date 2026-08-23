@@ -741,3 +741,37 @@ clôture des enfants.
   à côté. Preuve : les deux archives guignol extraites côte à côte reconstituent exactement la
   disposition publiée, `.conf` du router **différent** de celui de la machine, et le lien
   **résout**. Les archives wheezy et trixie ne contiennent aucun lien : rien à reconstruire.
+- **2026-08-23 — épisode 4 : le `set -hxBE` de la `BINARY_LIST`, une régression de 2014.** Le défaut
+  laissé ouvert par l'épisode 3 (« corriger côté `uml/pupisto.debian`, sinon chaque nouvelle image le
+  reconduira ») n'était pas dans pupisto.debian : il est dans `uml/pupisto.common/toolkit_chroot.sh`,
+  et il a **douze ans**. `git log -L` le date exactement — la ligne s'écrivait
+  `echo "set -$-" >> $COOL_SUDO` (`8b814aa`), et le commit `77fb25a` (2014, minimisation de
+  debootstrap) a perdu le `>> $COOL_SUDO` en emballant le bloc `export -p` qui la précède dans un
+  `{ … } >> $COOL_SUDO`. Depuis, la ligne part sur la **sortie standard** de `sudo_fcall` — ce que
+  `BINARY_LIST=$(sudo_chroot_binary_list …)` capture, d'où le `set -hxBE` en tête de liste. Deux
+  conséquences que personne n'avait reliées :
+  1. **plus aucune option de shell n'était propagée** au script root, ce qui a **silencieusement
+     désactivé `BASH_XTRACING`** : le mécanisme pose bien un `PS4` dans le script, mais un `PS4`
+     sans `set -x` ne trace rien ;
+  2. le `set -` capturé porte `e` ou non **selon le site d'appel** : `$-` perd `errexit` à
+     l'intérieur d'une substitution de commande (mesuré), ce qui explique le `set -hxBE` sans `e`
+     de l'image `machine-debian-trixie-47362` alors que `pupisto.debian.sh` tourne sous `set -e`.
+  **Arbitrage** : la redirection est rétablie, mais les options sont **filtrées** — `e` et `u` sont
+  retirés, ainsi que les lettres que `set` refuse (`c`, `i`, `s`, `r`). Restaurer à l'identique
+  aurait donné `errexit` aux **autres** sites d'appel, non capturés eux (`sudo_careful_chroot` et
+  ses `apt-get` en chroot, `sudo_fcall tabular_file_update`…) : douze ans de fonctions écrites et
+  validées sans errexit, dont `careful_chroot` qui **démonte dans son épilogue** — un abandon
+  prématuré y laisserait des montages sur l'hôte. Le tracing, lui, revient (`x` est propagé).
+  **Second défaut, indépendant** : `binary_list` faisait `sort | tr '\n' ' '` **sans `-u`**, d'où
+  les doublons relevés à l'épisode 3 ; une `BINARY_LIST` est un *ensemble* de commandes disponibles,
+  pas un recensement d'inodes (sur un système à `/usr` fusionné, `$PATH` nomme deux fois le même
+  répertoire). Même correctif dans `pupisto.buildroot.sh`, où un rootfs busybox multiplie les
+  basenames.
+  Preuve : banc `sudo_fcall` avec un `sudo` mimé (pas de root) et un appelant sous `set -exBE` —
+  sur `HEAD`, la sortie capturée est `set -ehxBE\nPAYLOAD` et le script root ne contient **aucune**
+  ligne `set -` ; après correctif, la sortie est `PAYLOAD` seule et le script root porte
+  `set -hxBE` (`e` filtré, `x` conservé). Dédoublonnage mesuré sur le `$PATH` de l'hôte :
+  4 697 → 4 620 entrées, 75 noms dupliqués. `bash -n` propre sur les deux scripts, `shellcheck -S
+  warning` sans diagnostic neuf dans le bloc modifié. Les images **déjà publiées** ne sont pas
+  touchées : `make filesystem.prepare-snapshot-to-publish` assainit déjà la liste à la
+  republication (épisode 3) — ce correctif garantit que les images **à venir** naissent propres.
