@@ -456,6 +456,11 @@ config** — factorisation au parent.
 - `make release-couples` : tar.gz des couples installés/buildés (MTIME préservés, `.conf`
   patchés inclus) + dépôt ssh sur le serveur (germe : `install.last-built-couple.sh` +
   `marionnet_from_scratch.install_on_site`).
+  **Mise à jour du 2026-08-23 : ses deux moitiés locales existent** — `make
+  filesystem.prepare-snapshot-to-publish` (épisode 3) pour les images, `make
+  kernel.prepare-to-publish KERNEL=<nom>` (épisode 5) pour les noyaux. Ce qui reste à
+  écrire n'est plus la fabrication mais le **dépôt sur le serveur** (rsync/ssh), qui
+  appartient à l'étape 1 du § 5.
 - `make release-binary` : build propre + `dune install --prefix` dans un staging +
   tarball binaire relocatable (question § 6) — base des canaux script v2 / .deb / RPM / Docker.
 - `make release-src` : `git archive` de la série.
@@ -480,7 +485,9 @@ clôture des enfants.
 1. **Remise à niveau du serveur** : arborescence `download/` cible (§ 3.1, série
    `1.0.x/`) + `make release-couples` + dépôt des couples modernes (6.12.95,
    6.12.95-i386, trixie, wheezy/guignol re-tarrés avec `.conf`/`.relay` patchés).
-   Prérequis de tout canal.
+   Prérequis de tout canal. — **La FABRICATION locale des artefacts est faite** (images :
+   épisode 3 ; noyaux : épisode 5) ; reste l'arborescence servie et le **dépôt** sur le
+   serveur.
 2. **Outillage binaire** : `make release-binary`, staging `dune install --prefix` +
    tarball, test sur machine vierge (conteneur jetable). La relocatabilité est acquise
    (§ 6, point réglé) : le tarball embarque un `marionnet.conf` adapté si besoin.
@@ -775,3 +782,48 @@ clôture des enfants.
   warning` sans diagnostic neuf dans le bloc modifié. Les images **déjà publiées** ne sont pas
   touchées : `make filesystem.prepare-snapshot-to-publish` assainit déjà la liste à la
   republication (épisode 3) — ce correctif garantit que les images **à venir** naissent propres.
+
+- **2026-08-23 — épisode 5 : publier un noyau devient une commande.** Le versant *filesystem*
+  d'une release était outillé depuis l'épisode 3 ; le versant *noyau* se faisait encore à la
+  main. Les quatre fichiers présents dans `download/marionnet-install.sh/1.0.x/`
+  (`linux-6.12.95`, `linux-6.12.95-i386` et leurs `.config`) y avaient été déposés un à un, et
+  **aucun `kernels_*.tar.*` n'existait** — alors que `download_our_kernels()` de
+  `useful-scripts/marionnet_from_scratch` (l. 812-829) cherche exactement
+  `href="kernels_*.tar.gz"` et l'extrait depuis `$PREFIX/share/marionnet/`. Autrement dit, le
+  répertoire de publication était *incomplet pour l'installeur en place*, sans que rien ne le
+  signale.
+  `Makefile.d/kernel.prepare-to-publish.sh` (cible `make kernel.prepare-to-publish
+  KERNEL=<nom>`) est le pendant de son frère filesystem, et en partage délibérément la forme :
+  même bandeau d'usage auto-extrait, mêmes options (`-o -i -s -f -y --no-tarball --xz/--gz`),
+  mêmes conventions de tarball — membres préfixés `kernels/` via `--transform 's,^,kernels/,S'`,
+  propriété **forcée à root:root** (c'est de la donnée système extraite par un installeur
+  privilégié, l'uid de l'empaqueteur n'y veut rien dire), `xz -T0` par défaut, `--gz` pour
+  l'installeur du terrain.
+  **Ce dont un noyau n'a PAS besoin est ce qui rend le script court** : rien à fusionner, pas de
+  `.conf` à écrire, pas de somme dans le nom, et surtout **aucune contrainte de mtime** —
+  user-mode-linux ne vérifie la mtime que d'un *backing file*, jamais celle du noyau. Tout le
+  travail se réduit à : localiser la paire, la poser où vit la release, l'archiver.
+  Trois décisions consignées :
+  1. **l'argument est OBLIGATOIRE.** Contrairement à un snapshot de filesystem, dont « le plus
+     récent » est un défaut raisonnable, « le » noyau à publier n'existe pas ;
+  2. **un noyau, un tarball.** `linux-6.12.95-i386` est un nom à part entière, publié par un
+     second appel — pas glissé dans l'archive de `linux-6.12.95`. Deux architectures dans une
+     seule archive obligeraient l'installeur à en poser une dont l'utilisateur ne veut pas ;
+  3. **la règle de série n'est pas dupliquée** : le script appelle le `--print-series` de son
+     frère, lequel déclare explicitement en être la seule implémentation. Deux copies
+     divergeraient en silence le jour où `META` bouge.
+  Le noyau est **refusé si son `.config` n'est pas à côté** : l'installeur pose toujours la
+  paire, et Marionnet lit la configuration pour dire ce que le noyau supporte ; publier un noyau
+  seul produirait une installation muette sur ses capacités. Une sonde `file` avertit (sans
+  bloquer) quand l'argument n'est pas un ELF exécutable — elle attrape l'erreur classique de
+  passer le `.config` à la place du noyau.
+  Preuve (run réel) : `kernels_linux-6.12.95.tar.xz` (2,7 Mio) porte exactement
+  `kernels/linux-6.12.95` (0755 root/root) et `kernels/linux-6.12.95.config` (0644 root/root),
+  identiques octet pour octet aux originaux après extraction ; un second run ne refabrique rien
+  (« already there, skipped ») ; `--gz` sur la variante i386 produit
+  `kernels_linux-6.12.95-i386.tar.gz` (2,6 Mio), le seul motif que l'installeur en place sait
+  voir ; `.config` manquant, noyau inconnu et `KERNEL=` absent sortent tous en **2** avec un
+  message explicite ; `shellcheck` propre. Commit `603d2cc`.
+  **Reste ouvert** (étape 1 du § 5) : ces tarballs sont fabriqués *localement*. Rien ne les
+  dépose encore sur le serveur, et rien ne vérifie que ce qui y est servi correspond à ce que le
+  dépôt sait produire — c'est le vrai contenu de la remise à niveau du serveur.
