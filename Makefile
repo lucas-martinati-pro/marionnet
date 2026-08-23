@@ -395,8 +395,17 @@ PUBLICATION_SERIES := $(shell bash Makefile.d/filesystem.prepare-snapshot-to-pub
 filesystem.prepare-snapshot-to-publish:
 	bash Makefile.d/filesystem.prepare-snapshot-to-publish.sh --series $(PUBLICATION_SERIES)
 
+# Put a UML kernel and its .config into the release directory, and build the tarball the
+# installer downloads (kernels_<kernel>.tar.xz). The kernel is MANDATORY: unlike a
+# filesystem snapshot, there is no sensible "most recent one" to guess. One kernel, one
+# tarball: the i386 flavour is published by a second call. Options (another kernel
+# directory, another output directory, gzip instead of xz, no tarball): --help.
+kernel.prepare-to-publish:
+	@test -n "$(KERNEL)" || { echo "usage: make $@ KERNEL=linux-6.12.95"; exit 2; } >&2
+	bash Makefile.d/kernel.prepare-to-publish.sh --series $(PUBLICATION_SERIES) $(KERNEL)
+
 # ---
-.PHONY: filesystem.prepare-snapshot-to-publish
+.PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish
 
 
 # =============================================================
