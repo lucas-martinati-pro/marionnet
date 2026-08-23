@@ -47,8 +47,6 @@
 ;; ---
 (install
   (files
-     ;; --- Marionnet names it on screen and runs it from the buttons of its startup warning:
-     (marionnet-cleanup as scripts/marionnet-cleanup)
      ;; --- The clients of the control channel (work-stream `pilotage-par-script'), which the
      ;; --- delivered documentation (doc-src/scripting/) calls by their bare names. The two
      ;; --- links are part of the interface: they select the behaviour by $0.

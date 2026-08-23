@@ -16,9 +16,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# marionnet-cleanup — find, and on request sweep, what a Marionnet session killed brutally has
+# marionnet-cleanup.sh — find, and on request sweep, what a Marionnet session killed brutally has
 # left behind on this host: auxiliary processes, socket files, run directories, and the per-guest
 # directories of the UML kernels.
+#
+# NAMES. This file is the implementation; the names a user types are the symlinks beside it,
+# `marionnet-cleanup' and `mrn-cleanup'. The first one is not decorative: bin/marionnet.ml prints
+# it inside a message which is part of the 12 gettext catalogues, and runs it from two buttons of
+# that warning, so it has to keep resolving whatever the file is called.
 #
 # WHY THIS EXISTS. Every auxiliary of a simulation (the vde_switch of a hublet, the wirefilter
 # of a cable, slirpvde, the terminal emulators, the UML guests) is a direct child of Marionnet,

@@ -230,6 +230,17 @@
      ;; --- same contract, same rollback discipline, but this one enslaves the HOST's
      ;; --- own card -- hence sudoers block (c), which it is also the source of.
      (glob_files "scripts/marionnet-lanbridge.sh")
+     ;; --- The sweeper of what a session killed brutally leaves behind (work-stream
+     ;; --- `marionnet-todo-transverse'). It lives here, and no longer in useful-scripts/,
+     ;; --- because that directory was meant for the scripts which manage or install the
+     ;; --- PROJECT, not for those which complement the binary -- and this one is named ON
+     ;; --- SCREEN by bin/marionnet.ml and RUN from the two buttons of its startup warning.
+     ;; --- The real file carries the .sh extension of this directory; the names the user
+     ;; --- types are SYMLINKS beside it, which is what keeps `marionnet-cleanup' -- a name
+     ;; --- frozen inside the msgid of the 12 gettext catalogues -- valid for free.
+     (glob_files "scripts/marionnet-cleanup.sh")
+     (glob_files "scripts/marionnet-cleanup")
+     (glob_files "scripts/mrn-cleanup")
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")

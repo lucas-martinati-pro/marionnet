@@ -364,7 +364,7 @@ let () =
    Each of them holds the *unsaved* working copy of its project: that is precisely why Marionnet
    must not purge them by itself — even an old one may be the only copy that was left. So it
    counts them, names the tool, and removes nothing.
-   Which ones are still in use is deliberately NOT decided here: `useful-scripts/marionnet-cleanup'
+   Which ones are still in use is deliberately NOT decided here: `bin/scripts/marionnet-cleanup.sh'
    scans /proc to tell a live session from a dead one, and a second implementation of that scan
    would be a second source of truth serving a message whose whole point is to hand over to that
    script. Hence a count and no claim of death. *)

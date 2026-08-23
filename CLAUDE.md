@@ -137,7 +137,7 @@ l'**install** et le **RPM**.
    choses à ne pas défaire : le signal de mort du parent est relatif au **thread** qui a forké
    (d'où le thread pérenne — les composants démarrent depuis des threads éphémères de
    `Task_runner.do_in_parallel`), et il n'atteint que les enfants **directs** (les
-   petits-enfants restent à la charge de `useful-scripts/marionnet-cleanup`).
+   petits-enfants restent à la charge de `bin/scripts/marionnet-cleanup.sh`).
 7. **dune ne voit pas à travers camlp4** : un fichier embarqué dans un `.ml` par `INCLUDE_AS_STRING`
    (les scripts de `bin/scripts/`) n'est une dépendance que s'il figure dans les
    `preprocessor_deps` de `bin/dune`. Sans cela, éditer le script laisse le binaire porter

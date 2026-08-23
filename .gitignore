@@ -95,9 +95,6 @@ useful-scripts/*
 !useful-scripts/mrn-verify
 # Complétion Bash de mrnctl et mrn-check (docs/pilotage-par-script.md § 5.7).
 !useful-scripts/marionnet-completion.bash
-# Inventaire et balayage de ce qu'une session tuée brutalement laisse derrière elle
-# (processus auxiliaires, sockets, répertoires de run) — cf. docs/TODO.md.
-!useful-scripts/marionnet-cleanup
 # Stanza `install' de dune qui pose les scripts ci-dessus dans share/marionnet/scripts/, donc
 # (par le mirroir du Makefile) dans $(PREFIX)/bin/.
 !useful-scripts/dune

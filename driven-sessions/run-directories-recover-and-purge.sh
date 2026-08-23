@@ -17,7 +17,7 @@
 
 # Bench: the abandoned run directories can be RECOVERED before being removed, and the removal can
 # be asked for by the running Marionnet itself. This is what the two buttons of the startup
-# warning need from useful-scripts/marionnet-cleanup (episode 6 of marionnet-todo-transverse gave
+# warning need from bin/scripts/marionnet-cleanup.sh (episode 6 of marionnet-todo-transverse gave
 # that warning its text; the buttons came later).
 #
 # Two things are proved here, and neither existed before:
@@ -43,7 +43,7 @@ set -u
 
 BINARY="${1:-_build/default/bin/marionnet.exe}"
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SCRIPT="$HERE/useful-scripts/marionnet-cleanup"
+SCRIPT="$HERE/bin/scripts/marionnet-cleanup.sh"
 
 pass=0; fail=0; skipped=0
 ok()   { echo "PASS: $*"; pass=$((pass+1)); }

@@ -4971,7 +4971,7 @@ let start (st : State.globalState) ~(socketfile:string) : (unit, string) result 
    No attempt is made to close a project opened from the command line before leaving:
    st#close_project, called from the GTK main thread, merely spawns a thread (state.ml),
    which exit would kill before it cleans anything. A run directory left behind in that
-   narrow case is the business of `useful-scripts/marionnet-cleanup` and of the TODO entry
+   narrow case is the business of `bin/scripts/marionnet-cleanup.sh` and of the TODO entry
    about run directories. *)
 let start_if_requested (st : State.globalState) : unit =
   match !Initialization.option_control_socket with

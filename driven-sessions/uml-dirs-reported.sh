@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Bench: useful-scripts/marionnet-cleanup knows about the per-guest directories the UML kernels
+# Bench: bin/scripts/marionnet-cleanup.sh knows about the per-guest directories the UML kernels
 # leave in $UML_DIR (default ~/.uml/<umid>/) -- it REPORTS them, and removes them only when asked
 # by --purge-uml-dirs. Episode 20 of marionnet-todo-transverse.
 #
@@ -41,7 +41,7 @@
 set -u
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SCRIPT="$HERE/useful-scripts/marionnet-cleanup"
+SCRIPT="$HERE/bin/scripts/marionnet-cleanup.sh"
 
 pass=0; fail=0; skipped=0
 ok()   { echo "PASS: $*"; pass=$((pass+1)); }
