@@ -95,8 +95,34 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #    control channel exists -- hence its presence above;
 #  - the commands `getent', `cat', `cp', `rm', `tar', `grep', `du' also called by the code come
 #    from `Essential: yes' packages (libc-bin, coreutils, tar, grep): nothing to declare.
+#    `xz' is NOT among them -- MEASURED on a debian:trixie-slim by the bench
+#    Makefile.d/release.binary.sh.bench, where `tar xf' of a published artefact failed with
+#    "xz: Cannot exec" -- hence the package below.
+#  - libgtksourceview-3.0-1 : the ONE library package a PRECOMPILED Marionnet needs and a
+#                         compiling one never had to name. Until the binary tarball of the
+#                         work-stream `modernisation-installation-marionnet' existed, every
+#                         installation compiled, so the GTK libraries came in as dependencies of
+#                         REQUIRED_PACKAGES_BUILD (liblablgtk3-ocaml-dev); a machine which only
+#                         RUNS the binary has no such build package. MEASURED on a
+#                         debian:trixie-slim by Makefile.d/release.binary.sh.bench: the binary
+#                         died with "libgtksourceview-3.0.so.1: cannot open shared object file".
+#                         `objdump -p' lists 13 direct NEEDED libraries (gtk-3, gdk-3,
+#                         gtksourceview-3.0, pango, pangocairo, cairo, gdk_pixbuf, glib, gobject,
+#                         fontconfig, freetype, libc, libm); this single package brings them all,
+#                         being the only one which depends on gtk3, which depends on the rest.
+#                         Named rather than `libgtk-3-0': that name gained a `t64' suffix in
+#                         trixie/noble and did not have it in bookworm, whereas this one is
+#                         stable across the three -- the release's own gtk3 is then resolved by
+#                         apt, whatever it is called there.
+#  - xz-utils           : every artefact this project publishes is a .tar.xz by default (the
+#                         guest images, the UML kernels and the precompiled application: see
+#                         Makefile.d/*.prepare-to-publish.sh and Makefile.d/release.binary.sh),
+#                         and useful-scripts/marionnet-install.sh extracts them through
+#                         `xz -dc -T0 | tar xf -'. Marionnet itself never calls xz: what needs
+#                         it is the INSTALLATION of the images the running Marionnet then boots.
 REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo \
-                            x11-xserver-utils xauth jq socat dnsmasq-base
+                            x11-xserver-utils xauth jq socat dnsmasq-base xz-utils \
+                            libgtksourceview-3.0-1
 
 # The whole set (historical name, kept for compatibility):
 REQUIRED_PACKAGES = $(REQUIRED_PACKAGES_BUILD) $(REQUIRED_PACKAGES_RUNTIME)

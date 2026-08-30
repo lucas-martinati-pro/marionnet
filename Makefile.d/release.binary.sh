@@ -468,7 +468,13 @@ info "tarball produced: $TARBALL ($(du -h -- "$TARBALL" | awk '{print $1}'))"
 # that file is invisible to useful-scripts/marionnet-install.sh. Recorded here, right after
 # being moved into place, exactly as the two sibling scripts do.
 if test "$CHOICE" = "CONFIGME"; then
-  bash "$ROOT/Makefile.d/release.sha256sums.sh" --output-dir "$OUTDIR" -- "$TARBALL" || \
+  # --force, scoped to this single file: we have JUST written it, so a digest already
+  # recorded under that name is by construction the digest of the PREVIOUS artefact. Without
+  # it, republishing under the same name (which is what our own --force does) leaves the
+  # catalogue announcing a file which no longer exists -- and the installer, which checks the
+  # digest while extracting, REMOVES what it just fetched. Measured at episode 9b. Scoped, so
+  # the gibibytes of the neighbouring artefacts are not re-read.
+  bash "$ROOT/Makefile.d/release.sha256sums.sh" --output-dir "$OUTDIR" --force -- "$TARBALL" || \
     warn "$TARBALL is published but NOT in SHA256SUMS: run Makefile.d/release.sha256sums.sh"
 else
   info "not recorded in SHA256SUMS (built with $CHOICE, see --allow-testing-configuration)"

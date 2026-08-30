@@ -154,7 +154,7 @@ scindée en deux variables, et **chaque canal de diffusion la dérive** :
 | Variable | Contenu | Consommateurs |
 |---|---|---|
 | `REQUIRED_PACKAGES_BUILD` | `opam pkg-config build-essential libgtk-3-dev libgtksourceview-3.0-dev gettext glade` | `make dependencies` ; `Build-Depends` du `.deb` ; image de build Docker |
-| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo x11-xserver-utils xauth jq socat dnsmasq-base` (`bridge-utils` **retiré** le 2026-08-23) | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
+| `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo x11-xserver-utils xauth jq socat dnsmasq-base xz-utils libgtksourceview-3.0-1` (`bridge-utils` **retiré** le 2026-08-23 ; les **2 derniers ajoutés le 2026-08-30**, épisode 9b) | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
 | `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
 | `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
 | `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
@@ -230,6 +230,17 @@ conséquence → au plus `Suggests`), `fonts-noto` (cosmétique → au plus `Rec
 couples (chantier `marionnet-retro-compat-kernels-images`), et son installation implique
 `dpkg --add-architecture i386` sur l'hôte. D'où la cible opt-in, hors de `make dependencies` ;
 côté `.deb`, il relève au mieux d'un `Recommends`, à trancher quand le canal sera construit.
+
+
+**Ajout du 2026-08-30 (épisode 9b) — `xz-utils` et `libgtksourceview-3.0-1` : la liste était
+écrite par des gens qui compilaient.** Les deux trous ne pouvaient apparaître qu'en donnant le
+tarball binaire à une machine qui n'a **que** cette liste, ce que fait le banc
+`Makefile.d/release.binary.sh.bench/`. `xz-utils` parce que tout artefact publié est un
+`.tar.xz` et que `xz` n'est pas `Essential` (contrairement à `tar`) ;
+`libgtksourceview-3.0-1` parce que les bibliothèques GTK arrivaient jusque-là comme
+dépendances de `REQUIRED_PACKAGES_BUILD` — un poste qui **exécute** n'a pas ces paquets de
+build. Un seul paquet suffit pour les 13 bibliothèques `NEEDED` du binaire, et son nom est
+stable de bookworm à trixie/noble, là où `libgtk-3-0` a pris un `t64` en chemin.
 
 ### 2.4 ter Ce que l'installation ne pose pas : les clients du canal (constat 2026-08-12)
 
@@ -1179,11 +1190,76 @@ d'inscription diffère, et elle a été jouée à la main.
 
 ### Restes
 
-- **Épisode 9b** : le banc conteneur vierge — déplier sur une Debian nue portant les seuls
-  `REQUIRED_PACKAGES_RUNTIME`, lancer, et faire jouer `install.sh` **en root** (donc
-  `/etc/marionnet/marionnet.conf` et la règle sudoers, les deux gestes que cette machine ne
-  pouvait pas mesurer). Patron : `useful-scripts/marionnet-install.sh.bench/`.
+- ~~**Épisode 9b** : le banc conteneur vierge~~ **fait le 2026-08-30** (§ suivant).
 - **Épisode 9c** (ou chantier enfant `…-par-script`) : le troisième préfixe côté consommateur,
   pour que `marionnet-install.sh` sache **installer** le binaire qu'il catalogue déjà.
 - Toujours ouverts : le repli `curl` de l'ép. 6, la complétion bash (§ 2.4 ter), et l'étape 1
   (dépôt sur le serveur), bloquée par l'extérieur.
+
+## Épisode 9b (2026-08-30) — la machine cible : `install.sh` joué **en root**
+
+Le banc `Makefile.d/release.binary.sh.bench/` (Dockerfile + `run.sh` + README), frère de
+celui de l'épisode 7 : une `debian:trixie-slim` qui ne porte que
+`REQUIRED_PACKAGES_RUNTIME`, deux conteneurs `--network none`, rien de monté que le
+tarball en lecture seule. **27 cas, tous verts**, `rc 0`.
+
+Le chemin **nominal** de fabrication, laissé non joué par 9a, l'est enfin : `make
+rebuild-for-final` puis `make release-binary`, donc préfixe compilé `/usr/local` et
+**inscription automatique** au `SHA256SUMS` du vrai répertoire de release (11 artefacts,
+1 calculé).
+
+### Ce que le banc a trouvé — et c'est un défaut de fond, pas un détail
+
+La liste de dépendances d'exécution était écrite par des gens qui **compilaient**. Deux
+paquets y manquaient, tous deux invisibles tant qu'installer voulait dire compiler :
+
+- **`xz-utils`** : tous les artefacts publiés sont des `.tar.xz` par défaut, et le README
+  du tarball prescrit `tar xf` — qui meurt en `xz: Cannot exec` sur une Debian nue. `tar`
+  est `Essential: yes`, `xz` ne l'est pas. Mesuré, pas supposé.
+- **`libgtksourceview-3.0-1`** : les bibliothèques GTK arrivaient jusqu'ici comme
+  dépendances de `REQUIRED_PACKAGES_BUILD` (`liblablgtk3-ocaml-dev`) ; une machine qui ne
+  fait qu'**exécuter** n'a pas ce paquet de build, et le binaire mourait sur
+  `libgtksourceview-3.0.so.1`. `objdump -p` liste **13** bibliothèques `NEEDED` directes ;
+  ce **seul** paquet les apporte toutes, étant le seul qui dépende de gtk3, lequel dépend
+  du reste. Nommé plutôt que `libgtk-3-0` : ce dernier a gagné un suffixe `t64` en
+  trixie/noble et ne l'avait pas en bookworm, alors que celui-ci est stable sur les trois —
+  apt résout alors le gtk3 de la version qu'il a.
+
+Les deux sont dans le `Makefile`, avec leur justification par site d'appel, comme les
+douze autres (§ 2.4 bis). Le README du tarball, qui **lit** cette liste, les annonce donc
+sans qu'on l'ait touché.
+
+### Le second défaut : republier laissait le catalogue mentir
+
+`release.binary.sh --force` refait le tarball ; `release.sha256sums.sh`, lui, **garde** un
+digest déjà enregistré (il ne relit pas des gibioctets sans raison). Conséquence mesurée :
+après une republication sous le même nom, `SHA256SUMS` annonçait le digest de l'artefact
+**précédent** — `sha256sum -c` en échec, et surtout un installeur qui vérifie l'empreinte
+**pendant** l'extraction (ép. 8) et **retire** ce qu'il vient de télécharger. Une release
+qui a l'air publiée et qui est inutilisable.
+
+Le correctif est le même dans les **trois** publieurs (`release.binary.sh`,
+`filesystem.prepare-snapshot-to-publish.sh`, `kernel.prepare-to-publish.sh`) : l'appel au
+catalogueur passe `--force`, **borné à ce seul fichier**. Le raisonnement est celui qui
+rend le correctif sûr : à cet endroit, le publieur **vient d'écrire** le fichier, donc un
+digest enregistré sous ce nom est *par construction* celui d'avant. Borné, les gibioctets
+voisins ne sont pas relus. Le banc en garde un cas, joué **avant** les conteneurs.
+
+### Les 27 cas
+
+Dépli et racine nommée ; `--help` (une seule ligne `Usage:`, la plage `sed` reste ancrée) ;
+les **trois refus** (hors tarball, sans root, sans `SUDO_USER` ni `USER`) ; l'installation
+nominale (23 noms, tous `root:root`, compagnons sous leur nom nu) ; la configuration
+(écrite, nommant le préfixe, **intacte** au second passage, réécrite sous `--force`,
+absente sous `--no-config`) ; la **règle sudoers** (fichier propre, `visudo -c` vert,
+accordée à l'utilisateur que `sudo` nomme, **bloc (a) seul** — ni natbridge ni lanbridge —,
+retirée par `marionnet-sudoers.sh uninstall`, non posée sous `--no-sudoers`) ; le binaire
+qui **démarre** avec la seule liste publiée ; le préfixe inhabituel `/opt/marionnet` (la
+configuration le suit, l'avertissement PATH est émis, et rien de son `bin/` n'est joignable
+par nom nu) ; enfin le **piège durable de 9a inscrit en cas** : `--paths` reloge
+`filesystems`/`kernels`/`gui` et continue d'annoncer un `binaries` au préfixe **compilé**.
+
+### Ce que ce banc ne mesure pas
+
+Aucun invité, aucun tap, aucune GUI : le conteneur n'a pas de serveur X. Le banc s'arrête à
+ce qu'une machine cible reçoit et à ce que le binaire fait sans afficher.

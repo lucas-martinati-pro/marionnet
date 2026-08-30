@@ -306,7 +306,18 @@ Reprise : appliquer le skill `chantier-long`.
   préfixe **compilé** (`bin/initialization.ml:472`) alors que les scripts compagnons sont
   appelés **par leur nom nu**, donc trouvés par le **PATH** — inoffensif pour le code, mais un
   préfixe hors PATH donne un Marionnet qui démarre puis ne trouve plus ses portes privilégiées.
-  Restent l'ép. 9b (banc conteneur vierge, où `install.sh` se joue **en root**) et l'ép. 9c
+  **Ép. 9b : la machine cible.** Le banc `Makefile.d/release.binary.sh.bench/` déplie le
+  tarball sur une `debian:trixie-slim` portant **les seuls** `REQUIRED_PACKAGES_RUNTIME` et y
+  joue `install.sh` **en root** (27 cas verts) : la configuration `/etc/marionnet/marionnet.conf`
+  et la règle sudoers — bloc **(a) seul** — sont enfin mesurées. **Deux invariants payés ici** :
+  (1) cette liste de dépendances était écrite **par des gens qui compilaient**, d'où `xz-utils`
+  (tout artefact publié est un `.tar.xz`, et `xz` n'est pas `Essential`) et
+  `libgtksourceview-3.0-1` (les libs GTK venaient de `REQUIRED_PACKAGES_BUILD` ; **un** paquet
+  couvre les 13 `NEEDED`, et son nom est stable là où `libgtk-3-0` a pris un `t64`) — ne pas
+  ajouter de paquet ici sans site d'appel, ni en retirer sans rejouer le banc ; (2) **republier
+  un artefact sous le même nom laissait le catalogue mentir** (digest précédent conservé, donc
+  l'installeur **retire** ce qu'il vient de télécharger) : les **3** publieurs appellent
+  désormais `release.sha256sums.sh` avec `--force` **borné à leur seul fichier**. Reste l'ép. 9c
   (savoir installer le binaire, pas seulement le cataloguer).
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.

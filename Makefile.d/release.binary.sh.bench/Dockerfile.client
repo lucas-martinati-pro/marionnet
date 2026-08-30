@@ -1,0 +1,25 @@
+# The machine which receives a precompiled Marionnet: a bare Debian carrying the
+# REQUIRED_PACKAGES_RUNTIME of the Makefile and NOTHING else -- no opam, no switch, no
+# ocaml, no build tree, no marionnet. That is the whole point: what the tarball needs in
+# order to unpack, install and start is MEASURED here instead of being assumed on a
+# developer machine which has everything.
+#
+# The package list is NOT written down here: it arrives as a build argument, read from
+# `make print-required-packages-runtime' by run.sh. Copying it would give the dependency
+# list a second source of truth, which is exactly the defect episode 1 of this work-stream
+# had to repair (see § 2.4 bis of docs/modernisation-installation-marionnet.md).
+#
+# `sudo' is in that list, so visudo -- which install.sh uses to validate the rule it
+# generates -- comes along with it. Nothing is added on top for the bench itself.
+FROM debian:trixie-slim
+
+ARG RUNTIME_PACKAGES
+
+RUN test -n "$RUNTIME_PACKAGES" \
+ && apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $RUNTIME_PACKAGES \
+ && rm -rf /var/lib/apt/lists/*
+
+# An ordinary account, because the sudoers rule is granted TO SOMEBODY: install.sh reads
+# that name from SUDO_USER (i.e. from the sudo which ran it), and the bench replays that.
+RUN useradd --create-home --shell /bin/bash tester
