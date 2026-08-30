@@ -34,8 +34,23 @@
 #
 # What a release directory holds, and what this script does with it:
 #
+#   SHA256SUMS                            -- the catalogue AND the integrity of the release
 #   kernels_linux-6.12.95.tar.xz          -> <prefix>/share/marionnet/kernels/linux-6.12.95
 #   filesystems_machine-guignol-18474.tar.xz -> .../share/marionnet/filesystems/machine-guignol-18474
+#
+# The catalogue is SHA256SUMS, not the directory listing. A `sha256sum' line carries a name
+# AND a digest, so one published file answers both questions, and it is written by the same
+# scripts which build the artefacts (Makefile.d/release.sha256sums.sh). Reading the LISTING
+# is only the fallback for a release directory published before that file existed: it means
+# parsing somebody's HTML, and it breaks in ways nothing announces -- an index.html dropped
+# in the directory makes Apache serve the PAGE instead of the listing, with a 200 and an
+# empty catalogue (measured), and `Options -Indexes' forbids it outright. Neither touches
+# SHA256SUMS.
+#
+# What the digest is worth: it proves the artefact ARRIVED WHOLE. It does not prove where it
+# comes from -- SHA256SUMS travels the same road as the tarballs, so a compromised server
+# rewrites both. Signing it is a question for the day the site comes back, along with the
+# key of the apt repository.
 #
 # Usage: marionnet-install.sh --fetch-only [OPTIONS]
 #
@@ -54,6 +69,7 @@
 #       --no-filesystems     drop every filesystems_*
 #       --gz                 prefer .tar.gz where both forms exist (default: .tar.xz)
 #   -f, --force              re-extract what is already in place
+#       --no-verify          do not check the artefacts against SHA256SUMS
 #   -y, --yes                do not ask for confirmation
 #   -h, --help               this help
 #
@@ -105,6 +121,7 @@ PREFIX="/usr/local"
 LIST_ONLY=no
 DRY_RUN=no
 FORCE=no
+VERIFY=yes
 ASSUME_YES=no
 WANT_KERNELS=yes
 WANT_FILESYSTEMS=yes
@@ -127,6 +144,7 @@ while (( $# > 0 )); do
     --gz)                  PREFERRED_EXT=gz ;;
     --xz)                  PREFERRED_EXT=xz ;;
     -f|--force)            FORCE=yes ;;
+    --no-verify)           VERIFY=no ;;
     -y|--yes)              ASSUME_YES=yes ;;
     -h|--help)             usage; exit 0 ;;
     -*)                    die "unknown option \`$1' (try --help)" ;;
@@ -172,8 +190,8 @@ function catalog_list {
   case "$SOURCE_KIND" in
     dir) ls -1 -- "$SOURCE" ;;
     url) html=$(wget -q -O - -- "$SOURCE/") || return 1
-         # The listing is Apache's, as it has always been: `href="..."'. A published index
-         # would be sturdier -- a decision for the day the server comes back.
+         # The listing is Apache's, as it has always been: `href="..."'. This is the
+         # FALLBACK now: a release directory which publishes SHA256SUMS never gets here.
          printf '%s\n' "$html" \
          | grep -o 'href="[^"]*"' \
          | sed -e 's/^href="//' -e 's/"$//' -e 's,.*/,,' || true ;;
@@ -210,13 +228,50 @@ function artifact_size {
 }
 
 # ---
+# --- SHA256SUMS: the catalogue, and the integrity, in one file.
+# ---
+declare -A SUMS=()        # file name -> expected sha256
+
+# Fill SUMS from the SHA256SUMS of the source. Fails when there is none, when it cannot be
+# read, or when it holds no usable line -- a server which answers a missing file with an
+# HTML error page and a 200 falls in that last case, which is why the lines are COUNTED
+# instead of trusting the exit status alone.
+function sums_read {
+  local text hex name n=0
+  case "$SOURCE_KIND" in
+    dir) [[ -f $SOURCE/SHA256SUMS ]] || return 1
+         text=$(cat -- "$SOURCE/SHA256SUMS") || return 1 ;;
+    url) text=$(wget -q -O - -- "$SOURCE/SHA256SUMS") || return 1 ;;
+  esac
+  while read -r hex name; do
+    [[ $hex =~ ^[0-9a-fA-F]{64}$ ]] || continue
+    name="${name#\*}"          # sha256sum marks a binary read with a leading `*'
+    [[ -n $name ]] || continue
+    SUMS["$name"]="$hex"
+    n=$(( n + 1 ))
+  done <<< "$text"
+  (( n > 0 ))
+}
+
+# ---
 # --- The catalogue: logical name -> the forms available for it.
 # ---
 declare -A AVAILABLE=()   # logical -> " gz xz"
 
 CATALOG=""
-if ! CATALOG=$(catalog_list); then
-  die "cannot read the catalogue at $SOURCE (unreachable source: server down, no route, wrong URL?)"
+CATALOG_ORIGIN=SHA256SUMS
+if sums_read; then
+  CATALOG=$(printf '%s\n' "${!SUMS[@]}")
+else
+  # The distinction the outage of 2026 taught: a source which cannot be READ is not a source
+  # which holds nothing. The fallback is tried first, and only ITS failure is fatal -- so the
+  # absence of SHA256SUMS never gets reported as a server being down.
+  CATALOG_ORIGIN=listing
+  if ! CATALOG=$(catalog_list); then
+    die "cannot read the catalogue at $SOURCE (unreachable source: server down, no route, wrong URL?)"
+  fi
+  warn "the source publishes no SHA256SUMS: the catalogue comes from the directory listing,\
+ and nothing will be verified"
 fi
 
 while read -r f; do
@@ -297,13 +352,14 @@ done
 # --- --list, and the plan of what is to be done.
 # ---
 if [[ $LIST_ONLY = yes ]]; then
-  printf '%-46s %-8s %-8s %s\n' "ARTEFACT" "FORMAT" "SIZE" "STATE"
+  printf '%-46s %-8s %-8s %-5s %s\n' "ARTEFACT" "FORMAT" "SIZE" "SUM" "STATE"
   for logical in "${SELECTED[@]}"; do
     ext=$(artifact_format "$logical")
     target=$(artifact_target "$logical")
     if [[ -e $target || -L $target ]]; then state="installed"; else state="-"; fi
-    printf '%-46s %-8s %-8s %s\n' \
-      "$logical" ".tar.$ext" "$(human "$(artifact_size "$logical.tar.$ext")")" "$state"
+    if [[ -n ${SUMS[$logical.tar.$ext]:-} ]]; then sum="yes"; else sum="-"; fi
+    printf '%-46s %-8s %-8s %-5s %s\n' \
+      "$logical" ".tar.$ext" "$(human "$(artifact_size "$logical.tar.$ext")")" "$sum" "$state"
   done
   exit 0
 fi
@@ -347,6 +403,7 @@ if (( ${#TODO[@]} == 0 )); then
 fi
 
 info "source      : $SOURCE ($SOURCE_KIND)"
+info "catalogue   : $CATALOG_ORIGIN"
 info "destination : $MARIONNET_DIR"
 # The figure the user is about to accept: never rounded up out of a hole. When some sizes
 # could not be obtained, the total is announced for what it is -- a lower bound, or nothing.
@@ -370,6 +427,10 @@ fi
 # --- Tools, privilege, and the extraction itself.
 # ---
 command -v tar >/dev/null || die "tar is required"
+if [[ $VERIFY = yes ]] && ! command -v sha256sum >/dev/null; then
+  warn "sha256sum not found: the artefacts will be installed without being verified"
+  VERIFY=no
+fi
 for logical in "${TODO[@]}"; do
   if [[ $(artifact_format "$logical") = xz ]]; then
     command -v xz >/dev/null || die "xz is required for the .tar.xz artefacts (try --gz)"
@@ -397,19 +458,70 @@ fi
 
 "${SUDO[@]}" mkdir -p -- "$MARIONNET_DIR"
 
+# Extract one artefact, hashing it AS IT FLOWS.
+#
+# The tarball is never written to disk -- that is the streaming design, and a 1.5 GiB
+# temporary file to check a digest before extracting would undo it. So the digest is
+# computed on the way through and compared right after. `tee >(sha256sum)' will NOT do:
+# bash does not wait for a process substitution, so the comparison could read a digest
+# which is not finished being written. Hence an explicit fifo, an explicit pid, an
+# explicit `wait'.
+#
+# Returns 0 when the digest matches, 1 when it does not, 2 when the transfer or the
+# extraction itself failed -- three different things to say to the user.
+function extract_verified {
+  local file="$1" ext="$2" expected="$3"
+  local tmpdir fifo digestfile pid rc=0 got=""
+  tmpdir=$(mktemp -d) || die "cannot create a temporary directory"
+  fifo="$tmpdir/stream"; digestfile="$tmpdir/digest"
+  mkfifo "$fifo"
+  sha256sum < "$fifo" > "$digestfile" &
+  pid=$!
+  case "$ext" in
+    xz) artifact_stream "$file" | tee "$fifo" | xz -dc -T0 | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
+    gz) artifact_stream "$file" | tee "$fifo" | gzip -dc   | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
+  esac || rc=$?
+  wait "$pid" || true
+  [[ -s $digestfile ]] && got=$(awk '{print $1}' "$digestfile")
+  rm -rf -- "$tmpdir"
+  (( rc == 0 )) || return 2
+  [[ -n $got && $got = "$expected" ]] || return 1
+  return 0
+}
+
 for logical in "${TODO[@]}"; do
   ext=$(artifact_format "$logical")
   file="$logical.tar.$ext"
   size=$(artifact_size "$file")
   echo -n "* $file ($(human "${size:-}")) ... "
   started=$SECONDS
-  # NEVER `tar xJf' (see the header), and NEVER -m/--touch: user-mode-linux checks the
-  # mtime of a backing file, which is the whole point of the MTIME field of the .conf.
-  case "$ext" in
-    xz) artifact_stream "$file" | xz -dc -T0 | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
-    gz) artifact_stream "$file" | gzip -dc   | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
-  esac
-  echo "ok ($(( SECONDS - started ))s)"
+  expected="${SUMS[$file]:-}"
+  if [[ $VERIFY = yes && -n $expected ]]; then
+    rc=0
+    extract_verified "$file" "$ext" "$expected" || rc=$?
+    case "$rc" in
+      0) echo "ok, verified ($(( SECONDS - started ))s)" ;;
+      1) echo "FAILED"
+         # What was extracted must GO: the run is idempotent by the NAME of the target, so
+         # a corrupt artefact left in place would be taken for an installed one ever after.
+         # Removing the target alone is enough to make a new run redo the whole artefact,
+         # its .conf and its _variants/ included -- they are rewritten by the extraction.
+         "${SUDO[@]}" rm -rf -- "$(artifact_target "$logical")"
+         die "$file: sha256 mismatch. The artefact did not arrive whole (transfer error), or\
+ the SHA256SUMS of the source is stale. What had been extracted was removed; nothing else\
+ was touched. Use --no-verify to install it anyway." ;;
+      *) echo "FAILED"
+         die "$file: transfer or extraction failed" ;;
+    esac
+  else
+    # NEVER `tar xJf' (see the header), and NEVER -m/--touch: user-mode-linux checks the
+    # mtime of a backing file, which is the whole point of the MTIME field of the .conf.
+    case "$ext" in
+      xz) artifact_stream "$file" | xz -dc -T0 | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
+      gz) artifact_stream "$file" | gzip -dc   | "${SUDO[@]}" tar xf - -C "$MARIONNET_DIR" ;;
+    esac
+    echo "ok ($(( SECONDS - started ))s)"
+  fi
 done
 
 info "done: ${#TODO[@]} artefact(s) installed in $MARIONNET_DIR"

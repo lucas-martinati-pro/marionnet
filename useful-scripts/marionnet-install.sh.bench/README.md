@@ -7,12 +7,19 @@ sont exactement ce qu'est un serveur de release :
 
 | Fonction | Branche `dir` (prouvée ép. 6) | Branche `url` (ce banc) |
 |---|---|---|
-| `catalog_list`   | `ls -1` | `wget` du répertoire, puis les noms lus dans les `href="…"` |
+| `catalog_list`   | `ls -1` | `wget` du répertoire, puis les noms lus dans les `href="…"` — **repli** depuis l'ép. 8 |
 | `artifact_stream`| `cat`   | `wget -q -O -` |
 
 `www.marionnet.org` étant en panne, ce banc **dresse le serveur** au lieu de l'attendre :
 un Apache dans un conteneur, un répertoire de release synthétique, et le script lancé
 depuis un **second** conteneur qui ne contient que Debian et le script.
+
+**Épisode 8** y a ajouté une troisième chose à mesurer, celle qui rend les deux autres
+solides : un répertoire de release publie un **`SHA256SUMS`**, qui est **à la fois** le
+catalogue et l'intégrité de ses artefacts ; le listing n'en est plus que le **repli**. Le
+banc sert donc des répertoires **avec** et **sans** ce fichier, et rejoue sur les deux les
+deux façons dont un Apache cesse de publier un listing (`index.html`, `Options -Indexes`) :
+elles coulent le repli et ne touchent pas au catalogue publié.
 
 ## Jouer le banc
 
@@ -23,7 +30,7 @@ useful-scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
 une ligne `PASS:`/`FAIL:` par cas, un décompte à la fin, et le banc nettoie derrière lui
-(deux conteneurs, un réseau, un volume, un répertoire temporaire). Il **saute** (77) sans
+(deux conteneurs, un réseau, trois volumes, un répertoire temporaire). Il **saute** (77) sans
 Docker, sans démon Docker, ou si les images ne peuvent pas être construites.
 
 Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian:trixie-slim`).
@@ -95,6 +102,13 @@ contre le banc ; chacun est une façon plausible de casser le script.
 | 4b | source qui **répond mais ne contient rien** ⇒ l'autre message | idem |
 | 5a | `Options -Indexes` (403) ⇒ source **illisible**, pas source vide | idem |
 | 5b | un `index.html` masquant le listing ⇒ catalogue vide **annoncé** | — |
+| 6a | le catalogue lu dans le **`SHA256SUMS` publié**, sans avertissement de repli, un digest par artefact | `sums_read` muette (l'état d'avant l'ép. 8) |
+| 6b | le **même `index.html`** ne masque plus rien | idem |
+| 6c | **`Options -Indexes`** n'aveugle plus le client | idem |
+| 6d | un artefact au digest publié est annoncé **vérifié**, et arrive octet pour octet | idem |
+| 6e | un digest qui **ne correspond pas** arrête le run, et ce qui était extrait est **retiré** | comparaison neutralisée ; retrait supprimé |
+| 6f | `--no-verify` installe quand même | — |
+| 6g | le `SHA256SUMS` publié est relu par **`sha256sum -c`** lui-même, dans le client | — |
 
 Le cas 5a est aussi le **témoin de discriminance** du cas 1 : s'il passait lui aussi, c'est
 que le cas 1 n'aurait jamais lu de listing.
@@ -110,11 +124,31 @@ cas 1f est un fichier bien réel mais **illisible** (mode 000, donc 403). Et `wg
 quand les deux tarballs sont pris — le banc reste vert avec les deux passes inversées. Ce
 qui est observable, c'est le router pris **seul** : c'est le cas 2 quater.
 
+**Deuxième inobservable, de la même famille (ép. 8)** : retirer le `wait` qui attend le
+`sha256sum` du fifo laisse le banc **vert**. Le hacheur voit l'EOF dès que `tee` ferme le
+tuyau et a fini d'écrire avant qu'on lise son résultat — sur 294 kio la fenêtre ne s'ouvre
+pas. Le `wait` reste, parce que la course qu'il ferme se paierait sur un transfert de
+1,5 Gio par un digest **vide**, donc par un **faux** écart, donc par la destruction d'un
+artefact sain. Un invariant peut être une course : le banc dit alors qu'il ne sait pas la
+voir, il ne dit pas qu'elle n'existe pas.
+
+**Trois cas de préparation du banc valent aussi garde-fou** : la corruption du digest du
+cas 6e est faite par `awk` et non par un `sed` de deux substitutions — la seconde
+s'applique au résultat de la première et rend l'original (mesuré : le cas passait pour la
+mauvaise raison) —, elle garde le champ à 64 chiffres hexadécimaux (un 65ᵉ caractère rend
+la ligne illisible, et un digest non lu ne vérifie rien), et chaque cas de vérification
+part d'un **préfixe vide** : un cas qui trouve l'artefact déjà posé ne mesure que
+l'idempotence.
+
 ## Restes ouverts que ce banc éclaire
 
-- **Le cas 5b est un piège vivant** : le jour où le répertoire de release reçoit une page
-  d'accueil, le catalogue devient vide sans que rien ne soit cassé côté publication. C'est
-  l'argument le plus concret en faveur du reste ouvert (b) de l'épisode 6 — **publier un
-  fichier d'index à côté des artefacts** plutôt que dépendre de `mod_autoindex`.
+- **Le cas 5b est un piège vivant, et le 6b est sa réponse** : le jour où le répertoire de
+  release reçoit une page d'accueil, un catalogue **scrapé** devient vide sans que rien ne
+  soit cassé côté publication. C'était l'argument du reste ouvert (b) de l'épisode 6 ; il
+  est soldé depuis l'épisode 8 — `Makefile.d/release.sha256sums.sh` publie le fichier, et
+  les deux cas se lisent l'un contre l'autre.
+- Ce que le digest **ne** prouve **pas** : la provenance. `SHA256SUMS` voyage par la même
+  route que les tarballs, donc un serveur compromis réécrit les deux. La signature est une
+  question pour l'étape 1 du chantier, avec la clef du dépôt apt.
 - Ce banc mesure **le mécanisme**, pas la configuration réelle de `www.marionnet.org` :
   l'autoindex peut y être désactivé ou habillé. La vérification contre le vrai site reste due.

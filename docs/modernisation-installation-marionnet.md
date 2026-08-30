@@ -414,6 +414,7 @@ download/
 ├── marionnet-install.sh/       # le script v2 ET ce qu'il télécharge, par série
 │   └── 1.0.x/                  # (les anciennes URLs marionnet_from_scratch restent
 │       │                       #  servies avec un message de redirection)
+│       ├── SHA256SUMS           # LE CATALOGUE (et l'intégrité) — cf. note ép. 8
 │       ├── kernels_linux-6.12.95.tar.gz
 │       ├── kernels_linux-6.12.95-i386.tar.gz
 │       ├── machine-debian-trixie-<SUM>{,.conf,.relay,_variants/}
@@ -447,6 +448,18 @@ deux fonctions du script connaissent la différence — `catalog_list` et `artif
 l'aval est commun, de sorte qu'un run sur miroir exerce le **vrai** chemin et non une variante.
 Le répertoire de travail employé ici est `website-repo/download/marionnet-install.sh/1.0.x/`
 (ignoré par git : plusieurs gibioctets d'artefacts publiés).
+
+Note (2026-08-30, épisode 8) : **le catalogue d'une release est le fichier `SHA256SUMS`**, pas
+le listing du serveur. Une ligne `sha256sum` porte un **nom** *et* une **empreinte** : un seul
+fichier publié répond donc aux deux questions que pose l'installeur (« que contient cette
+release ? », « cet artefact est-il arrivé entier ? »), là où un index séparé et un fichier de
+sommes seraient deux vérités capables de diverger. Il est écrit par
+`Makefile.d/release.sha256sums.sh`, que les deux `*.prepare-to-publish` appellent d'eux-mêmes
+après avoir posé un tarball. **Conséquence à ne pas oublier en publiant à la main** : un
+artefact déposé sans passer par là est **invisible** de l'installeur, et une ligne laissée
+derrière un artefact supprimé annonce ce qui n'est plus là (d'où le retrait des lignes
+orphelines). La lecture du **listing** subsiste, mais seulement comme **repli** pour un
+répertoire publié avant ce fichier.
 
 ### 3.2 Matrice canaux × publics
 
@@ -901,7 +914,8 @@ clôture des enfants.
   `*.prepare-to-publish.sh`, puis à consommer ici ; (b) la découverte du catalogue par **parsing
   du listing HTML d'Apache** est ce qu'on hérite de 2005 : un fichier d'index publié à côté des
   artefacts serait plus sûr, et se déciderait à l'étape 1 ; (c) `wget` est présumé présent (pas de
-  repli `curl`).
+  repli `curl`). — *(a) et (b) sont **soldés par l'épisode 8**, et par le même fichier ; (c) reste
+  ouvert.*
 
 - **2026-08-30 — épisode 7 : le chemin réseau, mesuré sans le serveur.** L'épisode 6 laissait
   un trou nommé : « le chemin **réseau** est écrit, il n'est pas mesuré ». Il ne concerne que
@@ -987,3 +1001,74 @@ clôture des enfants.
   sujet (mesuré : 4 artefacts listés au lieu de 5). L'artefact de taille inconnue est donc un
   fichier bien réel mais **illisible** (mode 000 ⇒ 403), ce qui est aussi le cas de terrain :
   un artefact déposé avec de mauvaises permissions.
+
+- **2026-08-30 — épisode 8 : le catalogue devient un fichier publié, et il porte l'intégrité.**
+  L'épisode 6 laissait deux restes ouverts, (a) « aucun `SHA256SUMS` n'est publié » et (b) « la
+  découverte du catalogue par parsing du listing d'Apache est ce qu'on hérite de 2005 ».
+  L'épisode 7 avait transformé (b) en défaut **mesuré** : un `index.html` dans le répertoire de
+  release fait servir la page au lieu du listing, avec un `200`, donc un catalogue **vide** sans
+  rien de cassé côté publication ; `Options -Indexes` casse par l'autre bout. Les deux se
+  soldent par le **même fichier**, et c'est la décision de l'épisode : une ligne `sha256sum`
+  porte un **nom** *et* une **empreinte**, donc `SHA256SUMS` répond aux deux questions que pose
+  l'installeur. Publier un index **et** un fichier de sommes aurait créé deux vérités capables
+  de diverger.
+  Livrables : `Makefile.d/release.sha256sums.sh` (neuf, le seul écrivain) + cible
+  `make release.sha256sums` ; les deux `*.prepare-to-publish.sh` l'appellent après avoir déplacé
+  leur tarball ; `useful-scripts/marionnet-install.sh` le lit comme **catalogue** et vérifie
+  chaque artefact **en flux** ; le banc passe de **20 à 31 cas** (PASS 31 / FAIL 0).
+  Cinq décisions, chacune payée par un fait :
+  1. **Un troisième script, pas une fonction dupliquée.** Les deux publieurs dupliquent déjà
+     `publication_series` ; ce qui a tranché n'est pas le style mais un besoin : les artefacts
+     **déjà publiés** (wheezy, guignol, les noyaux) n'ont aucune somme, et il faut pouvoir
+     **amorcer** le fichier d'un répertoire existant. Un écrivain appelable seul était donc
+     nécessaire de toute façon.
+  2. **Rien n'est recalculé sans `--force`** : un digest, c'est relire le fichier entier, et un
+     tarball d'image pèse des gibioctets. Même raisonnement que le témoin `.<image>.origin` de
+     l'ép. 3. Mesuré sur le miroir réel : les 10 artefacts (3,7 Gio) amorcés en 3,3 s, puis
+     « nothing to do » ; l'ajout d'un onzième ne touche pas aux dix autres.
+  3. **Une ligne orpheline est retirée, pas gardée.** Puisque le fichier **est** le catalogue,
+     une ligne survivant à un artefact supprimé annonce un fantôme. Le retrait n'a lieu que
+     lorsque le script a regardé **tout** le répertoire : un appel qui nomme un tarball frais ne
+     sait rien des autres.
+  4. **La vérification se fait EN FLUX, et `tee >(sha256sum)` ne convient pas.** Le tarball
+     n'est jamais posé sur disque (choix de l'ép. 6, que 1,5 Gio de fichier temporaire pour
+     vérifier avant d'extraire défairait) ; l'empreinte se calcule donc **pendant** l'extraction. Mais
+     bash **n'attend pas** une substitution de processus : la comparaison pourrait lire un digest
+     inachevé. D'où un **fifo explicite**, un pid, un `wait`. Trois issues distinctes sont
+     rendues au lecteur — digest conforme, digest en écart, transfert/extraction en échec —
+     parce que les confondre enverrait chercher une panne réseau là où il y a un tarball corrompu.
+  5. **Un artefact qui rate son digest est RETIRÉ.** Le run est idempotent **par le nom** de la
+     cible (ép. 6, décision 4) : le laisser en place le ferait passer pour installé à tout jamais.
+     Retirer la seule cible suffit — un run suivant réécrit `.conf` et `_variants/`. `--no-verify`
+     existe pour l'utilisateur qui sait mieux, et l'absence de `sha256sum` **dégrade** (message)
+     au lieu d'échouer.
+  **Ce que le digest ne prouve pas, et il faut le dire** : la **provenance**. `SHA256SUMS`
+  emprunte la même route que les tarballs, donc un serveur compromis réécrit les deux. Il prouve
+  que l'artefact est **arrivé entier**. La signature est une question pour l'étape 1, avec la
+  clef du dépôt apt.
+  **Discriminance mesurée**, comme à l'ép. 7 : lecture de `SHA256SUMS` rendue muette → **7 cas**
+  tombent (les trois du catalogue publié, celui du digest annoncé, la vérification, l'écart et
+  le retrait), les 24 autres restent verts — c'est exactement l'état d'avant l'épisode ;
+  comparaison neutralisée → 2 cas ; retrait de la cible supprimé → 1 cas.
+  **Mesuré et assumé, deuxième de la famille ouverte à l'ép. 7** : retirer le `wait` du hacheur
+  laisse le banc **vert**. Le `sha256sum` voit l'EOF dès que `tee` ferme le fifo et a fini
+  d'écrire avant qu'on le lise : sur 294 kio la course ne s'ouvre pas. Le `wait` reste, parce
+  que cette course se paierait sur 1,5 Gio par un digest **vide**, donc un **faux** écart, donc
+  la destruction d'un artefact sain. Un invariant peut être une course : le banc dit qu'il ne
+  sait pas la voir, pas qu'elle n'existe pas.
+  **Deux pièges payés par un échec pendant l'épisode** : (1) `awk '{print $1}' -- fichier` —
+  `awk` ne connaît pas `--` et cherche un fichier nommé `--`, ce qui faisait échouer **toute**
+  vérification en la présentant comme un écart de somme (donc en supprimant un artefact sain) ;
+  (2) dans le banc, corrompre un digest par `sed 's/^0/1/; s/^[1-9a-f]/0/'` rend l'**original**
+  — la seconde substitution s'applique au résultat de la première — et le cas passait pour la
+  mauvaise raison. Corrigé par `awk`, avec deux gardes : la ligne reste à 64 chiffres
+  hexadécimaux, et le fichier corrompu doit **différer** de l'original sous peine de `SKIP`.
+  Preuves : les 4 scripts propres à `bash -n` et `shellcheck -S warning` ; banc jouet du script
+  de sommes (amorçage, incrément sans recalcul, `--force`, `--dry-run`, `--check`, format accepté
+  par le `sha256sum -c` du système, artefact hors répertoire refusé rc 2) ; run réel sur le
+  miroir `website-repo/…/1.0.x/` (10 artefacts, colonne `SUM` à `yes`, installation vérifiée de
+  guignol + noyau i386 dans un préfixe `/tmp`, donc **sans privilège**, puis « nothing to do ») ;
+  chemins d'échec joués sur miroir (somme fausse → rc 2 + cible retirée, `--no-verify` → installe,
+  pas de `SHA256SUMS` → repli annoncé) ; **banc HTTP complet PASS 31 / FAIL 0** et les trois
+  mutants ci-dessus.
+  **Reste ouvert de l'ép. 6 encore ouvert** : (c) `wget` présumé présent, pas de repli `curl`.

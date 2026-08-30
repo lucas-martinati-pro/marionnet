@@ -3,7 +3,11 @@
 # else -- wget, tar, xz-utils, coreutils. In particular there is no marionnet, no opam, no
 # repository: the script is copied in alone, which is exactly how it will be downloaded.
 #
-# sha256sum (coreutils) is the bench's own tool, not the script's.
+# sha256sum (coreutils) is used by BOTH sides since episode 8: the script checks a
+# downloaded artefact against the published SHA256SUMS, and the bench checks the bench.
+# It is part of the essential coreutils of any Debian, so there is nothing to install --
+# which is precisely the point of not installing it here: if it were missing, this image
+# would say so.
 FROM debian:trixie-slim
 
 RUN apt-get update \

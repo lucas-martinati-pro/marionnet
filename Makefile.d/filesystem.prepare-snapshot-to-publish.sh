@@ -516,6 +516,14 @@ tar -C "$OUTDIR" --transform 's,^,filesystems/,S' "${TAR_OWNERSHIP[@]}" "${TAR_C
 mv -f -- "$TARBALL.partial" "$TARBALL"
 trap - EXIT
 info "tarball produced: $TARBALL ($(du -h -- "$TARBALL" | awk '{print $1}'))"
+
+# The release directory has a catalogue, and it is SHA256SUMS -- read as such by
+# useful-scripts/marionnet-install.sh, whose Apache listing is only a fallback. A tarball
+# which never reaches that file is invisible to the installer, so it is recorded HERE,
+# right after being moved into place, and not left to a separate gesture someone forgets.
+bash "$ROOT/Makefile.d/release.sha256sums.sh" --output-dir "$OUTDIR" -- "$TARBALL" || \
+  warn "$TARBALL is published but NOT in SHA256SUMS: run Makefile.d/release.sha256sums.sh"
+
 if ((USE_XZ)); then
   info "to extract it: wget -O - <url> | xz -dc -T0 | tar xf -    (\`tar xJf' would be 4x slower,"
   info "               and the installer in the field only knows \`tar xvzf': see --gz)"

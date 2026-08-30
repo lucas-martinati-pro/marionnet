@@ -24,6 +24,13 @@
 #   catalog_list  -- url branch: wget the directory, read the names off `href="..."'
 #   artifact_stream -- url branch: wget -O -
 #
+# Episode 8 added a third thing to measure, and it is the one which makes the other two
+# sturdy: a release directory publishes SHA256SUMS, which is BOTH the catalogue and the
+# integrity of its artefacts. The listing is only its fallback -- so this bench serves
+# directories WITH and WITHOUT that file, and the two Apache configurations which break a
+# listing (an index.html shadowing it, `Options -Indexes' forbidding it) are replayed on
+# both: they sink the fallback and leave the published catalogue untouched.
+#
 # www.marionnet.org being down, this bench stands an Apache in a container, serves it a
 # synthetic release directory, and makes the script fetch from it out of a SECOND container
 # which holds nothing but Debian and the script. Nothing is mounted into the client: what
@@ -163,6 +170,44 @@ cp -a "$FULL/kernels_linux-6.12.95.tar.xz" "$MIRROR/one-size-unknown/kernels_lin
 cp -a "$FULL"/*.tar.xz "$WITHINDEX/"
 echo '<html><body>Marionnet downloads</body></html>' > "$WITHINDEX/index.html"
 
+# Three more served directories, all of them publishing a SHA256SUMS -- written by the
+# very script which writes it in production, not by a hand-rolled `sha256sum >' here: the
+# bench then measures the two halves of episode 8 against each other, and a change of
+# format on one side is caught instead of being copied on both.
+#
+#   with-sums             the four artefacts and their digests
+#   with-sums-and-index   the same, plus the index.html which sinks a LISTING (case 5b)
+#   with-sums-corrupt     one digest deliberately wrong: what a truncated transfer looks like
+SUMS_TOOL="$HERE/../../Makefile.d/release.sha256sums.sh"
+[[ -r $SUMS_TOOL ]] || skip_all "not found: $SUMS_TOOL (this bench needs the source tree)"
+
+WITHSUMS="$MIRROR/with-sums"
+WITHSUMS_INDEX="$MIRROR/with-sums-and-index"
+WITHSUMS_BAD="$MIRROR/with-sums-corrupt"
+mkdir -p "$WITHSUMS" "$WITHSUMS_INDEX" "$WITHSUMS_BAD"
+cp -a "$FULL"/*.tar.xz "$WITHSUMS/"
+bash "$SUMS_TOOL" --series 1.0.x --output-dir "$WITHSUMS" >/dev/null \
+  || skip_all "$SUMS_TOOL could not write a SHA256SUMS"
+
+cp -a "$WITHSUMS"/* "$WITHSUMS_INDEX/"
+echo '<html><body>Marionnet downloads</body></html>' > "$WITHSUMS_INDEX/index.html"
+
+cp -a "$FULL/filesystems_machine-guignol-18474.tar.xz" "$WITHSUMS_BAD/"
+bash "$SUMS_TOOL" --series 1.0.x --output-dir "$WITHSUMS_BAD" >/dev/null
+# One digit off: the artefact is intact, the digest is not -- which is what a truncated
+# transfer, or a stale SHA256SUMS, looks like from the client's side. The flip has to keep
+# the field 64 hex digits long (a 65th character would make the line unreadable, and an
+# unread digest verifies nothing), and it has to be idempotent-proof: a `sed' of two
+# substitutions applies the second to the output of the first and hands back the original
+# (measured -- the case then passed for the wrong reason).
+cp -a "$WITHSUMS_BAD/SHA256SUMS" "$WORK/SHA256SUMS.before-corruption"
+awk '{ c = substr($0, 1, 1); print (c == "0" ? "1" : "0") substr($0, 2) }' \
+  "$WORK/SHA256SUMS.before-corruption" > "$WITHSUMS_BAD/SHA256SUMS"
+cmp -s "$WORK/SHA256SUMS.before-corruption" "$WITHSUMS_BAD/SHA256SUMS" \
+  && skip_all "the bench failed to corrupt a digest: cases 6e/6f would prove nothing"
+grep -qE '^[0-9a-f]{64}  ' "$WITHSUMS_BAD/SHA256SUMS" \
+  || skip_all "the corrupted SHA256SUMS is no longer in sha256sum format"
+
 IMAGE_SHA=$(sha256sum < "$STAGE/filesystems/machine-guignol-18474" | cut -d' ' -f1)
 KERNEL_SHA=$(sha256sum < "$STAGE/kernels/linux-6.12.95" | cut -d' ' -f1)
 chmod -R a+rX "$WORK/htdocs"
@@ -212,14 +257,38 @@ function client_p {
 function in_prefix {
   docker run --rm -v "$VOL:/opt/mrn" "$IMG_CLIENT" bash -c "$1" 2>&1
 }
-trap 'cleanup; docker volume rm "$VOL" >/dev/null 2>&1 || true' EXIT
+
+# Two more independent prefixes, named this time. Each verification case must start from
+# an EMPTY one: a case which finds the artefact already in place measures nothing but the
+# idempotence, and the failure it is supposed to catch never runs (measured -- that is how
+# the first version of case 6e passed for the wrong reason).
+VOL2=mrn-install-bench-prefix-verified
+VOL3=mrn-install-bench-prefix-corrupt
+for v in "$VOL2" "$VOL3"; do
+  docker volume rm "$v" >/dev/null 2>&1 || true
+  docker volume create "$v" >/dev/null
+done
+function client_in {
+  local vol="$1"; shift
+  docker run --rm --network "$NET" \
+    -v "$SCRIPT:/marionnet-install.sh:ro" -v "$vol:/opt/mrn" \
+    "$IMG_CLIENT" bash /marionnet-install.sh --prefix /opt/mrn "$@" 2>&1
+}
+function in_vol {
+  local vol="$1"; shift
+  docker run --rm -v "$vol:/opt/mrn" "$IMG_CLIENT" bash -c "$1" 2>&1
+}
+trap 'cleanup; docker volume rm "$VOL" "$VOL2" "$VOL3" >/dev/null 2>&1 || true' EXIT
 
 echo
 echo "# --- 1. the catalogue read off an Apache listing"
 
 out=$(client --fetch-only --from "$BASE/1.0.x" --list) || out="EXIT $?
 $out"
-got=$(printf '%s\n' "$out" | awk 'NR>1 {print $1}' | grep . | sort | tr '\n' ' ')
+# The first column of the artefact lines. Selected by NAME rather than by line number:
+# a release directory without SHA256SUMS makes the script warn on stderr, and the bench
+# merges stderr into stdout.
+got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
 want="filesystems_machine-guignol-18474 filesystems_router-guignol-18474 kernels_linux-6.12.95 kernels_linux-6.12.95-i386 "
 if [[ $got = "$want" ]]; then
   pass "--list over HTTP finds exactly the four artefacts of the release directory"
@@ -248,8 +317,8 @@ list_dir=$(docker run --rm \
   -v "$SCRIPT:/marionnet-install.sh:ro" \
   -v "$FULL:/mirror:ro" "$IMG_CLIENT" \
   bash /marionnet-install.sh --fetch-only --from /mirror --list 2>&1) || true
-cols_http=$(printf '%s\n' "$list_http" | awk 'NR>1 && NF {print $1, $2, $3}')
-cols_dir=$(printf '%s\n' "$list_dir"  | awk 'NR>1 && NF {print $1, $2, $3}')
+cols_http=$(printf '%s\n' "$list_http" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1, $2, $3}')
+cols_dir=$(printf '%s\n' "$list_dir"  | awk '$1 ~ /^(filesystems|kernels)_/ {print $1, $2, $3}')
 if [[ -n $cols_http && $cols_http = "$cols_dir" ]]; then
   pass "--list over HTTP announces the same sizes as the same directory read as a mirror"
 else
@@ -376,6 +445,101 @@ if (( rc != 0 )) && printf '%s\n' "$out" | grep -q "answered, but holds no"; the
   pass "an index.html hiding the listing is caught (200, empty catalogue) instead of half-working"
 else
   fail "index.html shadowing the listing: rc=$rc, said [$out]"
+fi
+
+echo
+echo "# --- 6. the catalogue PUBLISHED, and the integrity that comes with it"
+
+# (a) The four artefacts found without an Apache listing being involved at all, and no
+# warning about a missing SHA256SUMS.
+out=$(client --fetch-only --from "$BASE/with-sums" --list) || out="EXIT $?
+$out"
+got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
+if [[ $got = "$want" ]]; then
+  pass "--list reads the four artefacts off the published SHA256SUMS"
+else
+  fail "--list from SHA256SUMS: expected [$want], got [$got]"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+if printf '%s\n' "$out" | grep -q "publishes no SHA256SUMS"; then
+  fail "the fallback warning was printed although SHA256SUMS is published"
+else
+  pass "no fallback warning: the catalogue really came from the file"
+fi
+# Every artefact carries a digest, and the script says so before transferring anything.
+if printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $4}' | grep -qv '^yes$'; then
+  fail "--list shows an artefact without a digest"
+  printf '%s\n' "$out" | sed 's/^/      /'
+else
+  pass "--list announces a digest for each of the four artefacts"
+fi
+
+# (b) The index.html which empties a LISTING (case 5b) does nothing at all here. This is
+# the whole argument of episode 8, measured: the two directories differ by one file.
+out=$(client --fetch-only --from "$BASE/with-sums-and-index" --list) || out="EXIT $?
+$out"
+got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
+[[ $got = "$want" ]] \
+  && pass "an index.html no longer hides anything: the catalogue is the published file" \
+  || { fail "index.html + SHA256SUMS: expected [$want], got [$got]"; \
+       printf '%s\n' "$out" | sed 's/^/      /'; }
+
+# (c) Neither does `Options -Indexes' (case 5a): a release directory can now serve its
+# artefacts with autoindex off, which is what a hardened server does by default.
+out=$(client --fetch-only --from "$BASE_NOINDEX/with-sums" --list) || out="EXIT $?
+$out"
+got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
+[[ $got = "$want" ]] \
+  && pass "autoindex off no longer blinds the client: the catalogue is fetched, not scraped" \
+  || { fail "autoindex off + SHA256SUMS: expected [$want], got [$got]"; \
+       printf '%s\n' "$out" | sed 's/^/      /'; }
+
+# (d) A real fetch, verified while it flows.
+out=$(client_in "$VOL2" --fetch-only --from "$BASE/with-sums" --only guignol-18474 --yes) || \
+  { fail "the verified fetch failed"; printf '%s\n' "$out" | sed 's/^/      /'; }
+printf '%s\n' "$out" | grep -q "ok, verified" \
+  && pass "an artefact whose digest is published is announced as verified" \
+  || { fail "the fetch did not say \`ok, verified'"; printf '%s\n' "$out" | sed 's/^/      /'; }
+got=$(in_vol "$VOL2" 'sha256sum < /opt/mrn/share/marionnet/filesystems/machine-guignol-18474' | cut -d' ' -f1)
+[[ $got = "$IMAGE_SHA" ]] \
+  && pass "the verified image is byte for byte the one which was published" \
+  || fail "the verified image differs ($got != $IMAGE_SHA)"
+
+# (e) A digest which does not match: the run STOPS, and what had been extracted is gone.
+# Leaving it would be worse than not checking at all -- the run is idempotent by the NAME
+# of the target, so a corrupt image would be taken for an installed one ever after.
+out=$(client_in "$VOL3" --fetch-only --from "$BASE/with-sums-corrupt" --yes) && rc=0 || rc=$?
+if (( rc != 0 )) && printf '%s\n' "$out" | grep -q "sha256 mismatch"; then
+  pass "a digest which does not match stops the run (rc=$rc)"
+else
+  fail "a wrong digest was not caught: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+in_vol "$VOL3" 'test ! -e /opt/mrn/share/marionnet/filesystems/machine-guignol-18474' \
+  >/dev/null 2>&1 \
+  && pass "the artefact which failed its digest was removed, not left in place" \
+  || fail "a corrupt artefact stayed in the prefix"
+
+# (f) ... and the user who knows better can still say so.
+out=$(client_in "$VOL3" --fetch-only --from "$BASE/with-sums-corrupt" --yes --no-verify) && rc=0 || rc=$?
+if (( rc == 0 )) && in_vol "$VOL3" \
+     'test -e /opt/mrn/share/marionnet/filesystems/machine-guignol-18474' >/dev/null 2>&1; then
+  pass "--no-verify installs the very artefact the digest rejected"
+else
+  fail "--no-verify did not install: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# (g) The file we publish is in sha256sum's own format -- checked by sha256sum itself,
+# inside the client container, on what it downloaded. Nothing here re-implements it.
+out=$(docker run --rm --network "$NET" "$IMG_CLIENT" bash -c \
+  "cd /tmp && wget -q -r -np -nH --cut-dirs=2 -R 'index.html*' '$BASE/with-sums/' \
+   && cd with-sums && sha256sum -c SHA256SUMS" 2>&1) && rc=0 || rc=$?
+if (( rc == 0 )); then
+  pass "the published SHA256SUMS is checked by sha256sum -c on the downloaded directory"
+else
+  fail "sha256sum -c refused the published file: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
 fi
 
 echo

@@ -281,6 +281,17 @@ Reprise : appliquer le skill `chantier-long`.
   servir la page **au lieu du listing** (200), donc catalogue **vide** sans rien de cassé côté
   publication — l'argument pour publier un fichier d'index plutôt que dépendre de
   `mod_autoindex`.
+  **Ép. 8 : c'est fait, et par le même fichier que l'intégrité.** Le catalogue d'une release
+  est désormais **`SHA256SUMS`** — une ligne `sha256sum` porte un nom *et* une empreinte, donc
+  un seul fichier répond aux deux questions ; le listing n'en est plus que le **repli**.
+  `Makefile.d/release.sha256sums.sh` en est le **seul écrivain** (cible `make
+  release.sha256sums`), appelé d'eux-mêmes par les deux `*.prepare-to-publish.sh`.
+  **Invariant à ne pas casser** : un artefact déposé sans passer par ce script est
+  **invisible** de l'installeur, et une ligne orpheline annonce un fantôme (d'où son retrait).
+  Côté installeur, l'empreinte est vérifiée **en flux** — `tee >(sha256sum)` ne convient pas,
+  bash n'attendant pas une substitution de processus, d'où fifo + `wait` — et un artefact en
+  écart est **retiré**, l'idempotence étant par le nom. Ce que le digest ne prouve pas : la
+  **provenance** (il voyage avec les tarballs) ; la signature est une question de l'étape 1.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

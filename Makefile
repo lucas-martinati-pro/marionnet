@@ -404,8 +404,18 @@ kernel.prepare-to-publish:
 	@test -n "$(KERNEL)" || { echo "usage: make $@ KERNEL=linux-6.12.95"; exit 2; } >&2
 	bash Makefile.d/kernel.prepare-to-publish.sh --series $(PUBLICATION_SERIES) $(KERNEL)
 
+# Maintain SHA256SUMS in the release directory -- which is not merely an integrity file
+# but the CATALOGUE useful-scripts/marionnet-install.sh reads (the Apache listing being
+# only its fallback). The two targets above call the script themselves for the tarball
+# they have just built; this target is for the other cases: bootstrapping the file over a
+# release directory published before it existed, or after an artefact was put there by
+# hand. Nothing already recorded is recomputed. `make release.sha256sums CHECK=1' verifies
+# the directory instead of completing it. Other options (another directory): --help.
+release.sha256sums:
+	bash Makefile.d/release.sha256sums.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
+
 # ---
-.PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish
+.PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 
 
 # =============================================================
