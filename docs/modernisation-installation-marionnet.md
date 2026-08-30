@@ -421,9 +421,9 @@ download/
 │       ├── filesystems_machine-debian-trixie-<SUM>.tar.gz
 │       ├── machine-debian-wheezy-08367{,.conf,.relay,_variants/}
 │       ├── filesystems_machine-debian-wheezy-08367.tar.gz
-│       └── filesystems_{machine,router}-guignol-18474.tar.gz  (.conf patchés inclus)
+│       ├── filesystems_{machine,router}-guignol-18474.tar.gz  (.conf patchés inclus)
+│       └── marionnet_<version>-r<rev>_<arch>_glibc<x.y>.tar.xz   # l'application (ép. 9a)
 ├── 1.0.x/
-│   ├── binaries/               # Marionnet précompilé (par famille de distro/glibc)
 │   └── src/                    # tarballs sources du port dune (git archive)
 ├── apt/                        # dépôt apt signé (canal .deb)
 └── rpm/                        # canal RPM
@@ -460,6 +460,17 @@ artefact déposé sans passer par là est **invisible** de l'installeur, et une 
 derrière un artefact supprimé annonce ce qui n'est plus là (d'où le retrait des lignes
 orphelines). La lecture du **listing** subsiste, mais seulement comme **repli** pour un
 répertoire publié avant ce fichier.
+
+Note (2026-08-30, épisode 9a) : **le binaire précompilé n'a pas de répertoire à lui.** La
+première version de ce § lui dessinait un `download/<série>/binaries/` ; il vit finalement
+**dans le même répertoire de release** que les images et les noyaux, donc dans le **même**
+`SHA256SUMS`. Motif : le catalogue dit *ce qu'une release contient*, et une release dont
+l'application est ailleurs oblige un consommateur à connaître deux emplacements et à faire
+confiance à deux fichiers de sommes capables de diverger. Le prix de ce choix est explicite :
+`useful-scripts/marionnet-install.sh` ne récupère que `filesystems_*` et `kernels_*`, donc une
+ligne `marionnet_*` est **cataloguée et ignorée** au fetch — sans erreur (mesuré : le filtre du
+catalogue est un `case` qui laisse tomber ce qu'il ne connaît pas). C'est un reste, pas un
+défaut.
 
 ### 3.2 Matrice canaux × publics
 
@@ -514,6 +525,7 @@ clôture des enfants.
 2. **Outillage binaire** : `make release-binary`, staging `dune install --prefix` +
    tarball, test sur machine vierge (conteneur jetable). La relocatabilité est acquise
    (§ 6, point réglé) : le tarball embarque un `marionnet.conf` adapté si besoin.
+   — **La FABRICATION est faite (épisode 9a)** ; le test sur machine vierge est l'épisode 9b.
 3. **Essai toolchain système** (borné à une session, § 6) : tentative de build avec
    ocaml 4.14 + camlp4 4.14+1 + liblablgtk3-ocaml-dev d'apt, sans opam. Succès → le
    .deb devient source-buildable et le script v2 se simplifie ; échec → documenté, on
@@ -1072,3 +1084,106 @@ clôture des enfants.
   pas de `SHA256SUMS` → repli annoncé) ; **banc HTTP complet PASS 31 / FAIL 0** et les trois
   mutants ci-dessus.
   **Reste ouvert de l'ép. 6 encore ouvert** : (c) `wget` présumé présent, pas de repli `curl`.
+
+## Épisode 9a (2026-08-30) — l'application devient un artefact publiable
+
+Étape 2 du § 5. Une release savait poser des **ressources** (images, noyaux) pour un programme
+qu'il fallait encore compiler ; elle contient désormais le programme. Livrables :
+`Makefile.d/release.binary.sh` (neuf), cibles `make release-binary` et
+`make print-required-packages-runtime`, plus le **troisième préfixe** reconnu par
+`Makefile.d/release.sha256sums.sh`.
+
+### Ce que le script fait, et pourquoi ce n'est pas seulement `dune install`
+
+`dune install --prefix` **n'est pas** une installation de Marionnet : `install-final-as-root`
+du `Makefile` fait deux gestes de plus, et le tarball doit faire les mêmes.
+
+1. **Les scripts de `bin/scripts/` vont dans `bin/`.** dune les installe sous
+   `share/marionnet/scripts/` (ce sont des fichiers de données de la section `share`), qui
+   n'est sur le `PATH` de personne — alors que Marionnet, la règle sudoers et la documentation
+   livrée les nomment **nus**. La copie est un `cp -a`, non le `cp -lf` du `Makefile` : un lien
+   dur a un sens sur un système installé (un inode, deux noms), aucun dans un staging qu'on va
+   archiver. Ce que `-a` préserve et qui compte, ce sont les **liens symboliques** — et pour
+   `mrn2sh` et `mrnck`, **le nom est le comportement** (`${0##*/}`).
+   *Mesuré au passage* : `dune install` **déréférence** ces liens (chaque nom arrive en fichier
+   régulier complet). Le comportement reste juste — chaque nom est exécutable et se lit
+   lui-même — mais l'installation pèse quelques dizaines de kio de plus. C'est le comportement
+   de l'installation réelle, pas une divergence introduite ici.
+2. **La règle sudoers appartient à la machine cible**, pas à celle qui empaquette : elle
+   déménage dans l'`install.sh` embarqué, toujours **sans** `--enable-bridges` (bloc (a) seul).
+
+### Les décisions, et ce qui les a payées
+
+- **Une racine nommée dans le tarball**, là où les deux frères se déplient droit à
+  destination : ceux-là portent des données à place fixe, celui-ci porte une **installation
+  entière**. Un tarball qui verse `bin/` et `share/` dans `/usr/local` ne se regarde pas avant
+  d'être cru et ne laisse rien à désinstaller. La racine donne aussi un toit à `install.sh`.
+- **La glibc dans le nom, pas la distribution** : ce qu'un binaire dynamiquement lié exige de
+  sa machine d'accueil est une glibc au moins aussi récente que celle contre laquelle il a été
+  lié. `debian13` nommerait une distribution qui n'est pas la contrainte et ne dirait rien
+  d'Ubuntu ou de Mint.
+- **La configuration *testing* est refusée par défaut.** `CONFIGME.choice` décide du préfixe
+  **compilé** dans `bin/meta.ml` : en *testing* c'est `$OPAM_SWITCH_PREFIX`, un chemin sous le
+  home de qui empaquette. Un tel tarball n'est pas faux pour son auteur — et il est même le
+  moyen d'éprouver ce script — mais il ne doit **jamais** atteindre un répertoire de release.
+  D'où : autorisé par `--allow-testing-configuration`, qui **exige** un `--output-dir` explicite
+  et **n'inscrit rien** au catalogue. Le script ne bascule pas la configuration lui-même :
+  `make rebuild-for-final` est un rebuild complet, c'est une décision, pas un effet de bord.
+- **La liste des paquets d'exécution est lue, pas recopiée** : le README embarqué la reçoit de
+  `make print-required-packages-runtime` (cible neuve), parce que la machine qui déplie le
+  tarball n'a pas de `Makefile` à lire. La source de vérité (§ 2.4 bis) reste unique.
+- **Pas de bashbricks**, comme les trois autres scripts de `Makefile.d/` : aucun d'eux ne source
+  quoi que ce soit, et la famille vaut mieux que la consigne par défaut.
+
+### Le défaut que l'épisode a mis au jour : `--paths` ment quand le binaire est relogé
+
+En dépliant le tarball sous un préfixe **autre** que celui de compilation, `marionnet.native
+--paths` montre `filesystems`, `kernels`, `gui`, `images` correctement relogés (la cascade de
+`bin/configuration.ml` fait son travail) mais laisse **`binaries` au préfixe compilé** —
+`bin/initialization.ml:472` le calcule par `Filename.concat Meta.prefix "bin"`.
+
+Vérification faite, ce n'est **pas** un défaut de relocatabilité : cette valeur ne sert qu'à
+l'affichage de `--paths`, et les scripts compagnons sont appelés **par leur nom nu**
+(`bin/tap_provider.ml:48`, `bin/nat_bridge_host.ml:46`, `bin/lan_bridge_host.ml`), donc trouvés
+par le **`PATH`**. Deux conséquences, une pour chacun des deux versants :
+
+- *pour l'utilisateur* : un préfixe hors `PATH` donne un Marionnet qui démarre et qui, ensuite,
+  ne trouve plus ses portes privilégiées. L'`install.sh` embarqué **le dit** désormais, en
+  nommant les scripts concernés ;
+- *pour le code* : la ligne `binaries` de `--paths` annonce un répertoire que rien ne lit.
+  Laissée en l'état (la corriger est un choix de sémantique — le répertoire du binaire courant ?
+  celui où le `PATH` trouve `marionnet-sudoers.sh` ?), notée ici pour ne pas être redécouverte.
+
+### Prouvé
+
+`shellcheck` rc 0 sur le script **et** sur l'`install.sh` embarqué (extrait de son
+here-document et vérifié séparément). Les **3 gardes** en rc 2 : *testing* refusé,
+`--allow-testing-configuration` sans `--output-dir`, option inconnue. Un défaut d'écriture
+corrigé en chemin : `usage` déroulait aussi l'usage de l'`install.sh` du here-document — la
+plage `sed` est ancrée sur `Usage: Makefile.d`.
+
+Run réel (configuration *testing*, hors release, `--output-dir` explicite) : **7,1 Mio en 15 s**,
+`marionnet_trunk-r905_amd64_glibc2.39.tar.xz`, **tous les membres root/root**, 23 noms dans
+`bin/` (le binaire, les 15 noms de `bin/scripts/`, `bashbricks.sh` et les `.sh` réels),
+324 entrées sous `share/marionnet/` dont `share/marionnet.conf`, le glade et les catalogues
+`.mo`. Déplié sous un préfixe arbitraire, `install.sh --no-config --no-sudoers` pose l'arbre et
+`marionnet.native --help` **répond** (rc 0). Relocation mesurée par `--paths`, avec et sans les
+variables (cf. ci-dessus). Idempotence : second run « already there, skipped » ; `--force`
+refait. Catalogue : `release.sha256sums.sh` accepte le `marionnet_*` (1 artefact calculé) et
+`--check` le valide.
+
+**Non prouvé, faute d'y être** : le chemin **nominal** (configuration *finale*, inscription
+automatique au `SHA256SUMS` du vrai répertoire de release) — il demande un `make
+rebuild-for-final`, donc un rebuild complet de la copie de travail ; seule la branche
+d'inscription diffère, et elle a été jouée à la main.
+
+### Restes
+
+- **Épisode 9b** : le banc conteneur vierge — déplier sur une Debian nue portant les seuls
+  `REQUIRED_PACKAGES_RUNTIME`, lancer, et faire jouer `install.sh` **en root** (donc
+  `/etc/marionnet/marionnet.conf` et la règle sudoers, les deux gestes que cette machine ne
+  pouvait pas mesurer). Patron : `useful-scripts/marionnet-install.sh.bench/`.
+- **Épisode 9c** (ou chantier enfant `…-par-script`) : le troisième préfixe côté consommateur,
+  pour que `marionnet-install.sh` sache **installer** le binaire qu'il catalogue déjà.
+- Toujours ouverts : le repli `curl` de l'ép. 6, la complétion bash (§ 2.4 ter), et l'étape 1
+  (dépôt sur le serveur), bloquée par l'extérieur.

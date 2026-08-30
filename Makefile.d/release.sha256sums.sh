@@ -51,8 +51,8 @@
 #   -n, --dry-run                say what would change, write nothing
 #   -h, --help                   this help
 #
-# Without FILE, every kernels_*.tar.{gz,xz} and filesystems_*.tar.{gz,xz} of the directory
-# is considered. With FILE (a bare name or a path inside the directory), only those are --
+# Without FILE, every kernels_*.tar.{gz,xz}, filesystems_*.tar.{gz,xz} and
+# marionnet_*.tar.{gz,xz} of the directory is considered. With FILE (a bare name or a path inside the directory), only those are --
 # that is how the two *.prepare-to-publish.sh scripts call this one, right after they have
 # moved a fresh tarball into place.
 # ---
@@ -150,8 +150,15 @@ fi
 # --- Which artefacts we are asked about.
 # ---
 # A published artefact is recognised by its NAME, here as everywhere else in this chain:
-# `filesystems_<X>.tar.*' and `kernels_<X>.tar.*'. Anything else in the directory (the
-# images themselves, their .conf, this very file) is not an artefact to publish.
+# `filesystems_<X>.tar.*', `kernels_<X>.tar.*' and -- since Makefile.d/release.binary.sh --
+# `marionnet_<version>-r<rev>_<arch>_<libc>.tar.*', the application itself. Anything else in
+# the directory (the images themselves, their .conf, this very file) is not an artefact to
+# publish.
+#
+# The installer only fetches the first two: a `marionnet_*' line is catalogued and, for now,
+# ignored by useful-scripts/marionnet-install.sh. It is recorded all the same, because the
+# catalogue is what says WHAT A RELEASE HOLDS, and because the digest of the binary is
+# exactly what the channel which will install it needs.
 # ---
 CANDIDATES=()
 if ((${#ARGUMENTS[@]})); then
@@ -163,7 +170,8 @@ if ((${#ARGUMENTS[@]})); then
 else
   shopt -s nullglob
   for f in "$OUTDIR"/kernels_*.tar.gz "$OUTDIR"/kernels_*.tar.xz \
-           "$OUTDIR"/filesystems_*.tar.gz "$OUTDIR"/filesystems_*.tar.xz; do
+           "$OUTDIR"/filesystems_*.tar.gz "$OUTDIR"/filesystems_*.tar.xz \
+           "$OUTDIR"/marionnet_*.tar.gz "$OUTDIR"/marionnet_*.tar.xz; do
     CANDIDATES+=("$(basename -- "$f")")
   done
   shopt -u nullglob

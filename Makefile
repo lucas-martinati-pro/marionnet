@@ -107,6 +107,13 @@ REQUIRED_PACKAGES = $(REQUIRED_PACKAGES_BUILD) $(REQUIRED_PACKAGES_RUNTIME)
 # installing it implies enabling a foreign architecture on the host.
 REQUIRED_PACKAGES_RUNTIME_I386 = libc6:i386
 
+# The runtime list, printed on demand. Makefile.d/release.binary.sh writes it into the README
+# of the binary tarball -- the machine which unpacks that tarball has no Makefile to read.
+# Reading it through here, rather than copying the list into that script, is what keeps the
+# single source of truth single (see § 2.4 bis of docs/modernisation-installation-marionnet.md).
+print-required-packages-runtime:
+	@echo $(REQUIRED_PACKAGES_RUNTIME)
+
 # `opam' packages strictly required by the compilation (see the (libraries ...) stanzas of
 # bin/dune and lib/dune; `camlp4' serves the (preprocess (run camlp4of ...)) of lib/):
 #  - camlp-streams provides the `Stream' module, dropped from the Stdlib by OCaml 5.0 and still
@@ -414,8 +421,19 @@ kernel.prepare-to-publish:
 release.sha256sums:
 	bash Makefile.d/release.sha256sums.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
 
+# Turn this working copy into the third kind of artefact a release is made of: the
+# application itself, precompiled. A clean build, `dune install' into a staging directory,
+# the scripts of bin/scripts/ put into its bin/ (as install-final-as-root does), a
+# self-contained install.sh + README, and the tarball -- recorded in SHA256SUMS like the
+# other two. REFUSED while CONFIGME.choice points at the testing configuration: the prefix
+# compiled into bin/meta.ml would be the opam switch (`make rebuild-for-final' first).
+# Options (another output directory, gzip instead of xz, keep the staging): --help.
+release-binary:
+	bash Makefile.d/release.binary.sh --series $(PUBLICATION_SERIES)
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
+.PHONY: release-binary print-required-packages-runtime
 
 
 # =============================================================

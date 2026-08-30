@@ -252,7 +252,7 @@ Reprise : appliquer le skill `chantier-long`.
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
   essaimera des chantiers enfants par canal) : `docs/modernisation-installation-marionnet.md` ;
   mémoire `modernisation-installation-marionnet` ;
-  `git log --grep="modernisation-installation-marionnet"`. **Ép. 0→7 faits** : autopsie et
+  `git log --grep="modernisation-installation-marionnet"`. **Ép. 0→9a faits** : autopsie et
   décisions (0, 2026-07-18/19), la source de vérité des dépendances remise d'aplomb dans le
   `Makefile` (1 et 2 — `REQUIRED_PACKAGES_RUNTIME` += `jq socat dnsmasq-base`, `bridge-utils`
   retiré), puis **la chaîne de release, des deux côtés** :
@@ -292,6 +292,22 @@ Reprise : appliquer le skill `chantier-long`.
   bash n'attendant pas une substitution de processus, d'où fifo + `wait` — et un artefact en
   écart est **retiré**, l'idempotence étant par le nom. Ce que le digest ne prouve pas : la
   **provenance** (il voyage avec les tarballs) ; la signature est une question de l'étape 1.
+  **Ép. 9a : l'application elle-même devient publiable.** `Makefile.d/release.binary.sh`
+  (cible `make release-binary`) produit un tarball relocatable
+  `marionnet_<version>-r<rev>_<arch>_glibc<x.y>.tar.xz` — racine nommée, `install.sh` et
+  `README` embarqués — déposé dans le **même** répertoire de release et le **même**
+  `SHA256SUMS` que les images et les noyaux (le `binaries/` du § 3.1 est abandonné ;
+  contrepartie : une ligne `marionnet_*` est **cataloguée et ignorée** par l'installeur, sans
+  erreur). **À ne pas défaire** : `dune install --prefix` n'est PAS une installation — les
+  scripts de `bin/scripts/` doivent aller de `share/marionnet/scripts/` vers `bin/` (Marionnet
+  et la doc les nomment nus), et la règle sudoers appartient à la machine cible, donc à
+  l'`install.sh` embarqué. La configuration *testing* est **refusée** (le préfixe compilé
+  serait le switch opam). **Piège durable** : `marionnet.native --paths` laisse `binaries` au
+  préfixe **compilé** (`bin/initialization.ml:472`) alors que les scripts compagnons sont
+  appelés **par leur nom nu**, donc trouvés par le **PATH** — inoffensif pour le code, mais un
+  préfixe hors PATH donne un Marionnet qui démarre puis ne trouve plus ses portes privilégiées.
+  Restent l'ép. 9b (banc conteneur vierge, où `install.sh` se joue **en root**) et l'ép. 9c
+  (savoir installer le binaire, pas seulement le cataloguer).
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 
