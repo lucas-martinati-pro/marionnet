@@ -252,7 +252,7 @@ Reprise : appliquer le skill `chantier-long`.
   apt maison, RPM, Docker officiel [MarioNUM g3], binaires précompilés sur marionnet.org ;
   essaimera des chantiers enfants par canal) : `docs/modernisation-installation-marionnet.md` ;
   mémoire `modernisation-installation-marionnet` ;
-  `git log --grep="modernisation-installation-marionnet"`. **Ép. 0→6 faits** : autopsie et
+  `git log --grep="modernisation-installation-marionnet"`. **Ép. 0→7 faits** : autopsie et
   décisions (0, 2026-07-18/19), la source de vérité des dépendances remise d'aplomb dans le
   `Makefile` (1 et 2 — `REQUIRED_PACKAGES_RUNTIME` += `jq socat dnsmasq-base`, `bridge-utils`
   retiré), puis **la chaîne de release, des deux côtés** :
@@ -271,8 +271,18 @@ Reprise : appliquer le skill `chantier-long`.
   à l'extraction et `--owner=root --group=root` à la création (le `mtime` d'un backing file est
   ce qu'UML vérifie) ; une image *router* est un **lien** vers l'image *machine* d'un **autre**
   tarball. `website-repo/` (copie de travail du site) est gitignoré.
-  **Bloqué par l'extérieur** : le chemin **réseau** de l'installeur est écrit mais non mesuré, et
-  l'étape « serveur » (dépôt des artefacts) attend le retour du site.
+  Le chemin **réseau** n'est plus une supposition : l'ép. 7 le mesure sans le serveur, en
+  dressant un **Apache en conteneur** (`useful-scripts/marionnet-install.sh.bench/`, 16 cas,
+  discriminance rouge/vert mesurée). Trois choses à ne pas défaire : le banc sert le listing
+  avec **Apache `FancyIndexing`** et non un `python3 -m http.server` (le parsing vise Apache),
+  il parle **HTTP** et non HTTPS (un certificat auto-signé ferait mesurer un `wget` différent
+  de celui de production), et **rien n'est monté dans le conteneur client** hormis le script.
+  Piège de production qu'il a mis au jour : un `index.html` dans le répertoire de release fait
+  servir la page **au lieu du listing** (200), donc catalogue **vide** sans rien de cassé côté
+  publication — l'argument pour publier un fichier d'index plutôt que dépendre de
+  `mod_autoindex`.
+  **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
+  site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 
 ## Où puiser
 

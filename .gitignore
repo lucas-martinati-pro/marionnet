@@ -85,6 +85,8 @@ useful-scripts/*
 !useful-scripts/make_marionnet_bytecode_revno
 !useful-scripts/marionnet_from_scratch
 !useful-scripts/marionnet-install.sh
+!useful-scripts/marionnet-install.sh.bench/
+!useful-scripts/marionnet-install.sh.bench/**
 
 # --- website-repo/ : copie de travail du site marionnet.org — le répertoire que
 #     `make {filesystem,kernel}.prepare-to-publish' alimente et que

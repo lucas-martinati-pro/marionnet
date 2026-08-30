@@ -902,3 +902,59 @@ clôture des enfants.
   du listing HTML d'Apache** est ce qu'on hérite de 2005 : un fichier d'index publié à côté des
   artefacts serait plus sûr, et se déciderait à l'étape 1 ; (c) `wget` est présumé présent (pas de
   repli `curl`).
+
+- **2026-08-30 — épisode 7 : le chemin réseau, mesuré sans le serveur.** L'épisode 6 laissait
+  un trou nommé : « le chemin **réseau** est écrit, il n'est pas mesuré ». Il ne concerne que
+  **deux lignes** — la branche `url` de `catalog_list` (listing Apache, noms lus dans les
+  `href="…"`) et celle d'`artifact_stream` (`wget -q -O -`) — mais ces deux lignes *sont* ce
+  qu'est un serveur de release. Plutôt que d'attendre le retour de `www.marionnet.org`, cet
+  épisode **dresse le serveur** : un Apache en conteneur, un répertoire de release synthétique,
+  et le script lancé depuis un **second** conteneur qui ne contient que Debian et le script.
+  Livrable : `useful-scripts/marionnet-install.sh.bench/` (`run.sh`, `Dockerfile.server`,
+  `Dockerfile.client`, `README.md`), **16 cas, PASS 16 / FAIL 0**, conventions de
+  `driven-sessions/` (0 PASS / 77 SKIP / autre FAIL) — mais **pas** dans `driven-sessions/`,
+  qui est scopé aux sessions Marionnet pilotées : le banc vit à côté de ce qu'il prouve, d'où
+  les trois entrées de liste blanche dans `.gitignore`.
+  Trois décisions, chacune payée par un fait :
+  1. **Apache, et jamais `python3 -m http.server`.** Le parsing vise un listing d'Apache, le
+     script le dit lui-même. `FancyIndexing` est activé **exprès** parce que c'est le listing
+     difficile — et la mesure l'a confirmé : ses liens de tri `href="?C=D;O=A"` sont bel et bien
+     dans la page (vus en clair quand le mutant « filtre neutralisé » les a laissés passer). Un
+     banc servi par un autre listing aurait mesuré un analyseur contre une page que personne ne
+     publiera.
+  2. **HTTP, pas HTTPS.** Un certificat auto-signé forcerait `wget --no-check-certificate`,
+     c'est-à-dire mesurerait une commande **différente** de celle qui tournera en production. La
+     jambe https est une vérification d'une ligne contre le vrai site, à son retour.
+  3. **Rien n'est monté dans le client** hormis le script : ni miroir, ni dépôt. Ce qui arrive
+     dans son préfixe est passé par HTTP, ou n'est pas arrivé. Corollaire utile au chantier : le
+     client ne porte que `wget`, `tar`, `xz-utils`, donc les dépendances hôte du chemin
+     d'approvisionnement sont **mesurées** au lieu d'être supposées.
+  **Discriminance mesurée (rouge/vert), parce qu'un banc vert des deux côtés ne prouve rien** :
+  `tar xmf` (`-m`) → le cas `mtime` tombe ; filtre `case` neutralisé → les deux cas du catalogue
+  tombent, parasites *et* `?C=…` ; échec `wget` avalé (`|| html=""`) → les cas 4a et 5a tombent
+  ensemble, ce qui est exactement la leçon de l'ép. 6 ; avertissement du router supprimé → le cas
+  du router seul tombe.
+  **Fait mesuré et assumé, contre l'intuition** : l'ordre d'extraction (machines avant routers)
+  est **inobservable** quand les deux tarballs sont pris — le banc reste vert avec les deux
+  passes inversées, le lien transitoirement cassé étant résolu par l'extraction suivante. Ce qui
+  est observable, c'est le router pris **seul**, d'où le cas qui vérifie l'**avertissement** et
+  non l'ordre. Le libellé du cas voisin a été corrigé en conséquence : il prouve que le router
+  arrive *en tant que lien* et que sa cible est là, pas un ordre.
+  **Découverte de l'épisode — un piège de production qu'aucun miroir ne pouvait montrer** : un
+  `index.html` déposé dans le répertoire de release fait servir **la page au lieu du listing**,
+  avec un `200`. Les artefacts sont là, le catalogue revient **vide**, et rien n'est cassé côté
+  publication. Le script s'en sort correctement (message « answered, but holds no… », rc 2), mais
+  c'est l'argument le plus concret en faveur du **reste ouvert (b) de l'ép. 6** : publier un
+  **fichier d'index** à côté des artefacts plutôt que dépendre de `mod_autoindex`. Le cas est
+  versionné comme piège vivant. Symétriquement, `Options -Indexes` (403) sort bien par
+  « cannot read the catalogue » — et sert de **témoin de discriminance** : s'il passait comme
+  le cas nominal, c'est que le cas nominal n'aurait jamais lu de listing.
+  **Reste ouvert relevé en chemin** : `artifact_size` ne sait rien sur HTTP (`url) : ;;`), donc
+  `--list` affiche une taille vide et le plan annonce « 0 B to transfer » — or c'est le chiffre
+  que l'utilisateur lit avant d'accepter. Un `wget --spider -S` donnerait le `Content-Length`.
+  **Non prouvé, et ne le sera qu'avec le vrai serveur** : la configuration réelle de
+  `www.marionnet.org` (son autoindex peut être désactivé ou habillé) et la jambe **https**.
+  Ce banc mesure le **mécanisme**, pas la cible.
+  **Point de méthode noté au passage** : l'option demandée (« passer l'adresse d'un serveur
+  local ») **existait déjà** — `--from` n'est pas un mode mais un mot, `://` suffit à basculer.
+  L'ajouter aurait dupliqué l'option et créé deux façons de dire la même chose.

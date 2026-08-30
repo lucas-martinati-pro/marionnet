@@ -1,0 +1,11 @@
+# The client half: a bare Debian, so that what the script needs is MEASURED instead of
+# assumed. Everything the script calls on the fetching path is installed here and nothing
+# else -- wget, tar, xz-utils, coreutils. In particular there is no marionnet, no opam, no
+# repository: the script is copied in alone, which is exactly how it will be downloaded.
+#
+# sha256sum (coreutils) is the bench's own tool, not the script's.
+FROM debian:trixie-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends wget xz-utils tar \
+ && rm -rf /var/lib/apt/lists/*

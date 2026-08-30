@@ -1,0 +1,24 @@
+# The server half of the bench: Apache, because that is what the parsing of
+# `catalog_list' targets -- the script says so itself ("The listing is Apache's, as it has
+# always been"). A python http.server would serve a DIFFERENT listing, and a bench run
+# against it would measure a parser against a page nobody will ever publish.
+#
+# FancyIndexing is enabled on purpose: it is the harder listing, the one which adds the
+# column-sorting links (href="?C=N;O=D") and an absolute "Parent Directory" link. A bench
+# which only ever saw the plain listing would not prove that those are filtered out.
+#
+# -DNOINDEX starts the same image with autoindex turned OFF (403), which is how the bench
+# gets its red case.
+FROM httpd:2.4
+
+RUN printf '%s\n' \
+  'IndexOptions FancyIndexing HTMLTable VersionSort NameWidth=*' \
+  '<Directory "/usr/local/apache2/htdocs">' \
+  '  <IfDefine NOINDEX>' \
+  '    Options -Indexes' \
+  '  </IfDefine>' \
+  '  <IfDefine !NOINDEX>' \
+  '    Options +Indexes' \
+  '  </IfDefine>' \
+  '</Directory>' \
+  >> /usr/local/apache2/conf/httpd.conf
