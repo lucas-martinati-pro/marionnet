@@ -317,8 +317,18 @@ Reprise : appliquer le skill `chantier-long`.
   ajouter de paquet ici sans site d'appel, ni en retirer sans rejouer le banc ; (2) **republier
   un artefact sous le même nom laissait le catalogue mentir** (digest précédent conservé, donc
   l'installeur **retire** ce qu'il vient de télécharger) : les **3** publieurs appellent
-  désormais `release.sha256sums.sh` avec `--force` **borné à leur seul fichier**. Reste l'ép. 9c
-  (savoir installer le binaire, pas seulement le cataloguer).
+  désormais `release.sha256sums.sh` avec `--force` **borné à leur seul fichier**.
+  **Ép. 9c : le consommateur sait installer l'application.** `marionnet-install.sh` gagne
+  `--binary` (cumulable avec `--fetch-only`, **jamais replié dedans** : les données se posent
+  sans privilège là où l'application exige root, et une option publiée ne change pas de sens).
+  Le choix entre les `marionnet_*` se lit **dans le nom** — arch de la machine, glibc pas plus
+  récente que la sienne, puis le plus grand `rev` — et tout refus est **montré** par `--list`
+  avec son critère. **À ne pas défaire** : l'artefact est déplié **à côté** (`mktemp -d`) puis
+  lance l'`install.sh` **qui voyage dedans**, parce qu'il n'y a qu'**un** installeur — celui que
+  lance aussi l'humain qui télécharge à la main ; ce script n'en pilote qu'un et lui relaie
+  `--force`/`--no-sudoers`/`--no-config`. Banc réseau **31 → 50 cas**, et la chaîne 9a→9b→9c
+  mesurée d'un geste sur le vrai tarball, en root, dans le conteneur cible. Reste côté
+  consommateur : les **dépendances apt de l'hôte** (enfant `…-par-script`).
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

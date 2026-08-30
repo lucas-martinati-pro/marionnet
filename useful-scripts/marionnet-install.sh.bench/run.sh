@@ -208,6 +208,86 @@ cmp -s "$WORK/SHA256SUMS.before-corruption" "$WITHSUMS_BAD/SHA256SUMS" \
 grep -qE '^[0-9a-f]{64}  ' "$WITHSUMS_BAD/SHA256SUMS" \
   || skip_all "the corrupted SHA256SUMS is no longer in sha256sum format"
 
+# ---
+# --- The third family: the application itself (episode 9c).
+# ---
+# The artefact built by Makefile.d/release.binary.sh is a NAMED ROOT holding bin/, share/
+# and an install.sh which lays that down under a prefix. What the client has to get right
+# is the CHOICE among the published ones and the CONTRACT with that install.sh -- not what
+# a real Marionnet does once installed. So the tarballs here carry a stub install.sh which
+# records how it was called; the real one is measured by Makefile.d/release.binary.sh.bench/,
+# on a real tarball, as root, and there is no reason to measure it twice.
+#
+# The arch and the glibc are asked of the CLIENT CONTAINER, not of this host: the choice is
+# made where the script runs, and a bench which named its own libc would be measuring the
+# wrong machine as soon as the two differ.
+CLIENT_ARCH=$(docker run --rm "$IMG_CLIENT" dpkg --print-architecture 2>/dev/null) \
+  || skip_all "the client image cannot say its architecture"
+CLIENT_GLIBC=$(docker run --rm "$IMG_CLIENT" bash -c \
+  "ldd --version | head -n 1 | awk '{print \$NF}'" 2>/dev/null) \
+  || skip_all "the client image cannot say its glibc"
+[[ $CLIENT_GLIBC =~ ^[0-9]+\.[0-9]+ ]] \
+  || skip_all "unreadable glibc version in the client image: [$CLIENT_GLIBC]"
+CLIENT_GLIBC="${BASH_REMATCH[0]}"
+
+BIN_CHOSEN="marionnet_9.9-r10_${CLIENT_ARCH}_glibc${CLIENT_GLIBC}"
+BIN_OLDER="marionnet_9.9-r7_${CLIENT_ARCH}_glibc${CLIENT_GLIBC}"
+BIN_OTHER_ARCH="marionnet_9.9-r99_zx81_glibc${CLIENT_GLIBC}"
+BIN_TOO_NEW="marionnet_9.9-r99_${CLIENT_ARCH}_glibc99.9"
+
+function binary_tarball {
+  local name="$1"
+  local dest="$2"
+  local root="$STAGE/$name"
+  rm -rf -- "$root"
+  mkdir -p "$root/bin" "$root/share/marionnet"
+  echo "not really a binary" > "$root/bin/marionnet.native"
+  chmod 755 "$root/bin/marionnet.native"
+  cat > "$root/install.sh" <<'STUB'
+#!/bin/bash
+# Stands for the install.sh which travels inside a real application artefact. It records
+# what it was called with -- and from where -- because that IS the contract the client
+# script has to honour: a named root, and `install.sh --prefix DIR' run as root.
+args="$*"
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+prefix=/usr/local
+while (( $# > 0 )); do case "$1" in --prefix) prefix="$2"; shift ;; esac; shift; done
+mkdir -p -- "$prefix/bin"
+cp -a -- "$here/bin/marionnet.native" "$prefix/bin/"
+{ echo "args=$args"; echo "uid=$(id -u)"; echo "root=$here"; } > "$prefix/install.sh.witness"
+STUB
+  chmod 755 "$root/install.sh"
+  echo "what this is, what it needs, how to remove it" > "$root/README"
+  tar cf - --owner=root --group=root -C "$STAGE" "$name" | xz -T0 -c > "$dest"
+}
+
+# (a) A release which publishes the three families at once, with its digests.
+WITHBIN="$MIRROR/with-sums-binary"
+mkdir -p "$WITHBIN"
+cp -a "$FULL"/*.tar.xz "$WITHBIN/"
+for n in "$BIN_CHOSEN" "$BIN_OLDER" "$BIN_OTHER_ARCH" "$BIN_TOO_NEW"; do
+  binary_tarball "$n" "$WITHBIN/$n.tar.xz"
+done
+bash "$SUMS_TOOL" --series 1.0.x --output-dir "$WITHBIN" >/dev/null \
+  || skip_all "$SUMS_TOOL could not catalogue the application artefacts"
+
+# (b) A release whose applications cannot run here: neither this arch, nor this glibc.
+BINBAD="$MIRROR/binary-incompatible"
+mkdir -p "$BINBAD"
+cp -a "$WITHBIN/$BIN_OTHER_ARCH.tar.xz" "$WITHBIN/$BIN_TOO_NEW.tar.xz" "$BINBAD/"
+bash "$SUMS_TOOL" --series 1.0.x --output-dir "$BINBAD" >/dev/null
+
+# (c) The application, with a digest which does not match it.
+BINCORRUPT="$MIRROR/binary-corrupt"
+mkdir -p "$BINCORRUPT"
+cp -a "$WITHBIN/$BIN_CHOSEN.tar.xz" "$BINCORRUPT/"
+bash "$SUMS_TOOL" --series 1.0.x --output-dir "$BINCORRUPT" >/dev/null
+awk '{ c = substr($0, 1, 1); print (c == "0" ? "1" : "0") substr($0, 2) }' \
+  "$BINCORRUPT/SHA256SUMS" > "$WORK/SHA256SUMS.binary-corrupted"
+mv -- "$WORK/SHA256SUMS.binary-corrupted" "$BINCORRUPT/SHA256SUMS"
+grep -qE '^[0-9a-f]{64}  ' "$BINCORRUPT/SHA256SUMS" \
+  || skip_all "the corrupted SHA256SUMS of the application is no longer in sha256sum format"
+
 IMAGE_SHA=$(sha256sum < "$STAGE/filesystems/machine-guignol-18474" | cut -d' ' -f1)
 KERNEL_SHA=$(sha256sum < "$STAGE/kernels/linux-6.12.95" | cut -d' ' -f1)
 chmod -R a+rX "$WORK/htdocs"
@@ -264,7 +344,10 @@ function in_prefix {
 # the first version of case 6e passed for the wrong reason).
 VOL2=mrn-install-bench-prefix-verified
 VOL3=mrn-install-bench-prefix-corrupt
-for v in "$VOL2" "$VOL3"; do
+VOL4=mrn-install-bench-prefix-binary
+VOL5=mrn-install-bench-prefix-binary-corrupt
+VOL6=mrn-install-bench-prefix-both
+for v in "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6"; do
   docker volume rm "$v" >/dev/null 2>&1 || true
   docker volume create "$v" >/dev/null
 done
@@ -278,7 +361,8 @@ function in_vol {
   local vol="$1"; shift
   docker run --rm -v "$vol:/opt/mrn" "$IMG_CLIENT" bash -c "$1" 2>&1
 }
-trap 'cleanup; docker volume rm "$VOL" "$VOL2" "$VOL3" >/dev/null 2>&1 || true' EXIT
+trap 'cleanup; docker volume rm "$VOL" "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6" \
+        >/dev/null 2>&1 || true' EXIT
 
 echo
 echo "# --- 1. the catalogue read off an Apache listing"
@@ -541,6 +625,137 @@ else
   fail "sha256sum -c refused the published file: rc=$rc"
   printf '%s\n' "$out" | sed 's/^/      /'
 fi
+
+echo
+echo "# --- 7. the third family: the application itself"
+
+# (a) NON-REGRESSION, and it is the point of the option not being folded into the other:
+# --fetch-only alone sees a release which publishes an application and installs none of it.
+out=$(client --fetch-only --from "$BASE/with-sums-binary" --list) || out="EXIT $?
+$out"
+if printf '%s\n' "$out" | grep -q '^marionnet_'; then
+  fail "--fetch-only listed the application, which is --binary's business"
+  printf '%s\n' "$out" | sed 's/^/      /'
+else
+  got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
+  [[ $got = "$want" ]] \
+    && pass "--fetch-only ignores the marionnet_* artefacts and still finds the other four" \
+    || fail "--fetch-only on a three-family release: expected [$want], got [$got]"
+fi
+
+# (b) The choice, and the reason for every refusal, read off the names alone.
+out=$(client --binary --from "$BASE/with-sums-binary" --list) || out="EXIT $?
+$out"
+BINLIST="$out"
+# The STATE column, which is the last one and holds spaces ("not i386", "needs a newer
+# glibc than 2.41"): the four fixed columns are blanked and what is left is the state.
+function binary_state_of {
+  printf '%s\n' "$BINLIST" \
+  | awk -v n="$1" '$1 == n { $1=""; $2=""; $3=""; $4=""; sub(/^ +/, ""); print }'
+}
+[[ $(binary_state_of "$BIN_CHOSEN")     = "chosen"      ]] \
+  && pass "the greatest revision this machine can run is the chosen one" \
+  || fail "the chosen artefact is not $BIN_CHOSEN: [$(binary_state_of "$BIN_CHOSEN")]"
+[[ $(binary_state_of "$BIN_OLDER")      = "superseded"  ]] \
+  && pass "a lower revision is listed as superseded, not hidden" \
+  || fail "the older revision is not announced as superseded: [$(binary_state_of "$BIN_OLDER")]"
+[[ $(binary_state_of "$BIN_OTHER_ARCH") = "not $CLIENT_ARCH" ]] \
+  && pass "an artefact built for another architecture says WHICH criterion refused it" \
+  || fail "the foreign arch is not named: [$(binary_state_of "$BIN_OTHER_ARCH")]"
+printf '%s\n' "$(binary_state_of "$BIN_TOO_NEW")" | grep -q "newer glibc" \
+  && pass "an artefact linked against a newer glibc says so, and does not say \`arch'" \
+  || fail "the glibc refusal is not named: [$(binary_state_of "$BIN_TOO_NEW")]"
+
+# (c) The installation itself: the artefact is unpacked ASIDE and lays itself down through
+# the install.sh it travels with. What is measured is that contract -- the prefix passed on,
+# the identity it ran under, and the fact that the client did not become a second installer.
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes) && rc=0 || rc=$?
+if (( rc == 0 )); then
+  pass "--binary installs over HTTP (rc=0)"
+else
+  fail "--binary failed: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+printf '%s\n' "$out" | grep -q "ok, verified" \
+  && pass "the application is verified against the published digest while it flows" \
+  || { fail "the application was not announced as verified"; printf '%s\n' "$out" | sed 's/^/      /'; }
+witness=$(in_vol "$VOL4" 'cat /opt/mrn/install.sh.witness 2>/dev/null' || true)
+printf '%s\n' "$witness" | grep -q -- "args=--prefix /opt/mrn" \
+  && pass "the embedded install.sh was called with the prefix the client was given" \
+  || { fail "install.sh did not receive --prefix /opt/mrn"; printf '%s\n' "$witness" | sed 's/^/      /'; }
+printf '%s\n' "$witness" | grep -q "^uid=0$" \
+  && pass "the embedded install.sh ran as root" \
+  || fail "install.sh did not run as root: [$(printf '%s\n' "$witness" | grep '^uid=')]"
+# The line itself, not `grep -v': a three-line witness always holds a line which does not
+# match, so `grep -qv' would pass whatever install.sh reported (measured).
+unpacked_at=$(printf '%s\n' "$witness" | sed -n 's/^root=//p')
+[[ -n $unpacked_at && $unpacked_at != /opt/mrn/* ]] \
+  && pass "the tarball was unpacked ASIDE ($unpacked_at), not into the prefix it installs to" \
+  || fail "the artefact was unpacked into the prefix: [$unpacked_at]"
+in_vol "$VOL4" 'test -x /opt/mrn/bin/marionnet.native' >/dev/null 2>&1 \
+  && pass "the application landed in <prefix>/bin/" \
+  || fail "nothing in /opt/mrn/bin after --binary"
+in_vol "$VOL4" 'test ! -d /opt/mrn/'"$BIN_CHOSEN" >/dev/null 2>&1 \
+  && pass "the temporary unpacking left nothing behind" \
+  || fail "the named root of the artefact was left in the prefix"
+
+# (d) Idempotence, by the same rule as the other two families: the NAME of what is in place.
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes) && rc=0 || rc=$?
+printf '%s\n' "$out" | grep -q "nothing to do" \
+  && pass "a second --binary run installs nothing (idempotence by the name)" \
+  || { fail "a second --binary run did not say \`nothing to do'"; printf '%s\n' "$out" | sed 's/^/      /'; }
+
+# (e) The two pass-through options, which only exist because the embedded install.sh has them.
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes --force \
+        --no-sudoers --no-config) && rc=0 || rc=$?
+witness=$(in_vol "$VOL4" 'cat /opt/mrn/install.sh.witness 2>/dev/null' || true)
+if (( rc == 0 )) && printf '%s\n' "$witness" | grep -q -- "--no-sudoers" \
+   && printf '%s\n' "$witness" | grep -q -- "--no-config" \
+   && printf '%s\n' "$witness" | grep -q -- "--force"; then
+  pass "--force, --no-sudoers and --no-config reach the embedded install.sh"
+else
+  fail "the pass-through options did not reach install.sh (rc=$rc): [$witness]"
+fi
+
+# (f) A release whose applications cannot run here. The refusal names the criterion for each,
+# because an i386 machine and a glibc which is too old are not the same problem.
+out=$(client_in "$VOL5" --binary --from "$BASE/binary-incompatible" --yes) && rc=0 || rc=$?
+if (( rc != 0 )) \
+   && printf '%s\n' "$out" | grep -q "not $CLIENT_ARCH" \
+   && printf '%s\n' "$out" | grep -q "newer glibc"; then
+  pass "a release with no runnable application is refused, naming both criteria (rc=$rc)"
+else
+  fail "an incompatible release: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# (g) A digest which does not match: nothing at all is installed. Unlike the data families,
+# there is nothing to remove either -- which is exactly why the tarball is unpacked aside.
+out=$(client_in "$VOL5" --binary --from "$BASE/binary-corrupt" --yes) && rc=0 || rc=$?
+if (( rc != 0 )) && printf '%s\n' "$out" | grep -q "sha256 mismatch"; then
+  pass "a wrong digest on the application stops the run (rc=$rc)"
+else
+  fail "a wrong digest on the application was not caught: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+in_vol "$VOL5" 'test ! -e /opt/mrn/bin/marionnet.native' >/dev/null 2>&1 \
+  && pass "nothing was installed by the run which failed its digest" \
+  || fail "the application was installed although its digest did not match"
+
+# (h) The two modes in one run, which is what a fresh machine actually asks for.
+out=$(client_in "$VOL6" --fetch-only --binary --from "$BASE/with-sums-binary" \
+        --only guignol-18474 --only marionnet_ --yes) && rc=0 || rc=$?
+if (( rc == 0 )); then
+  pass "--fetch-only --binary runs both halves in one go (rc=0)"
+else
+  fail "the combined run failed: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+in_vol "$VOL6" 'test -x /opt/mrn/bin/marionnet.native \
+             && test -e /opt/mrn/share/marionnet/filesystems/machine-guignol-18474' \
+  >/dev/null 2>&1 \
+  && pass "one run left both the application and the image it needs" \
+  || fail "the combined run did not leave both"
 
 echo
 echo "# ---"

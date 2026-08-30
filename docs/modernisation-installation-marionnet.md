@@ -536,7 +536,9 @@ clôture des enfants.
 2. **Outillage binaire** : `make release-binary`, staging `dune install --prefix` +
    tarball, test sur machine vierge (conteneur jetable). La relocatabilité est acquise
    (§ 6, point réglé) : le tarball embarque un `marionnet.conf` adapté si besoin.
-   — **La FABRICATION est faite (épisode 9a)** ; le test sur machine vierge est l'épisode 9b.
+   — **La FABRICATION est faite (épisode 9a)**, le test sur machine vierge aussi
+   (épisode 9b), et **le consommateur sait l'installer** (épisode 9c) : ce point 2 est
+   **soldé**, à ceci près que l'artefact n'est pas encore déposé sur un serveur (point 1).
 3. **Essai toolchain système** (borné à une session, § 6) : tentative de build avec
    ocaml 4.14 + camlp4 4.14+1 + liblablgtk3-ocaml-dev d'apt, sans opam. Succès → le
    .deb devient source-buildable et le script v2 se simplifie ; échec → documenté, on
@@ -1191,8 +1193,8 @@ d'inscription diffère, et elle a été jouée à la main.
 ### Restes
 
 - ~~**Épisode 9b** : le banc conteneur vierge~~ **fait le 2026-08-30** (§ suivant).
-- **Épisode 9c** (ou chantier enfant `…-par-script`) : le troisième préfixe côté consommateur,
-  pour que `marionnet-install.sh` sache **installer** le binaire qu'il catalogue déjà.
+- ~~**Épisode 9c** : le troisième préfixe côté consommateur~~ **fait le 2026-08-30**
+  (§ « Épisode 9c » ci-dessous).
 - Toujours ouverts : le repli `curl` de l'ép. 6, la complétion bash (§ 2.4 ter), et l'étape 1
   (dépôt sur le serveur), bloquée par l'extérieur.
 
@@ -1263,3 +1265,92 @@ par nom nu) ; enfin le **piège durable de 9a inscrit en cas** : `--paths` relog
 
 Aucun invité, aucun tap, aucune GUI : le conteneur n'a pas de serveur X. Le banc s'arrête à
 ce qu'une machine cible reçoit et à ce que le binaire fait sans afficher.
+
+## Épisode 9c (2026-08-30) — le troisième préfixe, côté consommateur
+
+Depuis l'épisode 9a une release publie **trois** familles dans le même répertoire et le même
+`SHA256SUMS`. `useful-scripts/marionnet-install.sh` en connaissait deux et **laissait tomber
+la troisième sans rien dire** : l'application était catalogable et non installable par le
+script qui la voit. C'est fini — `--binary`.
+
+### Pourquoi une option, et pas un élargissement de `--fetch-only`
+
+Les deux premières familles portent des **données**, dont la place est fixée sous
+`<prefix>/share/marionnet/` et que quiconque peut y écrire pose lui-même. La troisième porte
+une **installation** : elle écrit `<prefix>/bin/`, `/etc/marionnet/marionnet.conf` et une
+règle sudoers, et elle exige root. Replier cela dans une option **déjà publiée** aurait changé
+ce que cette option fait sur les machines qui la lancent déjà. Les deux modes se **cumulent**
+(`--fetch-only --binary`), ce qu'une machine neuve demande en réalité ; sans mode, le script
+dit lequel donner et sort 2 — l'ancien message renvoyant à l'enfant `…-par-script` ne vaut
+plus que pour les **dépendances apt** de l'hôte, tout ce qu'il reste à cet enfant de ce côté.
+
+### Le choix, lu dans le nom et nulle part ailleurs
+
+Le nom que `release.binary.sh` a écrit porte tout : `marionnet_<version>-r<rev>_<arch>_glibc<x.y>`.
+Un artefact est **candidat** quand son `<arch>` est celle de la machine et que son `<x.y>` n'est
+pas plus récent que la glibc de la machine (un binaire lié dynamiquement exige une glibc au
+moins aussi récente que celle contre laquelle il a été lié ; l'autre sens est ce que garantit le
+versionnement de symboles). Parmi les candidats, **le plus grand `rev`** l'emporte : c'est le
+seul champ totalement ordonné du nom. Les deux faits de l'hôte sont lus **comme
+`release.binary.sh` les a lus** pour nommer le tarball (`dpkg --print-architecture`,
+`ldd --version`) — les lire autrement ici comparerait deux choses différentes. Une glibc hôte
+**illisible** ne rejette rien : refuser tout sur cette base serait une devinette.
+
+Ce qui est écarté est **montré** comme écarté par `--list`, avec son critère (`not i386`,
+`needs a newer glibc than 2.41`, `superseded`) : une machine i386 et une glibc trop vieille ne
+se soignent pas pareil, et un catalogue qui cache ce qu'il refuse ment. Le refus global, lui,
+est prononcé **après** `--list` — quand rien de publié ne tourne ici, le listing est exactement
+ce que le lecteur veut voir.
+
+### Ce que le script fait, et surtout ce qu'il ne fait pas
+
+Il déplie l'artefact **à côté** (`mktemp -d`), puis lance l'`install.sh` **qui voyage dedans**.
+Deux raisons, et la seconde est la plus importante :
+
+1. cet artefact porte une **racine nommée** et une installation entière, pas des fichiers de
+   données dont la place est fixe : le déplier là où il va déverserait `bin/` et `share/` sur
+   le système avant toute vérification, sans rien laisser à regarder ni à retirer ;
+2. **l'installeur reste unique.** Celui qui télécharge le tarball à la main lance ce même
+   `install.sh` ; si ce script-ci reposait le préfixe, la configuration et la règle sudoers
+   à sa façon, il y aurait **deux** installeurs à maintenir d'accord. Il n'en pilote qu'un,
+   et lui relaie `--force`, `--no-sudoers`, `--no-config`.
+
+Le digest est vérifié **en flux** comme pour les deux autres familles (`extract_verified` a
+gagné son répertoire de destination et le droit de se passer de `sudo` — le dépli temporaire
+n'en demande aucun). Différence utile : en cas d'écart, il n'y a **rien à retirer**, puisque
+rien n'a touché le système. L'idempotence reste **par le nom** — ici `<prefix>/bin/marionnet.native` :
+on ne compare pas de version, le fichier installé ne disant pas de quel tarball il vient.
+
+Enfin l'application est transférée **en premier** quand les trois familles sont demandées :
+c'est l'étape courte et privilégiée, et une machine qui ne peut pas la recevoir doit l'apprendre
+**avant** que des gibioctets d'images aient voyagé.
+
+### Prouvé
+
+- Le banc réseau passe de **31 à 50 cas**, tous verts, `rc 0` — section 7 :
+  non-régression de `--fetch-only` sur une release à trois familles, le choix et ses quatre
+  états, l'installation par HTTP (préfixe transmis, `uid=0`, dépli **hors** du préfixe, rien
+  laissé derrière), l'idempotence, les trois passe-plats, le refus motivé, le digest en écart
+  qui n'installe rien, et les deux modes en un seul run. **Discriminance : 16 échecs** contre le
+  script d'avant.
+- **La chaîne réelle, de bout en bout**, hors banc : le **vrai** `marionnet_trunk-r906_amd64_glibc2.39.tar.xz`
+  de la release locale, servi en miroir, installé **en root** dans le conteneur cible de
+  l'épisode 9b (`debian:trixie-slim` + les seuls `REQUIRED_PACKAGES_RUNTIME`) sous
+  `--prefix /opt/marionnet` : `ok, verified`, `install.sh` joué, `/etc/marionnet/marionnet.conf`
+  écrit, `/etc/sudoers.d/marionnet` posé pour l'utilisateur que `sudo` nomme, `visudo -c` vert,
+  23 noms dans `bin/`, et `marionnet.native --version` qui répond `trunk revno 906`. C'est la
+  jonction 9a → 9b → 9c mesurée d'un seul geste.
+
+### Ce que ce banc ne mesure pas
+
+Les tarballs de la famille y portent un `install.sh` **sonde** : ce que la section 7 mesure est
+le **contrat** (racine nommée, `install.sh --prefix DIR`, root), pas ce que fait le vrai — celui-là
+est mesuré par `Makefile.d/release.binary.sh.bench/`, sur un vrai tarball, et il n'y a pas de
+raison de le mesurer deux fois. La jonction des deux, elle, est le geste réel ci-dessus.
+
+### Restes
+
+- Le repli `curl` (ép. 6), la complétion bash (§ 2.4 ter), la **signature** des artefacts.
+- **Les dépendances apt de l'hôte** : `--binary` installe l'application, pas ce qu'elle exige.
+  C'est ce qu'il reste à l'enfant `…-par-script`, et c'est aussi ce que le `.deb` fera tout seul.
+- L'étape 1 (dépôt sur le serveur) et la jambe **https**, bloquées par l'extérieur.

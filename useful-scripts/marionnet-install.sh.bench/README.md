@@ -21,6 +21,16 @@ banc sert donc des répertoires **avec** et **sans** ce fichier, et rejoue sur l
 deux façons dont un Apache cesse de publier un listing (`index.html`, `Options -Indexes`) :
 elles coulent le repli et ne touchent pas au catalogue publié.
 
+**Épisode 9c** y ajoute la **troisième famille d'artefacts** : l'application elle-même
+(`marionnet_<version>-r<rev>_<arch>_glibc<x.y>.tar.xz`, produite par
+`Makefile.d/release.binary.sh` depuis l'ép. 9a), que le client sait désormais **installer**
+et non plus seulement cataloguer. Ce que le banc mesure là est le **choix** parmi les
+applications publiées (arch, glibc, révision) et le **contrat** avec l'`install.sh` embarqué
+— pas ce que fait un vrai Marionnet une fois installé : les tarballs de la famille portent un
+`install.sh` **sonde** qui note comment il a été appelé. Le vrai est mesuré par
+`Makefile.d/release.binary.sh.bench/`, sur un vrai tarball, en root ; il n'y a pas de raison
+de le mesurer deux fois.
+
 ## Jouer le banc
 
 ```bash
@@ -30,7 +40,7 @@ useful-scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
 une ligne `PASS:`/`FAIL:` par cas, un décompte à la fin, et le banc nettoie derrière lui
-(deux conteneurs, un réseau, trois volumes, un répertoire temporaire). Il **saute** (77) sans
+(deux conteneurs, un réseau, six volumes, un répertoire temporaire). Il **saute** (77) sans
 Docker, sans démon Docker, ou si les images ne peuvent pas être construites.
 
 Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian:trixie-slim`).
@@ -109,6 +119,21 @@ contre le banc ; chacun est une façon plausible de casser le script.
 | 6e | un digest qui **ne correspond pas** arrête le run, et ce qui était extrait est **retiré** | comparaison neutralisée ; retrait supprimé |
 | 6f | `--no-verify` installe quand même | — |
 | 6g | le `SHA256SUMS` publié est relu par **`sha256sum -c`** lui-même, dans le client | — |
+| 7a | `--fetch-only` **seul** ignore les `marionnet_*` d'une release qui en publie | l'application ajoutée à une option déjà publiée |
+| 7b | le **choix** : plus grande révision compatible **retenue**, révision inférieure dite *superseded*, et chaque refus **nomme son critère** (arch / glibc) | critère de refus muet ou confondu |
+| 7c | l'artefact est déplié **à côté**, puis s'installe par son propre `install.sh --prefix …`, **en root** | client devenu un second installeur ; préfixe non transmis |
+| 7d | idempotence de l'application, par le **nom** de ce qui est en place | — |
+| 7e | `--force`, `--no-sudoers`, `--no-config` **arrivent** à l'`install.sh` embarqué | passe-plats perdus |
+| 7f | une release dont **aucune** application ne tourne ici est refusée en nommant **les deux** critères | refus global sans motif |
+| 7g | un digest en écart sur l'application : rien n'est installé (rien à retirer — c'est le sens du dépli **à côté**) | vérification neutralisée |
+| 7h | `--fetch-only --binary` en **un seul run** laisse l'application **et** l'image | modes exclusifs |
+
+**Discriminance de la section 7, mesurée** : rejouée contre le script d'avant l'épisode 9c,
+elle donne **16 échecs**. Trois de ses cas restent verts, et c'est normal — ce sont des
+assertions d'**absence** (7a « `--fetch-only` ignore », « rien n'a été déplié », « rien n'a été
+installé ») : sur un script qui ne connaît pas `--binary`, elles sont vraies pour la mauvaise
+raison. Chacune est appariée à un cas **positif** qui, lui, devient rouge ; c'est le
+même garde-fou que le préfixe vide du cas 6e.
 
 Le cas 5a est aussi le **témoin de discriminance** du cas 1 : s'il passait lui aussi, c'est
 que le cas 1 n'aurait jamais lu de listing.
@@ -147,6 +172,9 @@ l'idempotence.
   soit cassé côté publication. C'était l'argument du reste ouvert (b) de l'épisode 6 ; il
   est soldé depuis l'épisode 8 — `Makefile.d/release.sha256sums.sh` publie le fichier, et
   les deux cas se lisent l'un contre l'autre.
+- **L'arch et la glibc sont demandées au conteneur client**, jamais à cet hôte : le choix se
+  fait là où le script tourne, et un banc qui nommerait sa propre libc mesurerait la mauvaise
+  machine dès que les deux diffèrent (ici : hôte `glibc2.39`, client trixie `glibc2.41`).
 - Ce que le digest **ne** prouve **pas** : la provenance. `SHA256SUMS` voyage par la même
   route que les tarballs, donc un serveur compromis réécrit les deux. La signature est une
   question pour l'étape 1 du chantier, avec la clef du dépôt apt.
