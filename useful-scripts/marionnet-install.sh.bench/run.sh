@@ -150,12 +150,23 @@ for d in "$FULL" "$EMPTY"; do
   echo "not an artefact" > "$d/README.txt"
 done
 
+# A third served directory: the four artefacts plus one the server LISTS but will not
+# serve -- an artefact left unreadable by whoever published it (mode 000, so Apache answers
+# 403). It is the realistic way a release directory offers something whose size cannot be
+# obtained, and the only way to exercise the "some sizes known, some not" arm of the plan.
+# A dangling symlink would NOT do: mod_autoindex drops from the listing what it cannot stat
+# (measured), so such a file never even reaches the catalogue.
+mkdir -p "$MIRROR/one-size-unknown"
+cp -a "$FULL"/*.tar.xz "$MIRROR/one-size-unknown/"
+cp -a "$FULL/kernels_linux-6.12.95.tar.xz" "$MIRROR/one-size-unknown/kernels_linux-locked.tar.xz"
+
 cp -a "$FULL"/*.tar.xz "$WITHINDEX/"
 echo '<html><body>Marionnet downloads</body></html>' > "$WITHINDEX/index.html"
 
 IMAGE_SHA=$(sha256sum < "$STAGE/filesystems/machine-guignol-18474" | cut -d' ' -f1)
 KERNEL_SHA=$(sha256sum < "$STAGE/kernels/linux-6.12.95" | cut -d' ' -f1)
 chmod -R a+rX "$WORK/htdocs"
+chmod 000 "$MIRROR/one-size-unknown/kernels_linux-locked.tar.xz"   # listed, but 403
 
 # ---
 # --- The two servers, and how the client speaks to them.
@@ -225,6 +236,47 @@ if printf '%s\n' "$out" | grep -qE '\?C=|README|\.conf|\.config|_variants|^\.|do
   printf '%s\n' "$out" | sed 's/^/      /'
 else
   pass "--list over HTTP filters out the parasites AND the FancyIndexing sort links"
+fi
+
+# The size of an artefact is the one figure the user reads before accepting the transfer.
+# On a mirror it is a stat(); over HTTP it is what a HEAD answers. The bench does not
+# re-implement the arithmetic: it makes the TWO branches of artifact_size describe the same
+# directory, and requires them to agree column for column. `?' means the source could not
+# tell -- which is the honest answer, but not the one an Apache serving static files owes.
+list_http=$(client --fetch-only --from "$BASE/1.0.x" --list) || true
+list_dir=$(docker run --rm \
+  -v "$SCRIPT:/marionnet-install.sh:ro" \
+  -v "$FULL:/mirror:ro" "$IMG_CLIENT" \
+  bash /marionnet-install.sh --fetch-only --from /mirror --list 2>&1) || true
+cols_http=$(printf '%s\n' "$list_http" | awk 'NR>1 && NF {print $1, $2, $3}')
+cols_dir=$(printf '%s\n' "$list_dir"  | awk 'NR>1 && NF {print $1, $2, $3}')
+if [[ -n $cols_http && $cols_http = "$cols_dir" ]]; then
+  pass "--list over HTTP announces the same sizes as the same directory read as a mirror"
+else
+  fail "--list sizes differ between the HTTP and the mirror branch"
+  diff <(printf '%s\n' "$cols_dir") <(printf '%s\n' "$cols_http") | sed 's/^/      /' || true
+fi
+printf '%s\n' "$cols_http" | awk '{print $3}' | grep -q '?' \
+  && fail "--list over HTTP still shows an unknown size (\`?')" \
+  || pass "no artefact comes back with an unknown size over HTTP"
+
+# And the figure carried into the plan, which is the one actually shown before the transfer.
+out=$(client --fetch-only --from "$BASE/1.0.x" --dry-run --yes) || true
+if printf '%s\n' "$out" | grep -qE "to install  : 4 artefact\(s\), [0-9]+(B|KiB|MiB|GiB) to transfer"; then
+  pass "the plan announces a real total, neither 0B nor \`size unknown'"
+else
+  fail "the plan does not announce a usable total"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# An artefact whose size the server cannot give is announced as such: the total becomes a
+# lower bound and says how many are missing from it, instead of quietly under-counting.
+out=$(client --fetch-only --from "$BASE/one-size-unknown" --dry-run --yes) || true
+if printf '%s\n' "$out" | grep -qE "at least [0-9]+(B|KiB|MiB|GiB) to transfer \(1 of unknown size\)"; then
+  pass "one artefact of unknown size turns the total into an announced lower bound"
+else
+  fail "a partially unknown total is not announced as such"
+  printf '%s\n' "$out" | sed 's/^/      /'
 fi
 
 echo

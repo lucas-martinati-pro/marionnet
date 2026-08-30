@@ -190,11 +190,22 @@ function artifact_stream {
 }
 
 # Size in bytes, or nothing when the source cannot tell without downloading.
+#
+# Over HTTP the size is what a HEAD says: `wget --spider -S' prints the response headers on
+# stderr, and Content-Length is read off the LAST of them -- a redirection prints one set of
+# headers per hop, and only the last describes the body. A server which will not answer a
+# HEAD, or which announces a chunked or compressed body, says nothing: an unknown size is
+# then SHOWN as unknown (`human' prints `?'), never as zero. The short timeout is there
+# because this runs once per artefact, before anything is transferred: a slow server must
+# cost a moment, not a hang.
 function artifact_size {
-  local file="$1"
+  local file="$1" headers=""
   case "$SOURCE_KIND" in
     dir) stat -c %s -- "$SOURCE/$file" 2>/dev/null || true ;;
-    url) : ;;
+    url) headers=$(wget --spider -S -T 10 -t 2 -- "$SOURCE/$file" 2>&1) || return 0
+         printf '%s\n' "$headers" \
+         | grep -i '^ *Content-Length:' | tail -n 1 \
+         | sed -e 's/.*: *//' -e 's/[^0-9]//g' | grep -E '^[0-9]+$' || true ;;
   esac
 }
 
@@ -300,6 +311,7 @@ fi
 TODO=()
 SKIPPED=0
 TOTAL_BYTES=0
+UNKNOWN_SIZES=0
 for logical in "${SELECTED[@]}"; do
   target=$(artifact_target "$logical")
   if [[ ( -e $target || -L $target ) && $FORCE != yes ]]; then
@@ -308,7 +320,10 @@ for logical in "${SELECTED[@]}"; do
   fi
   TODO+=("$logical")
   size=$(artifact_size "$logical.tar.$(artifact_format "$logical")")
-  [[ $size =~ ^[0-9]+$ ]] && TOTAL_BYTES=$(( TOTAL_BYTES + size ))
+  if [[ $size =~ ^[0-9]+$ ]]
+    then TOTAL_BYTES=$(( TOTAL_BYTES + size ))
+    else UNKNOWN_SIZES=$(( UNKNOWN_SIZES + 1 ))
+  fi
 done
 
 # Warn about a router kept without the machine it points at -- neither already installed,
@@ -333,7 +348,14 @@ fi
 
 info "source      : $SOURCE ($SOURCE_KIND)"
 info "destination : $MARIONNET_DIR"
-info "to install  : ${#TODO[@]} artefact(s), $(human "$TOTAL_BYTES") to transfer\
+# The figure the user is about to accept: never rounded up out of a hole. When some sizes
+# could not be obtained, the total is announced for what it is -- a lower bound, or nothing.
+if   (( UNKNOWN_SIZES == 0 ));  then TRANSFER="$(human "$TOTAL_BYTES") to transfer"
+elif (( TOTAL_BYTES > 0 ));     then TRANSFER="at least $(human "$TOTAL_BYTES") to transfer\
+ (${UNKNOWN_SIZES} of unknown size)"
+else                                 TRANSFER="size unknown"
+fi
+info "to install  : ${#TODO[@]} artefact(s), $TRANSFER\
 $( (( SKIPPED > 0 )) && echo " (${SKIPPED} already in place)")"
 for logical in "${TODO[@]}"; do
   echo "    $logical.tar.$(artifact_format "$logical")"

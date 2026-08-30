@@ -958,3 +958,32 @@ clôture des enfants.
   **Point de méthode noté au passage** : l'option demandée (« passer l'adresse d'un serveur
   local ») **existait déjà** — `--from` n'est pas un mode mais un mot, `://` suffit à basculer.
   L'ajouter aurait dupliqué l'option et créé deux façons de dire la même chose.
+
+- **2026-08-30 — épisode 7 bis : la taille d'un artefact sur HTTP.** Le reste ouvert relevé une
+  heure plus tôt : `artifact_size` ne savait rien sur HTTP (`url) : ;;`), donc `--list` affichait
+  `?` et le plan annonçait « **0 B to transfer** » — or c'est le seul chiffre que l'utilisateur
+  lit avant d'accepter le transfert, et « 0 » est un mensonge là où « inconnu » était la vérité.
+  Corrigé par un **HEAD** : `wget --spider -S`, dont on lit le `Content-Length`.
+  Trois choses que la mesure a imposées :
+  1. **Le dernier `Content-Length`, pas le premier** : `-S` écrit les en-têtes sur **stderr**, et
+     une redirection en imprime un jeu **par saut** ; seul le dernier décrit le corps. D'où le
+     `tail -n 1`, et un `-T 10 -t 2` parce que la sonde tourne une fois par artefact **avant**
+     tout transfert : un serveur lent doit coûter un instant, pas un blocage.
+  2. **Une taille inconnue reste montrée comme inconnue.** Un serveur qui refuse le HEAD, ou qui
+     annonce un corps *chunked*, ne répond rien : `human` imprime `?` comme avant. Ce qui change,
+     c'est le **total** : il ne sous-compte plus en silence. Zéro taille manquante → le total ;
+     quelques-unes → « **at least X to transfer (N of unknown size)** » ; toutes → « **size
+     unknown** ». Vérifié à l'écran dans les trois cas.
+  3. **Le banc ne réimplémente pas l'arithmétique** : il fait décrire **le même répertoire** par
+     les **deux** branches d'`artifact_size` (HTTP et miroir) et exige qu'elles s'accordent
+     colonne par colonne. Une comparaison de deux implémentations vaut mieux qu'une constante
+     recopiée dans le banc.
+  Le banc passe de 16 à **20 cas** (PASS 20 / FAIL 0). Discriminance mesurée : la branche `url`
+  remise muette fait tomber **exactement** les 3 cas neufs de taille (1c-1e), les 16 autres
+  restant verts ; l'ancien message restauré fait tomber le 4ᵉ (1f).
+  **Piège d'implémentation du banc, payé par un échec** : `mod_autoindex` **retire du listing ce
+  qu'il ne peut pas `stat`**. Un lien symbolique cassé — première idée pour fabriquer un artefact
+  de taille inconnue — n'atteint donc **jamais** le catalogue, et le cas passait à côté de son
+  sujet (mesuré : 4 artefacts listés au lieu de 5). L'artefact de taille inconnue est donc un
+  fichier bien réel mais **illisible** (mode 000 ⇒ 403), ce qui est aussi le cas de terrain :
+  un artefact déposé avec de mauvaises permissions.

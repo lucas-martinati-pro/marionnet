@@ -82,6 +82,10 @@ contre le banc ; chacun est une façon plausible de casser le script.
 |---|---|---|
 | 1a | le catalogue lu sur un listing Apache tient exactement les 4 artefacts | filtre `case` neutralisé |
 | 1b | parasites **et** liens de tri `?C=…` écartés | idem (mesuré : les `?C=D;O=A` sont bien dans la page) |
+| 1c | les **tailles** annoncées sur HTTP sont celles que le même répertoire donne lu en miroir | branche `url` d'`artifact_size` muette (l'état d'avant) |
+| 1d | aucun artefact ne revient en taille inconnue (`?`) | idem |
+| 1e | le plan annonce un vrai total, ni `0B` ni « size unknown » | idem |
+| 1f | une taille **manquante** transforme le total en borne basse **annoncée** | l'ancien message (sous-comptage silencieux) |
 | 2 | l'arbre posé, l'image et le noyau **octet pour octet** après HTTP | — |
 | 2 bis | le **`mtime`** du backing file survit à l'extraction | `tar xmf` (`-m`) |
 | 2 ter | le router arrive **en tant que lien**, et il résout | — |
@@ -95,15 +99,19 @@ contre le banc ; chacun est une façon plausible de casser le script.
 Le cas 5a est aussi le **témoin de discriminance** du cas 1 : s'il passait lui aussi, c'est
 que le cas 1 n'aurait jamais lu de listing.
 
+**Deux faits d'implémentation payés par la mesure, et écrits ici pour qu'ils ne se
+re-découvrent pas** : `mod_autoindex` **retire du listing ce qu'il ne peut pas `stat`**, donc
+un lien symbolique cassé n'atteint jamais le catalogue — l'artefact « de taille inconnue » du
+cas 1f est un fichier bien réel mais **illisible** (mode 000, donc 403). Et `wget --spider -S`
+écrit les en-têtes sur **stderr**, une fois par saut de redirection : seul le **dernier**
+`Content-Length` décrit le corps.
+
 **Mesuré et assumé** : l'ordre d'extraction (machines avant routers) est **inobservable**
 quand les deux tarballs sont pris — le banc reste vert avec les deux passes inversées. Ce
 qui est observable, c'est le router pris **seul** : c'est le cas 2 quater.
 
 ## Restes ouverts que ce banc éclaire
 
-- **`artifact_size` ne sait rien sur HTTP** (`url) : ;;`), donc `--list` affiche une taille
-  vide et le plan annonce « 0 B to transfer ». Un `wget --spider -S` donnerait le
-  `Content-Length`. Cosmétique, mais c'est le chiffre que lit l'utilisateur avant d'accepter.
 - **Le cas 5b est un piège vivant** : le jour où le répertoire de release reçoit une page
   d'accueil, le catalogue devient vide sans que rien ne soit cassé côté publication. C'est
   l'argument le plus concret en faveur du reste ouvert (b) de l'épisode 6 — **publier un
