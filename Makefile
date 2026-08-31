@@ -171,7 +171,16 @@ print-opam-packages:
 #    NOTE for the packaging channels (`modernisation-installation-marionnet'): unlike yojson and
 #    base64, cmarkit has NO Debian/Ubuntu package as of 2026-08 -- it must come from opam, or be
 #    vendored.
-OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras \
+#  - lablgtk3-extras was DROPPED at episode 21 of `modernisation-installation-marionnet': it was
+#    listed only because bin/dune linked it, and bin/dune linked it only to reach GSourceView3
+#    transitively -- not one of its own modules (Gdir, Gmylist, Gmytree, Gstuff, Gtksv_utils,
+#    Okey, Configwin) is named anywhere in this tree. It was not free: its `Gtksv_utils' builds a
+#    GtkSourceStyleSchemeManager at module-initialisation time through a stub which ref_sinks a
+#    plain GObject, an invalid cast present in EVERY build and printed only where the glib headers
+#    keep the runtime check (glib 2.74 of the debian:12 build box; glib >= 2.80 compiles it out
+#    under __OPTIMIZE__). bin/dune now names `lablgtk3-sourceview3' directly, which was already
+#    listed here. Its own dependencies `ocf' and `xmlm' leave with it.
+OPAM_PACKAGES = dune dune-site camlp4 camlp-streams inotify lablgtk3 \
                 lablgtk3-sourceview3 conf-gtksourceview3 yojson base64 cmarkit
 
 # `opam' packages for tooling (editor support and documentation, not needed to build):

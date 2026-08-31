@@ -200,7 +200,17 @@
   ;; cmarkit: treeview_documents renders the guest end-of-session report (Markdown, work-stream
   ;; `journalisation-profonde') into HTML in-process, so that a graded project shows THE SAME page
   ;; on every machine and the raw HTML of a file written inside a guest gets neutralized.
-  (libraries str unix threads inotify lablgtk3 lablgtk3-extras cmarkit yojson ocamlbricks marionnet_base marionnet_tap marionnet_sites))
+  ;; lablgtk3-sourceview3 AND NOT lablgtk3-extras: gui_source_editing.ml uses GSourceView3, which
+  ;; came in transitively through lablgtk3-extras -- whose OWN modules (Gdir, Gmylist, Gmytree,
+  ;; Gstuff, Gtksv_utils, Okey, Configwin) are used NOWHERE in this repository. Linking it was not
+  ;; free: `Gtksv_utils' runs GSourceView3.source_style_scheme_manager at module-initialisation
+  ;; time, and that stub ref_sinks a GtkSourceStyleSchemeManager, which is not a GInitiallyUnowned.
+  ;; The invalid cast is REAL in every build; whether it is SAID depends on the glib headers the
+  ;; stub was compiled against -- glib >= 2.80 compiles the runtime cast check out under
+  ;; __OPTIMIZE__, glib 2.74 (the debian:12 build box) keeps it, hence the GLib-GObject-CRITICAL
+  ;; that only the boxed binary printed. Dropping the library removes the call altogether.
+  ;; Measured, episode 21 of `modernisation-installation-marionnet'.
+  (libraries str unix threads inotify lablgtk3 lablgtk3-sourceview3 cmarkit yojson ocamlbricks marionnet_base marionnet_tap marionnet_sites))
 
 ;;; ---
 (install

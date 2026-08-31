@@ -469,13 +469,18 @@ else
   fail "the binary does not run: ${out:-nothing on stdout}${err:+ (stderr: $(echo "$err" | head -1))}"
 fi
 
-# Measured 2026-08-31 on the artefacts of episode 20: the binary compiled IN THE BUILD BOX
-# writes `GLib-GObject-CRITICAL: invalid cast from GtkSourceStyleSchemeManager to
-# GInitiallyUnowned' at startup, where the one compiled on the packager's machine writes
-# nothing -- same lablgtk3 (3.1.5), same libgtksourceview (3.24.11), same box to run in, and
-# the two revisions isolated (r918 host / r919 box) differ by a commit which touches no OCaml
-# at all. So the build box does not merely move the glibc floor: it changes what the binary
-# says. That is worth a case rather than a note, because a note is what nobody re-measures.
+# This case was RED on purpose from episode 20c to episode 21, and what it caught is worth
+# keeping written down. The binary compiled IN THE BUILD BOX wrote `GLib-GObject-CRITICAL:
+# invalid cast from GtkSourceStyleSchemeManager to GInitiallyUnowned' at startup, where the one
+# compiled on the packager's machine wrote nothing -- same lablgtk3, same libgtksourceview, same
+# box to run in. The box was NOT changing the binary's behaviour: it was removing a gag. The
+# invalid cast is emitted by the lablgtk3-sourceview3 stub in EVERY build; whether the runtime
+# check survives compilation depends on the glib HEADERS -- glib >= 2.80 compiles it out under
+# __OPTIMIZE__, glib 2.74 (debian:12) keeps it (both macros read, episode 21). The call itself
+# came from `Gtksv_utils' of lablgtk3-extras, a library this tree linked without naming a single
+# one of its modules; bin/dune now names lablgtk3-sourceview3 directly and the call is gone.
+# So: green from episode 21 on, and a regression here means either the library came back or an
+# equally unnamed module started talking at startup. A note is what nobody re-measures.
 if test -z "$err"; then
   pass "the binary starts cleanly (nothing on stderr)"
 else

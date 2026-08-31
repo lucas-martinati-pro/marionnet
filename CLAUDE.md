@@ -645,6 +645,24 @@ Reprise : appliquer le skill `chantier-long`.
   isolé (r918 muet / r919 bavard, aucun `.ml` entre les deux), mêmes versions des deux côtés,
   cause **inconnue**, et sur **les 3 canaux** puisque le binaire est le même : **un épisode à
   part**. Banc RPM 46 → **48 cas** (46 verts `fedora:42`, 48 verts `rockylinux:10`).
+  **Ép. 21 : la boîte enlevait un bâillon, elle ne changeait rien.** Le `GLib-GObject-CRITICAL`
+  de 20c venait de `Gtksv_utils` (**`lablgtk3-extras`**), qui construit un
+  `GtkSourceStyleSchemeManager` **à l'initialisation du module** et le fait passer par
+  `g_object_ref_sink` alors que ce manager n'est pas un `GInitiallyUnowned` — Marionnet
+  n'appelait rien de tout cela. **Le cast invalide était dans tous les binaires** : glib ≥ 2.80
+  compile la vérification **out** dès `__OPTIMIZE__` (`_G_TYPE_CIC`), glib 2.74 (`debian:12`) la
+  garde. **Piège durable** : avant de chercher ce qu'une boîte de build *change*, chercher ce
+  qu'elle **cesse de taire** — et ne pas prendre un binaire silencieux pour un binaire correct.
+  Correctif : `bin/dune` nommait `lablgtk3-extras` pour atteindre `GSourceView3`
+  **transitivement**, alors qu'**aucun** de ses 7 modules n'est nommé dans le dépôt ; il nomme
+  désormais **`lablgtk3-sourceview3`** (déjà dans `OPAM_PACKAGES`, dont `lablgtk3-extras` est
+  retiré avec ses `ocf`/`xmlm`). **À ne pas défaire** : le stub amont reste faux, on s'en est
+  seulement rendu indépendant — si un module d'ici appelle un jour
+  `source_style_scheme_manager`, l'avertissement revient et il aura raison. Mesuré : `@check`
+  rc 0, `nm` 309 → **0** `camlGtksv_utils` (862 `camlGSourceView3` intacts), breakpoint `gdb`
+  sur le stub **jamais atteint**, `driven-sessions/quit-is-observable.sh` **7/7**. **Reste, dans
+  cet ordre imposé** : `release.build-box.sh` clone **HEAD**, donc le rejeu
+  `make release-build-box` + banc RPM se joue **après** le commit de l'épisode.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

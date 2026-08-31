@@ -157,7 +157,7 @@ scindée en deux variables, et **chaque canal de diffusion la dérive** :
 | `REQUIRED_PACKAGES_RUNTIME` | `vde2 graphviz uml-utilities xterm iproute2 sudo x11-xserver-utils xauth jq socat dnsmasq-base xz-utils libgtksourceview-3.0-1` (`bridge-utils` **retiré** le 2026-08-23 ; les **2 derniers ajoutés le 2026-08-30**, épisode 9b) | **`Depends` du `.deb`** ; `Requires` du RPM ; couche runtime Docker ; script v2 `marionnet-install.sh` |
 | `REQUIRED_PACKAGES_RUNTIME_I386` | `libc6:i386` | `Recommends` (ou `Suggests`) du `.deb` — voir ci-dessous |
 | `REQUIRED_PACKAGES` | union des deux | cible historique `apt-dependencies` |
-| `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-extras lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
+| `OPAM_PACKAGES` | `dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-sourceview3 conf-gtksourceview3` **`yojson base64`** (`lablgtk3-extras` **retiré** le 2026-08-31, épisode 21) | `make opam-dependencies` ; `Build-Depends` du `.deb` ; `BuildRequires` du RPM ; image de **build** Docker ; essai « toolchain système » (ép. 3) |
 
 **Ajout du 2026-08-09 — `yojson` et `base64`**, posés par l'épisode 2 du chantier
 `migration-marshal-to-text` (codec JSON de `lib/STRUCTURES/xforest.ml` ; le repli base64 est ce
@@ -3057,3 +3057,109 @@ regarde stderr au démarrage.
   neuf *saute* sur les paquets antérieurs au lieu de rougir. Le rougir demanderait de publier un
   tarball à la révision courante, donc une compilation — mesure reportée au prochain
   `make release-build-box`.
+
+---
+
+## Épisode 21 (2026-08-31) — la boîte ne changeait pas le binaire, elle enlevait un bâillon
+
+Gradué par l'épisode 20c (point « 4 quater » des prochaines étapes), et **seul épisode encore
+jouable** : les étapes (5) et (6) de la feuille de route attendent le retour de
+`www.marionnet.org`.
+
+### Le constat de départ, et ce qu'il faisait croire
+
+Le binaire compilé dans la boîte `debian:12` écrivait au démarrage :
+
+```
+(process:…): GLib-GObject-CRITICAL **: invalid cast from 'GtkSourceStyleSchemeManager' to 'GInitiallyUnowned'
+```
+
+là où celui compilé sur la machine de l'auteur ne disait rien — mêmes versions des deux côtés,
+révisions isolées (r918 muet / r919 bavard) et **aucun `.ml`** entre les deux. La formule retenue
+alors était *« la boîte ne déplace pas que le plancher glibc : elle change ce que le binaire
+dit »*. Elle était exacte comme description et **trompeuse comme diagnostic** : elle laissait
+supposer un défaut *de la boîte*.
+
+### La chaîne d'appel, lue et non devinée
+
+Reproduit **hors conteneur**, sur les deux tarballs publiés (`r915` compilé ici, `r920` compilé
+dans la boîte) et sur cette machine : `r915 --version` → rien sur stderr ; `r920 --version` →
+l'avertissement. Le symptôme est donc dans le **binaire**, pas dans l'environnement d'exécution.
+
+`gdb` avec `G_DEBUG=fatal-criticals` donne l'origine exacte, en une pile :
+
+```
+#3 ml_gtk_source_style_scheme_manager_new () at ml_gtksourceview3.c:470
+#5 camlGSourceView3.source_style_scheme_manager () at src-sourceview3/gSourceView3.ml:103
+#6 camlGtksv_utils.entry () at lib/gtksv_utils.ml:106
+#7 caml_program ()
+```
+
+C'est du **code d'initialisation de module** : `Gtksv_utils` (de `lablgtk3-extras`) construit un
+`GtkSourceStyleSchemeManager` au chargement, et le stub le fait passer par `Val_GObject_sink`,
+c'est-à-dire `g_object_ref_sink` — or un `GtkSourceStyleSchemeManager` **n'est pas** un
+`GInitiallyUnowned`. Le cast est faux. Marionnet n'appelle rien de tout cela.
+
+### Pourquoi une seule des deux compilations le disait
+
+Le même point de code, désassemblé des deux côtés :
+
+| | `r915` (compilé ici) | `r920` (compilé dans la boîte) |
+|---|---|---|
+| `g_initially_unowned_get_type` | absent | appelé |
+| `g_type_check_instance_cast` | absent | appelé |
+| `Val_GObject_sink` | appelé | appelé |
+
+La vérification de cast a été **compilée out** ici, et conservée là-bas. La raison est dans les
+en-têtes de glib, et nulle part ailleurs :
+
+- glib **2.80** (hôte, Ubuntu 24.04) : `#if defined(G_DISABLE_CAST_CHECKS) || defined(__OPTIMIZE__)`
+  → tout build optimisé perd la vérification ;
+- glib **2.74** (`debian:12`, la boîte) : `#ifndef G_DISABLE_CAST_CHECKS` → elle reste.
+
+**Donc le défaut existait dans les deux binaires, et depuis toujours ; seule la boîte le dit.**
+C'est le renversement de l'épisode : la boîte n'a pas introduit un défaut, elle a retiré un
+bâillon — même famille que les PASS mensongers des épisodes 19 et 20b, un cran plus bas.
+
+### Le correctif : ne plus lier une bibliothèque dont on ne nomme aucun module
+
+`bin/dune` listait `lablgtk3-extras`. Aucun de ses modules — `Gdir`, `Gmylist`, `Gmytree`,
+`Gstuff`, `Gtksv_utils`, `Okey`, `Configwin` — n'est nommé **nulle part** dans ce dépôt (0
+occurrence, `bin/` et `lib/`). Il n'était là que pour atteindre `GSourceView3`, qui vient
+transitivement avec, et dont `bin/gui/gui_source_editing.ml` est le seul client.
+
+`bin/dune` nomme désormais `lablgtk3-sourceview3` **directement** — paquet déjà présent dans
+`OPAM_PACKAGES`, donc rien à installer de plus, et `lablgtk3-extras` en est retiré (ses propres
+dépendances `ocf` et `xmlm` partent avec lui). Le module fautif n'est plus lié, son code
+d'initialisation ne s'exécute plus, l'appel disparaît.
+
+**Ce que le correctif ne fait pas** : il ne répare pas le stub de `lablgtk3-sourceview3`, qui
+reste faux en amont. Il rend seulement le dépôt indépendant de lui. Si un jour un module de ce
+dépôt appelle `source_style_scheme_manager`, l'avertissement reviendra — et il aura raison.
+
+### Prouvé (2026-08-31)
+
+- **Le symptôme, reproduit sur l'hôte** avant tout correctif : `r920` bavard, `r915` muet,
+  sans conteneur. C'est ce qui autorise à travailler ici plutôt que dans la boîte.
+- **La cause, lue** : pile `gdb` complète (le site d'appel est du code d'initialisation de module,
+  pas du code de Marionnet) ; désassemblage comparé des deux stubs ; les **deux** macros
+  `_G_TYPE_CIC` lues, celle de l'hôte et celle de `debian:12` (dans un conteneur `debian:12`,
+  `libglib2.0-dev 2.74.6-2+deb12u9`).
+- **Le correctif, mesuré** : `dune build` rc 0, `dune build @check` rc 0 (tous les modules, pas
+  seulement la clôture atteignable) ; `nm` sur le binaire → **0** symbole `camlGtksv_utils`
+  (contre 309 avant) et **862** `camlGSourceView3` **inchangés** ; breakpoint `gdb` sur
+  `ml_gtk_source_style_scheme_manager_new` **jamais atteint** (il l'était sur `r915` **et** sur
+  `r920`) — l'unique source possible du message a disparu, quelle que soit la boîte.
+- **Non-régression fonctionnelle** : `driven-sessions/quit-is-observable.sh` **7/7**, donc une
+  vraie GUI démarre, répond par le canal et se termine sans `lablgtk3-extras`.
+- **Banc RPM** : le cas *« the binary starts cleanly »*, rouge exprès depuis 20c, redevient
+  vert — son commentaire porte maintenant la cause au lieu de la constater.
+
+### Restes
+
+- **La preuve de bout en bout attend le commit** : `release.build-box.sh` clone `HEAD`
+  (*what is compiled is what is committed*, invariant de l'épisode 20), donc le rejeu
+  `make release-build-box` + banc RPM se joue **après** que cet épisode soit committé. La mesure
+  locale ci-dessus est décisive sur la cause ; celle-là est le contrôle de la chaîne.
+- Ce rejeu rendra aussi **rouge** le cas d'identité binaire de 20c, qui *saute* faute d'une
+  révision portant à la fois un `.rpm` d'avant et un tarball publié.
