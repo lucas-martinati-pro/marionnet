@@ -717,6 +717,34 @@ else
   fail "the pass-through options did not reach install.sh (rc=$rc): [$witness]"
 fi
 
+# (e bis) Episode 10: the apt dependencies of the host. Three states, and the third one --
+# the default -- is that NOTHING is forwarded: install.sh then does what it does on its own,
+# which is to NAME what is missing and install none of it. A relay which turned the default
+# into an explicit option would silently decide for the user.
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes --force --with-deps) && rc=0 || rc=$?
+witness=$(in_vol "$VOL4" 'cat /opt/mrn/install.sh.witness 2>/dev/null' || true)
+if (( rc == 0 )) && printf '%s\n' "$witness" | grep -q -- "--with-deps"; then
+  pass "--with-deps reaches the embedded install.sh"
+else
+  fail "--with-deps did not reach install.sh (rc=$rc): [$witness]"
+fi
+
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes --force --no-deps) && rc=0 || rc=$?
+witness=$(in_vol "$VOL4" 'cat /opt/mrn/install.sh.witness 2>/dev/null' || true)
+if (( rc == 0 )) && printf '%s\n' "$witness" | grep -q -- "--no-deps"; then
+  pass "--no-deps reaches the embedded install.sh"
+else
+  fail "--no-deps did not reach install.sh (rc=$rc): [$witness]"
+fi
+
+out=$(client_in "$VOL4" --binary --from "$BASE/with-sums-binary" --yes --force) && rc=0 || rc=$?
+witness=$(in_vol "$VOL4" 'cat /opt/mrn/install.sh.witness 2>/dev/null' || true)
+if (( rc == 0 )) && ! printf '%s\n' "$witness" | grep -q -- "-deps"; then
+  pass "by default neither is forwarded: install.sh keeps its own default (name, install nothing)"
+else
+  fail "a -deps option was forwarded although none was asked for: [$witness]"
+fi
+
 # (f) A release whose applications cannot run here. The refusal names the criterion for each,
 # because an i386 machine and a glibc which is too old are not the same problem.
 out=$(client_in "$VOL5" --binary --from "$BASE/binary-incompatible" --yes) && rc=0 || rc=$?

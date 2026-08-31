@@ -327,8 +327,19 @@ Reprise : appliquer le skill `chantier-long`.
   lance l'`install.sh` **qui voyage dedans**, parce qu'il n'y a qu'**un** installeur — celui que
   lance aussi l'humain qui télécharge à la main ; ce script n'en pilote qu'un et lui relaie
   `--force`/`--no-sudoers`/`--no-config`. Banc réseau **31 → 50 cas**, et la chaîne 9a→9b→9c
-  mesurée d'un geste sur le vrai tarball, en root, dans le conteneur cible. Reste côté
-  consommateur : les **dépendances apt de l'hôte** (enfant `…-par-script`).
+  mesurée d'un geste sur le vrai tarball, en root, dans le conteneur cible.
+  **Ép. 10 : les dépendances apt de la machine cible.** La liste voyage dans le tarball
+  **comme donnée** (`REQUIRED-PACKAGES-RUNTIME`, un paquet par ligne, généré du `Makefile`)
+  parce que le here-document d'`install.sh` est **quoté à dessein** — l'y écrire en dur
+  aurait recréé la seconde source de vérité que l'ép. 1 a supprimée. `install.sh` **nomme**
+  ce qui manque et n'installe rien (`--with-deps` installe, `--no-deps` ne regarde même
+  pas) : poser une application et tirer une douzaine de paquets sont deux gestes, et le
+  canal qui fait les deux est le `.deb`. **À ne pas défaire** : rien n'est fatal (un paquet
+  absent laisse une installation complète, pas un arbre à moitié posé), l'étape sudoers
+  s'efface sur `command -v visudo` — **pas** sur la liste des manquants, sinon `--no-deps`
+  rendrait fatale une étape qui ne l'est pas — et le relais de `marionnet-install.sh` a
+  **trois** états, le défaut ne transmettant rien. Bancs : 27 → **39** cas (3ᵉ boîte
+  `trixie-slim` nue, 4ᵉ avec réseau ; discriminance 10) et 50 → **53** cas.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

@@ -1354,3 +1354,95 @@ raison de le mesurer deux fois. La jonction des deux, elle, est le geste réel c
 - **Les dépendances apt de l'hôte** : `--binary` installe l'application, pas ce qu'elle exige.
   C'est ce qu'il reste à l'enfant `…-par-script`, et c'est aussi ce que le `.deb` fera tout seul.
 - L'étape 1 (dépôt sur le serveur) et la jambe **https**, bloquées par l'extérieur.
+
+## Épisode 10 (2026-08-31) — les dépendances apt de la machine cible
+
+L'épisode 9c posait l'application sur la machine du consommateur ; il ne posait pas ce
+qu'elle **exige**. Le reste était écrit noir sur blanc au § « Restes » de 9c : *« `--binary`
+installe l'application, pas ce qu'elle exige »*. C'est ce que cet épisode solde, du côté du
+tarball binaire — donc pour **les deux** chemins d'installation, celui de l'humain qui
+déplie à la main et celui de `marionnet-install.sh --binary`, puisqu'il n'y a **qu'un**
+`install.sh`.
+
+### La liste voyage comme donnée, pas comme prose
+
+Avant cet épisode, `REQUIRED_PACKAGES_RUNTIME` arrivait dans le tarball **en prose**, dans le
+`README` (`Makefile.d/release.binary.sh`, l. 292). Un humain la lit ; un programme, non.
+L'`install.sh` embarqué ne pouvait pas non plus la porter en dur : son here-document est
+**quoté à dessein** (`<<'INSTALL_SH_EOF'` — rien du shell de l'empaqueteur ne fuit dans le
+script que l'utilisateur exécute), donc l'y écrire aurait voulu dire **recopier la liste à la
+main**, c'est-à-dire refaire le défaut que l'épisode 1 a réparé.
+
+D'où un **fichier de données** dans le tarball, à côté d'`install.sh` :
+
+```
+<name>/REQUIRED-PACKAGES-RUNTIME    un paquet par ligne, commentaires permis
+```
+
+écrit par le même `make print-required-packages-runtime` qui alimente déjà le `README`. La
+source de vérité reste unique : le `Makefile`. Le banc le **vérifie** (cas 28 : la liste du
+tarball, triée, est celle du `Makefile`), ce qui rend la dérive impossible en silence.
+
+### Nommer, pas installer — et pourquoi ce n'est pas le défaut inverse
+
+Défaut d'`install.sh` : il **nomme** ce qui manque et donne la commande `apt` toute prête ;
+il n'installe rien. `--with-deps` installe ; `--no-deps` ne regarde même pas.
+
+Le motif est le même que celui qui a fait refuser, à l'épisode 9a, que l'`install.sh` du
+tarball fasse plus que poser une installation : *poser une application* et *tirer une
+douzaine de paquets* sont **deux gestes**, et seul le premier a été demandé. Le canal dont
+c'est justement le rôle de faire les deux, c'est le `.deb` (§ 4, enfant `…-par-paquet-deb`),
+où `Depends:` le fait sans que personne l'écrive.
+
+Trois garde-fous, tous mesurés :
+
+- **rien n'est fatal.** Un paquet manquant, un `apt` en échec, un `apt-get update` sans
+  réseau : l'application est posée et le manque est **dit**. Une Marionnet installée à côté
+  d'une bibliothèque absente est à un `apt install` de démarrer ; un `install.sh` qui meurt
+  au milieu laisse un arbre à moitié posé.
+- **l'étape sudoers s'efface quand `visudo` n'est pas là.** `sudo` est *dans* la liste, et
+  `bin/scripts/marionnet-sudoers.sh` valide sa règle par `visudo -cf` (l. 427) : sur une
+  machine dénudée, sans cette garde, `install.sh` mourait en parlant de `visudo` au lieu de
+  parler de ses dépendances. La garde interroge **`command -v visudo`**, pas la liste des
+  manquants — sinon `--no-deps` (qui vide cette liste par construction) aurait rendu fatale
+  une étape qui ne l'est pas. **Défaut trouvé par le banc**, exactement là.
+- **le dernier mot est un avertissement** : quand il reste des paquets manquants, le
+  « Try: … --help » final est suivi de « pas avant que ces N paquets soient là », parce que
+  `libgtksourceview-3.0-1` absent ⇒ le binaire ne démarre pas du tout (épisode 9b).
+
+### Le passe-plat, et son troisième état
+
+`useful-scripts/marionnet-install.sh --binary` relaie `--with-deps` / `--no-deps` comme il
+relaie déjà `--force`, `--no-sudoers` et `--no-config`. Son état interne a **trois** valeurs
+(`ask` par défaut) et non deux : par défaut il ne transmet **rien**, et `install.sh` garde
+son propre défaut. Un relais qui transformerait le défaut en option explicite déciderait en
+silence à la place de l'utilisateur — c'est ce que le cas (e bis) du banc réseau mesure.
+
+### Prouvé
+
+- Banc `Makefile.d/release.binary.sh.bench/` : **27 → 39 cas**, tous verts, `rc 0`, sur le
+  vrai tarball `marionnet_trunk-r908_amd64_glibc2.39.tar.xz`. Une **3ᵉ boîte** entre en
+  scène : `debian:trixie-slim` **nue**, sans un seul paquet du runtime, qui reçoit le
+  tarball **déjà déplié depuis l'hôte** — une machine sans `xz-utils` ne peut pas ouvrir un
+  `.tar.xz`, et c'est précisément la machine qu'elle représente (le dépli, lui, est mesuré
+  où il faut, cas 1). Une **4ᵉ**, la même mais **avec réseau**, joue `--with-deps` pour de
+  bon : les 13 paquets arrivent, le binaire démarre, et la règle sudoers est posée dans la
+  même exécution — la chaîne 9a → 10 d'un seul geste.
+- **Discriminance : 10 cas rouges** contre l'artefact d'avant (`…-r906`), qui reste vert sur
+  les 27 cas de l'épisode 9b (non-régression). Les cas de la section 10 sont tolérants aux
+  échecs (`|| true`, capture du `rc`) : mesuré, sans cela un `install.sh` d'avant faisait
+  **avorter** le banc sous `set -e` au lieu de le faire virer au rouge, ce qui se lit comme
+  un défaut du banc.
+- Banc réseau `useful-scripts/marionnet-install.sh.bench/` : **50 → 53 cas**, tous verts —
+  les deux options atteignent l'`install.sh` embarqué, et **aucune** n'est transmise quand
+  rien n'est demandé.
+
+### Restes
+
+- Inchangés : le repli `curl` (ép. 6), la complétion bash (§ 2.4 ter), la **signature** des
+  artefacts, l'étape 1 (dépôt sur le serveur) et la jambe **https**, bloquées par
+  l'extérieur.
+- Ce que cet épisode ne fait **pas**, et laisse à l'enfant `…-par-script` : les dépendances
+  d'une installation **par les sources** (`REQUIRED_PACKAGES_BUILD`, opam), et le cas
+  non-Debian, où `install.sh` se contente d'afficher les noms Debian « ou leur équivalent
+  local ».

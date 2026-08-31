@@ -1,5 +1,9 @@
 # Banc de `Makefile.d/release.binary.sh` — la moitié qui **reçoit**
 
+> Étendu à l'**épisode 10** (les dépendances apt de la machine cible) : voir la dernière
+> puce de « Ce qu'il mesure ». **39 cas** au total, dont **10** virent au rouge sur un
+> artefact d'avant l'épisode 10 (discriminance mesurée).
+
 L'épisode 9a du chantier `modernisation-installation-marionnet` fabrique le tarball
 binaire ; il ne pouvait pas jouer les deux gestes qui en font une **installation**, parce
 que les deux sont *root* et modifient l'hôte : l'écriture de
@@ -27,7 +31,19 @@ dans un conteneur jeté ensuite.
   surprise ;
 - côté hôte, avant tout conteneur : que `SHA256SUMS` annonce le digest **de ce
   tarball-ci** — défaut mesuré à l'épisode 9b, republier sous le même nom laissait le
-  digest précédent.
+  digest précédent ;
+- **ce que l'installation dit des dépendances apt** (épisode 10), sur une machine
+  **dénudée** — une `debian:trixie-slim` sans aucun paquet du runtime, celle où arrive
+  quelqu'un qui a juste téléchargé le tarball : `REQUIRED-PACKAGES-RUNTIME` voyage dans le
+  tarball et **est** la liste du `Makefile` ; ce qui manque est **nommé** (avec la commande
+  `apt` toute prête) sans rien installer, l'application est posée quand même (`rc 0` : un
+  paquet absent n'est pas un échec d'installation), l'étape sudoers **s'efface** faute de
+  `visudo` en disant comment la rejouer, et le binaire **ne démarre pas** là — la
+  contre-preuve du cas « la liste suffit ». Puis les trois états : `--no-deps` ne regarde
+  même pas, `--with-deps` sans réseau échoue en avertissant (toujours `rc 0`), et
+  `--with-deps` avec réseau installe, fait démarrer le binaire et pose la règle sudoers
+  dans la foulée (seul cas de ce banc qui ait besoin de l'extérieur : sauté à voix haute
+  s'il n'y a pas de réseau).
 
 ## Ce qu'il ne mesure pas
 

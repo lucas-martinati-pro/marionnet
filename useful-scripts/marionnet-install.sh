@@ -84,6 +84,10 @@
 #   -b, --binary             install the application too, from the marionnet_* artefact. The
 #                            tarball is unpacked ASIDE and its own install.sh lays it down
 #                            under --prefix; that step needs root (sudo, if not already).
+#       --with-deps          (with --binary) let install.sh install the apt packages the
+#                            application needs at run time and the machine has not got
+#       --no-deps            (with --binary) do not even look at them (install.sh names
+#                            what is missing by default, and installs nothing)
 #       --no-sudoers         (with --binary) do not install the sudoers rule
 #       --no-config          (with --binary) do not write /etc/marionnet/marionnet.conf
 #       --gz                 prefer .tar.gz where both forms exist (default: .tar.xz)
@@ -150,6 +154,9 @@ WANT_RESOURCES=no
 WANT_BINARY=no
 WITH_SUDOERS=yes
 WITH_CONFIG=yes
+# Three states, and they are not two: `ask' is what install.sh does on its own -- name the
+# missing packages, install none. This script only forwards a DEPARTURE from that.
+WITH_DEPS=ask
 SOURCE=""
 SERIES="$DEFAULT_SERIES"
 PREFIX="/usr/local"
@@ -168,6 +175,8 @@ while (( $# > 0 )); do
   case "$1" in
     --fetch-only)          MODE=fetch; WANT_RESOURCES=yes ;;
     -b|--binary)           MODE="${MODE:-binary}"; WANT_BINARY=yes ;;
+    --with-deps)           WITH_DEPS=yes ;;
+    --no-deps)             WITH_DEPS=no ;;
     --no-sudoers)          WITH_SUDOERS=no ;;
     --no-config)           WITH_CONFIG=no ;;
     -F|--from)             SOURCE="${2:?--from requires an argument}"; shift ;;
@@ -586,6 +595,7 @@ for logical in "${TODO[@]}"; do
   echo "    $logical.tar.$(artifact_format "$logical")"
   if [[ $(artifact_kind "$logical") = binary ]]; then
     echo "        unpacked aside, then: install.sh --prefix $PREFIX\
+$( [[ $WITH_DEPS = yes ]] && echo " --with-deps")$( [[ $WITH_DEPS = no ]] && echo " --no-deps")\
 $( [[ $WITH_SUDOERS = no ]] && echo " --no-sudoers")$( [[ $WITH_CONFIG = no ]] && echo " --no-config")"
   fi
 done
@@ -746,6 +756,8 @@ function install_binary {
 
   local -a cmd=(bash "$root/install.sh" --prefix "$PREFIX")
   if [[ $FORCE        = yes ]]; then cmd+=(--force); fi
+  if [[ $WITH_DEPS    = yes ]]; then cmd+=(--with-deps); fi
+  if [[ $WITH_DEPS    = no  ]]; then cmd+=(--no-deps); fi
   if [[ $WITH_SUDOERS = no  ]]; then cmd+=(--no-sudoers); fi
   if [[ $WITH_CONFIG  = no  ]]; then cmd+=(--no-config); fi
   info "the artefact installs itself: ${cmd[*]}"
