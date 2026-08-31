@@ -66,6 +66,37 @@ done
 
 command -v docker >/dev/null || skip_all "docker is not available"
 
+# `--distro all' runs the suite once per box, by re-invoking this script: the cases are written
+# for ONE box and stay that way, and a box which fails does not stop the others. The four are
+# the current members of the two RPM families -- two RHEL rebuilds, the upstream distribution,
+# and openSUSE, which is the one that proves the file/soname dependencies really do cross
+# families (it resolves them with zypper, not dnf).
+ALL_DISTROS=(rockylinux/rockylinux:10 almalinux:10 fedora:42 opensuse/leap:16.0)
+if test "$DISTRO" = all; then
+  rc=0
+  forward=()
+  test -z "$OUTDIR" || forward+=(--output-dir "$OUTDIR")
+  ((KEEP)) && forward+=(--keep)
+  for d in "${ALL_DISTROS[@]}"; do
+    echo; echo "================================================================ $d"
+    bash "${BASH_SOURCE[0]}" --distro "$d" "${forward[@]}" || rc=1
+  done
+  exit $rc
+fi
+
+# ---
+# --- The two package managers, behind four verbs.
+# ---
+# openSUSE is not a variant of Fedora with another name: it resolves the same file and soname
+# dependencies with zypper, and that is precisely what makes it worth a box here. Everything
+# the cases need is expressed through these four, so a case never has to know which family it
+# is running on -- and rpm -q, which both families share, answers the rest.
+# ---
+case "$DISTRO" in
+  *opensuse*|*suse*) FAMILY=zypper ;;
+  *)                 FAMILY=dnf ;;
+esac
+
 if test -z "$OUTDIR"; then
   SERIES=$(bash "$ROOT/Makefile.d/filesystem.prepare-snapshot-to-publish.sh" --print-series) || \
     skip_all "cannot read the publication series"
@@ -117,6 +148,45 @@ docker run -d --name "$BOX" -v "$OUTDIR:/rpms:ro" "$DISTRO" sleep infinity >/dev
   skip_all "cannot start a $DISTRO container"
 function in_box { docker exec "$BOX" bash -c "$1"; }
 
+# The four verbs. `pm_install' takes files or names indifferently -- both families accept
+# either -- and prints what the manager said, so that a case can read the REASON of a refusal
+# instead of guessing it from a word.
+function pm_install {  # <targets...>
+  case "$FAMILY" in
+    dnf)    in_box "dnf -y install $* 2>&1" ;;
+    zypper) in_box "zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm $* 2>&1" ;;
+  esac
+}
+function pm_remove {   # <name>
+  case "$FAMILY" in
+    dnf)    in_box "dnf -y remove $* >/dev/null 2>&1" ;;
+    zypper) in_box "zypper --non-interactive remove $* >/dev/null 2>&1" ;;
+  esac
+}
+# EPEL and CRB where they exist: a gtksourceview3 lives in EPEL on an EL box, and asking a
+# naked RHEL rebuild to find it without EPEL would measure our packaging against a machine no
+# user of GTK software actually runs. This is the one thing the INSTALL documentation will
+# have to say for this family.
+function pm_extra_repos {
+  case "$FAMILY" in
+    dnf) in_box 'if test -f /etc/redhat-release && ! grep -qi fedora /etc/redhat-release; then
+                   dnf -y install epel-release >/dev/null 2>&1 || true
+                   dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
+                   dnf config-manager --set-enabled crb >/dev/null 2>&1 || true
+                 fi' ;;
+    zypper) : ;;
+  esac
+}
+# The unmet dependencies of a refusal, one per line, whatever the manager: this is what lets a
+# case say WHICH requirement was not met instead of matching a word anywhere in the output --
+# the false PASS episode 19 had to repair (a refusal caused by a missing xrandr was reported as
+# "the refusal names glibc", because the word appeared elsewhere in the message).
+function unmet_of {  # reads the output of pm_install on stdin
+  grep -oE "nothing provides [^ ]+( needed by [^ ]+)?" | sed 's/nothing provides //' | sort -u
+}
+
+pm_extra_repos
+
 # ---------------------------------------------------------------- 0. the catalogue
 # An artefact which never reaches SHA256SUMS is invisible to the installer -- the invariant
 # episode 8 established and episode 9b had to repair. A package sitting in the directory
@@ -145,9 +215,15 @@ if in_box 'command -v vde_switch >/dev/null || command -v uml_mconsole >/dev/nul
 else
   pass "the box provides neither vde_switch nor uml_mconsole (they exist in no RPM repository)"
 fi
-if in_box 'dnf -q repoquery vde2 2>/dev/null | grep -q .'; then
-  fail "this distribution has a vde2 of its own: the third-party package is not needed here"
+# Both answers are legitimate, and which one a box gives is the whole point of episode 17:
+# openSUSE ships vde2 in its official repository, Fedora and the RHEL rebuilds do not. What
+# matters is that ONE package serves both, and it does because its dependency is written by
+# FILE: where the distribution provides /usr/bin/vde_switch, ours is simply never pulled.
+if in_box 'case "$(command -v zypper)" in ?*) zypper --non-interactive search --match-exact vde2 2>/dev/null | grep -q "| vde2 " ;; *) dnf -q repoquery vde2 2>/dev/null | grep -q . ;; esac'; then
+  HAS_DISTRO_VDE2=1
+  pass "this distribution ships vde2 itself, so ours will not be pulled here (the gain of a file dependency)"
 else
+  HAS_DISTRO_VDE2=0
   pass "this distribution has no vde2: the reason release.rpm.sh builds one"
 fi
 
@@ -161,14 +237,29 @@ fi
 # It is also what says the twelve OTHER runtime dependencies resolve from the distribution's
 # own repositories: they are not in this message.
 info "2. the application alone, on a box which has no vde2"
-out=$(in_box "dnf -y install /rpms/$APP 2>&1"; true)
-if echo "$out" | grep -q 'nothing provides /usr/bin/vde_switch' && \
-   echo "$out" | grep -q 'nothing provides /usr/bin/uml_mconsole'; then
-  pass "refused, naming BOTH missing files (and nothing else: the twelve others resolved)"
-elif echo "$out" | grep -qiE 'complete!|installed'; then
-  fail "the application installed although this box provides no vde_switch: it cannot work"
+# What must be named depends on what the box already has: uml_mconsole always (no RPM
+# distribution provides it), and vde_switch only where the distribution has no vde2 of its own.
+#
+# And the RESULT is read from rpm, never from the exit status: measured on openSUSE, zypper
+# prints the problem, cancels, and exits 0. A bench which trusted that would call a refusal a
+# success.
+out=$(pm_install "/rpms/$APP"; true)
+expected_named=1
+echo "$out" | grep -q '/usr/bin/uml_mconsole' || expected_named=0
+if ((! HAS_DISTRO_VDE2)); then
+  echo "$out" | grep -q '/usr/bin/vde_switch' || expected_named=0
+fi
+if in_box 'rpm -q marionnet >/dev/null 2>&1'; then
+  fail "the application was installed although this box cannot provide what it needs"
+  pm_remove marionnet
+elif ((expected_named)); then
+  if ((HAS_DISTRO_VDE2)); then
+    pass "refused, naming the one file this box lacks (/usr/bin/uml_mconsole); its own vde2 answered for vde_switch"
+  else
+    pass "refused, naming BOTH missing files (and nothing else: the twelve others resolved)"
+  fi
 else
-  fail "refused for an unexpected reason: $(echo "$out" | grep -iE 'nothing provides|problem' | tr '\n' ' ')"
+  fail "refused, but without naming what is missing: $(echo "$out" | unmet_of | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------- 2 bis. all five together
@@ -177,18 +268,23 @@ fi
 # METADATA rather than from a file name -- the whole gain of a package over a tarball.
 info "2 bis. the five packages together"
 # Named one by one, and not /rpms/*.rpm: the directory may hold several revisions of the
-# application, and a glob would ask dnf for two versions of the same package.
+# application, and a glob would ask the manager for two versions of the same package.
+# The four Marionnet packages minus the i386 kernel, plus the two third-party ones. The i386
+# kernel is deliberately NOT here: it is the one package whose installability depends on the
+# distribution (RHEL 10 dropped 32-bit multilib), and case 3 bis is where that is measured.
 FIVE=""
 for p in "$APP" "$KERNELS" "$GUIGNOL" "$VDE2" "$UMLU"; do test -n "$p" && FIVE+=" /rpms/$p"; done
-out=$(in_box "dnf -y install$FIVE 2>&1"; true)
-if echo "$out" | grep -qiE 'complete!'; then
+out=$(pm_install "$FIVE"; true)
+unmet=$(echo "$out" | unmet_of)
+if test -z "$unmet"; then
   pass "the five packages install together"
   INSTALLED=1
-elif echo "$out" | grep -qiE 'libc\.so\.6|glibc'; then
-  pass "refused, and the refusal names glibc (the constraint is metadata, not a file name)"
+elif echo "$unmet" | grep -q 'libc\.so\.6'; then
+  # Classified by the EXACT unmet requirement, never by a word found anywhere in the output.
+  pass "refused, and what is unmet is a libc symbol: $(echo "$unmet" | head -1)"
   INSTALLED=0
 else
-  fail "refused for a reason which is neither glibc nor named: $(echo "$out" | tail -3 | tr '\n' ' ')"
+  fail "refused, and what is unmet is not a libc symbol: $(echo "$unmet" | tr '\n' ' ')"
   INSTALLED=0
 fi
 
@@ -199,7 +295,7 @@ fi
 
 # ---------------------------------------------------------------- 3. what dnf pulled by itself
 info "3. the dependencies dnf resolved on its own"
-in_box "dnf -y install$FIVE >/dev/null 2>&1"
+pm_install "$FIVE" >/dev/null 2>&1
 
 for probe in "vde_switch:vde2" "wirefilter:vde2" "slirpvde:vde2" "uml_mconsole:uml-utilities"; do
   cmd="${probe%%:*}"; from="${probe##*:}"
@@ -210,7 +306,9 @@ for probe in "vde_switch:vde2" "wirefilter:vde2" "slirpvde:vde2" "uml_mconsole:u
   fi
 done
 
-for cmd in dot jq socat dnsmasq xterm xauth xrandr ip xz sudo; do
+# xhost and not xrandr: the Makefile's comment names xhost as what x11-xserver-utils is
+# for, and Rocky 10 has no xrandr at all -- the mistake episode 19 had to correct.
+for cmd in dot jq socat dnsmasq xterm xauth xhost ip xz sudo; do
   if in_box "command -v $cmd >/dev/null"; then
     pass "$cmd pulled from the distribution"
   else
@@ -218,22 +316,44 @@ for cmd in dot jq socat dnsmasq xterm xauth xrandr ip xz sudo; do
   fi
 done
 
-# The dependency the Debian channel had to WRITE (libc6:i386) and this one only had to let rpm
-# derive, because both ELF classes sit in the same package and multilib is native here.
-if test -n "$KERNELS"; then
-  if in_box 'rpm -q glibc.i686 >/dev/null 2>&1'; then
-    pass "glibc.i686 pulled BY DERIVATION (the 32-bit kernel's interpreter), no foreign architecture asked for"
-  else
-    fail "glibc.i686 absent: the i386 kernel cannot run"
-  fi
-fi
-
 # The one runtime library, which no table names: rpm reads its soname out of the binary, and
 # that soname resolves on both RPM families where the package names do not.
 if in_box "rpm -q --requires marionnet 2>/dev/null | grep -q libgtksourceview-3.0.so.1"; then
   pass "libgtksourceview is required BY SONAME (derived, not translated)"
 else
   fail "the gtksourceview dependency is not derived from the soname"
+fi
+
+# ------------------------------------------------- 3 bis. the i386 kernel, alone in its fate
+# The package episode 17 had merged into marionnet-kernels and episode 19 split out again. It
+# is the ONE package whose installability depends on the distribution: RHEL 10 and its rebuilds
+# dropped 32-bit multilib entirely (measured: nothing provides /lib/ld-linux.so.2, CRB
+# included), so it cannot be installed there -- and that is exactly why it must be separate.
+# What this case really checks is that its refusal costs nothing to anybody else: the 64-bit
+# kernel, installed just above, is still there afterwards.
+info "3 bis. the 32-bit kernel"
+KERNELS_I386=$(rpm_named marionnet-kernels-i386 || true)
+if test -z "$KERNELS_I386"; then
+  skip "no marionnet-kernels-i386 package in the release directory"
+else
+  out=$(pm_install "/rpms/$KERNELS_I386"; true)
+  unmet=$(echo "$out" | unmet_of)
+  if test -z "$unmet"; then
+    if in_box 'test -f /usr/share/marionnet/kernels/linux-6.12.95-i386'; then
+      pass "this box has 32-bit multilib, and the i386 kernel is installed"
+    else
+      fail "the i386 kernel package reported success but put no kernel down"
+    fi
+  elif echo "$unmet" | grep -q 'libc\.so\.6'; then
+    pass "refused for want of a 32-bit libc, which this distribution no longer has: $(echo "$unmet" | head -1)"
+    if test -n "$KERNELS" && in_box 'test -f /usr/share/marionnet/kernels/linux-6.12.95'; then
+      pass "and the 64-bit kernel is UNHARMED -- which the merged package of episode 17 could not manage"
+    else
+      fail "the refusal of the i386 kernel took the 64-bit one with it"
+    fi
+  else
+    fail "the i386 kernel was refused for an unexpected reason: $(echo "$unmet" | tr '\n' ' ')"
+  fi
 fi
 
 # ---------------------------------------------------------------- 4. what landed
@@ -254,11 +374,13 @@ else
   fail "the configuration file is not declared as a config file"
 fi
 
+# The 64-bit kernel only: the 32-bit one is a package of its own since episode 19, and whether
+# it could be installed is the business of case 3 bis, not of this one.
 if test -n "$KERNELS"; then
-  if in_box 'test -f /usr/share/marionnet/kernels/linux-6.12.95 && test -f /usr/share/marionnet/kernels/linux-6.12.95-i386'; then
-    pass "both kernels are in one package (the i386 split has no reason to exist on RPM)"
+  if in_box 'test -f /usr/share/marionnet/kernels/linux-6.12.95'; then
+    pass "the 64-bit kernel is installed, whatever became of the 32-bit one"
   else
-    fail "a kernel is missing from /usr/share/marionnet/kernels"
+    fail "the 64-bit kernel is missing from /usr/share/marionnet/kernels"
   fi
 fi
 
@@ -309,12 +431,20 @@ fi
 # 31 paths -- so the guides are absent HERE and present on a real installation. The exact
 # counterpart of the path-exclude episode 15b measured on debian:*-slim.
 info "7. the guides of episode 14, and the difference between an image and a machine"
-if in_box 'grep -q tsflags=nodocs /etc/dnf/dnf.conf 2>/dev/null'; then
-  pass "this image sets tsflags=nodocs (so the guides are legitimately absent from it)"
+# Three families, three spellings of the same thing: path-exclude in dpkg (episode 15b),
+# tsflags=nodocs in dnf, and rpm.install.excludedocs in zypp. An image is not a machine.
+if in_box 'grep -q tsflags=nodocs /etc/dnf/dnf.conf 2>/dev/null || \
+           grep -qE "^[^#]*rpm.install.excludedocs *= *yes" /etc/zypp/zypp.conf 2>/dev/null'; then
+  pass "this image excludes documentation (so the guides are legitimately absent from it)"
   n=$(in_box "rpm -qpd /rpms/$APP 2>/dev/null | wc -l")
   test "$n" -ge 26 && pass "the package nevertheless CARRIES the $n documentation files" || \
     fail "the package carries only $n documentation files, expected at least 26"
-  in_box "sed -i '/tsflags=nodocs/d' /etc/dnf/dnf.conf && dnf -y reinstall /rpms/$APP >/dev/null 2>&1"
+  in_box "sed -i '/tsflags=nodocs/d' /etc/dnf/dnf.conf 2>/dev/null; \
+          sed -i 's/^\\(rpm.install.excludedocs *=\\) *yes/\\1 no/' /etc/zypp/zypp.conf 2>/dev/null; true"
+  case "$FAMILY" in
+    dnf)    in_box "dnf -y reinstall /rpms/$APP >/dev/null 2>&1" ;;
+    zypper) in_box "zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm -f /rpms/$APP >/dev/null 2>&1" ;;
+  esac
   n=$(in_box 'ls /usr/share/doc/marionnet/ 2>/dev/null | wc -l')
   test "$n" -ge 5 && pass "once the image stops excluding documentation, the guides are installed ($n entries)" || \
     fail "the guides are still absent after removing tsflags=nodocs"
@@ -340,7 +470,7 @@ fi
 # bash-completion is NOT a dependency of the package -- Marionnet works without it -- so the
 # box does not have it until this case asks for it. Installing it here is the point: it proves
 # the completion files are installed where the LOADER looks, not merely where we put them.
-in_box 'dnf -y install bash-completion >/dev/null 2>&1'
+pm_install bash-completion >/dev/null 2>&1
 armed=$(in_box 'source /usr/share/bash-completion/bash_completion 2>/dev/null; \
                 _completion_loader mrnctl >/dev/null 2>&1; complete -p mrnctl 2>/dev/null')
 if echo "$armed" | grep -qE '_mrn|marionnet'; then
@@ -356,7 +486,8 @@ fi
 # .rpmsave. A bench which removed a pristine file would call the right behaviour a loss.
 info "9. removing the application, after the configuration was edited"
 in_box 'echo "# edited by the administrator" >> /etc/marionnet/marionnet.conf'
-if in_box 'dnf -y remove marionnet >/dev/null 2>&1 && ! test -x /usr/bin/marionnet.native'; then
+pm_remove marionnet
+if in_box '! test -x /usr/bin/marionnet.native'; then
   pass "the application can be removed"
 else
   fail "removing the application left it behind"
@@ -391,13 +522,29 @@ else
   docker rm -f "$BOX2" >/dev/null 2>&1
   if docker run -d --name "$BOX2" -v "$OUTDIR:/repo:ro" "$DISTRO" sleep infinity >/dev/null 2>&1; then
     function in_box2 { docker exec "$BOX2" bash -c "$1"; }
-    in_box2 'printf "[marionnet]\nname=Marionnet\nbaseurl=file:///repo\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/marionnet.repo'
+    case "$FAMILY" in
+      dnf)    in_box2 'if test -f /etc/redhat-release && ! grep -qi fedora /etc/redhat-release; then
+                         dnf -y install epel-release >/dev/null 2>&1 || true
+                         dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
+                         dnf config-manager --set-enabled crb >/dev/null 2>&1 || true
+                       fi'
+              in_box2 'printf "[marionnet]\nname=Marionnet\nbaseurl=file:///repo\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/marionnet.repo' ;;
+      zypper) in_box2 'zypper --non-interactive addrepo --no-gpgcheck file:///repo marionnet >/dev/null 2>&1
+                       zypper --non-interactive --no-gpg-checks refresh >/dev/null 2>&1' ;;
+    esac
+    function pm2_install { case "$FAMILY" in
+        dnf)    in_box2 "dnf -y install $* >/dev/null 2>&1" ;;
+        zypper) in_box2 "zypper --non-interactive --no-gpg-checks install $* >/dev/null 2>&1" ;;
+      esac; }
 
-    n=$(in_box2 'dnf -q list --available "marionnet*" vde2 uml-utilities 2>/dev/null | grep -c marionnet')
+    case "$FAMILY" in
+      dnf)    n=$(in_box2 'dnf -q list --available "marionnet*" vde2 uml-utilities 2>/dev/null | grep -c marionnet') ;;
+      zypper) n=$(in_box2 'zypper --non-interactive search --repo marionnet 2>/dev/null | grep -c marionnet') ;;
+    esac
     test "$n" -ge 3 && pass "dnf lists the packages of the repository" || \
       fail "dnf sees only $n package(s) in the repository"
 
-    if in_box2 'dnf -y install marionnet >/dev/null 2>&1'; then
+    if pm2_install marionnet; then
       pass "dnf install marionnet -- by NAME, not by path"
       if in_box2 'rpm -q vde2 >/dev/null 2>&1 && rpm -q uml-utilities >/dev/null 2>&1'; then
         pass "vde2 and uml-utilities came WITH it, resolved from the same directory"
@@ -412,12 +559,15 @@ else
       else
         pass "the data packages stayed out, as Suggests: and as on the Debian channel"
       fi
-      n=$(in_box2 'dnf -q repoquery --suggests marionnet 2>/dev/null | grep -c marionnet')
+      case "$FAMILY" in
+        dnf)    n=$(in_box2 'dnf -q repoquery --suggests marionnet 2>/dev/null | grep -c marionnet') ;;
+        zypper) n=$(in_box2 'rpm -q --suggests marionnet 2>/dev/null | grep -c marionnet') ;;
+      esac
       test "$n" -ge 2 && pass "and they are VISIBLE as suggestions ($n)" || \
         fail "the suggestions are not readable from the repository"
-      if in_box2 'dnf -y install marionnet-kernels marionnet-fs-guignol >/dev/null 2>&1 && \
-                  rpm -q marionnet-kernels >/dev/null 2>&1'; then
-        pass "and they install on demand, glibc.i686 following the 32-bit kernel"
+      pm2_install marionnet-kernels marionnet-fs-guignol
+      if in_box2 'rpm -q marionnet-kernels >/dev/null 2>&1'; then
+        pass "and they install on demand"
       else
         fail "the data packages cannot be installed from the repository"
       fi

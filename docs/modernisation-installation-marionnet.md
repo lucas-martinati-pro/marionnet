@@ -2656,3 +2656,115 @@ rien à voir. Le banc nomme désormais les paquets un par un et choisit la plus 
 Inchangés, moins celui-ci : l'**image de build à glibc ancienne** (pour servir Rocky 9 et
 openSUSE Leap 15.6) et la **signature**, qui part avec l'étape « serveur » — celle-là même qui
 donnera enfin une `baseurl` à `--base-url`.
+
+## Épisode 19 (2026-08-31) — la correction : on testait les mauvaises boîtes
+
+Épisode **né d'une question de l'utilisateur** : « pourquoi supporter Rocky 9, alors que Rocky
+en est à la 10.2 ? ». La réponse a démonté quatre choses, dont trois défauts introduits aux
+épisodes 17 et 18.
+
+### 1. La mesure qui renverse le cadre
+
+| Boîte | glibc |
+|---|---|
+| **Rocky Linux 10.2**, **AlmaLinux 10.2** | **2.39** = celle de la machine de compilation |
+| **openSUSE Leap 16.0** | 2.40 |
+| Fedora 42 | 2.41 |
+| ~~Rocky 9.8~~, ~~Leap 15.6~~ | 2.34 / 2.38 — les versions **précédentes** |
+
+**Toute distribution RPM courante accepte déjà notre build.** Le « reste » annoncé aux épisodes
+17 et 18 — *une image de build à glibc ancienne* — était l'artefact d'avoir visé les versions
+d'avant. Il ne disparaît pas (servir Rocky 9 le demanderait toujours) mais il cesse d'être un
+préalable : ce n'est plus une impossibilité, c'est un choix de portée.
+
+### 2. Le défaut de conception : la fusion des noyaux, à refaire
+
+**RHEL 10 a supprimé tout le multilib 32 bits** — mesuré : *rien* ne fournit
+`/lib/ld-linux.so.2` sur Rocky 10, CRB compris. Or l'épisode 17 avait **fusionné** les deux
+noyaux, en s'appuyant sur une mesure faite sur Rocky **9** (où `glibc.i686` existe). Conséquence
+sur la distribution entreprise courante : le paquet fusionné est refusé **en entier**, et
+l'utilisateur perd aussi le noyau **64 bits**, qui lui aurait parfaitement servi.
+
+D'où la **re-séparation** — donc les **mêmes quatre paquets** que le canal Debian, mais pour un
+motif de ce monde-ci et non par symétrie : *un paquet qui ne peut pas être installé ne doit pas
+en emporter un qui le peut*. Le découpage se justifie à droite par `dpkg --add-architecture`, à
+gauche par l'absence pure et simple du runtime 32 bits.
+
+Mesuré après correction, sur Rocky 10 : `dnf install marionnet` réussit,
+`marionnet-kernels` (64 bits) **s'installe**, et `marionnet-kernels-i386` est refusé **seul**,
+en nommant la libc 32 bits qui manque.
+
+### 3. Deux défauts d'empaquetage, et une règle qui en sort
+
+- **`x11-xserver-utils` → `/usr/bin/xrandr` était une devinette.** Le `Makefile` dit, dans son
+  propre commentaire, que ce paquet est là pour **`xhost`**. Et `xrandr` n'existe pas du tout
+  sur Rocky 10 (même avec EPEL et CRB), alors que `xhost` y est un paquet à lui seul. Corrigé :
+  **lire ce que dit la source de vérité, ne pas déduire le binaire du nom du paquet**.
+- **`uml-utilities` exigeait `filesystem(unmerged-sbin-symlinks)`**, que ne fournit aucune boîte
+  EL. Cause trouvée dans `/usr/lib/rpm/filesystem.req` de Fedora : ce générateur se déclenche
+  sur le **nom de base** d'un fichier (liste codée en dur de noms historiquement dans
+  `/usr/sbin` — `uml_net` et consorts), **où qu'on l'installe**, et *ne fait rien si la boîte de
+  build n'est pas usermergée*. Déplacer le fichier n'y changeait donc rien ; **changer de boîte**
+  si.
+
+D'où la règle, écrite dans l'en-tête du publieur : **on construit sur la plus ancienne boîte
+qu'on sert**, pas sur la plus récente. Le générateur n'applique pas seulement `ldd`, il applique
+les **conventions de la distribution où il tourne**, et celles-ci voyagent dans le paquet.
+`--build-image` vaut désormais `rockylinux/rockylinux:10` par défaut. Gain accessoire : les deux
+paquets tiers demandent maintenant la glibc **2.39** au lieu de la 2.41 de Fedora — exactement le
+plancher de l'application elle-même.
+
+### 4. Le défaut le plus grave était dans le banc : un PASS mensonger
+
+Le banc classait « refus nommant la glibc » **tout** message contenant le mot. Sur Rocky 10 il a
+donc affiché ce PASS alors que les vraies causes étaient `xrandr`, `gtksourceview3` et
+`filesystem(unmerged-sbin-symlinks)` — **la glibc n'était pour rien**. Un banc qui valide pour
+la mauvaise raison est pire qu'un banc rouge : il a été rapporté deux fois comme un succès.
+
+Corrigé : une fonction `unmet_of` **extrait les dépendances non satisfaites**, et les cas
+classent un refus par le **symbole exact** et le paquet qui le réclame. Rejoué sur Rocky 9, le
+verdict est désormais `libc.so.6(GLIBC_2.38)(64bit) needed by marionnet-…`.
+
+**Second piège de banc, payé sur openSUSE** : `zypper` imprime le problème, **annule, et sort
+avec le code 0**. Un banc qui lit le statut de sortie appelle « succès » un refus. L'état se lit
+maintenant dans `rpm -q`, jamais dans le code de retour.
+
+### 5. openSUSE : la boîte qui prouve vraiment le pari des dépendances par fichier
+
+Leap 16.0 est la 4ᵉ boîte, et elle résout avec **zypper**, pas dnf. Elle mesure ce qu'aucune
+boîte Fedora/RHEL ne peut mesurer : notre `marionnet.rpm` s'y installe en résolvant
+`/usr/bin/vde_switch` **depuis le vde2 de la distribution** — le nôtre n'est simplement pas tiré.
+C'est précisément ce qu'achète une dépendance écrite par **fichier** plutôt que par nom de
+paquet, et le cas 1 du banc l'affirme désormais dans les deux sens plutôt que d'exiger l'absence
+de vde2.
+
+Elle a aussi livré la **troisième orthographe** du même piège : l'exclusion de la documentation
+s'appelle `path-exclude` chez dpkg (ép. 15b), `tsflags=nodocs` chez dnf (ép. 17) et
+**`rpm.install.excludedocs`** dans `/etc/zypp/zypp.conf`. *Une image n'est pas une machine*, dans
+les trois familles.
+
+### 6. Preuves (2026-08-31)
+
+Le banc prend `--distro all` et joue les **quatre distributions courantes** :
+
+| boîte | résultat |
+|---|---|
+| `rockylinux/rockylinux:10` | **47 verts, 0 rouge** |
+| `almalinux:10` | **45 verts, 0 rouge** |
+| `fedora:42` | **46 verts, 0 rouge** |
+| `opensuse/leap:16.0` | **46 verts, 0 rouge** |
+| `rockylinux/rockylinux:9` (hors du défaut) | **6 verts** — refus classé par le symbole exact |
+
+Soit **184 cas verts** et aucun rouge. Cas neuf : le noyau i386 refusé **seul** sur une boîte
+sans multilib, la vérification portant sur le fait que **le noyau 64 bits est indemne** — ce que
+le paquet fusionné de l'épisode 17 ne pouvait pas tenir.
+
+### 7. Ce qui reste, et ce qui n'en est plus
+
+- **N'est plus un reste** : la portée. Les quatre distributions RPM courantes sont servies.
+- **Reste un choix de portée** : Rocky 9 et Leap 15.6 (glibc 2.34 et 2.38) demanderaient une
+  image de build à glibc plus ancienne — possible en conteneur, au prix d'un switch OCaml 5.4.1
+  compilé depuis les sources (`opam` n'est dans aucun dépôt EL9).
+- **Reste bloqué par l'extérieur** : la signature et la `baseurl` réelle, avec l'étape serveur.
+- **Reste à documenter** : EPEL est requis sur les boîtes EL (c'est de là que vient
+  `gtksourceview3`) — une ligne pour la doc INSTALL.

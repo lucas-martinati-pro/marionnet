@@ -22,24 +22,30 @@
 # and it behaves like them: it publishes into the SAME release directory and records what it
 # published in the SAME catalogue (release.sha256sums.sh).
 #
-# THREE MARIONNET PACKAGES, not the four of the Debian channel, and not the four of the 2009
-# RPM either:
+# FOUR MARIONNET PACKAGES -- the same split as the Debian channel, and not the four of the
+# 2009 RPM:
 #
-#   marionnet            x86_64  the binary, the 26 names of bin/, the twelve completion
-#                                files, share/marionnet/{share,images,scripts,locale,gui},
-#                                share/doc/marionnet/ (the delivered guides) and
-#                                /etc/marionnet/marionnet.conf as a %config(noreplace)
-#   marionnet-kernels    x86_64  BOTH UML kernels, 64-bit and 32-bit, and their .config
-#   marionnet-fs-guignol noarch  the guignol guest image, machine AND router
+#   marionnet              x86_64  the binary, the 26 names of bin/, the twelve completion
+#                                  files, share/marionnet/{share,images,scripts,locale,gui},
+#                                  share/doc/marionnet/ (the delivered guides) and
+#                                  /etc/marionnet/marionnet.conf as a %config(noreplace)
+#   marionnet-kernels      x86_64  the 64-bit UML kernel and its .config
+#   marionnet-kernels-i386 x86_64  the 32-bit one, for the old kernel/filesystem couples
+#   marionnet-fs-guignol   noarch  the guignol guest image, machine AND router
 #
-# WHY THE i386 KERNEL IS NOT A PACKAGE OF ITS OWN HERE, when it is one in the Debian channel:
-# the Debian split existed for exactly one reason -- its dependency is `libc6:i386', i.e. a
-# FOREIGN ARCHITECTURE, and installing it makes the machine run `dpkg --add-architecture
-# i386'. Measured on Rocky 9: the very same file, /lib/ld-linux.so.2, is owned there by
-# `glibc.i686', an ordinary package of `baseos', because multilib is native to RPM. The
-# reason for the split does not exist on this side, so the split does not either; and the
-# dependency stays DERIVED rather than retyped, since rpm's own generator reads both ELF
-# classes out of the package and asks for both libc.so.6 flavours by itself.
+# THE i386 KERNEL IS A PACKAGE OF ITS OWN, and the reason is NOT the Debian one. Episode 17
+# merged the two, having measured on Rocky 9 that /lib/ld-linux.so.2 is owned there by
+# `glibc.i686', an ordinary package of `baseos': multilib being native to RPM, the Debian
+# motive for splitting -- not making a machine enable a FOREIGN ARCHITECTURE -- did not apply.
+#
+# That was measured on the wrong box, and episode 19 corrected it: RHEL 10 (hence Rocky 10 and
+# AlmaLinux 10, the CURRENT enterprise distributions) has dropped 32-bit multilib entirely --
+# NOTHING provides /lib/ld-linux.so.2 there, not even with CRB. A merged package is therefore
+# refused whole on the very distributions most users are on, and the 64-bit kernel goes down
+# with the 32-bit one it was bundled with. Hence the split, for a motive of this world rather
+# than a translation of Debian's: a package which cannot be installed at all must not take a
+# usable one with it. Inside each package the dependency stays DERIVED -- rpm reads the ELF
+# class and asks for the right libc.so.6 flavour by itself.
 #
 # TWO THIRD-PARTY PACKAGES, built on demand (`vde2', `uml-utilities'), because measurement
 # said they had to exist: Marionnet calls vde_switch, wirefilter and slirpvde (19 call sites
@@ -63,6 +69,18 @@
 # target distribution. So rpmbuild runs inside a real RPM distribution, and nothing is
 # installed on the machine which invokes this script.
 #
+# AND THAT CONTAINER IS THE OLDEST BOX WE SERVE, not the newest -- Rocky 10 rather than
+# Fedora 42. The generator does not merely read ELFs: it also applies the CONVENTIONS of the
+# distribution it runs on, and those travel into the package. Measured (episode 19): built on
+# Fedora 42, uml-utilities came out requiring `filesystem(unmerged-sbin-symlinks)', which no
+# EL box provides, so the package was uninstallable on RHEL 9 and 10 alike. The cause is
+# /usr/lib/rpm/filesystem.req, which fires on the BASENAME of a file (a hardcoded list of
+# names historically found in /usr/sbin -- uml_net and friends), whatever directory it is
+# installed into, and which does nothing at all when the build box is not usrmerged. Moving
+# the file was therefore no fix; changing the box was. A second gain comes for free: built on
+# a glibc 2.39 box, these packages ask for 2.39 rather than Fedora's 2.41, which is exactly
+# the floor the application itself has.
+#
 # THE INVARIANTS THIS SCRIPT EXISTS TO KEEP -- the same four as the Debian channel, plus one
 #
 #  1. THE MTIME OF A GUEST IMAGE IS WHAT UML CHECKS against the .conf of its backing file.
@@ -85,10 +103,11 @@
 #
 # Usage: Makefile.d/release.rpm.sh [OPTIONS] [PACKAGE...]
 #
-#   PACKAGE...                   which of app, kernels, fs-guignol, vde2, uml-utilities to
-#                                build (default: the three Marionnet ones, skipping those
-#                                whose artefact is not in the release directory; the two
-#                                third-party ones are built only when asked for)
+#   PACKAGE...                   which of app, kernels, kernels-i386, fs-guignol, vde2,
+#                                uml-utilities to build (default: the four Marionnet ones,
+#                                skipping those whose artefact is not in the release
+#                                directory; the two third-party ones are built only when
+#                                asked for)
 #   -o, --output-dir DIR         the release directory to read the artefacts from and to
 #                                publish into
 #                                (default: website-repo/download/marionnet-install.sh/<series>)
@@ -96,7 +115,8 @@
 #   -f, --force                  rebuild a package which is already there
 #       --kernel NAME            the kernel to package, without the kernels_ prefix and the
 #                                extension (default: the only linux-* of the directory)
-#       --build-image IMAGE      the distribution rpmbuild runs in (default: fedora:42)
+#       --build-image IMAGE      the distribution rpmbuild runs in
+#                                (default: rockylinux/rockylinux:10, see the header)
 #       --no-rpmlint             do not run rpmlint on what was built
 #       --keep-build             do not remove the build tree afterwards (says where)
 #       --print-names            print the package file names and stop
@@ -189,7 +209,7 @@ SERIES=""
 OUTDIR=""
 FORCE=0
 KERNEL_NAME=""
-BUILD_IMAGE="fedora:42"
+BUILD_IMAGE="rockylinux/rockylinux:10"
 RUN_RPMLINT=1
 KEEP_BUILD=0
 PRINT_NAMES=0
@@ -207,15 +227,15 @@ while (($#)); do
     --print-names)   PRINT_NAMES=1; shift ;;
     -h|--help)       usage; exit 0 ;;
     -*)              die "unknown option '$1' (try --help)" ;;
-    app|kernels|fs-guignol|vde2|uml-utilities) WANTED+=("$1"); shift ;;
-    *)               die "unknown package '$1': expected app, kernels, fs-guignol, vde2 or uml-utilities" ;;
+    app|kernels|kernels-i386|fs-guignol|vde2|uml-utilities) WANTED+=("$1"); shift ;;
+    *)               die "unknown package '$1': expected app, kernels, kernels-i386, fs-guignol, vde2 or uml-utilities" ;;
   esac
 done
 
 # The two third-party packages are NOT in the default set. They change once every few years
 # (their upstreams are frozen since 2011 and 2007), they take minutes to compile, and a
 # release directory which already holds them needs nothing done. `make release-rpm-deps'.
-((${#WANTED[@]})) || WANTED=(app kernels fs-guignol)
+((${#WANTED[@]})) || WANTED=(app kernels kernels-i386 fs-guignol)
 
 test -n "$SERIES" || SERIES=$(publication_series)
 test -n "$OUTDIR" || OUTDIR="$ROOT/website-repo/download/marionnet-install.sh/$SERIES"
@@ -295,16 +315,15 @@ function guignol_version_of {  # <basename of a filesystems_machine-guignol- art
 # <name>_<version>_<arch>.deb. Knowing the names before building anything is what lets
 # --print-names exist and what lets a package already published be skipped without cost.
 # ---
-APP_RPM=""; KERNELS_RPM=""; FS_GUIGNOL_RPM=""
+APP_RPM=""; KERNELS_RPM=""; KERNELS_I386_RPM=""; FS_GUIGNOL_RPM=""
 
 function compute_package_names {
-  local k k32 g kver
+  local k k32 g
   APP_RPM="marionnet-$(app_rpm_version)-1.${RPM_ARCH}.rpm"
-  k=$(kernel_artefact); k32=$(i386_kernel_artefact)
-  if test -n "$k"; then kver=$(kernel_version_of "$k")
-  elif test -n "$k32"; then kver=$(kernel_version_of "$k32")
-  else kver=""; fi
-  test -z "$kver" || KERNELS_RPM="marionnet-kernels-${kver}-1.${RPM_ARCH}.rpm"
+  k=$(kernel_artefact)
+  test -z "$k" || KERNELS_RPM="marionnet-kernels-$(kernel_version_of "$k")-1.${RPM_ARCH}.rpm"
+  k32=$(i386_kernel_artefact)
+  test -z "$k32" || KERNELS_I386_RPM="marionnet-kernels-i386-$(kernel_version_of "$k32")-1.${RPM_ARCH}.rpm"
   g=$(artefact_of filesystems "machine-guignol-*")
   test -z "$g" || FS_GUIGNOL_RPM="marionnet-fs-guignol-$(guignol_version_of "$g")-1.noarch.rpm"
 }
@@ -314,7 +333,8 @@ OUTDIR=$(cd -- "$OUTDIR" && pwd)
 compute_package_names
 
 if ((PRINT_NAMES)); then
-  printf '%s\n' "$APP_RPM" ${KERNELS_RPM:+"$KERNELS_RPM"} ${FS_GUIGNOL_RPM:+"$FS_GUIGNOL_RPM"}
+  printf '%s\n' "$APP_RPM" ${KERNELS_RPM:+"$KERNELS_RPM"} \
+                ${KERNELS_I386_RPM:+"$KERNELS_I386_RPM"} ${FS_GUIGNOL_RPM:+"$FS_GUIGNOL_RPM"}
   exit 0
 fi
 
@@ -349,9 +369,16 @@ function ensure_builder_image {
   if docker image inspect "$BUILDER_IMAGE" >/dev/null 2>&1; then return 0; fi
   info "building the rpmbuild box $BUILDER_IMAGE (once) ..."
   local ctx="$BUILD/builder"; mkdir -p -- "$ctx"
+  # EPEL and CRB are enabled when they exist and ignored when they do not, so that the same
+  # recipe serves an EL box and a Fedora one: on Rocky 10, libpcap-devel and fuse-devel live in
+  # CRB and rpmlint in EPEL, while Fedora has neither repository and needs neither.
   cat > "$ctx/Dockerfile" <<EOF
 FROM $BUILD_IMAGE
-RUN dnf -y install rpm-build rpmlint dnf-plugins-core findutils tar xz gzip diffutils which \\
+RUN dnf -y install dnf-plugins-core || true
+RUN dnf -y install epel-release || true
+RUN dnf config-manager --set-enabled crb || dnf config-manager --enable crb || true
+RUN dnf -y install rpm-build findutils tar xz gzip diffutils which \\
+    && (dnf -y install rpmlint || true) \\
     && dnf clean all
 EOF
   docker build -q -t "$BUILDER_IMAGE" -- "$ctx" >/dev/null || \
@@ -474,7 +501,11 @@ function rpm_requires_of_debian_package {  # <debian package name>: prints one R
     xterm)                  echo "/usr/bin/xterm" ;;
     iproute2)               echo "(iproute or iproute2)" ;;
     sudo)                   echo "/usr/bin/sudo" ;;
-    x11-xserver-utils)      echo "/usr/bin/xrandr" ;;
+    # `xhost' and NOT `xrandr': the Makefile's own comment says this package is here for
+    # xhost (granting the X server access to the guests). Mapping it to xrandr was a guess,
+    # and it was measured wrong -- Rocky 10 has no xrandr at all, even with EPEL and CRB,
+    # while xhost is a package of its own there. Read what the source of truth SAYS.
+    x11-xserver-utils)      echo "/usr/bin/xhost" ;;
     xauth)                  echo "/usr/bin/xauth" ;;
     jq)                     echo "/usr/bin/jq" ;;
     socat)                  echo "/usr/bin/socat" ;;
@@ -501,6 +532,7 @@ function rpm_requires_of_debian_package {  # <debian package name>: prints one R
 function suggests_lines {
   echo "Suggests:       marionnet-kernels"
   echo "Suggests:       marionnet-fs-guignol"
+  echo "Suggests:       marionnet-kernels-i386"
 }
 
 function runtime_requires {  # prints the Requires: lines of the application
@@ -753,30 +785,52 @@ EOF
   publish_rpm "$built"
 }
 
-# BOTH kernels in one package, where the Debian channel has two -- see the header. The
-# package is x86_64 rather than noarch although one of the two files is a 32-bit ELF: a
-# package is not noarch merely because it holds no code of the host's architecture, and
-# rpm's generator reads both ELF classes here, asking for libc.so.6 in its 64-bit and its
-# 32-bit flavour. That second one is what pulls glibc.i686, and it is DERIVED, which is
-# exactly what the Debian side had to write by hand as `libc6:i386'.
+# The 64-bit kernel. Its dependency is derived like every other: rpm reads the ELF and asks
+# for libc.so.6()(64bit), which every distribution provides.
 function package_kernels {
-  local k k32 version; k=$(kernel_artefact); k32=$(i386_kernel_artefact)
-  test -n "$k$k32" || { warn "no kernel artefact in $OUTDIR: marionnet-kernels skipped"; return 0; }
-  if test -n "$k"; then version=$(kernel_version_of "$k"); else version=$(kernel_version_of "$k32"); fi
+  local t; t=$(kernel_artefact)
+  test -n "$t" || { warn "no 64-bit kernel artefact in $OUTDIR: marionnet-kernels skipped"; return 0; }
   cat > "$BUILD/desc.kernels" <<'EOF'
-The User-Mode Linux kernels the virtual machines of Marionnet boot, with the
-.config files they were built from: the 64-bit one, and the 32-bit one
-(SUBARCH=i386) which is what makes the old kernel/filesystem couples of
-Marionnet -- i386 userlands built years ago -- boot again on a modern host.
+The 64-bit User-Mode Linux kernel the virtual machines of Marionnet boot, with
+the .config it was built from. It is patched for "ghostification": the ability
+to hide a network interface from the guest, which is what lets a lab show a
+machine with no network at all.
 
-They are patched for "ghostification": the ability to hide a network interface
-from the guest, which is what lets a lab show a machine with no network at all.
-
-Installed under /usr/share/marionnet/kernels, where Marionnet looks for them.
+Installed under /usr/share/marionnet/kernels, where Marionnet looks for it.
 EOF
-  package_data marionnet-kernels "$version" "$KERNELS_RPM" "$RPM_ARCH" \
+  package_data marionnet-kernels "$(kernel_version_of "$t")" "$KERNELS_RPM" "$RPM_ARCH" \
                "UML kernels for the Marionnet virtual network laboratory" \
-               "$BUILD/desc.kernels" ${k:+"$k"} ${k32:+"$k32"}
+               "$BUILD/desc.kernels" "$t"
+}
+
+# The 32-bit kernel, and the one package of the four whose installability depends on the
+# distribution rather than on us. Its ELF names /lib/ld-linux.so.2 as its interpreter, so rpm
+# derives a 32-bit libc.so.6 requirement -- satisfied by glibc.i686 on Fedora and on RHEL 9,
+# and satisfiable NOWHERE on RHEL 10, which dropped 32-bit multilib (measured: nothing
+# provides that path, CRB included).
+#
+# That is precisely why it is separate, and why episode 19 undid the merge of episode 17: on
+# a current enterprise box this package is refused, and it must be able to be refused ALONE.
+# Bundled with the 64-bit kernel, it made a package that works everywhere unavailable exactly
+# where most users are.
+function package_kernels_i386 {
+  local t; t=$(i386_kernel_artefact)
+  test -n "$t" || { warn "no 32-bit kernel artefact in $OUTDIR: marionnet-kernels-i386 skipped"; return 0; }
+  cat > "$BUILD/desc.kernels-i386" <<'EOF'
+The 32-bit User-Mode Linux kernel (SUBARCH=i386), which is what makes the old
+kernel/filesystem couples of Marionnet -- i386 userlands built years ago --
+boot again on a modern 64-bit host.
+
+It needs a 32-bit C library (glibc.i686). Distributions which have dropped
+32-bit multilib altogether, RHEL 10 and its rebuilds among them, cannot install
+it; that is why it is a package of its own, so that its refusal costs nothing to
+the rest of Marionnet.
+
+Installed under /usr/share/marionnet/kernels, where Marionnet looks for it.
+EOF
+  package_data marionnet-kernels-i386 "$(kernel_version_of "$t")" "$KERNELS_I386_RPM" "$RPM_ARCH" \
+               "32-bit UML kernel for the Marionnet virtual network laboratory" \
+               "$BUILD/desc.kernels-i386" "$t"
 }
 
 # Machine AND router in ONE package, where the 2009 RPM of RPMS/ had two. Measured at
@@ -862,7 +916,15 @@ make -j1'
 # -devel package to put these in: the headers go, and with them the .la files, which name
 # build-time paths that do not exist on the target machine.
 rm -rf %{buildroot}%{_includedir}
-rm -f %{buildroot}%{_libdir}/*.la %{buildroot}%{_libdir}/*.a'
+rm -f %{buildroot}%{_libdir}/*.la %{buildroot}%{_libdir}/*.a
+# vde_tunctl is installed into /usr/sbin, which on a usrmerged box (Fedora) IS /usr/bin and on
+# an EL box is not. Moved, so that ONE file list below is right on every build box rather than
+# one list per usrmerge state.
+if [ -d %{buildroot}/usr/sbin ]; then
+  mkdir -p %{buildroot}%{_bindir}
+  mv %{buildroot}/usr/sbin/* %{buildroot}%{_bindir}/
+  rmdir %{buildroot}/usr/sbin
+fi'
       desc="VDE is a virtual network switch: vde_switch, the switch itself, wirefilter,
 which puts delay, loss and bandwidth limits on a wire, and slirpvde, which
 gives a virtual network a way out to the real one. Marionnet is built on
@@ -881,11 +943,9 @@ and on Fedora 42 and 44."
       # No autotools at all here: a hand-written Makefile of 2007 whose top rule walks its
       # subdirectories, with BIN_DIR and LIB_DIR exported rather than a prefix. `make install'
       # builds what it installs, so the two recipes below are what Debian's own rules do.
-      # /usr/lib/uml and /usr/sbin are written literally, not as %%{_libdir} and %%{_sbindir}:
-      # the 2007 Makefile hardcodes LIB_DIR=/usr/lib/uml (never lib64), and jail_uml lands in
-      # /usr/sbin whatever the usrmerge state of the build box.
+      # /usr/lib/uml is written literally, not as %%{_libdir}: the 2007 Makefile hardcodes
+      # LIB_DIR=/usr/lib/uml, never lib64.
       files='%{_bindir}/*
-/usr/sbin/*
 /usr/lib/uml'
       # readline-devel is what uml_mconsole -- the one binary Marionnet actually calls -- needs,
       # and fuse-devel is FUSE *2*, for uml_mount. The whole set is built rather than the two
@@ -894,7 +954,17 @@ and on Fedora 42 and 44."
       # deprecated fuse-devel 2.9.9 is still there, so being faithful costs nothing today.
       buildreq='gcc, make, patch, readline-devel, fuse-devel'
       build_recipe='make -j1'
-      install_recipe='make install DESTDIR=%{buildroot}'
+      # jail_uml lands in /usr/sbin, which on a usrmerged box IS /usr/bin and on an EL box is
+      # not. Moved for the same reason as vde_tunctl above: one file list, right everywhere.
+      # (Moving it does NOT remove the filesystem(unmerged-sbin-symlinks) requirement Fedora
+      # adds -- that generator fires on the BASENAME, wherever the file goes. Building on an
+      # EL box is what removes it; see the header.)
+      install_recipe='make install DESTDIR=%{buildroot}
+if [ -d %{buildroot}/usr/sbin ]; then
+  mkdir -p %{buildroot}%{_bindir}
+  mv %{buildroot}/usr/sbin/* %{buildroot}%{_bindir}/
+  rmdir %{buildroot}/usr/sbin
+fi'
       desc="The tools which talk to a running User-Mode Linux instance, chiefly
 uml_mconsole, through which Marionnet asks a virtual machine to halt, reboot
 or report -- see bin/simulation_level.ml and bin/serial.ml -- and uml_moo,
@@ -995,6 +1065,7 @@ for what in "${WANTED[@]}"; do
   case "$what" in
     app)              package_app ;;
     kernels)          package_kernels ;;
+    kernels-i386)     package_kernels_i386 ;;
     fs-guignol)       package_fs_guignol ;;
     vde2|uml-utilities) package_thirdparty "$what" ;;
   esac

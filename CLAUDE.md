@@ -545,6 +545,35 @@ Reprise : appliquer le skill `chantier-long`.
   répertoire de release contient légitimement **plusieurs révisions**, donc
   `dnf install /rpms/*.rpm` demande 2 versions d'un même paquet et échoue — nommer les paquets
   un par un, la plus récente par `sort -V`. Banc **37 → 46 cas**, 46 verts sur `fedora:42`.
+  **Ép. 19 : la correction — on testait les mauvaises boîtes** (né d'une question de
+  l'utilisateur : *pourquoi Rocky 9, alors que Rocky en est à la 10.2 ?*). **Mesure qui renverse
+  le cadre** : Rocky 10.2 et AlmaLinux 10.2 sont en **glibc 2.39**, Leap 16.0 en 2.40, Fedora 42
+  en 2.41 — donc **toute distribution RPM courante accepte déjà notre build**, et « l'image de
+  build à glibc ancienne » n'était l'artefact que d'avoir visé les versions *précédentes*.
+  **Défaut de conception corrigé** : RHEL 10 a **supprimé tout le multilib 32 bits** (rien ne
+  fournit `/lib/ld-linux.so.2`, CRB compris), donc le paquet de noyaux **fusionné à l'ép. 17**
+  y était refusé **en entier** — l'utilisateur perdait aussi le noyau **64 bits**. D'où la
+  **re-séparation** (retour aux **4 paquets**, comme Debian mais pour un motif de ce monde-ci :
+  *un paquet non installable ne doit pas en emporter un qui l'est*). **2 défauts d'empaquetage** :
+  `x11-xserver-utils` était mappé sur `/usr/bin/xrandr` **par devinette** alors que le `Makefile`
+  dit `xhost` (et Rocky 10 n'a pas `xrandr` du tout) ; et `uml-utilities` exigeait
+  `filesystem(unmerged-sbin-symlinks)`, qu'aucune boîte EL ne fournit — cause :
+  `/usr/lib/rpm/filesystem.req` de Fedora se déclenche sur le **nom de base** d'un fichier, où
+  qu'on l'installe, et **ne fait rien si la boîte de build n'est pas usermergée**. **RÈGLE QUI EN
+  SORT, à ne pas défaire** : *on construit sur la plus ancienne boîte qu'on sert* (défaut
+  `--build-image` = `rockylinux/rockylinux:10`), car le générateur applique les **conventions de
+  la distribution où il tourne**, et elles voyagent dans le paquet. **Le pire défaut était dans
+  le banc** : il classait « refus nommant la glibc » **tout** message contenant le mot → **PASS
+  mensonger** rapporté 2 fois comme un succès ; un refus se classe désormais par le **symbole
+  exact** (`unmet_of`). **2ᵉ piège de banc** : `zypper` **sort avec 0 après avoir annulé** —
+  lire `rpm -q`, jamais le statut. **openSUSE Leap 16 (zypper) est la boîte qui prouve le pari** :
+  notre paquet s'y installe en résolvant `/usr/bin/vde_switch` depuis **le vde2 de la
+  distribution** — le nôtre n'est pas tiré ; et elle livre la **3ᵉ orthographe** de l'exclusion
+  de doc (`rpm.install.excludedocs`, après `path-exclude` et `tsflags=nodocs`). Banc :
+  `--distro all` sur les 4 courantes → **47 + 45 + 46 + 46 = 184 verts, 0 rouge** (+ 6 sur
+  Rocky 9, refus classé exactement). **Reste** : Rocky 9 / Leap 15.6 = choix de portée (image de
+  build plus ancienne, switch OCaml à compiler) ; EPEL requis sur EL (d'où vient
+  `gtksourceview3`) = une ligne pour la doc INSTALL ; signature + `baseurl` avec l'étape serveur.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
