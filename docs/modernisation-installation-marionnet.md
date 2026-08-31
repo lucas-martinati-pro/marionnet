@@ -562,10 +562,11 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    l'autre, c'est la **glibc** (donc le choix de l'artefact, lu dans son nom), les **noms de
    paquets**, et le répertoire où `bash-completion` regarde. **C'est l'épisode 12,
    ci-dessous** : les trois écarts sont mesurés, et seul le premier en est un.
-3. **Combien de `.deb`** — le découpage de l'application en paquets. Une décision est déjà
-   posée au § 6 (« app + noyaux + petites images en `.deb`, grosses images à part ») ; elle
-   est à **rejuger** avec ce que les épisodes 9 et 10 ont appris (l'application est déjà un
-   artefact relocatable, et sa liste de dépendances est déjà une donnée générée).
+3. **Combien de `.deb`** — le découpage de l'application en paquets. **C'est l'épisode 13,
+   ci-dessous** : la décision du § 6 tient, mais devient **quatre** paquets (`marionnet`,
+   `marionnet-kernels`, `marionnet-kernels-i386`, `marionnet-fs-guignol`), le `Depends:` se
+   **dérive** de la donnée générée à l'épisode 10, et le paquet routeur du précédent RPM
+   disparaît (un artefact routeur n'est plus qu'un lien).
 4. **Les `.deb` sur les quatre boîtes**.
 5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
@@ -593,6 +594,11 @@ devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant
   `marionnet-kernels` (~20 Mo) et les petites images (guignol, 16 Mo) ; les grosses
   (wheezy 560 Mo, trixie ~5 Go) restent dans `download/marionnet-install.sh/1.0.x/`, récupérées par
   un outil dédié (commande type `marionnet-get-images`, proposée en postinst).
+  **REJUGÉ ET PRÉCISÉ le 2026-08-31 (épisode 13, ci-dessous)** : la décision tient, mais le
+  découpage devient **quatre** paquets — les deux noyaux se séparent (seul l'i386 tire
+  `libc6-i386`), machine et routeur d'une même image se réunissent (le routeur n'est plus
+  qu'un lien), il n'y a **pas** de paquet `-doc`, et le postinst **nomme** la règle sudoers
+  au lieu de l'accorder. Les chiffres qui l'établissent sont dans cet épisode.
 - **Toolchain système : essai borné à une session** (épisode 3 ci-dessus).
 - **Registre Docker : Docker Hub** — standard de facto (`docker pull`), découvrabilité,
   outillage ci-builder du fork accetto déjà orienté Hub.
@@ -1640,3 +1646,212 @@ glibc des boîtes : 2.36 / 2.41 / 2.39 / 2.43 ; artefact mesuré : `marionnet_tr
   formuler quand le `.deb` aura dit ce qu'il prend en charge.
 - Inchangés, et toujours **bloqués par l'extérieur** : le dépôt sur le serveur, la jambe
   **https**, la **signature** des artefacts.
+
+## Épisode 13 (2026-08-31) — combien de `.deb`
+
+Point (3) de la feuille de route § 5 bis. **Épisode sans code** : il ne fabrique rien, il
+**tranche** — la décision « app + noyaux + petites images en `.deb`, grosses images à part »
+du § 6 datait du 2026-07-19, c'est-à-dire d'avant que l'application soit un artefact et avant
+que ses dépendances soient une donnée. Elle est ici rejugée sur des mesures, et elle **tient**,
+mais son découpage se précise et deux de ses trois motifs ont changé.
+
+### Ce qu'on empaquette, mesuré et non supposé
+
+| Ce qui serait empaqueté | Compressé | Déplié | Remarque |
+|---|---|---|---|
+| l'application (staging `dune install` + les 15 noms de `bin/scripts/`) | 7,4 Mio | **32,8 Mio**, 372 entrées | `marionnet_trunk-r909_amd64_glibc2.39.tar.xz` |
+| `doc-src/` (guides livrés) | — | 2,1 Mio (1,4 sans les PDF) | **n'est installé par aucun canal** (§ 2.4 ter) |
+| noyau `linux-6.12.95` | 2,8 Mio | 8,1 Mio | ELF **x86-64**, `NEEDED` = `libc.so.6` |
+| noyau `linux-6.12.95-i386` | 2,2 Mio | 5,2 Mio | ELF **i386**, `NEEDED` = `libc.so.6` + `/lib/ld-linux.so.2` |
+| image `guignol` (machine **et** routeur) | 12,6 Mio + 3,8 Kio | 55 Mio | le routeur est un **lien** vers la machine |
+| image `wheezy` | 423 Mio | **1,8 Gio** | |
+| image `trixie` | 1,09 Gio | **5,1 Gio** | |
+
+### La décision : quatre paquets, et pourquoi ce ne sont pas les quatre du RPM
+
+```
+marionnet              amd64  ~35 Mio  le binaire, les 15 noms, la complétion ×12,
+                                       share/marionnet/{share,images,scripts,locale},
+                                       /etc/marionnet/marionnet.conf (conffile), les guides
+marionnet-kernels      amd64  ~8 Mio   linux-6.12.95 (+ .config)
+marionnet-kernels-i386 amd64  ~5 Mio   linux-6.12.95-i386, pour les vieux couples
+marionnet-fs-guignol   all    ~55 Mio  machine ET routeur guignol
+```
+
+et **rien d'autre dans apt** : `wheezy` et `trixie` restent des artefacts de release, tirés
+par `marionnet-install.sh`.
+
+Le précédent RPM (`RPMS/`, 2009) découpait autrement : `marionnet-common`,
+`marionnet-kernels-default`, `marionnet-fs-machines-default` **et**
+`marionnet-fs-routers-default`. Ce quatrième paquet n'a plus d'objet, et son propre
+changelog dit pourquoi : *« 2009-11-08 : rename router → routers, **added symlinks** »*.
+Un artefact routeur d'aujourd'hui pèse **3,8 Kio** et ne contient qu'un lien symbolique
+vers l'image machine, son `.conf` et un répertoire de variantes vide. Un paquet séparé
+porterait donc un **lien pendant** tant que son voisin n'est pas installé — un `Depends:`
+strict entre deux paquets dont l'un est vide n'est pas un découpage, c'est une jointure.
+D'où : **une image, un paquet, machine et routeur ensemble**.
+
+Les deux noyaux, en revanche, se séparent — et c'est le seul endroit où la séparation
+paye. Le noyau i386 est un ELF 32 bits dont l'**interpréteur est écrit en dur dans le
+binaire** : `/lib/ld-linux.so.2` (mesuré). Or, sur cette machine (Ubuntu 24.04), le paquet
+`libc6-i386` — le runtime 32 bits « natif » d'un système amd64 — ne fournit **que**
+`/usr/lib32/ld-linux.so.2` et un fichier `ld.so.conf.d` ; c'est **`libc6:i386`**, donc
+l'architecture étrangère, qui possède `/lib/ld-linux.so.2`. Autrement dit : la dépendance
+*bon marché* (`libc6-i386`, sans `dpkg --add-architecture`) **n'est pas établie**, et la
+dépendance sûre reste celle que `REQUIRED_PACKAGES_RUNTIME_I386` du `Makefile` nomme déjà
+pour l'installation par les sources — `libc6:i386`, qui **impose d'activer une architecture
+étrangère** sur la machine de l'utilisateur.
+
+Ce qui, loin d'affaiblir la séparation, la **justifie** : un paquet capable de faire
+activer une architecture étrangère à apt est exactement ce qu'on ne veut pas imposer à
+tout le monde pour une fonction de **rétro-compatibilité** dont la plupart des
+installations n'useront jamais. `marionnet-kernels-i386` est donc le seul des quatre à
+porter cette dépendance — **et sa forme exacte (`libc6-i386` suffit-il sur telle boîte ?
+sinon `libc6:i386`) est à MESURER sur les quatre boîtes au point (4)** : c'est la seule
+dépendance du découpage qui ne se dérive pas de la source de vérité du `Makefile`.
+
+Enfin les guides restent **dans** `marionnet`, sans paquet `-doc` : 2,1 Mio ne justifient
+pas la scission que la politique Debian réserve aux grosses documentations, et une
+documentation d'usage séparée de l'outil qu'elle documente est exactement le défaut que
+le § 2.4 ter reproche à l'état actuel. **Note d'ordonnancement** : `doc-src/` n'étant
+installé par *aucun* canal aujourd'hui, ce n'est pas au `.deb` de le réparer — c'est à la
+stanza `install` de `bin/dune`, d'où tous les canaux le recevront (tarball compris).
+C'est un épisode à part, à jouer **avant** le point (4).
+
+### Ce qui a changé depuis le § 6 : `Depends:` se dérive, il ne se recopie pas
+
+La liste des dépendances d'exécution est **déjà une donnée générée** — épisode 10,
+`REQUIRED-PACKAGES-RUNTIME`, tirée de `REQUIRED_PACKAGES_RUNTIME` du `Makefile`. Le
+`Depends:` du paquet `marionnet` s'en dérive donc, et l'y recopier recréerait la seconde
+source de vérité que l'épisode 1 a supprimée.
+
+Mieux : la mesure montre que cette liste de 13 se coupe proprement en deux, et que la
+coupure a un sens précis — **ce que `ldd` voit** contre **ce que seul le `Makefile`
+sait** :
+
+- une seule entrée est une **bibliothèque** (`libgtksourceview-3.0-1`) : `dpkg-shlibdeps`
+  la retrouverait tout seul, avec ses 12 sœurs GTK et, surtout, avec la borne
+  `libc6 (>= 2.39)` ;
+- les **douze autres** (`vde2 graphviz uml-utilities xterm iproute2 sudo x11-xserver-utils
+  xauth jq socat dnsmasq-base xz-utils`) sont des **commandes appelées par leur nom** depuis
+  l'OCaml et depuis les scripts de `bin/scripts/`. Aucun outil automatique ne peut les
+  trouver : c'est précisément pourquoi le `Makefile` en est la source de vérité.
+
+D'où la forme retenue : `Depends: ${shlibs:Depends}, ` + la liste générée **entière**,
+sans filtrage à la main (dpkg dédoublonne ; retirer `libgtksourceview-3.0-1` parce que
+`shlibdeps` le trouve serait un tri à maintenir, donc une seconde vérité en germe).
+
+**Conséquence heureuse, à noter** : la contrainte glibc que l'épisode 12 a dû écrire
+**dans le nom du tarball** (`…_glibc2.39.tar.xz`, faute de pouvoir l'exprimer autrement)
+devient ici une **métadonnée** — `libc6 (>= 2.39)`, posée par `shlibdeps`, qu'apt sait
+faire respecter. Le `.deb` ne supprime pas le fait qu'un binaire construit ici ne tourne
+pas sur Debian 12 ; il le rend **refusable par l'outil** au lieu d'être lisible dans un
+nom de fichier.
+
+### Le préfixe : `/usr`, et le **même** binaire que le tarball
+
+Le paquet installe sous `/usr` et pose `/etc/marionnet/marionnet.conf` en **conffile**,
+pointant `MARIONNET_PREFIX=/usr/share/marionnet`. C'est le mécanisme déjà prouvé à
+l'épisode 9b, et il permet de **ne compiler qu'une fois** : le `.deb` se fabrique du même
+staging que le tarball, dont le préfixe compilé (`/usr/local`, via `CONFIGME`) n'est
+qu'un défaut que la cascade de `bin/configuration.ml` recouvre.
+
+L'alternative — recompiler avec `CONFIGME` fixé à `/usr` — évite le conffile mais coûte
+une seconde compilation par release et un second artefact à cataloguer et à éprouver, pour
+supprimer un fichier dont l'épisode 9a a justement établi qu'il fallait l'écrire *même
+quand il ne fait que redire le défaut*, « un fichier qui n'existe que dans le cas
+inhabituel étant un fichier dont personne ne se souvient quand ça va mal ».
+
+**Interaction à ne pas découvrir sur le terrain** : sur une machine où le tarball est déjà
+passé, ce fichier existe et n'appartient à personne ; dpkg le verra comme un conffile
+modifié localement et posera la question à l'installation. C'est le comportement voulu (on
+ne piétine pas la configuration de l'utilisateur), mais il doit être **mesuré** au point (4).
+
+### La règle sudoers : le postinst **nomme**, il n'accorde pas
+
+Symétrique exact de ce que l'épisode 10 a décidé pour les dépendances apt. Le tarball
+habilite `$SUDO_USER` parce qu'un humain vient de lancer `sudo ./install.sh` : la question
+« pour qui ? » a une réponse. Un paquet, lui, ne l'a pas — `apt install` peut venir d'un
+outil d'automatisation, d'une image de conteneur, d'un `unattended-upgrade`. Le postinst
+**imprime** donc la commande (`marionnet-sudoers.sh install <user>`) et n'accorde rien.
+
+Écarté : `debconf`, qui saurait poser la question — mais ajoute une dépendance, un
+template à traduire ×12, et ne répond toujours rien en mode non interactif.
+Écarté aussi : habiliter `$SUDO_USER` comme le tarball — cela accorde **en silence** des
+privilèges à un utilisateur **deviné**, ce qui n'est pas ce qu'on a demandé au paquet.
+
+### Où les paquets sont publiés, et le seul piège de ce choix
+
+Ils sont déposés dans le **répertoire de release de la série** —
+`download/marionnet-install.sh/1.0.x/` — comme le binaire de l'épisode 9a, et pour la même
+raison : une release dit ce qu'elle contient en **un** endroit. apt sait consommer un tel
+répertoire, sous la forme d'un *flat repository* :
+
+```
+deb [signed-by=/usr/share/keyrings/marionnet.gpg] https://www.marionnet.org/download/marionnet-install.sh/1.0.x/ ./
+```
+
+Trois choses en découlent, et il vaut mieux les écrire maintenant :
+
+1. **Deux catalogues cohabiteront dans ce répertoire**, et ils n'ont pas le même
+   propriétaire : `SHA256SUMS` (le nôtre, écrit par `Makefile.d/release.sha256sums.sh`, seul
+   écrivain — épisode 8) et `Packages`/`Release` (ceux d'apt, qu'un cinquième outil de
+   publication devra écrire). Ce n'est pas la divergence que l'épisode 8 redoutait — ils
+   décrivent le même répertoire, chacun pour son consommateur — mais la règle « un artefact
+   déposé sans passer par le catalogueur est invisible » vaut désormais **deux fois**.
+2. **La version d'un paquet n'encode PAS la série.** « Relatif à la série » veut dire *publié
+   sous le répertoire de la série*, jamais *versionné par elle* : un noyau se versionne
+   `6.12.95`, une image `18474`, et seul `marionnet` porte la version de l'application.
+   Sinon l'ouverture d'une série `1.1.x` forcerait à reconstruire des paquets dont le contenu
+   n'a pas bougé — et à en changer la version sans que rien n'ait changé, ce qu'apt
+   présenterait à l'utilisateur comme une mise à jour.
+3. **La ligne `sources.list` est épinglée sur la série**, donc l'ouverture de `1.1.x`
+   demanderait de l'éditer sur chaque machine. Correctif à prévoir au point (5) : exposer
+   `download/apt/` comme **point d'entrée stable** (lien ou `Alias` Apache) vers la série
+   courante, et n'écrire *que* celui-là dans la documentation.
+
+### Comment ils seront fabriqués (point (4), pas ici)
+
+Pas de paquet source, pas de `dpkg-buildpackage` : l'inclusion dans Debian officielle est
+**hors périmètre** depuis le § 6, et une construction depuis les sources exigerait opam et
+camlp4 dans un chroot de build. Le `.deb` sera **binaire**, assemblé du staging que
+`Makefile.d/release.binary.sh` produit déjà — un cinquième membre de la famille des
+publieurs (`filesystem.prepare-snapshot-to-publish.sh`, `kernel.prepare-to-publish.sh`,
+`release.binary.sh`, `release.sha256sums.sh`), qui appellera le catalogueur comme les
+autres.
+
+**Invariant à porter dans cette fabrication** : le `mtime` d'une image invitée est ce
+qu'UML vérifie, et les deux canaux doivent livrer **le même**. dpkg conserve les `mtime`
+de `data.tar` ; encore faut-il que le paquet les prenne de l'artefact publié et non de
+l'instant de la construction, sans quoi un projet fait avec l'image du tarball refuserait
+de s'ouvrir sur une machine où elle vient d'apt.
+
+### Le creusement des images : mesuré, et **non retenu**
+
+Question posée en séance : y a-t-il de la place à gagner en rendant `trixie` creux ?
+**Non, il n'y a pas de gain à prendre** — et c'est mesuré :
+
+| Image | Taille | Zéros (blocs 4 Kio) | Blocs libres (`dumpe2fs`) |
+|---|---|---|---|
+| `machine-debian-trixie-39212` | 5,01 Gio | 0,40 Gio (**8,0 %**) | 137 107 × 4 Kio = **0,52 Gio** |
+| `machine-debian-wheezy-08367` | 1,78 Gio | 0,26 Gio (14,7 %) | 66 511 × 4 Kio = 0,25 Gio |
+| `machine-guignol-18474` | 0,05 Gio | 0 | 8 161 × 1 Kio = 0,008 Gio |
+
+L'image `trixie` est **pleine à 90 %** : le plafond théorique du creusement est ses 0,52 Gio
+d'espace libre, dont 0,40 Gio sont **déjà** des zéros. Le gain réel plafonne donc à ~2 % de
+plus que ce qu'un `tar -S` capterait tout seul, et il ne porte que sur le **disque de la
+machine cible** — en transit, `xz` efface déjà ces zéros (5,01 Gio → 1,09 Gio). En face, le
+prix : passer `-S` de bout en bout dans la chaîne de publication (aucun des trois scripts ne
+le fait aujourd'hui) et, pour creuser un artefact **déjà publié**, le recopier — donc lui
+donner un **`mtime` neuf**, c'est-à-dire toucher à la discipline la plus coûteuse du
+chantier, celle qui décide si les projets existants s'ouvrent encore. Le rapport est
+défavorable ; c'est classé **hors périmètre**, avec le chiffre qui le justifie.
+
+### Restes
+
+- Le point (3) est soldé. La suite est le point (4) — écrire les quatre paquets et les
+  éprouver sur les quatre boîtes — **précédé** de l'épisode « `doc-src/` s'installe », qui
+  n'est pas un travail de `.deb` mais de `bin/dune`.
+- Inchangés, et toujours **bloqués par l'extérieur** : le dépôt sur le serveur, la jambe
+  **https**, la **signature** des artefacts — c'est elle qui décidera de la clef du dépôt
+  apt (`signed-by=`), donc le point (5) et le dépôt apt se jouent ensemble.

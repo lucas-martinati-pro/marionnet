@@ -374,11 +374,39 @@ Reprise : appliquer le skill `chantier-long`.
   ce qui valide enfin le `share_root` de l'ép. 11a — et il vérifie le **nom de la fonction
   armée**, le chargeur retombant sur `complete -o default -F _minimal` pour une commande
   inconnue (un cas naïf passait au vert sur une boîte où **rien** n'était installé).
+  **Ép. 13 : combien de `.deb`, tranché sur des mesures — épisode sans code.** La décision
+  du § 6 tient (grosses images hors apt : wheezy 1,8 Gio, trixie 5,1 Gio dépliés) mais
+  devient **quatre** paquets : `marionnet` (amd64, ~35 Mio, les guides compris),
+  `marionnet-kernels`, `marionnet-kernels-i386`, `marionnet-fs-guignol` (**all**, machine
+  ET routeur). **À ne pas re-découper** : le paquet routeur du précédent RPM disparaît —
+  un artefact routeur pèse **3,8 Kio** et ne contient qu'un **lien** vers l'image machine,
+  donc un paquet séparé porterait un lien pendant (son propre changelog de 2009 dit
+  « added symlinks ») ; les deux noyaux, eux, **se séparent**, et c'est mesuré qui le
+  justifie : l'interpréteur du noyau i386 est écrit en dur (`/lib/ld-linux.so.2`) et
+  `libc6-i386` ne fournit que `/usr/lib32/…` — c'est `libc6:i386`, donc
+  **`dpkg --add-architecture i386`**, qui possède ce chemin. Un paquet capable de faire
+  activer une architecture étrangère ne s'impose pas à tout le monde pour de la
+  rétro-compatibilité. **Sa dépendance exacte est à mesurer sur les 4 boîtes au point (4)** —
+  c'est la seule du découpage qui ne se dérive pas du `Makefile`. Le `Depends:` se **dérive** (`${shlibs:Depends}` + la liste générée
+  de l'ép. 10, entière, sans tri à la main) : les 13 paquets se coupent en **ce que `ldd`
+  voit** (1 seule bibliothèque) contre **ce que seul le `Makefile` sait** (12 commandes
+  appelées par leur nom) — et la contrainte glibc que l'ép. 12 a dû écrire dans le **nom**
+  du tarball devient une **métadonnée** (`libc6 (>= 2.39)`). Préfixe **`/usr` + conffile de
+  relocation** : une seule compilation sert les deux canaux. **Le postinst NOMME la règle
+  sudoers, il ne l'accorde pas** (`apt` ne sait pas pour qui il installe — symétrique de
+  l'ép. 10 pour les dépendances). Publication en *flat repo* **sous la série**, d'où trois
+  choses à ne pas oublier : deux catalogues cohabitent (`SHA256SUMS` **et** `Packages`), la
+  **version d'un paquet n'encode pas la série** (un noyau se versionne `6.12.95`, une image
+  `18474`), et `download/apt/` devra être le point d'entrée **stable**. **Mesuré et refusé** :
+  creuser les images (trixie est pleine à 90 %, 8,0 % de zéros déjà, `xz` les efface en
+  transit, et creuser un artefact publié lui donnerait un **`mtime` neuf**).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
-  découpage en `.deb` → (4) les `.deb` sur les 4 boîtes → (5) `upload.www.marionnet.org.sh`
-  → (6) rejeu de (2) et (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier
-  épisode.
+  découpage en `.deb` *(fait, ép. 13)* → **(3 bis) `doc-src/` s'installe** — étape neuve
+  révélée par l'ép. 13 : les guides ne sont posés par **aucun** canal (§ 2.4 ter), et cela
+  se répare dans `bin/dune`, pas dans le `.deb` → (4) les `.deb` sur les 4 boîtes → (5)
+  `upload.www.marionnet.org.sh` → (6) rejeu de (2) et (4) contre le vrai serveur. La **doc
+  INSTALL** est le tout dernier épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 
