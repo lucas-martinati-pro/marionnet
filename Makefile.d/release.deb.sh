@@ -758,5 +758,12 @@ done
 
 if ((KEEP_BUILD)); then info "build tree kept: $BUILD"; fi
 
-info "done. The packages are in $OUTDIR, and in its SHA256SUMS."
-info "To serve them as a flat apt repository, the next episode writes Packages/Release there."
+# The indexes apt reads are rewritten from WHAT IS THERE, once, after the loop -- never per
+# package: Packages describes the whole directory, so writing it four times would only make
+# the first three wrong for a moment. Called even when every package was already published
+# and skipped: the reason a run finds nothing to do is often that a previous one was
+# interrupted before this line.
+bash "$ROOT/Makefile.d/release.apt.sh" --output-dir "$OUTDIR" --series "$SERIES" || \
+  warn "the packages are published but apt cannot read the directory: run Makefile.d/release.apt.sh"
+
+info "done. The packages are in $OUTDIR, in its SHA256SUMS, and in its Packages/Release."

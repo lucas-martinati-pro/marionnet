@@ -433,13 +433,41 @@ Reprise : appliquer le skill `chantier-long`.
   `umask 022` : sans lui le paquet rendait `/usr/share` inscriptible par le groupe), **3 sont
   des réponses** gardées avec leur raison, dont `unstripped-binary-or-object` (−9,4 Mio
   possibles, refusés : les 2 canaux livrent **le même binaire**).
+  **Ép. 15b : les quatre `.deb` s'installent, et le répertoire de release devient un dépôt
+  apt.** `Makefile.d/release.apt.sh` (cible `make release-apt`, appelée d'elle-même par
+  `release.deb.sh` **une fois, après la boucle**) écrit `Packages`/`Packages.gz`/`Release` —
+  dépôt **à plat** (`deb [trusted=yes] <url> ./`), la série étant la suite et le répertoire
+  le composant. **À ne pas défaire** : les index **ne sont pas** dans `SHA256SUMS` (ils sont
+  réécrits à chaque publication, donc un digest y serait périmé tout seul — la panne de
+  l'ép. 9b) ; `dpkg-scanpackages` et non `apt-ftparchive` (pas d'`apt-utils` de plus sur la
+  machine de release) ; **aucun** fichier d'override, `/dev/null` en signifiant un **vide**
+  et déclenchant un avertissement à chaque run ; `Architectures:` **dérivé** (sans `all`,
+  apt ignorerait `marionnet-fs-guignol` sans un mot). Un **3ᵉ banc**,
+  `Makefile.d/release.deb.sh.bench/` (33 cas, **sans `Dockerfile`** : la boîte est nue, tout
+  le propos du canal étant qu'apt tire les 13 dépendances lui-même) — **33 verts** sur
+  Debian 13 et les 2 Ubuntu, **7** sur Debian 12. Trois mesures que lui seul pouvait
+  faire : **(a)** sans `dpkg --add-architecture i386`, apt refuse `marionnet-kernels-i386`
+  en **nommant `libc6:i386`** (la seule dépendance non dérivée du `Makefile`, enfin
+  chiffrée) ; **(b)** sur une machine où le **tarball** avait déjà écrit
+  `/etc/marionnet/marionnet.conf`, un `apt install` **non interactif échoue** —
+  `DEBIAN_FRONTEND=noninteractive` gouverne *debconf*, **pas** l'invite de conffile de dpkg
+  — et la réponse est `-o Dpkg::Options::=--force-confold`, qui **garde** le préfixe choisi
+  et laisse `.dpkg-dist` à côté : cela appartient à la **doc INSTALL**, surtout pas à un
+  `postinst` qui répondrait à la place de l'administrateur ; **(c)** sur Debian 12 apt
+  refuse en **nommant `libc6 (>= 2.38)`** — le `.deb` rend la contrainte *refusable*, il ne
+  la résout pas. **Piège durable établi ici** : *une image Docker n'est pas une machine
+  Debian* — `debian:*-slim` **et** `ubuntu:*` excluent `/usr/share/doc/*` par `path-exclude`
+  (mesuré : les 26 guides de l'ép. 14 disparaissent, l'i18n survit car elle est sous
+  `/usr/share/marionnet/locale`), ce que le banc du tarball n'avait jamais vu (`tar` ne
+  consulte la configuration de personne) et ce dont le futur **canal Docker officiel** devra
+  se charger.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
-  (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les INSTALLER
-  ← prochaine** (dépôt apt à plat, `libc6:i386` à mesurer, conffile déjà posé par le
-  tarball) → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2)
-  et (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier épisode.
+  (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les installer
+  *(fait)*** → (5) `upload.www.marionnet.org.sh` + point d'entrée apt stable
+  ← **prochaine, mais BLOQUÉE par l'extérieur** → (6) rejeu de (2) et (4) contre le vrai
+  serveur. La **doc INSTALL** est le tout dernier épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

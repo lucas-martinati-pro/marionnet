@@ -578,7 +578,9 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    l'épisode 14, ci-dessous.**
 4. **Les `.deb` sur les quatre boîtes** — en deux temps : **15a** les fabriquer
    (`Makefile.d/release.deb.sh`, cinquième publieur) et les contrôler localement, **15b** les
-   installer sur les quatre boîtes, dépôt apt à plat compris.
+   installer sur les quatre boîtes, dépôt apt à plat compris. **Les deux sont faits** :
+   `Makefile.d/release.apt.sh` écrit `Packages`/`Release`, et
+   `Makefile.d/release.deb.sh.bench/` joue `apt install` sur les quatre boîtes.
 5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
    de l'étape 1 du § 5.
@@ -2130,3 +2132,147 @@ mot, son classement exigeant `.tar.{gz,xz}`.
 - **Le conffile déjà posé par le tarball** : la question de dpkg, à provoquer pour de vrai.
 - **Debian 12** reste hors d'atteinte pour le paquet `marionnet` (glibc 2.36 < 2.38), et
   c'est désormais apt qui le dira — ce que l'épisode 12 devait écrire dans un nom de fichier.
+
+## Épisode 15b (2026-08-31) — les quatre `.deb` s'installent, sur les quatre boîtes
+
+Point (4) de la feuille de route, **second temps**. L'épisode 15a fabriquait les paquets et
+les contrôlait **là où ils sont fabriqués** ; il ne pouvait pas jouer le geste qui en fait
+une **installation**, parce que ce geste est `apt install` sur une machine qui n'est pas
+celle-ci. Deux livrables : le **dépôt apt à plat** qui rend le répertoire de release lisible
+par apt, et un **troisième banc** qui joue l'installation sur les quatre boîtes.
+
+### 1. `Makefile.d/release.apt.sh` — le répertoire de release devient un dépôt apt
+
+Cible `make release-apt` ; appelée d'elle-même par `release.deb.sh`, **une fois, après la
+boucle** (l'index décrit tout le répertoire : l'écrire quatre fois ne ferait que rendre les
+trois premières fausses un instant). Elle écrit trois fichiers à côté des `.deb` :
+`Packages`, `Packages.gz` et `Release`. Une ligne suffit alors à atteindre le dépôt :
+
+```
+deb [trusted=yes] https://www.marionnet.org/download/marionnet-install.sh/1.0.x/ ./
+```
+
+**Dépôt à plat (`./`), pas un arbre `dists/` + `pool/`.** Une release de Marionnet est
+**déjà** un répertoire par série, portant les images, les noyaux, le tarball et les quatre
+paquets : la série *est* la suite, le répertoire *est* le composant, et un arbre
+`dists/pool` mettrait les mêmes quatre fichiers à un second endroit sous un second nom.
+
+**Deux catalogues cohabitent dans ce répertoire, et c'est voulu** (décidé à l'épisode 13,
+réalisé ici) : `SHA256SUMS` répond à `marionnet-install.sh` (noms et empreintes des
+**artefacts**), `Packages` répond à apt (champs de contrôle des **paquets** seulement).
+Aucun ne se dérive de l'autre — `SHA256SUMS` ignore ce qu'est un `Depends:`, `Packages`
+ignore qu'il existe une image de 5 Gio.
+
+**Les index ne sont PAS des artefacts, donc ils ne sont pas enregistrés dans
+`SHA256SUMS`.** Trois raisons, dont la première suffirait : ils sont **réécrits à chaque
+publication**, donc un digest enregistré pour eux serait périmé tout seul — exactement la
+panne que l'épisode 9b avait dû réparer pour les artefacts. Ensuite, apt porte déjà leur
+intégrité : `Release` contient la taille et les empreintes des `Packages`, et seul `Release`
+aura un jour besoin d'une signature. Enfin, un installeur qui lit `SHA256SUMS` comme une
+liste de choses à télécharger ne doit pas se voir proposer un index comme s'il en était une.
+
+**Non signé, aujourd'hui**, d'où le `[trusted=yes]` écrit noir sur blanc. `Release` est
+l'endroit où une signature s'attache ; la signature est la question de l'**épisode
+serveur** — c'est elle qui décide de la clef que `signed-by=` nommera — et inventer une clef
+ici serait inventer la réponse.
+
+**`dpkg-scanpackages`, pas `apt-ftparchive`** : le premier vient de `dpkg-dev`, que
+`release.deb.sh` exige déjà (`dpkg-deb`, `dpkg-shlibdeps`) ; le second ajouterait `apt-utils`
+à ce qu'une machine de release doit porter, pour un `Release` qui fait dix lignes. Deux
+détails payés à la mesure : `--multiversion` (une release peut légitimement porter deux
+révisions de l'application le temps d'un remplacement, et un index qui en cache une fait
+échouer `apt install marionnet=<vieux>` sans raison lisible — cas **rencontré pour de vrai**
+dès la fin de l'épisode, le commit de 15a ayant fait passer la révision de r913 à r914 : le
+banc lit donc la **plus grande** version, comparée par `dpkg --compare-versions`, parce que
+l'ordre des versions Debian est le sien et que `sort -V` ne sait pas ce que vaut
+`0~trunk+r913`), et **aucun fichier
+d'*override*** — en passer un vide (`/dev/null`) ne veut pas dire « pas d'override », mais
+« un override vide », et `dpkg-scanpackages` avertit alors à chaque run que les quatre
+paquets y manquent (mesuré). `Architectures:` est **dérivé** des paquets présents : oublier
+`all` ferait ignorer `marionnet-fs-guignol` sans un mot.
+
+### 2. Le banc — `Makefile.d/release.deb.sh.bench/`, 33 cas × 4 boîtes
+
+**Résultat : 33 verts** sur Debian 13, Ubuntu 24.04 et Ubuntu 26.04 ; **7 verts** sur
+Debian 12, où les cas qui installent l'application s'effacent au profit du refus qu'apt doit
+énoncer (cf. (c) ci-dessous). Discriminance mesurée sur un dépôt-témoin : **SKIP 77** sans
+les index (l'état d'avant cet épisode), **1 rouge** pour un `Release` périmé, **1 rouge** pour
+un index enregistré dans `SHA256SUMS`, **2 rouges** si l'exclusion Docker du § 4 reste en
+place.
+
+Un **troisième** banc, et non cinq cas de plus dans celui du tarball. Le banc du tarball part
+d'une boîte **portant déjà** `REQUIRED_PACKAGES_RUNTIME`, parce qu'un humain a dû les
+installer d'abord (l'épisode 10 a fait en sorte qu'`install.sh` les **nomme**) ; celui-ci part
+d'une boîte **nue**, parce que toute la promesse du canal `.deb` est qu'apt résout cette liste
+lui-même. Fusionner les deux obligerait l'une des deux boîtes à mentir sur ce qu'elle
+représente. D'où aussi l'absence de `Dockerfile` : il n'y a rien à construire, la boîte *est*
+l'image de base, et ce qui est monté en lecture seule est le **vrai répertoire de release**,
+index compris.
+
+Ce qu'il établit, et qui n'était jusqu'ici qu'une affirmation : `apt install marionnet` sur
+une boîte nue tire **lui-même** les treize dépendances (les douze commandes appelées par leur
+nom nu sont là) ; **23 noms** dans `/usr/bin`, **12 fichiers de complétion**, les **guides de
+l'épisode 14** et le `copyright` ; la conffile est **déclarée** comme telle et redirige le
+préfixe compilé vers `/usr`, ce que `--paths` confirme depuis le binaire ; le `postinst`
+**nomme** la règle sudoers et n'en accorde **aucune** ; le binaire **démarre** sur une boîte
+qu'apt seul a garnie ; l'image guignol y arrive avec le `mtime` du tarball publié
+(`2017-06-09 15:01:16`, comparé des deux côtés) et le routeur est toujours un **lien** ;
+`apt remove` garde la configuration, `apt purge` la retire.
+
+**Ce que la discriminance a appris au passage** : avec `[trusted=yes]`, **apt accepte** un
+dépôt dont le `Release` ne décrit pas le `Packages` posé à côté — la vérification saute avec
+la signature. Tant que le dépôt n'est pas signé, la cohérence des deux index n'est donc
+gardée que par nous : c'est le cas *hôte* du banc qui l'attrape, et la raison pour laquelle
+`release.apt.sh` les écrit **ensemble**, jamais l'un sans l'autre.
+
+### 3. Les trois mesures que seul cet épisode pouvait faire
+
+**(a) La dépendance i386, la seule du découpage qui ne se dérive pas du `Makefile`.**
+`libc6:i386` avait été lu sur cette machine de développement *seulement*. Mesuré sur les
+boîtes : sans `dpkg --add-architecture i386`, apt **refuse** `marionnet-kernels-i386` en
+**nommant** `libc6:i386` ; avec, l'installation passe et `/lib/ld-linux.so.2` — l'interpréteur
+écrit **en dur** dans le noyau 32 bits — apparaît. La décision de l'épisode 13 (un paquet
+capable de faire activer une architecture étrangère ne s'impose pas à tout le monde pour de
+la rétro-compatibilité) est donc chiffrée, et non plus seulement raisonnée.
+
+**(b) La rencontre des deux canaux — ce que cet épisode a APPRIS.** Sur une machine où le
+**tarball** avait déjà écrit `/etc/marionnet/marionnet.conf` (préfixe `/usr/local`), un
+`apt install` **non interactif échoue** : `DEBIAN_FRONTEND=noninteractive` gouverne *debconf*,
+**pas** l'invite de conffile de dpkg, qui demande, ne trouve pas de `stdin` et laisse le
+paquet **non configuré** (« *end of file on stdin at conffile prompt* »). C'est Debian se
+comportant exactement comme il le doit — une configuration écrite par un humain n'est jamais
+écrasée en silence — et c'est une **conséquence réelle** ici, puisque les deux canaux du
+chantier se rencontrent précisément chez les utilisateurs qui essaient le tarball d'abord.
+Le banc mesure donc **les deux moitiés** : le refus, puis la réponse de l'administrateur
+(`-o Dpkg::Options::=--force-confold`), qui termine l'installation, **conserve** le préfixe
+choisi et laisse la version du paquet en `.dpkg-dist`.
+
+**À ne pas « réparer » dans le paquet** : un `postinst` qui répondrait à cette question à la
+place de l'administrateur est un paquet qui jette le préfixe qu'il avait choisi. Cela
+appartient à la **doc INSTALL** (dernier épisode du chantier), qui devra écrire cette ligne
+`--force-confold` et dire pourquoi elle existe.
+
+**(c) Le refus glibc, dit par apt.** L'épisode 12 ne savait écrire cette contrainte que dans
+un **nom de fichier**, et le banc du tarball devait relire ce nom pour ne pas condamner à tort
+une boîte trop ancienne. Ici c'est un champ `Depends:` — le banc le lit **dans l'index** — et
+sur **Debian 12** apt refuse en **nommant `libc6`** (`libc6 (>= 2.38) but 2.36-9+deb12u14 is
+to be installed`). Comme au banc du tarball, la boîte trop ancienne ne fait pas sauter le
+run : seuls les cas qui **installent l'application** s'effacent. Conséquence à garder
+présente : *pour servir Debian 12, il faudra construire sur Debian 12* — le `.deb` rend la
+contrainte **refusable**, il ne la résout pas (c'est le point 4 des prochaines étapes, la
+matrice de compilation).
+
+### 4. Un piège durable établi ici : une image Docker n'est pas une machine Debian
+
+`debian:*-slim` **et** `ubuntu:*` embarquent une configuration dpkg qui **exclut**
+`/usr/share/doc/*` (`path-exclude`, mesuré sur les deux familles ; Ubuntu y jette aussi les
+pages de man et les traductions `/usr/share/locale/*/LC_MESSAGES/*.mo`). Laissée en place,
+la boîte jetait les **26 guides** que l'épisode 14 venait d'installer, et le banc aurait
+signalé comme défaut du paquet ce qui est un **trait de la boîte** — d'où le retrait de ce
+fichier dans chaque conteneur, avant toute installation.
+
+Le banc du tarball n'avait jamais rencontré ce piège : `tar` ne consulte la configuration de
+personne. C'est exactement ce qui fait que le canal `.deb` livre **moins** que le tarball sur
+une telle image, et c'est un point que le futur **canal Docker officiel** (§ 4) devra traiter
+au lieu d'en hériter. Heureusement, `/usr/share/marionnet/locale` est **hors** de l'exclusion
+d'Ubuntu (qui ne vise que `/usr/share/locale/`) : l'i18n survit, la documentation non.

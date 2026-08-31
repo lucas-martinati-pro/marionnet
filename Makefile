@@ -475,9 +475,18 @@ release-binary:
 release-deb:
 	bash Makefile.d/release.deb.sh --series $(PUBLICATION_SERIES) $(PACKAGES)
 
+# Make the release directory readable by apt: the Packages/Packages.gz/Release of a FLAT
+# repository, beside the .deb. `make release-deb' calls this by itself, so this target is
+# for the other cases: a directory whose packages were published before it existed, or one
+# a .deb was dropped into by hand. `make release-apt CHECK=1' says what the indexes hold
+# instead of rewriting them. The indexes are NOT recorded in SHA256SUMS (they are rewritten
+# at every publication, and apt carries their integrity in Release itself).
+release-apt:
+	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
-.PHONY: release-binary release-deb print-required-packages-runtime
+.PHONY: release-binary release-deb release-apt print-required-packages-runtime
 
 
 # =============================================================
