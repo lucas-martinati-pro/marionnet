@@ -354,10 +354,31 @@ Reprise : appliquer le skill `chantier-long`.
   n'en dit rien, curl ne doit pas en dire plus). Bancs : 39 → **42** cas (3 rouges sur
   l'artefact d'avant) et 53 → **63** (6 rouges ; 2ᵉ image cliente `curl` **sans** wget, plus
   une boîte nue qui vérifie que la garde nomme les deux).
+  **Ép. 12 : les quatre boîtes.** La boîte cible devient un **paramètre** des deux bancs
+  (`--distro <image>`, `--distro all`, `ARG BASE_IMAGE`, noms d'images et de conteneurs
+  suffixés) — défaut inchangé, donc un run sans argument veut dire ce qu'il a toujours
+  voulu dire. Le banc **réseau** n'a demandé que l'`ARG` : l'ép. 9c demandait déjà l'arch
+  et la glibc au **conteneur client** et non à l'hôte du banc, si bien que toute la famille
+  `--binary` suit la boîte d'elle-même (63 verts × 4). Les 13 `REQUIRED_PACKAGES_RUNTIME`
+  existent sous ce nom sur les quatre : le pari de l'ép. 9b est mesuré. **Le seul écart est
+  Debian 12, et ce n'est pas un défaut** : un binaire est lié à la glibc de la machine qui
+  l'a compilé (2.39), et cette garantie ne vaut que **vers l'avant** — il tourne sur 2.43
+  (Ubuntu 26.04, mesuré) et pas sur 2.36. **À ne pas défaire** : le banc binaire lit
+  arch+glibc **dans le nom du tarball**, comme `marionnet-install.sh` pour choisir ; il ne
+  saute pas le run (poser les fichiers, la conf, le sudoers, la complétion et nommer les
+  dépendances apt se mesurent tout aussi bien, et ce sont justement les gestes qui changent
+  d'une distribution à l'autre), il n'efface que les **4 cas qui démarrent le binaire** et
+  les remplace par un cas exigeant que le refus **nomme la glibc**. Conséquence à garder :
+  *pour servir Debian 12, il faudra construire sur Debian 12.* **43ᵉ cas neuf** :
+  `bash-completion` **trouve** la complétion sous le préfixe sans qu'on ait rien sourcé —
+  ce qui valide enfin le `share_root` de l'ép. 11a — et il vérifie le **nom de la fonction
+  armée**, le chargeur retombant sur `complete -o default -F _minimal` pour une commande
+  inconnue (un cas naïf passait au vert sur une boîte où **rien** n'était installé).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
-  ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 → (3) le découpage en `.deb`
-  → (4) les `.deb` sur les 4 boîtes → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2) et
-  (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier épisode.
+  ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
+  découpage en `.deb` → (4) les `.deb` sur les 4 boîtes → (5) `upload.www.marionnet.org.sh`
+  → (6) rejeu de (2) et (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier
+  épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

@@ -37,8 +37,15 @@
 # no bashbricks: like its sibling useful-scripts/marionnet-install.sh.bench/run.sh, this
 # driver is a docker orchestration, and the assertions are all `grep' and exit codes.
 #
-# Usage: run.sh [PATH-TO-marionnet_*.tar.xz]
-#        (default: the newest one under website-repo/download/marionnet-install.sh/*/)
+# Since episode 12 the box is a parameter: the same cases are played on the four
+# distributions of the roadmap (§ 5 bis of the doc). What changes from one to another is the
+# glibc -- hence the gate below -- the names of the apt packages, and where bash-completion
+# looks. The default is the box the previous episodes measured, so a run without arguments
+# means what it has always meant.
+#
+# Usage: run.sh [--distro IMAGE|all] [PATH-TO-marionnet_*.tar.xz]
+#        (default distro: debian:trixie-slim; default tarball: the newest one under
+#         website-repo/download/marionnet-install.sh/*/)
 # ---
 
 set -euo pipefail
@@ -46,23 +53,64 @@ set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$HERE/../.." && pwd)
 
-IMG=mrn-binary-bench-client
-BOX=mrn-binary-bench
-BOX_ALT=mrn-binary-bench-alt
-# The DENUDED machine of episode 10: the same Debian as the client image, but WITHOUT the
-# run-time packages -- the state of a user who downloaded the tarball and nothing else.
-BARE_IMG=debian:trixie-slim
-BOX_BARE=mrn-binary-bench-bare
-BOX_NET=mrn-binary-bench-bare-net
+# The four boxes of the roadmap. The same list is in useful-scripts/marionnet-install.sh.bench/
+# run.sh: a bench has to stay runnable with nothing but docker and its own directory, so the
+# two drivers each carry it rather than sharing a file across two unrelated directories.
+# Image references, not nicknames: they need no table to be understood, here or in the output.
+DISTROS=(debian:bookworm-slim debian:trixie-slim ubuntu:24.04 ubuntu:26.04)
+DISTRO=debian:trixie-slim
 
-PASSED=0; FAILED=0
+ARGS=()
+while (( $# )); do
+  case $1 in
+    --distro) [[ $# -ge 2 ]] || { echo "--distro wants an image reference, or \`all'" >&2; exit 2; }
+              DISTRO="$2"; shift 2 ;;
+    --distro=*) DISTRO="${1#*=}"; shift ;;
+    -h|--help) sed -n '/^# Usage:/,/^# ---$/p' -- "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+if (( ${#ARGS[@]} )); then set -- "${ARGS[@]}"; else set --; fi
+
+# `--distro all' is not a mode of this driver: it re-plays it once per box, so that a red
+# case still names ONE distribution and one tarball. The exit code is the worst of the runs,
+# a SKIP (77) never masking a FAIL.
+if [[ $DISTRO = all ]]; then
+  worst=0
+  for d in "${DISTROS[@]}"; do
+    echo; echo "############ $d"
+    rc=0; "${BASH_SOURCE[0]}" --distro "$d" "$@" || rc=$?
+    if   (( rc == 0  )); then :
+    elif (( rc == 77 )); then (( worst == 0 )) && worst=77 || true
+    else worst=1
+    fi
+  done
+  echo; echo "############ the four boxes: worst exit code $worst"
+  exit "$worst"
+fi
+
+# One suffix per box, so that the images and the containers of two distributions never get
+# taken for each other -- and so that a failed run can still be looked at afterwards.
+SLUG=$(printf '%s' "$DISTRO" | tr -c 'A-Za-z0-9' '-')
+IMG=mrn-binary-bench-client-$SLUG
+BOX=mrn-binary-bench-$SLUG
+BOX_ALT=mrn-binary-bench-alt-$SLUG
+# The DENUDED machine of episode 10: the same distribution as the client image, but WITHOUT
+# the run-time packages -- the state of a user who downloaded the tarball and nothing else.
+BARE_IMG=$DISTRO
+BOX_BARE=mrn-binary-bench-bare-$SLUG
+BOX_NET=mrn-binary-bench-bare-net-$SLUG
+BOX_COMPL=mrn-binary-bench-completion-$SLUG
+
+PASSED=0; FAILED=0; SKIPPED=0
 function pass { echo "PASS: $*"; PASSED=$(( PASSED + 1 )); }
 function fail { echo "FAIL: $*"; FAILED=$(( FAILED + 1 )); }
+function skip { echo "SKIP: $*"; SKIPPED=$(( SKIPPED + 1 )); }
 function skip_all { echo "SKIP: $*"; exit 77; }
 
 BARE_UNPACK=""
 function cleanup {
-  docker rm -f "$BOX" "$BOX_ALT" "$BOX_BARE" "$BOX_NET" >/dev/null 2>&1 || true
+  docker rm -f "$BOX" "$BOX_ALT" "$BOX_BARE" "$BOX_NET" "$BOX_COMPL" >/dev/null 2>&1 || true
   test -z "$BARE_UNPACK" || rm -rf -- "$BARE_UNPACK"
   return 0
 }
@@ -88,11 +136,56 @@ PKGS=$(make --no-print-directory -C "$ROOT" print-required-packages-runtime | ta
 [[ -n $PKGS ]] || skip_all "make print-required-packages-runtime said nothing"
 
 echo "--- tarball : $TARBALL"
+echo "--- box     : $DISTRO"
 echo "--- packages: $PKGS"
-echo "--- building the client image ..."
-docker build -q -t "$IMG" --build-arg RUNTIME_PACKAGES="$PKGS" -f "$HERE/Dockerfile.client" "$HERE" >/dev/null
 
-docker rm -f "$BOX" "$BOX_ALT" "$BOX_BARE" "$BOX_NET" >/dev/null 2>&1 || true
+# ---
+# --- Is this artefact even meant for this box? (episode 12)
+# ---
+# The tarball is named marionnet_<version>-r<rev>_<arch>_glibc<x.y>, and that name is what
+# useful-scripts/marionnet-install.sh reads in order to CHOOSE among the published ones.
+# Here the choice was made by whoever passed the tarball, so this bench has to make the same
+# reading itself: on a box older than the machine which built the artefact, the cases which
+# start the binary would otherwise go red for a reason which is not a defect -- a dynamically
+# linked binary demands a glibc at least as recent as the one it was linked against, and the
+# reverse direction is what glibc's symbol versioning guarantees.
+#
+# The consequence is NOT to skip the whole run. Laying the files down, the configuration, the
+# sudoers rule, the bash-completion and the naming of the apt dependencies are measured just
+# as well on such a box -- they are precisely what changes from one distribution to another.
+# Only the five cases which START the binary step aside, and one case takes their place: the
+# refusal must NAME the glibc. That is what keeps the criterion read in the name a measured
+# fact rather than a decoration.
+function glibc_le {   # $1 <= $2, as version numbers
+  [[ $1 = "$2" ]] || [[ $(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1) = "$1" ]]
+}
+
+ART_ARCH=""; ART_GLIBC=""
+if [[ $ROOTDIR =~ ^marionnet_.*-r[0-9]+_([^_]+)_glibc([0-9]+\.[0-9]+)$ ]]; then
+  ART_ARCH=${BASH_REMATCH[1]}; ART_GLIBC=${BASH_REMATCH[2]}
+fi
+BOX_ARCH=$(docker run --rm "$BARE_IMG" dpkg --print-architecture 2>/dev/null) || BOX_ARCH=""
+BOX_GLIBC=$(docker run --rm "$BARE_IMG" bash -c "ldd --version | head -n 1 | awk '{print \$NF}'" 2>/dev/null) || BOX_GLIBC=""
+if [[ $BOX_GLIBC =~ ^[0-9]+\.[0-9]+ ]]; then BOX_GLIBC=${BASH_REMATCH[0]}; else BOX_GLIBC=""; fi
+echo "--- artefact: arch ${ART_ARCH:-?}, glibc ${ART_GLIBC:-?} / box: arch ${BOX_ARCH:-?}, glibc ${BOX_GLIBC:-?}"
+
+# A foreign architecture is another matter entirely: nothing of this artefact would mean
+# anything on such a box, not even the installation. That one is a whole-run SKIP.
+[[ -z $ART_ARCH || -z $BOX_ARCH || $ART_ARCH = "$BOX_ARCH" ]] \
+  || skip_all "this artefact is $ART_ARCH and the box is $BOX_ARCH: nothing to measure here"
+
+RUNNABLE=yes
+if [[ -n $ART_GLIBC && -n $BOX_GLIBC ]] && ! glibc_le "$ART_GLIBC" "$BOX_GLIBC"; then
+  RUNNABLE=no
+  echo "--- the artefact was linked against glibc $ART_GLIBC and this box carries $BOX_GLIBC:"
+  echo "--- the cases which START the binary step aside (see the comment above)."
+fi
+
+echo "--- building the client image ..."
+docker build -q -t "$IMG" --build-arg BASE_IMAGE="$DISTRO" \
+  --build-arg RUNTIME_PACKAGES="$PKGS" -f "$HERE/Dockerfile.client" "$HERE" >/dev/null
+
+docker rm -f "$BOX" "$BOX_ALT" "$BOX_BARE" "$BOX_NET" "$BOX_COMPL" >/dev/null 2>&1 || true
 docker run -d --name "$BOX"     --network none -v "$TARBALL":/artefact.tar.xz:ro "$IMG" sleep infinity >/dev/null
 docker run -d --name "$BOX_ALT" --network none -v "$TARBALL":/artefact.tar.xz:ro "$IMG" sleep infinity >/dev/null
 
@@ -143,9 +236,9 @@ INSTALL=$UNPACKED/install.sh
 # ---------------------------------------------------------------- 1. it unpacks at all
 
 if out=$(in_box "cd /srv && tar xf /artefact.tar.xz 2>&1" ) && in_box "test -d $UNPACKED/bin && test -d $UNPACKED/share"; then
-  pass "the tarball unpacks on a bare Debian, under its named root ($ROOTDIR/)"
+  pass "the tarball unpacks on a bare $DISTRO, under its named root ($ROOTDIR/)"
 else
-  fail "the tarball did not unpack with the tools of a bare Debian: [$out]"
+  fail "the tarball did not unpack with the tools of a bare $DISTRO: [$out]"
   echo "     (a missing xz would show here: the README tells the user to run \`tar xf')"
   echo "--- nothing else can be measured; count: $PASSED passed, $FAILED failed"
   exit 1
@@ -305,21 +398,34 @@ fi
 
 # ---------------------------------------------------------------- 7. the binary starts HERE
 
-if out=$(in_box "marionnet.native --help 2>&1"); then
-  pass "marionnet.native --help runs on a Debian carrying only REQUIRED_PACKAGES_RUNTIME"
-else
-  fail "the binary does not start with the published dependency list: [$out]"
-  echo "     (this is a hole in REQUIRED_PACKAGES_RUNTIME, not a defect of the bench)"
-fi
-
-if out=$(in_box "marionnet.native --paths 2>&1"); then
-  if grep -q '^filesystems *: /usr/local/share/marionnet/filesystems' <<<"$out"; then
-    pass "--paths reads the installed configuration"
+if [[ $RUNNABLE = yes ]]; then
+  if out=$(in_box "marionnet.native --help 2>&1"); then
+    pass "marionnet.native --help runs on a $DISTRO carrying only REQUIRED_PACKAGES_RUNTIME"
   else
-    fail "--paths does not point at the installed prefix: [$out]"
+    fail "the binary does not start with the published dependency list: [$out]"
+    echo "     (this is a hole in REQUIRED_PACKAGES_RUNTIME, not a defect of the bench)"
+  fi
+
+  if out=$(in_box "marionnet.native --paths 2>&1"); then
+    if grep -q '^filesystems *: /usr/local/share/marionnet/filesystems' <<<"$out"; then
+      pass "--paths reads the installed configuration"
+    else
+      fail "--paths does not point at the installed prefix: [$out]"
+    fi
+  else
+    fail "marionnet.native --paths failed: [$out]"
   fi
 else
-  fail "marionnet.native --paths failed: [$out]"
+  # The case which REPLACES the two above on a box too old for this artefact. It is not a
+  # weaker version of them: it measures the very fact the name-borne criterion rests on --
+  # that such a binary really does refuse to start, and says why.
+  out=$(in_box "marionnet.native --help 2>&1") && rc=0 || rc=$?
+  if (( rc != 0 )) && grep -qiE "GLIBC_|version .GLIBC|not found" <<<"$out"; then
+    pass "linked against glibc $ART_GLIBC, the binary refuses to start on glibc $BOX_GLIBC, naming it"
+  else
+    fail "on glibc $BOX_GLIBC the artefact of glibc $ART_GLIBC behaved unexpectedly: rc=$rc, [$out]"
+  fi
+  skip "--paths reads the installed configuration (the binary cannot run on this box)"
 fi
 
 # ---------------------------------------------------------------- 8. the two refusals
@@ -374,7 +480,9 @@ fi
 # and not a surprise: everything relocates except `binaries', which stays at the prefix
 # COMPILED into bin/meta.ml (bin/initialization.ml:472). Harmless -- nothing reads it --
 # but it is the one line of --paths which lies when the binary is relocated.
-if out=$(in_alt "$ALT/bin/marionnet.native --paths 2>&1"); then
+if [[ $RUNNABLE != yes ]]; then
+  skip "--paths under an unusual prefix (the binary cannot run on this box)"
+elif out=$(in_alt "$ALT/bin/marionnet.native --paths 2>&1"); then
   relocated=$(grep -c "^\(filesystems\|kernels\|gui\) *: $ALT/share/marionnet" <<<"$out" || true)
   if ((relocated == 3)) && grep -q '^binaries *: /usr/local/bin$' <<<"$out"; then
     pass "--paths relocates filesystems/kernels/gui and STILL prints the compiled 'binaries' (ep. 9a trap)"
@@ -451,7 +559,11 @@ fi
 
 # The contre-preuve of case 15: the very binary which starts on the complete machine must
 # NOT start here. If it did, the dependency list would be naming more than it needs.
-if in_bare_as_sudo "/usr/local/bin/marionnet.native --help >/dev/null 2>&1"; then
+# On a box too old for this artefact it would pass for the WRONG reason -- the binary does
+# not start there whatever the packages -- so it steps aside rather than lying.
+if [[ $RUNNABLE != yes ]]; then
+  skip "the contre-preuve of the dependency list (the binary cannot run on this box at all)"
+elif in_bare_as_sudo "/usr/local/bin/marionnet.native --help >/dev/null 2>&1"; then
   fail "the binary starts WITHOUT the run-time packages: the list names too much"
 else
   pass "the binary does not start there: the packages it names are really needed"
@@ -486,7 +598,9 @@ if docker exec "$BOX_NET" bash -c 'apt-get update -qq' >/dev/null 2>&1; then
   else
     fail "--with-deps did not install them: rc=$rc, [$out]"
   fi
-  if docker exec "$BOX_NET" bash -c '/usr/local/bin/marionnet.native --help >/dev/null 2>&1'; then
+  if [[ $RUNNABLE != yes ]]; then
+    skip "the binary starting after --with-deps (it cannot run on this box)"
+  elif docker exec "$BOX_NET" bash -c '/usr/local/bin/marionnet.native --help >/dev/null 2>&1'; then
     pass "and the binary now starts on the machine which had nothing: 9a -> 10 in one gesture"
   else
     fail "the binary still does not start after --with-deps: [$(docker exec "$BOX_NET" bash -c '/usr/local/bin/marionnet.native --help 2>&1' || true)]"
@@ -500,8 +614,52 @@ else
   echo "--- no network in the containers: the three --with-deps cases are not played"
 fi
 
+# ---------------------------------------------------------------- 11. the completion,
+# ---                                                                  LOADED ON DEMAND
+#
+# Episode 11a installed twelve files, and the cases of section 4 prove that SOURCING one of
+# them arms the completion of that very name. What they cannot prove is the gesture a user
+# actually makes: typing `mrnctl <TAB>' in a shell which sourced nothing. bash-completion
+# loads on demand, by looking for a file CALLED like the command being typed, under
+# ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}/bash-completion/completions -- and whether
+# /usr/local/share is in that default is precisely the kind of thing which could differ from
+# one distribution to another. Hence this case, played on each of the four boxes: it is what
+# turns the `share_root' section of the dune stanza from a plausible choice into a measured one.
+#
+# It needs the `bash-completion' package, which is NOT a dependency of Marionnet and has no
+# business in the client image -- so a box of its own, with a network, carrying that single
+# package. Skipped out loud when no mirror can be reached, like the --with-deps cases above.
+docker run -d --name "$BOX_COMPL" -v "$BARE_UNPACK":/srv:ro "$DISTRO" sleep infinity >/dev/null
+if docker exec "$BOX_COMPL" bash -c \
+     'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+        --no-install-recommends bash-completion' >/dev/null 2>&1; then
+  docker exec -e SUDO_USER=root "$BOX_COMPL" \
+    bash -c "$INSTALL --no-sudoers --no-config --no-deps" >/dev/null 2>&1 || true
+  # `_comp_load' is the loader of bash-completion 2.12+, `_completion_loader' the older name:
+  # the four boxes do not all carry the same version, and the case is about WHERE it looks,
+  # not about what it is called.
+  # What is checked is the NAME of the function armed, not the mere fact that something was:
+  # bash-completion's loader falls back to `complete -o default -F _minimal' for a command it
+  # knows nothing about, so `complete -p mrnctl' succeeds on a box where nothing of ours was
+  # installed at all (measured -- the first version of this case passed for that wrong reason).
+  if docker exec "$BOX_COMPL" bash -c '
+        . /usr/share/bash-completion/bash_completion 2>/dev/null || exit 3
+        { _comp_load mrnctl || _completion_loader mrnctl ; } >/dev/null 2>&1
+        complete -p mrnctl 2>/dev/null | grep -q _marionnet_ctl_completion'; then
+    pass "bash-completion finds the completion of \`mrnctl' under the prefix, unprompted"
+  else
+    fail "typing \`mrnctl <TAB>' would arm nothing on $DISTRO: the prefix is not searched"
+  fi
+else
+  echo "--- no network in the containers: the on-demand completion case is not played"
+fi
+
 # ----------------------------------------------------------------
 
-echo "--- $PASSED passed, $FAILED failed"
+if (( SKIPPED == 0 )); then
+  echo "--- $DISTRO: $PASSED passed, $FAILED failed"
+else
+  echo "--- $DISTRO: $PASSED passed, $FAILED failed, $SKIPPED skipped"
+fi
 ((FAILED == 0)) || exit 1
 exit 0

@@ -558,10 +558,10 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
 1. **Finir le local** — les deux restes de la consommation : la **complétion bash** (§ 2.4
    ter) et le **repli `curl`** (reste de l'ép. 6). C'est l'épisode 11, ci-dessous.
 2. **Les quatre boîtes** — `marionnet-install.sh` (binaire + images + noyaux) éprouvé sur
-   **Debian 12, Debian 13, Ubuntu 24.04, Ubuntu 26.04**. Aujourd'hui les deux bancs ne
-   connaissent qu'une `debian:trixie-slim` ; ce qui change d'une distribution à l'autre,
-   c'est la **glibc** (donc le choix de l'artefact, lu dans son nom), les **noms de
-   paquets**, et le répertoire où `bash-completion` regarde.
+   **Debian 12, Debian 13, Ubuntu 24.04, Ubuntu 26.04**. Ce qui change d'une distribution à
+   l'autre, c'est la **glibc** (donc le choix de l'artefact, lu dans son nom), les **noms de
+   paquets**, et le répertoire où `bash-completion` regarde. **C'est l'épisode 12,
+   ci-dessous** : les trois écarts sont mesurés, et seul le premier en est un.
 3. **Combien de `.deb`** — le découpage de l'application en paquets. Une décision est déjà
    posée au § 6 (« app + noyaux + petites images en `.deb`, grosses images à part ») ; elle
    est à **rejuger** avec ce que les épisodes 9 et 10 ont appris (l'application est déjà un
@@ -1555,3 +1555,88 @@ run nominal (l'absence de `-S`).
 - Le banc ne connaît toujours qu'une seule distribution : c'est le point (2) de la feuille
   de route, l'épisode suivant.
 
+
+## Épisode 12 (2026-08-31) — les quatre boîtes
+
+Point (2) de la feuille de route du § 5 bis. Jusqu'ici les deux bancs ne connaissaient
+qu'une `debian:trixie-slim` : tout ce que les épisodes 6 à 11 ont mesuré l'avait été sur
+**une seule** distribution, alors que Marionnet s'installe sur au moins quatre. La boîte
+devient donc un **paramètre** — `--distro <image>`, ou `--distro all` qui rejoue le banc sur
+les quatre et ne rend qu'un code de sortie (le pire, un SKIP ne masquant jamais un FAIL).
+
+Le défaut reste `debian:trixie-slim` dans les deux bancs et dans les trois `Dockerfile` :
+**un run sans argument veut dire ce qu'il a toujours voulu dire**, ce qui est la condition
+pour que les mesures des épisodes précédents restent comparables.
+
+### Ce qui a coûté presque rien, et pourquoi
+
+Le banc **réseau** n'a demandé que l'`ARG BASE_IMAGE` de ses deux images clientes. La raison
+est une décision de l'**épisode 9c** : l'arch et la glibc des artefacts synthétiques sont
+demandées au **conteneur client**, jamais à l'hôte du banc. Toute la famille de cas
+`--binary` — l'élu, le supplanté, l'arch étrangère, la glibc trop récente — suit donc la
+boîte d'elle-même. **63 verts sur chacune des quatre**, sans un cas à retoucher.
+
+De même, les **13 `REQUIRED_PACKAGES_RUNTIME`** existent, sous ce nom, sur les quatre : le
+pari fait à l'épisode 9b (nommer `libgtksourceview-3.0-1` plutôt que `libgtk-3-0`, dont le
+nom a pris un `t64` en trixie et en noble mais pas en bookworm) tient — il est maintenant
+mesuré et non plus raisonné.
+
+### Debian 12 : le seul écart, et il n'est pas un défaut
+
+L'artefact publiable est lié à la glibc de la machine qui l'a compilé (ici 2.39). Sur une
+boîte **plus ancienne**, il ne peut pas démarrer : la garantie de versionnement de symboles
+de la glibc ne vaut que dans un sens. Le banc binaire lit donc l'arch et la glibc **dans le
+nom du tarball**, exactement comme `marionnet-install.sh` le fait pour choisir, et en tire
+trois conséquences :
+
+- il ne saute **pas** le run. Poser les fichiers, écrire la configuration, poser la règle
+  sudoers, installer la complétion et nommer les dépendances apt se mesurent tout aussi bien
+  sur une boîte trop ancienne — et ce sont justement les gestes qui changent d'une
+  distribution à l'autre ;
+- seuls les **quatre cas qui démarrent le binaire** s'effacent (SKIP), et **un cas neuf prend
+  leur place** : le refus doit **nommer la glibc**. C'est ce qui transforme le critère lu
+  dans le nom en fait mesuré plutôt qu'en décoration — et son symétrique est mesuré aussi,
+  Ubuntu 26.04 (glibc 2.43) faisant tourner sans broncher un binaire lié contre 2.39 ;
+- une **architecture** étrangère, elle, fait sauter tout le run (77) : il n'y aurait
+  strictement rien à mesurer.
+
+**Ce qu'il faut en retenir pour la suite : pour servir Debian 12, il faudra construire sur
+Debian 12.** Une matrice de compilation est un autre travail — elle n'entre pas dans cet
+épisode, dont le rôle était de faire dire au banc, sans se mentir, que l'artefact courant
+n'est pas pour cette boîte-là.
+
+### Le cas neuf, et le piège qu'il a fallu payer pour qu'il vaille quelque chose
+
+L'épisode 11a avait prouvé que **sourcer** un des douze fichiers de complétion arme
+`complete` pour ce nom-là. Il n'avait pas prouvé le geste que l'utilisateur fait vraiment :
+taper `mrnctl <TAB>` dans un shell qui n'a rien sourcé. `bash-completion` charge **à la
+demande**, en cherchant un fichier portant le nom de la commande sous
+`${XDG_DATA_DIRS:-/usr/local/share:/usr/share}/bash-completion/completions` — et la présence
+de `/usr/local/share` dans ce défaut est typiquement ce qui pourrait différer d'une
+distribution à l'autre. D'où un 43ᵉ cas, joué sur une **boîte à part** (avec réseau, portant
+le seul paquet `bash-completion`, qui n'est pas une dépendance de Marionnet et n'a rien à
+faire dans l'image cliente).
+
+**Piège durable, mesuré ici** : le chargeur de `bash-completion` retombe sur
+`complete -o default -F _minimal` pour une commande qu'il ne connaît pas. Un cas qui se
+contente de `complete -p mrnctl` **passe donc au vert sur une boîte où rien n'a été
+installé**. Le cas vérifie le **nom de la fonction armée** (`_marionnet_ctl_completion`) ;
+contre-preuve jouée : rc 1 sans installation, rc 0 avec.
+
+### Prouvé (2026-08-31)
+
+| Banc | `debian:bookworm-slim` | `debian:trixie-slim` | `ubuntu:24.04` | `ubuntu:26.04` |
+|---|---|---|---|---|
+| `Makefile.d/release.binary.sh.bench/` (43 cas) | 39 verts, **4 sautés** | 43 verts | 43 verts | 43 verts |
+| `useful-scripts/marionnet-install.sh.bench/` (63 cas) | 63 verts | 63 verts | 63 verts | 63 verts |
+
+glibc des boîtes : 2.36 / 2.41 / 2.39 / 2.43 ; artefact mesuré : `marionnet_trunk-r909_amd64_glibc2.39`.
+
+### Restes
+
+- **Les quatre boîtes sont soldées** ; la suite est le point (3), le découpage en `.deb`.
+- Une **matrice de compilation** (un artefact par glibc visée, à commencer par Debian 12)
+  n'est pas spécifiée : elle n'est pas un reste de cet épisode mais une question ouverte, à
+  formuler quand le `.deb` aura dit ce qu'il prend en charge.
+- Inchangés, et toujours **bloqués par l'extérieur** : le dépôt sur le serveur, la jambe
+  **https**, la **signature** des artefacts.

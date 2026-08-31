@@ -11,7 +11,13 @@
 #
 # `sudo' is in that list, so visudo -- which install.sh uses to validate the rule it
 # generates -- comes along with it. Nothing is added on top for the bench itself.
-FROM debian:trixie-slim
+#
+# The base image is a build argument since episode 12: the same bench is played on the
+# four boxes of the roadmap (Debian 12 and 13, Ubuntu 24.04 and 26.04). It defaults to
+# the box the previous episodes measured, so a build without the argument means what it
+# has always meant.
+ARG BASE_IMAGE=debian:trixie-slim
+FROM ${BASE_IMAGE}
 
 ARG RUNTIME_PACKAGES
 

@@ -48,20 +48,66 @@
 # Conventions of driven-sessions/README.md: 0 = PASS, 77 = SKIP, anything else = FAIL;
 # one PASS:/FAIL:/SKIP: line per case, a count at the end, and the bench cleans up.
 #
-# Usage: run.sh [PATH-TO-marionnet-install.sh]      (default: ../marionnet-install.sh)
+# Since episode 12 the CLIENT box is a parameter: the same cases are played on the four
+# distributions of the roadmap (§ 5 bis of the doc). Almost nothing had to change for that,
+# and the reason is a decision of episode 9c -- the arch and the glibc of the synthetic
+# artefacts are asked of the client CONTAINER, never of this host, so the whole family of
+# `--binary' cases follows the box on its own. The server stays what it was: httpd:2.4
+# serves the same bytes whoever downloads them.
+#
+# Usage: run.sh [--distro IMAGE|all] [PATH-TO-marionnet-install.sh]
+#        (default distro: debian:trixie-slim; default script: ../marionnet-install.sh)
 # ---
 
 set -euo pipefail
 
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+# The four boxes of the roadmap. The same list is in Makefile.d/release.binary.sh.bench/run.sh:
+# a bench has to stay runnable with nothing but docker and its own directory, so the two
+# drivers each carry it rather than sharing a file across two unrelated directories.
+DISTROS=(debian:bookworm-slim debian:trixie-slim ubuntu:24.04 ubuntu:26.04)
+DISTRO=debian:trixie-slim
+
+ARGS=()
+while (( $# )); do
+  case $1 in
+    --distro) [[ $# -ge 2 ]] || { echo "--distro wants an image reference, or \`all'" >&2; exit 2; }
+              DISTRO="$2"; shift 2 ;;
+    --distro=*) DISTRO="${1#*=}"; shift ;;
+    -h|--help) sed -n '/^# Usage:/,/^# ---$/p' -- "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+if (( ${#ARGS[@]} )); then set -- "${ARGS[@]}"; else set --; fi
+
+# `--distro all' re-plays this driver once per box, so that a red case still names ONE
+# distribution. The exit code is the worst of the runs, a SKIP (77) never masking a FAIL.
+if [[ $DISTRO = all ]]; then
+  worst=0
+  for d in "${DISTROS[@]}"; do
+    echo; echo "############ $d"
+    rc=0; "${BASH_SOURCE[0]}" --distro "$d" "$@" || rc=$?
+    if   (( rc == 0  )); then :
+    elif (( rc == 77 )); then (( worst == 0 )) && worst=77 || true
+    else worst=1
+    fi
+  done
+  echo; echo "############ the four boxes: worst exit code $worst"
+  exit "$worst"
+fi
+
 SCRIPT="${1:-$HERE/../marionnet-install.sh}"
 
-NET=mrn-install-bench-net
+# One suffix per box, so that the images, the containers and the volumes of two distributions
+# never get taken for each other.
+SLUG=$(printf '%s' "$DISTRO" | tr -c 'A-Za-z0-9' '-')
+NET=mrn-install-bench-net-$SLUG
 IMG_SERVER=mrn-install-bench-httpd
-IMG_CLIENT=mrn-install-bench-client
-IMG_CLIENT_CURL=mrn-install-bench-client-curl
-SRV=mrn-install-bench-server
-SRV_NOINDEX=mrn-install-bench-server-noindex
+IMG_CLIENT=mrn-install-bench-client-$SLUG
+IMG_CLIENT_CURL=mrn-install-bench-client-curl-$SLUG
+SRV=mrn-install-bench-server-$SLUG
+SRV_NOINDEX=mrn-install-bench-server-noindex-$SLUG
 
 PASSED=0; FAILED=0
 function pass { echo "PASS: $*"; PASSED=$(( PASSED + 1 )); }
@@ -84,14 +130,17 @@ trap cleanup EXIT
 command -v docker >/dev/null || skip_all "docker is not installed"
 docker info >/dev/null 2>&1 || skip_all "the docker daemon does not answer (group \`docker'?)"
 
-echo "# building the two images (first run pulls httpd:2.4 and debian:trixie-slim)"
+echo "# client box: $DISTRO"
+echo "# building the two images (first run pulls httpd:2.4 and $DISTRO)"
 docker build -q -t "$IMG_SERVER" -f "$HERE/Dockerfile.server" "$HERE" >/dev/null \
   || skip_all "cannot build the server image (no network to the registry?)"
-docker build -q -t "$IMG_CLIENT" -f "$HERE/Dockerfile.client" "$HERE" >/dev/null \
+docker build -q -t "$IMG_CLIENT" --build-arg BASE_IMAGE="$DISTRO" \
+  -f "$HERE/Dockerfile.client" "$HERE" >/dev/null \
   || skip_all "cannot build the client image (no network to the registry?)"
 # The same image with curl in place of wget: the fallback of episode 11b is measured on a
 # machine which really has no wget, not on one where wget is merely not called.
-docker build -q -t "$IMG_CLIENT_CURL" -f "$HERE/Dockerfile.client.curl" "$HERE" >/dev/null \
+docker build -q -t "$IMG_CLIENT_CURL" --build-arg BASE_IMAGE="$DISTRO" \
+  -f "$HERE/Dockerfile.client.curl" "$HERE" >/dev/null \
   || skip_all "cannot build the curl client image (no network to the registry?)"
 
 # ---
@@ -335,7 +384,7 @@ function client {
 }
 
 # A client run which keeps its prefix between invocations (idempotence, --force).
-VOL=mrn-install-bench-prefix
+VOL=mrn-install-bench-prefix-$SLUG
 docker volume rm "$VOL" >/dev/null 2>&1 || true
 docker volume create "$VOL" >/dev/null
 function client_p {
@@ -351,12 +400,12 @@ function in_prefix {
 # an EMPTY one: a case which finds the artefact already in place measures nothing but the
 # idempotence, and the failure it is supposed to catch never runs (measured -- that is how
 # the first version of case 6e passed for the wrong reason).
-VOL2=mrn-install-bench-prefix-verified
-VOL3=mrn-install-bench-prefix-corrupt
-VOL4=mrn-install-bench-prefix-binary
-VOL5=mrn-install-bench-prefix-binary-corrupt
-VOL6=mrn-install-bench-prefix-both
-VOL7=mrn-install-bench-prefix-curl
+VOL2=mrn-install-bench-prefix-verified-$SLUG
+VOL3=mrn-install-bench-prefix-corrupt-$SLUG
+VOL4=mrn-install-bench-prefix-binary-$SLUG
+VOL5=mrn-install-bench-prefix-binary-corrupt-$SLUG
+VOL6=mrn-install-bench-prefix-both-$SLUG
+VOL7=mrn-install-bench-prefix-curl-$SLUG
 for v in "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6" "$VOL7"; do
   docker volume rm "$v" >/dev/null 2>&1 || true
   docker volume create "$v" >/dev/null
@@ -916,6 +965,6 @@ fi
 
 echo
 echo "# ---"
-echo "# PASS $PASSED, FAIL $FAILED"
+echo "# $DISTRO: PASS $PASSED, FAIL $FAILED"
 (( FAILED == 0 )) || exit 1
 exit 0

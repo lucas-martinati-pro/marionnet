@@ -40,6 +40,8 @@ de le mesurer deux fois.
 ```bash
 useful-scripts/marionnet-install.sh.bench/run.sh          # le script du dépôt
 useful-scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet-install.sh
+useful-scripts/marionnet-install.sh.bench/run.sh --distro ubuntu:26.04
+useful-scripts/marionnet-install.sh.bench/run.sh --distro all   # les 4 boîtes (ép. 12)
 ```
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
@@ -47,7 +49,24 @@ une ligne `PASS:`/`FAIL:` par cas, un décompte à la fin, et le banc nettoie de
 (deux conteneurs, un réseau, **sept** volumes, un répertoire temporaire). Il **saute** (77) sans
 Docker, sans démon Docker, ou si les images ne peuvent pas être construites.
 
-Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian:trixie-slim`).
+Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et l'image de la boîte).
+
+## La boîte cliente est un paramètre (épisode 12)
+
+`--distro <référence d'image>` choisit la distribution du **client** ; `--distro all` rejoue
+le banc sur les quatre de la feuille de route — `debian:bookworm-slim`, `debian:trixie-slim`,
+`ubuntu:24.04`, `ubuntu:26.04` — en ne rendant qu'un code de sortie (le pire des quatre).
+Le défaut reste `debian:trixie-slim`. Images, conteneurs, réseau et volumes sont **suffixés**
+par la boîte, de sorte que deux distributions ne se prennent jamais l'une pour l'autre.
+
+Le serveur, lui, ne change pas : `httpd:2.4` sert les mêmes octets quel que soit celui qui
+les télécharge.
+
+**Ce qui a rendu ce portage presque gratuit est une décision de l'épisode 9c** : l'arch et
+la glibc des artefacts synthétiques sont demandées au **conteneur client**, jamais à cet
+hôte-ci. Toute la famille de cas `--binary` (l'élu, le supplanté, l'arch étrangère, la glibc
+trop récente) suit donc la boîte d'elle-même. Résultat mesuré le 2026-08-31 : **63 verts sur
+chacune des quatre**.
 
 ## Les trois décisions qui font que ce banc mesure quelque chose
 
@@ -64,14 +83,14 @@ Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian
 3. **Rien n'est monté dans le client** hormis le script lui-même : ni miroir, ni dépôt.
    Ce qui arrive dans son préfixe est passé par HTTP, ou n'est pas arrivé.
 
-Le client est un `debian:trixie-slim` nu portant **seulement** `wget`, `tar`, `xz-utils` :
+Le client est une boîte nue portant **seulement** `wget`, `tar`, `xz-utils` :
 ce dont le script a besoin est ainsi **mesuré** au lieu d'être supposé — c'est la même
 liste que devront porter le `.deb`, le RPM et l'image Docker.
 
 **Depuis l'épisode 11b il y en a un second** (`Dockerfile.client.curl`), identique à une
 différence près : `curl` **à la place de** `wget`. Une image portant les deux ne prouverait
 rien, le script choisissant `wget` en premier. Et la boîte « ni l'un ni l'autre » n'est
-qu'un `debian:trixie-slim` brut, sans rien d'ajouté.
+que l'image de base brute, sans rien d'ajouté.
 
 ## Les artefacts sont synthétiques (et pourquoi)
 
