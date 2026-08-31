@@ -81,6 +81,26 @@
 # a glibc 2.39 box, these packages ask for 2.39 rather than Fedora's 2.41, which is exactly
 # the floor the application itself has.
 #
+# THIS SCRIPT COMPILES NOTHING (episode 20c). The application package is assembled by
+# unpacking the PUBLISHED `marionnet_<version>-r<rev>_<arch>_glibc<x.y>.tar.xz' of the release
+# directory -- exactly as the data packages are made of the published kernels and images.
+# Until episode 20c it called release.binary.sh to stage a fresh compilation of the working
+# copy, and that was the last place where the floor of a channel was an accident of the
+# packager's machine: a dynamically linked binary demands a glibc at least as recent as the one
+# it was linked against, and the demand travels FORWARD only. Building rpmbuild's box on the
+# oldest distribution we serve (above) fixed the metadata; it could not fix the bytes, because
+# the bytes were not made there. They are made in release.build-box.sh's box -- the floor,
+# debian:12 -- and this script now packages exactly those bytes.
+#
+# THE CONSEQUENCE IS A CONTRACT, AND IT IS THE POINT: there is nothing left to compile here, so
+# the .rpm and the .tar.xz carry the SAME binary to the byte, and packaging a locally compiled
+# one is no longer expressible. The price is that `make release-rpm' now requires a published
+# application tarball and says so, where it used to make one silently.
+#
+# WHICH TARBALL, when a release directory legitimately holds several revisions: the greatest
+# `r<rev>'. If two architectures share that revision the script refuses rather than guesses,
+# and --app-artefact names the one wanted -- the same shape as --kernel.
+#
 # THE INVARIANTS THIS SCRIPT EXISTS TO KEEP -- the same four as the Debian channel, plus one
 #
 #  1. THE MTIME OF A GUEST IMAGE IS WHAT UML CHECKS against the .conf of its backing file.
@@ -115,6 +135,8 @@
 #   -f, --force                  rebuild a package which is already there
 #       --kernel NAME            the kernel to package, without the kernels_ prefix and the
 #                                extension (default: the only linux-* of the directory)
+#       --app-artefact NAME      the published application tarball to package, as a file name
+#                                of the release directory (default: the greatest revision)
 #       --build-image IMAGE      the distribution rpmbuild runs in
 #                                (default: rockylinux/rockylinux:10, see the header)
 #       --no-rpmlint             do not run rpmlint on what was built
@@ -145,25 +167,65 @@ function usage {
 }
 
 # ---
-# --- The publication series, and the identity of this working copy.
+# --- The publication series, and the identity of what is being packaged.
 # ---
-# Both are asked of the scripts which own them, exactly as release.deb.sh does: the series
-# rule lives in the filesystem script, and the identity of a build -- version, git revision,
-# architecture -- is what release.binary.sh spells out in the name of its tarball.
+# The series is asked of the script which owns the rule (the filesystem publisher), exactly as
+# release.deb.sh does.
+#
+# The identity -- version, git revision, architecture -- is READ IN THE NAME OF THE PUBLISHED
+# TARBALL, and no longer asked of this working copy through `release.binary.sh --print-name'.
+# That indirection was right as long as this script compiled: the thing packaged was the thing
+# this machine could build. Since episode 20c the thing packaged is a file of the release
+# directory, so the file must be the one which says what it is -- the same rule that names the
+# kernel and the guest image packages, and the same rule marionnet-install.sh applies to
+# choose between artefacts. Asking the host instead would let a host at glibc 2.39 name a
+# package whose binary was built against 2.36.
 # ---
 function publication_series {
   bash "$ROOT/Makefile.d/filesystem.prepare-snapshot-to-publish.sh" --print-series
 }
 
+APP_ARTEFACT=""         # full path of the published tarball the application package is made of
 BINARY_NAME=""          # marionnet_<version>-r<rev>_<arch>_glibc<x.y>
 APP_UPSTREAM=""         # what META says: `trunk' today, `1.0.0' one day
 APP_REVISION=""         # the git revision count
 APP_ARCH=""             # the DEBIAN architecture name, as release.binary.sh writes it
 
+# A release directory legitimately holds several revisions, so the greatest `r<rev>' wins
+# rather than the first name a glob happens to return. Two architectures at that revision is
+# not a choice this script may make on its own.
+function app_artefact {
+  local f base rev best_rev=-1 candidates=() base_rev
+  shopt -s nullglob
+  for f in "$OUTDIR"/marionnet_*.tar.xz "$OUTDIR"/marionnet_*.tar.gz; do
+    base=$(basename -- "$f")
+    [[ $base =~ ^marionnet_.+-r([0-9]+)_[^_]+_glibc[^_]+\.tar\.(xz|gz)$ ]] || continue
+    rev="${BASH_REMATCH[1]}"
+    if ((rev > best_rev)); then best_rev=$rev; candidates=("$f"); elif ((rev == best_rev)); then
+      candidates+=("$f")
+    fi
+  done
+  shopt -u nullglob
+  ((${#candidates[@]})) || return 0
+  ((${#candidates[@]} == 1)) || die "several application tarballs at revision r$best_rev in $OUTDIR:
+name the one you want with --app-artefact. Found:
+$(printf '  %s\n' "${candidates[@]##*/}")"
+  echo "${candidates[0]}"
+}
+
 function read_identity {
-  BINARY_NAME=$(bash "$ROOT/Makefile.d/release.binary.sh" --print-name)
+  if test -n "$APP_ARTEFACT_GIVEN"; then
+    APP_ARTEFACT="$OUTDIR/$(basename -- "$APP_ARTEFACT_GIVEN")"
+    test -f "$APP_ARTEFACT" || die "no such artefact in $OUTDIR: ${APP_ARTEFACT_GIVEN##*/}"
+  else
+    APP_ARTEFACT=$(app_artefact)
+  fi
+  test -n "$APP_ARTEFACT" || die "no published application tarball in $OUTDIR.
+This script packages what was compiled on the floor, it does not compile (episode 20c):
+run \`make release-build-box' first, or point --output-dir at a release directory."
+  BINARY_NAME=$(basename -- "$APP_ARTEFACT"); BINARY_NAME="${BINARY_NAME%.tar.*}"
   [[ $BINARY_NAME =~ ^marionnet_(.+)-r([0-9]+)_([^_]+)_glibc(.+)$ ]] || \
-    die "cannot read the identity of this working copy from '$BINARY_NAME'"
+    die "cannot read the identity of the application from '$BINARY_NAME'"
   APP_UPSTREAM="${BASH_REMATCH[1]}"
   APP_REVISION="${BASH_REMATCH[2]}"
   APP_ARCH="${BASH_REMATCH[3]}"
@@ -209,6 +271,7 @@ SERIES=""
 OUTDIR=""
 FORCE=0
 KERNEL_NAME=""
+APP_ARTEFACT_GIVEN=""
 BUILD_IMAGE="rockylinux/rockylinux:10"
 RUN_RPMLINT=1
 KEEP_BUILD=0
@@ -221,6 +284,7 @@ while (($#)); do
     -s|--series)     SERIES="$2"; shift 2 ;;
     -f|--force)      FORCE=1; shift ;;
     --kernel)        KERNEL_NAME="$2"; shift 2 ;;
+    --app-artefact)  APP_ARTEFACT_GIVEN="$2"; shift 2 ;;
     --build-image)   BUILD_IMAGE="$2"; shift 2 ;;
     --no-rpmlint)    RUN_RPMLINT=0; shift ;;
     --keep-build)    KEEP_BUILD=1; shift ;;
@@ -240,12 +304,9 @@ done
 test -n "$SERIES" || SERIES=$(publication_series)
 test -n "$OUTDIR" || OUTDIR="$ROOT/website-repo/download/marionnet-install.sh/$SERIES"
 
-for cmd in docker tar sed awk du; do
+for cmd in docker tar xz sed awk du; do
   command -v "$cmd" >/dev/null || die "\`$cmd' not found"
 done
-
-read_identity
-RPM_ARCH=$(rpm_arch_of "$APP_ARCH")
 
 # ---
 # --- Which artefacts of the release directory the data packages are made of.
@@ -330,6 +391,11 @@ function compute_package_names {
 
 test -d "$OUTDIR" || die "no such release directory: $OUTDIR"
 OUTDIR=$(cd -- "$OUTDIR" && pwd)
+
+# Identity comes from the release directory, so it is read once the directory is known -- and
+# not, as before episode 20c, from this working copy.
+read_identity
+RPM_ARCH=$(rpm_arch_of "$APP_ARCH")
 compute_package_names
 
 if ((PRINT_NAMES)); then
@@ -548,12 +614,13 @@ function runtime_requires {  # prints the Requires: lines of the application
 # ---
 # --- 1. marionnet: the application.
 # ---
-# Assembled from the staging release.binary.sh produces, and not from a second description of
-# what an installation is: that script already knows the two things `dune install' does not do
-# (the scripts of bin/scripts/ go to bin/, the example scripts of the delivered documentation
-# get their executable bit back).
+# Assembled by unpacking the PUBLISHED tarball, and not from a second description of what an
+# installation is: release.binary.sh already put in it the two things `dune install' does not
+# do (the scripts of bin/scripts/ go to bin/, the example scripts of the delivered
+# documentation get their executable bit back), and since episode 20c it did so IN THE BUILD
+# BOX. Unpacked without `-m', like the data packages and for the same reason (invariant 1).
 #
-# What does NOT enter the package, of the four things that staging carries at its root:
+# What does NOT enter the package, of the four things that tarball carries at its root:
 # install.sh (dnf is the installer here), README (its INSTALL section describes install.sh),
 # REQUIRED-PACKAGES-RUNTIME (the list becomes Requires: above) and lib/marionnet (the
 # dune-package metadata of a library nobody links against from outside).
@@ -572,12 +639,11 @@ function package_app {
     return 0
   fi
 
-  info "staging the application (through release.binary.sh) ..."
-  bash "$ROOT/Makefile.d/release.binary.sh" --staging-dir "$staging" --no-tarball \
-       --output-dir "$OUTDIR" --series "$SERIES" >/dev/null || \
-    die "release.binary.sh could not stage this working copy (run it alone to see why)"
+  info "unpacking $(basename -- "$APP_ARTEFACT") ..."
+  unpack_artefact_into "$APP_ARTEFACT" "$staging"
   local prefix="$staging/$BINARY_NAME"
-  test -d "$prefix/bin" && test -d "$prefix/share" || die "no staging in $prefix"
+  test -d "$prefix/bin" && test -d "$prefix/share" || \
+    die "the artefact does not unpack into a directory called '$BINARY_NAME': $APP_ARTEFACT"
 
   tree="$work/SOURCES/tree"
   mkdir -p -- "$tree/usr" "$tree/etc/marionnet" "$work/SPECS"

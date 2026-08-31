@@ -519,8 +519,11 @@ release-apt:
 # so merging the two kernels looked free, until RHEL 10 turned out to carry no 32-bit multilib
 # at all, which made the merged package refused IN ITS ENTIRETY there -- and a package which
 # cannot be installed must not carry away one which can.
-# Assembled from the same staging and the same published artefacts as the Debian ones, so
-# that both channels deliver the same mtime. rpmbuild runs INSIDE a container of the target
+# Assembled from the PUBLISHED artefacts, the application included since episode 20c: this
+# target compiles nothing, so it needs `make release-build-box' to have run, and the .rpm and
+# the .tar.xz carry the same binary to the byte -- one built on the floor rather than on this
+# machine. Same mtime as the Debian channel, for the same reason (the tarball is unpacked, not
+# remade). rpmbuild runs INSIDE a container of the target
 # distribution (rockylinux:10 by default -- the OLDEST box we serve, since the generator
 # applies the conventions of the distribution it runs in; --build-image for another): on RPM the automatic
 # dependency generator is what dpkg-shlibdeps is to the other channel, so it has to be the

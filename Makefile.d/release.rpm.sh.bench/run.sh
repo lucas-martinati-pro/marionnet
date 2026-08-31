@@ -454,12 +454,54 @@ else
 fi
 
 # ---------------------------------------------------------------- 8. it runs
+# TWO QUESTIONS, AND THEY ARE NOT THE SAME ONE -- which is what this case had to be taught
+# (episode 20c, the third bench defect of the same family as episodes 19 and 20b). It used to
+# read `2>&1 | head -1' and look for the version there, so ANY line written on stderr before
+# the answer turned "the binary ran and said who it is" into "the binary does not run" -- a
+# FAIL announcing something the run disproves. Whether it runs is read in the whole output;
+# whether it starts CLEANLY is a case of its own, so that a warning is reported as a warning.
 info "8. the application itself"
-out=$(in_box 'marionnet.native --version 2>&1' | head -1)
+out=$(in_box 'marionnet.native --version 2>/dev/null')
+err=$(in_box 'marionnet.native --version 2>&1 >/dev/null')
 if echo "$out" | grep -qi 'marionnet version'; then
-  pass "the binary runs and says who it is: $out"
+  pass "the binary runs and says who it is: $(echo "$out" | head -1)"
 else
-  fail "the binary does not run: $out"
+  fail "the binary does not run: ${out:-nothing on stdout}${err:+ (stderr: $(echo "$err" | head -1))}"
+fi
+
+# Measured 2026-08-31 on the artefacts of episode 20: the binary compiled IN THE BUILD BOX
+# writes `GLib-GObject-CRITICAL: invalid cast from GtkSourceStyleSchemeManager to
+# GInitiallyUnowned' at startup, where the one compiled on the packager's machine writes
+# nothing -- same lablgtk3 (3.1.5), same libgtksourceview (3.24.11), same box to run in, and
+# the two revisions isolated (r918 host / r919 box) differ by a commit which touches no OCaml
+# at all. So the build box does not merely move the glibc floor: it changes what the binary
+# says. That is worth a case rather than a note, because a note is what nobody re-measures.
+if test -z "$err"; then
+  pass "the binary starts cleanly (nothing on stderr)"
+else
+  fail "the binary writes on stderr at startup: $(echo "$err" | grep -v '^$' | head -1)"
+fi
+
+# THE CONTRACT OF EPISODE 20c, and it is the one thing no other case can see: since this
+# channel compiles nothing, the binary it installs must be -- to the byte -- the one inside the
+# published tarball of the same revision. Read here rather than at packaging time, because what
+# matters is what LANDS on the machine, after rpm has copied, chowned and possibly post-
+# processed it. If the tarball of that revision is not in the release directory the case is
+# skipped: the package may legitimately predate episode 20c.
+app_rev=$(echo "$APP" | sed -n 's/^marionnet-[0-9~]*[^+]*+r\([0-9]\+\)-.*/\1/p')
+app_tar=$(cd "$OUTDIR" && ls marionnet_*-r"${app_rev:-none}"_*.tar.xz 2>/dev/null | head -1)
+if test -z "$app_tar"; then
+  skip "no published tarball at r${app_rev:-?} to compare the installed binary with"
+else
+  pm_install xz tar >/dev/null 2>&1
+  same=$(in_box "cd /tmp && rm -rf cmp && mkdir cmp && \
+                 xz -dc -T0 -- /rpms/$app_tar | tar -C cmp -xf - && \
+                 a=\$(sha256sum < /usr/bin/marionnet.native) && \
+                 b=\$(sha256sum < cmp/*/bin/marionnet.native) && \
+                 test \"\$a\" = \"\$b\" && echo same || echo \"\$a vs \$b\"")
+  test "$same" = "same" \
+    && pass "the installed binary is the published tarball's, to the byte ($app_tar)" \
+    || fail "the package does NOT carry the published binary of r$app_rev: $same"
 fi
 
 # bash-completion loads on demand, by looking for a file named after the command being typed

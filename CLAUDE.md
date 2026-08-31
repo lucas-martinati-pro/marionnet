@@ -622,8 +622,29 @@ Reprise : appliquer le skill `chantier-long`.
   commentaire le dit) puis `Architecture:`/`Depends:` de la **première** strophe — annonçant r920
   et le jugeant sur la contrainte de r913, donc **FAIL** là où le paquet venait de s'installer
   (corrigé par `indexed_field <paquet> <version> <champ>`). Banc `.deb` **7 → 33** sur Debian 12,
-  **132 verts / 0 rouge / 0 SKIP** sur les 4 boîtes. **Reste 20c** : le `.rpm` de même — sa boîte
-  de build est déjà un conteneur (ép. 19), son *staging* non.
+  **132 verts / 0 rouge / 0 SKIP** sur les 4 boîtes.
+  **Ép. 20c : le canal RPM ne compile plus rien** — et **pas** par la forme de 20b : côté Debian
+  une **seule** boîte compile et empaquette, côté RPM elles sont **deux** (compilateur
+  `debian:12`, `rpmbuild` `rockylinux:10`) et il n'y a pas de docker-dans-docker. Donc
+  `release.rpm.sh` **déplie le `marionnet_*.tar.xz` publié** (sans `-m`), comme il déplie déjà
+  les noyaux et l'image — *un paquet décrit ce que le répertoire de release contient*. **À ne pas
+  défaire** : (1) l'**identité** (version, rev, arch) se lit **dans le nom de l'artefact** et non
+  dans `release.binary.sh --print-name`, qui décrit l'**hôte** (mesuré : l'hôte disait
+  `r921_…glibc2.39`, le répertoire publie `r920_…glibc2.36`) ; (2) plusieurs révisions cohabitant
+  légitimement, la plus grande `r<rev>` gagne et **2 arch à cette révision font refuser**
+  (`--app-artefact` tranche, comme `--kernel`) ; (3) le prix est **dit** — `make release-rpm`
+  exige un tarball publié et nomme `make release-build-box`, là où il en fabriquait un en
+  silence. Mesuré : `GLIBC_2.38` (r918, compilé ici) → **`GLIBC_2.35`** (r920, boîte), binaire
+  **identique au tarball à l'octet**, paquet applicatif en **11 s**.
+  **Le banc a trouvé ce que 192 + 132 verts n'avaient pas vu**, 3ᵉ défaut de la famille « juger
+  par autre chose que ce qu'on mesure » (ép. 19, 20b) : le cas lisait `2>&1 | head -1`, donc
+  **toute** ligne sur stderr faisait dire « the binary does not run » d'un binaire qui venait
+  d'annoncer sa version. Séparé en 2 cas, dont un **rouge assumé** : **le binaire compilé dans
+  la boîte écrit un `GLib-GObject-CRITICAL` au démarrage
+  (`invalid cast from 'GtkSourceStyleSchemeManager'`) que celui compilé ici n'écrit pas** —
+  isolé (r918 muet / r919 bavard, aucun `.ml` entre les deux), mêmes versions des deux côtés,
+  cause **inconnue**, et sur **les 3 canaux** puisque le binaire est le même : **un épisode à
+  part**. Banc RPM 46 → **48 cas** (46 verts `fedora:42`, 48 verts `rockylinux:10`).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

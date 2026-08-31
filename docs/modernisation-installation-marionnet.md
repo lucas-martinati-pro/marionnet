@@ -2960,3 +2960,100 @@ mesurait.
 
 - **20c — le `.rpm` de même.** `release.rpm.sh` fait déjà tourner `rpmbuild` dans un conteneur de
   la distribution cible (épisode 19), mais son **staging** vient encore du binaire compilé ici.
+  *(Fait : § Épisode 20c ci-dessous.)*
+
+## Épisode 20c (2026-08-31) — le canal RPM ne compile plus rien
+
+### Le défaut, et pourquoi il survivait à l'épisode 19
+
+`release.rpm.sh` faisait tourner `rpmbuild` dans un conteneur de la distribution cible depuis
+l'épisode 19 — ce qui donnait les **métadonnées** de cette distribution — mais il obtenait son
+staging en appelant `release.binary.sh --staging-dir … --no-tarball` **sur la machine de
+l'auteur** (l. 576). Changer la boîte de `rpmbuild` corrigeait ce que le paquet *dit* ; cela ne
+pouvait pas corriger ce qu'il *contient*, puisque les octets n'y étaient pas faits. C'était le
+dernier endroit où le plancher d'un canal restait un accident de la machine de l'empaqueteur.
+
+Son symétrique côté identité était du même ordre : `read_identity` lisait
+`release.binary.sh --print-name`, donc l'arch et la **glibc de l'hôte**. Mesuré ce jour : l'hôte
+nommait `marionnet_trunk-r921_amd64_glibc2.39` là où le répertoire de release publiait
+`marionnet_trunk-r920_amd64_glibc2.36`.
+
+### La forme retenue : déplier le tarball publié, plutôt qu'un drapeau de plus
+
+L'épisode 20b a pu enchaîner dans la boîte parce que, du côté Debian, **une seule** boîte fait
+les deux gestes (compiler, empaqueter). Ici elles sont nécessairement **deux** — le compilateur
+dans `debian:12`, `rpmbuild` dans `rockylinux:10` — et il n'y a pas de docker-dans-docker. La
+réponse n'est donc pas un `--with-rpm` qui ferait voyager un staging entre deux conteneurs,
+mais la règle que ce script applique **déjà** à ses paquets de données : *un paquet décrit ce
+que le répertoire de release contient*. L'application est désormais **dépliée du
+`marionnet_*.tar.xz` publié**, sans `-m`, exactement comme les noyaux et l'image guignol.
+
+Trois conséquences, et la première est le propos :
+
+1. **Il n'y a plus rien à compiler ici**, donc empaqueter un binaire compilé sur la machine de
+   l'empaqueteur n'est **plus exprimable**. Le `.rpm` et le `.tar.xz` portent le même binaire
+   **à l'octet** (mesuré : `b4c6ff17…` des deux côtés).
+2. **L'identité se lit dans le nom de l'artefact** — version, révision, architecture — et non
+   plus dans celui que l'hôte se donnerait. Même règle que `kernel_version_of` et
+   `guignol_version_of`, et même règle que `marionnet-install.sh` pour choisir.
+3. **Le prix, dit franchement** : `make release-rpm` **exige** désormais un tarball publié et le
+   dit (`run make release-build-box first`), là où il en fabriquait un en silence.
+
+Un répertoire de release contient légitimement plusieurs révisions (piège de banc de
+l'épisode 18) : la plus grande `r<rev>` gagne, et **deux architectures à cette révision font
+refuser** plutôt que deviner — `--app-artefact` nomme alors celui qu'on veut, comme `--kernel`.
+
+### Ce que le banc a trouvé, et que 192 + 132 verts n'avaient pas vu
+
+Le premier rejeu a rendu un **FAIL** disant *« the binary does not run »* sur un binaire qui
+venait de dire son numéro de version. Le cas lisait `2>&1 | head -1` : **toute** ligne écrite
+sur stderr avant la réponse faisait classer un succès en échec. C'est le troisième défaut de
+cette famille (épisode 19 : un refus mal classé passait au vert ; épisode 20b : un succès
+classé rouge par une strophe lue au mauvais endroit) — un banc qui juge par autre chose que ce
+qu'il mesure. Corrigé en **séparant les deux questions** : *tourne-t-il* se lit dans toute la
+sortie, *démarre-t-il proprement* est un cas à lui.
+
+Et ce cas est **rouge**, sur ce qu'il a mis au jour :
+
+> **Le binaire compilé dans la boîte écrit un avertissement que celui compilé ici n'écrit pas.**
+> `GLib-GObject-CRITICAL **: invalid cast from 'GtkSourceStyleSchemeManager' to
+> 'GInitiallyUnowned'`, au démarrage, **sur toutes les boîtes** (fedora:42, debian:12,
+> debian:trixie-slim). Les variables sont isolées : **r918** (compilé ici) est muet, **r919**
+> (compilé dans la boîte) avertit, et le commit qui les sépare (`213bee5`, épisode 20) ne
+> touche **aucun `.ml`**. Même `lablgtk3` (3.1.5), même `lablgtk3-sourceview3` (3.1.5), même
+> `ocaml` (5.4.1), même `libgtksourceview-3.0` (3.24.11) des deux côtés. **La boîte de build ne
+> déplace donc pas seulement le plancher glibc : elle change ce que le binaire dit.** Cause non
+> établie ; l'application démarre et fonctionne. À traiter comme un épisode à part.
+
+Ni le banc binaire (192 verts) ni le banc `.deb` (132 verts) ne pouvaient le voir : aucun ne
+regarde stderr au démarrage.
+
+### Prouvé (2026-08-31)
+
+- **Le contrat, mesuré dans la boîte cible** : binaire du `.rpm` = binaire du tarball r920,
+  `sha256 b4c6ff17…` des deux côtés ; symbole glibc maximal référencé `GLIBC_2.35` ;
+  `root:root`, `mtime` conservé.
+- **Discriminance sur le paquet d'avant** : `marionnet-0~trunk+r918` exigeait `GLIBC_2.38`,
+  `marionnet-0~trunk+r920` exige `GLIBC_2.35` — c'est-à-dire la différence entre un paquet
+  refusé sous Rocky 9 / Leap 15.6 et un paquet qui y passerait.
+- **Coût** : le paquet applicatif se fait en **11 s** (dépliage + `rpmbuild`) au lieu d'une
+  compilation complète.
+- **Chemins d'erreur** : répertoire sans tarball applicatif → refus nommant
+  `make release-build-box` (rc 2) ; `--app-artefact` inconnu → refus (rc 2) ;
+  `--app-artefact marionnet_trunk-r915_…` → `marionnet-0~trunk+r915-1.x86_64.rpm`.
+- **Banc RPM** : 46 → **48 cas**. `fedora:42` = 46 verts + 1 rouge ; `rockylinux:10` = 48 verts
+  + 1 rouge — le rouge étant, des deux côtés, l'avertissement GLib ci-dessus. Cas neuf
+  *« the installed binary is the published tarball's, to the byte »* : vert, et **sauté**
+  lorsqu'aucun tarball ne correspond à la révision du paquet (un paquet peut légitimement
+  précéder l'épisode 20c).
+
+### Restes
+
+- **Le `GLib-GObject-CRITICAL` de la boîte de build** — mesuré, isolé, cause inconnue.
+  Il concerne **tous** les canaux (le tarball, le `.deb` et le `.rpm` portent le même binaire),
+  donc c'est un épisode à part et non un reste de 20c.
+- **La discriminance du cas d'identité binaire ne se joue pas sur l'existant** : aucune
+  révision ne possède à la fois un `.rpm` d'avant 20c et un tarball publié, si bien que le cas
+  neuf *saute* sur les paquets antérieurs au lieu de rougir. Le rougir demanderait de publier un
+  tarball à la révision courante, donc une compilation — mesure reportée au prochain
+  `make release-build-box`.
