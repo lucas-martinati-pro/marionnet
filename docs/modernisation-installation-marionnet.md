@@ -549,6 +549,32 @@ clôture des enfants.
    `useful-scripts/` (archivage explicite des strates historiques)~~ **fait le 2026-08-23**
    (épisode 2, § 2.5) ; clôture.
 
+## 5 bis. Feuille de route révisée (2026-08-31) — elle prime sur l'ordre du § 5
+
+L'ordre de 2026-07-19 supposait que l'étape 1 (le serveur) vienne d'abord. Elle est
+**bloquée par l'extérieur** depuis, et les épisodes 3 à 10 ont montré qu'on pouvait tout
+mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu'à (5)** :
+
+1. **Finir le local** — les deux restes de la consommation : la **complétion bash** (§ 2.4
+   ter) et le **repli `curl`** (reste de l'ép. 6). C'est l'épisode 11, ci-dessous.
+2. **Les quatre boîtes** — `marionnet-install.sh` (binaire + images + noyaux) éprouvé sur
+   **Debian 12, Debian 13, Ubuntu 24.04, Ubuntu 26.04**. Aujourd'hui les deux bancs ne
+   connaissent qu'une `debian:trixie-slim` ; ce qui change d'une distribution à l'autre,
+   c'est la **glibc** (donc le choix de l'artefact, lu dans son nom), les **noms de
+   paquets**, et le répertoire où `bash-completion` regarde.
+3. **Combien de `.deb`** — le découpage de l'application en paquets. Une décision est déjà
+   posée au § 6 (« app + noyaux + petites images en `.deb`, grosses images à part ») ; elle
+   est à **rejuger** avec ce que les épisodes 9 et 10 ont appris (l'application est déjà un
+   artefact relocatable, et sa liste de dépendances est déjà une donnée générée).
+4. **Les `.deb` sur les quatre boîtes**.
+5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
+   (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
+   de l'étape 1 du § 5.
+6. **Rejeu de (2) et (4) contre le vrai serveur** — la jambe https comprise.
+
+La **doc INSTALL** (point 5 du § 5) devient le **tout dernier** épisode du chantier : elle
+devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant eux.
+
 ## 6. Décisions sur les questions ouvertes (grill du 2026-07-19)
 
 - **Relocatabilité du binaire — RÉGLÉ (factuel)** : `bin/configuration.ml` +
@@ -1446,3 +1472,86 @@ silence à la place de l'utilisateur — c'est ce que le cas (e bis) du banc ré
   d'une installation **par les sources** (`REQUIRED_PACKAGES_BUILD`, opam), et le cas
   non-Debian, où `install.sh` se contente d'afficher les noms Debian « ou leur équivalent
   local ».
+
+## Épisode 11 (2026-08-31) — les deux derniers restes locaux de la consommation
+
+Étape (1) de la feuille de route du § 5 bis. Deux choses que le chantier traînait depuis
+l'épisode 6, sans rapport l'une avec l'autre sinon qu'elles se jouent **sans serveur** :
+la complétion bash n'était installée nulle part, et l'installeur **exigeait `wget`**.
+
+### 11a — la complétion bash trouve sa place, et c'est douze fichiers
+
+`bin/dune` portait, depuis le chantier `move-and-rename-useful-scripts-to-bin-scripts`, un
+commentaire disant que `scripts/marionnet-completion.bash` n'était **délibérément pas**
+installée et que choisir sa destination revenait à ce chantier-ci. C'est fait.
+
+**Où** : `$(PREFIX)/share/bash-completion/completions/`, donc une **seconde stanza
+`install`** en section `share_root` (la section `share` est `$(PREFIX)/share/marionnet/`,
+et ce répertoire-là n'appartient pas à Marionnet). Pas `/etc/bash_completion.d/` : c'est le
+mécanisme *legacy*, tout y est sourcé par **chaque** shell, et il est cloué à `/etc` — donc
+il ne suivrait pas un préfixe relogé, ce qui est exactement ce que le tarball de l'ép. 9a a
+rendu possible.
+
+**Combien** : **douze**, et la répétition est le fond de l'affaire, pas une maladresse.
+`bash-completion` charge **à la demande**, en cherchant un fichier *portant le nom de la
+commande tapée*. Les trois `complete -F` du pied de `marionnet-completion.bash` couvrent
+douze noms (`marionnet-ctl.sh`, `marionnet-ctl`, `mrnctl`, `mrn-control`,
+`marionnet-check.sh`, `marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh`,
+`marionnet-verify.sh`, `marionnet-verify`, `mrn-verify`) : installé sous un seul, il
+complèterait `marionnet-ctl` et laisserait tous les autres **muets** tant que le premier
+n'aurait pas été tapé dans le même shell. Douze destinations pour une source unique
+(`(… as bash-completion/completions/<nom>)`) : déclaratif, sans logique, et valable pour
+**tous** les canaux — `dune install`, le tarball, le futur `.deb` — au lieu d'une étape de
+liens que chacun aurait à refaire. Coût : ~180 Kio.
+
+**Ce qui aurait pu casser et ne casse pas** : la complétion cherche le client *à côté
+d'elle-même*, et elle quitte `bin/scripts/`. `_mrn_ctl_program` a **trois** branches —
+`$MARIONNET_CTL`, à côté de soi, puis le **PATH** ; c'est la troisième qui sert une fois
+installé (les clients sont dans `$(PREFIX)/bin/`), la deuxième restant ce qui fait marcher
+la complétion **depuis l'arbre source, sans rien installer**.
+
+**Prouvé** : banc `Makefile.d/release.binary.sh.bench/` **39 → 42 cas**, tous verts sur le
+tarball `r909` ; **3 rouges** sur le `r908` (l'artefact d'avant). Le cas qui compte est le
+deuxième : *sourcer* `…/completions/mrnctl` doit armer `complete` **pour `mrnctl`**, pas
+seulement pour `marionnet-ctl`. Le troisième a dû être corrigé pour valoir quelque chose :
+`find` sur un répertoire absent n'écrit **rien** sur stdout, donc le cas « les fichiers
+appartiennent à root:root » passait au vert sur une installation qui n'en posait aucun.
+
+### 11b — le repli `curl`, et pourquoi `-f` n'est pas une commodité
+
+Toute la surface HTTP de `useful-scripts/marionnet-install.sh` tient en **quatre** appels,
+qui se réduisent à **deux verbes** : un **corps** (`catalog_list`, `artifact_stream`,
+`sums_read`) et un jeu d'**en-têtes** (`artifact_size`). D'où `http_body` / `http_headers`,
+et un `FETCHER` choisi **une fois** quand la source s'avère être une URL. `wget` reste
+**premier** : c'est avec lui que tout a été mesuré jusqu'ici.
+
+**`-f` est ce qui rend le repli équivalent, pas ce qui le rend agréable.** Sans lui, `curl`
+sort **0** sur un 404 et écrit la page d'erreur du serveur sur stdout. `sums_read` y
+survivrait — il **compte** les lignes qu'il reconnaît, garde posée à l'ép. 8 précisément
+parce qu'un « 200 avec un corps HTML » existe — mais `artifact_stream` déverserait cette
+page dans un tarball, et il ne resterait plus que le digest entre elle et le disque.
+`wget -q -O -` échoue de lui-même sur un 404.
+
+**Et pas de `-S`**, par la raison symétrique : `wget -q` ne dit **rien** quand il échoue, et
+**l'un** de ces fetchs est censé échouer sur une release bien formée d'avant l'ép. 8 — le
+`SHA256SUMS` absent, dont le script se remet en retombant sur le listing. Avec `-S`, `curl`
+écrivait `curl: (22) … 404` au milieu d'un run qui se passait parfaitement (mesuré au banc).
+Le silence ne perd rien : chaque appelant lit le **code de retour**, et le message que
+l'utilisateur reçoit est celui du script.
+
+**Prouvé** : banc `useful-scripts/marionnet-install.sh.bench/` **53 → 63 cas**, tous verts ;
+**6 rouges** sur le script d'avant l'épisode. La deuxième image cliente
+(`Dockerfile.client.curl`) porte `curl` **et pas** `wget` — une image portant les deux ne
+prouverait rien, `wget` étant choisi en premier — et la boîte « ni l'un ni l'autre » est un
+`debian:trixie-slim` **brut**, qui vérifie que la garde nomme bien **les deux**. Les deux
+cas de fond : le **403** de `kernels_linux-locked.tar.xz` doit arrêter le run *et* ne rien
+laisser sous ce nom (le `-f`), et aucune ligne `curl:` ne doit subsister dans la sortie d'un
+run nominal (l'absence de `-S`).
+
+### Restes
+
+- Inchangés, et toujours **bloqués par l'extérieur** : le dépôt sur le serveur (§ 5 bis,
+  point 5), la jambe **https**, la **signature** des artefacts.
+- Le banc ne connaît toujours qu'une seule distribution : c'est le point (2) de la feuille
+  de route, l'épisode suivant.
+

@@ -7,8 +7,12 @@ sont exactement ce qu'est un serveur de release :
 
 | Fonction | Branche `dir` (prouvée ép. 6) | Branche `url` (ce banc) |
 |---|---|---|
-| `catalog_list`   | `ls -1` | `wget` du répertoire, puis les noms lus dans les `href="…"` — **repli** depuis l'ép. 8 |
-| `artifact_stream`| `cat`   | `wget -q -O -` |
+| `catalog_list`   | `ls -1` | `http_body` du répertoire, puis les noms lus dans les `href="…"` — **repli** depuis l'ép. 8 |
+| `artifact_stream`| `cat`   | `http_body` de l'artefact |
+
+Depuis l'**épisode 11b**, la branche `url` ne nomme plus de téléchargeur : elle passe par
+`http_body` / `http_headers`, qui sont **`wget` ou `curl`** selon ce que porte la machine
+(`wget` d'abord, parce que c'est avec lui que tout ce banc a été mesuré).
 
 `www.marionnet.org` étant en panne, ce banc **dresse le serveur** au lieu de l'attendre :
 un Apache dans un conteneur, un répertoire de release synthétique, et le script lancé
@@ -40,7 +44,7 @@ useful-scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
 une ligne `PASS:`/`FAIL:` par cas, un décompte à la fin, et le banc nettoie derrière lui
-(deux conteneurs, un réseau, six volumes, un répertoire temporaire). Il **saute** (77) sans
+(deux conteneurs, un réseau, **sept** volumes, un répertoire temporaire). Il **saute** (77) sans
 Docker, sans démon Docker, ou si les images ne peuvent pas être construites.
 
 Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian:trixie-slim`).
@@ -63,6 +67,11 @@ Coût : quelques secondes après le premier run (qui tire `httpd:2.4` et `debian
 Le client est un `debian:trixie-slim` nu portant **seulement** `wget`, `tar`, `xz-utils` :
 ce dont le script a besoin est ainsi **mesuré** au lieu d'être supposé — c'est la même
 liste que devront porter le `.deb`, le RPM et l'image Docker.
+
+**Depuis l'épisode 11b il y en a un second** (`Dockerfile.client.curl`), identique à une
+différence près : `curl` **à la place de** `wget`. Une image portant les deux ne prouverait
+rien, le script choisissant `wget` en premier. Et la boîte « ni l'un ni l'autre » n'est
+qu'un `debian:trixie-slim` brut, sans rien d'ajouté.
 
 ## Les artefacts sont synthétiques (et pourquoi)
 
@@ -164,6 +173,29 @@ mauvaise raison) —, elle garde le champ à 64 chiffres hexadécimaux (un 65ᵉ
 la ligne illisible, et un digest non lu ne vérifie rien), et chaque cas de vérification
 part d'un **préfixe vide** : un cas qui trouve l'artefact déjà posé ne mesure que
 l'idempotence.
+
+## Section 8 : la même chose avec `curl` (épisode 11b)
+
+Dix cas, joués sur la seconde image. Toute la surface HTTP du script tient en **deux
+verbes** — un **corps** (le catalogue, le listing quand il n'y en a pas, un artefact) et un
+jeu d'**en-têtes** (la taille) —, et les cas les exercent tous les deux, sur les *mêmes*
+répertoires servis que les sections précédentes : une différence entre les deux
+téléchargeurs se voit alors dans le **résultat**, pas seulement dans la ligne de commande.
+Six d'entre eux virent au rouge sur le script d'avant l'épisode (mesuré : `57 PASS / 6
+FAIL`), les quatre autres passant faute d'être atteints — le run mourait avant, sur
+`wget is required to fetch from…`.
+
+Deux cas portent le vrai contenu de l'épisode :
+
+- **le `-f`** : `kernels_linux-locked.tar.xz` est listé et répondu **403**. Sans `-f`,
+  `curl` sort **0** et livre la page d'erreur à l'extracteur ; il ne resterait plus que le
+  digest entre une page HTML et le disque. Le cas exige l'échec **et** l'absence de tout
+  fichier posé sous ce nom.
+- **l'absence de `-S`**, son symétrique : le `SHA256SUMS` manquant d'un répertoire publié
+  avant l'épisode 8 est une condition **gérée** (on retombe sur le listing), pas un
+  incident. `wget -q` n'en dit rien ; avec `-S`, `curl` écrivait `curl: (22) … 404` au
+  milieu d'un run qui se passait bien (mesuré). Un cas vérifie qu'aucune ligne `curl:` ne
+  subsiste dans la sortie.
 
 ## Restes ouverts que ce banc éclaire
 

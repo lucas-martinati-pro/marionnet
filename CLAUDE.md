@@ -340,6 +340,24 @@ Reprise : appliquer le skill `chantier-long`.
   rendrait fatale une étape qui ne l'est pas — et le relais de `marionnet-install.sh` a
   **trois** états, le défaut ne transmettant rien. Bancs : 27 → **39** cas (3ᵉ boîte
   `trixie-slim` nue, 4ᵉ avec réseau ; discriminance 10) et 50 → **53** cas.
+  **Ép. 11 : les deux derniers restes locaux de la consommation.** *11a* — la complétion
+  bash est enfin installée, et c'est **douze fichiers** dans
+  `$(PREFIX)/share/bash-completion/completions/` (section dune `share_root`) : bash-completion
+  charge **à la demande**, en cherchant un fichier *portant le nom de la commande tapée*,
+  donc une installation sous un seul nom laisserait `mrnctl`, `mrn2sh`, `mrn-verify`… muets.
+  Rien ne casse en quittant `bin/scripts/` parce que `_mrn_ctl_program` retombe sur le
+  **PATH**. *11b* — l'installeur ne nomme plus de téléchargeur : `http_body` /
+  `http_headers` sont **`wget` ou `curl`** (`wget` d'abord). **À ne pas défaire** : le `-f`
+  de curl n'est pas une commodité (sans lui, curl sort **0** sur un 404 et `artifact_stream`
+  déverserait la page d'erreur dans un tarball), et l'absence de `-S` non plus (le
+  `SHA256SUMS` manquant d'une release d'avant l'ép. 8 est une condition **gérée** : `wget -q`
+  n'en dit rien, curl ne doit pas en dire plus). Bancs : 39 → **42** cas (3 rouges sur
+  l'artefact d'avant) et 53 → **63** (6 rouges ; 2ᵉ image cliente `curl` **sans** wget, plus
+  une boîte nue qui vérifie que la garde nomme les deux).
+  **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
+  ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 → (3) le découpage en `.deb`
+  → (4) les `.deb` sur les 4 boîtes → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2) et
+  (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

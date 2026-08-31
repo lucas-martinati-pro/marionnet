@@ -158,6 +158,9 @@ WITH_CONFIG=yes
 # missing packages, install none. This script only forwards a DEPARTURE from that.
 WITH_DEPS=ask
 SOURCE=""
+# wget or curl, decided once the source turns out to be a URL; empty for a local mirror,
+# which needs neither (`set -u' would trip on the http_* functions otherwise).
+FETCHER=""
 SERIES="$DEFAULT_SERIES"
 PREFIX="/usr/local"
 LIST_ONLY=no
@@ -217,7 +220,13 @@ SOURCE="${SOURCE%/}"
 
 if [[ $SOURCE == *"://"* ]]; then
   SOURCE_KIND=url
-  command -v wget >/dev/null || die "wget is required to fetch from $SOURCE"
+  # One of the two, chosen once: a minimal Debian carries wget, a minimal Fedora or a
+  # slim container often carries only curl, and neither is Essential. wget stays FIRST
+  # because it is what every measurement of this script has been made with.
+  if   command -v wget >/dev/null; then FETCHER=wget
+  elif command -v curl >/dev/null; then FETCHER=curl
+  else die "wget or curl is required to fetch from $SOURCE"
+  fi
 else
   SOURCE_KIND=dir
   [[ -d $SOURCE ]] || die "no such directory: $SOURCE (a --from without \`://' is a local mirror)"
@@ -225,6 +234,40 @@ else
 fi
 
 MARIONNET_DIR="$PREFIX/share/marionnet"
+
+# ---
+# --- HTTP, in two verbs, so that the four functions below never name a downloader.
+# ---
+# THE `-f' OF curl IS NOT A COMFORT OPTION. Without it curl exits 0 on a 404 and writes the
+# server's error page on stdout: `sums_read' would survive it (it COUNTS the lines it
+# recognises, the guard put in at episode 8, precisely because a 200-with-an-HTML-body is a
+# thing servers do), but `artifact_stream' would pour that page into a tarball, and the only
+# thing standing between it and the disk would be the digest. `wget -q -O -' fails on a 404
+# by itself; `-f' is what makes curl the same tool.
+#
+# And no `-S' either, for the symmetrical reason: `wget -q' says nothing when it fails, and
+# ONE of these fetches is expected to fail on a well-formed release published before episode
+# 8 -- the SHA256SUMS which is not there, whose absence the script handles by falling back to
+# the listing. With -S, curl printed `curl: (22) ... 404' in the middle of a run which was
+# going perfectly well (measured). Silence is not a loss here: every caller reads the exit
+# status, and the message the user gets is the script's own.
+#
+# The headers are read the same way in both cases: the LAST Content-Length, one set of
+# headers being printed per redirection hop and only the last describing the body.
+
+function http_body {   # $1 = url
+  case "$FETCHER" in
+    wget) wget -q -O - -- "$1" ;;
+    curl) curl -fsL -- "$1" ;;
+  esac
+}
+
+function http_headers {   # $1 = url -- headers on stdout, short timeout, no body
+  case "$FETCHER" in
+    wget) wget --spider -S -T 10 -t 2 -- "$1" 2>&1 ;;
+    curl) curl -fsSIL --max-time 10 --retry 1 -- "$1" 2>/dev/null ;;
+  esac
+}
 
 # ---
 # --- The two functions -- and the only two -- which know where the artefacts come from.
@@ -237,7 +280,7 @@ function catalog_list {
   local html
   case "$SOURCE_KIND" in
     dir) ls -1 -- "$SOURCE" ;;
-    url) html=$(wget -q -O - -- "$SOURCE/") || return 1
+    url) html=$(http_body "$SOURCE/") || return 1
          # The listing is Apache's, as it has always been: `href="..."'. This is the
          # FALLBACK now: a release directory which publishes SHA256SUMS never gets here.
          printf '%s\n' "$html" \
@@ -251,24 +294,23 @@ function artifact_stream {
   local file="$1"
   case "$SOURCE_KIND" in
     dir) cat -- "$SOURCE/$file" ;;
-    url) wget -q -O - -- "$SOURCE/$file" ;;
+    url) http_body "$SOURCE/$file" ;;
   esac
 }
 
 # Size in bytes, or nothing when the source cannot tell without downloading.
 #
-# Over HTTP the size is what a HEAD says: `wget --spider -S' prints the response headers on
-# stderr, and Content-Length is read off the LAST of them -- a redirection prints one set of
-# headers per hop, and only the last describes the body. A server which will not answer a
-# HEAD, or which announces a chunked or compressed body, says nothing: an unknown size is
-# then SHOWN as unknown (`human' prints `?'), never as zero. The short timeout is there
-# because this runs once per artefact, before anything is transferred: a slow server must
-# cost a moment, not a hang.
+# Over HTTP the size is what a HEAD says (see http_headers above), and Content-Length is
+# read off the LAST set of headers. A server which will not answer a HEAD, or which
+# announces a chunked or compressed body, says nothing: an unknown size is then SHOWN as
+# unknown (`human' prints `?'), never as zero. The short timeout is there because this runs
+# once per artefact, before anything is transferred: a slow server must cost a moment, not
+# a hang.
 function artifact_size {
   local file="$1" headers=""
   case "$SOURCE_KIND" in
     dir) stat -c %s -- "$SOURCE/$file" 2>/dev/null || true ;;
-    url) headers=$(wget --spider -S -T 10 -t 2 -- "$SOURCE/$file" 2>&1) || return 0
+    url) headers=$(http_headers "$SOURCE/$file") || return 0
          printf '%s\n' "$headers" \
          | grep -i '^ *Content-Length:' | tail -n 1 \
          | sed -e 's/.*: *//' -e 's/[^0-9]//g' | grep -E '^[0-9]+$' || true ;;
@@ -289,7 +331,7 @@ function sums_read {
   case "$SOURCE_KIND" in
     dir) [[ -f $SOURCE/SHA256SUMS ]] || return 1
          text=$(cat -- "$SOURCE/SHA256SUMS") || return 1 ;;
-    url) text=$(wget -q -O - -- "$SOURCE/SHA256SUMS") || return 1 ;;
+    url) text=$(http_body "$SOURCE/SHA256SUMS") || return 1 ;;
   esac
   while read -r hex name; do
     [[ $hex =~ ^[0-9a-fA-F]{64}$ ]] || continue

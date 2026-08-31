@@ -222,6 +222,39 @@ else
   fail "installed files not owned by root:root: [$foreign]"
 fi
 
+# --- The Bash completion of the channel clients (episode 11a). It is NOT in bin/: it is
+# --- sourced, not run, and bash-completion loads it ON DEMAND -- by looking for a file
+# --- CALLED like the command being typed. Hence one file per name, which is what these
+# --- three cases measure: the twelve names, the fact that sourcing one really arms the
+# --- completion OF THAT NAME, and that they are root-owned like everything else.
+COMPL=/usr/local/share/bash-completion/completions
+missing=""
+for n in marionnet-ctl.sh marionnet-ctl mrnctl mrn-control \
+         marionnet-check.sh marionnet-check mrn-check mrnck mrn2sh \
+         marionnet-verify.sh marionnet-verify mrn-verify; do
+  in_box "test -s $COMPL/$n" || missing="$missing $n"
+done
+if [[ -z $missing ]]; then
+  pass "the Bash completion is installed under the 12 names the clients answer to"
+else
+  fail "missing in $COMPL:$missing"
+fi
+
+# Sourcing mrnctl must arm `mrnctl' itself -- not only marionnet-ctl. A single installed
+# file would pass the previous case for one name and fail this one for the eleven others.
+if in_box ". $COMPL/mrnctl && complete -p mrnctl >/dev/null 2>&1 && complete -p mrn2sh >/dev/null 2>&1"; then
+  pass "sourcing one of them arms the completion of that very name (and of its siblings)"
+else
+  fail "sourcing $COMPL/mrnctl did not arm the completion: [$(in_box ". $COMPL/mrnctl; complete -p mrnctl 2>&1" || true)]"
+fi
+
+foreign=$(in_box "test -d $COMPL || echo NO-SUCH-DIRECTORY; find $COMPL ! -user root -o ! -group root 2>/dev/null | head -n 5" || true)
+if [[ -z $foreign ]]; then
+  pass "the completion files belong to root:root too"
+else
+  fail "completion files not owned by root:root: [$foreign]"
+fi
+
 # ---------------------------------------------------------------- 5. /etc/marionnet/marionnet.conf
 
 CONF=/etc/marionnet/marionnet.conf

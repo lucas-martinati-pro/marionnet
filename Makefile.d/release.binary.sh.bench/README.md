@@ -1,8 +1,9 @@
 # Banc de `Makefile.d/release.binary.sh` — la moitié qui **reçoit**
 
-> Étendu à l'**épisode 10** (les dépendances apt de la machine cible) : voir la dernière
-> puce de « Ce qu'il mesure ». **39 cas** au total, dont **10** virent au rouge sur un
-> artefact d'avant l'épisode 10 (discriminance mesurée).
+> Étendu à l'**épisode 10** (les dépendances apt de la machine cible) puis à l'**épisode
+> 11a** (la complétion bash) : voir les deux dernières puces de « Ce qu'il mesure ».
+> **42 cas** au total, dont **10** virent au rouge sur un artefact d'avant l'épisode 10 et
+> **3** sur un artefact d'avant l'épisode 11a (discriminance mesurée).
 
 L'épisode 9a du chantier `modernisation-installation-marionnet` fabrique le tarball
 binaire ; il ne pouvait pas jouer les deux gestes qui en font une **installation**, parce
@@ -44,6 +45,12 @@ dans un conteneur jeté ensuite.
   `--with-deps` avec réseau installe, fait démarrer le binaire et pose la règle sudoers
   dans la foulée (seul cas de ce banc qui ait besoin de l'extérieur : sauté à voix haute
   s'il n'y a pas de réseau).
+- la **complétion bash** des clients du canal (épisode 11a) : les **12 noms** sont posés
+  dans `<prefix>/share/bash-completion/completions/`, `root:root` comme le reste, et
+  **sourcer l'un d'eux arme réellement `complete` pour ce nom-là**. Ce dernier cas est
+  celui qui compte : `bash-completion` charge **à la demande**, en cherchant un fichier
+  *portant le nom de la commande tapée*, donc une installation sous un seul nom
+  compléterait `marionnet-ctl` et laisserait `mrnctl`, `mrn2sh`, `mrn-verify`… muets.
 
 ## Ce qu'il ne mesure pas
 

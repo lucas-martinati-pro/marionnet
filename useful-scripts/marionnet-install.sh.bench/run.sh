@@ -21,8 +21,12 @@
 # Episode 6 proved the script on a local mirror; that run exercises everything EXCEPT the
 # two lines which differ, and those two lines are the whole point of a release server:
 #
-#   catalog_list  -- url branch: wget the directory, read the names off `href="..."'
-#   artifact_stream -- url branch: wget -O -
+#   catalog_list  -- url branch: fetch the directory, read the names off `href="..."'
+#   artifact_stream -- url branch: fetch the artefact and write it on stdout
+#
+# Since episode 11b neither of them names a downloader: they go through http_body /
+# http_headers, which are wget OR curl. Hence a second client image, carrying curl and no
+# wget, and a section which replays the whole HTTP surface on it (section 8).
 #
 # Episode 8 added a third thing to measure, and it is the one which makes the other two
 # sturdy: a release directory publishes SHA256SUMS, which is BOTH the catalogue and the
@@ -55,6 +59,7 @@ SCRIPT="${1:-$HERE/../marionnet-install.sh}"
 NET=mrn-install-bench-net
 IMG_SERVER=mrn-install-bench-httpd
 IMG_CLIENT=mrn-install-bench-client
+IMG_CLIENT_CURL=mrn-install-bench-client-curl
 SRV=mrn-install-bench-server
 SRV_NOINDEX=mrn-install-bench-server-noindex
 
@@ -84,6 +89,10 @@ docker build -q -t "$IMG_SERVER" -f "$HERE/Dockerfile.server" "$HERE" >/dev/null
   || skip_all "cannot build the server image (no network to the registry?)"
 docker build -q -t "$IMG_CLIENT" -f "$HERE/Dockerfile.client" "$HERE" >/dev/null \
   || skip_all "cannot build the client image (no network to the registry?)"
+# The same image with curl in place of wget: the fallback of episode 11b is measured on a
+# machine which really has no wget, not on one where wget is merely not called.
+docker build -q -t "$IMG_CLIENT_CURL" -f "$HERE/Dockerfile.client.curl" "$HERE" >/dev/null \
+  || skip_all "cannot build the curl client image (no network to the registry?)"
 
 # ---
 # --- A synthetic release directory, shaped like the real one.
@@ -347,7 +356,8 @@ VOL3=mrn-install-bench-prefix-corrupt
 VOL4=mrn-install-bench-prefix-binary
 VOL5=mrn-install-bench-prefix-binary-corrupt
 VOL6=mrn-install-bench-prefix-both
-for v in "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6"; do
+VOL7=mrn-install-bench-prefix-curl
+for v in "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6" "$VOL7"; do
   docker volume rm "$v" >/dev/null 2>&1 || true
   docker volume create "$v" >/dev/null
 done
@@ -361,7 +371,20 @@ function in_vol {
   local vol="$1"; shift
   docker run --rm -v "$vol:/opt/mrn" "$IMG_CLIENT" bash -c "$1" 2>&1
 }
-trap 'cleanup; docker volume rm "$VOL" "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6" \
+
+# The same two runners, on the image which has curl and no wget (episode 11b).
+function client_curl {
+  docker run --rm --network "$NET" \
+    -v "$SCRIPT:/marionnet-install.sh:ro" \
+    "$IMG_CLIENT_CURL" bash /marionnet-install.sh "$@" 2>&1
+}
+function client_curl_in {
+  local vol="$1"; shift
+  docker run --rm --network "$NET" \
+    -v "$SCRIPT:/marionnet-install.sh:ro" -v "$vol:/opt/mrn" \
+    "$IMG_CLIENT_CURL" bash /marionnet-install.sh --prefix /opt/mrn "$@" 2>&1
+}
+trap 'cleanup; docker volume rm "$VOL" "$VOL2" "$VOL3" "$VOL4" "$VOL5" "$VOL6" "$VOL7" \
         >/dev/null 2>&1 || true' EXIT
 
 echo
@@ -784,6 +807,112 @@ in_vol "$VOL6" 'test -x /opt/mrn/bin/marionnet.native \
   >/dev/null 2>&1 \
   && pass "one run left both the application and the image it needs" \
   || fail "the combined run did not leave both"
+
+echo
+echo "# --- 8. the same paths on a machine which has curl and no wget (episode 11b)"
+
+# The whole HTTP surface of the script is four calls, and they reduce to two verbs: a BODY
+# (the catalogue, the listing when there is none, an artefact) and a set of HEADERS (the
+# size). The cases below exercise both through curl, on the same served directories as
+# above, so that a difference between the two downloaders shows up as a difference in the
+# RESULT and not merely in the command line.
+
+# (a) The image really is what it claims to be. Without this, everything below could be
+# measuring wget one more time.
+if docker run --rm "$IMG_CLIENT_CURL" bash -c 'command -v curl >/dev/null && ! command -v wget >/dev/null'; then
+  pass "the second client image has curl and no wget"
+else
+  fail "the curl client image is not what it claims: it still has wget, or has no curl"
+fi
+
+# (b) SHA256SUMS as the catalogue: a BODY fetched by curl.
+out=$(client_curl --fetch-only --from "$BASE/with-sums" --list) || out="EXIT $?
+$out"
+if printf '%s\n' "$out" | grep -qE "^filesystems_machine-guignol-18474 +\.tar\.xz .* yes " \
+   && printf '%s\n' "$out" | grep -qE "^kernels_linux-6\.12\.95 +\.tar\.xz .* yes "; then
+  pass "curl reads the catalogue: SHA256SUMS names the artefacts, and their digests"
+else
+  fail "curl could not read the catalogue"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# (c) The FALLBACK path, which is a different body and a different parse: no SHA256SUMS, so
+# the names come out of Apache's listing.
+out=$(client_curl --fetch-only --from "$BASE/1.0.x" --list) || out="EXIT $?
+$out"
+if printf '%s\n' "$out" | grep -q "publishes no SHA256SUMS" \
+   && printf '%s\n' "$out" | grep -qE "^filesystems_machine-guignol-18474 +\.tar\.xz "; then
+  pass "curl reads the LISTING too, when the directory publishes no SHA256SUMS"
+else
+  fail "curl could not read the Apache listing"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+# ...and it does so SILENTLY. The SHA256SUMS which is not there is a handled condition, not
+# an incident: `wget -q' says nothing about it, and curl must not either (with -S it printed
+# `curl: (22) ... 404' in the middle of a run which was going perfectly well).
+if ! printf '%s\n' "$out" | grep -qi "^curl:"; then
+  pass "and the 404 on the absent SHA256SUMS leaves no downloader message in the run"
+else
+  fail "curl printed its own error on a condition the script handles"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# (d) HEADERS: a size announced, and one which cannot be. `curl -I' has to behave like
+# `wget --spider -S' here, down to the lower-bound wording.
+out=$(client_curl --fetch-only --from "$BASE/one-size-unknown" --dry-run --yes) || true
+if printf '%s\n' "$out" | grep -qE "at least [0-9]+(B|KiB|MiB|GiB) to transfer \(1 of unknown size\)"; then
+  pass "curl asks for the headers: sizes known, and the unknown one announced as such"
+else
+  fail "the sizes read through curl do not match what wget gives"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# (e) A real transfer, verified against the published digest -- the body which matters.
+out=$(client_curl_in "$VOL7" --fetch-only --from "$BASE/with-sums" --yes) && rc=0 || rc=$?
+if (( rc == 0 )); then
+  pass "curl fetches for real, and the digests check out (rc=0)"
+else
+  fail "the fetch through curl failed: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+if docker run --rm -v "$VOL7:/opt/mrn" "$IMG_CLIENT_CURL" bash -c \
+     'test -e /opt/mrn/share/marionnet/filesystems/machine-guignol-18474 \
+      && test -x /opt/mrn/share/marionnet/kernels/linux-6.12.95' >/dev/null 2>&1; then
+  pass "and the artefacts landed where Marionnet looks for them"
+else
+  fail "the curl fetch left nothing usable under the prefix"
+fi
+
+# (f) THE TRAP THIS EPISODE IS ABOUT. kernels_linux-locked.tar.xz is listed and answered
+# with a 403. Without `-f', curl exits 0 and hands the error PAGE to the extractor: the run
+# would go on and the digest would be the only thing left standing between an HTML page and
+# the disk. The run must fail, and nothing may be laid down under that name.
+out=$(client_curl_in "$VOL7" --fetch-only --from "$BASE/one-size-unknown" \
+        --only linux-locked --yes) && rc=0 || rc=$?
+if (( rc != 0 )); then
+  pass "a 403 answered to curl stops the run: -f makes curl fail like wget"
+else
+  fail "a 403 went through: curl was called without -f, or its output was accepted"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
+if docker run --rm -v "$VOL7:/opt/mrn" "$IMG_CLIENT_CURL" bash -c \
+     'test ! -e /opt/mrn/share/marionnet/kernels/linux-locked' >/dev/null 2>&1; then
+  pass "and the server's error page was not written under the artefact's name"
+else
+  fail "something was written for an artefact the server refused"
+fi
+
+# (g) Neither of the two. The bare image is the base of both clients, with nothing added:
+# the guard has to name BOTH downloaders, or the message sends the user after the wrong one.
+out=$(docker run --rm --network "$NET" -v "$SCRIPT:/marionnet-install.sh:ro" \
+        debian:trixie-slim bash /marionnet-install.sh --fetch-only --from "$BASE/with-sums" --list 2>&1) \
+  && rc=0 || rc=$?
+if (( rc != 0 )) && printf '%s\n' "$out" | grep -qi "wget or curl"; then
+  pass "with neither wget nor curl, the script names both and stops (rc=$rc)"
+else
+  fail "the missing-downloader guard did not name both: rc=$rc"
+  printf '%s\n' "$out" | sed 's/^/      /'
+fi
 
 echo
 echo "# ---"

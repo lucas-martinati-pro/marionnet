@@ -1,0 +1,12 @@
+# The SAME bare Debian as Dockerfile.client, with one difference and only one: curl instead
+# of wget. It is what makes the fallback of episode 11b measurable rather than asserted --
+# on this image the code of before that episode dies on `wget is required to fetch from...',
+# and nothing else about the run changes.
+#
+# Note what is NOT here: wget. An image carrying both would prove nothing, the script
+# choosing wget first.
+FROM debian:trixie-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl xz-utils tar \
+ && rm -rf /var/lib/apt/lists/*

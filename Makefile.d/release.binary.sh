@@ -501,6 +501,11 @@ INSTALL
   -- which is what lets this tarball live anywhere, the prefix compiled in being only a
   default -- and installs the scoped sudoers rule Marionnet needs to build its taps.
 
+  share/bash-completion/completions/ travels with it: the clients of the control channel
+  (mrnctl, mrn-check, mrn2sh, mrn-verify...) complete their verbs and the names of the
+  running components, in a new shell, provided the prefix is one bash-completion looks in
+  (/usr, /usr/local) and jq is there.
+
 WHAT THE MACHINE MUST HAVE (Debian/Ubuntu package names)
   $RUNTIME_PACKAGES
 
@@ -515,6 +520,7 @@ REMOVE
   rm -rf <prefix>/share/marionnet /etc/marionnet
   rm -f  <prefix>/bin/marionnet.native <prefix>/bin/marionnet* <prefix>/bin/mrn* \\
          <prefix>/bin/bashbricks.sh
+  rm -f  <prefix>/share/bash-completion/completions/{marionnet-*,mrn*}
 
 LICENCE
   GNU General Public License, version 2 or later. Source: https://www.marionnet.org

@@ -273,14 +273,11 @@
      (glob_files "scripts/marionnet-ctl")
      (glob_files "scripts/mrnctl")
      (glob_files "scripts/mrn-control")
-     ;; --- Not listed, and deliberately so: scripts/marionnet-completion.bash. The Bash
-     ;; --- completion of the four clients above (work-stream `pilotage-par-script', episode 10)
-     ;; --- followed them out of useful-scripts/ -- it reads the grammar the SERVER publishes,
-     ;; --- and it looks for the client BESIDE ITSELF, so it belongs where they now live. But it
-     ;; --- is not a command: it is sourced, and its place on an installed system is a completion
-     ;; --- directory, not $(PREFIX)/bin/. Naming it here would install it where nothing sources
-     ;; --- it. Choosing that directory and installing it there is a remaining task of the
-     ;; --- work-stream `modernisation-installation-marionnet' (§ 2.4 ter).
+     ;; --- Not listed here, and deliberately so: scripts/marionnet-completion.bash is not a
+     ;; --- command, it is SOURCED -- its place on an installed system is a completion
+     ;; --- directory, not $(PREFIX)/bin/. It is installed by the stanza just below, which
+     ;; --- settles the question this comment used to leave open (work-stream
+     ;; --- `modernisation-installation-marionnet', episode 11a).
      ;; ---
      (glob_files "share/*")
      (glob_files "filesystems/*")
@@ -301,4 +298,44 @@
   (package marionnet) ;;; optional
  )
 
-
+;;; ---
+;;; --- The Bash completion of the three clients of the control channel, ONE FILE PER NAME
+;;; --- THEY ANSWER TO -- and that repetition is the whole point, not an oversight.
+;;; ---
+;;; --- bash-completion loads on demand: typing `mrnctl<TAB>' makes it look for a file CALLED
+;;; --- mrnctl in the completions directory, and nowhere else. The `complete -F' lines at the
+;;; --- foot of scripts/marionnet-completion.bash cover twelve names; installing the file
+;;; --- under only one of them would complete `marionnet-ctl' and leave `mrnctl', `mrn2sh',
+;;; --- `mrn-verify'... silent until the first name had been typed in the same shell. Hence
+;;; --- twelve destinations for a single source: declarative, no logic, and it holds for every
+;;; --- channel (dune install, the release tarball, the future .deb) instead of a link-making
+;;; --- step each of them would have to repeat.
+;;; ---
+;;; --- Section share_root, not share: the destination is $(PREFIX)/share/bash-completion/,
+;;; --- which belongs to bash-completion and not to marionnet. Not /etc/bash_completion.d/
+;;; --- either -- that one is the legacy mechanism (everything sourced by every shell) and it
+;;; --- is nailed to /etc, so it could not follow a relocated prefix.
+;;; ---
+;;; --- Nothing breaks by moving the file away from bin/scripts/: _mrn_ctl_program looks for
+;;; --- the client in $MARIONNET_CTL, then BESIDE ITSELF, then in the PATH -- and it is the
+;;; --- third branch which serves here, the clients being installed in $(PREFIX)/bin/. The
+;;; --- second branch remains what makes the completion work straight from a source tree.
+;;; ---
+(install
+  (files
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-ctl.sh)
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-ctl)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrnctl)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrn-control)
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-check.sh)
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-check)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrn-check)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrnck)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrn2sh)
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-verify.sh)
+     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-verify)
+     (scripts/marionnet-completion.bash as bash-completion/completions/mrn-verify)
+     )
+  (section share_root)
+  (package marionnet) ;;; optional
+ )
