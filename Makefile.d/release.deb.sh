@@ -26,7 +26,7 @@
 # of docs/modernisation-installation-marionnet.md), and their split is not the one of the
 # 2009 RPM:
 #
-#   marionnet              amd64  the binary, the 15 names of bin/scripts/, the twelve
+#   marionnet              amd64  the binary, the 18 names of bin/scripts/, the twelve
 #                                 completion files, share/marionnet/{share,images,scripts,
 #                                 locale}, share/doc/marionnet/ (the delivered guides), and
 #                                 /etc/marionnet/marionnet.conf as a CONFFILE
@@ -37,7 +37,7 @@
 #   marionnet-fs-guignol   all    the guignol guest image, machine AND router
 #
 # and nothing else in apt: the big images (wheezy, trixie) stay release artefacts, fetched
-# by useful-scripts/marionnet-install.sh, because apt is not a way to move gibibytes.
+# by bin/scripts/marionnet-install.sh, because apt is not a way to move gibibytes.
 #
 # NO SOURCE PACKAGE, no dpkg-buildpackage: inclusion in Debian proper is out of the scope of
 # this work-stream (§ 6, 2026-07-19), and building from source would want opam and camlp4 in
@@ -552,7 +552,8 @@ Description: virtual network laboratory
  here is what happens on real equipment.
  .
  This package holds the application: the GTK interface, the clients of its control
- channel (mrnctl, mrn-check, mrn2sh, mrn-verify), their bash completion, and the
+ channel (mrnctl, mrn-check, mrn2sh, mrn-verify), their bash completion, the
+ marionnet-get-images command which fetches the larger guest images, and the
  delivered documentation in /usr/share/doc/marionnet.
  .
  The UML kernels and the guest images it boots are in the packages this one
@@ -580,7 +581,11 @@ case "$1" in
     for by the user, from the interface, the day a bridge component is started.
 
     Guest images and UML kernels: apt install marionnet-fs-guignol
-    marionnet-kernels, or fetch the larger images with marionnet-install.sh.
+    marionnet-kernels for the small ones. The larger images (Debian wheezy,
+    Debian trixie) are not in apt -- gibibytes are not what a package manager
+    is for -- and this command offers them as a list to tick:
+
+        marionnet-get-images
 MESSAGE
     ;;
 esac

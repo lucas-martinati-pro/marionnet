@@ -323,10 +323,10 @@ else
   # apt pulled in has put its own files there. A count of the directory would measure the
   # box. (And not by name either: one of the 23 is `bashbricks.sh'.)
   names=$(in_box "dpkg -L marionnet | grep -c '^/usr/bin/.'")
-  if [[ $names -eq 23 ]]; then
-    pass "23 names in /usr/bin (the binary and the 22 companions of bin/scripts/)"
+  if [[ $names -eq 26 ]]; then
+    pass "26 names in /usr/bin (the binary and the 25 companions of bin/scripts/)"
   else
-    fail "the package owns $names names in /usr/bin, expected 23"
+    fail "the package owns $names names in /usr/bin, expected 26"
   fi
 
   compl=$(in_box "dpkg -L marionnet | grep -c '/share/bash-completion/completions/.'")

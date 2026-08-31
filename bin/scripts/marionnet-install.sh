@@ -67,6 +67,14 @@
 # key of the apt repository.
 #
 # Usage: marionnet-install.sh --fetch-only [OPTIONS]
+#        marionnet-get-images [OPTIONS]        (the same file, under its other name)
+#
+# Called as `marionnet-get-images' (or `mrn-get-images'), this script is the guest-image
+# CHOOSER of an installed Marionnet: it lists the images and kernels published for the
+# series as a checkbox menu, shows as already installed -- checked, and not editable --
+# every one whose mtime matches the MTIME its .conf records (the field user-mode-linux
+# checks against a backing file), and fetches what was ticked. --binary is refused under
+# that name: a machine which already runs Marionnet asked for images.
 #
 #   -F, --from URL|DIR       where the artefacts are. An existing directory is taken as a
 #                            local MIRROR of the release directory; anything containing
@@ -93,7 +101,10 @@
 #       --gz                 prefer .tar.gz where both forms exist (default: .tar.xz)
 #   -f, --force              re-extract what is already in place
 #       --no-verify          do not check the artefacts against SHA256SUMS
-#   -y, --yes                do not ask for confirmation
+#       --choose             offer the images as a checkbox menu (the default of
+#                            marionnet-get-images; needs a terminal)
+#       --no-choose          take the whole selection without asking, as --fetch-only does
+#   -y, --yes                do not ask for confirmation (implies --no-choose)
 #   -h, --help               this help
 #
 # The default is .tar.xz, extracted through `xz -dc -T0 | tar xf -' and NEVER through
@@ -120,6 +131,28 @@
 set -euo pipefail
 
 PROGNAME="${0##*/}"
+
+# ---
+# --- ONE FILE, SEVERAL NAMES (episode 16).
+# ---
+# Invoked as `marionnet-get-images' (or `mrn-get-images'), this script is the guest-image
+# CHOOSER an installed Marionnet offers its user -- the same form as marionnet-check.sh,
+# which is `mrn2sh' when called by that name: one real implementation, several usage names,
+# the choice made by $0.
+#
+# Why not a script of its own: the chooser needs the catalogue, the streaming extraction
+# through `xz -dc -T0' and the digest checked WHILE extracting -- that is this file, in
+# full. A second implementation of it is exactly what episode 8 removed. And this file
+# cannot be made a library either: it is published alone on the website and downloaded by
+# a machine which has nothing, so it sources nothing (episodes 6 and 9c).
+#
+# What the name takes away: --binary. Under this name the answer to "should I re-install
+# the application?" is no -- a machine which already runs Marionnet asked for IMAGES, and a
+# tarball laid down over a .deb would leave dpkg owning files it no longer knows.
+CHOOSER=no
+case "$PROGNAME" in
+  marionnet-get-images|mrn-get-images) CHOOSER=yes ;;
+esac
 
 # The series is FROZEN in the published script: what a given script fetches is what the
 # directory it was published next to serves. --series overrides it.
@@ -173,11 +206,20 @@ WANT_FILESYSTEMS=yes
 PREFERRED_EXT=xz
 ONLY=()
 EXCLUDE=()
+# Ask, when a human is there. Under the installer's own name nothing is ever asked: a
+# script called from another script must not grow a prompt (and `-y' turns it off here).
+CHOOSE=$CHOOSER
+if [[ $CHOOSER = yes ]]; then MODE=fetch; WANT_RESOURCES=yes; fi
 
 while (( $# > 0 )); do
   case "$1" in
     --fetch-only)          MODE=fetch; WANT_RESOURCES=yes ;;
-    -b|--binary)           MODE="${MODE:-binary}"; WANT_BINARY=yes ;;
+    -b|--binary)           [[ $CHOOSER = no ]] || die "\`$PROGNAME' fetches guest images and\
+ kernels; it does not install the application. That is \`marionnet-install.sh --binary',\
+ and on a machine where Marionnet came from a package it is \`apt install marionnet'."
+                           MODE="${MODE:-binary}"; WANT_BINARY=yes ;;
+    --choose)              CHOOSE=yes ;;
+    --no-choose)           CHOOSE=no ;;
     --with-deps)           WITH_DEPS=yes ;;
     --no-deps)             WITH_DEPS=no ;;
     --no-sudoers)          WITH_SUDOERS=no ;;
@@ -195,7 +237,7 @@ while (( $# > 0 )); do
     --xz)                  PREFERRED_EXT=xz ;;
     -f|--force)            FORCE=yes ;;
     --no-verify)           VERIFY=no ;;
-    -y|--yes)              ASSUME_YES=yes ;;
+    -y|--yes)              ASSUME_YES=yes; CHOOSE=no ;;
     -h|--help)             usage; exit 0 ;;
     -*)                    die "unknown option \`$1' (try --help)" ;;
     *)                     die "unexpected argument \`$1' (try --help)" ;;
@@ -556,6 +598,184 @@ if [[ $LIST_ONLY = yes ]]; then
       "$logical" ".tar.$ext" "$(human "$(artifact_size "$logical.tar.$ext")")" "$sum" "$state"
   done
   exit 0
+fi
+
+# ---
+# --- The chooser (episode 16): what `marionnet-get-images' shows.
+# ---
+# WHY IT IS HERE AND NOT IN A postinst. Fetching a 5.1 GiB image from a package's postinst
+# would hold apt's lock for the whole transfer, leave the package half-configured when the
+# link drops, and give dpkg the ownership of nothing at all -- so `apt remove' would free no
+# byte of it. The .deb NAMES this command instead, the way it names the sudoers rule: name,
+# do not do. And because the chooser is a mode of this file rather than a package, it serves
+# the three channels -- apt, tarball, sources -- with one implementation.
+#
+# WHY THE STATE IS READ FROM THE .conf AND NOT FROM A DIGEST OF THE IMAGE. An installed
+# image is the EXTRACTED file; SHA256SUMS holds the digest of the tarball it came in, so the
+# two cannot be compared. What travels beside the image is its `.conf', which records SUM,
+# MD5SUM and MTIME -- and MTIME is the field UML checks against the backing file before
+# booting it. Comparing mtime and size is therefore both O(1) and the check that actually
+# decides whether Marionnet will open a project made with that image. The md5sum is there
+# for whoever asks for it: `v <n>' reads the whole file, which on a 5 GiB image is a
+# deliberate wait, not something to impose on the opening of a menu.
+#
+# An image which is present AND intact is shown checked and CANNOT be unchecked: there is
+# nothing to decide about it. One which is present but altered is shown as such and stays
+# editable -- that is the row a user wants to be able to re-fetch.
+
+# Prints: ok | altered | absent
+function image_state {   # $1 = logical name
+  local target conf mtime on_disk
+  target=$(artifact_target "$1")
+  [[ -e $target || -L $target ]] || { echo absent; return; }
+  conf="$target.conf"
+  # A kernel travels without a .conf; its presence is all there is to read.
+  [[ -f $conf ]] || { echo ok; return; }
+  mtime=$(sed -n 's/^MTIME=\([0-9][0-9]*\).*/\1/p' "$conf" | head -n 1)
+  [[ -n $mtime ]] || { echo ok; return; }
+  # -L, and it is not a detail: a ROUTER image is a symbolic link to the machine image, and
+  # its .conf records the MTIME of what the link points AT (both .conf carry the same
+  # MD5SUM -- it is the same file). Without -L, stat reads the mtime of the link itself and
+  # every freshly installed router is reported as altered (measured).
+  # A dangling link answers nothing, and that is exactly a row worth re-fetching.
+  on_disk=$(stat -Lc %Y -- "$target" 2>/dev/null) || { echo altered; return; }
+  [[ $on_disk = "$mtime" ]] && echo ok || echo altered
+}
+
+# Reads the whole file, and reports BOTH fields the .conf carries, each for what it is.
+#
+# SUM first, and it is not a matter of taste: the BSD `sum' of an image IS the number the
+# artefact is named after (machine-guignol-18474 -> SUM=18474), so it is the field the
+# whole naming convention of this chain rests on. MD5SUM is extra.
+#
+# MEASURED, and the reason this function does not pronounce a single verdict: on the
+# published 1.0.x release, wheezy agrees on both fields, while GUIGNOL agrees on SUM and
+# MTIME but NOT on MD5SUM -- its .conf carries a digest of some earlier state of the image.
+# Nothing in Marionnet reads MD5SUM (bin/disk.ml parses it and never consults it), so this
+# is stale metadata rather than a broken image; but a chooser which cried "corrupted" at
+# every freshly installed guignol would be a chooser nobody believes twice.
+function image_integrity_verdict {   # $1 = logical name -- reads the whole file
+  local target conf want got out=""
+  target=$(artifact_target "$1"); conf="$target.conf"
+  [[ -f $conf ]] || { echo "no .conf beside it: nothing to compare"; return; }
+
+  want=$(sed -n 's/^SUM=0*\([0-9]*\).*/\1/p' "$conf" | head -n 1)
+  if [[ -n $want ]]; then
+    got=$(sum -- "$target" | awk '{print $1+0}')
+    if [[ $got = "$want" ]]; then out="SUM ok ($got, the number this artefact is named after)"
+    else out="SUM DIFFERS: .conf says $want, the file is $got -- this image is not the one it claims to be"
+    fi
+  fi
+
+  want=$(sed -n 's/^MD5SUM=\([0-9a-f]*\).*/\1/p' "$conf" | head -n 1)
+  if [[ -n $want ]]; then
+    got=$(md5sum -- "$target" | cut -d" " -f1)
+    if [[ $got = "$want" ]]; then out="$out; md5sum ok"
+    else out="$out; md5sum disagrees with the .conf (nothing in Marionnet reads that field)"
+    fi
+  fi
+  echo "${out:-its .conf records neither SUM nor MD5SUM}"
+}
+
+# No terminal, no menu -- and under this name, no fallback either. The default selection of
+# --fetch-only is EVERYTHING published, which here would be some 7 GiB nobody asked for:
+# `marionnet-get-images </dev/null' must not become a way to start that by surprise. Under
+# the installer's own name that default is the long-standing documented behaviour and is
+# left exactly as it was.
+if [[ $CHOOSE = yes && ( ! -t 0 || ! -t 1 ) ]]; then
+  die "no terminal to ask on, and the default of this command would be everything published\
+ (some GiB). Name what you want with --only PATTERN, or see it with --list."
+fi
+
+if [[ $CHOOSE = yes ]]; then
+  # The application is never a row of this menu: this command is about images and kernels.
+  ROWS=(); STATE=(); PICKED=(); LOCKED=()
+  for logical in "${SELECTED[@]}"; do
+    [[ $(artifact_kind "$logical") != binary ]] || continue
+    st=$(image_state "$logical")
+    ROWS+=("$logical"); STATE+=("$st")
+    case "$st" in
+      ok) PICKED+=(yes); LOCKED+=(yes) ;;   # present and intact: nothing to decide
+      *)  PICKED+=(no);  LOCKED+=(no)  ;;
+    esac
+  done
+  (( ${#ROWS[@]} > 0 )) || die "the catalogue of $SERIES holds no image and no kernel"
+
+  function chooser_show {
+    local i mark size note num
+    echo
+    printf '%s\n' "  Guest images and UML kernels published for the $SERIES series"
+    printf '%s\n' "  from: $SOURCE"
+    printf '%s\n' "  into: $MARIONNET_DIR"
+    echo
+    for i in "${!ROWS[@]}"; do
+      if [[ ${PICKED[$i]} = yes ]]; then mark="[x]"; else mark="[ ]"; fi
+      # A locked row carries neither a number nor brackets: there is nothing to type at it,
+      # and a checkbox one cannot uncheck is a checkbox which lies about being one.
+      num=$(printf '%2d' "$(( i + 1 ))")
+      if [[ ${LOCKED[$i]} = yes ]]; then num="  "; mark=" x "; fi
+      size=$(human "$(artifact_size "${ROWS[$i]}.tar.$(artifact_format "${ROWS[$i]}")")")
+      case "${STATE[$i]}" in
+        ok)      note="already installed" ;;
+        altered) note="installed, BUT its mtime is not the one its .conf records" ;;
+        *)       note="" ;;
+      esac
+      printf '  %s %s %-40s %8s  %s\n' "$num" "$mark" \
+             "$(artifact_base "${ROWS[$i]}")" "$size" "$note"
+    done
+    echo
+    echo "  <n> toggle   a all   n none   v <n> verify an installed one"
+    echo "  q quit       <RET> fetch what is checked and not yet installed"
+  }
+
+  while true; do
+    chooser_show
+    read -r -p "  > " answer || { echo; exit 0; }
+    case "$answer" in
+      q|Q) info "nothing done"; exit 0 ;;
+      "")  break ;;
+      a|A) for i in "${!ROWS[@]}"; do [[ ${LOCKED[$i]} = yes ]] || PICKED[$i]=yes; done ;;
+      n|N) for i in "${!ROWS[@]}"; do [[ ${LOCKED[$i]} = yes ]] || PICKED[$i]=no;  done ;;
+      v\ *|V\ *)
+        i=$(( ${answer#* } - 1 ))
+        if (( i >= 0 && i < ${#ROWS[@]} )) && [[ ${STATE[$i]} != absent ]]; then
+          info "reading $(artifact_base "${ROWS[$i]}") in full ..."
+          info "$(image_integrity_verdict "${ROWS[$i]}")"
+          read -r -p "  (RET) " _ || true
+        else
+          warn "v wants the number of an artefact which is installed"
+        fi ;;
+      *[!0-9]*) warn "not a number, and not one of the letters above: $answer" ;;
+      *)
+        i=$(( answer - 1 ))
+        if (( i < 0 || i >= ${#ROWS[@]} )); then warn "no row number $answer"
+        elif [[ ${LOCKED[$i]} = yes ]]; then
+          warn "$(artifact_base "${ROWS[$i]}") is already installed and intact:\
+ --force is how one re-fetches it"
+        else
+          [[ ${PICKED[$i]} = yes ]] && PICKED[$i]=no || PICKED[$i]=yes
+        fi ;;
+    esac
+  done
+
+  # What the menu decided becomes the selection the rest of this script already knows how to
+  # carry out: no second code path, and --dry-run, --force, the digest check and the plan
+  # below keep working exactly as they do for --only.
+  CHOSEN=()
+  for i in "${!ROWS[@]}"; do
+    [[ ${PICKED[$i]} = yes ]] || continue
+    [[ ${LOCKED[$i]} = no || $FORCE = yes ]] || continue
+    CHOSEN+=("${ROWS[$i]}")
+  done
+  SELECTED=("${CHOSEN[@]}")
+  if (( ${#SELECTED[@]} == 0 )); then
+    info "nothing selected: nothing to do"
+    exit 0
+  fi
+  # The menu WAS the confirmation: it showed every name, every size and both directories,
+  # and the user pressed RET on it. Asking `Proceed? [y/N]' straight after is asking the
+  # same question twice, which teaches people to answer without reading.
+  ASSUME_YES=yes
 fi
 
 # Said AFTER --list on purpose: when nothing published can run here, the listing is exactly

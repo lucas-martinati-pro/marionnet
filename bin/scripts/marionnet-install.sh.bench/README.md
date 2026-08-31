@@ -1,7 +1,13 @@
 # `marionnet-install.sh.bench/` — le banc du chemin **réseau** de l'installeur
 
+> **Épisode 16** : ce banc a suivi son script de `useful-scripts/` vers `bin/scripts/`
+> (le script est désormais **aussi** le chooser d'images `marionnet-get-images`), et il
+> gagne **5 cas** pour ce second nom — **68 cas, 68 verts**. Piège payé au passage : `SUMS_TOOL` pointait deux
+> niveaux au-dessus, il en faut **trois** — un chemin relatif sortant d'un répertoire est
+> exactement ce qu'un déplacement casse, et le banc **sautait** au lieu de tourner.
+
 L'épisode 6 du chantier `modernisation-installation-marionnet` a prouvé
-`useful-scripts/marionnet-install.sh` **sur un miroir local**. Ce run exerce tout le
+`bin/scripts/marionnet-install.sh` **sur un miroir local**. Ce run exerce tout le
 script *sauf* les deux lignes qui distinguent un miroir d'un serveur — et ces deux lignes
 sont exactement ce qu'est un serveur de release :
 
@@ -38,10 +44,10 @@ de le mesurer deux fois.
 ## Jouer le banc
 
 ```bash
-useful-scripts/marionnet-install.sh.bench/run.sh          # le script du dépôt
-useful-scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet-install.sh
-useful-scripts/marionnet-install.sh.bench/run.sh --distro ubuntu:26.04
-useful-scripts/marionnet-install.sh.bench/run.sh --distro all   # les 4 boîtes (ép. 12)
+bin/scripts/marionnet-install.sh.bench/run.sh          # le script du dépôt
+bin/scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet-install.sh
+bin/scripts/marionnet-install.sh.bench/run.sh --distro ubuntu:26.04
+bin/scripts/marionnet-install.sh.bench/run.sh --distro all   # les 4 boîtes (ép. 12)
 ```
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
@@ -109,7 +115,7 @@ manuel** :
 # à jouer à la main, quand on veut mesurer le débit et non le mécanisme
 docker run --rm -d --name mrn-real -p 8080:80 \
   -v "$PWD/website-repo:/usr/local/apache2/htdocs:ro" mrn-install-bench-httpd
-useful-scripts/marionnet-install.sh --fetch-only \
+bin/scripts/marionnet-install.sh --fetch-only \
   --from http://localhost:8080/download/marionnet-install.sh/1.0.x \
   --only guignol --prefix /tmp/mrn-real --yes
 ```

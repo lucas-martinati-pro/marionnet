@@ -243,7 +243,7 @@ trap - EXIT
 info "tarball produced: $TARBALL ($(du -h -- "$TARBALL" | awk '{print $1}'))"
 
 # The release directory has a catalogue, and it is SHA256SUMS -- read as such by
-# useful-scripts/marionnet-install.sh, whose Apache listing is only a fallback. A tarball
+# bin/scripts/marionnet-install.sh, whose Apache listing is only a fallback. A tarball
 # which never reaches that file is invisible to the installer, so it is recorded HERE,
 # right after being moved into place, and not left to a separate gesture someone forgets.
 # --force, scoped to this single file: we have JUST written it, so a digest already

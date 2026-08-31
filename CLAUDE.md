@@ -49,12 +49,12 @@ l'**install** et le **RPM**.
 |---|---|---|
 | `bin/` | cœur applicatif (40 .ml) : modèle réseau à 2 niveaux + composants + Tap_provider | `bin/CLAUDE.md` |
 | `bin/gui/` | complétion GTK (foncteurs `Make(State)`), glade | `bin/gui/CLAUDE.md` |
-| `bin/scripts/` | scripts **complémentaires du binaire** : portes privilégiées, scripts déposés dans les invités, clients du canal (`.sh` réels + liens qui portent les noms d'usage), complétion bash | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
+| `bin/scripts/` | scripts **complémentaires du binaire** : portes privilégiées, scripts déposés dans les invités, clients du canal (`.sh` réels + liens qui portent les noms d'usage), complétion bash, **et `marionnet-install.sh`** — qui est *aussi* le chooser d'images `marionnet-get-images` (ép. 16) | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
 | `lib/` | **ocamlbricks vendored** (bibliothèque support OCaml, 12 sous-dossiers) | `lib/CLAUDE.md` |
 | `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
-| `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré) | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
+| `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré). Depuis l'ép. 16 de `modernisation-installation-marionnet`, il n'y reste que `marionnet_from_scratch` (mort) et `make_marionnet_bytecode_revno` | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
 | `etc/`, `Makefile.d/`, `RPMS/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging | `docs/ARCHITECTURE.md` § Build |
 
 ## Fichiers générés — ne jamais éditer
@@ -259,7 +259,7 @@ Reprise : appliquer le skill `chantier-long`.
   - **publier** — `make filesystem.prepare-snapshot-to-publish` (ép. 3 : un snapshot COW devient
     les 4 éléments publiables + le tarball) et `make kernel.prepare-to-publish KERNEL=<nom>`
     (ép. 5) ; ép. 4 = la régression de 2014 de `sudo_fcall` qui polluait `BINARY_LIST` ;
-  - **consommer** — `useful-scripts/marionnet-install.sh` (ép. 6, `ab92b8d`), germe du script v2
+  - **consommer** — `bin/scripts/marionnet-install.sh` (ép. 6, `ab92b8d`), germe du script v2
     n'implémentant que `--fetch-only`. **`--from` prend une URL OU un répertoire local** (miroir) :
     seules `catalog_list` et `artifact_stream` connaissent la différence, donc un run sur miroir
     exerce le vrai chemin. C'est ce qui permet de travailler **pendant que `www.marionnet.org`
@@ -272,7 +272,7 @@ Reprise : appliquer le skill `chantier-long`.
   ce qu'UML vérifie) ; une image *router* est un **lien** vers l'image *machine* d'un **autre**
   tarball. `website-repo/` (copie de travail du site) est gitignoré.
   Le chemin **réseau** n'est plus une supposition : l'ép. 7 le mesure sans le serveur, en
-  dressant un **Apache en conteneur** (`useful-scripts/marionnet-install.sh.bench/`, 16 cas,
+  dressant un **Apache en conteneur** (`bin/scripts/marionnet-install.sh.bench/`, 16 cas,
   discriminance rouge/vert mesurée). Trois choses à ne pas défaire : le banc sert le listing
   avec **Apache `FancyIndexing`** et non un `python3 -m http.server` (le parsing vise Apache),
   il parle **HTTP** et non HTTPS (un certificat auto-signé ferait mesurer un `wget` différent
@@ -461,6 +461,31 @@ Reprise : appliquer le skill `chantier-long`.
   `/usr/share/marionnet/locale`), ce que le banc du tarball n'avait jamais vu (`tar` ne
   consulte la configuration de personne) et ce dont le futur **canal Docker officiel** devra
   se charger.
+  **Ép. 16 (hors feuille de route) : `marionnet-get-images`, les grosses images choisies.**
+  Wheezy et trixie restent hors d'apt (§ 6, ép. 13), mais l'utilisateur qui installe par apt
+  ne recevait qu'une phrase. **Refusé, et pourquoi** : un *paquet installeur* dont le
+  `postinst` télécharge tiendrait le verrou d'apt pendant 1,09 Gio, laisserait dpkg
+  propriétaire de **rien** (`apt remove` ne libérerait rien) et ses cases à cocher ne
+  s'afficheraient pas sous `noninteractive` — la panne même que l'ép. 15b a mesurée.
+  **Fait à la place** : `useful-scripts/marionnet-install.sh` **déménage en
+  `bin/scripts/`** et devient AUSSI le chooser, par **dispatch sur `$0`**
+  (`marionnet-get-images`, `mrn-get-images` — la forme de `mrn2sh`) ; **18 noms** installés
+  au lieu de 15, donc **26** dans `bin/`. **À ne pas défaire** : (1) pas de second script —
+  le chooser a besoin du catalogue, du `xz -dc -T0` et de l'empreinte vérifiée *pendant*
+  l'extraction, soit ce fichier entier (une 2ᵉ implémentation est ce que l'ép. 8 a
+  supprimé) ; pas de bibliothèque sourcée non plus, ce fichier étant publié **seul** et
+  téléchargé par une machine qui n'a rien ; (2) `--binary` est **refusé** sous le nom du
+  chooser ; (3) **sans terminal, refus** (rc 2) sous ce nom seulement — le défaut de
+  `--fetch-only` est *tout ce qui est publié*, ~7 Gio ; sous le nom de l'installeur ce
+  défaut est intact ; (4) l'état d'une image se lit dans son `.conf` (`MTIME`, le champ
+  qu'UML vérifie), **pas** dans un digest — l'image installée est le fichier *extrait*, or
+  `SHA256SUMS` porte l'empreinte du *tarball*. **Piège mesuré** : `stat -c %Y` sur une image
+  **routeur** lit le `mtime` du **lien** et non de sa cible → sans `-L`, tout routeur
+  fraîchement installé était dit altéré. **Trouvaille** : le `MD5SUM` du `.conf` de
+  **guignol** est **périmé** (`SUM` et `MTIME` exacts, `md5sum` non — vrai à la source),
+  et **rien ne lit `MD5SUM`** (`bin/disk.ml:456` le déclare et ne le consulte jamais) ;
+  d'où une vérification `v <n>` qui rend compte des **deux** champs séparément au lieu d'un
+  verdict unique. Régénérer ce `MD5SUM` reste à faire.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

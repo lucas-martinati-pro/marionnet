@@ -117,7 +117,7 @@ REQUIRED_PACKAGES_BUILD = opam pkg-config build-essential libgtk-3-dev libgtksou
 #  - xz-utils           : every artefact this project publishes is a .tar.xz by default (the
 #                         guest images, the UML kernels and the precompiled application: see
 #                         Makefile.d/*.prepare-to-publish.sh and Makefile.d/release.binary.sh),
-#                         and useful-scripts/marionnet-install.sh extracts them through
+#                         and bin/scripts/marionnet-install.sh extracts them through
 #                         `xz -dc -T0 | tar xf -'. Marionnet itself never calls xz: what needs
 #                         it is the INSTALLATION of the images the running Marionnet then boots.
 REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo \
@@ -445,7 +445,7 @@ kernel.prepare-to-publish:
 	bash Makefile.d/kernel.prepare-to-publish.sh --series $(PUBLICATION_SERIES) $(KERNEL)
 
 # Maintain SHA256SUMS in the release directory -- which is not merely an integrity file
-# but the CATALOGUE useful-scripts/marionnet-install.sh reads (the Apache listing being
+# but the CATALOGUE bin/scripts/marionnet-install.sh reads (the Apache listing being
 # only its fallback). The two targets above call the script themselves for the tarball
 # they have just built; this target is for the other cases: bootstrapping the file over a
 # release directory published before it existed, or after an artefact was put there by

@@ -483,7 +483,7 @@ première version de ce § lui dessinait un `download/<série>/binaries/` ; il v
 `SHA256SUMS`. Motif : le catalogue dit *ce qu'une release contient*, et une release dont
 l'application est ailleurs oblige un consommateur à connaître deux emplacements et à faire
 confiance à deux fichiers de sommes capables de diverger. Le prix de ce choix est explicite :
-`useful-scripts/marionnet-install.sh` ne récupère que `filesystems_*` et `kernels_*`, donc une
+`bin/scripts/marionnet-install.sh` ne récupère que `filesystems_*` et `kernels_*`, donc une
 ligne `marionnet_*` est **cataloguée et ignorée** au fetch — sans erreur (mesuré : le filtre du
 catalogue est un `case` qui laisse tomber ce qu'il ne connaît pas). C'est un reste, pas un
 défaut.
@@ -928,7 +928,7 @@ devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant
   listing HTML d'Apache. L'étape 1 du § 5 (« remise à niveau du serveur ») étant **bloquée par
   l'extérieur** (`www.marionnet.org` en panne), cet épisode construit la moitié qui ne l'est pas :
   la couche d'approvisionnement du script v2, avec une source **interchangeable**.
-  Livrable : `useful-scripts/marionnet-install.sh`, germe du script v2, n'implémentant que son
+  Livrable : `bin/scripts/marionnet-install.sh`, germe du script v2, n'implémentant que son
   mode `--fetch-only` (toute autre invocation sort en **2** en renvoyant au chantier enfant
   `…-par-script`, qui n'est pas ouvert). Options : `-F|--from URL|DIR`, `-s|--series`,
   `-p|--prefix`, `-l|--list`, `-n|--dry-run`, `-o|--only` / `-x|--exclude` (répétables,
@@ -994,7 +994,7 @@ devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant
   qu'est un serveur de release. Plutôt que d'attendre le retour de `www.marionnet.org`, cet
   épisode **dresse le serveur** : un Apache en conteneur, un répertoire de release synthétique,
   et le script lancé depuis un **second** conteneur qui ne contient que Debian et le script.
-  Livrable : `useful-scripts/marionnet-install.sh.bench/` (`run.sh`, `Dockerfile.server`,
+  Livrable : `bin/scripts/marionnet-install.sh.bench/` (`run.sh`, `Dockerfile.server`,
   `Dockerfile.client`, `README.md`), **16 cas, PASS 16 / FAIL 0**, conventions de
   `driven-sessions/` (0 PASS / 77 SKIP / autre FAIL) — mais **pas** dans `driven-sessions/`,
   qui est scopé aux sessions Marionnet pilotées : le banc vit à côté de ce qu'il prouve, d'où
@@ -1084,7 +1084,7 @@ devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant
   de diverger.
   Livrables : `Makefile.d/release.sha256sums.sh` (neuf, le seul écrivain) + cible
   `make release.sha256sums` ; les deux `*.prepare-to-publish.sh` l'appellent après avoir déplacé
-  leur tarball ; `useful-scripts/marionnet-install.sh` le lit comme **catalogue** et vérifie
+  leur tarball ; `bin/scripts/marionnet-install.sh` le lit comme **catalogue** et vérifie
   chaque artefact **en flux** ; le banc passe de **20 à 31 cas** (PASS 31 / FAIL 0).
   Cinq décisions, chacune payée par un fait :
   1. **Un troisième script, pas une fonction dupliquée.** Les deux publieurs dupliquent déjà
@@ -1314,7 +1314,7 @@ ce qu'une machine cible reçoit et à ce que le binaire fait sans afficher.
 ## Épisode 9c (2026-08-30) — le troisième préfixe, côté consommateur
 
 Depuis l'épisode 9a une release publie **trois** familles dans le même répertoire et le même
-`SHA256SUMS`. `useful-scripts/marionnet-install.sh` en connaissait deux et **laissait tomber
+`SHA256SUMS`. `bin/scripts/marionnet-install.sh` en connaissait deux et **laissait tomber
 la troisième sans rien dire** : l'application était catalogable et non installable par le
 script qui la voit. C'est fini — `--binary`.
 
@@ -1457,7 +1457,7 @@ Trois garde-fous, tous mesurés :
 
 ### Le passe-plat, et son troisième état
 
-`useful-scripts/marionnet-install.sh --binary` relaie `--with-deps` / `--no-deps` comme il
+`bin/scripts/marionnet-install.sh --binary` relaie `--with-deps` / `--no-deps` comme il
 relaie déjà `--force`, `--no-sudoers` et `--no-config`. Son état interne a **trois** valeurs
 (`ask` par défaut) et non deux : par défaut il ne transmet **rien**, et `install.sh` garde
 son propre défaut. Un relais qui transformerait le défaut en option explicite déciderait en
@@ -1478,7 +1478,7 @@ silence à la place de l'utilisateur — c'est ce que le cas (e bis) du banc ré
   échecs (`|| true`, capture du `rc`) : mesuré, sans cela un `install.sh` d'avant faisait
   **avorter** le banc sous `set -e` au lieu de le faire virer au rouge, ce qui se lit comme
   un défaut du banc.
-- Banc réseau `useful-scripts/marionnet-install.sh.bench/` : **50 → 53 cas**, tous verts —
+- Banc réseau `bin/scripts/marionnet-install.sh.bench/` : **50 → 53 cas**, tous verts —
   les deux options atteignent l'`install.sh` embarqué, et **aucune** n'est transmise quand
   rien n'est demandé.
 
@@ -1538,7 +1538,7 @@ appartiennent à root:root » passait au vert sur une installation qui n'en posa
 
 ### 11b — le repli `curl`, et pourquoi `-f` n'est pas une commodité
 
-Toute la surface HTTP de `useful-scripts/marionnet-install.sh` tient en **quatre** appels,
+Toute la surface HTTP de `bin/scripts/marionnet-install.sh` tient en **quatre** appels,
 qui se réduisent à **deux verbes** : un **corps** (`catalog_list`, `artifact_stream`,
 `sums_read`) et un jeu d'**en-têtes** (`artifact_size`). D'où `http_body` / `http_headers`,
 et un `FETCHER` choisi **une fois** quand la source s'avère être une URL. `wget` reste
@@ -1558,7 +1558,7 @@ page dans un tarball, et il ne resterait plus que le digest entre elle et le dis
 Le silence ne perd rien : chaque appelant lit le **code de retour**, et le message que
 l'utilisateur reçoit est celui du script.
 
-**Prouvé** : banc `useful-scripts/marionnet-install.sh.bench/` **53 → 63 cas**, tous verts ;
+**Prouvé** : banc `bin/scripts/marionnet-install.sh.bench/` **53 → 63 cas**, tous verts ;
 **6 rouges** sur le script d'avant l'épisode. La deuxième image cliente
 (`Dockerfile.client.curl`) porte `curl` **et pas** `wget` — une image portant les deux ne
 prouverait rien, `wget` étant choisi en premier — et la boîte « ni l'un ni l'autre » est un
@@ -1647,7 +1647,7 @@ contre-preuve jouée : rc 1 sans installation, rc 0 avec.
 | Banc | `debian:bookworm-slim` | `debian:trixie-slim` | `ubuntu:24.04` | `ubuntu:26.04` |
 |---|---|---|---|---|
 | `Makefile.d/release.binary.sh.bench/` (43 cas) | 39 verts, **4 sautés** | 43 verts | 43 verts | 43 verts |
-| `useful-scripts/marionnet-install.sh.bench/` (63 cas) | 63 verts | 63 verts | 63 verts | 63 verts |
+| `bin/scripts/marionnet-install.sh.bench/` (63 cas) | 63 verts | 63 verts | 63 verts | 63 verts |
 
 glibc des boîtes : 2.36 / 2.41 / 2.39 / 2.43 ; artefact mesuré : `marionnet_trunk-r909_amd64_glibc2.39`.
 
@@ -1957,7 +1957,7 @@ NO-SUCH-DIRECTORY`), procédé déjà utilisé par le cas de propriété de la c
 ### Restes
 
 - La documentation **n'est toujours pas mesurée par le banc réseau**
-  (`useful-scripts/marionnet-install.sh.bench/`), et ce n'est pas un oubli : ce banc mesure
+  (`bin/scripts/marionnet-install.sh.bench/`), et ce n'est pas un oubli : ce banc mesure
   le **relais** (`marionnet-install.sh --binary` déplie l'artefact et lance l'`install.sh`
   qui voyage dedans), lequel est déjà éprouvé sur les 63 cas existants ; ce que la
   documentation exige en propre est mesuré là où elle est produite.
@@ -2276,3 +2276,136 @@ personne. C'est exactement ce qui fait que le canal `.deb` livre **moins** que l
 une telle image, et c'est un point que le futur **canal Docker officiel** (§ 4) devra traiter
 au lieu d'en hériter. Heureusement, `/usr/share/marionnet/locale` est **hors** de l'exclusion
 d'Ubuntu (qui ne vise que `/usr/share/locale/`) : l'i18n survit, la documentation non.
+
+## Épisode 16 (2026-08-31) — `marionnet-get-images` : les grosses images, choisies
+
+Épisode **hors feuille de route**, ouvert sur une question de l'auteur : *pourquoi wheezy et
+trixie ne sont-ils pas des `.deb` ?* La réponse (§ 6, rejugée à l'ép. 13) tient, mais elle
+laissait un trou réel côté utilisateur — celui qui installe par apt ne recevait qu'**une
+phrase** de `postinst` lui disant d'aller chercher les grosses images ailleurs.
+
+### 1. Ce qui a été écarté, et pourquoi
+
+La proposition initiale était un **paquet installeur** (`marionnet-fs-trixie-39212.deb` dont
+le `postinst` téléchargerait). Écarté, sur trois motifs qui ne sont pas des préférences :
+
+- **un `postinst` qui télécharge 1,09 Gio tient le verrou d'apt** pendant tout le transfert ;
+  si le lien lâche, dpkg laisse le paquet en `half-configured` et l'on repart de zéro ;
+- **dpkg ne posséderait aucun des 5,1 Gio** : `dpkg -L` ne listerait rien, `apt remove` ne
+  libérerait rien, et un `postrm` qui effacerait des fichiers que dpkg n'a jamais
+  enregistrés pourrait effacer une image posée par l'utilisateur. Le nom du paquet
+  **mentirait** à apt — le contraire exact de la discipline de l'ép. 15a ;
+- **les cases à cocher dans un `postinst` ne s'afficheraient pas** dans le cas le plus
+  courant : debconf sous `DEBIAN_FRONTEND=noninteractive` saute la question. L'ép. 15b vient
+  précisément de mesurer qu'une invite (celle de conffile) fait **échouer** un `apt install`
+  non interactif ; en ajouter une seconde redoublerait une panne connue.
+
+Ce qui était **juste** dans la proposition et a été gardé tel quel : éviter dpkg pour ces
+images, et offrir une **sélection par cases à cocher** où les images déjà présentes sont
+cochées et non éditables.
+
+### 2. Ce qui a été fait : un mode, pas un script de plus
+
+`bin/scripts/marionnet-install.sh` — **déplacé** de `useful-scripts/`, et c'est le cœur de
+l'épisode — devient aussi le **chooser d'images** d'un Marionnet installé, sous les noms
+`marionnet-get-images` et `mrn-get-images`, par **dispatch sur `$0`** : la forme déjà
+employée par `mrn2sh` (§ 2 de `docs/move-and-rename-useful-scripts-to-bin-scripts.md`), un
+fichier réel et des liens.
+
+**Pourquoi pas un script à part** : le chooser a besoin du catalogue, de l'extraction en flux
+`xz -dc -T0` et de l'empreinte vérifiée **pendant** l'extraction — c'est-à-dire de ce
+fichier en entier. En réécrire une seconde implémentation est exactement ce que l'ép. 8 a
+supprimé. **Et pas une bibliothèque sourcée non plus** : ce fichier est publié **seul** sur
+le site et téléchargé par une machine qui n'a rien, donc il ne source rien (ép. 6 et 9c).
+
+**Nuance apportée à la règle fondatrice** (`useful-scripts/` = le projet, `bin/scripts/` = le
+binaire) : ce script est **les deux**. Il installe le projet *et* il est le compagnon qu'un
+Marionnet installé appelle pour ses images. Il vit donc désormais du côté du binaire, et il
+est installé — 15 noms dans `$(PREFIX)/bin/` deviennent **18**.
+
+**Ce que le nom retire** : `--binary` est **refusé** sous `marionnet-get-images` (rc 2, en
+nommant la commande qui le fait). Une machine qui fait déjà tourner Marionnet a demandé des
+**images** ; un tarball déplié par-dessus un `.deb` laisserait dpkg propriétaire de fichiers
+qu'il ne connaît plus.
+
+Sous son **propre** nom, l'installeur garde `--binary` — y compris sur une machine servie par
+apt. Ce qui l'empêche d'y faire des dégâts n'est pas un garde-fou de plus mais le **préfixe
+par défaut** : `/usr/local`, là où le paquet occupe `/usr`. Les deux cohabitent donc, et il
+faut un `--prefix /usr` **explicite** pour que l'un recouvre l'autre.
+
+Le `postinst` du paquet `marionnet` **nomme** cette commande — *nommer, ne pas faire*, comme
+pour la règle sudoers (ép. 15a) et les dépendances apt (ép. 10).
+
+### 3. L'état d'une image, lu dans son `.conf` et non dans un digest
+
+Une image **installée** est le fichier **extrait** ; `SHA256SUMS` porte l'empreinte du
+**tarball** dont elle est sortie : les deux ne sont pas comparables. Ce qui voyage à côté de
+l'image, c'est son `.conf`, qui enregistre `SUM`, `MD5SUM` et `MTIME` — et **`MTIME` est le
+champ qu'UML vérifie** contre le *backing file* avant de démarrer. Comparer `mtime` et taille
+est donc à la fois **O(1)** et le contrôle qui décide réellement si Marionnet ouvrira un
+projet fait avec cette image.
+
+- présente **et** intacte → ligne **cochée, sans numéro ni crochets** : il n'y a rien à
+  décider, et une case qu'on ne peut pas décocher est une case qui ment sur sa nature ;
+- présente mais `mtime` en désaccord → dite telle quelle, et **restée éditable** : c'est la
+  ligne qu'on veut pouvoir re-télécharger ;
+- absente → éditable, décochée.
+
+**Piège mesuré** : `stat -c %Y` sur une image **routeur** lit le `mtime` du **lien**, pas de
+sa cible, alors que le `.conf` du routeur enregistre le `MTIME` de l'image machine (les deux
+`.conf` portent le même `MD5SUM` — c'est le même fichier). Sans `-L`, **tout routeur
+fraîchement installé était signalé comme altéré**.
+
+### 4. Une trouvaille : le `MD5SUM` du `.conf` de guignol est périmé
+
+En écrivant la commande de vérification à la demande (`v <n>`, qui lit le fichier en entier),
+mesuré sur la release 1.0.x publiée :
+
+| image | `SUM` du `.conf` | `sum(1)` réel | `MD5SUM` du `.conf` | `md5sum` réel |
+|---|---|---|---|---|
+| `machine-debian-wheezy-08367` | 08367 | **08367** | 25aaf83e… | **25aaf83e…** |
+| `machine-guignol-18474` | 18474 | **18474** | e7b651d1… | **afe9d7e8…** ✗ |
+
+Le `.conf` de guignol porte donc l'empreinte MD5 d'un **état antérieur** de l'image, tandis
+que `SUM` et `MTIME`, eux, sont exacts — et c'est vrai **à la source**, dans le répertoire de
+release comme dans le tarball. **Rien dans Marionnet ne lit `MD5SUM`** : `bin/disk.ml:456` le
+déclare parmi les variables du `.conf` et ne le consulte jamais. C'est donc une **métadonnée
+périmée**, pas une image cassée.
+
+Conséquence de conception : `v <n>` ne prononce **pas un verdict unique**. Il rend compte des
+**deux** champs séparément, en disant que `SUM` est celui qui porte l'identité de l'artefact
+(c'est le nombre dont l'artefact tire son nom). Un chooser qui crierait « corrompue » à chaque
+guignol fraîchement installée serait un chooser qu'on ne croit pas deux fois.
+
+*Reste à faire, hors de cet épisode* : régénérer le `MD5SUM` du `.conf` de guignol. Peu
+coûteux (le `mtime` de l'**image** n'en serait pas touché, seulement celui du `.conf`), mais
+cela change le tarball publié, donc son empreinte et sa ligne de `SHA256SUMS`.
+
+### 5. Deux refus, pour que le défaut ne soit pas silencieux
+
+- **Pas de terminal → refus** (rc 2), sous ce nom seulement. Le défaut de `--fetch-only` est
+  **tout ce qui est publié**, soit ici quelque 7 Gio : `marionnet-get-images </dev/null` ne
+  doit pas devenir une façon de lancer cela par surprise. Sous le nom de l'installeur, ce
+  défaut est le comportement documenté de longue date et n'a **pas** été touché.
+- **Pas de seconde confirmation.** Le menu montre chaque nom, chaque taille et les deux
+  répertoires, et l'utilisateur a appuyé sur Entrée : reposer `Proceed? [y/N]` juste après,
+  c'est poser deux fois la même question, ce qui apprend à répondre sans lire.
+
+### 6. Preuves
+
+| banc | avant | après |
+|---|---|---|
+| `Makefile.d/release.binary.sh.bench/` | 48 verts | **48 verts** (le cas des noms passe de 23 à **26**) |
+| `Makefile.d/release.deb.sh.bench/` | 33 verts | **33 verts** (sur un `.deb` reconstruit) |
+| `bin/scripts/marionnet-install.sh.bench/` | 63 cas | **68 cas, 68 verts** — 5 pour le second nom |
+
+Les 5 cas neufs : `--help` se présente comme le chooser ; `--binary` **refusé** (rc 2) en
+nommant ce qui installe l'application ; **sans terminal, refus** au lieu de tout prendre ;
+sous le nom de l'installeur, `--fetch-only` prend **toujours** tout, sans rien demander ; et
+le menu, joué avec un vrai pty, liste les images et sort proprement sur `q`.
+
+**Piège de banc payé ici** : un conteneur lancé avec `-t` **ne peut pas** être alimenté par
+un tube (« *the input device is not a TTY* », mesuré) — le pty s'alloue donc **dans** le
+conteneur, par `script`. Et le déplacement a cassé un chemin relatif sortant :
+`$HERE/../../Makefile.d/…` demandait désormais **trois** niveaux, si bien que le banc
+**sautait** (SKIP) au lieu de tourner — ce qu'un décompte de FAIL ne montre pas.

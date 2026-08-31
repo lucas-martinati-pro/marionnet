@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # ---
-# --- The bench of the NETWORK path of useful-scripts/marionnet-install.sh.
+# --- The bench of the NETWORK path of bin/scripts/marionnet-install.sh.
 # ---
 # Episode 6 proved the script on a local mirror; that run exercises everything EXCEPT the
 # two lines which differ, and those two lines are the whole point of a release server:
@@ -236,7 +236,10 @@ echo '<html><body>Marionnet downloads</body></html>' > "$WITHINDEX/index.html"
 #   with-sums             the four artefacts and their digests
 #   with-sums-and-index   the same, plus the index.html which sinks a LISTING (case 5b)
 #   with-sums-corrupt     one digest deliberately wrong: what a truncated transfer looks like
-SUMS_TOOL="$HERE/../../Makefile.d/release.sha256sums.sh"
+# Three levels up, not two, since episode 16 moved this bench with its script from
+# useful-scripts/ to bin/scripts/. A relative path out of a directory is exactly what a move
+# breaks, and it broke here: the bench SKIPped instead of running (measured).
+SUMS_TOOL="$HERE/../../../Makefile.d/release.sha256sums.sh"
 [[ -r $SUMS_TOOL ]] || skip_all "not found: $SUMS_TOOL (this bench needs the source tree)"
 
 WITHSUMS="$MIRROR/with-sums"
@@ -961,6 +964,67 @@ if (( rc != 0 )) && printf '%s\n' "$out" | grep -qi "wget or curl"; then
 else
   fail "the missing-downloader guard did not name both: rc=$rc"
   printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# ---------------------------------------------------------------- the other name (ep. 16)
+#
+# The same file, mounted under the name `marionnet-get-images': that IS the dispatch, since
+# the script reads ${0##*/}. Mounting it twice is not a trick of the bench -- it is exactly
+# what `dune install' lays down, a real .sh and the names beside it.
+#
+# What is measured here needs no terminal, on purpose: the menu itself is an interactive
+# thing, but the three answers this name owes a SCRIPT are not, and they are the ones which
+# would let a 7 GiB transfer start by surprise.
+function chooser {   # runs the script under its other name
+  docker run --rm -v "$SCRIPT:/marionnet-get-images:ro" -v "$FULL:/mirror:ro" \
+    "$IMG_CLIENT" bash /marionnet-get-images "$@" 2>&1
+}
+
+out=$(chooser --help) || true
+if grep -q 'marionnet-get-images \[OPTIONS\]' <<<"$out" && grep -q -- '--choose' <<<"$out"; then
+  pass "under its other name the script introduces itself as the image chooser"
+else
+  fail "--help does not mention the chooser: the two names share one usage block"
+fi
+
+rc=0; out=$(chooser --binary --from /mirror) || rc=$?
+if (( rc == 2 )) && grep -q 'does not install the application' <<<"$out"; then
+  pass "marionnet-get-images --binary: refused (rc=2), and it names what does install it"
+else
+  fail "--binary was not refused under the chooser's name: rc=$rc, said [$out]"
+fi
+
+# The one that matters: no terminal, no menu -- and NO silent fallback to "everything
+# published". Under the installer's own name that default is the documented behaviour, and
+# the next case checks it is still there.
+rc=0; out=$(chooser --from /mirror --prefix /tmp/p </dev/null) || rc=$?
+if (( rc == 2 )) && grep -q 'no terminal' <<<"$out"; then
+  pass "no terminal: the chooser refuses instead of fetching everything published"
+else
+  fail "without a terminal the chooser did not refuse: rc=$rc, said [$(tail -n 3 <<<"$out")]"
+fi
+
+rc=0; out=$(docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" -v "$FULL:/mirror:ro" \
+  "$IMG_CLIENT" bash /marionnet-install.sh --fetch-only --from /mirror --prefix /tmp/p \
+  --dry-run </dev/null 2>&1) || rc=$?
+if (( rc == 0 )) && grep -q 'dry run' <<<"$out"; then
+  pass "and under the installer's own name, --fetch-only still takes everything, unasked"
+else
+  fail "the installer's long-standing default changed with the chooser: rc=$rc"
+fi
+
+# The menu itself, answered `q': it must show the rows and leave without touching anything.
+#
+# The pty is allocated INSIDE the container, by `script', and not by `docker run -t': a
+# container given -t cannot also be fed from a pipe ("the input device is not a TTY",
+# measured). `script' comes with util-linux, which every one of these boxes has.
+rc=0; out=$(docker run --rm -v "$SCRIPT:/marionnet-get-images:ro" -v "$FULL:/mirror:ro" \
+  "$IMG_CLIENT" bash -c "printf 'q\n' | script -qec \
+     'bash /marionnet-get-images --from /mirror --prefix /tmp/p' /dev/null" 2>&1) || rc=$?
+if (( rc == 0 )) && grep -q 'machine-guignol' <<<"$out" && grep -q 'nothing done' <<<"$out"; then
+  pass "with a terminal the menu lists the images, and \`q' leaves without fetching"
+else
+  fail "the menu did not come up, or did not leave cleanly: rc=$rc, said [$(tail -n 5 <<<"$out")]"
 fi
 
 echo

@@ -29,7 +29,7 @@
 #     deb [trusted=yes] https://www.marionnet.org/download/marionnet-install.sh/1.0.x/ ./
 #
 # TWO CATALOGUES COHABIT IN THAT DIRECTORY, on purpose (episode 13):
-#   SHA256SUMS  what useful-scripts/marionnet-install.sh reads -- names and digests of the
+#   SHA256SUMS  what bin/scripts/marionnet-install.sh reads -- names and digests of the
 #               ARTEFACTS (images, kernels, tarball, and the .deb it lists and ignores);
 #   Packages    what apt reads -- the control fields of the .deb ONLY.
 # They answer different questions to different readers, and neither can be derived from the

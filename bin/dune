@@ -273,6 +273,21 @@
      (glob_files "scripts/marionnet-ctl")
      (glob_files "scripts/mrnctl")
      (glob_files "scripts/mrn-control")
+     ;; --- The guest-image CHOOSER (work-stream `modernisation-installation-marionnet',
+     ;; --- episode 16), and it is the SAME FILE as the installer published on the website:
+     ;; --- marionnet-install.sh, which dispatches on $0 -- exactly the form mrn2sh already
+     ;; --- uses above. Called `marionnet-get-images', it offers the images and kernels of
+     ;; --- the series as a checkbox list, marks as already installed the ones whose mtime
+     ;; --- matches their .conf (the field UML checks), and fetches what was ticked through
+     ;; --- the streaming, digest-verified path -- and it REFUSES --binary under that name.
+     ;; --- Why the installer itself lands in $(PREFIX)/bin/ at all: the chooser needs the
+     ;; --- catalogue, the `xz -dc -T0' extraction and the digest checked WHILE extracting,
+     ;; --- which is that file entire; a second implementation of it is what episode 8
+     ;; --- removed. It cannot be a sourced library either -- it is downloaded ALONE by a
+     ;; --- machine which has nothing, so it sources nothing.
+     (glob_files "scripts/marionnet-install.sh")
+     (glob_files "scripts/marionnet-get-images")
+     (glob_files "scripts/mrn-get-images")
      ;; --- Not listed here, and deliberately so: scripts/marionnet-completion.bash is not a
      ;; --- command, it is SOURCED -- its place on an installed system is a completion
      ;; --- directory, not $(PREFIX)/bin/. It is installed by the stanza just below, which

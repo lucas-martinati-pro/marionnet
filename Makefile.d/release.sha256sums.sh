@@ -26,7 +26,7 @@
 #
 # An index file and a sums file would be two truths able to disagree; there is one.
 #
-# CONSEQUENCE, and it is the point: for useful-scripts/marionnet-install.sh, SHA256SUMS
+# CONSEQUENCE, and it is the point: for bin/scripts/marionnet-install.sh, SHA256SUMS
 # IS the catalogue (the Apache listing is only its fallback). An artefact dropped into the
 # release directory without passing through here is INVISIBLE, and a line left behind by a
 # removed artefact advertises something which is not there -- which is why stale lines are
@@ -161,7 +161,7 @@ fi
 # catalogue is invisible" then holds twice over.
 #
 # The installer only fetches the first two: a `marionnet_*' line is catalogued and, for now,
-# ignored by useful-scripts/marionnet-install.sh. It is recorded all the same, because the
+# ignored by bin/scripts/marionnet-install.sh. It is recorded all the same, because the
 # catalogue is what says WHAT A RELEASE HOLDS, and because the digest of the binary is
 # exactly what the channel which will install it needs.
 # ---

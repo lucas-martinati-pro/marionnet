@@ -34,7 +34,7 @@
 #
 # Conventions of driven-sessions/README.md: 0 = PASS, 77 = SKIP, anything else = FAIL;
 # one PASS:/FAIL: line per case, a count at the end, and the bench cleans up. Plain bash,
-# no bashbricks: like its sibling useful-scripts/marionnet-install.sh.bench/run.sh, this
+# no bashbricks: like its sibling bin/scripts/marionnet-install.sh.bench/run.sh, this
 # driver is a docker orchestration, and the assertions are all `grep' and exit codes.
 #
 # Since episode 12 the box is a parameter: the same cases are played on the four
@@ -53,7 +53,7 @@ set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$HERE/../.." && pwd)
 
-# The four boxes of the roadmap. The same list is in useful-scripts/marionnet-install.sh.bench/
+# The four boxes of the roadmap. The same list is in bin/scripts/marionnet-install.sh.bench/
 # run.sh: a bench has to stay runnable with nothing but docker and its own directory, so the
 # two drivers each carry it rather than sharing a file across two unrelated directories.
 # Image references, not nicknames: they need no table to be understood, here or in the output.
@@ -143,7 +143,7 @@ echo "--- packages: $PKGS"
 # --- Is this artefact even meant for this box? (episode 12)
 # ---
 # The tarball is named marionnet_<version>-r<rev>_<arch>_glibc<x.y>, and that name is what
-# useful-scripts/marionnet-install.sh reads in order to CHOOSE among the published ones.
+# bin/scripts/marionnet-install.sh reads in order to CHOOSE among the published ones.
 # Here the choice was made by whoever passed the tarball, so this bench has to make the same
 # reading itself: on a box older than the machine which built the artefact, the cases which
 # start the binary would otherwise go red for a reason which is not a defect -- a dynamically
@@ -291,10 +291,10 @@ else
 fi
 
 names=$(in_box "ls /usr/local/bin | wc -l")
-if [[ $names -eq 23 ]]; then
-  pass "23 names in /usr/local/bin (the binary and the 22 companions of bin/scripts/)"
+if [[ $names -eq 26 ]]; then
+  pass "26 names in /usr/local/bin (the binary and the 25 companions of bin/scripts/)"
 else
-  fail "$names names in /usr/local/bin, expected 23"
+  fail "$names names in /usr/local/bin, expected 26"
 fi
 
 missing=""

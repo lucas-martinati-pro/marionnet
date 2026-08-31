@@ -26,7 +26,7 @@
 #
 # Layout inside the tarball:
 #
-#   <name>/bin/          marionnet.native, and the 15 names of bin/scripts/
+#   <name>/bin/          marionnet.native, and the 18 names of bin/scripts/
 #   <name>/share/        share/marionnet/{share,images,scripts,locale,filesystems,kernels},
 #                        share/bash-completion/completions/ (twelve names) and
 #                        share/doc/marionnet/ (the delivered documentation, episode 14)
@@ -591,7 +591,7 @@ trap cleanup_staging EXIT
 info "tarball produced: $TARBALL ($(du -h -- "$TARBALL" | awk '{print $1}'))"
 
 # The catalogue of a release directory is SHA256SUMS, and an artefact which never reaches
-# that file is invisible to useful-scripts/marionnet-install.sh. Recorded here, right after
+# that file is invisible to bin/scripts/marionnet-install.sh. Recorded here, right after
 # being moved into place, exactly as the two sibling scripts do.
 if test "$CHOICE" = "CONFIGME"; then
   # --force, scoped to this single file: we have JUST written it, so a digest already
