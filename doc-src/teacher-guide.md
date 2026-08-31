@@ -10,9 +10,13 @@ it links to them at the exact place where you need them:
 
 | Page | Read it for |
 |---|---|
-| `doc-src/scripting/README.md` | the **shape** of the channel: how an answer is built, what `accepted` does not mean, the recipes, the batch mode, `mrn-check` / `mrn2sh` / `mrn-verify` |
-| `doc-src/exam-mode.md` | what an **exam session records**, where it ends up in the project, and what a mark may rest on |
-| `doc-src/lab-design-skill.md` | the procedure an **AI agent** must follow to design, play and grade a lab (§ 6 below is the teacher's side of that same page) |
+| `scripting/README.md` | the **shape** of the channel: how an answer is built, what `accepted` does not mean, the recipes, the batch mode, `mrn-check` / `mrn2sh` / `mrn-verify` |
+| `exam-mode.md` | what an **exam session records**, where it ends up in the project, and what a mark may rest on |
+| `lab-design-skill.md` | the procedure an **AI agent** must follow to design, play and grade a lab (§ 6 below is the teacher's side of that same page) |
+
+Those names, and every relative path on this page, are relative to **the directory this file is
+in**: `doc-src/` in the sources, `<prefix>/share/doc/marionnet/` on a machine where Marionnet is
+installed. Run the shell examples of § 5 from there, or make the paths absolute.
 
 ---
 
@@ -35,7 +39,7 @@ yours.
 
 **What you need.** Marionnet itself, and the two clients that come with it: `mrnctl` (short form
 of `marionnet-ctl`) and, for marking, `mrn-verify`. They need `socat` and `jq` on the host. If
-you have never opened a driven session, read § 1 and § 2 of `doc-src/scripting/README.md` first —
+you have never opened a driven session, read § 1 and § 2 of `scripting/README.md` first —
 five minutes, end to end.
 
 ---
@@ -81,14 +85,14 @@ export MARIONNET_CONTROL_SOCKET=/tmp/lab.sock
 The window opens as usual and stays usable: the channel does not replace the interface, it drives
 the same session you are looking at. Everything below assumes those two lines.
 
-For an exam, add `--exam` — it also turns on the two host-side recordings (`doc-src/exam-mode.md`).
+For an exam, add `--exam` — it also turns on the two host-side recordings (`exam-mode.md`).
 Be aware that an exam session **refuses** what would destroy the copy before it is archived: no
 power cut (`poweroff`, `poweroff-all`, the *Power-off all* button), no `--no-save`, no `quit`
 while something is still running, and no removal of a component which has already run — the last
 one being liftable with `--exam-allow-delete` when you build the mock-up yourself. And the four
 ways of leaving a project — Quit, the window's (x), Close, New, Open — no longer ask anything:
 they shut every machine down, **wait until it is really down**, and save. See
-`doc-src/exam-mode.md` § 3.
+`exam-mode.md` § 3.
 
 ---
 
@@ -258,7 +262,7 @@ of a machine are archived **by its graceful shutdown**; a power cut leaves nothi
 
 One real lab, small enough to read on this page and complete enough to hand out: routing,
 stateful filtering and source NAT. Everything below is versioned in
-**`doc-src/labs/session-7/`** and runs as it is.
+**`labs/session-7/`** and runs as it is.
 
 ```
    m1 ── h1 ── r1 ── h3 ── intruder
@@ -283,15 +287,15 @@ The topology is a batch file, `lab.mrn`, played in one call and checkable withou
 anything:
 
 ```bash
-mrn-check doc-src/labs/session-7/lab.mrn   # a .mrn that does not lint is not a lab
-mrnctl -f doc-src/labs/session-7/lab.mrn
+mrn-check labs/session-7/lab.mrn   # a .mrn that does not lint is not a lab
+mrnctl -f labs/session-7/lab.mrn
 ```
 
 The two ends then get a boot scenario — a file, this time, because it is more than one line:
 
 ```bash
-mrnctl rc-set m1       --from=$PWD/doc-src/labs/session-7/m1-scenario.sh       --enable
-mrnctl rc-set intruder --from=$PWD/doc-src/labs/session-7/intruder-scenario.sh --enable
+mrnctl rc-set m1       --from=$PWD/labs/session-7/m1-scenario.sh       --enable
+mrnctl rc-set intruder --from=$PWD/labs/session-7/intruder-scenario.sh --enable
 mrnctl save-as /tmp/session-7.mar
 ```
 
@@ -304,10 +308,10 @@ Play it once as a correct student would, by installing the solution as r1's scen
 the key say whether it holds:
 
 ```bash
-mrnctl rc-set r1 --from=$PWD/doc-src/labs/session-7/r1-solution.sh --enable
+mrnctl rc-set r1 --from=$PWD/labs/session-7/r1-solution.sh --enable
 mrnctl start-all
 for c in m1 r1 intruder; do mrnctl wait $c --ready --timeout=300; done
-mrn-verify doc-src/labs/session-7/key.mrv
+mrn-verify labs/session-7/key.mrv
 # 14 passed, 0 failed, 0 skipped.
 ```
 
@@ -338,7 +342,7 @@ in flight, and replay the very same key:
 
 ```bash
 mrnctl exec r1 -- sysctl -w net.ipv4.ip_forward=0
-mrn-verify doc-src/labs/session-7/key.mrv
+mrn-verify labs/session-7/key.mrv
 # 12 passed, 2 failed, 0 skipped.
 ```
 
@@ -350,7 +354,7 @@ machine that no longer works.
 ### 5.5 Marking thirty copies — `grade.sh`
 
 An exam session is `marionnet --exam`: each machine shut down properly archives up to four documents
-into the project itself (`doc-src/exam-mode.md`). You then have two ways to mark, and they answer
+into the project itself (`exam-mode.md`). You then have two ways to mark, and they answer
 different questions:
 
 ```bash
@@ -394,11 +398,11 @@ It is exactly the kind of work an AI agent can draft — and exactly the kind wh
 key that passes on everything marks nothing.
 
 Marionnet therefore ships the procedure the agent is supposed to follow:
-**`doc-src/lab-design-skill.md`**. It is not documentation about the agent, it is the agent's
+**`lab-design-skill.md`**. It is not documentation about the agent, it is the agent's
 instructions — what exists in the channel, what counts as evidence, what a verdict may rest on,
 and a checklist it must run before reporting. Hand it over explicitly:
 
-> Read `doc-src/lab-design-skill.md` and follow it. Then: *(your lab, in your words)*.
+> Read `lab-design-skill.md` and follow it. Then: *(your lab, in your words)*.
 
 In Claude Code this repository also carries it as a skill (`marionnet-lab-design`), which is
 loaded by naming it; the content is the same page.
@@ -442,7 +446,7 @@ Marionnet that has moved.
 **(b) A graded exam.** Three things change:
 
 * the session is started with `--exam`, so every machine that is shut down properly archives up
-  to four documents into the project (`doc-src/exam-mode.md`);
+  to four documents into the project (`exam-mode.md`);
 * the key is written against **what the host wrote**, not against what a guest says about itself.
   A report and a history are written *inside* the guest, in a directory the student can write to.
   The console and the terminal recording are written by Marionnet. A `FAIL` whose only evidence is
@@ -484,7 +488,7 @@ Two consequences for a teacher:
 ## 8. Limits you will meet
 
 Every line below has cost somebody a debugging session. The full table is § 6 of
-`doc-src/lab-design-skill.md`; these are the four that bite a teacher first.
+`lab-design-skill.md`; these are the four that bite a teacher first.
 
 | What happens | What to do |
 |---|---|

@@ -279,6 +279,10 @@ PREFIX_INSTALL_DEFAULT=/usr/local
 PREFIX_INSTALL=$(shell source ./CONFIGME && echo $${prefix_install:-$(PREFIX_INSTALL_DEFAULT)})
 # ---
 SHARE_DIR=$(PREFIX_INSTALL)/share/marionnet
+# The delivered documentation (doc-src/dune, work-stream `modernisation-installation-marionnet'
+# episode 14). Only its EXAMPLE SCRIPTS need anything from here: dune installs data files with
+# mode 0644, and those scripts are meant to be run, exactly like the ones of scripts/ below.
+DOC_DIR=$(PREFIX_INSTALL)/share/doc/marionnet
 # install-final:
 # 	test $$(readlink "CONFIGME.choice") = "CONFIGME" || make rebuild-for-final
 # 	dune install --prefix $(PREFIX_INSTALL)
@@ -292,6 +296,7 @@ install-final-as-root:
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
 	echo "for i in $(SHARE_DIR)/scripts/*; do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
+	echo "chmod +x $(DOC_DIR)/labs/session-7/*.sh $(DOC_DIR)/scripting/examples/*.sh" >> $(TMPSCRIPT)
 	# The scoped sudoers rule letting Tap_provider build the ghost taps with
 	# iproute2 (chantier marionnet-daemon-elimination). The script is the single
 	# place where the rule text lives, and it was just copied into bin/ above.
@@ -319,6 +324,7 @@ install: install-final-as-root
 # ---
 # Rebuild and install the project in the opam directory for testing/debugging:
 SHARE_DIR_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/marionnet
+DOC_DIR_FOR_TESTING=$(shell echo $$OPAM_SWITCH_PREFIX)/share/doc/marionnet
 # ---
 INSTALLED_FILESYSTEMS=$(PREFIX_INSTALL_DEFAULT)/share/marionnet/filesystems
 INSTALLED_KERNELS=$(PREFIX_INSTALL_DEFAULT)/share/marionnet/kernels
@@ -336,6 +342,7 @@ install-for-testing:
 	@# Shell glob, NOT $(wildcard): make expands wildcard when parsing the recipe,
 	@# i.e. BEFORE `dune install' above has populated share/marionnet/scripts/.
 	@for i in $(SHARE_DIR_FOR_TESTING)/scripts/*; do test -e $$i || continue; chmod +x $$i && ln -sf $$i $$OPAM_SWITCH_PREFIX/bin/; done
+	@chmod +x $(DOC_DIR_FOR_TESTING)/labs/session-7/*.sh $(DOC_DIR_FOR_TESTING)/scripting/examples/*.sh
 	@echo "---"
 	which $(EXECUTABLES)
 	@echo "Success."

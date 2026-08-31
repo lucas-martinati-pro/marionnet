@@ -299,6 +299,11 @@ fichier non nommé n'est pas installé — c'est ainsi que la complétion reste 
 > `marionnet-todo-transverse`, et **le lance lui-même** depuis les deux boutons de cet
 > avertissement (2026-08-21) — un programme qui dit à l'utilisateur de lancer une commande doit
 > lui laisser cette commande sur le `PATH`.
+> **RÉSOLU le 2026-08-31 (épisode 14) pour la DOCUMENTATION** — même mécanisme, autre
+> fichier : `doc-src/dune`, une stanza `install` en section `share_root` qui pose les **26**
+> fichiers écrits pour qui n'a pas le dépôt sous `$(PREFIX)/share/doc/marionnet/`, arborescence
+> conservée. Détail et mesures : § « Épisode 14 » ci-dessous.
+>
 > **Restent à faire ici** : la **complétion bash** (`bin/scripts/marionnet-completion.bash` n'est
 > pas une commande et ne va pas dans `bin/` — cf. la ligne du tableau ; le motif de son absence
 > vit désormais dans un commentaire de `bin/dune`, là où on chercherait la ligne manquante), la
@@ -567,6 +572,10 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    `marionnet-kernels`, `marionnet-kernels-i386`, `marionnet-fs-guignol`), le `Depends:` se
    **dérive** de la donnée générée à l'épisode 10, et le paquet routeur du précédent RPM
    disparaît (un artefact routeur n'est plus qu'un lien).
+3 bis. **`doc-src/` s'installe** — étape **révélée par l'épisode 13** : les guides d'usage
+   ne sont posés par **aucun** canal (§ 2.4 ter), et cela ne se répare pas dans le `.deb`
+   mais dans une stanza `install` de dune, d'où **tous** les canaux le reçoivent. **C'est
+   l'épisode 14, ci-dessous.**
 4. **Les `.deb` sur les quatre boîtes**.
 5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
@@ -1855,3 +1864,99 @@ défavorable ; c'est classé **hors périmètre**, avec le chiffre qui le justif
 - Inchangés, et toujours **bloqués par l'extérieur** : le dépôt sur le serveur, la jambe
   **https**, la **signature** des artefacts — c'est elle qui décidera de la clef du dépôt
   apt (`signed-by=`), donc le point (5) et le dépôt apt se jouent ensemble.
+
+## Épisode 14 (2026-08-31) — `doc-src/` s'installe
+
+Point (3 bis) de la feuille de route § 5 bis, révélé par l'épisode 13 : en dressant la liste
+de ce que le paquet `marionnet` devrait porter, on a constaté que les guides — 2,1 Mio écrits
+**pour qui n'a pas le dépôt** — n'étaient posés par **aucun** canal. Le constat lui-même est
+plus ancien (§ 2.4 ter, 2026-08-13) ; ce qui a changé, c'est qu'il devenait la dernière
+raison de ne pas commencer les `.deb`.
+
+Ce n'est pas un travail de `.deb`. Un paquet qui installerait une documentation que
+`dune install` ne connaît pas ferait exactement ce que l'épisode 1 a supprimé ailleurs : une
+seconde source de vérité. La réparation est donc **un fichier `doc-src/dune`**, et tous les
+canaux la reçoivent d'un coup — `dune install --prefix`, le tarball de l'épisode 9a, et le
+`.deb` à venir, qui est assemblé du même staging.
+
+### La destination, et pourquoi ce n'est pas la section `doc` de dune
+
+`$(PREFIX)/share/doc/marionnet/` — ce que la FHS, Debian et un lecteur attendent. La section
+`doc` de dune installe sous `$(PREFIX)/doc/<paquet>`, ce qui donnerait `/usr/doc/marionnet`
+sur la machine servie par apt. On reprend donc le procédé de la complétion (épisode 11a) :
+section **`share_root`** avec un `as doc/marionnet/…` explicite, la seule façon d'atteindre un
+répertoire qui n'appartient pas au paquet.
+
+**Chaque fichier est nommé un par un**, comme le fait `bin/dune`. C'est ce qui garde dehors
+les sources du manuel texinfo historique (`documentation.texi`, `macros.texi`, `epsf.tex`,
+`img/`, `img-src/`, `NETWORK-SIMULATION`) — elles ne sont pas la documentation d'usage — et,
+tout aussi important, ce qui garde dehors les fichiers **présents ici mais absents de git**
+(la traduction française du guide de l'enseignant et ses rendus PDF, travaux en cours) :
+nommer dans un `dune` un fichier que dune ne trouve pas **casse le build sur un clone frais**.
+
+26 fichiers : 4 documents à la racine, le guide du canal et ses 10 exemples, le TP complet
+`labs/session-7/` et ses 10 fichiers.
+
+### L'arborescence est conservée, donc les citations devaient changer
+
+Ces documents **se citent les uns les autres par chemin** — c'est le mécanisme qui remplace
+la recopie d'un guide dans un autre, et c'est aussi ce qui fait qu'un agent à qui le guide de
+l'enseignant dit « lis `lab-design-skill.md` et suis-le » trouve le fichier. Or ils étaient
+écrits `doc-src/…`, c'est-à-dire **relatifs à la racine d'un clone** : une machine servie par
+apt n'a aucune raison de posséder ce chemin.
+
+Les 61 occurrences sont donc devenues **relatives au répertoire qui contient le document**.
+Une seule règle, et elle est vraie **aux deux endroits** : dans le dépôt (le lecteur est dans
+`doc-src/`) comme sur la machine installée (il est dans `share/doc/marionnet/`). Trois
+documents d'entrée l'énoncent en une phrase, parce qu'un chemin relatif ne dit pas tout seul
+à quoi il est relatif — et cette phrase est le seul endroit où `doc-src/` reste écrit, comme
+*nom de son emplacement dans les sources*. Les exemples shell du § 5 du guide de l'enseignant
+se jouent donc depuis ce répertoire, ce que la phrase dit aussi.
+
+### Le bit exécutable, que `dune` ne sait pas porter
+
+**Mesuré** : `dune install` pose tout ce qui n'est pas de la section `bin`/`libexec` en
+**0644** — un `(files (x.sh as …))` en section `share_root` arrive non exécutable. Ce n'est
+pas neuf, c'est exactement pourquoi le `Makefile` fait déjà `chmod +x` sur
+`share/marionnet/scripts/` après `dune install` ; mais ici cela mordait pour de bon, un TP
+qu'il faut `chmod` avant de le jouer n'étant plus « rejouable tel quel ».
+
+Chaque canal restaure donc le bit juste après dune : les **deux** cibles d'installation du
+`Makefile` (`install-final-as-root` via son script root, `install-for-testing`) et
+`Makefile.d/release.binary.sh`, qui prépare le staging — donc, à travers lui, le `.deb` à
+venir. La règle appliquée est **uniforme** — tout `*.sh` des deux répertoires d'exemples —
+plutôt qu'une liste, qui serait une seconde source de vérité pour une propriété que les
+fichiers portent déjà dans le dépôt. Elle accorde **un bit de plus** que le dépôt, à
+`scripting/examples/scenario-ping.sh`, dont la première ligne dit qu'il n'est de toute façon
+pas exécuté sur l'hôte.
+
+### Prouvé (2026-08-31)
+
+Banc `Makefile.d/release.binary.sh.bench/` : **43 → 48 cas**, cinq neufs sur la
+documentation livrée — les 26 fichiers présents, l'arborescence conservée (9 chemins cités
+vérifiés là où les documents les nomment), les 14 scripts exécutables et les documents qui ne
+le sont pas, **aucun renvoi résiduel** vers `doc-src/<document>`, et `root:root`.
+
+- **48 verts** sur `debian:trixie-slim`, sur le tarball fabriqué par `make release-binary`
+  (`marionnet_trunk-r912_amd64_glibc2.39`, 7,2 Mio) ;
+- **discriminance mesurée** : rejoué sur l'artefact d'avant (r909), **5 rouges sur 5**.
+- `--distro all` : **44 verts + 4 sautés** sur `debian:bookworm-slim` (la boîte dont la
+  glibc est trop ancienne pour démarrer le binaire — les cinq cas neufs, eux, s'y jouent) et
+  **48 verts** sur `debian:trixie-slim`, `ubuntu:24.04` et `ubuntu:26.04`.
+
+**Piège payé ici, et c'est celui de l'épisode 12 sous un autre visage** : trois des cinq cas
+*cherchent* quelque chose (`find`, `grep`) et **ne trouvent rien quand le répertoire n'existe
+pas** — deux d'entre eux passaient donc au vert sur l'arbre même qu'ils devaient condamner.
+Ils sont désormais **gardés sur l'existence du répertoire** (`test -d … || echo
+NO-SUCH-DIRECTORY`), procédé déjà utilisé par le cas de propriété de la complétion.
+
+### Restes
+
+- La documentation **n'est toujours pas mesurée par le banc réseau**
+  (`useful-scripts/marionnet-install.sh.bench/`), et ce n'est pas un oubli : ce banc mesure
+  le **relais** (`marionnet-install.sh --binary` déplie l'artefact et lance l'`install.sh`
+  qui voyage dedans), lequel est déjà éprouvé sur les 63 cas existants ; ce que la
+  documentation exige en propre est mesuré là où elle est produite.
+- Le point (4) — écrire les quatre `.deb` et les éprouver sur les quatre boîtes — n'a plus
+  d'obstacle : le paquet `marionnet` peut porter les guides parce qu'ils sont, enfin, dans le
+  staging que `release.binary.sh` produit.

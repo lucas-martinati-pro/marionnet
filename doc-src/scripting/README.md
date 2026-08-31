@@ -15,6 +15,10 @@ vocabulary (see [§ 4](#4-the-command-list-is-not-in-this-guide)).
 * Design and rationale (in French, for developers): `docs/pilotage-par-script.md`.
 * The client script: `marionnet-ctl`, also reachable as `mrnctl` (in the sources: `bin/scripts/marionnet-ctl.sh`).
 
+Relative paths on this page (`examples/`, `teacher-guide.md`...) are relative to the directory
+this file is in: `doc-src/scripting/` in the sources, `<prefix>/share/doc/marionnet/scripting/`
+once installed. Paths beginning with `docs/` or `bin/` name the sources, and only them.
+
 ---
 
 ## 1. Starting a driven session
@@ -842,7 +846,7 @@ writable from inside the guest: of those two, the terminal recording is the one 
 commands together with their output, which is what makes marking defensible. On the exam mode
 itself, what it archives into the project file, and how those archives are read from the
 interface — the Markdown report opens rendered, its source one gesture away — see
-`doc-src/exam-mode.md`.
+`exam-mode.md`.
 
 ---
 
@@ -1104,20 +1108,20 @@ never have to configure both.
 * `mrnctl --help` — the client's own options.
 * `mrn-check --help` — checking a `.mrn` before sending it (§ 13).
 * `mrn-verify --help` — the assertions of a `.mrv`, and what each one rests on (§ 14).
-* `doc-src/teacher-guide.md` — the same channel seen from a classroom: preparing a lab, running
+* `teacher-guide.md` — the same channel seen from a classroom: preparing a lab, running
   the session, marking thirty copies. It carries **one worked example per verb** — the only
   place that does, and they are replayed rather than copied — plus a complete lab in
-  `doc-src/labs/session-7/`.
-* `doc-src/exam-mode.md` — the exam mode: what a session records, and what ends up in the
+  `labs/session-7/`.
+* `exam-mode.md` — the exam mode: what a session records, and what ends up in the
   project file (for the teacher, with or without this channel).
-* `doc-src/lab-design-skill.md` — how to go from a *statement* to a *mark*: designing a lab,
+* `lab-design-skill.md` — how to go from a *statement* to a *mark*: designing a lab,
   writing its correction key, and grading a session. Written for an AI agent driving this
   channel, and readable by anyone who does the same by hand.
 * `docs/pilotage-par-script.md` — the design of the channel, its rationale, and the journal of
   how it was built (in French, developer audience).
 * `docs/journalisation-profonde.md` — the design of the journals of § 11 (in French, developer
   audience).
-* `doc-src/scripting/examples/` — the scripts of this guide, runnable as they are.
+* `scripting/examples/` — the scripts of this guide, runnable as they are.
 
 ### How this guide stays true
 

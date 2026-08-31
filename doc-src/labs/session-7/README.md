@@ -2,7 +2,7 @@
 
 A complete lab: a statement, the project handed out to the students, a solution, and a
 correction key played against a live session. It is the worked example of
-`doc-src/teacher-guide.md` § 5, and it runs as it is.
+`teacher-guide.md` § 5, and it runs as it is.
 
 ```
    m1 ── h1 ── r1 ── h3 ── intruder
@@ -47,7 +47,7 @@ export MARIONNET_CONTROL_SOCKET=/tmp/lab.sock
 `mrnctl` and `mrn-verify` are taken from `$PATH`; from a source tree, point at them with
 `MRNCTL=` and `MRN_VERIFY=`.
 
-Like the scripts of `doc-src/scripting/examples/`, and for the same reason, **these source no
+Like the scripts of `scripting/examples/`, and for the same reason, **these source no
 library** — not even the `bashbricks` vendored in this repository. A lab is meant to be copied
 out of the source tree and edited into next year's lab; a dependency on this tree's layout would
 be the first thing to break.

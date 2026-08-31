@@ -26,10 +26,12 @@ is instant.
 installed as `mrnctl`), and `socat`; `jq` for anything that reads an answer. The three companion
 tools — `mrn-check`, `mrn2sh`, `mrn-verify` — sit next to the client.
 
-**Background reading, in this order:** `doc-src/scripting/README.md` (the shape of the channel,
-its invariants, and complete recipes) and `doc-src/exam-mode.md` (what an exam session records).
+**Background reading, in this order:** `scripting/README.md` (the shape of the channel,
+its invariants, and complete recipes) and `exam-mode.md` (what an exam session records).
 This page assumes them and does not repeat them; it adds the part neither of them covers — how to
 go from a *statement* to a *mark*.
+Those two names, like every relative path on this page, are relative to the directory holding
+this file: `doc-src/` in the sources, `<prefix>/share/doc/marionnet/` on an installed machine.
 
 ---
 
@@ -613,14 +615,14 @@ passed / failed / skipped). "It should work" is not a result.
 ## 9. Where to look next
 
 * `mrnctl help`, `mrn-check --help`, `mrn2sh --help`, `mrn-verify --help` — the authorities.
-* `doc-src/scripting/README.md` — the guide to the channel: its shape, its invariants, its
+* `scripting/README.md` — the guide to the channel: its shape, its invariants, its
   recipes, and the troubleshooting table.
-* `doc-src/scripting/examples/` — runnable scripts, including an exam session and an assertion
+* `scripting/examples/` — runnable scripts, including an exam session and an assertion
   file.
-* `doc-src/teacher-guide.md` — the teacher's side of this page: the same work seen by the human
+* `teacher-guide.md` — the teacher's side of this page: the same work seen by the human
   who will read your report. Its § 6 says what they are expected to demand from you (counters, a
   run against a deliberately wrong lab, the list of `SKIP`s, the `.mar` replayed), and its
-  `doc-src/labs/session-7/` is a complete lab you may take as a model.
-* `doc-src/exam-mode.md` — what an exam session records, and what can be trusted in it.
+  `labs/session-7/` is a complete lab you may take as a model.
+* `exam-mode.md` — what an exam session records, and what can be trusted in it.
 * `docs/pilotage-par-script.md`, `docs/journalisation-profonde.md` — the design and the
   measurements behind all of the above (in French, developer audience).

@@ -1,0 +1,99 @@
+;; This file is part of Marionnet, a virtual network laboratory
+;; Copyright (C) 2026  Jean-Vincent Loddo
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 2 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;;; ---
+;;; --- THE DELIVERED DOCUMENTATION -- the part of doc-src/ which is written for someone who
+;;; --- does NOT have the repository (work-stream `modernisation-installation-marionnet',
+;;; --- episode 14; the defect it repairs is § 2.4 ter of its document, dated 2026-08-13).
+;;; ---
+;;; --- Until now no channel installed a single line of it: `grep -rn doc-src Makefile
+;;; --- Makefile.d/*.mk' returned nothing but the targets which BUILD the historical manual.
+;;; --- That was harmless while doc-src/ held only sources of the old texinfo manual; it stopped
+;;; --- being harmless when this directory became the place where the teacher's guide, the
+;;; --- channel guide and the lab-design page live -- documents whose first sentence assumes a
+;;; --- reader who installed Marionnet and never cloned anything.
+;;; ---
+;;; --- Section share_root with an explicit `as doc/marionnet/...', not section `doc': dune's
+;;; --- doc section installs under $(PREFIX)/doc/<package>, while the destination everybody
+;;; --- (FHS, Debian, the future .deb) expects is $(PREFIX)/share/doc/marionnet/. Same reason
+;;; --- as the completion stanza of bin/dune, which had to reach $(PREFIX)/share/bash-completion.
+;;; ---
+;;; --- Each file is named ONE BY ONE, as bin/dune does: a file which is not named is not
+;;; --- installed, and that is what keeps the historical sources of the texinfo manual
+;;; --- (documentation.texi, macros.texi, epsf.tex, img/, img-src/, NETWORK-SIMULATION) out of
+;;; --- an installed system. It is also what keeps out the files which exist HERE but not in
+;;; --- git (the French translation and the PDF renderings of the teacher's guide, works in
+;;; --- progress): naming a file dune cannot find breaks the build on a fresh clone.
+;;; ---
+;;; --- THE TREE IS PRESERVED, because these documents cite each other BY RELATIVE PATH -- that
+;;; --- is the mechanism which replaces copying one guide's content into another. Episode 14
+;;; --- made those citations relative to THIS directory (they used to be relative to the root
+;;; --- of a clone, i.e. prefixed with `doc-src/'), so that one and the same sentence is right
+;;; --- in the repository and under $(PREFIX)/share/doc/marionnet/.
+;;; ---
+;;; --- WHAT THIS STANZA CANNOT DO: give back the executable bit. dune installs everything
+;;; --- outside the bin/ and libexec sections with mode 0644, measured -- which is exactly why
+;;; --- the Makefile already runs `chmod +x' over share/marionnet/scripts/ after `dune
+;;; --- install'. The example scripts below (labs/session-7/, scripting/examples/) are meant to
+;;; --- be RUN, so each channel restores that bit right after dune: the Makefile (both install
+;;; --- targets) and Makefile.d/release.binary.sh, which stages the tarball -- and, through the
+;;; --- tarball, the .deb to come. The rule they apply is uniform -- every *.sh of those two
+;;; --- directories -- rather than a list, which would be a second source of truth for a
+;;; --- property the files already carry in the repository. It grants one bit more than the
+;;; --- repository does, to scripting/examples/scenario-ping.sh, whose first line says it is not
+;;; --- run on the host anyway.
+;;; ---
+(install
+  (files
+     ;; --- The teacher: from a statement to a mark, one worked example per command.
+     (teacher-guide.md as doc/marionnet/teacher-guide.md)
+     ;; --- The exam mode: what a session records, and what a mark may rest on.
+     (exam-mode.md as doc/marionnet/exam-mode.md)
+     ;; --- The page an AI AGENT is told to read and follow, by the teacher's guide itself --
+     ;; --- hence it has to exist on the machine, not only in the repository.
+     (lab-design-skill.md as doc/marionnet/lab-design-skill.md)
+     ;; --- The `.mar' format (work-stream `migration-marshal-to-text').
+     (project-format-v3.md as doc/marionnet/project-format-v3.md)
+     ;; --- The control channel: its shape, its invariants, its recipes...
+     (scripting/README.md as doc/marionnet/scripting/README.md)
+     ;; --- ... and the scripts of that guide, runnable as they are (EXECUTABLE, see above).
+     (scripting/examples/README.md as doc/marionnet/scripting/examples/README.md)
+     (scripting/examples/01-build-a-lab.sh as doc/marionnet/scripting/examples/01-build-a-lab.sh)
+     (scripting/examples/02-run-and-collect.sh as doc/marionnet/scripting/examples/02-run-and-collect.sh)
+     (scripting/examples/03-router-daemons.sh as doc/marionnet/scripting/examples/03-router-daemons.sh)
+     (scripting/examples/04-journals.sh as doc/marionnet/scripting/examples/04-journals.sh)
+     (scripting/examples/05-exam-session.sh as doc/marionnet/scripting/examples/05-exam-session.sh)
+     (scripting/examples/06-assert-a-lab.sh as doc/marionnet/scripting/examples/06-assert-a-lab.sh)
+     (scripting/examples/07-exec.sh as doc/marionnet/scripting/examples/07-exec.sh)
+     (scripting/examples/scenario-ping.sh as doc/marionnet/scripting/examples/scenario-ping.sh)
+     (scripting/examples/lab.mrn as doc/marionnet/scripting/examples/lab.mrn)
+     (scripting/examples/lab.mrv as doc/marionnet/scripting/examples/lab.mrv)
+     ;; --- A complete, replayable lab: it is the model the teacher's guide walks through, so
+     ;; --- it is installed whole -- its scripts, its description and its two answer keys.
+     (labs/session-7/README.md as doc/marionnet/labs/session-7/README.md)
+     (labs/session-7/build.sh as doc/marionnet/labs/session-7/build.sh)
+     (labs/session-7/play.sh as doc/marionnet/labs/session-7/play.sh)
+     (labs/session-7/grade.sh as doc/marionnet/labs/session-7/grade.sh)
+     (labs/session-7/m1-scenario.sh as doc/marionnet/labs/session-7/m1-scenario.sh)
+     (labs/session-7/intruder-scenario.sh as doc/marionnet/labs/session-7/intruder-scenario.sh)
+     (labs/session-7/r1-solution.sh as doc/marionnet/labs/session-7/r1-solution.sh)
+     (labs/session-7/lab.mrn as doc/marionnet/labs/session-7/lab.mrn)
+     (labs/session-7/key.mrv as doc/marionnet/labs/session-7/key.mrv)
+     (labs/session-7/key-recorded.mrv as doc/marionnet/labs/session-7/key-recorded.mrv)
+     )
+  (section share_root)
+  (package marionnet) ;;; optional
+ )

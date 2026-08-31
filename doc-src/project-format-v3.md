@@ -75,7 +75,7 @@ project saved by this version answers `v3`.
 
 There is no separate conversion tool, on purpose: the only program that may write a Marionnet
 project is Marionnet itself. Converting is therefore *opening and saving*, which the control
-channel can do without anyone clicking (see `doc-src/scripting/README.md` for the channel
+channel can do without anyone clicking (see `scripting/README.md` for the channel
 itself):
 
 ```bash
@@ -121,6 +121,6 @@ script is a script, and it belongs in a file you can open.
 
 ## 7. Where to read more
 
-* Driving Marionnet from a script: `doc-src/scripting/README.md`.
+* Driving Marionnet from a script: `scripting/README.md`.
 * The design of the format and the reasons behind it (French, for developers):
   `docs/migration-marshal-to-text.md`.

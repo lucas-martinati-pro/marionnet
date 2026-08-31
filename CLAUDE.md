@@ -400,13 +400,27 @@ Reprise : appliquer le skill `chantier-long`.
   `18474`), et `download/apt/` devra être le point d'entrée **stable**. **Mesuré et refusé** :
   creuser les images (trixie est pleine à 90 %, 8,0 % de zéros déjà, `xz` les efface en
   transit, et creuser un artefact publié lui donnerait un **`mtime` neuf**).
+  **Ép. 14 : `doc-src/` s'installe, et c'est un fichier `dune`, pas un `.deb`.** Les 26
+  fichiers écrits pour qui **n'a pas le dépôt** vont sous `$(PREFIX)/share/doc/marionnet/`
+  (`doc-src/dune`, section **`share_root`** + `as doc/marionnet/…` — la section `doc` de dune
+  installerait sous `$(PREFIX)/doc/`), chacun **nommé un par un** : c'est ce qui garde dehors
+  les sources du manuel texinfo **et** les fichiers absents de git (guide FR, PDF), nommer un
+  fichier introuvable cassant le build sur un clone frais. **À ne pas défaire** : (1)
+  l'arborescence est conservée parce que les documents **se citent par chemin** — d'où les 61
+  citations passées de `doc-src/…` (relatif à la racine d'un **clone**) à des chemins relatifs
+  **au répertoire du document**, seule règle vraie dans le dépôt *et* sur la machine installée,
+  énoncée par 3 documents d'entrée ; (2) **`dune install` pose 0644 hors `bin`/`libexec`**
+  (mesuré), donc les 14 scripts d'exemple perdent leur bit — restauré par les **3** canaux
+  (2 cibles du `Makefile`, `release.binary.sh`) par une règle **uniforme** (tout `*.sh` des 2
+  répertoires d'exemples) et non par une liste. Banc binaire **43 → 48 cas** (48 verts, 5/5
+  rouges sur l'artefact d'avant), et **3 des 5 cas neufs sont gardés sur l'existence du
+  répertoire** : un `find`/`grep` sur un répertoire absent ne trouve rien, donc passait au vert
+  sur l'arbre qu'il devait condamner.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
-  découpage en `.deb` *(fait, ép. 13)* → **(3 bis) `doc-src/` s'installe** — étape neuve
-  révélée par l'ép. 13 : les guides ne sont posés par **aucun** canal (§ 2.4 ter), et cela
-  se répare dans `bin/dune`, pas dans le `.deb` → (4) les `.deb` sur les 4 boîtes → (5)
-  `upload.www.marionnet.org.sh` → (6) rejeu de (2) et (4) contre le vrai serveur. La **doc
-  INSTALL** est le tout dernier épisode.
+  découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
+  **(4) les `.deb` sur les 4 boîtes** → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2)
+  et (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
 

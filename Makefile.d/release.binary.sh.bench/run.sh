@@ -348,6 +348,67 @@ else
   fail "completion files not owned by root:root: [$foreign]"
 fi
 
+# --- The delivered documentation (episode 14). Until then, doc-src/ was installed by NO
+# --- channel at all, while the guides it holds are written for a reader who never cloned
+# --- anything -- and the teacher's guide tells an AI agent to READ a file which did not
+# --- exist on the machine. Four cases: it is there whole, its example scripts kept the
+# --- executable bit dune cannot carry, the documents cite each other by paths which resolve
+# --- WHERE THEY NOW SIT, and they belong to root like everything else.
+DOC=/usr/local/share/doc/marionnet
+n=$(in_box "find $DOC -type f 2>/dev/null | wc -l" || echo 0)
+if [[ $n -eq 26 ]]; then
+  pass "the 26 files of the delivered documentation are under $DOC"
+else
+  fail "$n file(s) of documentation under $DOC, expected 26"
+fi
+
+# The tree is preserved, and that is not cosmetic: the guides cite each other by relative
+# path, and the lab is a directory whose scripts refer to their siblings.
+missing=""
+for f in teacher-guide.md exam-mode.md lab-design-skill.md project-format-v3.md \
+         scripting/README.md scripting/examples/01-build-a-lab.sh \
+         labs/session-7/README.md labs/session-7/key.mrv labs/session-7/lab.mrn; do
+  in_box "test -s $DOC/$f" || missing="$missing $f"
+done
+if [[ -z $missing ]]; then
+  pass "the documents sit where they cite each other from (the tree is preserved)"
+else
+  fail "missing under $DOC:$missing"
+fi
+
+# dune installs data files 0644, measured -- so each channel restores this bit. These
+# scripts are handed out to be RUN: a lab a teacher has to chmod first is a lab that does
+# not run as it is. And the documents beside them must NOT have become executable.
+notx=$(in_box "test -d $DOC/labs/session-7 && test -d $DOC/scripting/examples || echo NO-SUCH-DIRECTORY; find $DOC/labs/session-7 $DOC/scripting/examples -name '*.sh' ! -perm -u+x 2>/dev/null | head -n 5" || true)
+x_md=$(in_box "find $DOC -name '*.md' -perm -u+x | head -n 5" || true)
+if [[ -z $notx && -z $x_md ]]; then
+  pass "the 14 example scripts are executable, and the documents are not"
+else
+  fail "executable bit wrong under $DOC: not executable [$notx], wrongly executable [$x_md]"
+fi
+
+# The citations resolve HERE. Before episode 14 they were written `doc-src/...', i.e.
+# relative to the root of a clone -- a path this machine has no reason to own. A leftover
+# would send an installed reader (or the agent the teacher's guide instructs) nowhere.
+# What is hunted is a CITATION, not the word: three documents legitimately say where they
+# live in the sources ("`doc-src/' in the sources"), and that sentence is the very thing
+# which tells the reader how to read the relative paths.
+# Guarded on the directory existing: a grep over nothing finds nothing, and this case
+# would have gone green on the very tree it was written to condemn.
+leftover=$(in_box "test -d $DOC || echo NO-SUCH-DIRECTORY; grep -rlE 'doc-src/(teacher-guide|exam-mode|lab-design-skill|project-format-v3|labs/session-7|scripting/(README|examples))' $DOC 2>/dev/null | head -n 5" || true)
+if [[ -z $leftover ]]; then
+  pass "no document points back at doc-src/: the relative paths resolve where they landed"
+else
+  fail "still citing doc-src/ under $DOC: [$leftover]"
+fi
+
+foreign=$(in_box "test -d $DOC || echo NO-SUCH-DIRECTORY; find $DOC ! -user root -o ! -group root 2>/dev/null | head -n 5" || true)
+if [[ -z $foreign ]]; then
+  pass "the documentation belongs to root:root too"
+else
+  fail "documentation not owned by root:root: [$foreign]"
+fi
+
 # ---------------------------------------------------------------- 5. /etc/marionnet/marionnet.conf
 
 CONF=/etc/marionnet/marionnet.conf

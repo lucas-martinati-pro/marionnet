@@ -26,7 +26,7 @@
 #
 # What --exam adds is the archiving: at the graceful shutdown of each machine, its report, its
 # command history, its console and its terminal session are imported into the `documents'
-# treeview, hence into the .mar. See doc-src/exam-mode.md.
+# treeview, hence into the .mar. See exam-mode.md.
 #
 # Usage: ./05-exam-session.sh [<machine>]
 

@@ -27,7 +27,9 @@
 # Layout inside the tarball:
 #
 #   <name>/bin/          marionnet.native, and the 15 names of bin/scripts/
-#   <name>/share/        share/marionnet/{share,images,scripts,locale,filesystems,kernels}
+#   <name>/share/        share/marionnet/{share,images,scripts,locale,filesystems,kernels},
+#                        share/bash-completion/completions/ (twelve names) and
+#                        share/doc/marionnet/ (the delivered documentation, episode 14)
 #   <name>/install.sh    lays that down under a prefix, and asks for the sudoers rule
 #   <name>/README        what this is, what it needs, how to remove it
 #   <name>/REQUIRED-PACKAGES-RUNTIME
@@ -281,6 +283,20 @@ chmod +x -- "${SCRIPTS[@]}"
 cp -a -- "${SCRIPTS[@]}" "$PREFIX_DIR/bin/"
 info "staged: $(find "$PREFIX_DIR/bin" -mindepth 1 -maxdepth 1 | wc -l) name(s) in bin/, from the binary and bin/scripts/"
 
+# The delivered documentation (doc-src/dune, episode 14) rides in share/doc/marionnet/, so
+# it is already staged by `dune install' above and will be copied by install.sh with the
+# rest of share/. The one thing dune cannot carry is the executable bit -- it installs data
+# files with mode 0644, measured -- and the example scripts of the two lab directories are
+# meant to be RUN by the reader. Same treatment as the scripts above, same reason.
+DOC_DIR="$PREFIX_DIR/share/doc/marionnet"
+test -d "$DOC_DIR" || die "no delivered documentation in the staging: $DOC_DIR"
+shopt -s nullglob
+DOC_SCRIPTS=("$DOC_DIR"/labs/session-7/*.sh "$DOC_DIR"/scripting/examples/*.sh)
+shopt -u nullglob
+((${#DOC_SCRIPTS[@]})) || die "no example script in the staged documentation: $DOC_DIR"
+chmod +x -- "${DOC_SCRIPTS[@]}"
+info "staged: $(find "$DOC_DIR" -type f | wc -l) file(s) of documentation, ${#DOC_SCRIPTS[@]} of them executable"
+
 # Empty, but expected: Marionnet reads these two directories at startup, and the release
 # directory next to this tarball is where their content comes from.
 mkdir -p -- "$PREFIX_DIR/share/marionnet/filesystems" "$PREFIX_DIR/share/marionnet/kernels"
@@ -501,6 +517,12 @@ INSTALL
   -- which is what lets this tarball live anywhere, the prefix compiled in being only a
   default -- and installs the scoped sudoers rule Marionnet needs to build its taps.
 
+  share/doc/marionnet/ travels with it too: the teacher's guide, the guide to the control
+  channel and its runnable examples, the exam mode, the lab-design page an AI agent is told
+  to follow, the .mar format, and a complete replayable lab (labs/session-7/). The example
+  scripts are installed executable; the documents cite each other by relative path, so they
+  can be read where they are.
+
   share/bash-completion/completions/ travels with it: the clients of the control channel
   (mrnctl, mrn-check, mrn2sh, mrn-verify...) complete their verbs and the names of the
   running components, in a new shell, provided the prefix is one bash-completion looks in
@@ -517,7 +539,7 @@ WHAT THE MACHINE MUST HAVE (Debian/Ubuntu package names)
 
 REMOVE
   marionnet-sudoers.sh uninstall
-  rm -rf <prefix>/share/marionnet /etc/marionnet
+  rm -rf <prefix>/share/marionnet <prefix>/share/doc/marionnet /etc/marionnet
   rm -f  <prefix>/bin/marionnet.native <prefix>/bin/marionnet* <prefix>/bin/mrn* \\
          <prefix>/bin/bashbricks.sh
   rm -f  <prefix>/share/bash-completion/completions/{marionnet-*,mrn*}

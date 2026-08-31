@@ -3,8 +3,10 @@
 > Étendu à l'**épisode 10** (les dépendances apt de la machine cible), à l'**épisode
 > 11a** (la complétion bash), puis à l'**épisode 12** — la **boîte est un paramètre**, et
 > les cas sont joués sur les **quatre** distributions de la feuille de route.
-> **43 cas** au total, dont **10** virent au rouge sur un artefact d'avant l'épisode 10 et
-> **3** sur un artefact d'avant l'épisode 11a (discriminance mesurée).
+> Puis à l'**épisode 14** — la **documentation livrée** (`doc-src/`) est enfin installée.
+> **48 cas** au total, dont **10** virent au rouge sur un artefact d'avant l'épisode 10,
+> **3** sur un artefact d'avant l'épisode 11a et **5** sur un artefact d'avant l'épisode 14
+> (discriminance mesurée).
 
 L'épisode 9a du chantier `modernisation-installation-marionnet` fabrique le tarball
 binaire ; il ne pouvait pas jouer les deux gestes qui en font une **installation**, parce
@@ -27,6 +29,14 @@ dans un conteneur jeté ensuite.
   `marionnet-sudoers.sh uninstall`, non posée sous `--no-sudoers` ;
 - que **`REQUIRED_PACKAGES_RUNTIME` suffit** à faire démarrer le binaire : le conteneur ne
   porte que cette liste, lue par `make print-required-packages-runtime` (jamais recopiée) ;
+- la **documentation livrée** (épisode 14) : ses **26** fichiers sous
+  `<prefix>/share/doc/marionnet/`, **l'arborescence conservée** (les guides se citent par
+  chemin relatif), les **14** scripts d'exemple **exécutables** — le bit que `dune` ne sait
+  pas porter, mesuré : il installe tout hors `bin/` en 0644 — et les documents, eux, qui ne
+  le sont pas ; aucun renvoi résiduel vers `doc-src/…`, c'est-à-dire vers la racine d'un
+  clone que la machine cible n'a pas ; le tout `root:root`. Les trois cas qui *cherchent*
+  quelque chose sont **gardés sur l'existence du répertoire** : un `grep` sur rien ne trouve
+  rien, et serait passé au vert sur l'arbre même qu'il doit condamner (leçon de l'épisode 12) ;
 - un **préfixe inhabituel** (`/opt/marionnet`) : la configuration le suit, l'avertissement
   « pas dans le PATH » est émis, et `--paths` reloge tout **sauf** `binaries` — le piège
   durable de l'épisode 9a, inscrit ici pour que le corriger soit une décision et non une
@@ -74,10 +84,10 @@ Ce que la boîte change vraiment, et que ce banc mesure :
 
 | Boîte | glibc | Résultat |
 |---|---|---|
-| `debian:bookworm-slim` (12) | 2.36 | **39 verts, 4 sautés** |
-| `debian:trixie-slim` (13) | 2.41 | 43 verts |
-| `ubuntu:24.04` | 2.39 | 43 verts |
-| `ubuntu:26.04` | 2.43 | 43 verts |
+| `debian:bookworm-slim` (12) | 2.36 | **44 verts, 4 sautés** |
+| `debian:trixie-slim` (13) | 2.41 | 48 verts |
+| `ubuntu:24.04` | 2.39 | 48 verts |
+| `ubuntu:26.04` | 2.43 | 48 verts |
 
 **Debian 12 est le cas intéressant.** L'artefact fabriqué ici est lié à la glibc de la
 machine de compilation (2.39) : sur une boîte plus ancienne, il **ne peut pas démarrer** —
