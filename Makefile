@@ -140,6 +140,20 @@ REQUIRED_PACKAGES_RUNTIME_I386 = libc6:i386
 print-required-packages-runtime:
 	@echo $(REQUIRED_PACKAGES_RUNTIME)
 
+# The build side of the same idea, for Makefile.d/release.build-box.sh: the box the compiler
+# runs in is a container of another distribution, so it has no Makefile either. Three lists,
+# because a build box needs the three: the apt packages, the compiler, and the opam packages.
+# OPAM_PACKAGES_DEV is deliberately NOT printed -- editor support and documentation tools have
+# nothing to do in a box whose only job is to produce an artefact.
+print-required-packages-build:
+	@echo $(REQUIRED_PACKAGES_BUILD)
+
+print-opam-switch:
+	@echo $(OPAM_SWITCH_TO)
+
+print-opam-packages:
+	@echo $(OPAM_PACKAGES)
+
 # `opam' packages strictly required by the compilation (see the (libraries ...) stanzas of
 # bin/dune and lib/dune; `camlp4' serves the (preprocess (run camlp4of ...)) of lib/):
 #  - camlp-streams provides the `Stream' module, dropped from the Stdlib by OCaml 5.0 and still
@@ -464,6 +478,17 @@ release.sha256sums:
 release-binary:
 	bash Makefile.d/release.binary.sh --series $(PUBLICATION_SERIES)
 
+# The same third artefact, but compiled in a container of the OLDEST DISTRIBUTION WE SERVE
+# instead of this machine. What a dynamically linked binary demands of the machine it lands on
+# is a glibc at least as recent as the one it was linked against, and the demand travels
+# forward only: built here (glibc 2.39) it is refused by Debian 12, built on Debian 12 it
+# serves every box the benches know. Hence a FLOOR rather than a matrix -- one artefact, and
+# `--build-image' to move the floor. Same rule as release-rpm (episode 19): the tools which
+# derive what a package needs apply the conventions of the distribution they run in.
+# Nothing is installed on this machine; the box is built once and kept. Options: --help.
+release-build-box:
+	bash Makefile.d/release.build-box.sh --series $(PUBLICATION_SERIES)
+
 # Turn a release into the fourth kind of artefact it is made of: the four Debian packages --
 # marionnet (the application), marionnet-kernels, marionnet-kernels-i386 and
 # marionnet-fs-guignol (the guignol image, machine and router together). Binary packages, no
@@ -485,11 +510,15 @@ release-apt:
 	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
 
 # Turn a release into the fifth kind of artefact it is made of: the RPM packages -- marionnet
-# (the application), marionnet-kernels (BOTH UML kernels: multilib is native to RPM, so the
-# i386 split of the Debian channel has no reason to exist here) and marionnet-fs-guignol.
+# (the application), marionnet-kernels, marionnet-kernels-i386 and marionnet-fs-guignol -- the
+# same four as the Debian channel. They were three until episode 19: multilib is native to RPM,
+# so merging the two kernels looked free, until RHEL 10 turned out to carry no 32-bit multilib
+# at all, which made the merged package refused IN ITS ENTIRETY there -- and a package which
+# cannot be installed must not carry away one which can.
 # Assembled from the same staging and the same published artefacts as the Debian ones, so
 # that both channels deliver the same mtime. rpmbuild runs INSIDE a container of the target
-# distribution (fedora:42 by default, --build-image for another): on RPM the automatic
+# distribution (rockylinux:10 by default -- the OLDEST box we serve, since the generator
+# applies the conventions of the distribution it runs in; --build-image for another): on RPM the automatic
 # dependency generator is what dpkg-shlibdeps is to the other channel, so it has to be the
 # one of a real RPM distribution rather than Ubuntu's. Nothing is installed on this machine.
 # Build only some of them: PACKAGES="app kernels". Options: --help.
@@ -522,7 +551,8 @@ release-dnf:
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
-.PHONY: release-rpm release-rpm-deps release-dnf
+.PHONY: release-rpm release-rpm-deps release-dnf release-build-box
+.PHONY: print-required-packages-build print-opam-switch print-opam-packages
 
 
 # =============================================================

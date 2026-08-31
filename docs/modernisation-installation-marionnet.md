@@ -589,8 +589,10 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    de l'étape 1 du § 5.
 6. **Rejeu de (2) et (4) contre le vrai serveur** — la jambe https comprise.
 
-**Hors de cet ordre, sur demande** : l'épisode 16 (`marionnet-get-images`) et l'**épisode 17**
-(le canal RPM). Ce dernier était censé venir après Docker ; il a été joué avant, et il a
+**Hors de cet ordre, sur demande** : l'épisode 16 (`marionnet-get-images`), l'**épisode 17**
+(le canal RPM) et l'**épisode 20** (la boîte de compilation — la « matrice de compilation »
+devenue un **plancher**, `debian:12`, appliquant enfin à l'application la règle que l'ép. 19
+avait tirée des paquets tiers). Ce dernier était censé venir après Docker ; il a été joué avant, et il a
 déplacé une hypothèse du § 3.2 : les dépendances d'exécution que le canal Debian obtient
 gratuitement (`vde2`, `uml-utilities`) **n'existent dans aucun dépôt RPM**, si bien que le
 canal doit les empaqueter lui-même. Il reste au canal RPM son dépôt `createrepo` et, pour
@@ -2768,3 +2770,111 @@ le paquet fusionné de l'épisode 17 ne pouvait pas tenir.
 - **Reste bloqué par l'extérieur** : la signature et la `baseurl` réelle, avec l'étape serveur.
 - **Reste à documenter** : EPEL est requis sur les boîtes EL (c'est de là que vient
   `gtksourceview3`) — une ligne pour la doc INSTALL.
+
+## Épisode 20 (2026-08-31) — la boîte de compilation : le plancher devient un choix
+
+L'épisode 12 avait mesuré que le binaire publié ne démarre pas sous glibc 2.39, l'épisode 13
+que le `.deb` n'y change rien (il rend la contrainte *refusable*, `libc6 (>= 2.39)`, il ne la
+résout pas), et l'épisode 19 avait énoncé la règle : **on construit sur la plus ancienne boîte
+qu'on sert**. Cette règle n'avait été appliquée qu'aux **deux paquets tiers RPM**. L'application
+elle-même était toujours compilée sur la machine de l'auteur — donc **les six canaux héritaient
+d'un plancher qui était un accident de cette machine**.
+
+### « Matrice de compilation » ⇒ un plancher, pas une matrice
+
+La compatibilité glibc est **unidirectionnelle** : ce qu'un binaire lié dynamiquement exige de
+la machine où il atterrit, c'est une glibc **au moins aussi récente** que celle contre laquelle
+il a été lié. Publier N artefacts indexés par glibc reviendrait donc à en publier **N−1 dont
+personne n'a l'usage** : celui du plancher sert toutes les boîtes au-dessus. Il n'y a pas de
+matrice — il y a un **plancher**, et c'est un **bouton** (`--build-image`).
+
+Conséquences, toutes vérifiées plutôt que supposées :
+
+- **`marionnet-install.sh` n'est pas touché.** Sa règle de choix (arch de la machine, glibc pas
+  plus récente que la sienne, puis le plus grand `rev`) vaut telle quelle, et vaudrait encore si
+  l'on publiait un jour deux planchers.
+- **Le banc binaire n'est pas touché non plus**, et c'est la conception de l'épisode 12 qui
+  tient : il compare la glibc lue **dans le nom du tarball** à celle mesurée **dans la boîte**
+  (`glibc_le`, `release.binary.sh.bench/run.sh:159-181`), jamais le nom de la distribution. Les
+  4 cas qui démarrent le binaire se sont donc rallumés d'eux-mêmes sur Debian 12, et le cas
+  « le refus doit nommer la glibc » s'est effacé de lui-même, sans une ligne de banc modifiée.
+- **Plancher retenu : `debian:12` (glibc 2.36)**, qui couvre les 4 boîtes Debian/Ubuntu **et**
+  les 4 boîtes RPM courantes (Rocky/Alma 10 = 2.39, Leap 16 = 2.40, Fedora 42 = 2.41). Servir
+  Rocky 9 (2.34) ou Leap 15.6 (2.38) reste le **choix de portée** de l'épisode 19 — devenu
+  `--build-image debian:11`, au prix d'un second switch à compiler.
+
+### Le livrable
+
+`Makefile.d/release.build-box.sh` (cible `make release-build-box`). Il ne sait ni ce qu'est une
+installation, ni comment se nomme un artefact, ni comment on catalogue une release : **il
+choisit seulement où tourne le compilateur**. Dans la boîte, ce sont `make rebuild-for-final`
+et `Makefile.d/release.binary.sh` **inchangés** qui font le travail.
+
+Rien n'y est décrit deux fois : les paquets apt de build, le compilateur et les paquets opam
+sont lus **à travers `make`** (`print-required-packages-build`, `print-opam-switch`,
+`print-opam-packages` — le motif de `print-required-packages-runtime` de l'épisode 10), jamais
+recopiés dans le script. `OPAM_PACKAGES_DEV` n'est délibérément **pas** publié : des outils
+d'édition et de documentation n'ont rien à faire dans une boîte dont le seul métier est de
+produire un artefact. `glade` reste dans la liste bien que seul un développeur en ait besoin —
+l'en filtrer ici recréerait exactement la seconde source de vérité que l'épisode 1 a supprimée.
+
+### Le défaut que le premier run a publié — et il ne faut pas le défaire
+
+**Ce qui est compilé est ce qui est committé** : la source remise à la boîte est un `git clone`
+de la copie de travail à HEAD, et non la copie de travail (`_build/`, le bac à sable opam local
+et le symlink `CONFIGME.choice` d'un arbre de développeur n'ont rien à faire dans un artefact
+publié). Le clone **garde son `.git`**, parce que `bin/meta.ml.maker.sh:57` en dérive la
+révision — un `git archive` l'aurait laissée vide en silence.
+
+**Garder le `.git` ne suffit pas, et le premier run l'a prouvé en publiant
+`marionnet_trunk-r0_amd64_glibc2.36.tar.xz`** — `r0`, là où la copie de travail est à r919.
+Le clone appartient à l'appelant, le conteneur tourne en root, et git depuis 2.35.2 **refuse**
+un dépôt de « propriété douteuse » (*dubious ownership*, reproduit). Or les **deux** lecteurs
+de la révision traitent un git en échec comme « pas de VCS ici » :
+`bin/meta.ml.maker.sh:57-68` émet un avertissement et laisse la révision **vide**,
+`project_revision` de `release.binary.sh:141` retourne **0**. **Rien n'échoue** ; une release
+perd simplement le numéro qui l'ordonne — et comme `marionnet-install.sh` choisit *le plus
+grand `rev`*, un artefact `r0` n'aurait jamais été servi tout en occupant le catalogue.
+
+D'où **deux** choses dans le script, et la seconde compte plus que la première :
+`safe.directory`, pour que git réponde ; et surtout la **comparaison** de la révision lue dans
+la boîte avec celle calculée ici — une boîte qui lit autre chose **arrête le run** (rc 3) au
+lieu de publier sous un nom qui ment.
+
+Second défaut du même genre, dans la mesure de preuve elle-même : elle cherchait
+`marionnet.native` alors que **dune produit `marionnet.exe`** (`marionnet.native` est le nom
+d'*installation*), et se taisait quand elle ne trouvait rien. Elle cherche les deux noms et
+**échoue** (rc 4) si elle ne trouve ni l'un ni l'autre. Une mesure qui peut ne pas avoir lieu
+sans que personne ne le sache n'est pas une mesure.
+
+L'artefact `r0` a été retiré, et `release.sha256sums.sh` **a retiré sa ligne de lui-même**
+(« dropping the line of a file which is no longer there ») : l'invariant de l'épisode 8 a
+fonctionné sans qu'on y touche.
+
+### Prouvé (2026-08-31)
+
+- `make release-build-box` : boîte `mrn-build-debian-12` bâtie une fois (8 paquets apt, switch
+  OCaml **5.4.1 compilé depuis les sources**, 12 paquets opam dont `lablgtk3` et `camlp4.5.4`),
+  puis `marionnet_trunk-r919_amd64_glibc2.36.tar.xz` (7,2 Mio) publié et inscrit au
+  `SHA256SUMS` (30 artefacts, 1 calculé).
+- **Le risque nommé au plan ne s'est pas matérialisé** : l'`opam` 2.1 de bookworm crée le switch
+  5.4.1 et installe les 12 paquets sans repli vers un binaire opam téléchargé.
+- **La mesure du plancher, indépendante du nom du fichier** : le symbole glibc versionné le plus
+  haut que le binaire référence est **`GLIBC_2.35`** — donc plus bas encore que la glibc de la
+  boîte. Le nom (`glibc2.36`) reste **conservateur**, ce qui est le bon sens de la garantie :
+  il annonce la boîte de construction, pas le minimum théorique.
+- **Banc binaire `--distro all` : 48 + 48 + 48 + 48 = 192 verts, 0 rouge, et surtout 0 SKIP.**
+  Sur `debian:bookworm-slim`, où l'artefact précédent ne pouvait que se faire refuser, les
+  4 cas qui démarrent le binaire tournent maintenant — `--paths` lit la configuration installée,
+  le piège `binaries` de l'épisode 9a est vérifié, et `9a -> 10 en un geste` passe.
+
+### Restes
+
+- **20b — le `.deb` fabriqué dans la même boîte.** `release.deb.sh` dérive son `Depends:` par
+  `dpkg-shlibdeps`, qui applique lui aussi les conventions de la machine où il tourne : tant
+  qu'il tourne ici, il écrit `libc6 (>= 2.38)`. Il devra être joué dans la boîte de build (par
+  `--staging-dir`, l'option que l'épisode 15a a déjà prévue), et la preuve est
+  `release.deb.sh.bench/run.sh --distro debian:12` passant de **7** à **33 verts**.
+- **20c — le `.rpm` de même**, dont la boîte de build est déjà un conteneur (épisode 19) mais
+  dont le **staging** vient encore du binaire compilé ici.
+- Servir Rocky 9 / Leap 15.6 reste un choix de portée : `--build-image debian:11`.

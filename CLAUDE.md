@@ -574,6 +574,36 @@ Reprise : appliquer le skill `chantier-long`.
   Rocky 9, refus classé exactement). **Reste** : Rocky 9 / Leap 15.6 = choix de portée (image de
   build plus ancienne, switch OCaml à compiler) ; EPEL requis sur EL (d'où vient
   `gtksourceview3`) = une ligne pour la doc INSTALL ; signature + `baseurl` avec l'étape serveur.
+  **Ép. 20 (hors feuille de route) : la boîte de compilation — « matrice » ⇒ un PLANCHER.**
+  La compatibilité glibc ne voyage que **vers l'avant**, donc N artefacts indexés par glibc en
+  publieraient N−1 inutilisables : on en publie **un**, construit sur la plus ancienne boîte
+  servie, et « où construit-on » devient un **bouton** (`--build-image`, défaut `debian:12` /
+  glibc 2.36 — qui couvre les 4 boîtes Debian/Ubuntu **et** les 4 boîtes RPM courantes). C'est
+  la règle de l'ép. 19 appliquée enfin à **l'application** et non aux seuls paquets tiers :
+  jusque-là le plancher des 6 canaux était un **accident de la machine de l'auteur**.
+  `Makefile.d/release.build-box.sh` (cible `make release-build-box`) **ne sait rien** d'une
+  installation ni d'un catalogue — dans la boîte, ce sont `make rebuild-for-final` et
+  `release.binary.sh` **inchangés** qui travaillent ; les paquets apt de build, le compilateur
+  et les paquets opam sont lus **à travers `make`** (3 cibles `print-*`, motif de l'ép. 10),
+  `OPAM_PACKAGES_DEV` volontairement non publié. **À ne pas défaire** : (1) la source est un
+  `git clone` de HEAD **avec son `.git`** (un `git archive` viderait la révision en silence) —
+  mais **garder le `.git` ne suffit pas**, et le 1ᵉʳ run l'a prouvé en publiant un
+  `marionnet_trunk-r0_…` : le clone appartient à l'appelant, le conteneur tourne en root, et
+  git ≥ 2.35.2 **refuse** un dépôt de *dubious ownership*, or les **deux** lecteurs de la
+  révision (`bin/meta.ml.maker.sh:57-68` et `release.binary.sh:141`) traitent un git en échec
+  comme « pas de VCS ici » — **rien n'échoue**, la release perd juste le numéro qui l'ordonne ;
+  d'où `safe.directory` **et surtout** la comparaison avec la révision calculée côté hôte, qui
+  **arrête le run** ; (2) la mesure du plancher cherche `marionnet.exe` **et**
+  `marionnet.native` (dune produit le premier, le second est le nom d'*installation*) et
+  **échoue** si elle ne trouve rien — une mesure qui peut ne pas avoir lieu n'en est pas une.
+  **Rien d'autre n'a eu à changer** : `marionnet-install.sh` et le banc binaire comparent déjà
+  la glibc **du nom** à celle **de la boîte**, jamais le nom de la distribution — la conception
+  de l'ép. 12 tient. Mesuré : symbole glibc maximal référencé = **`GLIBC_2.35`** (le nom reste
+  conservateur, il annonce la boîte de build) ; banc binaire `--distro all` = **192 verts,
+  0 rouge, 0 SKIP**, dont Debian 12 qui ne savait jusqu'ici que constater un refus. **Reste** :
+  **20b** le `.deb` fabriqué dans la même boîte (`dpkg-shlibdeps` écrit encore
+  `libc6 (>= 2.38)` tant qu'il tourne ici ; preuve = le banc `.deb` sur Debian 12, de 7 à 33) et
+  **20c** le `.rpm` de même (sa boîte de build est déjà un conteneur, son *staging* non).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
