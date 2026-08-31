@@ -51,7 +51,7 @@
 #   -n, --dry-run                say what would change, write nothing
 #   -h, --help                   this help
 #
-# Without FILE, every kernels_*.tar.{gz,xz}, filesystems_*.tar.{gz,xz}, *.deb and
+# Without FILE, every kernels_*.tar.{gz,xz}, filesystems_*.tar.{gz,xz}, *.deb, *.rpm and
 # marionnet_*.tar.{gz,xz} of the directory is considered. With FILE (a bare name or a path inside the directory), only those are --
 # that is how the two *.prepare-to-publish.sh scripts call this one, right after they have
 # moved a fresh tarball into place.
@@ -151,8 +151,10 @@ fi
 # ---
 # A published artefact is recognised by its NAME, here as everywhere else in this chain:
 # `filesystems_<X>.tar.*', `kernels_<X>.tar.*', `marionnet_<version>-r<rev>_<arch>_<libc>.tar.*'
-# (the application, since Makefile.d/release.binary.sh) and `*.deb' (the four Debian packages,
-# since Makefile.d/release.deb.sh). Anything else in the directory (the images themselves,
+# (the application, since Makefile.d/release.binary.sh), `*.deb' (the four Debian packages,
+# since Makefile.d/release.deb.sh) and `*.rpm' (the three Marionnet packages and the two
+# runtime dependencies no RPM distribution carries, since Makefile.d/release.rpm.sh).
+# Anything else in the directory (the images themselves,
 # their .conf, this very file) is not an artefact to publish.
 #
 # The .deb files will ALSO be described by a catalogue of apt's own -- Packages/Release, in
@@ -177,7 +179,7 @@ else
   for f in "$OUTDIR"/kernels_*.tar.gz "$OUTDIR"/kernels_*.tar.xz \
            "$OUTDIR"/filesystems_*.tar.gz "$OUTDIR"/filesystems_*.tar.xz \
            "$OUTDIR"/marionnet_*.tar.gz "$OUTDIR"/marionnet_*.tar.xz \
-           "$OUTDIR"/*.deb; do
+           "$OUTDIR"/*.deb "$OUTDIR"/*.rpm; do
     CANDIDATES+=("$(basename -- "$f")")
   done
   shopt -u nullglob

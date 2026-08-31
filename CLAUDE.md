@@ -41,7 +41,9 @@ l'**install** et le **RPM**.
   `CONFIGME.choice` ; si le choix change : `make rebuild-for-{final,testing}`.
 - i18n : la compilation `.po` → `.mo` **et** son installation sont **sous dune** (`i18n/dune`, site
   dune-site `locale`) ; seules l'**extraction POT** (camlp4) et le **msgmerge** restent Makefile
-  (`gettext-messages-pot`, `gettext-update-po`). RPM (`RPMS/`) : 100 % Makefile, non testé sous 5.4.1.
+  (`gettext-messages-pot`, `gettext-update-po`). **RPM** : `RPMS/` (specs de 2009) a été
+  **supprimé** à l'épisode 17 de `modernisation-installation-marionnet` — code mort, aucune
+  cible ne l'appelait ; le canal vit désormais dans `Makefile.d/release.rpm.sh`.
 
 ## Cartographie
 
@@ -55,7 +57,7 @@ l'**install** et le **RPM**.
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
 | `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré). Depuis l'ép. 16 de `modernisation-installation-marionnet`, il n'y reste que `marionnet_from_scratch` (mort) et `make_marionnet_bytecode_revno` | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
-| `etc/`, `Makefile.d/`, `RPMS/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging | `docs/ARCHITECTURE.md` § Build |
+| `etc/`, `Makefile.d/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging (dont les 6 publieurs de release : images, noyaux, binaire, `.deb`+apt, `.rpm`) | `docs/ARCHITECTURE.md` § Build |
 
 ## Fichiers générés — ne jamais éditer
 
@@ -486,6 +488,42 @@ Reprise : appliquer le skill `chantier-long`.
   et **rien ne lit `MD5SUM`** (`bin/disk.ml:456` le déclare et ne le consulte jamais) ;
   d'où une vérification `v <n>` qui rend compte des **deux** champs séparément au lieu d'un
   verdict unique. Régénérer ce `MD5SUM` reste à faire.
+  **Ép. 17 (hors feuille de route) : le canal RPM, et deux dépendances que personne ne
+  porte.** `Makefile.d/release.rpm.sh` (cibles `make release-rpm` et `release-rpm-deps`),
+  **6ᵉ publieur** : même répertoire de release, même `SHA256SUMS` (6ᵉ motif, `*.rpm`).
+  **Le constat qui commande tout** : `vde2` (donc `vde_switch`/`wirefilter`/`slirpvde`, 19
+  sites d'appel) et `uml_mconsole` **n'existent dans AUCUN dépôt RPM** — mesuré sur Rocky 9
+  + EPEL + CRB + epel-next, Fedora 42 et 44. Ce n'est pas un retrait mais une **non-entrée** :
+  0 projet `rpms/vde*` dans le dist-git de Fedora, aucune review request, une proposition
+  morte de 2007 ; Debian les maintient (équipe VSquare, ~10 patches, amont figé depuis 2011)
+  et **openSUSE ships vde2** en dépôt officiel. La fracture n'est donc pas RPM/DEB mais
+  **Fedora-RHEL contre les autres**. `alien` est **refusé** (il convertit des *formats*, or
+  les deux côtés sont déjà du rpm ; il ne traduit pas les noms, ne recompile pas, abîme les
+  scriptlets) : les deux paquets sont **construits depuis le paquet source Debian**, série de
+  patches comprise. **À ne pas défaire** : (1) **3 paquets** Marionnet et non 4 — la raison du
+  `marionnet-kernels-i386` debian était `dpkg --add-architecture`, or sur RPM le multilib est
+  natif et rpm **dérive lui-même** les deux classes (`libc.so.6` *et* `…()(64bit)`, mesuré),
+  donc la dépendance est meilleure qu'écrite à la main ; (2) les dépendances s'écrivent **par
+  fichier et par soname, jamais par nom de paquet** — c'est ce qui rend **un seul spec** valable
+  sur Fedora *et* openSUSE (mesuré des 2 côtés) — avec **2 exceptions mesurées** :
+  `(iproute or iproute2)` (booléenne, car `ip` n'a pas de chemin portable : usrmerge Fedora
+  contre `/usr/sbin` openSUSE) et `xz` **par nom** (sinon `busybox-xz` peut fournir
+  `/usr/bin/xz`, dont le `xz` ignore le `-T0`) ; (3) `rpmbuild` tourne **dans un conteneur** de
+  la distribution cible, parce que le générateur automatique de dépendances de rpm **est**
+  l'équivalent de `dpkg-shlibdeps` — le faire tourner sous Ubuntu ferait des métadonnées un
+  artefact de la machine d'empaquetage ; rien n'est installé sur la machine de release ; (4) le
+  `BuildRequires:` des paquets tiers est **appliqué** (`dnf builddep`), pas recopié dans l'image.
+  **Pièges durables établis ici** : `make -j4` **casse** vde2 (course de 2011, `-j1`
+  obligatoire) ; une **apostrophe inversée dans un heredoc non quoté** ouvre une substitution
+  et fait perdre un paragraphe du spec **en silence** ; `local a="$1" b="$a"` lit la portée
+  **appelante** (tout est développé avant les affectations) ; et **`%doc` n'est pas ce qui
+  décide** — rpm marque seul comme documentation tout ce qui est sous `%{_docdir}` (26 des 31
+  chemins), donc `tsflags=nodocs` de **toute** image conteneur emporte les guides, pendant exact
+  du `path-exclude` de l'ép. 15b. `RPMS/` (specs 2009) **supprimé** : code mort, et son `%post`
+  fabriquait un `br0` que l'ép. 7b a rendu automatique. Banc neuf
+  `Makefile.d/release.rpm.sh.bench/` (sans `Dockerfile`, boîte nue) : **37 verts sur
+  fedora:42**, **6 sur Rocky 9** (refus attendu, **nommant la glibc**). Restent : le dépôt
+  `createrepo`, et une image de build à glibc ancienne pour servir Rocky 9 / Leap 15.6.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

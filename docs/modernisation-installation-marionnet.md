@@ -494,7 +494,7 @@ défaut.
 |---|---|---|---|
 | **Script v2** | non-Debian (guide), admins, repli universel | deps apt si Debian-like + binaire ou compilation opam + couples + conf | enfant `…-par-script` |
 | **.deb + dépôt apt** | étudiant portable, salle TP Debian-like | `marionnet` (binaire+ressources), `marionnet-kernels-*`, `marionnet-fs-*` (découpage à décider) | enfant `…-par-paquet-deb` |
-| **RPM** | Fedora/openSUSE | specs `RPMS/` modernisées | enfant `…-par-paquet-rpm` |
+| **RPM** | Fedora/openSUSE | ~~specs `RPMS/` modernisées~~ → **fait autrement, épisode 17** : specs **générés** par `release.rpm.sh`, 3 paquets + **2 dépendances tierces** (`vde2`, `uml-utilities`) qu'aucune distribution RPM ne porte ; `RPMS/` supprimé | enfant `…-par-paquet-rpm` |
 | **Docker** | démo rapide, environnements verrouillés | image VNC/noVNC XFCE (MarioNUM g3) avec Marionnet moderne sans daemon | enfant `…-par-docker` |
 | **From source** | experts, distros exotiques, dev | opam switch 4.13.1 (chaîne actuelle documentée) | parent (doc INSTALL) |
 
@@ -522,7 +522,10 @@ config** — factorisation au parent.
    bout-en-bout + mode guide ; réutilise deps § 2.4, binaire ou opam, couples, conf).
 2. `modernisation-installation-marionnet-par-paquet-deb` — empaquetage .deb + dépôt apt
    signé sur marionnet.org.
-3. `modernisation-installation-marionnet-par-paquet-rpm` — specs `RPMS/` ravivées.
+3. `modernisation-installation-marionnet-par-paquet-rpm` — ~~specs `RPMS/` ravivées~~ :
+   **entamé à l'épisode 17**, et sur une autre base — les specs de 2009 étaient du code mort
+   (aucune cible du `Makefile` ne les appelait) et leur découpage était déjà réfuté. Restent le
+   dépôt `createrepo` et l'image de build EL9.
 4. `modernisation-installation-marionnet-par-docker` — image MarioNUM g3 passée au
    Marionnet moderne (sans daemon, base 24.04+), publication (registre à décider).
 
@@ -585,6 +588,13 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
    de l'étape 1 du § 5.
 6. **Rejeu de (2) et (4) contre le vrai serveur** — la jambe https comprise.
+
+**Hors de cet ordre, sur demande** : l'épisode 16 (`marionnet-get-images`) et l'**épisode 17**
+(le canal RPM). Ce dernier était censé venir après Docker ; il a été joué avant, et il a
+déplacé une hypothèse du § 3.2 : les dépendances d'exécution que le canal Debian obtient
+gratuitement (`vde2`, `uml-utilities`) **n'existent dans aucun dépôt RPM**, si bien que le
+canal doit les empaqueter lui-même. Il reste au canal RPM son dépôt `createrepo` et, pour
+servir Rocky 9 / Leap 15.6, une image de build à la glibc plus ancienne.
 
 La **doc INSTALL** (point 5 du § 5) devient le **tout dernier** épisode du chantier : elle
 devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant eux.
@@ -2409,3 +2419,151 @@ un tube (« *the input device is not a TTY* », mesuré) — le pty s'alloue don
 conteneur, par `script`. Et le déplacement a cassé un chemin relatif sortant :
 `$HERE/../../Makefile.d/…` demandait désormais **trois** niveaux, si bien que le banc
 **sautait** (SKIP) au lieu de tourner — ce qu'un décompte de FAIL ne montre pas.
+
+## Épisode 17 (2026-08-31) — le canal RPM : trois paquets, et deux dépendances que personne ne porte
+
+Épisode **hors feuille de route**, comme le 16 : la feuille de route (§ 5 bis) plaçait le RPM
+en dernier, après Docker. Il est joué maintenant sur demande, et il déplace deux choses que le
+§ 3.2 tenait pour acquises.
+
+### 1. Le constat qui commande tout le reste : vde2 n'est *pas* retiré de Fedora, il n'y est jamais entré
+
+Le § 3.2 annonçait un canal RPM pour « Fedora/openSUSE » en supposant que les dépendances
+d'exécution s'y trouveraient. **Elles n'y sont pas.** Mesuré le 2026-08-31, en conteneur :
+
+| Sonde | Résultat |
+|---|---|
+| `vde2` (donc `vde_switch`, `wirefilter`, `slirpvde`) | **absent** de Rocky 9 + EPEL9 + CRB + epel-next, et de **Fedora 42 comme 44** |
+| `uml_mconsole` | fourni par **personne** sur Fedora 42 ni sur openSUSE Leap 15.6 |
+| `glibc.i686` fournit `/lib/ld-linux.so.2` | **oui, depuis `baseos`** — le multilib est natif |
+| openSUSE Leap 15.6 **et** Tumbleweed | `vde2` **présent**, dépôt OSS officiel (`2.3.2+svn587`) |
+
+Ce n'est **pas un retrait** : le dist-git de Fedora contient **zéro** projet `rpms/vde*`
+(API `src.fedoraproject.org`, `total_projects: 0`), le Bugzilla Red Hat aucune *review
+request*, et la seule trace est une proposition de paquet postée sur `rhl-devel-list` en
+**juin 2007**, jamais aboutie. Les RPM « Fedora » qui circulent viennent de dépôts **tiers**
+(`rpm-sphere`, PLD, openmamba). Pendant ce temps Debian maintient les deux (équipe *VSquare*,
+~10 patches, dernier envoi janvier 2026) sur un amont figé depuis **2011**.
+
+La fracture n'est donc pas « RPM contre DEB » — openSUSE a `vde2` — mais **Fedora/RHEL contre
+tous les autres**. Et comme `vde_switch`/`wirefilter`/`slirpvde` totalisent **19 sites
+d'appel** dans `bin/` et `uml_mconsole` **4** (`simulation_level.ml`, `serial.ml`, 2 scripts),
+un Marionnet installé sans eux démarre et ne fait rien.
+
+**Ce qui a été écarté** : `alien`. Il convertit des *formats* (deb ↔ rpm), or openSUSE → Fedora
+n'est pas une conversion de format ; il ne traduit pas les noms de dépendances, ne recompile
+pas contre une autre glibc, n'invente pas un `vde2` absent, et **abîme** scriptlets et
+attributs. Passer le `.deb` binaire de vde2 à alien livrerait des binaires liés aux sonames
+Debian : ça s'installe et ça échoue à l'exécution.
+
+**Ce qui a été fait à la place** : `release.rpm.sh` sait construire `vde2` et `uml-utilities`
+**depuis le paquet source Debian** — tarball amont *plus la série de patches*, parce que ces
+patches sont les quinze ans qui séparent un code de 2011 d'un compilateur de 2026. Mesuré :
+les 10 patches de vde2 s'appliquent **sans un échec**.
+
+### 2. Trois paquets Marionnet, pas quatre — et c'est mesuré, pas symétrique
+
+Le canal Debian sépare `marionnet-kernels-i386` pour **une** raison : sa dépendance est
+`libc6:i386`, une **architecture étrangère**, dont l'installation fait exécuter
+`dpkg --add-architecture i386`. Sur RPM, le **même fichier** `/lib/ld-linux.so.2` appartient à
+`glibc.i686`, paquet ordinaire de `baseos`. La raison du découpage n'existe pas, donc le
+découpage non plus :
+
+```
+marionnet             x86_64  ~8 Mio   le binaire, les 26 noms, la complétion ×12,
+                                       share/marionnet/…, les guides, la conf en %config
+marionnet-kernels     x86_64  ~5 Mio   les DEUX noyaux, 64 et 32 bits
+marionnet-fs-guignol  noarch  ~13 Mio  l'image guignol, machine ET routeur
+```
+
+Mieux : la dépendance multilib devient **dérivée**. `rpm -qp --requires` du paquet de noyaux
+demande **les deux classes** — `libc.so.6` *et* `libc.so.6()(64bit)`, versions symboliques
+comprises — parce que rpm lit les deux ELF du paquet. Ce que Debian devait écrire à la main,
+ce canal le laisse déduire, ce qui **renforce** l'invariant 2 au lieu de l'affaiblir.
+
+### 3. Un seul spec pour deux familles RPM : par fichier et par soname, jamais par nom
+
+Les noms de paquets divergent (`gtksourceview3` contre `libgtksourceview-3_0-1`,
+`iproute` contre `iproute2`, `xz-utils` → `xz`, `dnsmasq-base` → `dnsmasq`). Écrire les
+dépendances **par fichier** et **par soname** rend un seul spec valable des deux côtés —
+mesuré sur Fedora 42 *et* openSUSE Leap 15.6 : 9 chemins sur 9 et le soname
+`libgtksourceview-3.0.so.1()(64bit)` résolvent identiquement, là où les noms échouent une fois
+sur deux. La table `rpm_requires_of_debian_package` est **le seul endroit du dépôt** où un nom
+Debian fait face à son équivalent RPM, et elle a exactement **deux** exceptions, toutes deux
+mesurées :
+
+- **`ip` n'a pas de chemin portable** : Fedora 42 a terminé l'usrmerge (`/usr/sbin -> bin`),
+  openSUSE garde `/usr/sbin`. D'où une dépendance **booléenne** `(iproute or iproute2)`.
+- **`/usr/bin/xz` a une mauvaise réponse disponible** : sur openSUSE il est aussi fourni par
+  `busybox-xz`, dont le `xz` ignore le `-T` de `xz -dc -T0` (le facteur 4 de l'épisode 6).
+  D'où le **nom**, `xz`, identique sur les deux familles.
+
+`libgtksourceview-3.0-1` n'a **aucune** entrée : c'est une bibliothèque, donc rpm demande son
+soname tout seul. Dériver bat traduire chaque fois que c'est possible.
+
+### 4. rpmbuild tourne dans un conteneur, et c'est technique
+
+Sur RPM, le **générateur automatique de dépendances est** l'équivalent de `dpkg-shlibdeps` :
+c'est lui qui transforme en métadonnée refusable la contrainte de glibc que l'épisode 12 ne
+savait écrire que dans un **nom de fichier**. Le faire tourner sous Ubuntu ferait de nos
+métadonnées un artefact de la machine d'empaquetage plutôt que de la cible. Donc `rpmbuild`
+s'exécute dans une vraie distribution RPM (`fedora:42` par défaut, `--build-image` pour une
+autre), et **rien n'est installé sur la machine de release** — qui n'a d'ailleurs aucun
+outillage rpm.
+
+Corollaire tenu : le `BuildRequires:` des deux paquets tiers est **réel**, appliqué par
+`dnf builddep` dans la boîte, et non recopié dans l'image du constructeur — où il aurait dérivé
+du spec qui le déclare. C'est ce qui a fait apparaître `readline-devel`, sans quoi
+**`uml_mconsole`** — le seul binaire que Marionnet appelle vraiment là-dedans — ne compilait pas.
+
+### 5. Quatre pièges payés en écrivant cet épisode
+
+1. **`make -j4` casse vde2, `make -j1` le construit.** Course dans ses Makefiles autotools de
+   2011. Un build parallèle ici serait une panne *intermittente* de la chaîne de release.
+2. **Une apostrophe inversée dans un heredoc non quoté mange le spec.** Le style de citation
+   `` `mot' `` employé partout dans les commentaires de ce dépôt ouvre une substitution de
+   commande ; le shell ne dit qu'« EOF prématurée » et le spec perd un paragraphe **en
+   silence**. Guillemets doubles à l'intérieur des specs, désormais écrit là où ça compte.
+3. **`local a="$1" b="$a"` ne fait pas ce qu'il semble** : tous les mots sont développés
+   **avant** que les affectations prennent effet, donc `b` lit la portée appelante. `set -u`
+   l'a attrapé ; deux instructions au lieu d'une.
+4. **`%doc` n'est pas ce qui décide.** rpm marque **de lui-même** comme documentation tout ce
+   qui vit sous `%{_docdir}` (mesuré : 26 des 31 chemins), donc `tsflags=nodocs` — que **toute**
+   image conteneur RPM pose — emporte les guides quoi qu'en dise le spec. C'est le pendant exact
+   du `path-exclude` de l'épisode 15b, même cause (*une image n'est pas une machine*) et même
+   réponse : l'affaire du canal Docker à venir, pas une astuce d'empaquetage.
+
+### 6. Le retrait de `RPMS/`
+
+Les 4 specs de 2009 et leur `Makefile` sont **supprimés**. Mesuré : **aucune** cible du
+`Makefile` racine ne les référence — c'était du code mort — et leur `%post` fabriquait un `br0`
+dans `/etc/sysconfig/network-scripts/`, geste que l'épisode 7b de `modernisation-world-bridge` a
+rendu automatique. Leur découpage (`-common`, `-fs-machines`, `-fs-routers`, `-kernels`) était
+déjà réfuté au § « La décision : quatre paquets » ; le paquet routeur séparé porterait un lien
+pendant.
+
+### 7. Preuves (2026-08-31)
+
+Banc neuf : `Makefile.d/release.rpm.sh.bench/` — **sans `Dockerfile`**, comme celui du `.deb` :
+une boîte nue, tout le propos étant que `dnf` tire lui-même les dépendances.
+
+| boîte | glibc | résultat |
+|---|---|---|
+| `fedora:42` | 2.41 | **37 verts, 0 rouge** |
+| `rockylinux/rockylinux:9` | 2.34 | **6 verts, 0 rouge** — refus attendu, **nommant la glibc** |
+
+Les mesures que seul ce banc pouvait faire : l'application **seule** est refusée en **nommant
+les deux fichiers manquants** (et *pas* les douze autres, qui se résolvent depuis la
+distribution) ; `glibc.i686` arrive **par dérivation** ; le `mtime` de l'image guignol dans le
+paquet est **celui du tarball publié** (`2017-06-09 13:01` UTC des deux côtés) ; **aucune**
+règle sudoers accordée ; et une configuration **modifiée** survit à la désinstallation.
+
+### 8. Restes
+
+- **Servir Rocky 9 et openSUSE Leap 15.6** demande de **construire sur elles** (glibc 2.34 et
+  2.38 contre 2.39 ici) : la garantie glibc ne vaut que vers l'avant. C'est la conclusion de
+  l'épisode 12, inchangée, et l'image de build EL9 reste à monter (`opam` n'y est dans aucun
+  dépôt, `ocaml` n'y est qu'en 4.11 : switch 5.4.1 à compiler).
+- **Le dépôt `createrepo`** — l'équivalent RPM de `release.apt.sh` — n'est pas fait : les cinq
+  paquets s'installent par chemin, pas encore par `dnf install marionnet`.
+- **La signature** des paquets et du dépôt, comme pour apt, attend l'étape « serveur ».

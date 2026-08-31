@@ -484,9 +484,32 @@ release-deb:
 release-apt:
 	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
 
+# Turn a release into the fifth kind of artefact it is made of: the RPM packages -- marionnet
+# (the application), marionnet-kernels (BOTH UML kernels: multilib is native to RPM, so the
+# i386 split of the Debian channel has no reason to exist here) and marionnet-fs-guignol.
+# Assembled from the same staging and the same published artefacts as the Debian ones, so
+# that both channels deliver the same mtime. rpmbuild runs INSIDE a container of the target
+# distribution (fedora:42 by default, --build-image for another): on RPM the automatic
+# dependency generator is what dpkg-shlibdeps is to the other channel, so it has to be the
+# one of a real RPM distribution rather than Ubuntu's. Nothing is installed on this machine.
+# Build only some of them: PACKAGES="app kernels". Options: --help.
+release-rpm:
+	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) $(PACKAGES)
+
+# The two runtime dependencies NO RPM distribution carries, built from the Debian source
+# package (upstream tarball plus its patch series): vde2 -- vde_switch, wirefilter, slirpvde,
+# which every switch, hub and cable of a virtual laboratory is made of -- and uml-utilities,
+# for the uml_mconsole through which Marionnet talks to a running virtual machine. Measured
+# 2026-08-31: absent from Rocky 9 + EPEL + CRB, from Fedora 42 and 44, and uml_mconsole from
+# openSUSE too. Separate from `release-rpm' because they compile from source and their
+# upstreams have not moved since 2011 and 2007: once published, there is nothing to redo.
+release-rpm-deps:
+	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) vde2 uml-utilities
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
+.PHONY: release-rpm release-rpm-deps
 
 
 # =============================================================
