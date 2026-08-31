@@ -523,7 +523,28 @@ Reprise : appliquer le skill `chantier-long`.
   fabriquait un `br0` que l'ép. 7b a rendu automatique. Banc neuf
   `Makefile.d/release.rpm.sh.bench/` (sans `Dockerfile`, boîte nue) : **37 verts sur
   fedora:42**, **6 sur Rocky 9** (refus attendu, **nommant la glibc**). Restent : le dépôt
-  `createrepo`, et une image de build à glibc ancienne pour servir Rocky 9 / Leap 15.6.
+  `createrepo` *(fait à l'ép. 18)*, et une image de build à glibc ancienne pour servir
+  Rocky 9 / Leap 15.6.
+  **Ép. 18 : le dépôt — `dnf install marionnet`.** `Makefile.d/release.dnf.sh` (cible `make
+  release-dnf`, appelée d'elle-même par `release.rpm.sh` **une fois, après la boucle**) écrit
+  le `repodata/` d'un dépôt **à plat**, pendant exact de `release.apt.sh`. **Ce qu'il achète** :
+  sans dépôt, il fallait **nommer les cinq paquets**, donc **savoir** que `vde2` et
+  `uml-utilities` existent et pourquoi ; avec, `dnf install marionnet` les résout **du même
+  répertoire** (mesuré). **À ne pas défaire** : (1) les 2 paquets de données sont `Suggests:`
+  et **non** `Recommends:` — mesuré, dnf honorait la faible vers `marionnet-fs-guignol`
+  (noarch) et **écartait silencieusement** celle vers `marionnet-kernels` (qui a besoin de
+  multilib), or *la moitié qui arrive est pire que rien* (une image sans noyau) ; `Suggests:`
+  **aligne les 2 canaux** — `apt install marionnet` et `dnf install marionnet` donnent
+  l'application seule ; (2) `repodata/` **n'est pas** dans `SHA256SUMS` (réécrit à chaque
+  publication ⇒ digest périmé tout seul, la panne de l'ép. 9b) ; (3) **pas de `--update`** de
+  createrepo (la seule situation qu'il optimise est celle qu'il ne faut pas rater : un paquet
+  republié sous le même nom) ; (4) `marionnet.repo` n'est écrit **que si `--base-url`** le dit
+  — l'URL n'est pas connaissable avant que le répertoire soit servi ; sinon la strophe est
+  affichée. **Trois catalogues cohabitent** dans le répertoire, aucun dérivable des autres :
+  `SHA256SUMS` (artefacts), `Packages` (`.deb`), `repodata/` (`.rpm`). **Piège de banc** : un
+  répertoire de release contient légitimement **plusieurs révisions**, donc
+  `dnf install /rpms/*.rpm` demande 2 versions d'un même paquet et échoue — nommer les paquets
+  un par un, la plus récente par `sort -V`. Banc **37 → 46 cas**, 46 verts sur `fedora:42`.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

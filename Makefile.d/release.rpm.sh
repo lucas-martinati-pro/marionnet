@@ -485,6 +485,24 @@ function rpm_requires_of_debian_package {  # <debian package name>: prints one R
   esac
 }
 
+# ---
+# --- The kernels and the guest image: Suggests:, like the Debian channel, and not Recommends:
+# ---
+# Both channels must give the same thing for the same gesture. `apt install marionnet' brings
+# the application alone -- the three data packages are Suggests: there -- and the postinst says
+# what to add; this one says the same in its %post, so it must behave the same.
+#
+# Recommends: was tried first and measured, which is how the choice stopped being a matter of
+# taste: dnf honoured the weak dependency on marionnet-fs-guignol (noarch) and SILENTLY SKIPPED
+# the one on marionnet-kernels -- which installs perfectly well when asked for by name, pulling
+# glibc.i686 with it. A weak dependency whose effect depends on whether the package happens to
+# need multilib is not a promise this channel can make, and half of it arriving is worse than
+# none: the user gets an image and no kernel, and nothing says why.
+function suggests_lines {
+  echo "Suggests:       marionnet-kernels"
+  echo "Suggests:       marionnet-fs-guignol"
+}
+
 function runtime_requires {  # prints the Requires: lines of the application
   local runtime pkg req
   runtime=$(make --no-print-directory -C "$ROOT" print-required-packages-runtime 2>/dev/null || echo "")
@@ -576,8 +594,7 @@ License:        GPL-2.0-or-later
 URL:            $HOMEPAGE
 BuildArch:      $RPM_ARCH
 $(runtime_requires)
-Recommends:     marionnet-kernels
-Recommends:     marionnet-fs-guignol
+$(suggests_lines)
 
 %description
 Marionnet lets a student define, configure and run a complete computer network
@@ -985,4 +1002,13 @@ done
 
 if ((KEEP_BUILD)); then info "build tree kept: $BUILD"; fi
 
-info "done. The packages are in $OUTDIR and in its SHA256SUMS."
+# The index dnf reads is rewritten from WHAT IS THERE, once, after the loop -- never per
+# package: repodata describes the whole directory, so writing it five times would only make
+# the first four wrong for a moment. Called even when every package was already published and
+# skipped: the reason a run finds nothing to do is often that a previous one was interrupted
+# before this line.
+bash "$ROOT/Makefile.d/release.dnf.sh" --output-dir "$OUTDIR" --series "$SERIES" \
+     --build-image "$BUILD_IMAGE" || \
+  warn "the packages are published but dnf cannot read the directory: run Makefile.d/release.dnf.sh"
+
+info "done. The packages are in $OUTDIR, in its SHA256SUMS, and in its repodata."

@@ -2567,3 +2567,92 @@ règle sudoers accordée ; et une configuration **modifiée** survit à la dési
 - **Le dépôt `createrepo`** — l'équivalent RPM de `release.apt.sh` — n'est pas fait : les cinq
   paquets s'installent par chemin, pas encore par `dnf install marionnet`.
 - **La signature** des paquets et du dépôt, comme pour apt, attend l'étape « serveur ».
+
+## Épisode 18 (2026-08-31) — le dépôt : `dnf install marionnet`
+
+Suite immédiate du 17, et le reste qu'il nommait en premier. `Makefile.d/release.dnf.sh`
+(cible `make release-dnf`, appelée d'elle-même par `release.rpm.sh` **une fois, après la
+boucle**) écrit le `repodata/` d'un dépôt **à plat**, exactement comme `release.apt.sh` écrit
+`Packages`/`Release` — mêmes décisions, reprises sans les rejouer.
+
+### 1. Ce que le dépôt achète, et ce n'est pas du confort
+
+Sans lui, l'utilisateur devait **nommer les cinq paquets** sur la ligne de commande. Or deux
+d'entre eux sont ceux qu'aucune distribution RPM ne porte (épisode 17) : les nommer suppose
+**savoir qu'ils existent et pourquoi**. Avec le dépôt, mesuré :
+
+```
+dnf install marionnet   →   marionnet + vde2 + uml-utilities
+```
+
+Les deux dépendances tierces sont **résolues depuis le même répertoire**. C'est la seule forme
+dans laquelle « Marionnet a besoin d'un vde2 que personne n'empaquette » cesse d'être le
+problème de l'utilisateur.
+
+### 2. `Suggests:` et non `Recommends:` — un choix que la mesure a tranché
+
+Les deux paquets de données étaient d'abord déclarés `Recommends:`. Mesuré : dnf a honoré la
+dépendance faible vers `marionnet-fs-guignol` (**noarch**) et **écarté silencieusement** celle
+vers `marionnet-kernels` — lequel s'installe parfaitement quand on le nomme, en tirant
+`glibc.i686`. Une dépendance faible dont l'effet dépend de ce que le paquet a besoin ou non de
+multilib n'est pas une promesse que ce canal peut tenir, et **la moitié qui arrive est pire que
+rien** : l'utilisateur reçoit une image sans noyau, et rien ne dit pourquoi.
+
+D'où `Suggests:`, qui **aligne les deux canaux** : `apt install marionnet` comme
+`dnf install marionnet` donnent l'application seule, et le message de post-installation dit
+quoi ajouter. Le même geste donne la même chose.
+
+### 3. Trois décisions reprises telles quelles du canal apt
+
+- **Dépôt à plat** : la série *est* le dépôt. Une arborescence mettrait les mêmes fichiers à un
+  second endroit sous un second nom.
+- **`repodata/` n'est PAS dans `SHA256SUMS`** : il est réécrit à chaque publication, donc un
+  digest y serait périmé tout seul — la panne exacte que l'épisode 9b a dû réparer. dnf porte
+  son intégrité dans `repomd.xml`, seul fichier auquel une signature s'attacherait.
+- **Non signé aujourd'hui**, d'où `gpgcheck=0` dans la strophe — le pendant du `[trusted=yes]`
+  de la ligne apt. La signature est la question de l'étape « serveur » : elle décide la clef.
+
+**Trois catalogues cohabitent** désormais dans le répertoire, et aucun ne se dérive des autres :
+`SHA256SUMS` (les artefacts, pour `marionnet-install.sh`), `Packages` (les champs de contrôle
+des `.deb`), `repodata/` (les en-têtes des `.rpm`).
+
+### 4. Deux points d'écriture
+
+- **`createrepo_c` tourne en conteneur**, pour la même raison que `rpmbuild` : c'est l'outil
+  d'une distribution RPM, et la machine de release n'en est pas une. Rien n'y est installé.
+- **`marionnet.repo` n'est écrit que si `--base-url` le dit** (`make release-dnf BASE_URL=…`).
+  L'URL d'un répertoire de release n'est pas connaissable ici — elle se décide quand le
+  répertoire est servi. Écrire un fichier avec une URL devinée publierait un dépôt qui pointe
+  vers rien, et le client en accuserait le serveur. Sans l'option, la strophe est **affichée**.
+- **Pas de `--update`** : la seule situation où il gagnerait est celle qu'il ne faut pas rater —
+  un paquet **republié sous le même nom**, que l'épisode 9b a mesurée côté apt comme un
+  catalogue décrivant en silence le fichier précédent. Cinq paquets s'indexent en entier.
+
+### 5. Preuves (2026-08-31)
+
+Banc : **37 → 46 cas**, dont **9 neufs** dans un conteneur **neuf** (la boîte des sections
+précédentes a été installée, désinstallée et sa configuration dnf éditée : « ce que donne un
+`dnf install` simple » demande une machine à laquelle rien n'a été fait).
+
+| boîte | résultat |
+|---|---|
+| `fedora:42` | **46 verts, 0 rouge** |
+| `rockylinux/rockylinux:9` | **6 verts, 0 rouge** — le banc s'arrête au refus nommant la glibc |
+
+Les 9 cas neufs : `repodata/repomd.xml` existe et **n'est pas** dans `SHA256SUMS` ; dnf liste
+les paquets ; `dnf install marionnet` **par son nom** ; `vde2` et `uml-utilities` viennent
+**avec** ; les deux paquets de données **restent dehors** mais sont **visibles** comme
+suggestions ; ils s'installent sur demande, `glibc.i686` suivant le noyau 32 bits ; et, deux
+révisions étant publiées, **dnf choisit la plus récente**.
+
+**Piège de banc payé ici** : un répertoire de release contient légitimement **plusieurs
+révisions** de l'application. `dnf install /rpms/*.rpm` demande alors deux versions du même
+paquet et dnf refuse (« *conflicting requests* ») — ce qui faisait échouer un cas qui n'avait
+rien à voir. Le banc nomme désormais les paquets un par un et choisit la plus récente
+(`sort -V`).
+
+### 6. Restes du canal RPM
+
+Inchangés, moins celui-ci : l'**image de build à glibc ancienne** (pour servir Rocky 9 et
+openSUSE Leap 15.6) et la **signature**, qui part avec l'étape « serveur » — celle-là même qui
+donnera enfin une `baseurl` à `--base-url`.

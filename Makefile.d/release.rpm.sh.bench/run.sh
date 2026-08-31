@@ -80,15 +80,20 @@ shopt -u nullglob
 ((${#RPMS[@]})) || skip_all "no .rpm in $OUTDIR (run: make release-rpm && make release-rpm-deps)"
 
 # The five packages this bench knows about, found by name rather than by position.
-function rpm_named {  # <package name>: prints the file name of that package, or nothing
-  local f base
+# A release directory legitimately holds SEVERAL revisions of the application at once, while
+# one replaces the other -- which is why the newest is picked here rather than the first
+# matching name. Measured the hard way: with r916 and r917 both published, installing
+# /rpms/*.rpm asks dnf for two versions of one package and it refuses, "conflicting requests".
+function rpm_named {  # <package name>: prints the file name of that package, newest first
+  local f base out=""
   for f in "${RPMS[@]}"; do
     base=$(basename -- "$f")
     # <name>-<version>-<release>.<arch>.rpm: the name is what precedes the version, so the
     # candidate matches only if what follows its name is a dash and then a digit.
-    [[ $base =~ ^$1-[0-9~] ]] && { echo "$base"; return 0; }
+    [[ $base =~ ^$1-[0-9~] ]] && out+="$base"$'\n'
   done
-  return 1
+  test -n "$out" || return 1
+  echo "$out" | grep -v '^$' | sort -V | tail -1
 }
 
 APP=$(rpm_named marionnet) || skip_all "no marionnet package in $OUTDIR"
@@ -171,7 +176,11 @@ fi
 # glibc newer than the box's must be refused, and the refusal must name it. Read from the
 # METADATA rather than from a file name -- the whole gain of a package over a tarball.
 info "2 bis. the five packages together"
-out=$(in_box "dnf -y install /rpms/*.rpm 2>&1"; true)
+# Named one by one, and not /rpms/*.rpm: the directory may hold several revisions of the
+# application, and a glob would ask dnf for two versions of the same package.
+FIVE=""
+for p in "$APP" "$KERNELS" "$GUIGNOL" "$VDE2" "$UMLU"; do test -n "$p" && FIVE+=" /rpms/$p"; done
+out=$(in_box "dnf -y install$FIVE 2>&1"; true)
 if echo "$out" | grep -qiE 'complete!'; then
   pass "the five packages install together"
   INSTALLED=1
@@ -190,7 +199,7 @@ fi
 
 # ---------------------------------------------------------------- 3. what dnf pulled by itself
 info "3. the dependencies dnf resolved on its own"
-in_box "dnf -y install /rpms/*.rpm >/dev/null 2>&1"
+in_box "dnf -y install$FIVE >/dev/null 2>&1"
 
 for probe in "vde_switch:vde2" "wirefilter:vde2" "slirpvde:vde2" "uml_mconsole:uml-utilities"; do
   cmd="${probe%%:*}"; from="${probe##*:}"
@@ -356,6 +365,78 @@ if in_box 'test -f /etc/marionnet/marionnet.conf.rpmsave || test -f /etc/marionn
   pass "the edited configuration survives the removal (kept, or set aside as .rpmsave)"
 else
   fail "the edited configuration was destroyed by the removal"
+fi
+
+# ---------------------------------------------------------------- 10. the repository
+# What release.dnf.sh buys, measured where it shows: with repodata/ in the directory, the two
+# dependencies no RPM distribution carries are resolved BY DNF, from that same directory.
+# Without it, whoever installs has to name vde2 and uml-utilities on the command line -- which
+# means knowing they exist, and why.
+#
+# A SECOND, FRESH container: the box above has been installed into, removed from and had its
+# dnf configuration edited. Measuring "what a plain dnf install gives" needs a machine to which
+# nothing has been done.
+info "10. the repository (a fresh box, nothing but the repo)"
+if ! test -f "$OUTDIR/repodata/repomd.xml"; then
+  skip "no repodata in the release directory (run: make release-dnf)"
+else
+  pass "repodata/repomd.xml is there"
+  if test -f "$OUTDIR/SHA256SUMS" && grep -q 'repodata' "$OUTDIR/SHA256SUMS"; then
+    fail "repodata is recorded in SHA256SUMS: an index is not an artefact, and its digest would go stale by itself"
+  else
+    pass "repodata is NOT in SHA256SUMS (an index is rewritten at every publication)"
+  fi
+
+  BOX2="$BOX-repo"
+  docker rm -f "$BOX2" >/dev/null 2>&1
+  if docker run -d --name "$BOX2" -v "$OUTDIR:/repo:ro" "$DISTRO" sleep infinity >/dev/null 2>&1; then
+    function in_box2 { docker exec "$BOX2" bash -c "$1"; }
+    in_box2 'printf "[marionnet]\nname=Marionnet\nbaseurl=file:///repo\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/marionnet.repo'
+
+    n=$(in_box2 'dnf -q list --available "marionnet*" vde2 uml-utilities 2>/dev/null | grep -c marionnet')
+    test "$n" -ge 3 && pass "dnf lists the packages of the repository" || \
+      fail "dnf sees only $n package(s) in the repository"
+
+    if in_box2 'dnf -y install marionnet >/dev/null 2>&1'; then
+      pass "dnf install marionnet -- by NAME, not by path"
+      if in_box2 'rpm -q vde2 >/dev/null 2>&1 && rpm -q uml-utilities >/dev/null 2>&1'; then
+        pass "vde2 and uml-utilities came WITH it, resolved from the same directory"
+      else
+        fail "the two third-party dependencies were not resolved from the repository"
+      fi
+      # The same gesture must give the same thing on both channels: `apt install marionnet'
+      # brings the application alone, and so must this one. Recommends: was tried and measured
+      # to be honoured for one of the two data packages and silently skipped for the other.
+      if in_box2 'rpm -q marionnet-kernels >/dev/null 2>&1 || rpm -q marionnet-fs-guignol >/dev/null 2>&1'; then
+        fail "a data package was installed although both are Suggests: (the Debian channel gives the application alone)"
+      else
+        pass "the data packages stayed out, as Suggests: and as on the Debian channel"
+      fi
+      n=$(in_box2 'dnf -q repoquery --suggests marionnet 2>/dev/null | grep -c marionnet')
+      test "$n" -ge 2 && pass "and they are VISIBLE as suggestions ($n)" || \
+        fail "the suggestions are not readable from the repository"
+      if in_box2 'dnf -y install marionnet-kernels marionnet-fs-guignol >/dev/null 2>&1 && \
+                  rpm -q marionnet-kernels >/dev/null 2>&1'; then
+        pass "and they install on demand, glibc.i686 following the 32-bit kernel"
+      else
+        fail "the data packages cannot be installed from the repository"
+      fi
+      # A release directory legitimately holds several revisions of the application while one
+      # replaces the other; the index must not hide any, and dnf must pick the newest.
+      newest=$(ls "$OUTDIR"/marionnet-0~trunk+r*.rpm 2>/dev/null | sed 's/.*+r\([0-9]*\)-.*/\1/' | sort -n | tail -1)
+      chosen=$(in_box2 'rpm -q --qf "%{VERSION}" marionnet 2>/dev/null' | sed 's/.*+r//')
+      if test -n "$newest" && test "$chosen" = "$newest"; then
+        pass "with several revisions published, dnf chose the newest (r$chosen)"
+      elif test -n "$chosen"; then
+        skip "only one revision published (r$chosen)"
+      fi
+    else
+      fail "dnf install marionnet failed from the repository"
+    fi
+    ((KEEP)) && info "container kept: $BOX2" || docker rm -f "$BOX2" >/dev/null 2>&1
+  else
+    skip "cannot start the second container"
+  fi
 fi
 
 # ----------------------------------------------------------------

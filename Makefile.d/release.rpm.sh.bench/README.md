@@ -31,14 +31,19 @@ prouverait que nos fichiers se posent ; elle ne prouverait pas que `dnf` sait le
 | **7** | Les 26 guides sont **dans** le paquet mais **absents** de cette boîte : rpm marque tout seul comme documentation ce qui vit sous `%{_docdir}`, et toute image RPM pose `tsflags=nodocs`. Une fois cette exclusion retirée, ils s'installent |
 | **8** | Le binaire **tourne**, et `bash-completion` **arme** notre fonction pour `mrnctl` (le chargeur, pas seulement le fichier posé) |
 | **9** | Une configuration **modifiée** par l'administrateur survit à la désinstallation |
+| **10** | Le **dépôt** (`repodata/`, épisode 18), dans un conteneur **neuf** : `dnf install marionnet` **par son nom** tire `vde2` et `uml-utilities` **du même répertoire** — sans le dépôt, il faudrait que l'utilisateur sache qu'ils existent et pourquoi. Les deux paquets de données restent dehors (`Suggests:`, comme `apt install marionnet`) mais sont **visibles**, et s'installent sur demande. Enfin, plusieurs révisions publiées : dnf choisit **la plus récente**. `repodata/` n'est **pas** dans `SHA256SUMS` |
 
-## Deux pièges que ce banc a payés
+## Trois pièges que ce banc a payés
 
 1. **Installer l'application seule est le bon test, pas un échec du banc.** La première version
    installait `marionnet` seul et concluait « refusé pour une raison qui n'est pas la glibc ».
    C'était vrai, et c'était *la* mesure intéressante : le refus nomme `/usr/bin/vde_switch` et
    `/usr/bin/uml_mconsole`. Le cas a été coupé en deux plutôt que corrigé.
-2. **`bash-completion` n'est pas une dépendance du paquet** — Marionnet marche sans. La boîte ne
+2. **Un répertoire de release contient légitimement plusieurs révisions.** Avec r916 *et*
+   r917 publiés, `dnf install /rpms/*.rpm` demande deux versions du même paquet et dnf refuse
+   (« *conflicting requests* »). Le banc nomme donc les paquets un par un, et choisit la
+   **plus récente** (`sort -V`) — ce qui est aussi ce que le cas 10 vérifie côté dépôt.
+3. **`bash-completion` n'est pas une dépendance du paquet** — Marionnet marche sans. La boîte ne
    l'a donc pas, et un cas naïf échoue en croyant que la complétion est mal installée. Le banc
    l'installe *dans ce cas-là*, ce qui est justement ce qui prouve que nos douze fichiers sont
    là où le **chargeur** les cherche.
@@ -47,8 +52,8 @@ prouverait que nos fichiers se posent ; elle ne prouverait pas que `dnf` sait le
 
 | Boîte | glibc | Résultat |
 |---|---|---|
-| `fedora:42` | 2.41 | **37 PASS, 0 FAIL** |
-| `rockylinux/rockylinux:9` | 2.34 | **6 PASS, 0 FAIL** — refus attendu, nommant la glibc |
+| `fedora:42` | 2.41 | **46 PASS, 0 FAIL** (37 avant l'épisode 18) |
+| `rockylinux/rockylinux:9` | 2.34 | **6 PASS, 0 FAIL** — refus attendu, nommant la glibc (le banc s'arrête là : rien ne peut y être installé) |
 
 Pour servir Rocky 9 et openSUSE Leap 15.6 (glibc 2.34 et 2.38), il faudra **construire sur
 elles** : un binaire ne tourne que sur une glibc au moins aussi récente que celle de sa machine

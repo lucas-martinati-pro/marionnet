@@ -506,10 +506,23 @@ release-rpm:
 release-rpm-deps:
 	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) vde2 uml-utilities
 
+# Make the release directory readable by dnf: the repodata/ of a flat yum repository, beside
+# the .rpm. `make release-rpm' calls this by itself, so this target is for the other cases: a
+# directory whose packages were published before it existed, or one a .rpm was dropped into by
+# hand. What it buys is not cosmetic -- with the repository, `dnf install marionnet' resolves
+# vde2 and uml-utilities from this same directory, instead of asking whoever installs to know
+# that those two exist and why. BASE_URL="https://..." also writes a ready-to-use
+# marionnet.repo. `make release-dnf CHECK=1' says what the index holds instead of rewriting it.
+# The index is NOT recorded in SHA256SUMS (it is rewritten at every publication, and dnf
+# carries its integrity in repomd.xml).
+release-dnf:
+	bash Makefile.d/release.dnf.sh --series $(PUBLICATION_SERIES) \
+	     $(if $(BASE_URL),--base-url $(BASE_URL)) $(if $(CHECK),--check)
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
-.PHONY: release-rpm release-rpm-deps
+.PHONY: release-rpm release-rpm-deps release-dnf
 
 
 # =============================================================
