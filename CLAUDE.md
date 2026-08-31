@@ -487,7 +487,7 @@ Reprise : appliquer le skill `chantier-long`.
   **guignol** est **périmé** (`SUM` et `MTIME` exacts, `md5sum` non — vrai à la source),
   et **rien ne lit `MD5SUM`** (`bin/disk.ml:456` le déclare et ne le consulte jamais) ;
   d'où une vérification `v <n>` qui rend compte des **deux** champs séparément au lieu d'un
-  verdict unique. Régénérer ce `MD5SUM` reste à faire.
+  verdict unique. Ce `MD5SUM` a été **régénéré à l'ép. 23**.
   **Ép. 17 (hors feuille de route) : le canal RPM, et deux dépendances que personne ne
   porte.** `Makefile.d/release.rpm.sh` (cibles `make release-rpm` et `release-rpm-deps`),
   **6ᵉ publieur** : même répertoire de release, même `SHA256SUMS` (6ᵉ motif, `*.rpm`).
@@ -671,6 +671,26 @@ Reprise : appliquer le skill `chantier-long`.
   `.rpm` ↔ `.tar.xz` passe de **SKIP à vert**, r923 étant la 1ʳᵉ révision à porter les deux — le
   contrat de 20c cesse d'être une intention. **À retenir** : une preuve qui dépend de ce que la
   boîte *dit* se joue dans la boîte, et donc après le commit.
+  **Ép. 23 : le `MD5SUM` régénéré, et la dérive de `mtime` qu'il a révélée.** La correction
+  annoncée « peu coûteuse » l'était (`e7b651d1…` → **`afe9d7e8…`** dans les 2 `.conf` guignol,
+  machine et routeur portant le même digest puisque c'est le même fichier), mais elle exigeait de
+  **republier**, et la republication a montré le vrai défaut : les **3** images nues du répertoire
+  de release avaient perdu leur `mtime` (copie sans `-p`, 2026-08-30) là où leurs tarballs, faits
+  10 min plus tôt, portaient encore le bon. Le mode « image déjà publiée » du publieur **archive
+  le `mtime` du disque** — un `--force` aurait donc publié la dérive **en silence**, c'est-à-dire
+  exactement ce que le champ `MTIME` existe pour empêcher (UML refuse un *backing file* dont le
+  `mtime` a bougé : les projets faits avec ces images ne s'ouvriraient plus). `sum(1)` étant resté
+  celui du nom (`18474`/`08367`/`39212`), les `mtime` ont été **restaurés depuis le `.conf`**, qui
+  fait foi. **À ne pas défaire** : la garde neuve **refuse** (rc 2) et **nomme** son remède
+  (`touch -d @<MTIME>`) au lieu de réparer — réécrire un `mtime` n'est juste que si les octets
+  n'ont pas bougé, et une image dont le contenu a changé se republie **sous un autre nom**, son
+  nom *étant* son `sum` ; le mode « instantané » n'a pas besoin de la garde (il écrit le `.conf`
+  depuis le disque). Republication de la famille guignol **entière** (2 tarballs + `.deb` +
+  `.rpm`, tout en dérivant) et des **3** catalogues par leurs écrivains. Le commentaire de
+  `image_integrity_verdict` est mis à jour **sans changer sa conception** : sa raison (guignol) a
+  disparu, sa forme reste — un `.conf` ancien peut toujours porter un digest périmé, et rien ne
+  lit `MD5SUM`. Mesuré : `sha256sum -c` sur 35 artefacts, `dune build` rc 0, banc réseau
+  **68 PASS / 0 FAIL**.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

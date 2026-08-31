@@ -3209,3 +3209,89 @@ Aucun fichier de code, aucun banc modifié : les commentaires des deux cas avaie
 l'épisode 21 pour l'état d'*après* (« green from episode 21 on »), et ils disent juste. La seule
 correction est une phrase de la section « Restes » de l'épisode 21, qui annonçait le cas
 d'identité **rouge** au rejeu là où il ne pouvait que virer au vert.
+
+## Épisode 23 (2026-08-31) — le `MD5SUM` régénéré, et la dérive de `mtime` qu'il a révélée
+
+Dernier point local jouable (les étapes (5) et (6) attendent le retour du serveur) : le
+`MD5SUM` du `.conf` de `machine-guignol-18474`, mesuré **périmé à la source** par l'épisode 16
+(`SUM` et `MTIME` exacts, `md5sum` non). Étape annoncée « peu coûteuse ». Elle l'était ; mais
+pour la jouer il fallait **republier**, et c'est la republication qui a découvert le vrai
+défaut.
+
+### 1. Ce que la republication allait publier
+
+Le mode « image déjà publiée » de `filesystem.prepare-snapshot-to-publish.sh` ne recalcule
+rien : il archive l'image **telle qu'elle est sur le disque**, `mtime` compris. Or, mesuré dans
+le répertoire de release `1.0.x` :
+
+| image | `mtime` sur le disque | `MTIME` de son `.conf` |
+|---|---|---|
+| `machine-guignol-18474` | 1788092033 (2026-08-30) | 1497013276 (2017-06-09) |
+| `machine-debian-wheezy-08367` | 1788092026 (2026-08-30) | 1404061349 (2014-06-29) |
+| `machine-debian-trixie-39212` | 1788091856 (2026-08-30) | 1787511417 (2026-08-23) |
+
+Les **trois** images nues du répertoire avaient perdu leur `mtime` le 2026-08-30 entre 14h10 et
+14h13 — une copie sans `-p` fait exactement cela — tandis que leurs tarballs, construits dix
+minutes plus tôt, portaient encore le bon. Un `--force` joué ce jour-là aurait donc publié
+des images au `mtime` neuf, **en silence** : c'est-à-dire précisément ce que le champ `MTIME`
+existe pour empêcher, user-mode-linux refusant un *backing file* dont le `mtime` a bougé. Les
+projets déjà faits avec ces images ne se seraient plus ouverts, et rien n'aurait échoué.
+
+Le `sum(1)` des trois images est resté celui que leur nom annonce (`18474`, `08367`, `39212`) :
+les octets n'ont pas bougé, seule l'horodate. Les `mtime` ont donc été **restaurés** depuis le
+champ que le `.conf` déclare.
+
+### 2. Une garde, qui nomme son remède au lieu de réparer
+
+Le script **refuse** désormais d'empaqueter une image déjà publiée dont le `mtime` disque
+diffère du `MTIME` de son `.conf`, en nommant le `touch -d @<MTIME>` qui le corrige. Ce n'est
+pas une réparation automatique, et c'est délibéré : réécrire un `mtime` n'est juste que si les
+**octets** n'ont pas changé, ce que seul l'appelant peut trancher — une image dont le contenu a
+changé doit être republiée **sous un autre nom**, son nom *étant* son `sum`. Le mode
+« instantané » n'a pas besoin de cette garde : il écrit le `.conf` à partir du disque, l'écart
+y est impossible par construction.
+
+### 3. La métadonnée, enfin exacte
+
+`MD5SUM=e7b651d1…` → **`afe9d7e8cd5d4b978fa9079ebd7c98e9`**, dans les **deux** `.conf` (machine
+et routeur : c'est le même fichier d'images, donc le même digest), puis republication de la
+famille guignol **entière**, puisque tout en dérive :
+
+- `filesystems_machine-guignol-18474.tar.xz` et `filesystems_router-guignol-18474.tar.xz`
+  (image à `2017-06-09 15:01` dans l'archive, `SUM`/`MTIME` intacts) ;
+- `marionnet-fs-guignol_18474_all.deb` et `marionnet-fs-guignol-18474-1.noarch.rpm`, dépliés du
+  tarball corrigé — leurs `.conf` embarqués portent le nouveau digest, leurs images le `mtime`
+  de 2017 ;
+- les **trois** catalogues réécrits chacun par son écrivain : `SHA256SUMS` (35 artefacts, ligne
+  par ligne remplacée avec le `--force` borné de l'épisode 9b), `Packages`/`Release`, et
+  `repodata/`.
+
+### 4. Le commentaire du chooser, remis à jour sans changer sa conception
+
+`image_integrity_verdict` (`bin/scripts/marionnet-install.sh`) rend compte des **deux** champs
+séparément plutôt que d'un verdict unique : la raison en était guignol, elle n'y est plus.
+La forme, elle, reste — la situation qu'elle traite n'a pas disparu : un `.conf` publié il y a
+longtemps, ou reçu d'ailleurs, peut porter le digest périmé d'une image par ailleurs conforme, et
+**rien dans Marionnet ne lit `MD5SUM`** (`bin/disk.ml` le déclare et ne le consulte jamais). Seul
+le commentaire a changé, en datant le fait.
+
+### Prouvé (2026-08-31)
+
+- La garde **refuse** (rc 2) l'image telle qu'elle était avant restauration, en nommant sa valeur
+  attendue, sa valeur disque et la commande de remède.
+- Après restauration et correction : les 2 tarballs portent l'image à `1497013276`, `SUM=18474`,
+  `MD5SUM=afe9d7e8…` ; `md5sum` de l'image extraite = ce champ ; `sha256sum -c SHA256SUMS` passe
+  sur les **35** artefacts.
+- Le `.deb` et le `.rpm` de données, inspectés (`dpkg-deb`, `rpm -qplv` + `rpm2cpio` dans
+  `fedora:42`), portent le même `.conf` et la même horodate d'image.
+- `dune build` rc 0 (le script est embarqué dans le binaire par `INCLUDE_AS_STRING`), et le banc
+  réseau `bin/scripts/marionnet-install.sh.bench/run.sh` : **68 PASS, 0 FAIL** sur
+  `debian:trixie-slim`.
+
+### Restes
+
+L'installation locale `/usr/local/share/marionnet/filesystems/*guignol*.conf` porte encore
+l'ancien digest : c'est une machine installée, pas une source de publication, et le champ est
+inerte — à corriger d'un `sed` root le jour où l'on y touche. Par ailleurs
+`Makefile.d/release.deb.sh` n'est pas exécutable (664) là où ses cinq voisins le sont ; le
+`Makefile` l'appelle par `bash`, donc rien n'échoue.

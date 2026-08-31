@@ -648,12 +648,15 @@ function image_state {   # $1 = logical name
 # artefact is named after (machine-guignol-18474 -> SUM=18474), so it is the field the
 # whole naming convention of this chain rests on. MD5SUM is extra.
 #
-# MEASURED, and the reason this function does not pronounce a single verdict: on the
-# published 1.0.x release, wheezy agrees on both fields, while GUIGNOL agrees on SUM and
-# MTIME but NOT on MD5SUM -- its .conf carries a digest of some earlier state of the image.
-# Nothing in Marionnet reads MD5SUM (bin/disk.ml parses it and never consults it), so this
-# is stale metadata rather than a broken image; but a chooser which cried "corrupted" at
-# every freshly installed guignol would be a chooser nobody believes twice.
+# The reason this function does not pronounce a single verdict was MEASURED: until 2026-08-31
+# the published guignol agreed on SUM and MTIME but NOT on MD5SUM -- its .conf carried the
+# digest of some earlier state of the image. That particular .conf has since been regenerated
+# (episode 23), yet the shape stays, because the situation it answers has not gone away: a
+# .conf published long ago, or received from elsewhere, may carry a stale digest of an image
+# which is otherwise exactly what it claims to be. Nothing in Marionnet reads MD5SUM
+# (bin/disk.ml parses it and never consults it), so that is stale metadata rather than a
+# broken image -- and a chooser which cried "corrupted" over it would be a chooser nobody
+# believes twice.
 function image_integrity_verdict {   # $1 = logical name -- reads the whole file
   local target conf want got out=""
   target=$(artifact_target "$1"); conf="$target.conf"

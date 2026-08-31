@@ -194,6 +194,26 @@ else
   info "already published image: $IMAGE"
   info "output dir   : $OUTDIR"
   info "nothing to merge, nothing to recompute: only the tarball is built."
+  # The mtime of an already published image is NOT free: the MTIME field of its .conf records
+  # what it must be, and user-mode-linux refuses a backing file whose mtime moved (that is the
+  # whole point of the field -- see the comment of the tarball section below). In this mode
+  # nothing is recomputed, so an image whose mtime drifted since it was published would be
+  # archived with the WRONG one, SILENTLY, and every project made with it would stop opening.
+  # This is not hypothetical: on 2026-08-30 the three bare images of the 1.0.x release directory
+  # were left with a fresh mtime (a copy without -p does exactly that), while their tarballs,
+  # built earlier, still carried the right one -- a `--force' rerun would have published the
+  # drift. Hence a refusal which names its own remedy rather than a silent repair: rewriting an
+  # mtime is only right when the BYTES did not change, and that is the caller's call -- an image
+  # whose content changed must be republished under a new name (the name IS its `sum').
+  CONF_MTIME=$(sed -n 's/^MTIME=\([0-9][0-9]*\).*/\1/p' "$CONF" | head -n 1)
+  DISK_MTIME=$(stat -L -c "%Y" -- "$IMAGE")
+  if test -n "$CONF_MTIME" && test "$CONF_MTIME" != "$DISK_MTIME"; then
+    die "$IMAGE_NAME: mtime on disk ($DISK_MTIME, $(date -d "@$DISK_MTIME" +%F)) is not the one its .conf records (MTIME=$CONF_MTIME, $(date -d "@$CONF_MTIME" +%F)).
+Publishing it now would put the wrong mtime in the tarball and user-mode-linux would refuse the image as a backing file.
+If the bytes did not change (check: sum -- $IMAGE gives ${IMAGE_NAME##*-}), restore it with:
+    touch -d @$CONF_MTIME -- $IMAGE
+If the bytes DID change, the image must be republished under its new name, not under this one."
+  fi
 fi
 
 # Everything from here to the tarball concerns a SNAPSHOT. An already published image given as
