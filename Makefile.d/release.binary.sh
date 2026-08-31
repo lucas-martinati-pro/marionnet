@@ -72,6 +72,10 @@
 #   -y, --yes                    do not ask before building the tarball
 #       --no-tarball             stop before the tarball (keeps the staging, and says where)
 #       --keep-staging           do not remove the staging directory afterwards
+#       --staging-dir DIR        stage into DIR instead of a fresh mktemp -d, and keep it.
+#                                What the .deb publisher (release.deb.sh) calls, so that the
+#                                package is assembled from THIS script's idea of what an
+#                                installation is made of, rather than from a second one.
 #       --print-name             print the artefact name this working copy would produce
 #       --allow-testing-configuration
 #                                build although CONFIGME.choice points at the testing
@@ -166,6 +170,7 @@ FORCE=0
 ASSUME_YES=0
 MAKE_TARBALL=1
 KEEP_STAGING=0
+STAGING_GIVEN=""
 USE_XZ=1
 ALLOW_TESTING=0
 
@@ -177,6 +182,7 @@ while (($#)); do
     -y|--yes)        ASSUME_YES=1; shift ;;
     --no-tarball)    MAKE_TARBALL=0; KEEP_STAGING=1; shift ;;
     --keep-staging)  KEEP_STAGING=1; shift ;;
+    --staging-dir)   STAGING_GIVEN="$2"; KEEP_STAGING=1; shift 2 ;;
     --xz)            USE_XZ=1; shift ;;
     --gz|--gzip)     USE_XZ=0; shift ;;
     --print-name)    artefact_name; exit 0 ;;
@@ -252,7 +258,12 @@ fi
 # those names are SYMBOLIC LINKS to the real .sh next to them -- and for two of them
 # (mrn2sh, mrnck) the name IS the behaviour, the script reading ${0##*/}.
 # ---
-STAGING=$(mktemp -d -- "${TMPDIR:-/tmp}/marionnet-release-binary.XXXXXXXX")
+if test -n "$STAGING_GIVEN"; then
+  mkdir -p -- "$STAGING_GIVEN" || die "cannot create the staging directory: $STAGING_GIVEN"
+  STAGING=$(cd -- "$STAGING_GIVEN" && pwd)
+else
+  STAGING=$(mktemp -d -- "${TMPDIR:-/tmp}/marionnet-release-binary.XXXXXXXX")
+fi
 PREFIX_DIR="$STAGING/$NAME"
 
 function cleanup_staging {

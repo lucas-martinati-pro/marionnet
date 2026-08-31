@@ -416,10 +416,29 @@ Reprise : appliquer le skill `chantier-long`.
   rouges sur l'artefact d'avant), et **3 des 5 cas neufs sont gardés sur l'existence du
   répertoire** : un `find`/`grep` sur un répertoire absent ne trouve rien, donc passait au vert
   sur l'arbre qu'il devait condamner.
+  **Ép. 15a : les quatre `.deb` existent** — `Makefile.d/release.deb.sh` (cible `make
+  release-deb`), **cinquième publieur** : même répertoire de release, même `SHA256SUMS` (qui
+  apprend un 5ᵉ motif, `*.deb` — sans quoi un paquet déposé serait invisible). **À ne pas
+  défaire** : (1) rien n'est décrit deux fois — l'application est assemblée du **staging que
+  `release.binary.sh` produit** (option neuve `--staging-dir`), donc les gestes que `dune
+  install` ne fait pas y sont déjà, et les paquets de données sont **dépliés de l'artefact
+  publié**, seule façon de livrer le **même `mtime`** que le tarball (mesuré : image guignol
+  datée `2017-06-09` des deux côtés — c'est ce qu'UML vérifie) ; (2) le `Depends:` est
+  **dérivé deux fois** — `dpkg-shlibdeps` (d'où `libc6 (>= 2.38)`, la contrainte que l'ép. 12
+  ne savait écrire que dans un **nom de fichier**) ∪ `REQUIRED_PACKAGES_RUNTIME` lu à travers
+  `make`, le doublon retiré **par un test sur le nom** ; (3) la version **commence par `0~`**
+  (`dpkg-deb` refuse `trunk-r906`, mesuré ; `0~trunk+r913` < `1.0.0`, mesuré) et celle d'un
+  paquet de données est lue **dans le nom de l'artefact** ; (4) lintian tourne sur chaque
+  paquet et **n'est jamais fatal** — 4 de ses remarques étaient de vrais défauts (dont
+  `umask 022` : sans lui le paquet rendait `/usr/share` inscriptible par le groupe), **3 sont
+  des réponses** gardées avec leur raison, dont `unstripped-binary-or-object` (−9,4 Mio
+  possibles, refusés : les 2 canaux livrent **le même binaire**).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
-  **(4) les `.deb` sur les 4 boîtes** → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2)
+  (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les INSTALLER
+  ← prochaine** (dépôt apt à plat, `libc6:i386` à mesurer, conffile déjà posé par le
+  tarball) → (5) `upload.www.marionnet.org.sh` → (6) rejeu de (2)
   et (4) contre le vrai serveur. La **doc INSTALL** est le tout dernier épisode.
   **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
   site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.

@@ -51,7 +51,7 @@
 #   -n, --dry-run                say what would change, write nothing
 #   -h, --help                   this help
 #
-# Without FILE, every kernels_*.tar.{gz,xz}, filesystems_*.tar.{gz,xz} and
+# Without FILE, every kernels_*.tar.{gz,xz}, filesystems_*.tar.{gz,xz}, *.deb and
 # marionnet_*.tar.{gz,xz} of the directory is considered. With FILE (a bare name or a path inside the directory), only those are --
 # that is how the two *.prepare-to-publish.sh scripts call this one, right after they have
 # moved a fresh tarball into place.
@@ -150,10 +150,15 @@ fi
 # --- Which artefacts we are asked about.
 # ---
 # A published artefact is recognised by its NAME, here as everywhere else in this chain:
-# `filesystems_<X>.tar.*', `kernels_<X>.tar.*' and -- since Makefile.d/release.binary.sh --
-# `marionnet_<version>-r<rev>_<arch>_<libc>.tar.*', the application itself. Anything else in
-# the directory (the images themselves, their .conf, this very file) is not an artefact to
-# publish.
+# `filesystems_<X>.tar.*', `kernels_<X>.tar.*', `marionnet_<version>-r<rev>_<arch>_<libc>.tar.*'
+# (the application, since Makefile.d/release.binary.sh) and `*.deb' (the four Debian packages,
+# since Makefile.d/release.deb.sh). Anything else in the directory (the images themselves,
+# their .conf, this very file) is not an artefact to publish.
+#
+# The .deb files will ALSO be described by a catalogue of apt's own -- Packages/Release, in
+# the same directory. That is not the divergence episode 8 feared: the two describe the same
+# directory, each for its own consumer. But the rule "an artefact which never reaches the
+# catalogue is invisible" then holds twice over.
 #
 # The installer only fetches the first two: a `marionnet_*' line is catalogued and, for now,
 # ignored by useful-scripts/marionnet-install.sh. It is recorded all the same, because the
@@ -171,7 +176,8 @@ else
   shopt -s nullglob
   for f in "$OUTDIR"/kernels_*.tar.gz "$OUTDIR"/kernels_*.tar.xz \
            "$OUTDIR"/filesystems_*.tar.gz "$OUTDIR"/filesystems_*.tar.xz \
-           "$OUTDIR"/marionnet_*.tar.gz "$OUTDIR"/marionnet_*.tar.xz; do
+           "$OUTDIR"/marionnet_*.tar.gz "$OUTDIR"/marionnet_*.tar.xz \
+           "$OUTDIR"/*.deb; do
     CANDIDATES+=("$(basename -- "$f")")
   done
   shopt -u nullglob

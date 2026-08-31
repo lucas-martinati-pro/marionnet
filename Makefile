@@ -464,9 +464,20 @@ release.sha256sums:
 release-binary:
 	bash Makefile.d/release.binary.sh --series $(PUBLICATION_SERIES)
 
+# Turn a release into the fourth kind of artefact it is made of: the four Debian packages --
+# marionnet (the application), marionnet-kernels, marionnet-kernels-i386 and
+# marionnet-fs-guignol (the guignol image, machine and router together). Binary packages, no
+# dpkg-buildpackage: they are assembled from the staging release-binary already produces,
+# and from the guest images and kernels ALREADY PUBLISHED in the release directory -- which
+# is what makes the two channels deliver the same mtime, the thing UML checks against the
+# .conf of a backing file. Published into that same directory and recorded in the same
+# SHA256SUMS. Build only some of them: PACKAGES="app kernels". Options: --help.
+release-deb:
+	bash Makefile.d/release.deb.sh --series $(PUBLICATION_SERIES) $(PACKAGES)
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
-.PHONY: release-binary print-required-packages-runtime
+.PHONY: release-binary release-deb print-required-packages-runtime
 
 
 # =============================================================

@@ -576,7 +576,9 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
    ne sont posés par **aucun** canal (§ 2.4 ter), et cela ne se répare pas dans le `.deb`
    mais dans une stanza `install` de dune, d'où **tous** les canaux le reçoivent. **C'est
    l'épisode 14, ci-dessous.**
-4. **Les `.deb` sur les quatre boîtes**.
+4. **Les `.deb` sur les quatre boîtes** — en deux temps : **15a** les fabriquer
+   (`Makefile.d/release.deb.sh`, cinquième publieur) et les contrôler localement, **15b** les
+   installer sur les quatre boîtes, dépôt apt à plat compris.
 5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
    de l'étape 1 du § 5.
@@ -1960,3 +1962,171 @@ NO-SUCH-DIRECTORY`), procédé déjà utilisé par le cas de propriété de la c
 - Le point (4) — écrire les quatre `.deb` et les éprouver sur les quatre boîtes — n'a plus
   d'obstacle : le paquet `marionnet` peut porter les guides parce qu'ils sont, enfin, dans le
   staging que `release.binary.sh` produit.
+
+## Épisode 15a (2026-08-31) — les quatre `.deb` existent
+
+Point (4) de la feuille de route, **premier temps** : les fabriquer et les contrôler
+localement. Le second temps (15b) est de les **installer** sur les quatre boîtes, avec le
+dépôt apt à plat, et c'est là que se mesurera la seule dépendance que l'épisode 13 a laissée
+ouverte.
+
+Un fichier neuf, `Makefile.d/release.deb.sh` (cible `make release-deb`, `PACKAGES="app
+kernels"` pour n'en faire qu'une partie), **cinquième membre de la famille des publieurs** :
+il écrit dans le **même** répertoire de release que les quatre autres et s'inscrit dans le
+**même** `SHA256SUMS`.
+
+### Ce qu'il assemble, et de quoi
+
+| paquet | arch | taille | fait de |
+|---|---|---|---|
+| `marionnet` | amd64 | 7,2 Mio (33,7 Mio installés) | le **staging que `release.binary.sh` produit déjà** |
+| `marionnet-kernels` | amd64 | 2,7 Mio | `kernels_linux-6.12.95.tar.xz`, **l'artefact publié** |
+| `marionnet-kernels-i386` | amd64 | 2,1 Mio | `kernels_linux-6.12.95-i386.tar.xz` |
+| `marionnet-fs-guignol` | all | 13 Mio | `filesystems_machine-guignol-18474.tar.xz` **et** `filesystems_router-guignol-18474.tar.xz` |
+
+Rien n'est décrit deux fois. Pour l'application, ce script **appelle** `release.binary.sh
+--staging-dir … --no-tarball` (option neuve, six lignes) au lieu de redire ce qu'est une
+installation : les deux gestes que `dune install` ne fait pas — les scripts de `bin/scripts/`
+vers `bin/`, le bit exécutable rendu aux exemples de la documentation — sont **déjà** dans ce
+staging, et le jour où un troisième s'ajoutera, le `.deb` l'aura sans qu'on y pense. Pour les
+données, il **déplie l'artefact publié**, ce qui est la seule façon de tenir l'invariant
+ci-dessous.
+
+Ce qui **n'entre pas** dans le paquet de l'application, des trois fichiers que le staging
+porte à sa racine : `install.sh` (ici l'installeur, c'est dpkg), `README` (sa section INSTALL
+décrit `install.sh`) et `REQUIRED-PACKAGES-RUNTIME` (la liste devient `Depends:`, c'est-à-dire
+quelque chose sur quoi un gestionnaire de paquets peut agir). **Mesuré** : le `.deb` ne
+contient aucun des trois, et contient bien les 24 noms de `bin/`, les 12 fichiers de
+complétion et les 33 fichiers de documentation.
+
+### L'invariant du `mtime`, tenu et mesuré
+
+Le `mtime` d'une image invitée est ce qu'UML vérifie contre le `.conf` de son *backing
+file* ; les deux canaux doivent donc livrer **le même**. D'où : les paquets de données sont
+faits en dépliant le tarball publié (jamais `tar -m`, jamais une copie fraîche), et dpkg
+conserve les `mtime` de `data.tar`. **Mesuré** — l'image guignol arrive dans le `.deb` datée
+`2017-06-09 15:01`, exactement comme dans le tarball, et le lien symbolique
+`router-guignol-18474 → machine-guignol-18474` avec elle, `root:root`.
+
+### Les dépendances : dérivées deux fois, écrites nulle part
+
+`Depends:` du paquet `marionnet` est l'union de deux sources, dont **aucune** n'est retapée :
+
+- **ce que `ldd` voit** — demandé à `dpkg-shlibdeps`, qui lit les symboles réellement
+  utilisés. C'est de là que vient `libc6 (>= 2.38)` : la contrainte que l'épisode 12 ne
+  savait écrire que dans un **nom de fichier** (`_glibc2.39`) devient une **métadonnée** qu'apt
+  sait refuser avec une phrase ;
+- **ce que seul le `Makefile` sait** — les douze commandes appelées par leur nom nu
+  (`vde_switch`, `dot`, `jq`, `socat`, `dnsmasq`, `xterm`…), qu'aucun éditeur de liens ne
+  peut voir. `REQUIRED_PACKAGES_RUNTIME`, lu **à travers `make`**, en est la source de vérité
+  unique depuis l'épisode 1.
+
+Le seul nom commun aux deux (`libgtksourceview-3.0-1`, que l'épisode 9b avait ajouté à la
+main pour une raison mesurée) est **retiré par un test sur le nom**, pas par un tri humain :
+un fichier de contrôle qui dit deux fois la même chose est un fichier de contrôle dont
+personne ne se sert.
+
+Le noyau 64 bits y a droit aussi, et ce n'est pas de la symétrie décorative : c'est un ELF
+dynamiquement lié (`ldd` nomme `libc.so.6`), et lintian dit `missing-dependency-on-libc` tant
+que le `Depends:` se tait. Il porte donc `marionnet, libc6 (>= 2.38)`. Les deux autres
+paquets de données ne dépendent que de `marionnet` — comme les paquets de données du RPM de
+2009 dépendaient de `marionnet-common`.
+
+### La version d'un paquet, et pourquoi elle commence par `0~`
+
+**Mesuré** : `dpkg-deb` refuse `trunk-r906` (« le numéro de version ne commence pas par un
+chiffre »), et `META` dit `trunk` aujourd'hui. D'où `0~trunk+r913`, dont chaque morceau
+répond à quelque chose :
+
+- `0~` fait comparer la version **plus bas que `1.0.0`** (vérifié avec `dpkg
+  --compare-versions`) : le jour où `META` nomme une vraie version, apt voit tous les paquets
+  de tronc comme des prédécesseurs à mettre à jour — ce qu'une pré-version est ;
+- `+r913` plutôt que `-r913`, parce que `-` ouvre le champ *révision Debian*, alors que le
+  compte de révisions git appartient à l'amont. Deux constructions de la même version restent
+  ordonnées par l'histoire où elles ont été coupées (r906 < r913, vérifié) ;
+- les paquets de données, eux, se versionnent par leur **contenu** — `6.12.95` pour un
+  noyau, `18474` pour une image — lu **dans le nom de l'artefact**, jamais par la série
+  (décision de l'épisode 13).
+
+### Le postinst nomme la règle sudoers, il ne l'accorde pas
+
+Comme décidé à l'épisode 13, et pour la raison de l'épisode 10 : `apt install` n'a pas de
+réponse à « pour quel humain ? » — il peut venir d'une construction d'image ou d'une mise à
+jour automatique. Le postinst **imprime** `sudo marionnet-sudoers.sh install <user>` et rappelle
+que les blocs NAT/LAN se demandent depuis l'interface. Le `prerm`, symétriquement, **nomme**
+la commande de retrait sans l'exécuter : ce paquet n'a rien accordé, il ne retire rien.
+
+`/etc/marionnet/marionnet.conf` est un **conffile** déclaré, pointant `/usr/share/marionnet` :
+c'est ce qui permet de ne compiler qu'une fois (le préfixe compilé, `/usr/local`, n'est qu'un
+défaut que la cascade de `bin/configuration.ml` recouvre). Sur une machine où le **tarball**
+est déjà passé, ce fichier existe et n'appartient à personne : dpkg y verra un conffile
+modifié localement et posera la question. C'est voulu — et c'est l'un des cas à jouer en 15b.
+
+### Ce que lintian dit, et les trois fois où on ne l'écoute pas
+
+Il tourne sur chaque paquet (`--no-lintian` pour couper) et n'est **jamais** fatal : il juge
+selon la politique de la distribution où il s'exécute, or ces paquets ne visent pas Debian
+officielle (§ 6). Quatre de ses remarques ont été des **défauts réels**, corrigées : les
+répertoires créés avec l'umask du packageur (0775 — un paquet ne doit pas rendre
+`/usr/share` inscriptible par le groupe, d'où `umask 022`), le changelog nommé
+`changelog.Debian.gz` alors que ces versions sans révision Debian font des paquets *natifs*,
+deux descriptions dépassant 80 colonnes, et la dépendance libc du noyau ci-dessus. Trois
+autres sont des **réponses**, gardées avec leur raison :
+
+- `executable-in-usr-share-doc` — les quatre scripts d'exemple sont faits pour être **joués**
+  par le lecteur ; leur rendre ce bit est précisément ce que l'épisode 14 a dû ajouter aux
+  trois canaux ;
+- `missing-depends-on-sensible-utils` — **mesuré** : `sensible-editor` est l'un de cinq
+  **candidats** de `bin/treeview_documents.ml`, chacun testé avant usage (`xdg-open` d'abord).
+  Lintian ne voit que la chaîne dans le binaire. Rien à ajouter à
+  `REQUIRED_PACKAGES_RUNTIME` — contrairement à `xz-utils` et `libgtksourceview-3.0-1`, que
+  l'épisode 9b y a mis parce qu'ils étaient appelés **sans repli** ;
+- `unstripped-binary-or-object` — **mesuré** : `strip --strip-unneeded` fait passer le binaire
+  de 27,6 à 18,2 Mio, et le binaire allégé démarre encore. Refusé quand même : le `.deb` et
+  le tarball doivent livrer **le même binaire** (une seule compilation sert les deux canaux,
+  épisode 13), et un canal qui *strippe* est un canal dont les rapports de bug ne portent pas
+  les mêmes traces que l'autre.
+
+Reste `arch-dependent-file-in-usr-share` sur les noyaux : ce sont des exécutables, et ils
+vivent sous `/usr/share/marionnet/kernels` parce que **c'est là que Marionnet les cherche**
+(`MARIONNET_KERNELS_PATH`, le même chemin que dans le canal tarball). Les déplacer vers
+`/usr/lib` pour plaire à la politique ferait diverger les deux canaux.
+
+### Le catalogue apprend un cinquième motif
+
+`Makefile.d/release.sha256sums.sh` ne connaissait que `kernels_*`, `filesystems_*` et
+`marionnet_*.tar.*` ; il connaît maintenant `*.deb`. Sans cela, un `.deb` déposé serait
+**invisible** du catalogue d'une release — la règle de l'épisode 8 — et un run global aurait
+laissé les quatre lignes sans jamais les écrire. Rappel écrit à cette occasion : ces fichiers
+seront **aussi** décrits par le catalogue d'apt (`Packages`/`Release`, à écrire au point (5)),
+ce qui n'est pas la divergence que l'épisode 8 redoutait — deux catalogues du même répertoire,
+un par consommateur — mais fait tenir la règle **deux fois**.
+
+Côté consommateur, rien à changer et c'est **vérifié** : `marionnet-install.sh --list` sur le
+répertoire enrichi affiche ses dix artefacts et **ignore les quatre lignes `.deb`** sans un
+mot, son classement exigeant `.tar.{gz,xz}`.
+
+### Prouvé (2026-08-31)
+
+- **Les quatre paquets fabriqués d'un geste**, `bash Makefile.d/release.deb.sh --force`, en
+  **37 s** ; les quatre inscrits dans `SHA256SUMS` (18 artefacts) et `--check` **vert sur les
+  quatre**.
+- **Idempotence** : un second run sans `--force` ne fait rien en **0,12 s** — le test « déjà
+  là » est posé **avant** la compilation de l'application et avant les 57 Mio dépliés d'une
+  image, pas seulement avant l'appel à `dpkg-deb`.
+- **Contenu mesuré** : `mtime` de l'image conservé (2017-06-09), `root:root` partout, lien
+  symbolique du routeur intact, conffile déclaré, `postinst`/`prerm` valides (`sh -n`), et
+  aucun des trois fichiers du tarball qui n'ont rien à faire sous `/usr`.
+
+### Restes (pour 15b)
+
+- **Rien n'est encore installé.** `dpkg -i` sur les quatre boîtes, l'ordre des dépendances,
+  le dépôt **à plat** (`Packages`/`Release` par `dpkg-scanpackages`) et l'`apt install` qui
+  va avec.
+- **La dépendance de `marionnet-kernels-i386`** — `libc6:i386` est écrit, mesuré sur *cette*
+  machine (l'interpréteur `/lib/ld-linux.so.2` appartient à `libc6:i386` et non à
+  `libc6-i386`) ; il reste à voir ce que les quatre boîtes en font, y compris le
+  `dpkg --add-architecture i386` que cela implique.
+- **Le conffile déjà posé par le tarball** : la question de dpkg, à provoquer pour de vrai.
+- **Debian 12** reste hors d'atteinte pour le paquet `marionnet` (glibc 2.36 < 2.38), et
+  c'est désormais apt qui le dira — ce que l'épisode 12 devait écrire dans un nom de fichier.
