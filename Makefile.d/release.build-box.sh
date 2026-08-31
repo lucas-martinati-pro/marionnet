@@ -59,12 +59,35 @@
 # that git answers, and a COMPARISON against the revision computed on this side, so that a box
 # which answers something else stops the run instead of publishing under a name that lies.
 #
+# AND THE .deb IS MADE HERE TOO (--with-deb, episode 20b). The floor is not a property of the
+# tarball, it is a property of the MACHINE THE PACKAGING TOOLS RUN ON -- exactly the rule
+# episode 19 paid for on the RPM side. Measured on the package this working copy had published:
+#
+#   Depends: libc6 (>= 2.38), ..., libglib2.0-0t64 (>= 2.36.0), libgtk-3-0t64 (>= 3.11.5), ...
+#
+# Two defects in one line, and only the first was foreseen. The glibc constraint is one version
+# above what the binary needs; but `libgtk-3-0t64' and `libglib2.0-0t64' are the names of the
+# 64-bit time_t transition, and they DO NOT EXIST on Debian 12 -- dpkg-shlibdeps wrote the
+# package names of the machine it ran on. Building on the floor gives the pre-transition names
+# instead, and those still resolve above it: measured on trixie, `libgtk-3-0t64' declares
+# `Provides: libgtk-3-0 (= 3.24.49-3)' (idem for glib), so a versioned dependency on the old
+# name is satisfied by the new package. The asymmetry is the glibc one all over again, which is
+# why the answer is the same one: BUILD ON THE OLDEST BOX WE SERVE.
+#
+# So `--with-deb' runs Makefile.d/release.deb.sh in the SAME container, right after the tarball
+# and against the staging that has just been compiled. It is not given a --build-image of its
+# own, and that is deliberate: the .deb of the application is assembled from a staging which is
+# PRODUCED BY COMPILING, so packaging in the box means compiling in the box -- a second entry
+# point would have to clone HEAD, hand the revision across and guard `safe.directory' all over
+# again. There is one place where the compiler runs, and this is it.
+#
 # No bashbricks here, on purpose: same family as the other publishers, none of which sources
 # anything.
 #
 # Usage: Makefile.d/release.build-box.sh [OPTIONS]
 #
 #       --build-image IMAGE      the distribution the compiler runs in (default: debian:12)
+#       --with-deb               also build the Debian packages, in the same box
 #   -o, --output-dir DIR         where to publish
 #                                (default: website-repo/download/marionnet-install.sh/<series>)
 #   -s, --series X.Y.x           publication series (default: derived from META)
@@ -101,10 +124,12 @@ FORCE=0
 REBUILD_IMAGE=0
 KEEP=0
 PRINT_IMAGE=0
+WITH_DEB=0
 
 while (($#)); do
   case "$1" in
     --build-image)   BUILD_IMAGE="$2"; shift 2 ;;
+    --with-deb)      WITH_DEB=1; shift ;;
     -o|--output-dir) OUTDIR="$2"; shift 2 ;;
     -s|--series)     SERIES="$2"; shift 2 ;;
     -f|--force)      FORCE=1; shift ;;
@@ -138,6 +163,7 @@ OUTDIR=$(cd -- "$OUTDIR" && pwd)
 info "build box    : $BUILD_IMAGE  ($BUILDER_IMAGE)"
 info "series       : $SERIES"
 info "output dir   : $OUTDIR"
+((! WITH_DEB)) || info "also building : the Debian packages (release.deb.sh, in the same box)"
 
 # ---
 # --- 1. The box the compiler runs in.
@@ -152,7 +178,17 @@ info "output dir   : $OUTDIR"
 #
 # opam runs as root in the box (OPAMROOTISOK) and without its sandbox: bubblewrap needs
 # privileges a plain `docker run' does not have, and the box is disposable anyway.
+#
+# The packaging tools are a LAYER OF THEIR OWN, and the last one: they were added by episode
+# 20b to a box that already existed, and putting them before the switch would have made every
+# box built so far recompile OCaml from source to gain three apt packages. Last, they cost one
+# `apt-get install' -- docker replays the two layers above from its cache, the Dockerfile being
+# regenerated identically as long as the three Makefile lists have not moved. lintian is one of
+# them on purpose: it judges a package against the policy of the distribution IT RUNS IN, so
+# the box where the packages are now made is the box where it has something to say.
 # ---
+PACKAGING_PACKAGES="dpkg-dev fakeroot lintian"
+
 function make_variable {  # <make target printing it>
   local v; v=$(make --no-print-directory -C "$ROOT" "$1" 2>/dev/null) || \
     die "\`make $1' failed: the Makefile of this working copy does not publish that list"
@@ -160,10 +196,21 @@ function make_variable {  # <make target printing it>
   echo "$v"
 }
 
+# A box built before episode 20b compiles perfectly well and cannot package at all. Rather
+# than failing halfway through -- after the switch, the clone and the compilation -- the
+# absence is found here, and answered by a rebuild the docker cache makes cheap.
+function box_can_package {
+  docker run --rm "$BUILDER_IMAGE" sh -c 'command -v dpkg-deb && command -v fakeroot' \
+    >/dev/null 2>&1
+}
+
 function ensure_builder_image {
   if ((! REBUILD_IMAGE)) && docker image inspect "$BUILDER_IMAGE" >/dev/null 2>&1; then
-    info "build box already there (--rebuild-image to redo it)"
-    return 0
+    if ((! WITH_DEB)) || box_can_package; then
+      info "build box already there (--rebuild-image to redo it)"
+      return 0
+    fi
+    info "the build box predates --with-deb: adding the packaging tools (cached rebuild) ..."
   fi
   local build_packages opam_switch opam_packages
   build_packages=$(make_variable print-required-packages-build)
@@ -184,6 +231,9 @@ RUN opam init --bare --disable-sandboxing -y \\
  && opam switch create $opam_switch -y \\
  && opam install -y $opam_packages \\
  && opam clean -a -c -s --logs
+RUN apt-get update \\
+ && apt-get install -y --no-install-recommends $PACKAGING_PACKAGES \\
+ && rm -rf /var/lib/apt/lists/*
 EOF
   docker build -t "$BUILDER_IMAGE" -- "$ctx" || \
     { rm -rf -- "$ctx"; die "could not build the box from $BUILD_IMAGE"; }
@@ -232,6 +282,7 @@ info "compiling in $BUILDER_IMAGE ..."
 docker run --rm \
   -v "$SRC/marionnet:/src" -v "$OUTDIR:/out" -w /src \
   -e "SERIES=$SERIES" -e "FORCE_FLAG=$FORCE_FLAG" -e "EXPECTED_REV=$EXPECTED_REV" \
+  -e "WITH_DEB=$WITH_DEB" \
   -e "CALLER_UID=$(id -u)" -e "CALLER_GID=$(id -g)" \
   "$BUILDER_IMAGE" bash -c '
     set -uo pipefail
@@ -263,9 +314,17 @@ docker run --rm \
     if test $rc = 0; then
       bash Makefile.d/release.binary.sh --series "$SERIES" --output-dir /out -y $FORCE_FLAG || rc=$?
     fi
+    # The Debian packages, in the same box and against the staging just compiled: what a
+    # package DEMANDS is written by tools which apply the conventions of the machine they run
+    # on, so the .deb has the same floor as the binary it carries only if it is made here.
+    # The data packages are unpacked from the artefacts already published in /out; those which
+    # are not there are skipped by that script, not by this one.
+    if test $rc = 0 && test "$WITH_DEB" = 1; then
+      bash Makefile.d/release.deb.sh --series "$SERIES" --output-dir /out $FORCE_FLAG || rc=$?
+    fi
     find /out /src -user 0 -exec chown "$CALLER_UID:$CALLER_GID" {} + 2>/dev/null
     exit $rc
-  ' || die "the build failed in $BUILDER_IMAGE (nothing was published)"
+  ' || die "the build failed in $BUILDER_IMAGE (see above for what was published, if anything)"
 
 ((! KEEP)) || info "source clone kept: $SRC/marionnet"
 info "Success."

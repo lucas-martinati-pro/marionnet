@@ -486,8 +486,12 @@ release-binary:
 # `--build-image' to move the floor. Same rule as release-rpm (episode 19): the tools which
 # derive what a package needs apply the conventions of the distribution they run in.
 # Nothing is installed on this machine; the box is built once and kept. Options: --help.
+# `make release-build-box WITH_DEB=1' also builds the four Debian packages IN THAT SAME BOX
+# (episode 20b): what a package demands is written by dpkg-shlibdeps, which likewise applies
+# the conventions of the machine it runs on -- built here it asked for libc6 (>= 2.38) and,
+# worse, for libgtk-3-0t64 and libglib2.0-0t64, names Debian 12 does not have at all.
 release-build-box:
-	bash Makefile.d/release.build-box.sh --series $(PUBLICATION_SERIES)
+	bash Makefile.d/release.build-box.sh --series $(PUBLICATION_SERIES) $(if $(WITH_DEB),--with-deb)
 
 # Turn a release into the fourth kind of artefact it is made of: the four Debian packages --
 # marionnet (the application), marionnet-kernels, marionnet-kernels-i386 and

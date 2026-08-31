@@ -171,8 +171,20 @@ function glibc_le {   # $1 <= $2, as version numbers
   [[ $1 = "$2" ]] || [[ $(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1) = "$1" ]]
 }
 
-PKG_ARCH=$(awk -v p=marionnet '/^Package: /{cur=$2} /^Architecture: /{if (cur==p) {print $2; exit}}' "$REPO/Packages")
-PKG_GLIBC=$(awk -v p=marionnet '/^Package: /{cur=$2} /^Depends: /{if (cur==p) {print; exit}}' "$REPO/Packages" \
+# Of the CANDIDATE stanza, never of the first one listed -- the same lesson `indexed_version'
+# above already spells out, and which these two lines were quietly ignoring two lines further
+# down. Measured at episode 20b: a release directory holding r913 (built here, libc6 >= 2.38)
+# beside r920 (built in the box, 2.35) made the bench announce r920 and then judge it by
+# r913's constraint, so it went on expecting a refusal from a box which had just installed the
+# package -- a FAIL as misleading as the PASS episode 19 had to kill.
+function indexed_field {  # <package name> <version> <field name>: of THAT stanza
+  awk -v p="$1" -v want="$2" -v f="$3: " '
+    /^Package: /{cur=$2; ver=""} /^Version: /{ver=$2}
+    index($0, f)==1 {if (cur==p && ver==want) {print substr($0, length(f)+1); exit}}' "$REPO/Packages"
+}
+
+PKG_ARCH=$(indexed_field marionnet "$APP_VERSION" Architecture)
+PKG_GLIBC=$(indexed_field marionnet "$APP_VERSION" Depends \
             | sed -n 's/.*libc6 (>= \([0-9][0-9.]*\)).*/\1/p' | head -n 1)
 BOX_ARCH=$(docker run --rm "$DISTRO" dpkg --print-architecture 2>/dev/null) || BOX_ARCH=""
 BOX_GLIBC=$(docker run --rm "$DISTRO" bash -c "ldd --version | head -n 1 | awk '{print \$NF}'" 2>/dev/null) || BOX_GLIBC=""

@@ -600,10 +600,30 @@ Reprise : appliquer le skill `chantier-long`.
   la glibc **du nom** à celle **de la boîte**, jamais le nom de la distribution — la conception
   de l'ép. 12 tient. Mesuré : symbole glibc maximal référencé = **`GLIBC_2.35`** (le nom reste
   conservateur, il annonce la boîte de build) ; banc binaire `--distro all` = **192 verts,
-  0 rouge, 0 SKIP**, dont Debian 12 qui ne savait jusqu'ici que constater un refus. **Reste** :
-  **20b** le `.deb` fabriqué dans la même boîte (`dpkg-shlibdeps` écrit encore
-  `libc6 (>= 2.38)` tant qu'il tourne ici ; preuve = le banc `.deb` sur Debian 12, de 7 à 33) et
-  **20c** le `.rpm` de même (sa boîte de build est déjà un conteneur, son *staging* non).
+  0 rouge, 0 SKIP**, dont Debian 12 qui ne savait jusqu'ici que constater un refus.
+  **Ép. 20b : le `.deb` sort de la même boîte** — `release.build-box.sh --with-deb`
+  (`make release-build-box WITH_DEB=1`) lance `release.deb.sh` **dans le même conteneur**,
+  contre le staging qui vient d'être compilé. **Le défaut était plus large que celui qu'on avait
+  nommé** : outre `libc6 (>= 2.38)` pour un binaire n'exigeant que 2.35, `dpkg-shlibdeps`
+  écrivait `libgtk-3-0t64`/`libglib2.0-0t64` — les noms de la transition `time_t` 64 bits, qui
+  **n'existent pas du tout sur Debian 12** ; il avait donc écrit les **noms de paquets** de sa
+  machine, pas seulement leurs versions. L'asymétrie est celle de la glibc (mesuré : le t64 de
+  trixie déclare `Provides: libgtk-3-0 (= …)`, donc l'ancien nom vaut **au-dessus** du plancher,
+  jamais en dessous), donc la réponse est la même règle. **À ne pas défaire** : (1) pas de
+  `--build-image` sur `release.deb.sh` — le `.deb` de l'application est assemblé d'un staging
+  **produit en compilant**, donc empaqueter dans la boîte = compiler dans la boîte, et un 2ᵉ
+  point d'entrée reclonerait HEAD et reposerait la garde `safe.directory` de l'ép. 20 ; (2) les
+  outils d'empaquetage (`dpkg-dev fakeroot lintian`) sont **la dernière couche** de la boîte
+  (avant le switch, toute boîte déjà bâtie recompilerait OCaml pour gagner 3 paquets apt), et
+  `lintian` y est **exprès**, jugeant selon la politique de la distribution où il tourne ; (3)
+  une boîte d'avant 20b compile parfaitement et n'empaquette pas → sonde `box_can_package`
+  **avant** le clone et la compilation, jamais d'échec à mi-chemin. **Piège de banc, jumeau du
+  PASS mensonger de l'ép. 19** : `run.sh` lisait la version « la plus grande » (son propre
+  commentaire le dit) puis `Architecture:`/`Depends:` de la **première** strophe — annonçant r920
+  et le jugeant sur la contrainte de r913, donc **FAIL** là où le paquet venait de s'installer
+  (corrigé par `indexed_field <paquet> <version> <champ>`). Banc `.deb` **7 → 33** sur Debian 12,
+  **132 verts / 0 rouge / 0 SKIP** sur les 4 boîtes. **Reste 20c** : le `.rpm` de même — sa boîte
+  de build est déjà un conteneur (ép. 19), son *staging* non.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

@@ -63,6 +63,17 @@
 #  4. A PACKAGE WHICH NEVER REACHES SHA256SUMS IS INVISIBLE. Recorded right after being
 #     moved into place, with --force scoped to that single file (episode 9b).
 #
+# WHERE THIS SCRIPT IS MEANT TO RUN, since episode 20b: NOT on the packager's machine, but in
+# the build box, through `Makefile.d/release.build-box.sh --with-deb' (make release-build-box
+# WITH_DEB=1). Invariant 2 above says the dependencies are derived; it does not say by whom,
+# and dpkg-shlibdeps answers with the conventions of the distribution IT runs in -- the very
+# rule episode 19 had to learn on the RPM side. Run here, it wrote libc6 (>= 2.38) for a
+# binary needing 2.36, and libgtk-3-0t64 / libglib2.0-0t64, which are the names of the 64-bit
+# time_t transition and do not exist on Debian 12 at all. Run on the floor it writes the
+# pre-transition names, and those still resolve above it (measured: the t64 packages of trixie
+# declare `Provides: libgtk-3-0 (= ...)'). Running it directly still works and is what the
+# bench and a quick check do; it just produces a package whose floor is this machine.
+#
 # THE VERSION OF EACH PACKAGE IS ITS OWN, and does not encode the series (episode 13):
 # a kernel is versioned 6.12.95, an image 18474, and only `marionnet' carries the version of
 # the application. Publishing under download/marionnet-install.sh/<series>/ is WHERE they

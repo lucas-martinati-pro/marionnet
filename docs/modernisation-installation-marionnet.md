@@ -2870,11 +2870,93 @@ fonctionné sans qu'on y touche.
 
 ### Restes
 
-- **20b — le `.deb` fabriqué dans la même boîte.** `release.deb.sh` dérive son `Depends:` par
-  `dpkg-shlibdeps`, qui applique lui aussi les conventions de la machine où il tourne : tant
-  qu'il tourne ici, il écrit `libc6 (>= 2.38)`. Il devra être joué dans la boîte de build (par
-  `--staging-dir`, l'option que l'épisode 15a a déjà prévue), et la preuve est
-  `release.deb.sh.bench/run.sh --distro debian:12` passant de **7** à **33 verts**.
+- **20b — le `.deb` fabriqué dans la même boîte** *(fait, section suivante)*.
 - **20c — le `.rpm` de même**, dont la boîte de build est déjà un conteneur (épisode 19) mais
   dont le **staging** vient encore du binaire compilé ici.
 - Servir Rocky 9 / Leap 15.6 reste un choix de portée : `--build-image debian:11`.
+
+## Épisode 20b (2026-08-31) — le `.deb` sort de la même boîte que le binaire
+
+### Le défaut était plus large que celui qu'on avait nommé
+
+Le reste de l'épisode 20 annonçait une seule chose à corriger : `dpkg-shlibdeps` tournant sur la
+machine de l'auteur écrivait `libc6 (>= 2.38)` pour un binaire qui n'exige que 2.35. Mesuré sur
+le paquet réellement publié (`marionnet_0~trunk+r915_amd64.deb`), le `Depends:` disait :
+
+```
+libc6 (>= 2.38), …, libglib2.0-0t64 (>= 2.36.0), libgtk-3-0t64 (>= 3.11.5), …
+```
+
+**Deux défauts, et le second n'avait pas été vu.** `libgtk-3-0t64` et `libglib2.0-0t64` sont les
+noms issus de la transition `time_t` 64 bits ; ils **n'existent pas du tout sur Debian 12**. Le
+paquet ne demandait donc pas seulement une glibc trop récente : il nommait des paquets que la
+boîte ne pouvait pas trouver. `dpkg-shlibdeps` avait écrit les **noms de paquets de la machine
+où il tournait** — la règle de l'épisode 19, appliquée cette fois aux noms et non aux versions.
+
+**Et l'asymétrie est la même que celle de la glibc, donc la réponse aussi.** Mesuré sur
+`debian:trixie-slim` : `libgtk-3-0t64` déclare `Provides: libgtk-3-0 (= 3.24.49-3)`, et
+`libglib2.0-0t64` fait de même. Une dépendance versionnée sur l'**ancien** nom est donc
+satisfaite **au-dessus** du plancher ; l'inverse est faux. *On construit sur la plus ancienne
+boîte qu'on sert* — la règle de l'épisode 19, la même que pour la glibc.
+
+### Le livrable : un drapeau, pas un second script
+
+`Makefile.d/release.build-box.sh --with-deb` (cible `make release-build-box WITH_DEB=1`) lance
+`release.deb.sh` **dans le même conteneur**, juste après le tarball, contre le staging qui vient
+d'être compilé.
+
+**Pourquoi pas un `--build-image` sur `release.deb.sh`** : le `.deb` de l'application est
+assemblé du staging que `release.binary.sh` produit **en compilant** ; empaqueter dans la boîte
+implique donc compiler dans la boîte. Un second point d'entrée aurait dû recloner HEAD, faire
+traverser la révision et reposer la garde `safe.directory` que l'épisode 20 a payées. **Il y a un
+seul endroit où tourne le compilateur.**
+
+Deux détails qui ont demandé une décision :
+
+- **Les outils d'empaquetage sont une couche à eux seuls, et la dernière** (`dpkg-dev`,
+  `fakeroot`, `lintian`). Les mettre avant le switch aurait fait **recompiler OCaml depuis les
+  sources** à toute boîte déjà bâtie pour gagner trois paquets apt. En dernier, le `docker build`
+  rejoue les deux couches d'au-dessus depuis son cache. `lintian` en fait partie **exprès** : il
+  juge un paquet selon la politique de la distribution **où il tourne**, donc la boîte où les
+  paquets sont désormais faits est la boîte où il a quelque chose à dire.
+- **Une boîte d'avant l'épisode compile parfaitement et n'empaquette pas du tout.** Plutôt que
+  d'échouer à mi-chemin — après le switch, le clone et la compilation — l'absence est trouvée
+  **avant** (`box_can_package`, un `docker run` de deux `command -v`) et répondue par un rebuild
+  que le cache rend bon marché.
+
+### Le défaut du banc : sa propre leçon, ignorée deux lignes plus bas
+
+Le premier rejeu a rendu un **FAIL** là où le paquet venait de s'installer. `run.sh` lit la
+version applicative par `indexed_version`, dont le commentaire dit déjà *« la plus GRANDE, pas la
+première listée : un répertoire de release peut légitimement porter deux révisions »* — mais les
+deux lignes qui suivent lisaient `Architecture:` et `Depends:` avec un `awk … exit` sur la
+**première** strophe `Package: marionnet`. Avec r913 (bâti ici, 2.38) à côté de r920 (bâti dans la
+boîte, 2.35), le banc **annonçait r920 et le jugeait sur la contrainte de r913** : il continuait
+d'attendre un refus d'une boîte qui venait d'installer le paquet.
+
+Corrigé par `indexed_field <paquet> <version> <champ>`, qui lit la strophe **candidate**. C'est
+le pendant exact du PASS mensonger de l'épisode 19 : là un refus mal classé passait au vert, ici
+un succès était classé rouge — dans les deux cas le banc jugeait par autre chose que ce qu'il
+mesurait.
+
+### Prouvé (2026-08-31)
+
+- **`release.deb.sh.bench/run.sh --distro debian:bookworm-slim` : 7 → 33 verts**, la preuve que
+  le reste de l'épisode 20 demandait. Le refus glibc ne s'y joue plus — le cas s'efface de
+  lui-même, comme au banc binaire de l'épisode 20 — et tous les cas qui **installent** le paquet
+  tournent : dépendances résolues par apt sur une boîte nue, 26 noms dans `/usr/bin`, les 12
+  fichiers de complétion, les guides, le conffile et ses trois cas, le `mtime` `2017-06-09
+  15:01:16` de l'image guignol, le lien symbolique du routeur, `libc6:i386` nommé puis satisfait.
+- **`Depends:` des paquets sortis de la boîte** : `libc6 (>= 2.35)` (exactement le symbole
+  `GLIBC_2.35` que l'épisode 20 avait mesuré), `libglib2.0-0`, `libgtk-3-0` — les noms
+  pré-transition. Noyau 64 bits : `libc6 (>= 2.34)` ; noyau i386 : `libc6:i386`.
+- **`--distro all` : 33 + 33 + 33 + 33 = 132 verts, 0 rouge, 0 SKIP** (Debian 12 et 13,
+  Ubuntu 24.04 et 26.04). C'est là que les `Provides` des paquets `t64` sont **éprouvés** et pas
+  seulement lus : sur trixie et sur les deux Ubuntu, apt satisfait `libgtk-3-0 (>= 3.11.5)` par
+  `libgtk-3-0t64` et installe. Debian 12, qui ne savait jusqu'ici que refuser, joue les 33 cas —
+  le même acquis que l'épisode 20 pour le tarball, cette fois pour le paquet.
+
+### Restes
+
+- **20c — le `.rpm` de même.** `release.rpm.sh` fait déjà tourner `rpmbuild` dans un conteneur de
+  la distribution cible (épisode 19), mais son **staging** vient encore du binaire compilé ici.
