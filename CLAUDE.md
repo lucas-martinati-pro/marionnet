@@ -660,9 +660,17 @@ Reprise : appliquer le skill `chantier-long`.
   seulement rendu indépendant — si un module d'ici appelle un jour
   `source_style_scheme_manager`, l'avertissement revient et il aura raison. Mesuré : `@check`
   rc 0, `nm` 309 → **0** `camlGtksv_utils` (862 `camlGSourceView3` intacts), breakpoint `gdb`
-  sur le stub **jamais atteint**, `driven-sessions/quit-is-observable.sh` **7/7**. **Reste, dans
-  cet ordre imposé** : `release.build-box.sh` clone **HEAD**, donc le rejeu
-  `make release-build-box` + banc RPM se joue **après** le commit de l'épisode.
+  sur le stub **jamais atteint**, `driven-sessions/quit-is-observable.sh` **7/7**.
+  **Ép. 22 : le contrôle de chaîne, sans code**, dans l'ordre imposé par l'ép. 20 —
+  `release.build-box.sh` clone **HEAD**, donc le rejeu ne pouvait venir qu'**après** le commit
+  de l'ép. 21. `make release-build-box` (r923) → `make release-rpm` (rien de compilé, le tarball
+  est déplié) → banc RPM : **48/0/0 sur `fedora:42`, 49/0/0 sur `rockylinux:10`**. Deux cas
+  changent d'état et ce sont les deux qui comptent : *« the binary starts cleanly »*, **rouge
+  exprès depuis 20c**, devient vert — c'est **la** preuve de l'ép. 21, celle que cette machine ne
+  peut pas donner puisque glib ≥ 2.80 y compile la vérification **out** ; et l'**identité binaire**
+  `.rpm` ↔ `.tar.xz` passe de **SKIP à vert**, r923 étant la 1ʳᵉ révision à porter les deux — le
+  contrat de 20c cesse d'être une intention. **À retenir** : une preuve qui dépend de ce que la
+  boîte *dit* se joue dans la boîte, et donc après le commit.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

@@ -3161,5 +3161,51 @@ dépôt appelle `source_style_scheme_manager`, l'avertissement reviendra — et 
   (*what is compiled is what is committed*, invariant de l'épisode 20), donc le rejeu
   `make release-build-box` + banc RPM se joue **après** que cet épisode soit committé. La mesure
   locale ci-dessus est décisive sur la cause ; celle-là est le contrôle de la chaîne.
-- Ce rejeu rendra aussi **rouge** le cas d'identité binaire de 20c, qui *saute* faute d'une
-  révision portant à la fois un `.rpm` d'avant et un tarball publié.
+- Ce rejeu réveillera aussi le cas d'identité binaire de 20c, qui *saute* faute d'une
+  révision portant à la fois un `.rpm` et un tarball publié.
+
+## Épisode 22 (2026-08-31) — le contrôle de chaîne : la boîte confirme l'épisode 21
+
+Épisode de **mesure**, sans code : le point « 4 quinquies » des prochaines étapes, dont l'ordre
+était **imposé** par un invariant de l'épisode 20 — `release.build-box.sh` clone **`HEAD`**
+(*what is compiled is what is committed*), donc la preuve de bout en bout de l'épisode 21 ne
+pouvait se jouer qu'**après** son commit (`87365bc`). La mesure locale de 21 était décisive sur
+la *cause* ; celle-ci est le contrôle de la *chaîne*, et elle est la seule que cette machine ne
+peut pas faire seule : ici glib ≥ 2.80 **compile la vérification de cast out** sous
+`__OPTIMIZE__`, donc un binaire muet n'y prouve rien.
+
+### Ce qui a été joué
+
+1. `make release-build-box` — clone de `HEAD` (r923, révision **concordante** avec celle
+   calculée côté hôte : la garde de l'épisode 20 n'a pas eu à s'en mêler), compilation dans
+   `debian:12`, publication de `marionnet_trunk-r923_amd64_glibc2.36.tar.xz` (7,1 Mio,
+   `SHA256SUMS` à 34 artefacts).
+2. `make release-rpm` — **aucune compilation** : le tarball r923 est déplié, d'où
+   `marionnet-0~trunk+r923-1.x86_64.rpm` (8,1 Mio, 35 artefacts, `repodata/` réécrit à
+   10 paquets).
+3. `Makefile.d/release.rpm.sh.bench/run.sh` sur les **deux** boîtes du canal.
+
+### Prouvé (2026-08-31)
+
+- **`fedora:42` : 48 passed, 0 failed, 0 skipped.** **`rockylinux/rockylinux:10` : 49 passed,
+  0 failed, 0 skipped.** L'écart d'un cas est celui, connu, de l'épisode 19 : EL 10 n'ayant plus
+  de multilib 32 bits, le refus de `marionnet-kernels-i386` y est classé **par son symbole exact**
+  (`libc.so.6(GLIBC_2.0)`) et s'accompagne d'un second cas — *le noyau 64 bits est indemne*, ce
+  que le paquet fusionné de l'épisode 17 ne savait pas faire.
+- **Le cas *« the binary starts cleanly (nothing on stderr) »* est VERT sur les deux boîtes.**
+  Rouge exprès depuis 20c, il l'est resté jusqu'à ce qu'un binaire compilé dans la boîte porte
+  l'épisode 21 : c'est la preuve que le `GLib-GObject-CRITICAL` a disparu **là où glib le dit
+  encore**, et non seulement là où le compilateur le taisait.
+- **Le cas d'identité binaire de 20c passe de SKIP à VERT** : r923 est la première révision à
+  porter **et** un `.rpm` **et** un tarball publié, et le binaire installé par rpm est celui du
+  tarball **à l'octet**. Le contrat de 20c — *ce canal ne compile rien* — cesse d'être une
+  intention pour devenir une mesure.
+- Plancher inchangé : symbole glibc versionné le plus haut référencé = **`GLIBC_2.35`**, nom de
+  l'artefact conservateur en `glibc2.36` (il annonce la boîte de build, épisode 20).
+
+### Ce que l'épisode ne change pas
+
+Aucun fichier de code, aucun banc modifié : les commentaires des deux cas avaient été écrits par
+l'épisode 21 pour l'état d'*après* (« green from episode 21 on »), et ils disent juste. La seule
+correction est une phrase de la section « Restes » de l'épisode 21, qui annonçait le cas
+d'identité **rouge** au rejeu là où il ne pouvait que virer au vert.
