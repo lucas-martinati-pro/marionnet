@@ -385,7 +385,14 @@ if ((PUBLISH_SCRIPT)); then
     info "would send $SRC -> $REMOTE_BASE/marionnet-install.sh (0755)"
     info "would link marionnet-get-images -> marionnet-install.sh"
   else
-    rsync -lt --chmod=F755 -e "ssh ${SSH_OPTS[*]}" -- "$SRC" "$HOST:$REMOTE_BASE/marionnet-install.sh"
+    # -c (compare by CONTENT), and only here. Everywhere else rsync's default -- size and
+    # mtime -- is enough, because the artefacts are checked on the server against SHA256SUMS
+    # right after: a divergence rsync missed is caught there. This file is NOT in SHA256SUMS
+    # (it is the entry point, it lives above the series directory and describes no release),
+    # so nothing downstream would notice a published copy which had drifted while keeping its
+    # size and its mtime. It is one small file: hashing it costs nothing, and it is the only
+    # thing this script deposits whose correctness rests on the transfer alone.
+    rsync -ltc --chmod=F755 -e "ssh ${SSH_OPTS[*]}" -- "$SRC" "$HOST:$REMOTE_BASE/marionnet-install.sh"
     # The second name is a symlink and not a copy: two copies of a script which decides what
     # it is by looking at $0 are two things to keep in step, and Apache serves the target of
     # a symlink (measured on this host).

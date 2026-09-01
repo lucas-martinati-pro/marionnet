@@ -3737,8 +3737,35 @@ Ni l'un ni l'autre n'est contournable **ici**, à dessein : chacun a une échapp
 sur le script qui le possède, et y recourir doit être un acte délibéré, pas une variable posée
 sur une chaîne de quatre maillons.
 
+### 4. Le script d'entrée est bien mis à jour — vérifié, et un trou trouvé en le vérifiant
+
+Question posée après coup : `make release-and-upload` met-il aussi à jour
+`download/marionnet-install.sh/marionnet-install.sh` depuis `bin/scripts/marionnet-install.sh` ?
+**Oui** — le maillon existe depuis l'épisode 24 (`PUBLISH_SCRIPT`, actif par défaut, dans
+`release-upload`, quatrième maillon de la chaîne) — mais *constater que les deux copies sont
+identiques aujourd'hui* ne prouve pas qu'une modification se propagerait. Mesuré donc en
+**altérant la copie publiée** : le dépôt suivant la répare.
+
+Et c'est en le mesurant qu'un **trou** est apparu. `rsync` décide par la **taille et le
+`mtime`**, pas par le contenu. Or ce fichier est le seul que le déposeur pose **sans filet** :
+les artefacts, eux, sont recontrôlés sur le serveur contre `SHA256SUMS` juste après, si bien
+qu'une divergence que `rsync` aurait manquée y serait rattrapée — tandis que le script d'entrée
+**n'est pas dans `SHA256SUMS`** (il vit au-dessus du répertoire de série et ne décrit aucune
+release). Fabriqué exprès, le cas est confirmé : une copie publiée modifiée **à taille et
+`mtime` égaux** ne produit **aucune ligne** en essai à blanc — `rsync` ne voit rien.
+
+D'où `-c` (comparaison par **contenu**) sur cette seule invocation. Ailleurs, la valeur par
+défaut reste la bonne : hacher 1,5 Gio à chaque dépôt pour une garantie que le contrôle distant
+donne déjà serait payer deux fois. Ici c'est un fichier de 48 Kio, et c'est la seule chose dont
+la justesse repose sur le transfert seul. Vérifié : avec `-c`, le même cas donne
+`<fc........ marionnet-install.sh`, et le dépôt suivant restaure l'octet exact.
+
 ### Prouvé (2026-09-01)
 
+- Le script d'entrée : copie publiée **altérée** puis réparée par le dépôt suivant ; puis le cas
+  **taille et `mtime` identiques**, invisible sans `-c` (essai à blanc muet) et **vu** avec.
+  Servis par Apache sous les deux noms, `marionnet-install.sh` et `marionnet-get-images`
+  (le lien), avec l'empreinte du fichier du dépôt.
 - `release.retention.sh --print-superseded` sur un répertoire fabriqué (4 tarballs, 3 `.deb`,
   2 `.rpm`, plus un noyau et une image) : **6** noms à `KEEP=1`, **3** à `KEEP=2`, et **jamais**
   la révision la plus récente ni un artefact de données — vérifié par comptage.
