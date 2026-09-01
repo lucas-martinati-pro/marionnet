@@ -67,7 +67,7 @@ let splash_pixbuf : GdkPixbuf.pixbuf =
 let splash =
   GWindow.window
     ~resizable:false
-    ~border_width:10
+    ~border_width:24
     ~position:`CENTER
     ~type_hint:`DIALOG
     ~modal:true

@@ -3593,10 +3593,16 @@ listé comme vestige par le `CLAUDE.md` du projet, et **il n'est pas chargé** �
 lit `gui_glade3.xml`, dont la `default-height` valait **840**. L'éditer n'aurait rien changé,
 et c'est précisément le piège que le `CLAUDE.md` signale.
 
-**840 → 900**, et la discriminance est mesurée dans les deux sens, capture d'écran à l'appui :
-à **840** la dernière icône visible est le **nuage**, la planète est **absente** ; à **900**
-la planète apparaît entièrement, avec une marge d'environ 55 px. La fenêtre fait 1102 × 900
-sur cet écran (1440 de haut, donc aucune contrainte du gestionnaire de fenêtres).
+**840 → 860** (et la largeur par défaut 340 → 350), la discriminance étant mesurée dans les
+deux sens, capture d'écran à l'appui : à **840** la dernière icône visible est le **nuage**, la
+planète est **absente** ; à **860** elle s'affiche entière. La fenêtre fait 1102 × 860 sur cet
+écran (1440 de haut, donc aucune contrainte du gestionnaire de fenêtres).
+
+**Pourquoi 860 suffit là où 840 échoue, et pourquoi 900 n'apportait rien** : la colonne
+d'icônes **ne grandit pas** avec la fenêtre — mesuré, la planète occupe la même position à 860
+et à 900 — le surplus de hauteur allant au canevas. Il ne manquait donc pas « une icône de
+marge » mais les quelques pixels qui séparaient la dernière icône du bord. La première valeur
+essayée, 900, était plus large que nécessaire ; 860 est le chiffre rond qui suffit.
 
 ### 4. `make revno`, et pourquoi la règle n'est pas dans le `Makefile`
 
@@ -3620,3 +3626,55 @@ toujours servi, ne contient **que** des `.tar.gz` (`filesystems_guignol.tar.gz`,
 saurait plus lire les anciennes séries ; et retirer le drapeau du producteur tout en gardant
 celui du consommateur serait incohérent. L'abandon porte sur ce qu'on **publie**, pas sur ce
 qu'on **sait lire**.
+
+### 6. Le rebond n'aime pas les rafales — et le déposeur n'ouvre plus qu'une connexion
+
+Le premier `--prune` réel a **échoué à mi-chemin**, et le défaut était dans sa forme : il
+ouvrait **une connexion ssh par fichier**. Dix-sept connexions coup sur coup **à travers le
+rebond LIPN** (`ProxyJump lipn-ssh`), et le rebond a fait ce pour quoi il est là —
+`kex_exchange_identification: Connection reset by peer`, puis un **back-off de plusieurs
+minutes** pendant lequel plus rien n'atteignait le serveur. Treize fichiers avaient été
+retirés, quatre non.
+
+Deux corrections, dont la seconde vaut pour tout le script :
+
+1. `--prune` retire toute la liste en **un seul appel** (`rm -rf -- a b c`), les noms venant
+   du serveur étant toujours passés par `printf %q`.
+2. Le script n'ouvre plus **qu'une connexion maîtresse** (`ControlMaster=auto`,
+   `ControlPersist`), partagée par ses ~10 appels **et par `rsync`** (`-e`). C'est la vraie
+   réponse : un dépôt fait naturellement une douzaine d'appels courts, ce qui, vu du rebond,
+   ressemble exactement à ce contre quoi il se défend. Le run y gagne aussi le temps d'autant
+   de poignées de main. Le chemin du socket est gardé **court** à dessein — un socket unix
+   plafonne vers 104 octets, là où les répertoires de travail de ce projet sont bien plus
+   longs.
+
+Un piège de bash au passage : bash ne garde **qu'un seul** gestionnaire `EXIT`, donc les
+`trap 'rm -f …' EXIT` posés plus bas **remplaçaient silencieusement** celui qui ferme la
+connexion maîtresse. Un `cleanup` unique, désormais.
+
+### Prouvé (2026-09-01)
+
+- **Fenêtre** : à `default-height` **840**, la dernière icône de la barre est le **nuage** et
+  la planète est **absente** ; à **860**, elle s'affiche entière (captures des trois états —
+  840, 860, 900 — fenêtre 1102 × 860, écran 3440 × 1440). La planète est au **même endroit** à
+  860 et à 900 : la barre ne grandit pas avec la fenêtre, donc 900 n'achetait rien de plus.
+  La bordure de l'écran d'accueil passe par ailleurs de 10 à 24 px (`bin/splash.ml`).
+- **`make revno`** répond **926** avant le commit de l'épisode, **927** après —
+  `bin/meta.ml.maker.sh --print-revision` étant la seule source.
+- **Chaîne rejouée en entier à r927** : `make release-build-box WITH_DEB=1` (tarball 7,1 Mio
+  + `marionnet_0~trunk+r927_amd64.deb`, dans la boîte plancher `debian:12`), puis
+  `make release-rpm` (**rien de compilé**, le tarball publié est déplié →
+  `marionnet-0~trunk+r927-1.x86_64.rpm`).
+- **Ménage** : 17 révisions périmées retirées localement, et les **trois** catalogues
+  réécrits par leurs écrivains — `SHA256SUMS` **17 artefacts** (`17 dropped`), `Packages`
+  **4 paquets**, `repodata/` **6 paquets**, plus `marionnet.repo` enfin écrit avec l'URL
+  stable (`--base-url https://www.marionnet.org/download/rpm/`).
+- **Dépôt** : 23,3 Mio envoyés (le reste étant déjà là, à l'identique), *the server holds the
+  17 catalogued artefacts, whole and intact*, puis élagage des 17 extras. Le répertoire
+  distant est passé de **37 à 23 entrées**, 1,5 Gio, sans `.rsync-partial`.
+- **Ce que voit l'utilisateur, contre le vrai serveur** : l'installeur liste **7** lignes, une
+  par artefact, `r927 chosen` et plus une seule `superseded` ; `apt-cache madison marionnet`
+  dans une `debian:13-slim` nue n'offre plus qu'**une** version (`0~trunk+r927`) ; et
+  `dnf install marionnet` sur `fedora:42`, après avoir récupéré `marionnet.repo` **à
+  l'adresse stable**, résout `marionnet` + `vde2` + `uml-utilities` du même dépôt.
+- La garde des révisions, parlante avant le ménage (17 nommées), est **muette** après.

@@ -726,6 +726,34 @@ Reprise : appliquer le skill `chantier-long`.
   stable. **Piège durable payé ici** : *ne jamais éditer un script bash pendant qu'il
   tourne* — bash lit par **offsets d'octets**, et le run est mort d'une « erreur de syntaxe »
   après avoir fini le transfert, laissant les étapes suivantes non jouées.
+  **Ép. 25 : une release n'est pas un journal de build.** Né d'une question devant le dépôt
+  de la veille, et c'était un **défaut de l'ép. 24** — *le catalogue décide de ce qui monte*
+  appliqué sans redemander si le catalogue avait raison. Le répertoire avait **8** tarballs,
+  **4** `.deb` et **5** `.rpm` de l'application, un par épisode d'une journée : `Packages`
+  offrait à apt **4** versions et `repodata/` **5** à dnf, donc `apt install
+  marionnet=0~trunk+r913` rendait **légitimement** un binaire **d'avant le correctif de
+  l'ép. 21**, et **5 des 8** tarballs étaient d'avant le plancher (`glibc2.39`, donc refusés
+  sur Debian 12 et servis pour rien). `--multiversion` sert à **remplacer** une révision sans
+  trou, pas à toutes les garder. **Une seule révision désormais, `r927`, sur les 3 canaux**
+  (serveur : 37 → 23 entrées). **À ne pas défaire** : (1) le nettoyage passe par le **seul
+  chemin licite** — supprimer les fichiers, laisser les **écrivains** des 3 catalogues se
+  corriger, puis déposer avec `--prune` ; le déposeur **nomme** les révisions surnuméraires
+  et n'en retire aucune (la rétention n'est pas sa décision) ; (2) le `.tar.gz` est abandonné
+  **pour la publication, pas pour la lecture** — `--gz`/`--gzip` restent, parce que
+  `download/marionnet_from_scratch/0.98.x/` est toujours servi et ne contient **que** des
+  `.tar.gz`. **`make revno`** rend ce que `bzr revno` rendait, en le **demandant** à
+  `bin/meta.ml.maker.sh --print-revision` : ce script est l'endroit de la règle, et ce numéro
+  est celui dont tout artefact publié porte le nom. **Deux pièges durables payés ici** :
+  (a) **`bin/gui/gui.xml` est un vestige qui n'est PAS chargé** — `bin/gui.ml` lit
+  `gui_glade3.xml`, et c'est là qu'est passée la hauteur de fenêtre **840 → 860** qui rend
+  enfin visible la dernière icône de la barre, la **planète** (mesuré dans les 2 sens : à 840
+  la dernière icône est le nuage ; et la barre **ne grandit pas** avec la fenêtre — la planète
+  est au même endroit à 860 et à 900 — donc aller au-delà n'achète rien) ; (b) **un rebond ssh coupe les rafales** — un `--prune`
+  ouvrant **une connexion par fichier** s'est fait réinitialiser à mi-chemin par
+  `ProxyJump lipn-ssh`, puis bannir quelques minutes ; d'où un `rm` groupé et surtout **une
+  connexion maîtresse** (`ControlMaster`/`ControlPersist`) partagée par tous les appels **et
+  par rsync**. Corollaire bash : il n'y a **qu'un** gestionnaire `EXIT`, un second `trap` le
+  remplace en silence.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
@@ -736,10 +764,9 @@ Reprise : appliquer le skill `chantier-long`.
   `www.marionnet.org` ; ← **prochaine, et plus rien ne la bloque**. La **doc INSTALL** est le
   tout dernier épisode.
   **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
-  release 1.0.x y est déposée. Restent, hors feuille de route : **signer `Release`** (la
-  plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées) et
-  **rattraper le canal `.deb`**, en retard d'une révision (dépôt `r920`, tarball et `.rpm`
-  `r923`).
+  release 1.0.x y est déposée. Reste, hors feuille de route : **signer `Release`** (la
+  plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées). Le
+  décalage du canal `.deb` est **résorbé** (ép. 25 : `r927` partout).
 
 ## Où puiser
 

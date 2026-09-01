@@ -191,7 +191,26 @@ test -f "$CATALOGUE" || die "no SHA256SUMS in $OUTDIR: run \`make release.sha256
 REMOTE_BASE="$REMOTE_ROOT/marionnet-install.sh"
 REMOTE_DIR="$REMOTE_BASE/$SERIES"
 
-function ssh_do { ssh -o BatchMode=yes -- "$HOST" "$@"; }
+# ONE ssh connection for the whole run, shared by every call and by rsync. A deposit makes
+# a good dozen short calls (mkdir, the transfer, two symlinks, the remote sha256sum, the
+# listing, the pruning), and this server is reached THROUGH A JUMP HOST: a burst of
+# short-lived connections is what a jump host defends against, and it defended (measured on
+# 2026-09-01: `kex_exchange_identification: Connection reset by peer', then a back-off of
+# several minutes during which nothing could reach the server at all). A master connection
+# also makes the run faster, each call no longer paying a handshake through the jump.
+# The socket path is kept SHORT on purpose: a unix socket path is capped near 104 bytes, and
+# the scratch directories of this project are much longer than that.
+SSH_CTL="/tmp/mrn-ssh-$$"
+SSH_OPTS=(-o BatchMode=yes -o ControlMaster=auto -o "ControlPath=$SSH_CTL" -o ControlPersist=120)
+function ssh_do { ssh "${SSH_OPTS[@]}" -- "$HOST" "$@"; }
+# ONE trap for the whole script: bash keeps a single EXIT handler, so a later `trap ... EXIT'
+# would silently replace this one and leave the master connection open.
+TMPFILES=()
+function cleanup {
+  ((${#TMPFILES[@]})) && rm -f -- "${TMPFILES[@]}"
+  ssh -O exit -o "ControlPath=$SSH_CTL" -- "$HOST" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # ---
 # --- What the catalogue names, and whether we have it all.
@@ -349,11 +368,12 @@ fi
 # ---
 # --- The transfer.
 # ---
-LIST=$(mktemp); trap 'rm -f -- "$LIST"' EXIT
+LIST=$(mktemp); TMPFILES+=("$LIST")
 printf '%s\n' "${CATALOGUED[@]}" "${INDEXES[@]}" > "$LIST"
 
 RSYNC_OPTS=(-rlt --chmod=D755,F644 --human-readable --partial-dir=.rsync-partial
-            --files-from="$LIST" --info=stats1,progress2)
+            --files-from="$LIST" --info=stats1,progress2
+            -e "ssh ${SSH_OPTS[*]}")
 ((DRYRUN)) && RSYNC_OPTS+=(--dry-run --itemize-changes)
 
 info "sending $(($(wc -l < "$LIST"))) paths..."
@@ -375,7 +395,7 @@ if ((PUBLISH_SCRIPT)); then
     info "would send $SRC -> $REMOTE_BASE/marionnet-install.sh (0755)"
     info "would link marionnet-get-images -> marionnet-install.sh"
   else
-    rsync -lt --chmod=F755 -- "$SRC" "$HOST:$REMOTE_BASE/marionnet-install.sh"
+    rsync -lt --chmod=F755 -e "ssh ${SSH_OPTS[*]}" -- "$SRC" "$HOST:$REMOTE_BASE/marionnet-install.sh"
     # The second name is a symlink and not a copy: two copies of a script which decides what
     # it is by looking at $0 are two things to keep in step, and Apache serves the target of
     # a symlink (measured on this host).
@@ -416,7 +436,7 @@ fi
 # ---
 # --- What is up there and not in the catalogue. Named, never removed (unless asked).
 # ---
-KNOWN=$(mktemp); trap 'rm -f -- "$LIST" "$KNOWN"' EXIT
+KNOWN=$(mktemp); TMPFILES+=("$KNOWN")
 printf '%s\n' "${CATALOGUED[@]}" "${INDEXES[@]}" .rsync-partial | sort -u > "$KNOWN"
 EXTRAS=()
 if ((!DRYRUN)); then
@@ -428,10 +448,18 @@ if ((${#EXTRAS[@]})); then
   printf '        %s\n' "${EXTRAS[@]}" >&2
   if ((PRUNE)) && ((!DRYRUN)); then
     info "--prune: removing them"
+    # ONE ssh call for the whole list, not one per file. Measured the hard way on 2026-09-01:
+    # a loop opening 17 connections in a row through the jump host was rate-limited and reset
+    # (`kex_exchange_identification: Connection reset by peer'), half way through the removal.
+    # A jump host is a shared resource, and a burst of short-lived connections looks exactly
+    # like what it defends against.
+    #
     # printf %q, not a pair of quotes: these names come from `ls\' on the server, so they are
     # data, and a name holding a quote would otherwise end the string and let the rest of it
     # be read as a command -- by an `rm -rf\' running there.
-    for f in "${EXTRAS[@]}"; do ssh_do "rm -rf -- $(printf %q "$REMOTE_DIR/$f")"; done
+    PRUNE_ARGS=""
+    for f in "${EXTRAS[@]}"; do PRUNE_ARGS+=" $(printf %q "$REMOTE_DIR/$f")"; done
+    ssh_do "rm -rf --$PRUNE_ARGS"
   else
     warn "they are left alone; \`--prune' removes them"
   fi
