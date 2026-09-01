@@ -820,13 +820,32 @@ Reprise : appliquer le skill `chantier-long`.
   meublée — d'où un **rouge assumé** (`.deb` 34/1, `.rpm` 49/1) : la release publiée est `r930`,
   donc le paquet porte l'installeur d'avant, et la preuve se prend **après le commit**
   (motif ép. 20c → 22).
+  **Ép. 29 : la doc INSTALL — et la feuille de route n'a plus de point ouvert.**
+  `doc-src/INSTALL.md`, nommée dans `doc-src/dune` (patron de l'ép. 14) et **pas** un
+  `INSTALL` à la racine : ce répertoire est celui des documents écrits pour **qui n'a pas le
+  dépôt**, soit exactement le lecteur d'une page d'installation — et comme **aucun canal ne
+  nomme les documents un par un** (`share/doc/marionnet/` voyage entier), ce fichier `dune`
+  est le **seul** endroit touché, les 3 canaux la recevant sans une ligne de plus. Les 4
+  obligations héritées y sont, chacune à sa place : `ca-certificates` (ép. 27) **avant** les
+  3 canaux, `-o Dpkg::Options::=--force-confold` (ép. 15b) avec sa cause,
+  `dpkg --add-architecture i386` (ép. 13), et `marionnet-get-images` **sans `--prefix`**
+  (ép. 28) en interdiction motivée ; plus EPEL sur la famille RHEL (ép. 19) et le **plancher
+  glibc** dit comme une propriété du **nom** de l'artefact (ép. 20), jamais comme une liste
+  de distributions à maintenir. **À ne pas défaire** : écrire une page d'installation, c'est
+  *affirmer* que des commandes marchent — donc **les jouer telles qu'écrites**, ce qui en a
+  corrigé **2** : `--list` **exige un mode** (`rc 2` sans lui ; sous le nom
+  `marionnet-get-images` le mode est implicite) et `make install-final-as-root` appelle
+  `sudo` **elle-même**. Mesuré contre le vrai serveur : `debian:13-slim` nue → apt résout
+  `marionnet` r930 par `download/apt` ; `fedora:42` nue → `marionnet`, `vde2` et
+  `uml-utilities` viennent tous trois du dépôt ; 5 URL en `200` ; le clone anonyme du § 6 a
+  été **vérifié** et non supposé (le `remote` du dépôt est en ssh).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
   (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les installer
   *(fait)*** → (5) `upload.www.marionnet.org.sh` + point d'entrée apt stable
   *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur *(fait, ép. 27)*.
-  La **doc INSTALL** est le tout dernier épisode — ← **prochaine, et seule restante**.
+  (5 bis) la **doc INSTALL** *(fait, ép. 29)*. **Plus aucun point n'est ouvert.**
   **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
   release 1.0.x y est déposée. Reste, hors feuille de route : **signer `Release`** (la
   plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées). Le

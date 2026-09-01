@@ -58,6 +58,11 @@
 ;;; ---
 (install
   (files
+     ;; --- How to install Marionnet: which of the three channels to take, and what a machine
+     ;; --- still owes you afterwards. Installed like the others -- a page which is READ BEFORE
+     ;; --- installing is also the page one re-reads on the machine, to add the guest images, to
+     ;; --- grant the sudoers rule, or to remove the whole thing.
+     (INSTALL.md as doc/marionnet/INSTALL.md)
      ;; --- The teacher: from a statement to a mark, one worked example per command.
      (teacher-guide.md as doc/marionnet/teacher-guide.md)
      ;; --- The exam mode: what a session records, and what a mark may rest on.

@@ -603,7 +603,10 @@ servir Rocky 9 / Leap 15.6, une image de build à la glibc plus ancienne.
 La **doc INSTALL** (point 5 du § 5) devient le **tout dernier** épisode du chantier : elle
 devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant eux — et, depuis
 l'épisode 27, elle devra aussi dire que le canal https demande **`ca-certificates`** sur une
-machine Debian/Ubuntu minimale.
+machine Debian/Ubuntu minimale. **FAIT (épisode 29)** : `doc-src/INSTALL.md`, nommée dans
+`doc-src/dune`, donc installée par les trois canaux ; ses blocs ont été **joués** contre le vrai
+serveur, ce qui a corrigé deux commandes fausses. **Plus aucun point de cette feuille de route
+n'est ouvert.**
 
 ## 6. Décisions sur les questions ouvertes (grill du 2026-07-19)
 
@@ -3999,3 +4002,77 @@ extraites dans le **même** parent) — alors il le **dit**, cite les deux chemi
 - La **doc INSTALL** (dernier épisode) hérite d'une phrase de plus : sur une machine où
   Marionnet vient d'un paquet, `marionnet-get-images` s'utilise **sans `--prefix`**, et c'est
   ce qui met les images là où l'application les cherche.
+
+## Épisode 29 (2026-09-01) — la doc INSTALL : le dernier point de la feuille de route
+
+Le point **5** du § 5 (« doc INSTALL moderne, from source + renvois canaux »), devenu le **tout
+dernier** épisode par le § 5 bis : elle ne pouvait pas être écrite avant les canaux qu'elle
+décrit. Ils existent tous, mesurés, et trois épisodes lui avaient légué des phrases à écrire.
+
+### Où elle vit, et pourquoi là
+
+**`doc-src/INSTALL.md`**, nommé dans `doc-src/dune` comme ses 26 voisins (épisode 14). Pas un
+`INSTALL` à la racine du dépôt : ce répertoire est *par définition* celui des documents écrits
+pour **qui n'a pas le dépôt**, et c'est exactement le lecteur d'une page d'installation. Le
+choix a une conséquence qu'on veut : la page est **installée par les trois canaux** — aucun
+d'eux ne nomme les documents un par un (`share/doc/marionnet/` voyage en entier), donc
+`doc-src/dune` est **le seul endroit** à toucher, et le tarball, le `.deb` et le `.rpm` la
+reçoivent sans une ligne de plus. Mesuré : `dune build @install` la place en
+`share/doc/marionnet/INSTALL.md`.
+
+Une page qu'on lit *avant* d'installer est aussi celle qu'on **relit sur la machine** — pour
+ajouter les images, accorder la règle sudoers, ou tout retirer. Le `README` du tarball la nomme
+désormais en tête de ce que `share/doc/marionnet/` transporte.
+
+### Ce qu'elle dit, et d'où chaque phrase vient
+
+Neuf sections : le **choix du canal** (un tableau : ce qui décide, c'est le gestionnaire de
+paquets de la machine, pas l'usage qu'on veut faire de Marionnet), puis apt, dnf/zypper, le
+tarball, les images, les sources, la **règle sudoers**, la désinstallation, et une table de
+**symptômes → section**. Les obligations héritées y sont, chacune à sa place :
+
+- **`ca-certificates`** (épisode 27) : § 1, *avant* les trois canaux, puisqu'elle les concerne
+  tous les trois et qu'un serveur debout y ressemble à un serveur en panne ;
+- **`-o Dpkg::Options::=--force-confold`** (épisode 15b) : § 2, avec sa cause — la machine où le
+  tarball est passé avant le paquet — et le fait que `noninteractive` ne gouverne *pas* l'invite
+  de conffile ;
+- **`dpkg --add-architecture i386`** (épisode 13) : § 2, avec la raison du paquet séparé ;
+- **`marionnet-get-images` sans `--prefix`** (épisode 28) : § 5, énoncé comme une **interdiction
+  motivée** (un `--prefix` écrit à la main est *la* façon de poser les images là où
+  l'application ne regarde pas — rien n'échoue, elles n'apparaissent pas) ;
+- **EPEL sur la famille RHEL** (épisode 19) : § 3, avec `gtksourceview3` nommé ;
+- **le plancher glibc** (épisode 20) : § 4, comme une propriété du **nom** de l'artefact, pas
+  comme une liste de distributions à maintenir.
+
+### Ce que la rédaction a mesuré (et corrigé)
+
+Écrire une page d'installation, c'est prétendre que des commandes fonctionnent. Elles ont donc
+été **jouées telles qu'écrites**, et deux d'entre elles étaient fausses :
+
+- **`--list` seul ne montre rien** : `marionnet-install.sh --list` sort en rc 2 (« nothing to
+  do: give --fetch-only, --binary, or both »). C'est **correct** — le mode dit *quels* artefacts
+  intéressent — mais ma première rédaction l'avait écrit sans mode. Corrigé en
+  `--binary --fetch-only --list`, et la nuance est dite, avec son exception mesurée : sous le nom
+  `marionnet-get-images`, le mode est implicite (`--list` seul y rend bien le catalogue).
+- **`sudo make install-final-as-root`** : la cible appelle `sudo` **elle-même** sur le seul pas
+  qui en a besoin. Corrigé en `make install-final-as-root`.
+
+Le reste est mesuré vert, contre le **vrai serveur**, en jouant les blocs de la page :
+
+| Geste de la page | Boîte | Résultat |
+|---|---|---|
+| § 1 + § 2 (`ca-certificates`, `sources.list`, `apt install`) | `debian:13-slim` nue | apt résout `marionnet` **r930** depuis `download/apt` et configure la transaction complète |
+| § 3 (`marionnet.repo`, `dnf install`) | `fedora:42` nue | `marionnet`, **`vde2`** et **`uml-utilities`** viennent tous trois du dépôt `marionnet-1.0.x` |
+| § 4 (`wget` de l'installeur, catalogue) | `debian:13-slim` nue | 7 artefacts catalogués, `SUM yes`, `marionnet_trunk-r930_amd64_glibc2.36` **`chosen`** |
+| les 5 URL citées | — | `200` toutes les cinq (installeur, `apt/Packages`, `apt/Release`, `rpm/marionnet.repo`, `rpm/repodata/repomd.xml`) |
+| le clone anonyme du § 6 | — | `https://git.launchpad.net/marionnet` répond `git-upload-pack` (l'URL n'a pas été **supposée**) |
+
+### Restes
+
+- Le chantier n'a **plus de point de feuille de route ouvert**. Restent, hors d'elle : **signer
+  `Release`** (plomberie prête, garde de la clef et distribution hors bande non tranchées — tant
+  que ce n'est pas fait, la page écrit `[trusted=yes]` et `gpgcheck=0` en les **expliquant**),
+  le rejeu des 2 bancs paquets après la prochaine release, l'essai toolchain système, et
+  l'essaimage des enfants.
+- Cette page devra suivre deux changements le jour où ils arrivent : la **signature** (§ 2 et
+  § 3) et le passage de `[trusted=yes]` à `signed-by=`.
