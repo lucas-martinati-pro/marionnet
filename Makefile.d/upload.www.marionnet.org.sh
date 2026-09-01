@@ -93,8 +93,13 @@
 # Release.gpg are void the moment Release changes, so they belong beside it, written by
 # whoever writes it -- and THIS SCRIPT WRITES NOTHING INTO A RELEASE DIRECTORY, now without
 # an exception. What is left here is the check: a deposit refuses to put online a repository
-# whose InRelease does not verify against the key the SOURCES publish, and merely warns when
-# nothing is signed at all (a release may legitimately predate the decision to sign).
+# whose InRelease does not verify against the key the SOURCES publish -- AND, since episode 30b
+# quinquies, refuses just as firmly when nothing is signed at all. That used to be a warning,
+# on the ground that a release might predate the decision to sign; it cannot any more. Once the
+# sources publish a key, every machine installed from the INSTALL page carries `signed-by='
+# (apt) or `repo_gpgcheck=1' (dnf), and a repository which STOPS being signed is refused by all
+# of them at once -- silently, from their point of view, since they will not read the index
+# that would explain it. An omitted flag must not be able to do that.
 #
 # The two questions that kept this unarmed were never about code, and only one of them is
 # settled: the CUSTODY of the private key is the author's business (it lives in his keyring,
@@ -361,9 +366,16 @@ if test -f "$KEYRING_ASC"; then
       die "InRelease does not verify against $KEYRING_ASC -- re-run \`make release-apt SIGN=yes'"
     fi
   else
-    warn "the sources publish an archive key, but this release is NOT signed"
-    warn "  users following the INSTALL page with signed-by= would see apt refuse this repository"
-    warn "  the fix is \`make release-apt SIGN=yes' (or \`make release-deb SIGN=yes'), not an option here"
+    # REFUSED, NOT MERELY REPORTED (episode 30b quinquies). A warning here was the last way to
+    # break an installed park by omission: every machine set up from the INSTALL page carries
+    # `signed-by=', so it refuses a repository which has STOPPED being signed -- outright, and
+    # for good, since it will not fetch the index that would tell it otherwise. Nothing is
+    # broken at the moment of the deposit; a classroom simply stops being able to upgrade.
+    # That is not a state a deposit may reach by leaving a flag out, so it is an error, and
+    # the way out is one command -- not an option of this script, which writes nothing.
+    die "the sources publish an archive key, but this release is NOT signed:
+       users following the INSTALL page with signed-by= would see apt REFUSE this repository.
+       Sign it first: \`make release-apt SIGN=yes' (the whole chain does it by default)"
   fi
 
   # THE SAME QUESTION ON THE OTHER CHANNEL (episode 30b), and the same answer: this script
@@ -382,9 +394,11 @@ if test -f "$KEYRING_ASC"; then
         die "repodata/repomd.xml.asc does not verify against $KEYRING_ASC -- re-run \`make release-dnf SIGN=yes'"
       fi
     else
-      warn "the sources publish an archive key, but the rpm index is NOT signed"
-      warn "  users following § 3 of the INSTALL page would see dnf refuse this repository"
-      warn "  the fix is \`make release-dnf SIGN=yes' (or \`make release-rpm SIGN=yes')"
+      # Same refusal, same reason, other channel: repo_gpgcheck=1 is to dnf what signed-by= is
+      # to apt, and a repository which stops being signed is refused by both.
+      die "the sources publish an archive key, but the rpm index is NOT signed:
+       users following § 3 of the INSTALL page would see dnf REFUSE this repository.
+       Sign it first: \`make release-dnf SIGN=yes' (the whole chain does it by default)"
     fi
   fi
 fi

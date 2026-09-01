@@ -4490,3 +4490,48 @@ publié.**
 couvrir tout le répertoire) que la rétention a supprimé trente secondes plus tard. L'ordre
 publier → élaguer est le bon, et le publieur ne peut pas savoir ce que la rétention retirera : le
 gaspillage est de quelques secondes, la règle vaut mieux que l'optimisation.
+
+### Épisode 30b quinquies — signer devient le défaut, et ne pas signer devient impossible par omission
+
+Né d'une question de l'utilisateur : *dois-je toujours écrire `SIGN=yes` ?* La réponse était oui,
+et c'est ce qui n'allait pas. `SIGN=yes` était un **opt-in** pour un geste qui n'a plus
+d'alternative légitime : depuis les ép. 30 et 30b, une release déposée non signée n'est pas une
+release plus modeste, c'est une **panne** pour tout le parc déjà installé.
+
+**Le mécanisme, qu'il faut avoir en tête** : chaque release réécrit `Release` et
+`repodata/repomd.xml`, ce qui **annule** les signatures posées à côté. Un run sans `SIGN` ne se
+contente donc pas de sauter une étape — les indexeurs **suppriment** la signature précédente (ils
+le disent, c'est leur devoir : un dépôt qui *prétend* être signé sans l'être serait pire). Or
+toute machine installée en suivant la page INSTALL porte `signed-by=` (apt) ou `repo_gpgcheck=1`
+(dnf) : elle **refuse** un dépôt qui a cessé d'être signé — et de son point de vue en silence,
+puisqu'elle ne lira pas l'index qui le lui expliquerait. Une salle de TP entière cesse de pouvoir
+se mettre à jour, non parce que quelque chose est cassé, mais parce qu'un drapeau a été omis.
+
+**Deux corrections, à deux niveaux.**
+
+1. **`make release-and-upload` signe par défaut.** `RELEASE_SIGN` vaut `yes` sauf si `SIGN` dit
+   autre chose ; ne pas signer doit désormais s'**écrire** : `SIGN=no`. La commande courte fait la
+   chose correcte, l'exception est explicite — l'inverse de ce qu'on avait.
+2. **Le déposeur refuse au lieu d'avertir.** Il vérifiait déjà qu'un `InRelease` présent **vérifie**
+   contre la clef publiée ; il ne faisait qu'*avertir* quand rien n'était signé, au motif qu'une
+   release pouvait précéder la décision de signer. Ce motif est mort le jour où la page INSTALL a
+   nommé la clef. C'est désormais une erreur, sur les **deux** canaux, et le remède est nommé.
+   Garde-fou du dernier instant : il rattrape aussi un `make release-upload` tapé à la main.
+
+**Au passage, une troisième source de confusion supprimée** : `SIGN=no` se développait en
+`--sign no`, et le publieur mourait en cherchant une clef secrète nommée `no`. Le sens de `SIGN=`
+est maintenant écrit **à un seul endroit** (`sign_flag`), utilisé par les cinq cibles qui
+indexent, et la garde du déposeur teste ce que `SIGN` **veut dire** plutôt que sa simple présence
+— sans quoi `SIGN=no` aurait déclenché une garde qui parle de signature.
+
+**Mesuré (2026-09-01)** : les 4 valeurs de `SIGN` (`<rien>`, `yes`, `no`, un keyid) donnent
+respectivement rien, `--sign`, rien, `--sign DEADBEEF` ; la chaîne transmet `SIGN=yes` à ses deux
+indexeurs **sans qu'on le lui demande** et `SIGN=` au déposeur ; et le refus a été **joué des deux
+côtés** en retirant tour à tour `InRelease`/`Release.gpg` puis `repomd.xml.asc` du répertoire de
+`r938` — chaque fois le dépôt s'arrête en nommant la commande qui répare. Le répertoire a été
+rétabli et vérifié **identique à l'octet**.
+
+**Défaut d'édition attrapé au vol** : en factorisant l'expression de `SIGN=`, mon remplacement
+global s'est appliqué à la **définition** du macro elle-même, qui est devenue récursive
+(`sign_flag = $(if …,,$(sign_flag))`). Relire le résultat d'un remplacement global n'est pas une
+politesse.

@@ -547,6 +547,26 @@ release-binary:
 release-build-box:
 	bash Makefile.d/release.build-box.sh --series $(PUBLICATION_SERIES) $(if $(WITH_DEB),--with-deb)
 
+# ---
+# --- What SIGN= means, in one place (episode 30b quinquies).
+# ---
+# `SIGN=yes'      sign with the key the sources publish (marionnet-archive-keyring.asc)
+# `SIGN=<KEYID>'  sign with that key, which the scripts then refuse unless it IS that key
+# `SIGN=no'       do not sign -- and it has to be spelled, because signing is the default of
+#                 the chain below. Without this case, `SIGN=no' expanded to `--sign no' and
+#                 the publisher died looking for a secret key called `no'.
+# empty           do not sign (a bare `make release-apt', typically a local experiment)
+sign_flag = $(if $(filter no,$(SIGN)),,$(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN))))
+
+# SIGNING IS THE DEFAULT OF `release-and-upload', and the reason is not zeal. Every release
+# rewrites Release and repodata/repomd.xml, which VOIDS the signatures beside them; an unsigned
+# run therefore does not merely skip a step, it makes the indexers REMOVE the previous
+# signature. A repository which stops being signed is refused outright by every machine already
+# installed from the INSTALL page (signed-by= for apt, repo_gpgcheck=1 for dnf) -- a whole
+# classroom left unable to upgrade, not because something broke but because a step was omitted.
+# So the short command signs, and not signing is what must be spelled out: SIGN=no.
+RELEASE_SIGN = $(if $(SIGN),$(SIGN),yes)
+
 # Turn a release into the fourth kind of artefact it is made of: the four Debian packages --
 # marionnet (the application), marionnet-kernels, marionnet-kernels-i386 and
 # marionnet-fs-guignol (the guignol image, machine and router together). Binary packages, no
@@ -557,7 +577,7 @@ release-build-box:
 # SHA256SUMS. Build only some of them: PACKAGES="app kernels". Options: --help.
 release-deb:
 	bash Makefile.d/release.deb.sh --series $(PUBLICATION_SERIES) $(PACKAGES) \
-	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
+	     $(sign_flag)
 
 # Make the release directory readable by apt: the Packages/Packages.gz/Release of a FLAT
 # repository, beside the .deb. `make release-deb' calls this by itself, so this target is
@@ -567,7 +587,7 @@ release-deb:
 # at every publication, and apt carries their integrity in Release itself).
 release-apt:
 	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check) \
-	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
+	     $(sign_flag)
 
 # Turn a release into the fifth kind of artefact it is made of: the RPM packages -- marionnet
 # (the application), marionnet-kernels, marionnet-kernels-i386 and marionnet-fs-guignol -- the
@@ -587,7 +607,7 @@ release-apt:
 # Build only some of them: PACKAGES="app kernels". Options: --help.
 release-rpm:
 	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) \
-	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN))) $(PACKAGES)
+	     $(sign_flag) $(PACKAGES)
 
 # The two runtime dependencies NO RPM distribution carries, built from the Debian source
 # package (upstream tarball plus its patch series): vde2 -- vde_switch, wirefilter, slirpvde,
@@ -611,7 +631,7 @@ release-rpm-deps:
 release-dnf:
 	bash Makefile.d/release.dnf.sh --series $(PUBLICATION_SERIES) \
 	     $(if $(BASE_URL),--base-url $(BASE_URL)) $(if $(CHECK),--check) \
-	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
+	     $(sign_flag)
 
 # Put a release directory on www.marionnet.org. The seventh script of the family, and the
 # first which is not a publisher: the six above MAKE a release, this one only CARRIES it, and
@@ -628,7 +648,7 @@ release-dnf:
 # release-apt below). This target only carries a release directory to the server, and it
 # refuses to deposit one whose InRelease does not verify against the published key.
 release-upload:
-	@test -z "$(SIGN)" || { \
+	@test -z "$(sign_flag)" || { \
 	  echo "$@: SIGN= has no effect here: since episode 30 the signature is written by the"; \
 	  echo "$@: indexer, beside the Release it signs. Run \`make release-apt SIGN=$(SIGN)'"; \
 	  echo "$@: (or \`make release-deb SIGN=$(SIGN)') and deposit afterwards."; exit 2; } >&2
@@ -647,7 +667,7 @@ release-upload:
 release-retention:
 	bash Makefile.d/release.retention.sh --series $(PUBLICATION_SERIES) \
 	     $(if $(KEEP),--keep $(KEEP)) $(if $(DRY_RUN),--dry-run) \
-	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
+	     $(sign_flag)
 
 # THE WHOLE CHAIN, from this working copy to www.marionnet.org, for the current revision:
 # compile in the floor box (tarball + the four .deb), unpack that published tarball into the
@@ -675,8 +695,8 @@ release-and-upload:
 	  echo "$@: opam switch. Run \`make rebuild-for-final' first."; exit 2; } >&2
 	@echo "==> releasing r$$(bash bin/meta.ml.maker.sh --print-revision) of series $(PUBLICATION_SERIES)"
 	$(MAKE) release-build-box WITH_DEB=1
-	$(MAKE) release-rpm $(if $(SIGN),SIGN=$(SIGN))
-	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) $(if $(SIGN),SIGN=$(SIGN))
+	$(MAKE) release-rpm SIGN=$(RELEASE_SIGN)
+	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) SIGN=$(RELEASE_SIGN)
 # SIGN IS EXPLICITLY CLEARED FOR THE LAST LINK, and the empty assignment is the whole point:
 # make passes variables given on ITS OWN command line down to every sub-make, so `make
 # release-and-upload SIGN=yes' handed SIGN=yes to release-upload too -- which refuses it, and

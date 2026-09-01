@@ -959,6 +959,18 @@ Reprise : appliquer le skill `chantier-long`.
   **entièrement verts** : `.deb` **38/0 ×4**, `.rpm` **57/0 + 55/0 + 56/0 + 54/0** — **374 cas,
   0 rouge, 0 SKIP**. Le rouge unique traîné depuis l'ép. 28 tombe : le paquet publié porte enfin
   l'installeur qui lit la cascade.
+  **Ép. 30b quinquies : signer est le DÉFAUT, et ne pas signer par omission est impossible.**
+  Chaque release réécrit `Release` et `repomd.xml`, ce qui **annule** les signatures d'à côté :
+  un run sans `SIGN` ne saute donc pas une étape, il fait **supprimer** la précédente par les
+  indexeurs — et un dépôt qui **cesse** d'être signé est refusé par tout le parc installé
+  (`signed-by=` côté apt, `repo_gpgcheck=1` côté dnf), en silence de son point de vue. D'où
+  (1) `make release-and-upload` **signe par défaut** (`RELEASE_SIGN`), ne pas signer s'écrivant
+  `SIGN=no` ; (2) le **déposeur refuse** au lieu d'avertir, sur les 2 canaux — garde-fou du
+  dernier instant qui rattrape aussi un `make release-upload` tapé à la main. **À ne pas
+  défaire** : le sens de `SIGN=` est écrit **à un seul endroit** (`sign_flag` du `Makefile`,
+  employé par les 5 cibles qui indexent — sans quoi `SIGN=no` se développait en `--sign no` et le
+  publieur mourait en cherchant une clef nommée `no`), et la garde du déposeur teste ce que
+  `SIGN` **veut dire**, pas sa présence.
 
 ## Où puiser
 
