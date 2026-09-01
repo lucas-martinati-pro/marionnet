@@ -226,6 +226,25 @@ Deux cas portent le vrai contenu de l'épisode :
   milieu d'un run qui se passait bien (mesuré). Un cas vérifie qu'aucune ligne `curl:` ne
   subsiste dans la sortie.
 
+## Où vont les images (épisode 28)
+
+Quatre cas, à la fin du run, sur la question qui a ouvert l'épisode : *les trois canaux
+écrivent-ils au même endroit ?* Les deux canaux **paquets** installent sous `/usr`, le
+tarball sous `/usr/local`, et **les deux ont raison** — ce qui les réconcilie à l'exécution
+est la cascade de configuration, dont le seul lecteur est le binaire. Jusqu'à l'épisode 28
+ce script ne l'interrogeait pas : sa destination était la chaîne `/usr/local`, écrite en
+dur, si bien que sur une machine où Marionnet venait d'un `.deb` ou d'un `.rpm` les images
+atterrissaient **une arborescence à côté** de l'endroit où cette installation les cherche —
+sans qu'aucune commande échoue.
+
+Les cas montent un **stub** `marionnet.native` sous `/usr/local/bin` plutôt qu'une vraie
+installation : ce qui est mesuré ici est la **lecture d'une réponse**, pas la capacité du
+binaire à en produire une (cette moitié-là est mesurée par les bancs `.deb` et `.rpm`, avec
+le paquet réel). Deux des quatre cas sont **discriminants** — rejoués sur le script d'avant
+l'épisode : `70 PASS / 2 FAIL` — et les deux autres sont des **gardes de non-régression**,
+vertes des deux côtés : le défaut `/usr/local` sur une machine sans installation, et la
+souveraineté de `--prefix`.
+
 ## Restes ouverts que ce banc éclaire
 
 - **Le cas 5b est un piège vivant, et le 6b est sa réponse** : le jour où le répertoire de

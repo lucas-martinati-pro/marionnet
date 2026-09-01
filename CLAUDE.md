@@ -795,6 +795,31 @@ Reprise : appliquer le skill `chantier-long`.
   c'est lui qui manquait), et un `--distro all` qui réémettait `"$@"` **sans `--from`** (trois
   boîtes vertes n'ayant jamais touché le serveur). Mesuré : **572 verts / 0 / 0** en distant
   (8 distributions) et **197 locaux inchangés** — aucun cas récrit pour le serveur.
+  **Ép. 28 : les images suivent l'application, elles ne la doublent pas.** Vérification
+  demandée avant l'épisode — *les 3 canaux écrivent-ils au même endroit ?* — faite en lisant
+  les **4 écrivains**. Les 2 canaux **paquets** sont alignés au caractère près (`/usr` + le
+  **même** `/etc/marionnet/marionnet.conf`) et le tarball garde `/usr/local` **à raison** :
+  c'est le préfixe historique (`CONFIGME`) et un paquet qui écrirait là violerait la politique
+  Debian **et** le FHS ; ce qui les réconcilie à l'exécution est la cascade de
+  `bin/configuration.ml` (rencontre déjà mesurée à l'ép. 15b). **Le défaut était dans le 3ᵉ
+  écrivain** : `marionnet-install.sh` ne lisait **pas** cette cascade — destination `/usr/local`
+  écrite en dur — or les grosses images restent hors d'apt/dnf **par conception** (§ 6, ép. 13)
+  et `marionnet-get-images` est *le* geste prévu (ép. 16), donc après un `apt install marionnet`
+  les images atterrissaient dans `/usr/local/share/marionnet/filesystems` : **rien n'échoue**, et
+  elles n'apparaissent pas. Destination désormais **dérivée de `marionnet.native --paths`**,
+  **seul lecteur** de la cascade (relire le `.conf` en bash serait une 2ᵉ implémentation, ce que
+  l'ép. 8 a supprimé ; le binaire est sur le `PATH` de toute machine installée, comme s'y fie
+  déjà l'ép. 11a). **À ne pas défaire** : (1) `$PREFIX` — donc `--binary` — n'est **pas** dérivé,
+  sinon un tarball se déplierait par-dessus un `/usr` que apt possède (ce que le chooser refuse
+  déjà) ; la cohérence tient parce que `install.sh` **laisse** la conf qui nomme `/usr` ; (2)
+  `--prefix` reste souverain ; (3) une conf pointant les 2 familles sur **2 chemins sans parent
+  commun** est légitime pour Marionnet et **inexprimable** ici (un `filesystems_*.tar.*` porte
+  son membre `filesystems/`) : elle est **nommée**, jamais avalée. Banc réseau **70/2 → 72/0**
+  (4 cas neufs, dont 2 **discriminants**) ; **2 cas neufs** dans chacun des bancs paquets, où le
+  geste mesuré est l'installeur **que le paquet a posé** sur une boîte que **seul apt/dnf** a
+  meublée — d'où un **rouge assumé** (`.deb` 34/1, `.rpm` 49/1) : la release publiée est `r930`,
+  donc le paquet porte l'installeur d'avant, et la preuve se prend **après le commit**
+  (motif ép. 20c → 22).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

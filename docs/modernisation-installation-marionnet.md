@@ -3896,3 +3896,106 @@ Ce que ces runs disent, et que personne n'avait mesuré :
 `ca-certificates` sur une machine Debian/Ubuntu minimale, à côté du
 `-o Dpkg::Options::=--force-confold` (ép. 15b) et du `dpkg --add-architecture i386` (ép. 13).
 
+
+---
+
+## Épisode 28 (2026-09-01) — les images suivent l'application, elles ne la doublent pas
+
+Né d'une question posée avant l'épisode : *les trois canaux écrivent-ils dans les mêmes
+répertoires, de sorte qu'installer par le script puis par le paquet n'éparpille rien ?* La
+vérification a été faite en lisant les **quatre écrivains** (`release.binary.sh` et son
+`install.sh` embarqué, `release.deb.sh`, `release.rpm.sh`, `marionnet-install.sh`), et elle
+donne deux réponses, pas une.
+
+### 1. Ce que la vérification a trouvé — deux préfixes, et c'est correct
+
+Les deux canaux **paquets** sont alignés au caractère près : préfixe `/usr`, et le **même**
+`/etc/marionnet/marionnet.conf` (`%config(noreplace)` côté rpm, `conffiles` côté dpkg) qui
+redirige le préfixe compilé vers `/usr/share/marionnet`. Le canal **tarball** reste à
+`/usr/local` — qui est le préfixe historique du projet (`CONFIGME` dit `prefix=/usr/local`)
+et la place d'un programme installé à la main. **Les deux ont raison**, et ce n'est pas une
+divergence à réduire : un `.deb` ou un `.rpm` qui écrirait sous `/usr/local` violerait la
+politique Debian comme le FHS (`/usr/local` appartient à l'administrateur local, pas au
+gestionnaire de paquets). Ce qui les réconcilie à l'exécution est la **cascade de
+configuration** de `bin/configuration.ml`, dont l'avant-dernier échelon est
+`/etc/marionnet/marionnet.conf` : chaque canal y écrit le préfixe qu'il a employé, et
+l'épisode 15b a déjà mesuré ce qui se passe quand les deux se rencontrent (dpkg **demande**,
+il n'écrase pas ; `--force-confold` garde le choix de l'humain).
+
+### 2. Le défaut, lui, était dans le troisième écrivain
+
+`bin/scripts/marionnet-install.sh` **ne lisait pas cette cascade**. Sa destination était la
+chaîne `/usr/local`, écrite en dur. Conséquence sur la machine la plus ordinaire du chantier
+— celle où Marionnet est venu d'un paquet, puisque les **grosses images restent hors d'apt et
+de dnf par conception** (§ 6, ép. 13) et que `marionnet-get-images` est *le* geste prévu pour
+les obtenir (ép. 16) :
+
+```
+apt install marionnet          → l'application sous /usr, la conf dit /usr/share/marionnet
+marionnet-get-images           → les images dans /usr/local/share/marionnet/filesystems
+```
+
+Rien n'échoue, rien ne se plaint : le téléchargement réussit, l'extraction réussit, et **les
+images n'apparaissent pas dans la GUI**. C'est exactement l'éparpillement que la question
+redoutait, à un répertoire près et donc invisible.
+
+### 3. Le correctif : demander, plutôt que supposer
+
+La destination des **données** est désormais **dérivée** de ce que la machine répond, et la
+réponse est demandée au **seul lecteur de la cascade, le binaire** :
+
+```
+marionnet.native --paths   →  filesystems : <dir>/filesystems
+                              kernels     : <dir>/kernels
+```
+
+**Pourquoi pas relire `/etc/marionnet/marionnet.conf` en bash** : ce serait une **seconde
+implémentation** de la cascade — variables d'environnement, `~/.marionnet/marionnet.conf`,
+puis le fichier système, puis le préfixe compilé — c'est-à-dire précisément ce que
+l'épisode 8 a supprimé ailleurs. Et le binaire est sur le `PATH` de toute machine qui a une
+installation dont on puisse parler (l'épisode 11a s'appuie déjà sur ce fait pour la
+complétion). Pas de binaire, pas de réponse, et l'ancien défaut `/usr/local` **tient**.
+
+**Ce qui n'est PAS dérivé, et c'est délibéré : `$PREFIX` lui-même, donc `--binary`.** Le
+dériver ferait déplier un tarball par-dessus `/usr` sur une machine où apt ou dnf possède cet
+arbre — exactement ce que le *chooser* refuse déjà sous son propre nom (ép. 16). L'application
+garde donc `/usr/local` sauf `--prefix`, et l'ensemble reste **cohérent** : `install.sh`
+laisse en place la conf qui nomme `/usr`, si bien que le binaire fraîchement posé sous
+`/usr/local` lit cette conf et regarde là où les images viennent d'aller.
+
+**Une configuration inexprimable est NOMMÉE, pas avalée.** `MARIONNET_FILESYSTEMS_PATH` et
+`MARIONNET_KERNELS_PATH` sont indépendantes : une machine peut légitimement les pointer sur
+deux chemins sans parent commun. Ce script ne peut pas remplir cette forme-là (un
+`filesystems_*.tar.*` porte son propre membre `filesystems/`, et les deux familles sont
+extraites dans le **même** parent) — alors il le **dit**, cite les deux chemins, renvoie à
+`--prefix`, et retombe sur `/usr/local`. Le silence, ici, recréerait le défaut qu'on corrige.
+
+### 4. Prouvé (2026-09-01)
+
+| Banc | Avant | Après |
+|---|---|---|
+| `marionnet-install.sh.bench` (`debian:trixie-slim`) | **70 / 2** | **72 / 0** |
+| `release.deb.sh.bench` (`debian:trixie-slim`) | — | **34 / 1** *(rouge assumé, cf. ci-dessous)* |
+| `release.rpm.sh.bench` (`fedora:42`) | — | **49 / 1** *(idem)* |
+
+- **4 cas neufs** au banc réseau, dont **2 discriminants** (rejoués sur le code d'avant :
+  rouges) et **2 gardes de non-régression** (vertes des deux côtés — le défaut `/usr/local`
+  sur une machine sans installation, et la souveraineté de `--prefix`). Ils emploient un
+  **stub** `marionnet.native` monté sous `/usr/local/bin` : ce qui est mesuré ici est la
+  **lecture d'une réponse**, pas la capacité du binaire à en produire une.
+- **2 cas neufs** dans chacun des bancs paquets, et c'est là que la mesure porte le vrai
+  geste : sur une boîte que **seul apt** (resp. **dnf**) a meublée, l'installeur **que le
+  paquet lui-même a posé** est lancé en `--dry-run` contre le répertoire de release.
+  L'un des deux passe (le paquet porte bien l'installeur sous ses deux noms), **l'autre est
+  ROUGE et doit l'être** : la release publiée est `r930`, donc le paquet installé porte
+  l'installeur **d'avant** ce correctif. C'est le motif exact de l'épisode 20c → 22 — *une
+  preuve qui dépend de ce que la boîte dit se joue dans la boîte, donc après le commit* ;
+  elle passera au vert à la prochaine release.
+
+### Restes
+
+- Rejouer les deux bancs paquets après la prochaine `make release-and-upload` : les 2 cas
+  rouges assumés doivent devenir verts (pendant exact de l'épisode 22).
+- La **doc INSTALL** (dernier épisode) hérite d'une phrase de plus : sur une machine où
+  Marionnet vient d'un paquet, `marionnet-get-images` s'utilise **sans `--prefix`**, et c'est
+  ce qui met les images là où l'application les cherche.

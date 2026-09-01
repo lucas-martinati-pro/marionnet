@@ -1248,6 +1248,71 @@ else
   fail "the menu did not come up, or did not leave cleanly: rc=$rc, said [$(tail -n 5 <<<"$out")]"
 fi
 
+# ------------------------------------------------- where the images go (episode 28)
+#
+# The two package channels install the application under /usr, the tarball under
+# /usr/local, and both are right. What tells them apart at run time is the configuration
+# cascade, and the only reader of that cascade is the binary: `marionnet.native --paths'.
+# Until episode 28 this script did not ask it, so on a machine where Marionnet came from a
+# .deb or an .rpm the images went to /usr/local/share/marionnet -- one directory away from
+# where that Marionnet looks, and therefore invisible.
+#
+# Measured here with a STUB `marionnet.native' rather than a real installation: what is
+# under test is this script's reading of an answer, not the binary's ability to produce
+# one (the .deb bench measures that half, with the real package). The stub is mounted at
+# /usr/local/bin, which is on the PATH of these boxes.
+mkdir -p "$WORK/paths"
+cat > "$WORK/paths/usr" <<'STUB'
+#!/bin/bash
+echo "filesystems      : /usr/share/marionnet/filesystems"
+echo "kernels          : /usr/share/marionnet/kernels"
+echo "binaries         : /usr/bin"
+STUB
+cat > "$WORK/paths/split" <<'STUB'
+#!/bin/bash
+echo "filesystems      : /srv/images"
+echo "kernels          : /usr/share/marionnet/kernels"
+STUB
+chmod +x "$WORK/paths/usr" "$WORK/paths/split"
+
+function client_with_paths {   # $1 = stub name (or `none'), then the script's arguments
+  local stub="$1"; shift
+  local -a mount=()
+  [[ $stub = none ]] || mount=(-v "$WORK/paths/$stub:/usr/local/bin/marionnet.native:ro")
+  docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" -v "$FULL:/mirror:ro" \
+    "${mount[@]}" "$IMG_CLIENT" \
+    bash /marionnet-install.sh --fetch-only --from /mirror --dry-run "$@" </dev/null 2>&1
+}
+
+out=$(client_with_paths none) || true
+if grep -q 'destination : /usr/local/share/marionnet' <<<"$out"; then
+  pass "no Marionnet here: the destination is /usr/local, exactly as it always was"
+else
+  fail "the historical default moved on a machine with no installation: [$(grep destination <<<"$out")]"
+fi
+
+out=$(client_with_paths usr) || true
+if grep -q 'destination : /usr/share/marionnet' <<<"$out" && grep -q 'marionnet.native' <<<"$out"; then
+  pass "a Marionnet installed under /usr: the images go where IT looks, and the run says why"
+else
+  fail "the images would have gone beside the installation, not into it: [$(grep destination <<<"$out")]"
+fi
+
+out=$(client_with_paths usr --prefix /opt/mrn) || true
+if grep -q 'destination : /opt/mrn/share/marionnet' <<<"$out"; then
+  pass "and --prefix is still the last word, whatever the installation answers"
+else
+  fail "--prefix lost against the derivation: [$(grep destination <<<"$out")]"
+fi
+
+out=$(client_with_paths split) || true
+if grep -q 'destination : /usr/local/share/marionnet' <<<"$out" \
+   && grep -q 'not two subdirectories of one directory' <<<"$out"; then
+  pass "a configuration this script cannot express is NAMED, and the default stands"
+else
+  fail "an inexpressible configuration was swallowed instead of being said: [$(tail -n 4 <<<"$out")]"
+fi
+
 echo
 echo "# ---"
 echo "# $DISTRO: PASS $PASSED, FAIL $FAILED"

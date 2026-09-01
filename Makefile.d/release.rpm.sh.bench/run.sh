@@ -562,6 +562,24 @@ else
   fail "the binary writes on stderr at startup: $(echo "$err" | grep -v '^$' | head -1)"
 fi
 
+# The images follow the application (episode 28), measured on the RPM side of the same
+# question the .deb bench asks: the big guest images stay outside the package manager on
+# purpose, so the installer the PACKAGE itself lays down is how the user of an .rpm gets
+# them -- and until episode 28 it aimed at /usr/local/share/marionnet, one directory away
+# from where the Marionnet dnf had just installed was looking. `--dry-run' sees it and
+# downloads nothing; /rpms is the release directory this bench already mounts.
+if in_box "command -v marionnet-install.sh >/dev/null && command -v marionnet-get-images >/dev/null"; then
+  pass "the package carries the installer under both of its names"
+else
+  fail "marionnet-install.sh / marionnet-get-images are not on the PATH of an rpm machine"
+fi
+rc=0; out=$(in_box "marionnet-install.sh --fetch-only --from /rpms --dry-run 2>&1") || rc=$?
+if ((rc == 0)) && grep -q 'destination : /usr/share/marionnet' <<<"$out"; then
+  pass "the images of an rpm machine go to /usr/share/marionnet, where its Marionnet looks"
+else
+  fail "the installer aims beside the installation dnf made: rc=$rc, [$(grep -i destination <<<"$out")]"
+fi
+
 # THE CONTRACT OF EPISODE 20c, and it is the one thing no other case can see: since this
 # channel compiles nothing, the binary it installs must be -- to the byte -- the one inside the
 # published tarball of the same revision. Read here rather than at packaging time, because what

@@ -81,8 +81,14 @@
 #                            `://' is taken as a URL.
 #                            (default: <site>/download/marionnet-install.sh/<series>)
 #   -s, --series X.Y.x       publication series (default: 1.0.x)
-#   -p, --prefix DIR         installation prefix (default: /usr/local); the artefacts land
-#                            in DIR/share/marionnet/{kernels,filesystems}/
+#   -p, --prefix DIR         installation prefix; the artefacts land in
+#                            DIR/share/marionnet/{kernels,filesystems}/. Given no --prefix,
+#                            the images and the kernels go WHERE THE MARIONNET INSTALLED
+#                            HERE LOOKS FOR THEM -- asked of `marionnet.native --paths',
+#                            which is the only reader of the configuration cascade -- and
+#                            /usr/local when no Marionnet answers. The APPLICATION (--binary)
+#                            keeps /usr/local whatever that answer is: a tarball must never
+#                            be laid down over a tree a package manager owns.
 #   -l, --list               print the catalogue (name, format, size) and exit
 #   -n, --dry-run            say what would be done, touch nothing
 #   -o, --only PATTERN       keep only the artefacts whose name contains PATTERN (repeatable)
@@ -196,6 +202,9 @@ SOURCE=""
 FETCHER=""
 SERIES="$DEFAULT_SERIES"
 PREFIX="/usr/local"
+# Whether the prefix was NAMED. It makes the derivation below a default, not an override:
+# a --prefix given on the command line is the last word, as it always was.
+PREFIX_GIVEN=no
 LIST_ONLY=no
 DRY_RUN=no
 FORCE=no
@@ -226,7 +235,7 @@ while (( $# > 0 )); do
     --no-config)           WITH_CONFIG=no ;;
     -F|--from)             SOURCE="${2:?--from requires an argument}"; shift ;;
     -s|--series)           SERIES="${2:?--series requires an argument}"; shift ;;
-    -p|--prefix)           PREFIX="${2:?--prefix requires an argument}"; shift ;;
+    -p|--prefix)           PREFIX="${2:?--prefix requires an argument}"; PREFIX_GIVEN=yes; shift ;;
     -l|--list)             LIST_ONLY=yes ;;
     -n|--dry-run)          DRY_RUN=yes ;;
     -o|--only)             ONLY+=("${2:?--only requires an argument}"); shift ;;
@@ -275,7 +284,75 @@ else
   SOURCE=$(cd -- "$SOURCE" && pwd)
 fi
 
+# ---
+# --- Where the images and the kernels go: ASKED, not assumed (episode 28).
+# ---
+# The three channels of this work-stream install under two different prefixes, and both are
+# right: the .deb and the .rpm put the application under /usr, where a package manager
+# belongs, while the tarball keeps /usr/local, where a locally installed program belongs (it
+# is also the historical prefix of this project -- CONFIGME says `prefix=/usr/local'). What
+# reconciles them at run time is the configuration cascade of bin/configuration.ml, whose
+# last but one step is /etc/marionnet/marionnet.conf: both channels write there the prefix
+# they used.
+#
+# Until this episode, THIS script did not read that cascade. Its destination was the string
+# /usr/local, compiled in. So on a machine where Marionnet came from a package,
+# `marionnet-get-images' laid the images down in /usr/local/share/marionnet/filesystems
+# while the Marionnet installed there was looking in /usr/share/marionnet/filesystems: two
+# gibibytes downloaded, nothing scattered further than one directory away, and NOTHING to
+# see -- the images simply did not appear in the GUI. That is the defect this fixes.
+#
+# HOW the cascade is read: by asking the binary. `marionnet.native --paths' prints the
+# filesystems and kernels directories exactly as the running Marionnet resolves them --
+# environment, then ~/.marionnet/marionnet.conf, then /etc/marionnet/marionnet.conf, then
+# the compiled prefix. Parsing those files here would be a SECOND implementation of the
+# cascade, which is the very thing episode 8 removed elsewhere; and the binary is on the
+# PATH on any machine which has an installation to speak of (episode 11a relies on the same
+# thing for the completion). No binary, no answer, and the old default stands.
+#
+# WHAT IS NOT DERIVED: $PREFIX itself, hence --binary. Deriving it would make
+# `marionnet-install.sh --binary' unpack a tarball over /usr on a machine where apt or dnf
+# owns that tree -- the very thing the chooser refuses to do under its own name (see the
+# $CHOOSER note above). The application therefore keeps /usr/local unless --prefix says
+# otherwise, and it stays consistent all the same: the conf that names /usr is left in place
+# by install.sh, so the freshly laid /usr/local binary reads it and looks where the images
+# have just gone.
+#
+# Prints the directory holding filesystems/ and kernels/, as the installed Marionnet
+# resolves them; fails (rc 1) when there is no answer, or when the answer cannot be
+# expressed as one directory -- a configuration naming two unrelated paths is legitimate
+# for Marionnet and impossible for us, since a `filesystems_*.tar.*' carries its own
+# `filesystems/' member and both families are extracted into the same parent.
+function installed_resources_directory {
+  local out fs ke
+  command -v marionnet.native >/dev/null 2>&1 || return 1
+  out=$(marionnet.native --paths 2>/dev/null) || return 1
+  fs=$(sed -n 's|^filesystems[[:space:]]*:[[:space:]]*||p' <<<"$out")
+  ke=$(sed -n 's|^kernels[[:space:]]*:[[:space:]]*||p' <<<"$out")
+  [[ -n $fs && -n $ke ]] || return 1
+  # Said out loud rather than swallowed: a machine whose configuration points the two
+  # families at unrelated paths is exactly the machine where a silent /usr/local would
+  # download gibibytes the GUI never shows -- the defect this episode is about.
+  if [[ $fs != */filesystems || $ke != */kernels || ${fs%/filesystems} != "${ke%/kernels}" ]]; then
+    warn "the Marionnet installed here looks for its images in \`$fs' and for its kernels in\
+ \`$ke': not two subdirectories of one directory, which is the only shape this script can\
+ fill in one go (an artefact carries its own \`filesystems/' or \`kernels/' member)."
+    warn "name a destination with --prefix, or run me once per family."
+    return 1
+  fi
+  echo "${fs%/filesystems}"
+}
+
 MARIONNET_DIR="$PREFIX/share/marionnet"
+if [[ $PREFIX_GIVEN = no ]]; then
+  if DERIVED=$(installed_resources_directory); then
+    if [[ $DERIVED != "$MARIONNET_DIR" ]]; then
+      info "the Marionnet installed here looks for its images in $DERIVED (marionnet.native\
+ --paths): that is where they go, and not $MARIONNET_DIR (--prefix overrides)."
+      MARIONNET_DIR="$DERIVED"
+    fi
+  fi
+fi
 
 # ---
 # --- HTTP, in two verbs, so that the four functions below never name a downloader.

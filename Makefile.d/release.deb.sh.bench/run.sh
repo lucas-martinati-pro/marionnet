@@ -543,6 +543,29 @@ else
     fail "--paths does not name /usr/share/marionnet (the conffile is not being read)"
   fi
 
+  # ------------------------------------------------------------ 6 bis. and the images
+  # follow the application (episode 28)
+  #
+  # The cross-channel measurement, made where it belongs: on a machine furnished by apt
+  # alone, with the installer THE PACKAGE ITSELF laid down in /usr/bin (episode 16 gave
+  # that one file eighteen names). The big guest images stay outside apt on purpose
+  # (§ 6 of the doc, episode 13), so this script is how the user of a .deb gets them --
+  # and until episode 28 it wrote them into /usr/local/share/marionnet, one directory
+  # away from where the Marionnet apt had just installed was looking. Nothing failed:
+  # the images simply never appeared. `--dry-run' is enough to see it, and downloads
+  # nothing.
+  if in_box "command -v marionnet-install.sh >/dev/null && command -v marionnet-get-images >/dev/null"; then
+    pass "the package carries the installer under both of its names"
+  else
+    fail "marionnet-install.sh / marionnet-get-images are not on the PATH of an apt machine"
+  fi
+  rc=0; out2=$(in_box "marionnet-install.sh --fetch-only --from ${REPO_URL:-/repo} --dry-run 2>&1") || rc=$?
+  if ((rc == 0)) && grep -q 'destination : /usr/share/marionnet' <<<"$out2"; then
+    pass "the images of an apt machine go to /usr/share/marionnet, where its Marionnet looks"
+  else
+    fail "the installer aims beside the installation apt made: rc=$rc, [$(grep -i destination <<<"$out2")]"
+  fi
+
   # ------------------------------------------------------------ 7. the data packages
   # Invariant 1 of release.deb.sh: the mtime of a guest image is what UML checks against the
   # .conf of its backing file, so BOTH channels must deliver the same one. Measured here on
