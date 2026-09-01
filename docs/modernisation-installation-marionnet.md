@@ -4400,3 +4400,49 @@ serveur** : 6 paquets signés (×4), `repomd.xml.asc` qui vérifie (×4), stroph
 `gpgkey=` nomme une autre clef (×3).
 
 **Le point 4 sexies bis est soldé le jour même de son ouverture.**
+
+### Épisode 30b ter — une mesure qui peut perdre une course n'est pas une mesure
+
+La release de `r937` s'est arrêtée net :
+
+```
+==> artefact     : marionnet_trunk-r937_amd64_glibc2.36
+Makefile.d/release.deb.sh: cannot read the identity of this working copy from
+                           'marionnet_trunk-r937_amd64_unknown-libc'
+```
+
+Deux réponses **contradictoires à la même question**, dans **la même boîte**, à une minute
+d'intervalle. La cause est dans `release.binary.sh` :
+
+```bash
+v=$(LC_ALL=C ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}') || v=""
+```
+
+**`/usr/bin/ldd` est lui-même un script bash** : il écrit plusieurs fois. `head -n 1` ferme le
+tuyau après la première ligne, `ldd` reçoit **SIGPIPE**, et comme le fichier est sous
+`set -o pipefail`, toute la substitution échoue — d'où `unknown-libc`. **Mesuré dans la boîte
+`debian:12` : 14 échecs sur 400 avec le tuyau (3,5 %), 0 sur 400 sans.**
+
+**Ce que ce 3,5 % coûtait vraiment.** L'échec du jour est le cas **heureux** : il est tombé sur
+`--print-name`, donc bruyamment. Mais le même tirage vaut pour l'appel qui **nomme le fichier
+publié** — et depuis l'épisode 12, ce nom est **le seul endroit où le plancher glibc est écrit** :
+`marionnet-install.sh` et les deux bancs paquets y lisent l'architecture et la glibc pour
+choisir. Une release sur trente aurait donc publié un `marionnet_…_unknown-libc.tar.xz`, que
+l'installeur aurait **écarté sans savoir pourquoi**, et sur lequel `release.rpm.sh` (ép. 20c) lit
+l'identité qu'il ne recalcule plus.
+
+**Correctif, en deux temps.** (1) Plus de tuyau : la sortie de `ldd` est capturée entière, puis
+lue par `awk` depuis une *here-string* — pas de tuyau, pas de SIGPIPE, pas de course. (2) Et
+surtout, **`unknown-libc` disparaît** : `host_glibc` échoue et `artefact_name` **refuse de
+nommer**, appliquant à l'autre moitié du nom la règle que l'épisode 20 avait posée pour le
+plancher — *une mesure qui peut ne pas avoir lieu n'en est pas une*. Le `README` du tarball lit
+désormais le plancher **dans le nom** (`${NAME##*_}`), là où il est écrit, au lieu de reposer la
+question.
+
+**Les trois autres `| head` de `Makefile.d/` ne sont pas du même bois** et restent tels quels :
+leur amont (`sed`, `ls`, `find`) émet sa sortie en **une** écriture, ou son statut n'est pas lu ;
+seul `ldd`, qui est un script, écrit encore après la fermeture du tuyau. Rien n'est corrigé « par
+symétrie » : le défaut mesuré est corrigé, les autres attendent d'être mesurés.
+
+**Mesuré** : `release.binary.sh --print-name` joué **200 fois** dans la boîte de compilation →
+**0 nom invalide**.

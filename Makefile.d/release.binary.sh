@@ -149,15 +149,33 @@ function host_arch {
   if command -v dpkg >/dev/null; then dpkg --print-architecture; else uname -m; fi
 }
 
+# NO PIPE INTO `head', and this is not a matter of taste: /usr/bin/ldd is itself a bash script,
+# so it writes several times, and `head -n 1' closes the pipe after the first line. Under
+# `set -o pipefail' (line 94) the SIGPIPE that follows makes the whole substitution fail, and
+# the old code then answered `unknown-libc'. MEASURED in the debian:12 build box: 14 failures
+# out of 400 with the pipe, 0 out of 400 without it. That is a 3.5% chance, per invocation, of
+# NAMING a published artefact after a glibc floor it does not state -- and the name is the only
+# place that floor is written (episode 12: marionnet-install.sh and both package benches read
+# arch and glibc out of the file name). It is exactly how this run died: the tarball had been
+# named correctly, and release.deb.sh, asking the same question a minute later, lost the race.
 function host_glibc {
-  local v
-  v=$(LC_ALL=C ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}') || v=""
+  local out v
+  out=$(LC_ALL=C ldd --version 2>/dev/null) || return 1
+  v=$(awk 'NR==1{print $NF}' <<<"$out")
   # Keep <major>.<minor> only: the patch level of a glibc does not change what it exports.
-  [[ "$v" =~ ^[0-9]+\.[0-9]+ ]] && echo "glibc${BASH_REMATCH[0]}" || echo "unknown-libc"
+  [[ "$v" =~ ^[0-9]+\.[0-9]+ ]] || return 1
+  echo "glibc${BASH_REMATCH[0]}"
 }
 
+# AND A MEASUREMENT WHICH DID NOT HAPPEN IS NOT A MEASUREMENT (the rule of episode 20, applied
+# to the other half of the name): rather than invent `unknown-libc', refuse. A tarball whose
+# name does not say its floor is worse than no tarball -- marionnet-install.sh would skip it
+# without knowing why, and the .deb built beside it would carry a contradiction.
 function artefact_name {
-  echo "marionnet_$(project_version)-r$(project_revision)_$(host_arch)_$(host_glibc)"
+  local g
+  g=$(host_glibc) || die "cannot read the glibc version of this machine (\`ldd --version'):
+       refusing to name an artefact after a floor nobody measured"
+  echo "marionnet_$(project_version)-r$(project_revision)_$(host_arch)_$g"
 }
 
 # ---
@@ -513,7 +531,8 @@ Marionnet -- a virtual network laboratory -- precompiled
 
   artefact : $NAME
   version  : $(project_version), git revision $(project_revision)
-  built on : $(host_arch), against $(host_glibc)
+  built on : $(host_arch), against ${NAME##*_}   # the floor, read where it is written:
+                                                  # in the artefact name (episode 12)
   built the: $(date -u '+%Y-%m-%d %H:%M UTC')
 
 WHAT THIS IS
