@@ -43,10 +43,19 @@
 # installer which reads SHA256SUMS as a list of things to download must not be offered an
 # index as if it were an artefact.
 #
-# UNSIGNED, TODAY. Release is where a signature attaches (Release.gpg beside it, or an
-# InRelease which embeds it), and until then apt wants `[trusted=yes]' spelled out in the
-# sources.list line. Signing is the question of the SERVER episode -- it decides the key
-# apt would name in `signed-by=' -- and inventing a key here would be inventing the answer.
+# SIGNED SINCE EPISODE 30, and by THIS script. Release is where a signature attaches:
+# Release.gpg beside it, or InRelease which is Release with the signature wrapped around it.
+# Both are written here, by `--sign', and not by the deposit script which used to do it: they
+# are void the moment Release changes, so they belong to whoever writes Release. Two things
+# follow, and both were the point: a release directory is COMPLETE before anything is
+# deposited -- so the local bench, which never touches a server, can measure `signed-by='
+# instead of `[trusted=yes]' -- and the deposit script recovers its rule without an
+# exception, writing nothing into a release directory.
+#
+# The key is NOT invented here: it is the one the sources publish, marionnet-archive-keyring.asc
+# at the root of the tree, which users fetch from the git repository -- i.e. from an
+# infrastructure other than the server serving the packages. That separation is the entire
+# worth of a signature, and it is why `--sign' alone reads the fingerprint from that file.
 #
 # dpkg-scanpackages, not apt-ftparchive: the first comes with dpkg-dev, which
 # Makefile.d/release.deb.sh already demands (dpkg-deb, dpkg-shlibdeps), and the second would
@@ -62,6 +71,11 @@
 #                                (default: website-repo/download/marionnet-install.sh/<series>)
 #   -s, --series X.Y.x           publication series (default: derived from META)
 #   -c, --check                  say what the indexes hold, write nothing
+#       --sign [KEYID]           sign Release: InRelease (clear-signed) and Release.gpg
+#                                (detached), which is what lets a user write `signed-by='
+#                                instead of `[trusted=yes]'. Given no KEYID, the key is the
+#                                one the SOURCES publish -- the fingerprint read from
+#                                marionnet-archive-keyring.asc at the root of the tree.
 #   -h, --help                   this help
 # ---
 
@@ -74,6 +88,7 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
 function info { echo "==> $*"; }
+function warn { echo "==> WARNING: $*" >&2; }
 function die  { echo "$0: $*" >&2; exit 2; }
 
 function usage {
@@ -89,12 +104,23 @@ function publication_series {
 SERIES=""
 OUTDIR=""
 CHECK=0
+SIGN_KEY=""
+# The public key the SOURCES publish: the archive's identity, versioned in git and fetched by
+# users from THERE -- i.e. from an infrastructure which is not the server this repository is
+# deposited on. Signing with a key the sources do not publish would produce a repository
+# nobody can verify, silently, so the two are checked against each other below.
+KEYRING_ASC="$ROOT/marionnet-archive-keyring.asc"
 
 while (($#)); do
   case "$1" in
     -o|--output-dir) OUTDIR="$2"; shift 2 ;;
     -s|--series)     SERIES="$2"; shift 2 ;;
     -c|--check)      CHECK=1; shift ;;
+    --sign)          # optional argument: `--sign' alone means the published key.
+                     if test $# -ge 2 && case "$2" in -*) false ;; *) test -n "$2" ;; esac
+                     then SIGN_KEY="$2"; shift 2
+                     else SIGN_KEY="@published"; shift 1
+                     fi ;;
     -h|--help)       usage; exit 0 ;;
     *)               die "unknown option '$1' (try --help)" ;;
   esac
@@ -196,5 +222,58 @@ ARCHES=${ARCHES% }
 mv -f -- "$OUTDIR/Release.new" "$OUTDIR/Release"
 
 info "written: Packages, Packages.gz, Release  (architectures: $ARCHES)"
-info "One line reaches this repository, and it needs [trusted=yes] until Release is signed:"
-info "  deb [trusted=yes] <url-of-this-directory> ./"
+
+# ---
+# --- The signature (episode 30).
+# ---
+# WRITTEN HERE, by the indexer, and no longer by the deposit script. Release says what this
+# repository contains; InRelease and Release.gpg say that the same person vouches for it, and
+# they are worthless the moment Release changes -- so they belong beside the file they sign,
+# written by whoever writes it. Two consequences, both wanted: a release directory is
+# COMPLETE before anything is deposited (so the local bench, which never touches a server,
+# can measure `signed-by=' -- it could not while only the deposit signed), and the deposit
+# script recovers its rule WITHOUT AN EXCEPTION: it writes nothing into a release directory.
+#
+# Not in SHA256SUMS, like the other indexes: they are rewritten at every publication, so a
+# digest recorded for them would go stale on its own (the defect of episode 9b).
+if test -n "$SIGN_KEY"; then
+  command -v gpg >/dev/null || die "\`gpg' not found, but --sign was asked"
+  if test "$SIGN_KEY" = "@published"; then
+    test -f "$KEYRING_ASC" \
+      || die "--sign was given alone, but $KEYRING_ASC does not exist: nothing says who this archive is"
+    SIGN_KEY=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null \
+               | awk -F: '$1=="fpr" {print $10; exit}')
+    test -n "$SIGN_KEY" || die "cannot read a fingerprint out of $KEYRING_ASC"
+  fi
+  gpg --list-secret-keys -- "$SIGN_KEY" >/dev/null 2>&1 \
+    || die "no secret key '$SIGN_KEY' in this keyring"
+  # The key we sign with and the key the sources publish must be the same, checked even when
+  # a KEYID was given by hand -- that is precisely when the two can drift apart.
+  if test -f "$KEYRING_ASC"; then
+    published=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    signing=$(gpg --with-colons --list-secret-keys -- "$SIGN_KEY" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    test "$published" = "$signing" \
+      || die "the signing key ($signing) is not the one the sources publish ($published)"
+  fi
+  # Both forms, because apt takes either and only the detached one reaches an old apt.
+  gpg --batch --yes --default-key "$SIGN_KEY" --clearsign -o "$OUTDIR/InRelease.new" -- "$OUTDIR/Release" \
+    || die "signing failed (InRelease)"
+  gpg --batch --yes --default-key "$SIGN_KEY" --armor --detach-sign -o "$OUTDIR/Release.gpg.new" -- "$OUTDIR/Release" \
+    || die "signing failed (Release.gpg)"
+  mv -f -- "$OUTDIR/InRelease.new"   "$OUTDIR/InRelease"
+  mv -f -- "$OUTDIR/Release.gpg.new" "$OUTDIR/Release.gpg"
+  info "signed: InRelease, Release.gpg  (key $SIGN_KEY)"
+  info "One line reaches this repository, and the key comes from the SOURCES, not from here:"
+  info "  deb [signed-by=/etc/apt/keyrings/marionnet.asc] <url-of-this-directory> ./"
+else
+  # A repository which stops being signed is worse than one which never was: every machine
+  # already carrying signed-by= would refuse it. So the stale signatures go.
+  for f in InRelease Release.gpg; do
+    if test -f "$OUTDIR/$f"; then
+      rm -f -- "$OUTDIR/$f"
+      warn "removed a STALE $f: it signed a previous Release (re-run with \`--sign')"
+    fi
+  done
+  info "One line reaches this repository, and it needs [trusted=yes] until Release is signed:"
+  info "  deb [trusted=yes] <url-of-this-directory> ./"
+fi

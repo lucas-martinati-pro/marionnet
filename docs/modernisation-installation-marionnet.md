@@ -4076,3 +4076,107 @@ Le reste est mesuré vert, contre le **vrai serveur**, en jouant les blocs de la
   l'essaimage des enfants.
 - Cette page devra suivre deux changements le jour où ils arrivent : la **signature** (§ 2 et
   § 3) et le passage de `[trusted=yes]` à `signed-by=`.
+
+## Épisode 30 (2026-09-01) — signer `Release` : la clef, et l'endroit où elle s'écrit
+
+Hors feuille de route, et depuis longtemps en attente : la plomberie était **câblée non armée**
+depuis l'épisode 24, parce que signer, c'est trancher deux choses qui ne sont pas du code — la
+**garde** de la clef privée et la **distribution** de la clef publique. Les deux sont tranchées
+ici, et la seconde commande toute la conception.
+
+### La question qui décide : par où arrive la clef publique
+
+Une signature ne vaut que si compromettre le dépôt **ne suffit pas** à compromettre la clef.
+Publier la clef à côté des paquets qu'elle signe prouve exactement ce que https prouve déjà —
+que le serveur n'a pas été usurpé — et rien sur qui a écrit les paquets.
+
+**Décision** : la clef publique est **versionnée dans git**, donc servie par **Launchpad** —
+autre infrastructure, autre compte que `www.marionnet.org`. Vérifié avant d'être écrit :
+`https://git.launchpad.net/marionnet/plain/<fichier>` répond `200 text/plain` (cgit sert les
+fichiers bruts). Corollaire **à ne pas défaire** : `marionnet-archive-keyring.asc` n'est
+**jamais** déposé sur le serveur — le déposeur ne monte que ce que `SHA256SUMS` nomme plus les
+index, et ce fichier n'est ni l'un ni l'autre.
+
+**Objection de l'auteur, retenue et écrite dans la page** : qui contrôle le site contrôle aussi
+la page INSTALL qu'il sert, donc peut y substituer l'URL de la clef. C'est exact, et la
+conclusion « on est au point de départ » ne suit pas : ce que la signature protège vraiment,
+c'est le **parc déjà installé** — une machine configurée ne relit jamais cette page et vérifie
+contre la clef qu'elle a sur son disque, si bien qu'un serveur pris demain ne peut plus rien
+pousser à toute une salle de TP. Elle protège aussi contre des attaquants **plus faibles**
+(miroir, proxy, compte secondaire) et rend la substitution **détectable**, la clef étant un objet
+figé et comparable. Ce qu'elle ne résout pas — l'amorçage — n'est résolu par personne (le
+keyring de Debian arrive dans une ISO téléchargée d'un site) ; ce qui le casse est un canal que
+l'attaquant ne contrôle pas *et* que l'utilisateur consulte : ici, le cours. La page dit les
+trois choses.
+
+### L'algorithme, mesuré avant de figer une clef qui vivra des années
+
+| | Debian 12 / 13, Ubuntu 24.04 / 26.04 |
+|---|---|
+| `signed-by=` + signature **ed25519** | ACCEPTED ×4 |
+| `signed-by=` + signature **rsa4096** | ACCEPTED ×4 |
+| clef qui ne correspond pas | **REFUSED** ×4 |
+
+Côté RPM la mesure n'a pas abouti (`rpmsign` échoue à invoquer gpg dans un conteneur : pas de
+pinentry — c'est du 30b). **Donc `rsa4096`**, le choix sans surprise : la clef devra servir aussi
+au canal RPM, et on ne fige pas un type qu'on n'a pas su vérifier. Clef créée par l'auteur,
+`[SC]`, expiration 2031-08-31, **protégée par phrase de passe** (`KEYINFO` : `protection=P`),
+certificat de révocation à conserver hors machine.
+
+### Le défaut de conception que la rédaction du banc a révélé
+
+`--sign` vivait dans le **déposeur**. Conséquence : un répertoire de release **local** n'est
+jamais signé, donc le banc `.deb` — qui ne touche aucun serveur et qui est notre preuve la plus
+fréquente — ne pouvait mesurer que `[trusted=yes]`. La signature **déménage chez l'indexeur**
+(`release.apt.sh --sign`, `make release-apt SIGN=yes`), et l'argument est celui du chantier :
+`InRelease` et `Release.gpg` sont **nuls dès que `Release` change**, donc ils appartiennent à qui
+écrit `Release`. Trois conséquences, toutes voulues :
+
+1. un répertoire de release est **complet avant d'être déposé**, donc mesurable localement ;
+2. le déposeur **retrouve sa règle sans exception** — *il n'écrit rien dans un répertoire de
+   release* (règle de l'ép. 24, dont la signature était **l'unique** exception) ; il ne fait plus
+   que **vérifier**, contre la clef publiée, et **refuse** de mettre en ligne un dépôt dont
+   l'`InRelease` ne vérifie pas ;
+3. tout script qui **réécrit `Release`** doit re-signer : `release.retention.sh` relaie donc
+   `--sign` (retirer une révision réécrit `Packages`, donc `Release`, donc invalide la
+   signature) ; sans `--sign`, l'indexeur **supprime** l'`InRelease` périmé et le dit — un dépôt
+   qui cesse d'être signé est pire qu'un dépôt qui ne l'a jamais été, toute machine portant déjà
+   `signed-by=` le refusant.
+
+`--sign` donné **seul** lit l'empreinte **dans la clef que les sources publient** : l'identité de
+l'archive n'est écrite qu'à un endroit, et un keyid retapé en serait un second (motif des ép. 8
+et 26). Signer avec une clef que les sources ne publient pas est **refusé**, en nommant les deux
+empreintes — mesuré. `make release-upload SIGN=…` **refuse** en nommant la bonne cible.
+
+### Le piège de l'épisode 25, évité par son propre commentaire
+
+La vérification du déposeur crée un trousseau jetable, donc un répertoire temporaire à nettoyer.
+Le réflexe — `trap 'rm -rf …' EXIT` — aurait **remplacé en silence** le `cleanup` du script, qui
+ferme la **connexion ssh maîtresse** : bash ne garde qu'**un** gestionnaire `EXIT`. Le commentaire
+laissé sur place à l'épisode 25 a suffi à l'éviter ; le nettoyage passe par un tableau `TMPDIRS`.
+
+### Le sixième défaut de la famille « juger par autre chose que ce qu'on mesure »
+
+Le cas neuf « apt refuse quand `signed-by=` nomme une autre clef » est passé **rouge**, et
+c'était le cas qui avait tort. Mesuré sur `debian:trixie-slim` : avec une clef étrangère, apt
+**rejette bien** la signature (`Err: … Missing key 4A65…`) **mais sort avec 0** et annonce
+*« the previous index files will be used »* — le paquet reste donc offert, et un verdict lu sur
+le seul libellé serait passé au vert sur un dépôt qu'apt venait de refuser. Après
+`rm -rf /var/lib/apt/lists/*`, le candidat est **vide** : c'est là le fait. Le cas efface donc
+les listes d'abord, lit ce qu'apt **peut voir**, et ne consulte le message que pour confirmer.
+Suite exacte des épisodes 19, 20b, 20c, 24 et 27.
+
+**Deuxième piège du même cas** : forger la clef étrangère *dans la boîte* est mort-né — gpg y
+réclame un pinentry absent, et `set -e` tuait le banc au lieu de mesurer. La clef étrangère est
+donc le **trousseau de la distribution elle-même** (`/usr/share/keyrings/*archive-keyring.gpg`),
+que toute image Debian ou Ubuntu porte : une vraie clef, simplement pas la nôtre.
+
+### Restes
+
+- **Le canal RPM n'est pas signé** (`gpgcheck=0`), et la page le dit avec sa raison : là-bas une
+  signature de `Release` ne suffit pas — rpm vérifie **chaque paquet**, plus `repomd.xml`
+  séparément. C'est l'épisode **30b**, avec la même clef.
+- Le cas « la clef est servie par Launchpad » est **SKIP** tant que le commit n'est pas poussé —
+  le fichier existe ici avant d'exister là-bas, et ce n'est pas un défaut du canal.
+- Le rouge de l'épisode 28 (l'installeur du paquet publié) reste rouge jusqu'à la prochaine
+  release, comme prévu.

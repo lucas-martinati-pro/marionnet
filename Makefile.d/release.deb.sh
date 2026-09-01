@@ -97,6 +97,9 @@
 #       --no-lintian             do not run lintian on what was built
 #       --keep-build             do not remove the build tree afterwards (says where)
 #       --print-names            print the four package file names and stop
+#       --sign [KEYID]           relayed to Makefile.d/release.apt.sh, which indexes this
+#                                directory at the end of the run: it signs Release, so that
+#                                a user can write `signed-by=' rather than `[trusted=yes]'
 #   -h, --help                   this help
 # ---
 
@@ -175,6 +178,10 @@ function app_deb_version {
 SERIES=""
 OUTDIR=""
 FORCE=0
+# Relayed verbatim to the indexer, which owns the signature (episode 30): this script has no
+# business knowing what a gpg key is, and repeating the option's semantics here would be the
+# second source of truth this work-stream keeps removing.
+SIGN_ARGS=()
 KERNEL_NAME=""
 RUN_LINTIAN=1
 KEEP_BUILD=0
@@ -186,6 +193,10 @@ while (($#)); do
     -o|--output-dir) OUTDIR="$2"; shift 2 ;;
     -s|--series)     SERIES="$2"; shift 2 ;;
     -f|--force)      FORCE=1; shift ;;
+    --sign)          if test $# -ge 2 && case "$2" in -*) false ;; *) test -n "$2" ;; esac
+                     then SIGN_ARGS=(--sign "$2"); shift 2
+                     else SIGN_ARGS=(--sign); shift 1
+                     fi ;;
     --kernel)        KERNEL_NAME="$2"; shift 2 ;;
     --no-lintian)    RUN_LINTIAN=0; shift ;;
     --keep-build)    KEEP_BUILD=1; shift ;;
@@ -779,7 +790,8 @@ if ((KEEP_BUILD)); then info "build tree kept: $BUILD"; fi
 # the first three wrong for a moment. Called even when every package was already published
 # and skipped: the reason a run finds nothing to do is often that a previous one was
 # interrupted before this line.
-bash "$ROOT/Makefile.d/release.apt.sh" --output-dir "$OUTDIR" --series "$SERIES" || \
+bash "$ROOT/Makefile.d/release.apt.sh" --output-dir "$OUTDIR" --series "$SERIES" \
+     ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} || \
   warn "the packages are published but apt cannot read the directory: run Makefile.d/release.apt.sh"
 
 info "done. The packages are in $OUTDIR, in its SHA256SUMS, and in its Packages/Release."

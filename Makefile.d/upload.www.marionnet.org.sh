@@ -87,22 +87,23 @@
 # directory, where the ancestor's `marionnet_from_scratch' still sits: it is the one file
 # whose URL must survive every series.
 #
-# SIGNING: WIRED, NOT ARMED, and the reason is not laziness. `--sign KEYID' produces the
-# InRelease and Release.gpg apt wants, and without it the repository stays [trusted=yes] --
-# which is what release.apt.sh writes today and what 33 green cases measured (episode 15b).
-# Deciding to sign is deciding three things, and only the first is code:
-#   1. the signature itself -- the ten lines below, exercised against a throwaway key;
-#   2. the CUSTODY of the private key: a key generated on a development laptop, without a
-#      passphrase, so that a script can use it unattended, protects nothing it claims to;
-#   3. the DISTRIBUTION of the public key, which is the one that decides whether any of it
-#      is worth anything. `signed-by=' is only a promise if the key reaches the user by some
-#      channel OTHER than the repository it signs. Publishing the key next to the packages
-#      and telling people to fetch it from there proves exactly what https already proves --
-#      that the server was not impersonated -- and nothing about whoever wrote the packages.
-# Points 2 and 3 are not questions about this script, so they are not settled by it. Note
-# that the signature is nevertheless OURS to write, and this does not break the one-writer
-# rule of the header: Release says what the repository CONTAINS and belongs to the indexer,
-# Release.gpg says WHO VOUCHES for it and belongs to whoever deposits -- this script.
+# SIGNING, SINCE EPISODE 30: Release IS signed, and not by this script. The signature is
+# written by the indexer which writes Release itself (`Makefile.d/release.apt.sh --sign', i.e.
+# `make release-apt SIGN=yes'), for a reason this script's own rule dictates: InRelease and
+# Release.gpg are void the moment Release changes, so they belong beside it, written by
+# whoever writes it -- and THIS SCRIPT WRITES NOTHING INTO A RELEASE DIRECTORY, now without
+# an exception. What is left here is the check: a deposit refuses to put online a repository
+# whose InRelease does not verify against the key the SOURCES publish, and merely warns when
+# nothing is signed at all (a release may legitimately predate the decision to sign).
+#
+# The two questions that kept this unarmed were never about code, and only one of them is
+# settled: the CUSTODY of the private key is the author's business (it lives in his keyring,
+# passphrase-protected, and never enters a build container). The DISTRIBUTION of the public
+# key is settled here, and it is the whole worth of the exercise:
+# marionnet-archive-keyring.asc is versioned IN GIT, hence served by Launchpad -- another
+# infrastructure, another account than the server this script feeds. A key published beside
+# the packages it signs would prove exactly what https already proves and nothing more, which
+# is why this file is not, and must never become, one of the things uploaded below.
 #
 # No bashbricks here, on purpose: like the six publishers it joins, this script sources
 # nothing.
@@ -120,7 +121,9 @@
 #       --prune                  also remove what is on the server and not in the catalogue
 #       --no-entry-points        do not touch the download/apt and download/rpm symlinks
 #       --no-script              do not publish bin/scripts/marionnet-install.sh
-#       --sign KEYID             sign Release with this gpg key (InRelease + Release.gpg)
+#                                (`--sign' USED TO BE HERE and is not any more: the signature
+#                                is written by the indexer, `make release-apt SIGN=yes'. This
+#                                script only checks it, against the key the sources publish.)
 #   -h, --help                   this help
 # ---
 
@@ -156,7 +159,12 @@ CHECK=0
 PRUNE=0
 ENTRY_POINTS=1
 PUBLISH_SCRIPT=1
-SIGN_KEY=""
+# The public key the SOURCES publish: the archive's identity, versioned in git and fetched by
+# users from there -- i.e. from an infrastructure which is NOT the server this script feeds.
+# That separation is the whole point (episode 30); it is also why this file is never uploaded
+# to www.marionnet.org: a key travelling beside the packages it signs proves nothing more
+# than https already proves.
+KEYRING_ASC="$ROOT/marionnet-archive-keyring.asc"
 
 while (($#)); do
   case "$1" in
@@ -169,7 +177,10 @@ while (($#)); do
        --prune)         PRUNE=1; shift ;;
        --no-entry-points) ENTRY_POINTS=0; shift ;;
        --no-script)     PUBLISH_SCRIPT=0; shift ;;
-       --sign)          SIGN_KEY="$2"; shift 2 ;;
+       --sign)          die "--sign moved to the indexer: run \`make release-apt SIGN=yes'
+   (a signature belongs beside the Release it signs, written by whoever writes it -- so a
+    release directory is complete before it is deposited, and this script keeps its rule of
+    writing nothing into one)" ;;
     -h|--help)          usage; exit 0 ;;
     *)                  die "unknown option '$1' (try --help)" ;;
   esac
@@ -206,8 +217,10 @@ function ssh_do { ssh "${SSH_OPTS[@]}" -- "$HOST" "$@"; }
 # ONE trap for the whole script: bash keeps a single EXIT handler, so a later `trap ... EXIT'
 # would silently replace this one and leave the master connection open.
 TMPFILES=()
+TMPDIRS=()          # scratch directories (the throwaway keyring which verifies the signature)
 function cleanup {
-  ((${#TMPFILES[@]})) && rm -f -- "${TMPFILES[@]}"
+  ((${#TMPFILES[@]})) && rm -f  -- "${TMPFILES[@]}"
+  ((${#TMPDIRS[@]}))  && rm -rf -- "${TMPDIRS[@]}"
   ssh -O exit -o "ControlPath=$SSH_CTL" -- "$HOST" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -324,25 +337,33 @@ if ((!DRYRUN)); then
 fi
 
 # ---
-# --- The signature. See the header: it is ours to write, and it is not an index.
+# --- The signature: CHECKED here, written by the indexer (episode 30).
 # ---
-if test -n "$SIGN_KEY"; then
-  command -v gpg >/dev/null || die "\`gpg' not found, but --sign was asked"
-  test -f "$OUTDIR/Release" || die "no Release to sign in $OUTDIR (run \`make release-apt')"
-  gpg --list-secret-keys -- "$SIGN_KEY" >/dev/null 2>&1 \
-    || die "no secret key '$SIGN_KEY' in this keyring -- see the header on custody and distribution"
-  if ((DRYRUN)); then
-    info "would sign Release with $SIGN_KEY (InRelease, Release.gpg)"
+# It used to be written here, as the single exception to the rule of this file -- THIS SCRIPT
+# WRITES NOTHING INTO A RELEASE DIRECTORY. The exception is gone: InRelease and Release.gpg
+# are worthless the moment Release changes, so they belong beside the file they sign, written
+# by whoever writes it (`Makefile.d/release.apt.sh --sign'). What is left here is what a
+# deposit is for: refusing to put a repository online that its own users could not verify.
+if test -f "$KEYRING_ASC"; then
+  PUBLISHED_FPR=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null \
+                  | awk -F: '$1=="fpr" {print $10; exit}')
+  if test -f "$OUTDIR/InRelease" || test -f "$OUTDIR/Release.gpg"; then
+    # Verified against the PUBLISHED key and no other: a signature which validates under some
+    # key in the depositor's own keyring proves nothing about what a user can check.
+    # NO second `trap ... EXIT' here: bash keeps ONE handler and it would silently replace
+    # the cleanup above, leaving the ssh master connection open (the trap pitfall of ep. 25).
+    VERIFY_HOME=$(mktemp -d); TMPDIRS+=("$VERIFY_HOME")
+    if gpg --homedir "$VERIFY_HOME" --batch --quiet --import -- "$KEYRING_ASC" 2>/dev/null && \
+       gpg --homedir "$VERIFY_HOME" --batch --quiet --trust-model always \
+           --verify -- "$OUTDIR/InRelease" 2>/dev/null; then
+      info "Release is signed by the key the sources publish ($PUBLISHED_FPR)"
+    else
+      die "InRelease does not verify against $KEYRING_ASC -- re-run \`make release-apt SIGN=yes'"
+    fi
   else
-    info "signing Release with $SIGN_KEY"
-    # Both forms, because apt takes either and old apt only takes the detached one:
-    # InRelease is Release with the signature wrapped around it, Release.gpg is the
-    # signature alone, beside the file it signs. --yes: a re-deposit re-signs.
-    gpg --batch --yes --default-key "$SIGN_KEY" --clearsign  -o "$OUTDIR/InRelease"   -- "$OUTDIR/Release"
-    gpg --batch --yes --default-key "$SIGN_KEY" --armor --detach-sign -o "$OUTDIR/Release.gpg" -- "$OUTDIR/Release"
-    for f in InRelease Release.gpg; do
-      printf '%s\n' "${INDEXES[@]}" | grep -qx "$f" || INDEXES+=("$f")
-    done
+    warn "the sources publish an archive key, but this release is NOT signed"
+    warn "  users following the INSTALL page with signed-by= would see apt refuse this repository"
+    warn "  the fix is \`make release-apt SIGN=yes' (or \`make release-deb SIGN=yes'), not an option here"
   fi
 fi
 
@@ -466,6 +487,10 @@ fi
 # --- What a user has to type, with the URLs this deposit just created.
 # ---
 URL="https://www.marionnet.org/download"
+# The key does NOT come from the server this script feeds: it is versioned in git, hence
+# served by Launchpad -- another infrastructure, another account. That separation is the only
+# thing a signature buys (episode 30), so the URL printed here must never become $URL/...
+KEY_URL="https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc"
 echo
 ((DRYRUN)) && info "nothing was sent. Once deposited, the three ways in:" \
            || info "deposited. The three ways in:"
@@ -473,10 +498,22 @@ echo "    # the installer, series-independent:"
 echo "    wget $URL/marionnet-install.sh/marionnet-install.sh && bash marionnet-install.sh --help"
 echo
 echo "    # apt (the entry point follows the series, the line does not):"
-echo "    echo 'deb [trusted=yes] $URL/apt/ ./' | sudo tee /etc/apt/sources.list.d/marionnet.list"
+if test -f "$OUTDIR/InRelease"; then
+  echo "    sudo curl -o /etc/apt/keyrings/marionnet.asc $KEY_URL"
+  echo "    echo 'deb [signed-by=/etc/apt/keyrings/marionnet.asc] $URL/apt/ ./' | sudo tee /etc/apt/sources.list.d/marionnet.list"
+else
+  echo "    echo 'deb [trusted=yes] $URL/apt/ ./' | sudo tee /etc/apt/sources.list.d/marionnet.list"
+fi
 echo "    sudo apt update && sudo apt install marionnet"
 echo
 echo "    # dnf/zypper:"
 echo "    sudo curl -o /etc/yum.repos.d/marionnet.repo $URL/rpm/marionnet.repo   # if published"
 echo "    sudo dnf install marionnet"
-test -n "$SIGN_KEY" || info "Release is unsigned, hence [trusted=yes] (see --sign, and the header)"
+# The apt line printed above depends on whether this release is signed, which is decided by
+# the indexer and merely OBSERVED here (see the signature check above).
+if test -f "$OUTDIR/InRelease"; then
+  info "Release is signed; the key comes from the sources, not from this server:"
+  info "  $KEY_URL"
+else
+  info "Release is unsigned, hence [trusted=yes] (\`make release-apt SIGN=yes' signs it)"
+fi

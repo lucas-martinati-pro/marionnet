@@ -29,18 +29,25 @@ not read our repository and the installer will not read the catalogue, both whil
 perfectly up:
 
 ```bash
-sudo apt update && sudo apt install ca-certificates
+sudo apt update && sudo apt install ca-certificates curl
 ```
 
-`marionnet-install.sh` diagnoses this case by name rather than blaming the network, but it cannot
-repair it: installing that package needs a working package manager, which is the thing at stake.
+`curl` is in that line for the same reason: a *slim* image has no downloader either, and § 2
+fetches the archive key with one (`wget` does just as well — `wget -O` in place of `curl -o`).
+
+`marionnet-install.sh` diagnoses the certificate case by name rather than blaming the network,
+but it cannot repair it: installing that package needs a working package manager, which is the
+thing at stake.
 
 ## 2. Debian and Ubuntu — the apt repository
 
 Measured on **Debian 12, Debian 13, Ubuntu 24.04 and Ubuntu 26.04**.
 
 ```bash
-echo 'deb [trusted=yes] https://www.marionnet.org/download/apt/ ./' \
+sudo install -d /etc/apt/keyrings
+sudo curl -o /etc/apt/keyrings/marionnet.asc \
+     https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc
+echo 'deb [signed-by=/etc/apt/keyrings/marionnet.asc] https://www.marionnet.org/download/apt/ ./' \
   | sudo tee /etc/apt/sources.list.d/marionnet.list
 sudo apt update
 sudo apt install marionnet
@@ -49,9 +56,43 @@ sudo apt install marionnet
 `download/apt` is a **stable entry point**: it follows the current publication series, so the
 line above does not have to be edited when the series changes.
 
-`[trusted=yes]` is there because the repository's `Release` file is **not signed yet**. It says,
-explicitly, that apt is being told to trust an unsigned index; https is what protects the
-transfer.
+### The key, and what signing does and does not buy
+
+The repository's `Release` file is signed, and `signed-by=` is what makes apt verify it. The
+key is:
+
+```
+Marionnet Archive Signing Key <loddo@lipn.univ-paris13.fr>
+4A65 3434 0BF9 7733 E74C  9DFC 12E4 6000 225F 0E56
+```
+
+**Notice where the key comes from: `git.launchpad.net`, not `www.marionnet.org`.** That is the
+whole point, and it is worth two minutes of your attention.
+
+Without a signature, everything you download is protected only by https, which proves that the
+server was not impersonated — and nothing about who wrote the packages. Whoever controls that
+server rewrites the packages *and* the digests that vouch for them: everything stays consistent,
+everything verifies, and everything is false. The signature moves the point of trust to a private
+key which does not live on the server.
+
+*What it protects, concretely*: the machines **already installed**. Such a machine never re-reads
+this page; at every `apt upgrade` it checks against the key already on its disk. Somebody who
+takes the server tomorrow cannot push anything to them — apt refuses, and says so. Without a
+signature, an entire classroom would take a trojanised upgrade in silence, on machines where
+Marionnet installs a sudoers rule.
+
+*What it does not protect*: your very first installation, if you learn everything from a
+compromised site — the page would then name another key, and it would all verify. No signature
+solves that (Debian's own keyring arrives in an ISO downloaded from a website). What breaks the
+circle is comparing the fingerprint above with **a source which is not this page**: the git
+repository, a printed course handout, a machine where Marionnet is already installed. In a
+classroom, the fingerprint read out once at the start of the term settles it for everyone.
+
+You can check what you fetched:
+
+```bash
+gpg --show-keys /etc/apt/keyrings/marionnet.asc     # must print the fingerprint above
+```
 
 `apt install marionnet` installs **the application alone** — the data packages are `Suggests:`,
 so that this command means the same thing here as `dnf install marionnet` does in § 3. The other
@@ -98,8 +139,14 @@ sudo curl -o /etc/yum.repos.d/marionnet.repo \
 sudo dnf install marionnet          # zypper install marionnet, on openSUSE
 ```
 
-`download/rpm` is the stable entry point, as `download/apt` is for § 2. The stanza carries
-`gpgcheck=0`, for the same reason as `[trusted=yes]` above.
+`download/rpm` is the stable entry point, as `download/apt` is for § 2.
+
+The stanza still carries **`gpgcheck=0`**, and the apt channel no longer needs its counterpart:
+signing an RPM repository is not the same gesture as signing a Debian one — there, one signature
+on `Release` covers the whole repository, whereas rpm verifies **each package** individually
+(plus `repomd.xml` separately). That work is not done yet, so this channel is protected by https
+alone, exactly as § 2 was before its key existed. The archive key of § 2 is the one that will
+sign it.
 
 **On the RHEL family, enable EPEL first**: `gtksourceview3`, one of Marionnet's run-time
 dependencies, lives there and not in the base repositories.
@@ -129,7 +176,12 @@ least** `<x.y>` — a dynamically linked binary demands a glibc no older than th
 against, and glibc's symbol versioning guarantees the other direction only.
 
 The published artefact is built on the **oldest system we serve** (currently Debian 12,
-glibc 2.36), so it runs on every distribution listed in § 2 and § 3. It does *not* run on
+glibc 2.36), so it runs on every distribution listed in § 2 and § 3.
+
+This channel is **not signed**. Each artefact's digest is in `SHA256SUMS`, which the installer
+checks while it downloads — that proves the file arrived whole, not who wrote it, since the
+catalogue travels the same road as the tarballs. Only the apt repository (§ 2) carries a
+signature today. If that distinction matters to you, take § 2. It does *not* run on
 Rocky 9 or openSUSE Leap 15.6, whose glibc is older; both refuse it by naming the glibc.
 
 The simplest way is to let the installer choose and unpack it for you:
@@ -255,6 +307,8 @@ by the removal: `sudo marionnet-sudoers.sh uninstall`.
 |---|---|
 | `server down, no route, wrong URL?` while the site is up | no certificate store — § 1 |
 | apt says the repository is ignored, `apt-get update` still exits 0 | same cause, or the `sources.list` line was edited; apt reports this as a *warning* |
+| `Missing key <fingerprint>`, or `signature verification failed` | the file in `/etc/apt/keyrings/` is not the archive key — fetch it again (§ 2) and compare the fingerprint |
+| apt keeps offering the package although it just refused the repository | it is reusing the index it already had: `sudo rm -rf /var/lib/apt/lists/*` then `apt update` |
 | the tarball is refused, naming a glibc | your distribution is older than the build floor — § 4 |
 | `marionnet-kernels-i386` is refused, naming `libc6:i386` | `dpkg --add-architecture i386` — § 2 |
 | Marionnet starts but the guest images do not appear | they were laid down under a prefix the application does not read — § 5 |

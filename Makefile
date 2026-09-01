@@ -519,7 +519,8 @@ release-build-box:
 # .conf of a backing file. Published into that same directory and recorded in the same
 # SHA256SUMS. Build only some of them: PACKAGES="app kernels". Options: --help.
 release-deb:
-	bash Makefile.d/release.deb.sh --series $(PUBLICATION_SERIES) $(PACKAGES)
+	bash Makefile.d/release.deb.sh --series $(PUBLICATION_SERIES) $(PACKAGES) \
+	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
 
 # Make the release directory readable by apt: the Packages/Packages.gz/Release of a FLAT
 # repository, beside the .deb. `make release-deb' calls this by itself, so this target is
@@ -528,7 +529,8 @@ release-deb:
 # instead of rewriting them. The indexes are NOT recorded in SHA256SUMS (they are rewritten
 # at every publication, and apt carries their integrity in Release itself).
 release-apt:
-	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check)
+	bash Makefile.d/release.apt.sh --series $(PUBLICATION_SERIES) $(if $(CHECK),--check) \
+	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
 
 # Turn a release into the fifth kind of artefact it is made of: the RPM packages -- marionnet
 # (the application), marionnet-kernels, marionnet-kernels-i386 and marionnet-fs-guignol -- the
@@ -583,10 +585,16 @@ release-dnf:
 # `make release-upload DRY_RUN=1' says what would be sent and changes nothing, here or there;
 # `CHECK=1' asks the server whether it still agrees with its own catalogue. Other options
 # (another host, another root, --prune, --sign): --help.
+# No SIGN= here: the signature is written by the indexer, beside the Release it signs (see
+# release-apt below). This target only carries a release directory to the server, and it
+# refuses to deposit one whose InRelease does not verify against the published key.
 release-upload:
+	@test -z "$(SIGN)" || { \
+	  echo "$@: SIGN= has no effect here: since episode 30 the signature is written by the"; \
+	  echo "$@: indexer, beside the Release it signs. Run \`make release-apt SIGN=$(SIGN)'"; \
+	  echo "$@: (or \`make release-deb SIGN=$(SIGN)') and deposit afterwards."; exit 2; } >&2
 	bash Makefile.d/upload.www.marionnet.org.sh --series $(PUBLICATION_SERIES) \
-	     $(if $(DRY_RUN),--dry-run) $(if $(CHECK),--check) $(if $(PRUNE),--prune) \
-	     $(if $(SIGN),--sign $(SIGN))
+	     $(if $(DRY_RUN),--dry-run) $(if $(CHECK),--check) $(if $(PRUNE),--prune)
 
 # Tidy the release directory: keep only the newest revision(s) of the APPLICATION and let the
 # three catalogues be rewritten by their own writers. A release directory accumulates -- every
@@ -599,7 +607,8 @@ release-upload:
 # revision and reaching into a public server are two gestures, not one.
 release-retention:
 	bash Makefile.d/release.retention.sh --series $(PUBLICATION_SERIES) \
-	     $(if $(KEEP),--keep $(KEEP)) $(if $(DRY_RUN),--dry-run)
+	     $(if $(KEEP),--keep $(KEEP)) $(if $(DRY_RUN),--dry-run) \
+	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
 
 # THE WHOLE CHAIN, from this working copy to www.marionnet.org, for the current revision:
 # compile in the floor box (tarball + the four .deb), unpack that published tarball into the
@@ -628,7 +637,7 @@ release-and-upload:
 	@echo "==> releasing r$$(bash bin/meta.ml.maker.sh --print-revision) of series $(PUBLICATION_SERIES)"
 	$(MAKE) release-build-box WITH_DEB=1
 	$(MAKE) release-rpm
-	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP))
+	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) $(if $(SIGN),SIGN=$(SIGN))
 	$(MAKE) release-upload PRUNE=1
 
 # ---

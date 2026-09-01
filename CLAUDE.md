@@ -839,6 +839,39 @@ Reprise : appliquer le skill `chantier-long`.
   `marionnet` r930 par `download/apt` ; `fedora:42` nue → `marionnet`, `vde2` et
   `uml-utilities` viennent tous trois du dépôt ; 5 URL en `200` ; le clone anonyme du § 6 a
   été **vérifié** et non supposé (le `remote` du dépôt est en ssh).
+  **Ép. 30 : signer `Release` — et la signature change de main.** Les 2 décisions non-code de
+  l'ép. 24 sont tranchées : **garde** = clef **rsa4096** de l'auteur, phrase de passe (vérifié
+  `KEYINFO protection=P`), exp. 2031, qui **n'entre jamais dans un conteneur de build** ;
+  **distribution** = la clef publique est **versionnée dans git**, donc servie par **Launchpad**
+  — autre infrastructure que `www.marionnet.org` (vérifié : `/plain/<fichier>` → `200
+  text/plain`). **À ne pas défaire** : `marionnet-archive-keyring.asc` n'est **jamais** déposé
+  sur le serveur (une clef qui voyage à côté des paquets qu'elle signe ne prouve que ce que
+  https prouve déjà). L'algorithme a été **mesuré avant d'être figé** — `signed-by=` accepte
+  ed25519 comme rsa4096 sur les 4 boîtes et refuse la mauvaise clef partout ; **rsa4096** parce
+  que la mesure côté RPM n'a pas abouti (`rpmsign` sans pinentry en conteneur, c'est 30b) et
+  qu'on ne fige pas un type non vérifié pour une clef qui vivra des années.
+  **Le défaut de conception que le banc a révélé** : `--sign` vivait dans le **déposeur**, donc
+  une release **locale** n'était jamais signée et le banc `.deb` ne pouvait mesurer que
+  `[trusted=yes]` ; la signature est désormais écrite par l'**indexeur**
+  (`make release-apt SIGN=yes`) parce qu'`InRelease`/`Release.gpg` sont **nuls dès que
+  `Release` change**. Trois conséquences **à ne pas défaire** : une release est **complète avant
+  d'être déposée** ; le déposeur **retrouve sa règle sans exception** — *il n'écrit rien dans un
+  répertoire de release* (ép. 24) — il ne fait plus que **vérifier** et **refuse** un
+  `InRelease` qui ne vérifie pas contre la clef publiée ; et **tout script qui réécrit
+  `Release` doit re-signer** (`release.retention.sh` relaie `--sign` ; sans lui l'indexeur
+  **supprime** l'`InRelease` périmé — un dépôt qui **cesse** d'être signé est pire qu'un dépôt
+  jamais signé). `--sign` **seul** lit l'empreinte **dans la clef publiée** (identité en un seul
+  endroit, motif ép. 8/26), et signer avec une autre clef est refusé **en nommant les deux**.
+  **Deux pièges** : le `trap … EXIT` du trousseau de vérification aurait **remplacé en silence**
+  le `cleanup` fermant la connexion ssh maîtresse (piège ép. 25, évité par son propre
+  commentaire) ; et le **6ᵉ** défaut de la famille « juger par autre chose que ce qu'on
+  mesure » était dans mon cas neuf — avec une clef étrangère `apt-get update` **rejette** la
+  signature **et sort avec 0** en réutilisant les index précédents, donc le verdict se lit après
+  `rm -rf /var/lib/apt/lists/*`, sur ce qu'apt **peut voir**. La clef étrangère du cas est le
+  **trousseau de la distribution** (`/usr/share/keyrings/*archive-keyring.gpg`) : forger une clef
+  dans la boîte est mort-né (pas de pinentry). **Le canal RPM reste non signé** (`gpgcheck=0`),
+  et la page INSTALL le dit avec sa raison : là-bas rpm vérifie **chaque paquet** plus
+  `repomd.xml` — c'est l'ép. **30b**, avec la même clef.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
@@ -847,8 +880,8 @@ Reprise : appliquer le skill `chantier-long`.
   *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur *(fait, ép. 27)*.
   (5 bis) la **doc INSTALL** *(fait, ép. 29)*. **Plus aucun point n'est ouvert.**
   **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
-  release 1.0.x y est déposée. Reste, hors feuille de route : **signer `Release`** (la
-  plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées). Le
+  release 1.0.x y est déposée. Reste, hors feuille de route : **signer le canal RPM**
+  (ép. 30b ; le canal apt l'est depuis l'ép. 30). Le
   décalage du canal `.deb` est **résorbé** (ép. 25 : `r927` partout).
 
 ## Où puiser

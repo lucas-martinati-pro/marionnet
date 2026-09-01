@@ -369,10 +369,26 @@ function in_box  { docker exec -e DEBIAN_FRONTEND=noninteractive "$BOX" bash -c 
 function in_i386 { docker exec -e DEBIAN_FRONTEND=noninteractive "$BOX_I386" bash -c "$1"; }
 function in_conf { docker exec -e DEBIAN_FRONTEND=noninteractive "$BOX_CONF" bash -c "$1"; }
 
-# The one line of sources.list this whole episode exists to make true. `[trusted=yes]'
-# because Release is not signed yet -- signing is the server episode's question, and it is
-# named as such in the header of Makefile.d/release.apt.sh.
-SOURCE_LINE="deb [trusted=yes] ${REPO_URL:-file:///repo} ./"
+# The one line of sources.list this whole episode exists to make true. Since episode 30 it
+# names a KEY instead of waiving the question: `signed-by=' is what makes apt verify Release
+# against the archive key, and `[trusted=yes]' -- what this line said until r930 -- told apt
+# to accept an unsigned index. The repository under test must therefore be signed, which is
+# what `make release-upload SIGN=yes' does.
+ARCHIVE_KEY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/marionnet-archive-keyring.asc"
+KEYRING_IN_BOX=/etc/apt/keyrings/marionnet.asc
+SOURCE_LINE="deb [signed-by=$KEYRING_IN_BOX] ${REPO_URL:-file:///repo} ./"
+
+# HOW THE KEY REACHES A BOX, and why not from the repository under test: the whole worth of
+# a signature is that the key does NOT travel beside the packages it signs (episode 30). The
+# bench therefore hands it over out of band -- `docker cp' from the source tree, which is the
+# host's own copy -- exactly as a user is told to fetch it from the git repository and not
+# from www.marionnet.org. Case 0 bis below measures that real channel.
+function install_archive_key {  # <container>
+  docker exec "$1" mkdir -p /etc/apt/keyrings
+  docker cp -- "$ARCHIVE_KEY" "$1:$KEYRING_IN_BOX" >/dev/null
+}
+test -f "$ARCHIVE_KEY" || { echo "no $ARCHIVE_KEY: the sources publish no archive key"; exit 1; }
+install_archive_key "$BOX"
 
 # The network is a PRECONDITION, asked with the box's own sources and nothing of ours: a
 # machine with no mirror cannot resolve the thirteen run-time dependencies, and there is
@@ -424,6 +440,62 @@ else
   grep -E '^(Err|E|W):' <<<"$out" | sed 's/^/      /' || true
   echo "--- nothing else can be measured; count: $PASSED passed, $FAILED failed"
   exit 1
+fi
+
+# ------------------------------------------------------- 0 bis. the key comes from ELSEWHERE
+# The signature is worth exactly what the channel carrying the public key is worth, and that
+# channel is deliberately NOT the server serving the packages: the key is versioned in git,
+# so it is served by Launchpad -- another infrastructure, another account. What is measured
+# here is that the URL the INSTALL page names really carries the key this bench just trusted,
+# byte for byte. SKIP, not FAIL, while the commit which publishes it has not been pushed:
+# the file exists here before it exists there, and that is not a defect of the channel.
+KEY_URL="https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc"
+if remote_key=$(curl -fsS --max-time 30 "$KEY_URL" 2>/dev/null) && [[ -n $remote_key ]]; then
+  if [[ $(printf '%s' "$remote_key" | sha256sum | cut -d" " -f1) \
+        = $(sed -e '$a\' "$ARCHIVE_KEY" | sha256sum | cut -d" " -f1) ]]; then
+    pass "the archive key is served by Launchpad, out of band, and it is the same key ($KEY_URL)"
+  else
+    fail "$KEY_URL serves a DIFFERENT key from $ARCHIVE_KEY"
+  fi
+else
+  skip "$KEY_URL does not serve the archive key yet (the commit which adds it is not pushed)"
+fi
+
+# ------------------------------------------------------- 0 ter. a wrong key must be refused
+# Without this case the one above proves nothing: an apt which accepted the repository no
+# matter which key sits in /etc/apt/keyrings would go green just the same. So the box is
+# given SOMEBODY ELSE'S key and must then refuse.
+#
+# The foreign key is the DISTRIBUTION'S OWN archive keyring, which every Debian and Ubuntu
+# image carries: a real key, properly formed, simply not ours. Forging one in the box was
+# tried first and is a trap -- gpg wants a pinentry it has not got, so the case died instead
+# of measuring anything (the same missing-tty pitfall as the key generation of this episode).
+FOREIGN_KEY=$(in_box "ls -1 /usr/share/keyrings/*archive-keyring.gpg 2>/dev/null | head -1" 2>/dev/null || true)
+if [[ -n ${FOREIGN_KEY:-} ]]; then
+  # THE LISTS ARE WIPED FIRST, and that is the whole difficulty of this case. Measured on
+  # debian:trixie-slim: with a foreign key apt DOES reject the signature (`Err: ... Missing
+  # key <fingerprint>') and STILL EXITS 0, saying "the previous index files will be used" --
+  # so the package stayed visible and a naive verdict went green on a repository apt had just
+  # refused. Sixth of the family "judging by something other than what one measures"
+  # (episodes 19, 20b, 20c, 24, 27). The verdict below therefore rests on what apt can SEE
+  # once nothing old is left, and the message is only read to confirm why.
+  in_box "rm -rf /var/lib/apt/lists/* && cp -- '$FOREIGN_KEY' $KEYRING_IN_BOX" >/dev/null 2>&1 || true
+  out=$(add_source_and_update in_box)
+  cand=$(in_box "apt-cache policy marionnet 2>/dev/null | awk '/Candidat|Candidate/{print \$2}'" || true)
+  if [[ -z $cand || $cand = '(none)' ]] \
+     && grep -qiE 'Missing key|NO_PUBKEY|BADSIG|not signed|GPG error|signature verification failed' <<<"$out"; then
+    pass "apt REFUSES the repository when signed-by= names another key ($(basename "$FOREIGN_KEY"))"
+  else
+    fail "apt still offers marionnet ($cand) with a foreign key in $KEYRING_IN_BOX"
+    grep -E '^(Err|E|W):' <<<"$out" | sed 's/^/      /' || true
+  fi
+  # Put the real key back, and wipe the lists again: what follows must measure the repository
+  # and not what apt remembers of the refused run.
+  install_archive_key "$BOX"
+  in_box "rm -rf /var/lib/apt/lists/*" >/dev/null 2>&1 || true
+  add_source_and_update in_box >/dev/null
+else
+  skip "this box carries no distribution keyring: nothing to offer apt as a foreign key"
 fi
 
 # ---------------------------------------------------------------- 1. apt sees the four
@@ -660,6 +732,7 @@ if [[ $INSTALLABLE = no ]]; then
   echo "--- the foreign-architecture cases are not played on this box (see above)."
 else
 docker run -d --name "$BOX_I386" "${MOUNT[@]}" "$DISTRO" sleep infinity >/dev/null
+install_archive_key "$BOX_I386"
 undocker "$BOX_I386"
 ca_ready in_i386
 if in_i386 "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update -qq" >/dev/null 2>&1; then
@@ -709,6 +782,7 @@ fi
 # So both halves are measured: the refusal, and what the administrator's answer does.
 if [[ $INSTALLABLE = yes ]]; then
   docker run -d --name "$BOX_CONF" "${MOUNT[@]}" "$DISTRO" sleep infinity >/dev/null
+  install_archive_key "$BOX_CONF"
   undocker "$BOX_CONF"
   ca_ready in_conf
   if in_conf "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update -qq" >/dev/null 2>&1; then

@@ -62,6 +62,9 @@
 #   -n, --dry-run                say what would be removed, remove nothing
 #       --no-reindex             do not rewrite the catalogues afterwards (rarely wanted:
 #                                a removed artefact left in SHA256SUMS announces a ghost)
+#       --sign [KEYID]           relayed to release.apt.sh when reindexing: rewriting Release
+#                                invalidates the signature beside it, so a run which removes
+#                                a revision must re-sign or leave the repository unverifiable
 #   -h, --help                   this help
 # ---
 
@@ -84,6 +87,7 @@ function publication_series {
 }
 
 SERIES=""; OUTDIR=""; KEEP=1; PRINT_ONLY=0; DRYRUN=0; REINDEX=1
+SIGN_ARGS=()   # relayed verbatim to the indexer, which owns the signature (episode 30)
 
 while (($#)); do
   case "$1" in
@@ -93,6 +97,10 @@ while (($#)); do
        --print-superseded) PRINT_ONLY=1; shift ;;
     -n|--dry-run)        DRYRUN=1; shift ;;
        --no-reindex)     REINDEX=0; shift ;;
+    --sign)              if test $# -ge 2 && case "$2" in -*) false ;; *) test -n "$2" ;; esac
+                         then SIGN_ARGS=(--sign "$2"); shift 2
+                         else SIGN_ARGS=(--sign); shift 1
+                         fi ;;
     -h|--help)           usage; exit 0 ;;
     *)                   die "unknown option '$1' (try --help)" ;;
   esac
@@ -165,7 +173,11 @@ info "removed: ${#SUPERSEDED[@]} file(s)"
 if ((REINDEX)); then
   info "rewriting the three catalogues, each by its own writer"
   bash "$ROOT/Makefile.d/release.sha256sums.sh" --series "$SERIES" --output-dir "$OUTDIR"
-  bash "$ROOT/Makefile.d/release.apt.sh"        --series "$SERIES" --output-dir "$OUTDIR"
+  # --sign relayed, and it MATTERS: rewriting Release invalidates the signature beside it, so
+  # a retention run which did not re-sign would silently leave a release nobody can verify
+  # (release.apt.sh removes the stale InRelease, which is the visible half of the same fact).
+  bash "$ROOT/Makefile.d/release.apt.sh"        --series "$SERIES" --output-dir "$OUTDIR" \
+       ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}
   bash "$ROOT/Makefile.d/release.dnf.sh"        --series "$SERIES" --output-dir "$OUTDIR" \
        --base-url "https://www.marionnet.org/download/rpm/"
 else
