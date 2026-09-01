@@ -927,8 +927,17 @@ Reprise : appliquer le skill `chantier-long`.
   `gpgkey=file://` **qu'il écrivait lui-même** pendant qu'on publiait une URL — un cas neuf lit
   désormais **la strophe publiée**. Mesuré : **214 verts / 0 SKIP** sur les 4 boîtes (les 4
   rouges étant le seul rouge assumé de l'ép. 28), dont le cas **discriminant** — dnf **refuse**
-  quand `gpgkey=` nomme une autre clef. Reste : la **preuve distante**, après
-  `make release-upload` (motif ép. 20c → 22).
+  quand `gpgkey=` nomme une autre clef.
+  **Ép. 30b bis : la preuve distante, et un SKIP qui accusait le mauvais coupable.** Dépôt fait
+  (le déposeur joue sa vérification neuve, 17 artefacts intacts côté serveur), **§ 3 de la page
+  joué mot pour mot** sur une `fedora:42` nue → `marionnet-0~trunk+r930` avec `vde2` et
+  `uml-utilities` **du même dépôt**. **À ne pas défaire** : le banc distant rapatrie
+  `repomd.xml.asc` **comme l'index** — sans ces 833 octets il SKIPait en **nommant une cause
+  fausse** (« indexed without `--sign` ») à propos d'un serveur qui venait de signer, et surtout
+  `REPO_SIGNED` restant à 0, les **6 cas de boîte** propres à un dépôt signé — dont le
+  **discriminant** — ne tournaient **pas du tout** en distant. *Un SKIP qui accuse le mauvais
+  coupable est pire qu'un SKIP.* Mesuré : **218 verts / 0 SKIP** sur les 4 boîtes contre le vrai
+  serveur (le rouge unique restant celui, assumé, de l'ép. 28).
 
 ## Où puiser
 

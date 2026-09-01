@@ -656,6 +656,12 @@ info "10. the repository (a fresh box, nothing but the repo)"
 if test -n "$REPO_URL"; then
   fetch_to "$REPO_URL/repodata/repomd.xml" "$CACHE/repomd.xml" >/dev/null 2>&1 && \
     { mkdir -p "$OUTDIR/repodata"; cp -- "$CACHE/repomd.xml" "$OUTDIR/repodata/repomd.xml"; }
+  # THE DETACHED SIGNATURE TOO (episode 30b), 833 bytes: without it the verification below
+  # SKIPPED in every remote run and said "this directory was indexed without --sign" -- about a
+  # server which had signed its index. A skip which names the wrong cause is worse than a skip.
+  # Fetched, not deduced: what is verified is then the pair the SERVER serves.
+  fetch_to "$REPO_URL/repodata/repomd.xml.asc" "$CACHE/repomd.xml.asc" >/dev/null 2>&1 && \
+    { mkdir -p "$OUTDIR/repodata"; cp -- "$CACHE/repomd.xml.asc" "$OUTDIR/repodata/repomd.xml.asc"; }
 fi
 if ! test -f "$OUTDIR/repodata/repomd.xml"; then
   skip "no repodata in the release directory (run: make release-dnf)"

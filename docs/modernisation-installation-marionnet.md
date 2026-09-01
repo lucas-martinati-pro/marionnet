@@ -4363,3 +4363,40 @@ rivaux le fournissent (`docker.io`, `docker-ce`), en nommer un dirait à apt de 
   rejouer le banc RPM avec `--from https://www.marionnet.org/download/rpm/`, et jouer le § 3 de la
   page mot pour mot sur une boîte nue.
 - Le rouge de l'épisode 28 reste rouge jusqu'à la prochaine release, comme prévu.
+
+### Épisode 30b bis — la preuve distante, et un SKIP qui accusait le mauvais coupable
+
+`make release-upload` a déposé les 6 `.rpm` signés, `repodata/repomd.xml.asc` et la nouvelle
+strophe ; le déposeur a joué sa vérification neuve (*« repomd.xml is signed by that same key »*)
+et le serveur a confirmé ses **17** artefacts *whole and intact*.
+
+**Le premier rejeu distant a rendu 4 SKIP identiques** : *« no repomd.xml.asc: this directory was
+indexed without `--sign' »* — à propos d'un serveur qui **venait** de signer son index. Le banc,
+en mode distant, ne rapatriait que `repodata/repomd.xml` ; **833 octets manquaient**. Deux
+conséquences, dont la seconde était invisible :
+
+1. la vérification de l'index était sautée, **en nommant une cause fausse** — *un SKIP qui accuse
+   le mauvais coupable est pire qu'un SKIP* ;
+2. `REPO_SIGNED` restant à 0, les **6 cas de boîte** qui n'existent que sur un dépôt signé (dnf
+   accepte après acceptation de la clef ×3, dnf **refuse** avec une autre clef ×3) **ne
+   tournaient pas du tout** en distant : le cas discriminant de l'épisode n'avait jamais été joué
+   contre le vrai serveur.
+
+Le `.asc` est donc **rapatrié comme l'index**, et ce qui est vérifié est alors **la paire que le
+serveur sert**. *(Le correctif a attendu la fin du run : on n'édite pas un script bash pendant
+qu'il tourne — piège de l'ép. 24.)*
+
+**Le § 3 de la page joué mot pour mot**, sur une `fedora:42` **nue**, contre `www.marionnet.org` :
+`gpg` absent (la page le dit et donne `gnupg2`), clef obtenue et **vérifiée dès le premier essai**,
+importée, strophe du serveur en `gpgcheck=1 / repo_gpgcheck=1 / gpgkey=file://…`, puis
+`dnf install marionnet` → `marionnet-0~trunk+r930`, avec **`vde2` et `uml-utilities` tirés du même
+dépôt**, et le binaire qui répond `marionnet version trunk revno 930`.
+
+**Mesuré, distant, les 4 boîtes** : avant le correctif **208 verts / 4 SKIP** ; après,
+**rocky 56/1/0, alma 54/1/0, fedora 55/1/0, openSUSE 53/1/0 = 218 verts, 0 SKIP**, le rouge
+unique restant celui que l'épisode 28 laisse exprès. Les cas de signature sont verts **contre le
+serveur** : 6 paquets signés (×4), `repomd.xml.asc` qui vérifie (×4), strophe publiée en
+`file://` (×4), dnf qui accepte une fois la clef acceptée (×3) et dnf qui **refuse** quand
+`gpgkey=` nomme une autre clef (×3).
+
+**Le point 4 sexies bis est soldé le jour même de son ouverture.**
