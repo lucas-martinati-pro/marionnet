@@ -984,6 +984,14 @@ Reprise : appliquer le skill `chantier-long`.
   faute de rejeu depuis l'ép. 20. Le compte est désormais **lu dans `doc-src/dune`** et reste
   **exact** ; motif ancré sur une **strophe**, un `grep -c` naïf comptant le commentaire
   d'en-tête qui explique la forme.
+  **Ép. 32 : le banc du tarball rejoué, sans code.** La release `r941` étant déposée juste
+  après le commit de l'ép. 31, la preuve différée se prend : `release.binary.sh.bench`
+  `--distro all` = **192/0/0** en local et **196/0/0** contre le serveur (49ᵉ cas par boîte =
+  le digest servi, ép. 27 ; 4 glibc 2.36→2.43 contre un artefact à 2.36, le plancher de
+  l'ép. 20 tient). **À ne pas défaire** : la discriminance est **mesurée** — le `run.sh` de
+  `1042ff5^` rejoué sur le **même** tarball rend **47/1** (`expected 26`), donc le rouge latent
+  de 2 épisodes existait bien. Motif de méthode confirmé une 3ᵉ fois (20c → 22, 28 → 30b
+  quater) : *une preuve qui dépend de ce que la boîte contient se prend après le commit.*
 
 ## Où puiser
 

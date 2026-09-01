@@ -4616,3 +4616,50 @@ différence, la métavariable) ; les 4 pages citées par le tableau final existe
 (`make release-build-box`) et quatre conteneurs. Son cas corrigé se rejouera à la prochaine
 release — même motif que les épisodes 20c → 22 et 28 → 30b quater : *une preuve qui dépend de ce
 que la boîte contient se prend après le commit.*
+
+## Épisode 32 (2026-09-01) — le banc du tarball rejoué : la preuve que l'épisode 31 devait laisser à la release suivante
+
+Épisode **sans code** : l'épisode 31 avait corrigé le cas « documentation livrée » du banc du
+tarball, mais n'avait pas pu le **jouer** — le banc exige un tarball publié et quatre
+conteneurs. La release `r941` ayant été fabriquée et déposée dans la foulée du commit, la
+preuve devient prenable, exactement comme les épisodes 20c → 22 et 28 → 30b quater.
+
+### 1. La prémisse, vérifiée avant d'être crue
+
+« Faute de tarball publié » était vrai le 2026-09-01 à 21:51 (commit `1042ff5`) et faux à
+21:55 : `website-repo/download/marionnet-install.sh/1.0.x/` porte `r941`, et
+`https://www.marionnet.org/download/apt/SHA256SUMS` la nomme aussi. Le tarball contient bien
+`share/doc/marionnet/INSTALL.FR.md` — donc il est postérieur à l'épisode 31, et c'est **lui**
+qu'il faut mesurer, pas un artefact d'avant.
+
+### 2. Joué deux fois, sur le local puis sur les octets du serveur
+
+- `Makefile.d/release.binary.sh.bench/run.sh --distro all` (répertoire de release local) :
+  **192 verts, 0 rouge, 0 SKIP** — 48 cas sur chacune des 4 boîtes (Debian 12/13,
+  Ubuntu 24.04/26.04), même chiffre que l'épisode 20.
+- `… --distro all https://www.marionnet.org/download/apt` : **196 verts, 0 rouge, 0 SKIP** —
+  49 cas par boîte, le cas de plus étant celui de l'épisode 27, *« the tarball served by
+  … matches the digest of its own SHA256SUMS »*. Le téléchargement est fait **une fois** pour
+  les 4 boîtes (cache partagé, épisode 27), et les 4 boîtes voient bien 4 glibc différentes
+  (2.36 / 2.41 / 2.39 / 2.43) contre l'artefact à 2.36 : le plancher de l'épisode 20 tient.
+
+Le cas qui motivait l'épisode annonce désormais **`the 28 files doc-src/dune names are under
+/usr/local/share/doc/marionnet`**, des deux côtés et sur les 4 boîtes.
+
+### 3. La discriminance, mesurée et non supposée
+
+Un banc doit **échouer sur le code d'avant** (convention de `driven-sessions/README.md`). Le
+`run.sh` de `1042ff5^` a donc été rejoué tel quel sur le **même** tarball `r941`, sur
+`debian:trixie-slim` : **47 passed, 1 failed**, avec
+
+```
+FAIL: 28 file(s) of documentation under /usr/local/share/doc/marionnet, expected 26
+```
+
+Le rouge latent dont parlait l'épisode 31 n'était donc pas une hypothèse : il était là, sur ce
+tarball, et le correctif est le seul écart entre le rouge et le vert.
+
+### 4. Mesuré
+
+Local **192/0/0**, distant **196/0/0** (exit 0 des deux côtés, `worst exit code 0`), rouge de
+contrôle **47/1** sur le banc d'avant. Aucun fichier du dépôt touché par l'épisode.
