@@ -267,30 +267,20 @@ fi
 # FIVE. Whoever typed `apt install marionnet=0~trunk+r913' would have got, quite legitimately,
 # a build from BEFORE the episode 21 fix, and five of the eight tarballs were compiled here
 # rather than in the floor box (glibc2.39), so they are refused on Debian 12 -- served for
-# nothing. `--multiversion' in release.apt.sh exists so that one revision can REPLACE another
-# without a gap, which is not the same thing as keeping every revision ever built.
-# Named, not repaired: how many revisions a release keeps is not this script's decision.
-function revision_of {  # <name> -> the r<N> it carries, or nothing
-  local n="$1"
-  case "$n" in
-    marionnet_trunk-r*)      echo "${n#marionnet_trunk-r}"    | sed 's/_.*//' ;;
-    marionnet_0~trunk+r*)    echo "${n#marionnet_0~trunk+r}"  | sed 's/_.*//' ;;
-    marionnet-0~trunk+r*)    echo "${n#marionnet-0~trunk+r}"  | sed 's/-.*//' ;;
-  esac
-}
-STALE=()
-for pat in 'marionnet_trunk-r*' 'marionnet_0~trunk+r*' 'marionnet-0~trunk+r*'; do
-  # shellcheck disable=SC2053
-  mapfile -t fam < <(for f in "${CATALOGUED[@]}"; do [[ $f == $pat ]] && echo "$f"; done)
-  ((${#fam[@]} > 1)) || continue
-  newest=$(for f in "${fam[@]}"; do printf '%s\t%s\n' "$(revision_of "$f")" "$f"; done | sort -n | tail -1 | cut -f2)
-  for f in "${fam[@]}"; do [[ $f != "$newest" ]] && STALE+=("$f"); done
-done
+# nothing.
+#
+# WHICH ONES ARE SUPERSEDED IS ASKED, NOT RECOMPUTED. Retention is a decision about the
+# CONTENT of a release, and this script writes nothing into one; the rule therefore lives in
+# Makefile.d/release.retention.sh, which owns it, and is read here through
+# `--print-superseded'. Having the warning and the removal disagree about what "superseded"
+# means would be worse than having no warning.
+mapfile -t STALE < <(bash "$ROOT/Makefile.d/release.retention.sh" \
+                          --series "$SERIES" --output-dir "$OUTDIR" --print-superseded)
 if ((${#STALE[@]})); then
   warn "${#STALE[@]} superseded revision(s) of the application are catalogued:"
   printf '        %s\n' "${STALE[@]}" >&2
   warn "a release directory is not a build log, and both indexes offer every one of them."
-  warn "remove them, then \`make release.sha256sums' + \`release-apt' + \`release-dnf', and"
+  warn "\`make release-retention' removes them and rewrites the three catalogues; then"
   warn "deposit again with --prune."
 fi
 

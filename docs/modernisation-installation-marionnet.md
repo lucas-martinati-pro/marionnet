@@ -3678,3 +3678,73 @@ connexion maîtresse. Un `cleanup` unique, désormais.
   `dnf install marionnet` sur `fedora:42`, après avoir récupéré `marionnet.repo` **à
   l'adresse stable**, résout `marionnet` + `vde2` + `uml-utilities` du même dépôt.
 - La garde des révisions, parlante avant le ménage (17 nommées), est **muette** après.
+
+---
+
+## Épisode 26 (2026-09-01) — un seul geste, et le propriétaire de la rétention
+
+Demande de l'auteur : une cible unique à lancer soi-même pour mettre à jour le local **et** le
+site à la révision courante. Deux réponses, dont une négative.
+
+### 1. Pas de script de regroupement — et la série ne se code pas dans un nom
+
+Le nom proposé, `release-for-series-1.0.x-and-upload`, **figeait la série** : elle est déjà
+**dérivée** (`PUBLICATION_SERIES`, lue de `META` par le script qui possède la règle), si bien
+qu'un nom la nommant obligerait à créer une seconde cible le jour de `1.1.x`. La cible est donc
+**`make release-and-upload`** — la famille (`release-binary`, `release-deb`, `release-rpm`,
+`release-apt`, `release-dnf`, `release-upload`, `release-build-box`) et, surtout, **le nom dit
+qu'elle dépose**. `make release` eût été plus court, mais se lit comme *fabrique une release*
+alors que celle-ci **la met en ligne** : la surprise aurait été publique.
+
+**Aucun script dans `Makefile.d/`** pour ce regroupement, et c'est délibéré : la chaîne est
+linéaire, chacun de ses maillons est déjà une cible, et elle n'a **aucune connaissance propre**.
+Un script n'aurait fait que ré-emballer `make`, en ajoutant un endroit où l'ordre peut diverger.
+
+### 2. Ce qui manquait vraiment : personne ne possédait la rétention
+
+L'épisode 25 a supprimé 17 révisions périmées **à la main**, et sa garde savait les *nommer*
+sans avoir le droit de les retirer — le déposeur ayant pour règle de conception de n'écrire
+**rien** dans un répertoire de release. La règle « quelles révisions sont périmées » existait
+donc, mais chez quelqu'un qui ne pouvait pas s'en servir, et en un exemplaire recopié.
+
+D'où **`Makefile.d/release.retention.sh`** (cible `make release-retention`), huitième script de
+la famille, qui **possède** cette question : *combien de révisions de l'application une release
+garde-t-elle ?* Défaut **1**, `KEEP=2` pour déroger. Et le déposeur ne recalcule plus rien : il
+**demande** (`--print-superseded`). Une règle, un propriétaire, deux lecteurs — le doublon que
+l'épisode 25 avait introduit disparaît. Avoir un avertissement et une suppression en désaccord
+sur le sens de « périmé » serait pire que n'avoir aucun avertissement.
+
+**Trois choses qu'il ne fait pas.** Il ne regarde **que l'application** : un noyau se versionne
+`6.12.95`, une image par son `sum`, il n'y en a donc jamais deux, et les republier leur
+donnerait un `mtime` neuf — ce qu'UML vérifie (épisode 23). Il ne **touche pas au serveur** :
+ce qu'il retire ici devient simplement un *extra* là-bas, que `make release-upload PRUNE=1`
+retire ensuite — décider qu'une release n'offre plus `r913` et aller dans un serveur public
+sont deux gestes, pas l'effet de bord d'une commande. Et il ne **réécrit aucun catalogue
+lui-même** : il appelle les trois écrivains, règle payée à l'épisode 24.
+
+### 3. Deux contrôles préalables, tous deux payés par la mesure
+
+`make release-and-upload` refuse de commencer si :
+
+- **l'arbre de travail n'est pas propre** — `release.build-box.sh` clone **HEAD** (épisode 20),
+  donc du travail non committé ne fait pas échouer la compilation : il **ne part pas**, en
+  silence, et la release porte alors le nom d'une révision dont elle n'a pas le contenu ;
+- **`CONFIGME.choice` pointe sur la configuration *testing*** — `release.binary.sh` la refuse
+  (le préfixe compilé serait le switch opam, épisode 9a). Mieux vaut le dire à la première
+  seconde qu'après dix minutes de compilation.
+
+Ni l'un ni l'autre n'est contournable **ici**, à dessein : chacun a une échappatoire explicite
+sur le script qui le possède, et y recourir doit être un acte délibéré, pas une variable posée
+sur une chaîne de quatre maillons.
+
+### Prouvé (2026-09-01)
+
+- `release.retention.sh --print-superseded` sur un répertoire fabriqué (4 tarballs, 3 `.deb`,
+  2 `.rpm`, plus un noyau et une image) : **6** noms à `KEEP=1`, **3** à `KEEP=2`, et **jamais**
+  la révision la plus récente ni un artefact de données — vérifié par comptage.
+- Sur le vrai répertoire, déjà rangé à l'épisode 25 : **rien à retirer**, et la garde du
+  déposeur est muette. Plus aucune occurrence de `revision_of` dans le déposeur.
+- Contrôle préalable « arbre sale » : **rc 2**, nomme les fichiers en cause. Contrôle
+  « configuration testing » : passe sur `CONFIGME`, **refuse** sur `CONFIGME.testing.sh`
+  (éprouvé dans les deux sens, symlink restauré).
+- `make -n release-and-upload` déroule les quatre maillons dans l'ordre ; `dune build` rc 0.

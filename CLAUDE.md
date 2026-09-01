@@ -754,6 +754,26 @@ Reprise : appliquer le skill `chantier-long`.
   connexion maîtresse** (`ControlMaster`/`ControlPersist`) partagée par tous les appels **et
   par rsync**. Corollaire bash : il n'y a **qu'un** gestionnaire `EXIT`, un second `trap` le
   remplace en silence.
+  **Ép. 26 : un seul geste, et le propriétaire de la rétention.** `make release-and-upload`
+  enchaîne les 4 maillons d'une release (boîte plancher avec `.deb` → `.rpm` déplié du tarball
+  → rétention → dépôt avec `--prune`). **Deux refus de conception à ne pas défaire** : (1) la
+  série **ne se code pas dans un nom de cible** (elle est dérivée de `META`) et le nom **dit
+  qu'il dépose** — `make release` se lirait « fabrique » alors qu'il met en ligne ; (2) **pas
+  de script de regroupement** dans `Makefile.d/` : la chaîne est linéaire, chaque maillon est
+  déjà une cible, elle n'a aucune connaissance propre — un script n'ajouterait qu'un endroit
+  où l'ordre peut diverger. **Ce qui manquait vraiment** : personne ne possédait la
+  **rétention** — l'ép. 25 a supprimé 17 révisions à la main, et la garde du déposeur savait
+  les nommer sans droit de les retirer. D'où **`Makefile.d/release.retention.sh`** (cible
+  `make release-retention`, **8ᵉ** script), qui possède la question *combien de révisions de
+  l'application une release garde-t-elle* (défaut **1**, `KEEP=n`), que le déposeur
+  **interroge** (`--print-superseded`) au lieu de recalculer. **À ne pas défaire** : il ne
+  regarde **que l'application** (un noyau est `6.12.95`, une image son `sum` : republier leur
+  donnerait un `mtime` neuf, ép. 23), il ne **touche pas au serveur** (ce qu'il retire devient
+  un *extra* que `PRUNE=1` retire — deux gestes distincts), et il n'écrit **aucun catalogue
+  lui-même**. Enfin **2 contrôles préalables**, non contournables ici à dessein : **arbre de
+  travail sale** (la boîte clone HEAD, donc le non-committé **ne part pas, en silence**, et la
+  release porte le nom d'une révision dont elle n'a pas le contenu) et **`CONFIGME.choice` sur
+  *testing*** (refusé par `release.binary.sh` — autant le dire avant dix minutes de compilation).
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

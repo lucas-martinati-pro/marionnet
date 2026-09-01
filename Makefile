@@ -588,8 +588,52 @@ release-upload:
 	     $(if $(DRY_RUN),--dry-run) $(if $(CHECK),--check) $(if $(PRUNE),--prune) \
 	     $(if $(SIGN),--sign $(SIGN))
 
+# Tidy the release directory: keep only the newest revision(s) of the APPLICATION and let the
+# three catalogues be rewritten by their own writers. A release directory accumulates -- every
+# publication leaves one more tarball, .deb and .rpm -- and both package indexes then offer
+# every one of them, including builds from before a fix and, worse, from before the glibc
+# floor. The other packages are not concerned: a kernel is versioned 6.12.95 and an image by
+# its `sum', so there is never more than one. `KEEP=2' keeps two, `DRY_RUN=1' only says what
+# would go. It does NOT touch the server: what it removes here simply becomes an extra there,
+# which `make release-upload PRUNE=1' then removes -- deciding a release no longer offers a
+# revision and reaching into a public server are two gestures, not one.
+release-retention:
+	bash Makefile.d/release.retention.sh --series $(PUBLICATION_SERIES) \
+	     $(if $(KEEP),--keep $(KEEP)) $(if $(DRY_RUN),--dry-run)
+
+# THE WHOLE CHAIN, from this working copy to www.marionnet.org, for the current revision:
+# compile in the floor box (tarball + the four .deb), unpack that published tarball into the
+# .rpm, tidy the superseded revisions, deposit and prune. This is the one target meant to be
+# typed by hand for a release; everything it does is a target above, and nothing new happens
+# here -- which is why there is no grouping script in Makefile.d/: it would only re-wrap make.
+#
+# TWO PRE-FLIGHT CHECKS, both paid for by measurement:
+#   - the working tree must be clean, because release.build-box.sh clones HEAD (episode 20).
+#     Uncommitted work does not fail the build, it silently does not ship -- and the release
+#     is then named after a revision whose content it does not carry.
+#   - CONFIGME.choice must not point at the testing configuration, or release.binary.sh
+#     refuses half way through (the compiled prefix would be the opam switch, episode 9a).
+#     Better to say so in the first second than after ten minutes of compiling.
+# Neither is overridable here on purpose: both have an explicit escape hatch on the script
+# which owns them, and reaching for it should be a deliberate act, not a variable on a chain.
+release-and-upload:
+	@test -z "$$(git status --porcelain --untracked-files=no)" || { \
+	  echo "$@: the working tree has uncommitted changes, and the build box clones HEAD."; \
+	  echo "$@: they would NOT be in the release. Commit them first, or stash them."; \
+	  git status --short --untracked-files=no; exit 2; } >&2
+	@test "$$(readlink CONFIGME.choice)" != "CONFIGME.testing.sh" || { \
+	  echo "$@: CONFIGME.choice points at the testing configuration, which"; \
+	  echo "$@: Makefile.d/release.binary.sh refuses: the compiled prefix would be the"; \
+	  echo "$@: opam switch. Run \`make rebuild-for-final' first."; exit 2; } >&2
+	@echo "==> releasing r$$(bash bin/meta.ml.maker.sh --print-revision) of series $(PUBLICATION_SERIES)"
+	$(MAKE) release-build-box WITH_DEB=1
+	$(MAKE) release-rpm
+	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP))
+	$(MAKE) release-upload PRUNE=1
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
+.PHONY: release-retention release-and-upload
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
 .PHONY: print-required-packages-build print-opam-switch print-opam-packages revno
