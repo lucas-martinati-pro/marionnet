@@ -4237,3 +4237,129 @@ sur 8**, donc le réessai absorbe bien le `302` intermittent.
   le fichier existe ici avant d'exister là-bas, et ce n'est pas un défaut du canal.
 - Le rouge de l'épisode 28 (l'installeur du paquet publié) reste rouge jusqu'à la prochaine
   release, comme prévu.
+
+## Épisode 30b (2026-09-01) — signer le canal RPM : deux mécanismes, et un `gpgkey=` qui ne tient pas
+
+L'épisode 30 avait signé `Release` et laissé le canal RPM à `gpgcheck=0`, en disant pourquoi :
+là-bas une signature de l'index ne suffit pas, **rpm vérifie chaque paquet**. Celui-ci solde le
+dernier reste nommé du chantier.
+
+### 1. Ce que « signer » veut dire de ce côté
+
+Deux mécanismes, et il en faut **deux**, sans quoi on ne protège que la moitié de ce qu'on sert :
+
+| Réglage | Ce qu'il vérifie | Qui l'écrit ici |
+|---|---|---|
+| `gpgcheck=1` | **chaque paquet**, par une signature logée *dans* le fichier | `rpmsign`, dans `release.rpm.sh --sign` |
+| `repo_gpgcheck=1` | **l'index**, par `repodata/repomd.xml.asc` à côté | `gpg --detach-sign`, dans `release.dnf.sh --sign` |
+
+C'est l'asymétrie avec apt : là-bas **une** signature sur `Release` couvre tous les paquets par
+leur empreinte ; ici rien ne descend, chaque paquet répond de lui-même.
+
+**La règle de l'épisode 30 est appliquée telle quelle** — une signature appartient à qui écrit le
+fichier qu'elle signe, parce qu'elle est nulle dès qu'il change. Donc `repomd.xml.asc` est écrit
+par l'**indexeur** (`release.dnf.sh`), jamais par le déposeur ; `release.retention.sh` relaie
+`--sign` (il réécrit `repodata/`) ; et `release.rpm.sh` signe **tous** les `.rpm` du répertoire,
+y compris ceux qu'il n'a pas construits — un paquet présent et non signé est du travail non fait,
+et re-signer ne doit pas vouloir dire **reconstruire**, ce que l'épisode 20c a précisément retiré
+de ce canal. Signer réécrit le fichier, donc le catalogue est corrigé paquet par paquet
+(`--force` borné, motif de l'ép. 9b).
+
+**`rpmsign` tourne ICI**, sur la machine de release, et non dans la boîte : la clef privée n'entre
+jamais dans un conteneur (règle de l'ép. 30). C'est légitime là où les *métadonnées* de rpmbuild ne
+le seraient pas (ép. 19) : une signature est un fait cryptographique, pas une convention de
+distribution.
+
+Trois pièges payés dans le publieur : le statut de sortie de `rpmsign` ne prouve rien, donc le
+paquet est **relu** ; la relecture se fait sur `%{RSAHEADER:pgpsig}` et **non `SIGPGP`**, qui
+revient **vide** sur un paquet correctement signé (mesuré, et il m'a trompé d'abord) ; et la
+signature du **précédent** index est retirée *avant* de tenter la nouvelle — sinon un échec de
+signature (pas de pinentry, mauvaise phrase de passe) laisserait un dépôt qui **prétend** être
+signé et ne l'est pas, seul résultat pire que non signé.
+
+### 2. Le défaut que le rejeu a trouvé : `gpgkey=` par URL ne tient pas
+
+Le travail était écrit et le répertoire déjà signé ; le rejeu du banc a rendu **le même rouge sur
+les trois boîtes dnf** : *« dnf sees only 0 package(s) in the repository »*. Deux faits distincts
+en sont sortis, et le second commande la conception.
+
+**(a) `rpm --import` n'est pas l'import qui compte.** La base rpm est ce que lit `gpgcheck` (les
+paquets) ; `repo_gpgcheck` (l'index) est vérifié par dnf5 contre un trousseau **à lui**, par
+dépôt, que `rpm --import` **n'alimente pas**. Mesuré sur `rockylinux:10`, `gpgkey=file://` posé :
+listing sans import → 2 lignes ; **après `rpm --import` → 2** ; avec `-y` (donc en acceptant la
+clef) → **5** ; puis sans `-y` → 4. Accepter une clef est une action que dnf **demande**, et un
+`dnf -q list` ne peut pas répondre : il abandonne le dépôt et rapporte **zéro paquet**, ce qui
+ressemble exactement à un dépôt cassé. Le banc fait donc l'acceptation **explicitement, une fois**
+(`dnf -y makecache`), et un cas neuf en rend compte.
+
+**(b) Et surtout : la strophe publiée nommait la clef par une URL.** `gpgkey=` est récupéré **par
+dnf**, et **dnf suit les redirections** — or `git.launchpad.net` répond `302` vers sa page de
+login OpenID environ une fois sur six (ép. 30 bis). Mesuré, `gpgkey=https://git.launchpad.net/…` :
+**3 installations en échec sur 8**, chacune **après avoir téléchargé 188 Mio de paquets**, sur
+
+```
+[1/329] https://git.launchpad.net/mar 100% | 118.0 B/s | 26.0 B | 00m00s
+Failed to import OpenPGP keys into temporary keyring: Compute cert len failed
+```
+
+**26 octets** : la page de login, exactement ce que l'épisode 30 bis avait interdit à `curl` avec
+`-L`. Là où `curl` peut recevoir l'ordre de ne pas suivre, **dnf ne le peut pas**. La strophe
+publiée nomme donc désormais un **fichier local**
+(`gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet`), que le lecteur va chercher lui-même —
+ce qui rétablit au passage l'étape qui compte : *une clef que le gestionnaire de paquets récupère
+tout seul est une clef que personne n'a regardée*.
+
+**Défaut de banc de la même famille que 19/20b/20c/24/27/30** — le **8ᵉ** : tout ce qui précède
+mesurait un `gpgkey=file://` que **le banc avait écrit lui-même**, alors que ce qu'un lecteur
+reçoit est le `marionnet.repo` du répertoire de release. Mesurer l'un et livrer l'autre, c'est
+exactement la façon dont un canal passe au vert en étant cassé. Un cas neuf lit donc **la strophe
+publiée** et échoue si son `gpgkey=` est en `http(s)`.
+
+### 3. Le déposeur, sans exception lui non plus
+
+`upload.www.marionnet.org.sh` gagne le **pendant exact** de sa vérification `InRelease` : il
+refuse (et nomme `make release-dnf SIGN=yes`) un `repodata/repomd.xml.asc` qui ne vérifie pas
+contre la clef **publiée**, avertit quand l'index n'est pas signé du tout, et imprime la clef
+**avant** la strophe dans le mode d'emploi qu'il affiche. Il continue de n'écrire **rien** dans un
+répertoire de release.
+
+### 4. Ce que la page INSTALL dit maintenant
+
+Le § 3 passe de « `gpgcheck=0`, et voici pourquoi » à la procédure réelle, calquée sur le § 2 :
+la clef d'abord, **regardée avant d'être importée** (`rpm --import` *est* l'acte de faire
+confiance — vérifier après serait vérifier trop tard), puis le dépôt, puis l'application. Le
+tableau des deux mécanismes y est, la raison du `file://` aussi, et le fait que dnf peut encore
+demander d'accepter la clef pour son propre trousseau. `gnupg2` (Fedora/RHEL) et `gpg2`
+(openSUSE) sont **mesurés**, pas devinés. Le § 4 ne dit plus « seul apt est signé » et le tableau
+des symptômes du § 9 gagne la ligne `Failed to import OpenPGP keys`.
+
+Une troisième liste apparaît dans le `Makefile` — `REQUIRED_PACKAGES_RELEASE` (`rpm gnupg rsync
+dpkg-dev xz-utils`), les outils qui **publient**. Délibérément une liste à part : les paquets de
+build sont lus **par la boîte de compilation** (ép. 20), et y installer `rpm` mettrait un outil de
+signature dans une boîte qui ne signe rien. Docker en est **volontairement absent** : deux paquets
+rivaux le fournissent (`docker.io`, `docker-ce`), en nommer un dirait à apt de casser l'autre.
+
+### 5. Prouvé (2026-09-01)
+
+- `make release-dnf SIGN=yes` : `repodata/` réécrit, `repomd.xml.asc` signé par `4A65…0E56`,
+  `marionnet.repo` en `gpgcheck=1 / repo_gpgcheck=1 / gpgkey=file://…`.
+- `sha256sum -c` sur les **17** artefacts catalogués : rc 0 (les 6 `.rpm` signés y compris — la
+  signature réécrit le fichier, le catalogue a suivi).
+- Banc RPM `--distro all` : **rocky 55/1/0, alma 53/1/0, fedora 54/1/0, openSUSE 52/1/0** =
+  **214 verts, 0 SKIP**, et **4 rouges qui sont le même** : celui que l'épisode 28 laisse exprès
+  (le paquet publié porte l'installeur d'avant son correctif). Dont, neufs : les 6 paquets signés
+  par la clef des sources (×4), `repomd.xml.asc` qui vérifie (×4), la strophe publiée qui nomme un
+  fichier local (×4), dnf qui accepte le dépôt une fois la clef acceptée (×3), et — **le cas
+  discriminant** — dnf qui **refuse** le dépôt quand `gpgkey=` nomme une autre clef (×3, la clef de
+  la distribution elle-même : une vraie clef, simplement pas la nôtre).
+- Un **rouge transitoire** au premier passage sur `rockylinux:10` (dépendance `gtksourceview3`
+  non résolue, donc EPEL indisponible à cet instant) : le rejeu de cette seule boîte donne
+  **55/1/0**. Une panne de miroir n'est pas un verdict.
+
+### Restes
+
+- **La preuve distante se prend après le commit** (motif ép. 20c → 22, 28) : le serveur porte
+  encore la strophe `gpgcheck=0` et pas de `repomd.xml.asc`. Il faut `make release-upload`, puis
+  rejouer le banc RPM avec `--from https://www.marionnet.org/download/rpm/`, et jouer le § 3 de la
+  page mot pour mot sur une boîte nue.
+- Le rouge de l'épisode 28 reste rouge jusqu'à la prochaine release, comme prévu.

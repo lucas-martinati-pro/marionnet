@@ -178,8 +178,12 @@ if ((REINDEX)); then
   # (release.apt.sh removes the stale InRelease, which is the visible half of the same fact).
   bash "$ROOT/Makefile.d/release.apt.sh"        --series "$SERIES" --output-dir "$OUTDIR" \
        ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}
+  # Same reason as for release.apt.sh above, on the other channel: rewriting repodata/ voids
+  # the repomd.xml.asc beside it, so a retention run which did not re-sign would leave a
+  # repository that every machine carrying repo_gpgcheck=1 refuses (episode 30b).
   bash "$ROOT/Makefile.d/release.dnf.sh"        --series "$SERIES" --output-dir "$OUTDIR" \
-       --base-url "https://www.marionnet.org/download/rpm/"
+       --base-url "https://www.marionnet.org/download/rpm/" \
+       ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}
 else
   info "--no-reindex: the catalogues still announce what was just removed"
 fi

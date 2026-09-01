@@ -124,6 +124,31 @@ REQUIRED_PACKAGES_RUNTIME = vde2 graphviz uml-utilities xterm iproute2 sudo \
                             x11-xserver-utils xauth jq socat dnsmasq-base xz-utils \
                             libgtksourceview-3.0-1
 
+# `apt' packages required to PUBLISH a release from this machine -- neither to build Marionnet
+# nor to run it. Deliberately a THIRD list rather than an addition to the two above, and the
+# reason is measured: REQUIRED_PACKAGES_BUILD is read by the compilation box itself
+# (print-required-packages-build, episode 20), a debian:12 container whose only job is to
+# produce a binary; installing `rpm' there would install a signing tool in a box which signs
+# nothing, and the list would be wrong about its own subject.
+#
+# What is in it comes from what the seven scripts of Makefile.d/ actually probe at run time --
+# they keep their `command -v ... || die', which says WHEN something is missing; this list says
+# WHAT to install (the same division as REQUIRED-PACKAGES-RUNTIME and install.sh, episode 10):
+#  - rpm         : rpmsign, which signs the .rpm of the RPM channel (episode 30b). It runs HERE
+#                  and not in the build box, because the private key must never enter a
+#                  container -- a signature is not a distribution's metadata anyway.
+#  - gnupg       : gpg, which signs Release (episode 30) and repomd.xml (episode 30b)
+#  - rsync       : the deposit on www.marionnet.org (episode 24)
+#  - dpkg-dev    : dpkg-scanpackages, which writes Packages (episode 15b)
+#  - xz-utils    : every published artefact is a .tar.xz
+#
+# DOCKER IS REQUIRED AND DELIBERATELY NOT LISTED: rpmbuild, createrepo_c and the four benches
+# all run in containers, but two rival packages provide the command -- `docker.io' from Ubuntu
+# and `docker-ce' from Docker's own repository (this machine carries docker-ce, measured) --
+# and naming one of them here would tell apt to break the other. The scripts probe `docker'
+# and say so; installing it is a decision about the machine, not about this project.
+REQUIRED_PACKAGES_RELEASE = rpm gnupg rsync dpkg-dev xz-utils
+
 # The whole set (historical name, kept for compatibility):
 REQUIRED_PACKAGES = $(REQUIRED_PACKAGES_BUILD) $(REQUIRED_PACKAGES_RUNTIME)
 
@@ -147,6 +172,11 @@ print-required-packages-runtime:
 # nothing to do in a box whose only job is to produce an artefact.
 print-required-packages-build:
 	@echo $(REQUIRED_PACKAGES_BUILD)
+
+# The release side of the same idea. Not printed into any artefact, unlike the runtime list:
+# a machine which publishes a release has this Makefile, by construction.
+print-required-packages-release:
+	@echo $(REQUIRED_PACKAGES_RELEASE)
 
 print-opam-switch:
 	@echo $(OPAM_SWITCH_TO)
@@ -220,6 +250,11 @@ apt-dependencies: apt-build-dependencies  apt-runtime-dependencies
 # ---
 # Opt-in (not required by `dependencies'): support for the 32-bit UML kernels of the old
 # kernel/filesystem couples. On a x86_64 host this implies enabling the i386 foreign architecture.
+# The tools which PUBLISH a release (see REQUIRED_PACKAGES_RELEASE above). Not part of
+# `dependencies': one compiles and runs Marionnet without ever publishing anything.
+apt-release-dependencies:
+	$(call apt_install_if_missing,release,$(REQUIRED_PACKAGES_RELEASE))
+
 apt-runtime-dependencies-i386:
 	@test "$$(dpkg --print-architecture)" = "amd64" || { echo "Not an amd64 host: nothing to do."; exit 0; }
 	@dpkg --print-foreign-architectures | grep -qx i386 || { \
@@ -268,7 +303,9 @@ switch: opam-switch  opam-dependencies
 
 # ---
 .PHONY: apt-build-dependencies apt-runtime-dependencies apt-runtime-dependencies-i386 \
-        apt-dependencies opam-switch opam-dependencies dependencies deps switch
+        apt-release-dependencies \
+        apt-dependencies opam-switch opam-dependencies dependencies deps switch \
+        print-required-packages-release
 
 
 # =============================================================
@@ -549,7 +586,8 @@ release-apt:
 # one of a real RPM distribution rather than Ubuntu's. Nothing is installed on this machine.
 # Build only some of them: PACKAGES="app kernels". Options: --help.
 release-rpm:
-	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) $(PACKAGES)
+	bash Makefile.d/release.rpm.sh --series $(PUBLICATION_SERIES) \
+	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN))) $(PACKAGES)
 
 # The two runtime dependencies NO RPM distribution carries, built from the Debian source
 # package (upstream tarball plus its patch series): vde2 -- vde_switch, wirefilter, slirpvde,
@@ -572,7 +610,8 @@ release-rpm-deps:
 # carries its integrity in repomd.xml).
 release-dnf:
 	bash Makefile.d/release.dnf.sh --series $(PUBLICATION_SERIES) \
-	     $(if $(BASE_URL),--base-url $(BASE_URL)) $(if $(CHECK),--check)
+	     $(if $(BASE_URL),--base-url $(BASE_URL)) $(if $(CHECK),--check) \
+	     $(if $(SIGN),$(if $(filter yes,$(SIGN)),--sign,--sign $(SIGN)))
 
 # Put a release directory on www.marionnet.org. The seventh script of the family, and the
 # first which is not a publisher: the six above MAKE a release, this one only CARRIES it, and
@@ -636,7 +675,7 @@ release-and-upload:
 	  echo "$@: opam switch. Run \`make rebuild-for-final' first."; exit 2; } >&2
 	@echo "==> releasing r$$(bash bin/meta.ml.maker.sh --print-revision) of series $(PUBLICATION_SERIES)"
 	$(MAKE) release-build-box WITH_DEB=1
-	$(MAKE) release-rpm
+	$(MAKE) release-rpm $(if $(SIGN),SIGN=$(SIGN))
 	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) $(if $(SIGN),SIGN=$(SIGN))
 	$(MAKE) release-upload PRUNE=1
 

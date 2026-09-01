@@ -214,6 +214,9 @@ info "packages    : $APP ${KERNELS:-} ${GUIGNOL:-} ${VDE2:-} ${UMLU:-}"
 BOX="mrn-rpm-bench-$(echo "$DISTRO" | tr ':/' '--')"
 function cleanup {
   if ((KEEP)); then info "container kept: $BOX"; else docker rm -f "$BOX" >/dev/null 2>&1; fi
+  # The two boxes of the repository part, removed here too: a run interrupted between them
+  # would otherwise leave containers behind, and the next run fails on the name.
+  ((KEEP)) || docker rm -f "${BOX}-repo" "${BOX}-foreign" >/dev/null 2>&1 || true
   if test -n "${CACHE_OWNED:-}" && ((KEEP == 0)); then rm -rf -- "$CACHE"; fi
 }
 trap cleanup EXIT
@@ -664,6 +667,66 @@ else
     pass "repodata is NOT in SHA256SUMS (an index is rewritten at every publication)"
   fi
 
+  # ---------------------------------------------- the signature, read in the files themselves
+  # Episode 30b. Two facts, because rpm has two mechanisms: every package carries a signature
+  # of its own (rpmsign), and the index carries a detached one (repomd.xml.asc). A repository
+  # where only one of them holds is a repository which protects half of what it serves.
+  KEYRING="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/marionnet-archive-keyring.asc"
+  if test -f "$KEYRING" && command -v gpg >/dev/null && command -v rpm >/dev/null; then
+    FPR=$(gpg --with-colons --show-keys -- "$KEYRING" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    KEYID="${FPR: -16}"; KEYID="${KEYID,,}"
+    unsigned=0; total=0
+    for f in "$OUTDIR"/*.rpm; do
+      test -e "$f" || continue
+      total=$((total + 1))
+      shown=$(rpm -qp --qf '%{RSAHEADER:pgpsig}' -- "$f" 2>/dev/null)
+      case "${shown,,}" in *"$KEYID"*) : ;; *) unsigned=$((unsigned + 1)) ;; esac
+    done
+    if ((total > 0 && unsigned == 0)); then
+      pass "the $total published packages are signed by the key the sources publish ($KEYID)"
+    elif ((total > 0)); then
+      fail "$unsigned of $total packages are unsigned, or signed by another key"
+    fi
+    if test -f "$OUTDIR/repodata/repomd.xml.asc"; then
+      V=$(mktemp -d)
+      if gpg --homedir "$V" --batch --quiet --import -- "$KEYRING" 2>/dev/null && \
+         gpg --homedir "$V" --batch --quiet --trust-model always \
+             --verify -- "$OUTDIR/repodata/repomd.xml.asc" "$OUTDIR/repodata/repomd.xml" 2>/dev/null; then
+        pass "repomd.xml.asc verifies against that same key (what repo_gpgcheck=1 reads)"
+      else
+        fail "repomd.xml.asc does not verify against $KEYRING"
+      fi
+      rm -rf -- "$V"
+    else
+      skip "no repomd.xml.asc: this directory was indexed without \`--sign'"
+    fi
+  else
+    skip "no archive key, gpg or rpm on this host: the signature was not measured"
+  fi
+
+  # ------------------------------------- and the stanza we PUBLISH, not the one the bench uses
+  # This case exists because everything above measures a `gpgkey=file://' the bench itself
+  # wrote, while what a reader actually gets is `marionnet.repo' from the release directory.
+  # Measuring one and shipping the other is how a channel goes green while being broken --
+  # and it WAS broken: with `gpgkey=' naming git.launchpad.net, dnf follows the 302 towards
+  # the OpenID login page it answers about one request in six, imports 26 bytes, and the
+  # transaction dies AFTER downloading the packages (3 failures in 8, measured). dnf cannot
+  # be told not to follow redirects, so the key is named as a local file and fetched by hand.
+  REPO_STANZA="$OUTDIR/marionnet.repo"
+  if test -n "$REPO_URL"; then
+    fetch_to "$REPO_URL/marionnet.repo" "$CACHE/marionnet.repo" >/dev/null 2>&1 \
+      && REPO_STANZA="$CACHE/marionnet.repo"
+  fi
+  if ! test -f "$REPO_STANZA"; then
+    skip "no marionnet.repo published (release.dnf.sh was run without --base-url)"
+  elif grep -qE '^[[:space:]]*gpgkey[[:space:]]*=[[:space:]]*https?://' -- "$REPO_STANZA"; then
+    fail "marionnet.repo fetches its key over http(s): dnf follows redirects, and the key host does redirect"
+  elif grep -qE '^[[:space:]]*gpgkey[[:space:]]*=[[:space:]]*file://' -- "$REPO_STANZA"; then
+    pass "marionnet.repo names the key as a local file (fetched and checked by the reader)"
+  else
+    skip "the published marionnet.repo declares no gpgkey (unsigned directory)"
+  fi
+
   BOX2="$BOX-repo"
   docker rm -f "$BOX2" >/dev/null 2>&1
   # Nothing is mounted in a remote run: the repository under test is on the other side of
@@ -673,21 +736,79 @@ else
   BASE_URL=${REPO_URL:-file:///repo}
   if docker run -d --name "$BOX2" "${MOUNT2[@]}" "$DISTRO" sleep infinity >/dev/null 2>&1; then
     function in_box2 { docker exec "$BOX2" bash -c "$1"; }
+
+    # SIGNED SINCE EPISODE 30b, and the stanza says so. Unlike apt -- where one signature on
+    # Release chains down to the packages by digest -- rpm has TWO mechanisms: gpgcheck
+    # verifies each package (rpmsign put that signature inside it) and repo_gpgcheck verifies
+    # the index (repomd.xml.asc). Both are asked for here, or this bench would measure neither.
+    #
+    # The key is handed over OUT OF BAND, by `docker cp' from the source tree, exactly as the
+    # .deb bench does and for the same reason: the worth of a signature is that its key does
+    # not travel beside the packages it signs. `gpgkey=file://' then costs no network.
+    ARCHIVE_KEY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/marionnet-archive-keyring.asc"
+    KEY_IN_BOX=/etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet
+    REPO_SIGNED=0
+    test -f "$OUTDIR/repodata/repomd.xml.asc" && REPO_SIGNED=1
+    function install_archive_key2 {  # <container>
+      docker exec "$1" mkdir -p /etc/pki/rpm-gpg
+      docker cp -- "$ARCHIVE_KEY" "$1:$KEY_IN_BOX" >/dev/null
+    }
+    # AND IMPORTED -- BUT `rpm --import' IS NOT THE IMPORT THAT COUNTS HERE, measured on the
+    # three dnf boxes: rpm's own database is what `gpgcheck' (each package) reads, while
+    # `repo_gpgcheck' (the index) is verified by dnf5 against a keyring OF ITS OWN, per
+    # repository, which `rpm --import' does not feed. So after `rpm --import' a bare
+    # `dnf -q list' still gave up on the repository and reported ZERO packages -- a red which
+    # looked exactly like a broken repository and was in fact a key nobody had accepted.
+    #
+    # Accepting a key is an action dnf ASKS FOR, so the bench performs it explicitly, once,
+    # with the only spelling that answers the question (`-y'). That is also what a human does:
+    # dnf shows the fingerprint and waits. Everything measured afterwards is then measured on a
+    # machine which has agreed to trust this key, and nothing else -- which is precisely what
+    # the foreign-key case below has to break.
+    if ((REPO_SIGNED)); then
+      install_archive_key2 "$BOX2"
+      in_box2 "rpm --import $KEY_IN_BOX" >/dev/null 2>&1 || true
+    fi
+    if ((REPO_SIGNED)); then
+      GPG_STANZA="gpgcheck=1\nrepo_gpgcheck=1\ngpgkey=file://$KEY_IN_BOX"
+    else
+      GPG_STANZA="gpgcheck=0"
+    fi
     case "$FAMILY" in
       dnf)    in_box2 'if test -f /etc/redhat-release && ! grep -qi fedora /etc/redhat-release; then
                          dnf -y install epel-release >/dev/null 2>&1 || true
                          dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
                          dnf config-manager --set-enabled crb >/dev/null 2>&1 || true
                        fi'
-              in_box2 "printf '[marionnet]\nname=Marionnet\nbaseurl=$BASE_URL\nenabled=1\ngpgcheck=0\n' > /etc/yum.repos.d/marionnet.repo" ;;
-      zypper) in_box2 "zypper --non-interactive addrepo --no-gpgcheck $BASE_URL marionnet >/dev/null 2>&1
-                       zypper --non-interactive --no-gpg-checks refresh >/dev/null 2>&1" ;;
+              in_box2 "printf '[marionnet]\nname=Marionnet\nbaseurl=$BASE_URL\nenabled=1\n$GPG_STANZA\n' > /etc/yum.repos.d/marionnet.repo" ;;
+      zypper) if ((REPO_SIGNED)); then
+                in_box2 "rpm --import $KEY_IN_BOX >/dev/null 2>&1
+                         zypper --non-interactive addrepo --gpgcheck $BASE_URL marionnet >/dev/null 2>&1
+                         zypper --non-interactive refresh >/dev/null 2>&1"
+              else
+                in_box2 "zypper --non-interactive addrepo --no-gpgcheck $BASE_URL marionnet >/dev/null 2>&1
+                         zypper --non-interactive --no-gpg-checks refresh >/dev/null 2>&1"
+              fi ;;
     esac
+    # NO --no-gpg-checks when the repository is signed: waiving the check is exactly what this
+    # episode exists to stop doing, and a bench which waives it measures nothing about it.
     function pm2_install { case "$FAMILY" in
         dnf)    in_box2 "dnf -y install $* >/dev/null 2>&1" ;;
-        zypper) in_box2 "zypper --non-interactive --no-gpg-checks install $* >/dev/null 2>&1" ;;
+        zypper) if ((REPO_SIGNED)); then in_box2 "zypper --non-interactive install $* >/dev/null 2>&1"
+                else in_box2 "zypper --non-interactive --no-gpg-checks install $* >/dev/null 2>&1"; fi ;;
       esac; }
 
+    # The key acceptance itself (see the comment above): `-y' is what lets dnf import the key
+    # named by `gpgkey=' into its own keyring. Without this line the listing below reads a
+    # repository dnf has just given up on.
+    if ((REPO_SIGNED)) && [[ $FAMILY = dnf ]]; then
+      in_box2 'dnf -y makecache >/dev/null 2>&1' || true
+      if in_box2 'dnf -q repolist marionnet 2>/dev/null | grep -q marionnet'; then
+        pass "dnf accepts the signed repository once its key is accepted (repo_gpgcheck=1)"
+      else
+        fail "dnf still refuses the repository after its key was accepted"
+      fi
+    fi
     case "$FAMILY" in
       dnf)    n=$(in_box2 'dnf -q list --available "marionnet*" vde2 uml-utilities 2>/dev/null | grep -c marionnet') ;;
       zypper) n=$(in_box2 'zypper --non-interactive search --repo marionnet 2>/dev/null | grep -c marionnet') ;;
@@ -733,6 +854,37 @@ else
       fi
     else
       fail "dnf install marionnet failed from the repository"
+    fi
+    # ------------------------------------------ and a foreign key must make it all fall down
+    # Without this, everything above would go green on a box which verifies nothing.
+    #
+    # IT NEEDS A THIRD, VIRGIN BOX, and that is a fact about rpm worth keeping: a key which has
+    # been imported STAYS in rpm's own database, so rewriting `gpgkey=' in BOX2 would change
+    # where dnf fetches a key it already has, and nothing else -- the case went green on a
+    # repository which was still being verified with OUR key (measured). The foreign key is the
+    # distribution's own, which every RPM box carries: a real key, simply not ours.
+    if ((REPO_SIGNED)) && [[ $FAMILY = dnf ]]; then
+      BOX3="$BOX-foreign"
+      docker rm -f "$BOX3" >/dev/null 2>&1
+      if docker run -d --name "$BOX3" "${MOUNT2[@]}" "$DISTRO" sleep infinity >/dev/null 2>&1; then
+        function in_box3 { docker exec "$BOX3" bash -c "$1"; }
+        foreign=$(in_box3 "ls -1 /etc/pki/rpm-gpg/RPM-GPG-KEY-* 2>/dev/null | head -1" || true)
+        if [[ -n ${foreign:-} ]]; then
+          in_box3 "printf '[marionnet]\nname=Marionnet\nbaseurl=$BASE_URL\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=file://$foreign\n' \
+                     > /etc/yum.repos.d/marionnet.repo" >/dev/null 2>&1 || true
+          in_box3 "dnf -y install marionnet" >/dev/null 2>&1 || true
+          if in_box3 'rpm -q marionnet >/dev/null 2>&1'; then
+            fail "dnf installed marionnet with a FOREIGN key in gpgkey=: nothing is verified"
+          else
+            pass "dnf REFUSES the repository when gpgkey= names another key ($(basename "$foreign"))"
+          fi
+        else
+          skip "this box carries no distribution key to offer as a foreign one"
+        fi
+        ((KEEP)) && info "container kept: $BOX3" || docker rm -f "$BOX3" >/dev/null 2>&1
+      else
+        skip "cannot start the third container"
+      fi
     fi
     ((KEEP)) && info "container kept: $BOX2" || docker rm -f "$BOX2" >/dev/null 2>&1
   else

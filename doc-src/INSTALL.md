@@ -145,6 +145,14 @@ under `/usr/local`.
 Measured on **Fedora 42, Rocky Linux 10, AlmaLinux 10 and openSUSE Leap 16**.
 
 ```bash
+# 1. the key — fetched, LOOKED AT, and only then imported
+sudo install -d /etc/pki/rpm-gpg
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet \
+     https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc
+gpg --show-keys /etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet   # must print the fingerprint of § 2
+sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet
+
+# 2. the repository, and the application
 sudo curl -o /etc/yum.repos.d/marionnet.repo \
      https://www.marionnet.org/download/rpm/marionnet.repo
 sudo dnf install marionnet          # zypper install marionnet, on openSUSE
@@ -152,12 +160,39 @@ sudo dnf install marionnet          # zypper install marionnet, on openSUSE
 
 `download/rpm` is the stable entry point, as `download/apt` is for § 2.
 
-The stanza still carries **`gpgcheck=0`**, and the apt channel no longer needs its counterpart:
-signing an RPM repository is not the same gesture as signing a Debian one — there, one signature
-on `Release` covers the whole repository, whereas rpm verifies **each package** individually
-(plus `repomd.xml` separately). That work is not done yet, so this channel is protected by https
-alone, exactly as § 2 was before its key existed. The archive key of § 2 is the one that will
-sign it.
+### The key, on this side
+
+It is **the same key as § 2** — same fingerprint, same place to fetch it from, and everything
+§ 2 says about what a signature does and does not buy applies here word for word. The middle line
+of the block above is the one not to skip, and it comes **before** `rpm --import` on purpose:
+importing is the act of trusting, so looking at what you fetched afterwards would be looking too
+late. The caveat is the same as in § 2 — `git.launchpad.net` answers a redirect about one request
+in six, and `curl` writes whatever came back.
+
+If `gpg` is not on the machine: `sudo dnf install gnupg2` (`zypper install gpg2` on openSUSE).
+Neither `dnf` nor `rpm` needs it — they have their own verifier; you need it only to *read* the
+key, exactly as in § 2.
+
+What differs is the *shape* of the verification, not its strength. Where apt has one signature on
+`Release` which covers every package by digest, rpm has **two** mechanisms, and the stanza asks
+for both:
+
+| Setting | What it verifies |
+|---|---|
+| `gpgcheck=1` | **each package**, from a signature `rpmsign` put inside the file itself |
+| `repo_gpgcheck=1` | **the index**, from `repodata/repomd.xml.asc` beside it |
+
+Note also that the stanza names the key as a **local file** (`gpgkey=file:///etc/pki/rpm-gpg/…`)
+and not as a URL, which is why you fetch it yourself in the block above. That is deliberate and
+measured: `dnf` fetches `gpgkey=` itself and *follows redirects*, so a `gpgkey=` naming
+`git.launchpad.net` downloads the login page one time in six and the installation dies with
+`Failed to import OpenPGP keys` — after downloading every package. Unlike `curl`, `dnf` cannot be
+told not to follow. Fetching the key by hand also restores the step that matters: a key the
+package manager fetches on its own is a key nobody ever looked at.
+
+`dnf` may still show you a fingerprint and ask whether to accept the key: it keeps a keyring of
+its own for `repo_gpgcheck`, which `rpm --import` above does not feed. Compare what it shows with
+the fingerprint of § 2 before answering yes.
 
 **On the RHEL family, enable EPEL first**: `gtksourceview3`, one of Marionnet's run-time
 dependencies, lives there and not in the base repositories.
@@ -191,8 +226,8 @@ glibc 2.36), so it runs on every distribution listed in § 2 and § 3.
 
 This channel is **not signed**. Each artefact's digest is in `SHA256SUMS`, which the installer
 checks while it downloads — that proves the file arrived whole, not who wrote it, since the
-catalogue travels the same road as the tarballs. Only the apt repository (§ 2) carries a
-signature today. If that distinction matters to you, take § 2. It does *not* run on
+catalogue travels the same road as the tarballs. The two package channels (§ 2 and § 3) are
+signed; this one is not. If that distinction matters to you, take one of them. It does *not* run on
 Rocky 9 or openSUSE Leap 15.6, whose glibc is older; both refuse it by naming the glibc.
 
 The simplest way is to let the installer choose and unpack it for you:
@@ -320,6 +355,7 @@ by the removal: `sudo marionnet-sudoers.sh uninstall`.
 | apt says the repository is ignored, `apt-get update` still exits 0 | same cause, or the `sources.list` line was edited; apt reports this as a *warning* |
 | `Missing key <fingerprint>`, or `signature verification failed` | the file in `/etc/apt/keyrings/` is not the archive key — fetch it again (§ 2) and compare the fingerprint |
 | apt keeps offering the package although it just refused the repository | it is reusing the index it already had: `sudo rm -rf /var/lib/apt/lists/*` then `apt update` |
+| `Failed to import OpenPGP keys`, or dnf reports the repository has no packages | the key file of § 3 is missing, was not accepted, or is not a key at all — fetch it again and check the fingerprint before importing |
 | the tarball is refused, naming a glibc | your distribution is older than the build floor — § 4 |
 | `marionnet-kernels-i386` is refused, naming `libc6:i386` | `dpkg --add-architecture i386` — § 2 |
 | Marionnet starts but the guest images do not appear | they were laid down under a prefix the application does not read — § 5 |

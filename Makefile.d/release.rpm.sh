@@ -135,6 +135,11 @@
 #   -f, --force                  rebuild a package which is already there
 #       --kernel NAME            the kernel to package, without the kernels_ prefix and the
 #                                extension (default: the only linux-* of the directory)
+#       --sign [KEYID]           sign every package published by this run, with rpmsign, HERE
+#                                and not in the build box (the private key never enters a
+#                                container). Given no KEYID, the key is the one the SOURCES
+#                                publish -- the fingerprint read from
+#                                marionnet-archive-keyring.asc at the root of the tree.
 #       --app-artefact NAME      the published application tarball to package, as a file name
 #                                of the release directory (default: the greatest revision)
 #       --build-image IMAGE      the distribution rpmbuild runs in
@@ -185,6 +190,8 @@ function publication_series {
   bash "$ROOT/Makefile.d/filesystem.prepare-snapshot-to-publish.sh" --print-series
 }
 
+SIGN_KEY=""             # `@published' until resolved against the keyring below
+KEYRING_ASC="$ROOT/marionnet-archive-keyring.asc"   # the archive's identity, versioned in git
 APP_ARTEFACT=""         # full path of the published tarball the application package is made of
 BINARY_NAME=""          # marionnet_<version>-r<rev>_<arch>_glibc<x.y>
 APP_UPSTREAM=""         # what META says: `trunk' today, `1.0.0' one day
@@ -284,6 +291,10 @@ while (($#)); do
     -s|--series)     SERIES="$2"; shift 2 ;;
     -f|--force)      FORCE=1; shift ;;
     --kernel)        KERNEL_NAME="$2"; shift 2 ;;
+    --sign)          if test $# -ge 2 && case "$2" in -*) false ;; *) test -n "$2" ;; esac
+                     then SIGN_KEY="$2"; shift 2
+                     else SIGN_KEY="@published"; shift 1
+                     fi ;;
     --app-artefact)  APP_ARTEFACT_GIVEN="$2"; shift 2 ;;
     --build-image)   BUILD_IMAGE="$2"; shift 2 ;;
     --no-rpmlint)    RUN_RPMLINT=0; shift ;;
@@ -489,6 +500,62 @@ function rpmbuild_in_container {  # <work dir> <spec basename> [extra docker arg
 # ---
 # --- Publishing one package, once rpmbuild has written it.
 # ---
+# ---
+# --- The signing key (episode 30b), resolved ONCE and before anything is built: a run which
+# --- cannot sign must say so before spending ten minutes in a container.
+# ---
+# rpmsign RUNS HERE, on the release machine, and not in the box which builds the packages --
+# the private key must never enter a container (rule of episode 30). That is legitimate where
+# rpmbuild's own metadata is not: a signature is a cryptographic fact, not a convention of the
+# distribution it is produced on. The claim is nevertheless MEASURED by the bench, which
+# installs what this signs on four RPM distributions.
+#
+# The fingerprint is read from the key the SOURCES publish, exactly as release.apt.sh does --
+# the two scripts read the same file, which is what makes the archive's identity single.
+if test -n "$SIGN_KEY"; then
+  command -v rpmsign >/dev/null \
+    || die "\`rpmsign' not found: install it with \`make apt-release-dependencies' (package \`rpm')"
+  command -v gpg >/dev/null || die "\`gpg' not found, but --sign was asked"
+  if test "$SIGN_KEY" = "@published"; then
+    test -f "$KEYRING_ASC" \
+      || die "--sign was given alone, but $KEYRING_ASC does not exist: nothing says who this archive is"
+    SIGN_KEY=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null \
+               | awk -F: '$1=="fpr" {print $10; exit}')
+    test -n "$SIGN_KEY" || die "cannot read a fingerprint out of $KEYRING_ASC"
+  fi
+  gpg --list-secret-keys -- "$SIGN_KEY" >/dev/null 2>&1 \
+    || die "no secret key '$SIGN_KEY' in this keyring"
+  if test -f "$KEYRING_ASC"; then
+    published=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    signing=$(gpg --with-colons --list-secret-keys -- "$SIGN_KEY" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    test "$published" = "$signing" \
+      || die "the signing key ($signing) is not the one the sources publish ($published)"
+  fi
+  info "packages will be signed with $SIGN_KEY"
+fi
+
+function sign_rpm {  # <path to an rpm>
+  test -n "$SIGN_KEY" || return 0
+  # --addsign rather than --resign: both replace the signature, but --addsign is the spelling
+  # every rpm since 4.14 accepts. The digest algorithms are left at rpm's defaults; naming them
+  # here would freeze, in this script, a choice the target distributions get to make.
+  rpmsign --define "_gpg_name $SIGN_KEY" --addsign "$1" >/dev/null \
+    || die "rpmsign failed on $1"
+  # AND THEN THE PACKAGE IS READ BACK, because a zero exit status is not a signature. rpmsign
+  # does return 1 on a key it cannot find (measured), but this whole work-stream is a list of
+  # tools which succeeded without doing the work -- so the fact is taken from the file itself.
+  #
+  # The tag is RSAHEADER, not SIGPGP: a modern rpm puts the header signature there, and SIGPGP
+  # reads back EMPTY on a properly signed package (measured, and it fooled me first). The
+  # short key id rpm prints is the last 16 hex digits of the fingerprint.
+  local shown; shown=$(rpm -qp --qf '%{RSAHEADER:pgpsig}' -- "$1" 2>/dev/null)
+  local want; want="${SIGN_KEY: -16}"; want="${want,,}"   # the last 16 hex digits, no more
+  case "${shown,,}" in
+    *"$want"*) : ;;
+    *) die "$1 came back unsigned, or signed by another key: [${shown:-none}]" ;;
+  esac
+}
+
 function already_published {  # <rpm file name>
   test -f "$OUTDIR/$1" && ((! FORCE))
 }
@@ -511,7 +578,10 @@ function publish_rpm {  # <path to the built rpm>
   fi
 
   mv -f -- "$built" "$OUTDIR/$rpm"
-  info "published: $OUTDIR/$rpm ($(du -h -- "$OUTDIR/$rpm" | awk '{print $1}'))"
+  # SIGNED BEFORE BEING CATALOGUED, and that order is not a detail: signing rewrites the file,
+  # so a digest taken before it would describe a package nobody will ever download.
+  sign_rpm "$OUTDIR/$rpm"
+  info "published: $OUTDIR/$rpm ($(du -h -- "$OUTDIR/$rpm" | awk '{print $1}'))${SIGN_KEY:+, signed}"
 
   # With --force scoped to this single file: we have just written it, so a digest already
   # recorded under that name is by construction the digest of the PREVIOUS package. This is
@@ -1144,8 +1214,34 @@ if ((KEEP_BUILD)); then info "build tree kept: $BUILD"; fi
 # the first four wrong for a moment. Called even when every package was already published and
 # skipped: the reason a run finds nothing to do is often that a previous one was interrupted
 # before this line.
+# ---
+# --- Every package of the directory, signed -- including the ones this run did not build.
+# ---
+# A package which is THERE but NOT SIGNED is work not done, so `--sign' covers the whole
+# directory and not merely what this run produced. Without this, signing a release would mean
+# rebuilding six packages to change nothing but their signature -- and rebuilding is precisely
+# what episode 20c removed from this channel. rpmsign is idempotent (it says "already contains
+# identical signature, skipping", measured), so a second run costs nothing.
+#
+# Signing rewrites the file, hence the catalogue is corrected for each one: the digest recorded
+# before describes a package nobody will download (the lesson of episode 9b, again).
+if test -n "$SIGN_KEY"; then
+  want="${SIGN_KEY: -16}"; want="${want,,}"
+  for f in "$OUTDIR"/*.rpm; do
+    test -e "$f" || continue
+    shown=$(rpm -qp --qf '%{RSAHEADER:pgpsig}' -- "$f" 2>/dev/null)
+    case "${shown,,}" in
+      *"$want"*) continue ;;                       # already ours
+    esac
+    info "signing $(basename -- "$f") ..."
+    sign_rpm "$f"
+    bash "$ROOT/Makefile.d/release.sha256sums.sh" --output-dir "$OUTDIR" --force -- "$(basename -- "$f")" \
+      || warn "$(basename -- "$f") is signed but NOT in SHA256SUMS"
+  done
+fi
+
 bash "$ROOT/Makefile.d/release.dnf.sh" --output-dir "$OUTDIR" --series "$SERIES" \
-     --build-image "$BUILD_IMAGE" || \
+     --build-image "$BUILD_IMAGE" ${SIGN_KEY:+--sign "$SIGN_KEY"} || \
   warn "the packages are published but dnf cannot read the directory: run Makefile.d/release.dnf.sh"
 
 info "done. The packages are in $OUTDIR, in its SHA256SUMS, and in its repodata."

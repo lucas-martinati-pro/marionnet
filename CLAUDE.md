@@ -891,9 +891,44 @@ Reprise : appliquer le skill `chantier-long`.
   *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur *(fait, ép. 27)*.
   (5 bis) la **doc INSTALL** *(fait, ép. 29)*. **Plus aucun point n'est ouvert.**
   **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
-  release 1.0.x y est déposée. Reste, hors feuille de route : **signer le canal RPM**
-  (ép. 30b ; le canal apt l'est depuis l'ép. 30). Le
-  décalage du canal `.deb` est **résorbé** (ép. 25 : `r927` partout).
+  release 1.0.x y est déposée. Le décalage du canal `.deb` est **résorbé** (ép. 25 ; vérifié
+  ép. 30b : `r930` sur les 3 canaux).
+  **Ép. 30b : le canal RPM est signé, et `gpgkey=` par URL ne tient pas.** Deux mécanismes, pas
+  un — `gpgcheck=1` vérifie **chaque paquet** (`rpmsign`, qui tourne **sur la machine de
+  release** : la clef privée n'entre jamais dans un conteneur, ce qui est légitime là où les
+  métadonnées de rpmbuild ne le seraient pas, ép. 19) et `repo_gpgcheck=1` vérifie **l'index**
+  (`repodata/repomd.xml.asc`, écrit par l'**indexeur** — règle de l'ép. 30 : une signature
+  appartient à qui écrit le fichier signé, donc `release.retention.sh` relaie `--sign`).
+  `--sign` couvre **tout** le répertoire, pas seulement ce que le run a construit : re-signer
+  ne doit pas vouloir dire **reconstruire** (ce que l'ép. 20c a retiré de ce canal), et signer
+  réécrit le fichier — donc le catalogue est corrigé paquet par paquet.
+  **À ne pas défaire** : (1) la strophe publiée nomme la clef par un **fichier local**
+  (`gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet`) et **jamais** par une URL — mesuré,
+  `gpgkey=https://git.launchpad.net/…` a donné **3 échecs d'installation sur 8**, chacun
+  **après 188 Mio téléchargés**, parce que **dnf suit les redirections** et que ce dépôt répond
+  `302` vers sa page de login ~1 fois sur 6 (ép. 30 bis) : dnf importe **26 octets** et meurt sur
+  `Failed to import OpenPGP keys`. C'est le `-L` interdit de l'ép. 30 bis, côté dnf, **où il ne
+  peut pas être interdit** ; d'où la clef récupérée à la main, et **regardée avant d'être
+  importée** (`rpm --import` *est* l'acte de faire confiance) ; (2) **`rpm --import` n'est pas
+  l'import qui compte** : la base rpm est ce que lit `gpgcheck`, tandis que `repo_gpgcheck` est
+  vérifié par dnf5 contre un trousseau **à lui**, par dépôt — d'où un rouge « 0 paquet » qui
+  n'était qu'une clef non acceptée (accepter est une action que dnf **demande**, donc `-y`) ;
+  (3) la signature du **précédent** index est retirée *avant* d'en tenter une neuve (sinon un
+  échec laisse un dépôt qui **prétend** être signé), et le paquet est **relu** après `rpmsign`
+  sur `%{RSAHEADER:pgpsig}` — **`SIGPGP` revient vide** sur un paquet correctement signé
+  (mesuré) ; (4) le déposeur refuse un `repomd.xml.asc` qui ne vérifie pas contre la clef
+  publiée, pendant exact de sa vérification `InRelease`, **sans rien écrire** dans la release.
+  **3ᵉ liste de paquets** dans le `Makefile` — `REQUIRED_PACKAGES_RELEASE` (`rpm gnupg rsync
+  dpkg-dev xz-utils`, cible `make apt-release-dependencies`) : à part des deux autres **à
+  dessein**, la liste de build étant lue **par la boîte de compilation** (ép. 20) où `rpm`
+  signerait... rien ; **Docker volontairement absent** (`docker.io` et `docker-ce` se font
+  concurrence, en nommer un dirait à apt de casser l'autre). **8ᵉ défaut de la famille « juger
+  par autre chose que ce qu'on mesure »** (19, 20b, 20c, 24, 27, 30) : le banc mesurait un
+  `gpgkey=file://` **qu'il écrivait lui-même** pendant qu'on publiait une URL — un cas neuf lit
+  désormais **la strophe publiée**. Mesuré : **214 verts / 0 SKIP** sur les 4 boîtes (les 4
+  rouges étant le seul rouge assumé de l'ép. 28), dont le cas **discriminant** — dnf **refuse**
+  quand `gpgkey=` nomme une autre clef. Reste : la **preuve distante**, après
+  `make release-upload` (motif ép. 20c → 22).
 
 ## Où puiser
 

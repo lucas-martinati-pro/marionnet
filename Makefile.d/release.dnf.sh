@@ -82,6 +82,7 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
 function info { echo "==> $*"; }
+function warn { echo "==> WARNING: $*" >&2; }
 function die  { echo "$0: $*" >&2; exit 2; }
 
 function usage {
@@ -97,6 +98,26 @@ function publication_series {
 SERIES=""
 OUTDIR=""
 BASE_URL=""
+SIGN_KEY=""             # `@published' until resolved against the keyring below
+KEYRING_ASC="$ROOT/marionnet-archive-keyring.asc"   # the archive's identity, versioned in git
+# WHERE A CLIENT FETCHES THE PUBLIC KEY, and it is deliberately not this repository: the key is
+# versioned in git, hence served by Launchpad -- another infrastructure than the one serving
+# the packages (episode 30).
+#
+# BUT THE STANZA BELOW DOES NOT NAME THIS URL, and that is a measurement, not a preference:
+# `gpgkey=' is fetched by dnf, and dnf follows redirects. git.launchpad.net answers 302 towards
+# its OpenID login page about one request in six (episode 30 bis), so dnf downloads the 26-byte
+# login page and the transaction dies with `Failed to import OpenPGP keys into temporary
+# keyring: Compute cert len failed' -- measured 3 failures in 8 installations, each of them
+# AFTER 188 MiB of packages had been downloaded. Where curl can be told not to follow (and the
+# INSTALL page forbids `-L' for exactly this reason), dnf cannot.
+#
+# So the key is handed over the way § 2 of the INSTALL page hands it to apt: fetched by the
+# reader, checked against the fingerprint, and named as a LOCAL file. That also restores the
+# discipline the URL had quietly removed -- a key dnf fetches by itself is a key nobody looked at.
+KEY_URL="https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc"
+# The conventional place for a distribution's archive keys; the INSTALL page puts it there.
+KEY_LOCAL="/etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet"
 BUILD_IMAGE="fedora:42"
 CHECK=0
 
@@ -105,6 +126,10 @@ while (($#)); do
     -o|--output-dir) OUTDIR="$2"; shift 2 ;;
     -s|--series)     SERIES="$2"; shift 2 ;;
     --base-url)      BASE_URL="$2"; shift 2 ;;
+    --sign)          if test $# -ge 2 && case "$2" in -*) false ;; *) test -n "$2" ;; esac
+                     then SIGN_KEY="$2"; shift 2
+                     else SIGN_KEY="@published"; shift 1
+                     fi ;;
     --build-image)   BUILD_IMAGE="$2"; shift 2 ;;
     -c|--check)      CHECK=1; shift ;;
     -h|--help)       usage; exit 0 ;;
@@ -191,6 +216,57 @@ docker run --rm -v "$OUTDIR:/repo" -w /repo "$BUILDER_IMAGE" bash -c '
 info "written: repodata/ ($(ls "$OUTDIR/repodata" | wc -l) files)"
 
 # ---
+# --- The signature of the index (episode 30b).
+# ---
+# repomd.xml.asc is to `repo_gpgcheck=1' what InRelease is to apt: the file which says that
+# the index of this repository comes from whoever holds the archive key. Written HERE, by the
+# script which writes repodata/, for the reason established at episode 30 -- a signature is
+# void the moment the file it signs changes, so it belongs to whoever writes that file.
+#
+# It signs the INDEX only. What vouches for each package is the signature rpmsign put inside
+# it (release.rpm.sh --sign), which is a different mechanism from apt's: there, one signature
+# on Release chains down to every package by digest; here, rpm verifies each package on its
+# own. Both are needed, which is why `gpgcheck=1' and `repo_gpgcheck=1' appear together below.
+#
+# Not in SHA256SUMS, like repodata/ itself: rewritten at every publication, so a digest
+# recorded for it would go stale on its own (the defect of episode 9b).
+if test -n "$SIGN_KEY"; then
+  command -v gpg >/dev/null || die "\`gpg' not found, but --sign was asked"
+  if test "$SIGN_KEY" = "@published"; then
+    test -f "$KEYRING_ASC" \
+      || die "--sign was given alone, but $KEYRING_ASC does not exist: nothing says who this archive is"
+    SIGN_KEY=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null \
+               | awk -F: '$1=="fpr" {print $10; exit}')
+    test -n "$SIGN_KEY" || die "cannot read a fingerprint out of $KEYRING_ASC"
+  fi
+  gpg --list-secret-keys -- "$SIGN_KEY" >/dev/null 2>&1 || die "no secret key '$SIGN_KEY' in this keyring"
+  if test -f "$KEYRING_ASC"; then
+    published=$(gpg --with-colons --show-keys -- "$KEYRING_ASC" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    signing=$(gpg --with-colons --list-secret-keys -- "$SIGN_KEY" 2>/dev/null | awk -F: '$1=="fpr"{print $10; exit}')
+    test "$published" = "$signing" \
+      || die "the signing key ($signing) is not the one the sources publish ($published)"
+  fi
+  # The signature of the PREVIOUS index goes first, and only then is a new one attempted:
+  # createrepo has just rewritten repomd.xml, so what sits beside it signs a file which no
+  # longer exists. Should the signature fail here -- no pinentry, wrong passphrase, key gone --
+  # dying with that file still in place would leave a repository which claims to be signed and
+  # is not, which is the one outcome worse than an unsigned one.
+  rm -f -- "$OUTDIR/repodata/repomd.xml.asc"
+  gpg --batch --yes --default-key "$SIGN_KEY" --armor --detach-sign \
+      -o "$OUTDIR/repodata/repomd.xml.asc.new" -- "$OUTDIR/repodata/repomd.xml" \
+    || die "signing failed (repomd.xml.asc): the stale signature was removed, this directory is now unsigned"
+  mv -f -- "$OUTDIR/repodata/repomd.xml.asc.new" "$OUTDIR/repodata/repomd.xml.asc"
+  info "signed: repodata/repomd.xml.asc  (key $SIGN_KEY)"
+else
+  # A repository which STOPS being signed is worse than one which never was: every machine
+  # already carrying repo_gpgcheck=1 would refuse it. So a signature of a previous index goes.
+  if test -f "$OUTDIR/repodata/repomd.xml.asc"; then
+    rm -f -- "$OUTDIR/repodata/repomd.xml.asc"
+    warn "removed a STALE repomd.xml.asc: it signed a previous index (re-run with \`--sign')"
+  fi
+fi
+
+# ---
 # --- marionnet.repo, only if we were told where this directory will live.
 # ---
 # The URL of a release directory is not knowable here -- it is decided when the directory is
@@ -199,24 +275,60 @@ info "written: repodata/ ($(ls "$OUTDIR/repodata" | wc -l) files)"
 # points at nothing, and a client would blame the server for it.
 # ---
 if test -n "$BASE_URL"; then
-  cat > "$OUTDIR/marionnet.repo.new" <<EOF
+  # The stanza states what this run actually did, and never what it wishes were true: a .repo
+  # asking for gpgcheck on an unsigned repository would make dnf refuse everything.
+  if test -n "$SIGN_KEY"; then
+    cat > "$OUTDIR/marionnet.repo.new" <<EOF
 [$REPO_ID]
 name=Marionnet $SERIES
 baseurl=$BASE_URL
 enabled=1
-# Unsigned until the server episode decides the key (see the header of
-# Makefile.d/release.dnf.sh); this is the counterpart of [trusted=yes] on the apt side.
+# Signed (episode 30b). gpgcheck verifies EACH PACKAGE, repo_gpgcheck verifies the index
+# (repomd.xml.asc) -- two mechanisms, unlike apt where one signature on Release chains down
+# to the packages by digest.
+#
+# The key is a LOCAL file, put there by you, and it comes from the SOURCES and not from this
+# repository: a key travelling beside the packages it signs proves no more than https already
+# does. Fetch it and check its fingerprint before installing anything -- see § 3 of the INSTALL
+# page, or:
+#   sudo curl -o $KEY_LOCAL \\
+#        $KEY_URL
+#   gpg --show-keys $KEY_LOCAL
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file://$KEY_LOCAL
+EOF
+  else
+    cat > "$OUTDIR/marionnet.repo.new" <<EOF
+[$REPO_ID]
+name=Marionnet $SERIES
+baseurl=$BASE_URL
+enabled=1
+# Unsigned: this directory was indexed without \`--sign' (see Makefile.d/release.dnf.sh).
 gpgcheck=0
 EOF
+  fi
   mv -f -- "$OUTDIR/marionnet.repo.new" "$OUTDIR/marionnet.repo"
   info "written: marionnet.repo (baseurl $BASE_URL)"
   info "A machine adds it with:"
-  info "  sudo curl -o /etc/yum.repos.d/marionnet.repo $BASE_URL/marionnet.repo"
+  if test -n "$SIGN_KEY"; then
+    # The key FIRST: the stanza names a local file, so a machine which fetched the .repo and
+    # nothing else would be told the key is missing -- before downloading anything, at least.
+    info "  sudo curl -o $KEY_LOCAL $KEY_URL"
+    info "  gpg --show-keys $KEY_LOCAL     # compare with the published fingerprint"
+  fi
+  info "  sudo curl -o /etc/yum.repos.d/marionnet.repo ${BASE_URL%/}/marionnet.repo"
   info "  sudo dnf install marionnet"
 else
   info "no --base-url given, so no marionnet.repo was written. The stanza to serve is:"
-  printf '      [%s]\n      name=Marionnet %s\n      baseurl=<url-of-this-directory>\n      enabled=1\n      gpgcheck=0\n' \
-         "$REPO_ID" "$SERIES"
+  if test -n "$SIGN_KEY"; then
+    printf '      [%s]\n      name=Marionnet %s\n      baseurl=<url-of-this-directory>\n      enabled=1\n      gpgcheck=1\n      repo_gpgcheck=1\n      gpgkey=file://%s\n' \
+           "$REPO_ID" "$SERIES" "$KEY_LOCAL"
+    info "  (and the key itself is fetched, once, from $KEY_URL)"
+  else
+    printf '      [%s]\n      name=Marionnet %s\n      baseurl=<url-of-this-directory>\n      enabled=1\n      gpgcheck=0\n' \
+           "$REPO_ID" "$SERIES"
+  fi
 fi
 
 info "done. \`dnf install marionnet' now resolves vde2 and uml-utilities from this directory."

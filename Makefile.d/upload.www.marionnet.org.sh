@@ -365,6 +365,28 @@ if test -f "$KEYRING_ASC"; then
     warn "  users following the INSTALL page with signed-by= would see apt refuse this repository"
     warn "  the fix is \`make release-apt SIGN=yes' (or \`make release-deb SIGN=yes'), not an option here"
   fi
+
+  # THE SAME QUESTION ON THE OTHER CHANNEL (episode 30b), and the same answer: this script
+  # refuses to put online a repository its own users could not verify. What plays the part of
+  # InRelease here is repodata/repomd.xml.asc -- a DETACHED signature, so repomd.xml is named
+  # too. It signs the index alone; each package carries a signature of its own, which is
+  # release.rpm.sh's business and is checked where it is written.
+  if test -d "$OUTDIR/repodata"; then
+    if test -f "$OUTDIR/repodata/repomd.xml.asc"; then
+      VERIFY_HOME2=$(mktemp -d); TMPDIRS+=("$VERIFY_HOME2")
+      if gpg --homedir "$VERIFY_HOME2" --batch --quiet --import -- "$KEYRING_ASC" 2>/dev/null && \
+         gpg --homedir "$VERIFY_HOME2" --batch --quiet --trust-model always \
+             --verify -- "$OUTDIR/repodata/repomd.xml.asc" "$OUTDIR/repodata/repomd.xml" 2>/dev/null; then
+        info "repomd.xml is signed by that same key (what repo_gpgcheck=1 reads)"
+      else
+        die "repodata/repomd.xml.asc does not verify against $KEYRING_ASC -- re-run \`make release-dnf SIGN=yes'"
+      fi
+    else
+      warn "the sources publish an archive key, but the rpm index is NOT signed"
+      warn "  users following § 3 of the INSTALL page would see dnf refuse this repository"
+      warn "  the fix is \`make release-dnf SIGN=yes' (or \`make release-rpm SIGN=yes')"
+    fi
+  fi
 fi
 
 # marionnet.repo, if it is there, must name the STABLE entry point and not the series
@@ -507,6 +529,12 @@ fi
 echo "    sudo apt update && sudo apt install marionnet"
 echo
 echo "    # dnf/zypper:"
+if test -f "$OUTDIR/repodata/repomd.xml.asc"; then
+  # The key BEFORE the stanza, and by hand: the published stanza names a local file on purpose
+  # -- dnf follows redirects, and the key host answers one in six with its login page (30b).
+  echo "    sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet $KEY_URL"
+  echo "    sudo rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-marionnet"
+fi
 echo "    sudo curl -o /etc/yum.repos.d/marionnet.repo $URL/rpm/marionnet.repo   # if published"
 echo "    sudo dnf install marionnet"
 # The apt line printed above depends on whether this release is signed, which is decided by
