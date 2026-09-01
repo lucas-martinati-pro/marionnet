@@ -55,7 +55,14 @@
 # no bashbricks: like its two siblings, this driver is a docker orchestration, and the
 # assertions are all `grep' and exit codes.
 #
-# Usage: run.sh [--distro IMAGE|all] [PATH-TO-RELEASE-DIRECTORY]
+# Since episode 27 the repository may be the SERVER instead of the local release directory:
+# the argument may be an http(s) URL, and apt then reads Release, Packages and the four .deb
+# over https, through the stable entry point -- which is point (6) of the roadmap for this
+# bench. What changes is one line of sources.list and nothing else; what is downloaded HERE
+# is only what a case has to read on this host (the indexes, a few kiB, and the guest image
+# tarball the mtime case compares against).
+#
+# Usage: run.sh [--distro IMAGE|all] [PATH-OR-URL-OF-A-RELEASE-DIRECTORY]
 #        (default distro: debian:trixie-slim; default directory: the newest one under
 #         website-repo/download/marionnet-install.sh/)
 # ---
@@ -87,6 +94,14 @@ if (( ${#ARGS[@]} )); then set -- "${ARGS[@]}"; else set --; fi
 # never masking a FAIL.
 if [[ $DISTRO = all ]]; then
   worst=0
+# One download for the four boxes, not four: the loop makes the cache and the children
+# inherit it through the environment (episode 27). It is removed here, by the invocation
+# which made it, exactly as a single run removes its own.
+  ALL_CACHE=""
+  if [[ -z ${MRN_BENCH_CACHE:-} ]]; then
+    ALL_CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+    export MRN_BENCH_CACHE=$ALL_CACHE
+  fi
   for d in "${DISTROS[@]}"; do
     echo; echo "############ $d"
     rc=0; "${BASH_SOURCE[0]}" --distro "$d" "$@" || rc=$?
@@ -95,6 +110,7 @@ if [[ $DISTRO = all ]]; then
     else worst=1
     fi
   done
+  [[ -z $ALL_CACHE ]] || rm -rf -- "$ALL_CACHE"
   echo; echo "############ the four boxes: worst exit code $worst"
   exit "$worst"
 fi
@@ -112,9 +128,46 @@ function skip_all { echo "SKIP: $*"; exit 77; }
 
 function cleanup {
   docker rm -f "$BOX" "$BOX_I386" "$BOX_CONF" >/dev/null 2>&1 || true
+  # What a remote run downloaded is kept for the whole `--distro all' loop and removed by the
+  # invocation which created it: four boxes read ONE catalogue, not four copies of it.
+  test -z "${CACHE_OWNED:-}" || rm -rf -- "$CACHE"
   return 0
 }
 trap cleanup EXIT
+
+# ---
+# --- Where the repository is read from: a directory, or a server (episode 27)
+# ---
+# The argument may be an http(s) URL, exactly as `marionnet-install.sh --from' takes a URL
+# or a directory -- and for the same reason: only the two functions below know the
+# difference, so a remote run exercises the real path instead of a second implementation
+# of it.
+#
+# WHAT IS DOWNLOADED HERE, and what is not. Only what a case has to read on THIS host: the
+# three indexes (a few kiB) and, for the mtime case, the published guest image tarball. The
+# .deb themselves are fetched by apt, in the box, over https -- and apt verifies each one
+# against the digest and the size Packages announces while it fetches it, which is the very
+# claim this bench makes. Downloading them a second time here to re-check a digest would
+# prove nothing new: that proof is taken ON THE SERVER by the uploader (episode 24), where
+# it costs no bandwidth at all.
+#
+# `curl -f' is not a decoration: without it curl exits 0 on a 404 and the error page would
+# land in the file (episode 11b).
+function is_url { [[ $1 = http://* || $1 = https://* ]]; }
+
+function fetch_to {   # <url> <destination file>
+  if   command -v wget >/dev/null 2>&1; then wget -q -O "$2" -- "$1"
+  elif command -v curl >/dev/null 2>&1; then curl -fsS -o "$2" -- "$1"
+  else return 127
+  fi
+}
+
+CACHE=${MRN_BENCH_CACHE:-}
+if [[ -z $CACHE ]]; then
+  CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+  export MRN_BENCH_CACHE=$CACHE
+  CACHE_OWNED=1
+fi
 
 # --- What is being measured: a release directory made readable by apt.
 
@@ -122,6 +175,23 @@ REPO="${1:-}"
 if [[ -z $REPO ]]; then
   REPO=$(ls -dt "$ROOT"/website-repo/download/marionnet-install.sh/*/ 2>/dev/null | head -n 1) || true
 fi
+
+# In a remote run, REPO_URL is what apt is told and REPO becomes the local mirror of the
+# indexes -- so every host-side case below keeps reading files, and reads the ones the server
+# is serving right now.
+REPO_URL=""
+if [[ -n $REPO ]] && is_url "$REPO"; then
+  REPO_URL=${REPO%/}
+  REPO=$CACHE/apt-index
+  mkdir -p "$REPO"
+  for f in Packages Release SHA256SUMS; do
+    test -s "$REPO/$f" && continue
+    fetch_to "$REPO_URL/$f" "$REPO/$f" || \
+      { [[ $f = SHA256SUMS ]] && continue
+        skip_all "cannot read $REPO_URL/$f (no downloader, or this is not a release directory)"; }
+  done
+fi
+
 [[ -n $REPO && -d $REPO ]] || \
   skip_all "no release directory found (run \`make release-deb', or pass one as argument)"
 REPO=$(cd -- "$REPO" && pwd)
@@ -129,13 +199,18 @@ REPO=$(cd -- "$REPO" && pwd)
 shopt -s nullglob
 DEBS=("$REPO"/*.deb)
 shopt -u nullglob
-(( ${#DEBS[@]} )) || skip_all "no .deb in $REPO: run \`make release-deb' first"
+if [[ -n $REPO_URL ]]; then
+  # Remotely, the count of packages is read in the index rather than in the directory: what
+  # a flat repository OFFERS is what Packages says, and nothing else is even reachable.
+  DEBS=($(awk '/^Filename: /{print $2}' "$REPO/Packages"))
+fi
+(( ${#DEBS[@]} )) || skip_all "no .deb in ${REPO_URL:-$REPO}: run \`make release-deb' first"
 [[ -f $REPO/Packages ]] || skip_all "no Packages in $REPO: run \`make release-apt' first"
 
 command -v docker >/dev/null 2>&1 || skip_all "docker is not installed"
 docker info >/dev/null 2>&1        || skip_all "the docker daemon is not reachable"
 
-echo "--- repository: $REPO"
+echo "--- repository: ${REPO_URL:-$REPO}"
 echo "--- box       : $DISTRO"
 echo "--- packages  : ${#DEBS[@]}"
 
@@ -208,10 +283,37 @@ fi
 
 SUMS=$REPO/SHA256SUMS
 if test -f "$SUMS"; then
-  if (cd -- "$REPO" && grep -E '\.deb$' SHA256SUMS | sha256sum -c --status -); then
-    pass "SHA256SUMS announces the digest of THESE four packages"
+  if [[ -z $REPO_URL ]]; then
+    if (cd -- "$REPO" && grep -E '\.deb$' SHA256SUMS | sha256sum -c --status -); then
+      pass "SHA256SUMS announces the digest of THESE four packages"
+    else
+      fail "SHA256SUMS does not match the .deb of the directory"
+    fi
   else
-    fail "SHA256SUMS does not match the .deb of the directory"
+    # Remotely the same question is asked of the two CATALOGUES rather than of the bytes:
+    # SHA256SUMS and Packages both record a SHA256 for every .deb, and they are written by
+    # two different scripts (release.sha256sums.sh, dpkg-scanpackages through
+    # release.apt.sh). If they disagree, one of the two is describing a file the server no
+    # longer holds -- which is exactly the failure of episode 9b, seen from the outside and
+    # without downloading 75 MiB to see it. What the bytes are worth is measured where it
+    # costs nothing: by the uploader, on the server (episode 24), and by apt itself below.
+    disagree=0; checked=0
+    while read -r want name; do
+      # Compared as STRINGS, never as a pattern: a Debian version is full of characters a
+      # regex reads (0~trunk+r930), and `+' alone would make the match fail in silence.
+      got=$(awk -v f="$name" '/^Filename: /{cur=$2; sub(/^.*\//, "", cur)}
+                              /^SHA256: /{if (cur == f) {print $2; exit}}' "$REPO/Packages")
+      [[ -z $got ]] && continue
+      checked=$(( checked + 1 ))
+      [[ $got = "$want" ]] || { disagree=1; echo "      $name: SHA256SUMS $want, Packages $got"; }
+    done < <(grep -E '\.deb$' "$SUMS")
+    if (( checked > 0 )) && (( disagree == 0 )); then
+      pass "the two catalogues agree on the digest of the $checked published .deb"
+    elif (( checked == 0 )); then
+      fail "no .deb is announced by BOTH SHA256SUMS and Packages"
+    else
+      fail "SHA256SUMS and Packages disagree about what the server holds"
+    fi
   fi
   # The indexes are rewritten at every publication, so a digest recorded for them would go
   # stale on its own -- the very failure episode 9b had to repair for the artefacts.
@@ -255,7 +357,12 @@ docker rm -f "$BOX" "$BOX_I386" "$BOX_CONF" >/dev/null 2>&1 || true
 # Docker image of Marionnet will have to face rather than inherit (see the README).
 function undocker { docker exec "$1" bash -c 'rm -f /etc/dpkg/dpkg.cfg.d/docker /etc/dpkg/dpkg.cfg.d/excludes'; }
 
-docker run -d --name "$BOX" -v "$REPO":/repo:ro "$DISTRO" sleep infinity >/dev/null
+# In a remote run nothing is mounted: the repository under test is on the other side of the
+# network, which is the whole point of the exercise.
+MOUNT=(-v "$REPO":/repo:ro)
+[[ -z $REPO_URL ]] || MOUNT=()
+
+docker run -d --name "$BOX" "${MOUNT[@]}" "$DISTRO" sleep infinity >/dev/null
 undocker "$BOX"
 
 function in_box  { docker exec -e DEBIAN_FRONTEND=noninteractive "$BOX" bash -c "$1"; }
@@ -265,7 +372,7 @@ function in_conf { docker exec -e DEBIAN_FRONTEND=noninteractive "$BOX_CONF" bas
 # The one line of sources.list this whole episode exists to make true. `[trusted=yes]'
 # because Release is not signed yet -- signing is the server episode's question, and it is
 # named as such in the header of Makefile.d/release.apt.sh.
-SOURCE_LINE='deb [trusted=yes] file:///repo ./'
+SOURCE_LINE="deb [trusted=yes] ${REPO_URL:-file:///repo} ./"
 
 # The network is a PRECONDITION, asked with the box's own sources and nothing of ours: a
 # machine with no mirror cannot resolve the thirteen run-time dependencies, and there is
@@ -274,10 +381,47 @@ SOURCE_LINE='deb [trusted=yes] file:///repo ./'
 in_box "apt-get update -qq" >/dev/null 2>&1 || \
   skip_all "no network in the containers: apt cannot resolve the run-time dependencies"
 
-if in_box "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update -qq" >/dev/null 2>&1; then
-  pass "\`apt-get update' accepts the flat repository ($SOURCE_LINE)"
+function add_source_and_update {  # <in_* function>: prints apt's own words, never fails
+  $1 "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update 2>&1" || true
+}
+
+# A CA STORE IS A DEPENDENCY OF THE https CHANNEL, and a bare Debian image has none: apt
+# then cannot read our repository at all. Made explicit here rather than papered over,
+# because it is a sentence the INSTALL documentation owes its reader -- the .deb channel
+# over https needs `ca-certificates' on the machine before anything of ours can be fetched.
+# Either way the case is green, and either way it NAMES what this box was carrying: the two
+# outcomes are two different facts about the box, not two spellings of the same one.
+function ca_ready {  # <in_* function>: give that box a CA store if the repository is https
+  [[ ${REPO_URL:-} = https://* ]] || return 0
+  $1 "test -s /etc/ssl/certs/ca-certificates.crt || \
+      (apt-get update -qq && apt-get install -y -qq ca-certificates)" >/dev/null 2>&1 || true
+}
+
+CA_NOTE=""
+if [[ ${REPO_URL:-} = https://* ]]; then
+  out=$(add_source_and_update in_box)
+  if grep -qiE 'certificate verify failed|SSL connection failed|not trusted' <<<"$out"; then
+    pass "on a bare $DISTRO the https repository is unreadable, and apt names the certificate"
+    ca_ready in_box
+    CA_NOTE=" (once ca-certificates is installed)"
+  else
+    pass "this $DISTRO carries a CA store of its own: the https repository is readable as it is"
+  fi
+fi
+
+# WHAT `apt-get update' DOES NOT SAY, and this bench took its silence for consent until
+# episode 27 measured it: a source apt CANNOT FETCH is a warning, not an error -- the exit
+# code stays 0 and the run goes on with the repository quietly ignored. The first remote run
+# printed `Err: ... certificate verify failed' and this very case still went green, which is
+# the fifth of the family "judging by something other than what one measures" (episodes 19,
+# 20b, 20c, 24). So the verdict is read in apt's OWN WORDS, and confirmed by what it can SEE.
+out=$(add_source_and_update in_box)
+cand0=$(in_box "apt-cache policy marionnet 2>/dev/null | awk '/Candidat|Candidate/{print \$2}'" || true)
+if ! grep -qE '^(Err|E):' <<<"$out" && [[ -n $cand0 && $cand0 != '(none)' ]]; then
+  pass "\`apt-get update' accepts the flat repository$CA_NOTE ($SOURCE_LINE)"
 else
-  fail "apt refuses the repository ($SOURCE_LINE): Packages or Release does not hold up"
+  fail "apt does not read the repository ($SOURCE_LINE): Packages or Release does not hold up"
+  grep -E '^(Err|E|W):' <<<"$out" | sed 's/^/      /' || true
   echo "--- nothing else can be measured; count: $PASSED passed, $FAILED failed"
   exit 1
 fi
@@ -414,6 +558,20 @@ else
   if [[ -n $img ]]; then
     got=$(in_box "stat -c %Y '$img'")
     art=$(ls "$REPO"/filesystems_machine-guignol-*.tar.xz 2>/dev/null | head -n 1 || true)
+    if [[ -z $art && -n $REPO_URL ]]; then
+      # The one payload a remote run downloads, and it is worth its 16 MiB: this case is
+      # invariant 1 of release.deb.sh -- the mtime UML checks -- and comparing the .deb apt
+      # just installed against the tarball THE SERVER SERVES is the only way to see that the
+      # two channels still agree once published. Kept for the whole `--distro all' loop.
+      art=$(awk '{print $2}' "$REPO/SHA256SUMS" | grep -E '^filesystems_machine-guignol-.*\.tar\.xz$' | head -n 1)
+      if [[ -n $art ]]; then
+        if [[ ! -s $CACHE/$art ]]; then
+          echo "--- fetching $art (the mtime case compares against it) ..."
+          fetch_to "$REPO_URL/$art" "$CACHE/$art" || art=""
+        fi
+        [[ -z $art ]] || art=$CACHE/$art
+      fi
+    fi
     want=""
     if [[ -n $art ]]; then
       # No `exit' in this awk, and it is not a detail: `tar' would then be writing into a
@@ -478,8 +636,9 @@ fi
 if [[ $INSTALLABLE = no ]]; then
   echo "--- the foreign-architecture cases are not played on this box (see above)."
 else
-docker run -d --name "$BOX_I386" -v "$REPO":/repo:ro "$DISTRO" sleep infinity >/dev/null
+docker run -d --name "$BOX_I386" "${MOUNT[@]}" "$DISTRO" sleep infinity >/dev/null
 undocker "$BOX_I386"
+ca_ready in_i386
 if in_i386 "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update -qq" >/dev/null 2>&1; then
   rc=0; out=$(in_i386 "apt-get install -y --no-install-recommends marionnet-kernels-i386 2>&1") || rc=$?
   if ((rc != 0)) && grep -q 'libc6:i386' <<<"$out"; then
@@ -526,8 +685,9 @@ fi
 #
 # So both halves are measured: the refusal, and what the administrator's answer does.
 if [[ $INSTALLABLE = yes ]]; then
-  docker run -d --name "$BOX_CONF" -v "$REPO":/repo:ro "$DISTRO" sleep infinity >/dev/null
+  docker run -d --name "$BOX_CONF" "${MOUNT[@]}" "$DISTRO" sleep infinity >/dev/null
   undocker "$BOX_CONF"
+  ca_ready in_conf
   if in_conf "echo '$SOURCE_LINE' > /etc/apt/sources.list.d/marionnet.list && apt-get update -qq" >/dev/null 2>&1; then
     # What the tarball's install.sh writes, for its default /usr/local prefix: a different
     # file, and a legitimate one -- that machine's Marionnet does live under /usr/local.

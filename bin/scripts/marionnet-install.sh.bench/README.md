@@ -48,6 +48,10 @@ bin/scripts/marionnet-install.sh.bench/run.sh          # le script du dépôt
 bin/scripts/marionnet-install.sh.bench/run.sh /chemin/vers/un/autre/marionnet-install.sh
 bin/scripts/marionnet-install.sh.bench/run.sh --distro ubuntu:26.04
 bin/scripts/marionnet-install.sh.bench/run.sh --distro all   # les 4 boîtes (ép. 12)
+
+# et, depuis l'épisode 27, contre le VRAI serveur au lieu des fixtures :
+bin/scripts/marionnet-install.sh.bench/run.sh --from https://www.marionnet.org/download/apt
+bin/scripts/marionnet-install.sh.bench/run.sh --distro all --from https://www.marionnet.org/download/apt
 ```
 
 Conventions de `driven-sessions/README.md` : **`0` = PASS, `77` = SKIP, autre = FAIL**,
@@ -237,3 +241,38 @@ Deux cas portent le vrai contenu de l'épisode :
   question pour l'étape 1 du chantier, avec la clef du dépôt apt.
 - Ce banc mesure **le mécanisme**, pas la configuration réelle de `www.marionnet.org` :
   l'autoindex peut y être désactivé ou habillé. La vérification contre le vrai site reste due.
+
+## Le mode `--from URL` (épisode 27) — les fixtures et le vrai serveur ne mesurent pas la même chose
+
+Point **(6)** de la feuille de route. `--from <URL>` laisse de côté l'Apache du banc et les
+artefacts synthétiques, et pointe le script sur une **release publiée**. Les deux modes sont
+**complémentaires, aucun ne remplace l'autre** :
+
+- les **fixtures** tiennent ce qu'un vrai serveur ne peut pas montrer : un artefact **corrompu**,
+  un `SHA256SUMS` **absent**, un `index.html` qui masque le listing, `Options -Indexes` ;
+- le **mode distant** tient ce qu'elles ne savent pas imiter : l'Apache de production, **https**,
+  le **lien stable** `download/apt`, et un catalogue de 1,7 Gio. Il joue donc la famille de cas
+  qu'une release saine sait répondre — et **c'est là que la jambe https cesse d'être une
+  vérification manuelle d'une ligne**.
+
+Ce qui est **téléchargé** : l'image invitée (12 Mio) et l'application (7 Mio) — les deux seuls cas
+qui écrivent des octets sur une machine (le `mtime` qu'UML vérifie, et `--binary`). Les grosses
+images sont **listées**, jamais rapatriées.
+
+### Le magasin de certificats est une dépendance du canal https
+
+Mesuré à l'épisode 27, et **c'est une phrase que la doc INSTALL doit à son lecteur** : une image
+Debian nue ne porte **aucune autorité de certification**, si bien que le catalogue https est
+**illisible** — pendant exact de ce que le banc `.deb` mesure sur `apt`, de l'autre côté du canal.
+
+Deux pièges à ne pas défaire dans ce cas :
+
+1. **Le verdict se prend sur le catalogue qui revient, jamais sur le libellé d'un échec.** La
+   première version lisait le message du script, n'y trouvait pas « certificate » et passait au
+   **vert** sur une boîte qui venait de ne rien lire du tout — la famille « juger par autre chose
+   que ce qu'on mesure » (ép. 19, 20b, 20c, 24). La boîte est donc interrogée **deux fois** : si
+   ajouter `ca-certificates` répare, c'est bien lui qui manquait.
+2. **Le libellé est mesuré ensuite, comme cas à part.** Avant l'épisode 27 le script annonçait
+   `server down, no route, wrong URL?` à propos d'un serveur **debout** : il ne relayait pas le
+   diagnostic de son téléchargeur. Il **sonde** désormais la même URL sans vérification de
+   certificat avant de décider quoi accuser, et **nomme** `ca-certificates`.

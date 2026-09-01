@@ -774,15 +774,34 @@ Reprise : appliquer le skill `chantier-long`.
   travail sale** (la boîte clone HEAD, donc le non-committé **ne part pas, en silence**, et la
   release porte le nom d'une révision dont elle n'a pas le contenu) et **`CONFIGME.choice` sur
   *testing*** (refusé par `release.binary.sh` — autant le dire avant dix minutes de compilation).
+  **Ép. 27 : les bancs contre le vrai serveur — le point (6) est soldé.** Les **4** bancs de
+  réception prennent une **URL** là où ils prenaient un répertoire — la forme de
+  `marionnet-install.sh --from` (ép. 6), donc **2 fonctions seules** connaissent la différence
+  et un run distant emprunte le **vrai** chemin. **À ne pas défaire** : (1) côté `.deb` on ne
+  télécharge que ce qu'un cas lit **sur l'hôte** (les 3 index + le tarball du cas `mtime`) —
+  les paquets, c'est **apt** qui les rapatrie **en les vérifiant**, et la preuve d'intégrité est
+  prise **sur le serveur** par le déposeur (ép. 24) ; côté RPM au contraire on télécharge, le
+  geste mesuré étant `dnf install <fichier>.rpm` ; (2) le tri est **piloté par le catalogue**,
+  jamais par une liste écrite dans un banc, et le cache est **partagé par `--distro all`**
+  (4 boîtes = 1 release). **Trouvaille que seul le serveur pouvait donner** : **aucune image
+  Debian/Ubuntu nue n'a de magasin de certificats** (les 4 boîtes RPM en ont un), donc `apt`
+  n'ouvrait pas notre dépôt et l'installeur annonçait `server down, no route, wrong URL?`
+  **d'un serveur debout** ; il **sonde** désormais la même URL sans vérifier le certificat —
+  **pour le seul diagnostic** — et **nomme `ca-certificates`**, que la doc INSTALL devra écrire.
+  **3 défauts de banc, même famille que les ép. 19/20b/20c/24** : `apt-get update` **sort avec
+  0** sur une source qu'il ne peut pas rapatrier (avertissement, pas erreur — le cas « apt
+  accepte le dépôt » était vert alors qu'apt l'ignorait), un verdict fondé sur le **libellé**
+  d'un échec (la boîte est maintenant interrogée **deux fois** : si `ca-certificates` répare,
+  c'est lui qui manquait), et un `--distro all` qui réémettait `"$@"` **sans `--from`** (trois
+  boîtes vertes n'ayant jamais touché le serveur). Mesuré : **572 verts / 0 / 0** en distant
+  (8 distributions) et **197 locaux inchangés** — aucun cas récrit pour le serveur.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
   (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les installer
   *(fait)*** → (5) `upload.www.marionnet.org.sh` + point d'entrée apt stable
-  *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur — **la jambe https est
-  faite** (ép. 24), reste à rejouer les **bancs entiers** en pointant leur `--from` sur
-  `www.marionnet.org` ; ← **prochaine, et plus rien ne la bloque**. La **doc INSTALL** est le
-  tout dernier épisode.
+  *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur *(fait, ép. 27)*.
+  La **doc INSTALL** est le tout dernier épisode — ← **prochaine, et seule restante**.
   **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
   release 1.0.x y est déposée. Reste, hors feuille de route : **signer `Release`** (la
   plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées). Le

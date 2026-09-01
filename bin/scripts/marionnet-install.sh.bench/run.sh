@@ -55,7 +55,16 @@
 # `--binary' cases follows the box on its own. The server stays what it was: httpd:2.4
 # serves the same bytes whoever downloads them.
 #
-# Usage: run.sh [--distro IMAGE|all] [PATH-TO-marionnet-install.sh]
+# Since episode 27 there is a SECOND mode, `--from URL': the fixtures and the Apache are
+# left aside and the script is pointed at a real release server -- point (6) of the roadmap.
+# The two modes do not measure the same thing and neither replaces the other. The fixtures
+# hold what a real server cannot be made to show (a corrupt artefact, a missing SHA256SUMS,
+# an index.html shadowing the listing, `Options -Indexes'); the remote mode holds the one
+# thing they cannot imitate -- the real Apache, the real https, the real stable link, the
+# real 1.7 GiB catalogue -- so it plays the family of cases a published release can answer
+# and says so. This is also where the https leg stops being a one-line manual check.
+#
+# Usage: run.sh [--distro IMAGE|all] [--from URL] [PATH-TO-marionnet-install.sh]
 #        (default distro: debian:trixie-slim; default script: ../marionnet-install.sh)
 # ---
 
@@ -68,6 +77,7 @@ HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # drivers each carry it rather than sharing a file across two unrelated directories.
 DISTROS=(debian:bookworm-slim debian:trixie-slim ubuntu:24.04 ubuntu:26.04)
 DISTRO=debian:trixie-slim
+FROM=""            # empty: the synthetic release directory served by our own Apache
 
 ARGS=()
 while (( $# )); do
@@ -75,6 +85,9 @@ while (( $# )); do
     --distro) [[ $# -ge 2 ]] || { echo "--distro wants an image reference, or \`all'" >&2; exit 2; }
               DISTRO="$2"; shift 2 ;;
     --distro=*) DISTRO="${1#*=}"; shift ;;
+    --from) [[ $# -ge 2 ]] || { echo "--from wants the URL of a release directory" >&2; exit 2; }
+            FROM="$2"; shift 2 ;;
+    --from=*) FROM="${1#*=}"; shift ;;
     -h|--help) sed -n '/^# Usage:/,/^# ---$/p' -- "${BASH_SOURCE[0]}"; exit 0 ;;
     *) ARGS+=("$1"); shift ;;
   esac
@@ -85,14 +98,27 @@ if (( ${#ARGS[@]} )); then set -- "${ARGS[@]}"; else set --; fi
 # distribution. The exit code is the worst of the runs, a SKIP (77) never masking a FAIL.
 if [[ $DISTRO = all ]]; then
   worst=0
+# One download for the four boxes, not four: the loop makes the cache and the children
+# inherit it through the environment (episode 27). It is removed here, by the invocation
+# which made it, exactly as a single run removes its own.
+  ALL_CACHE=""
+  if [[ -z ${MRN_BENCH_CACHE:-} ]]; then
+    ALL_CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+    export MRN_BENCH_CACHE=$ALL_CACHE
+  fi
   for d in "${DISTROS[@]}"; do
     echo; echo "############ $d"
-    rc=0; "${BASH_SOURCE[0]}" --distro "$d" "$@" || rc=$?
+    # `--from' is forwarded EXPLICITLY: it was eaten by the parser above, so it is not in
+    # "$@" -- and a loop which quietly drops it replays the fixtures four times while
+    # announcing a run against the server (measured at episode 27, three green boxes which
+    # had never touched www.marionnet.org).
+    rc=0; "${BASH_SOURCE[0]}" --distro "$d" ${FROM:+--from "$FROM"} "$@" || rc=$?
     if   (( rc == 0  )); then :
     elif (( rc == 77 )); then (( worst == 0 )) && worst=77 || true
     else worst=1
     fi
   done
+  [[ -z $ALL_CACHE ]] || rm -rf -- "$ALL_CACHE"
   echo; echo "############ the four boxes: worst exit code $worst"
   exit "$worst"
 fi
@@ -131,9 +157,15 @@ command -v docker >/dev/null || skip_all "docker is not installed"
 docker info >/dev/null 2>&1 || skip_all "the docker daemon does not answer (group \`docker'?)"
 
 echo "# client box: $DISTRO"
-echo "# building the two images (first run pulls httpd:2.4 and $DISTRO)"
-docker build -q -t "$IMG_SERVER" -f "$HERE/Dockerfile.server" "$HERE" >/dev/null \
-  || skip_all "cannot build the server image (no network to the registry?)"
+if [[ -n $FROM ]]; then
+  echo "# building the client images (first run pulls $DISTRO)"
+else
+  echo "# building the two images (first run pulls httpd:2.4 and $DISTRO)"
+fi
+if [[ -z $FROM ]]; then
+  docker build -q -t "$IMG_SERVER" -f "$HERE/Dockerfile.server" "$HERE" >/dev/null \
+    || skip_all "cannot build the server image (no network to the registry?)"
+fi
 docker build -q -t "$IMG_CLIENT" --build-arg BASE_IMAGE="$DISTRO" \
   -f "$HERE/Dockerfile.client" "$HERE" >/dev/null \
   || skip_all "cannot build the client image (no network to the registry?)"
@@ -142,6 +174,195 @@ docker build -q -t "$IMG_CLIENT" --build-arg BASE_IMAGE="$DISTRO" \
 docker build -q -t "$IMG_CLIENT_CURL" --build-arg BASE_IMAGE="$DISTRO" \
   -f "$HERE/Dockerfile.client.curl" "$HERE" >/dev/null \
   || skip_all "cannot build the curl client image (no network to the registry?)"
+
+# ---
+# --- MODE `--from URL': the real server, and only what a real release can answer
+# ---
+# What this family adds over the fixtures is everything the fixtures had to imitate: the
+# production Apache, https, the stable entry point, and a catalogue of 1.7 GiB. What it
+# cannot do is provoke a defect -- a real release directory is, one hopes, not corrupt --
+# so the cases below are the ones a healthy published release answers, and the fixtures keep
+# the rest. Neither mode is the other's replacement.
+#
+# WHAT IS DOWNLOADED: the guest image (12 MiB) and the application (7 MiB), because the two
+# cases that matter are precisely the ones which write bytes on a machine -- the mtime UML
+# checks, and `--binary'. The big images are listed, never fetched.
+if [[ -n $FROM ]]; then
+  echo
+  echo "# --- against $FROM"
+
+  function fetch_to {   # <url> <destination file>; `curl -f' is not a decoration (episode 11b)
+    if   command -v wget >/dev/null 2>&1; then wget -q -O "$2" -- "$1"
+    elif command -v curl >/dev/null 2>&1; then curl -fsS -o "$2" -- "$1"
+    else return 127
+    fi
+  }
+
+  RWORK=$(mktemp -d -t marionnet-install-remote-XXXXXX)
+  RVOL=mrn-install-bench-remote-$SLUG
+  RVOL_BIN=mrn-install-bench-remote-binary-$SLUG
+  docker volume rm "$RVOL" "$RVOL_BIN" >/dev/null 2>&1 || true
+  docker volume create "$RVOL" >/dev/null; docker volume create "$RVOL_BIN" >/dev/null
+  # ONE exit handler, and it calls the other one: bash keeps a single EXIT trap, so a second
+  # `trap ... EXIT' silently replaces the first (a lesson episode 25 paid for in ssh).
+  function cleanup_remote {
+    cleanup
+    docker volume rm "$RVOL" "$RVOL_BIN" >/dev/null 2>&1 || true
+    rm -rf -- "$RWORK"
+    return 0
+  }
+  trap cleanup_remote EXIT
+
+  # ------------------------------------------------------------ a CA store is a dependency
+  # A bare Debian image carries no certificate authority, and https is then unusable: wget
+  # says so and the script cannot read the catalogue at all. Measured rather than papered
+  # over, because it is a sentence the INSTALL documentation owes its reader -- and it is
+  # the same finding the .deb bench makes about apt, from the other side of the channel.
+  # Either outcome is green, and either NAMES what this box was carrying: two facts, not
+  # two spellings of one.
+  function reads_catalogue {  # <image>: does the script bring the catalogue back from $FROM?
+    docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" "$1" \
+      bash /marionnet-install.sh --fetch-only --from "$FROM" --list 2>&1 \
+      | awk '$1 ~ /^(filesystems|kernels)_/' | grep -q .
+  }
+
+  RIMG=$IMG_CLIENT
+  RIMG_CURL=$IMG_CLIENT_CURL
+  if [[ $FROM = https://* ]]; then
+    # Judged by whether the CATALOGUE COMES BACK, never by the wording of a failure -- the
+    # first version of this case read the script's message, found no `certificate' in it and
+    # went green on a box which had just failed to read anything. The box is therefore asked
+    # TWICE, and the second answer is what makes the sentence true: if a CA store fixes it,
+    # the CA store was the cause.
+    #
+    # The wording is measured too, but as a case of its own and only once the cause is
+    # established: what the script said before episode 27 was `server down, no route, wrong
+    # URL?' about a server which was up, and a user reading that cannot get to the package
+    # they are missing. It now probes the same URL without certificate verification before
+    # deciding what to blame.
+    if reads_catalogue "$IMG_CLIENT"; then
+      pass "this $DISTRO trusts the server's certificate as it is (a CA store is there)"
+    else
+      for pair in "$IMG_CLIENT:$IMG_CLIENT-ca" "$IMG_CLIENT_CURL:$IMG_CLIENT_CURL-ca"; do
+        printf 'FROM %s\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*\n' \
+          "${pair%%:*}" | docker build -q -t "${pair##*:}" - >/dev/null \
+          || skip_all "cannot add ca-certificates to ${pair%%:*}"
+      done
+      if reads_catalogue "$IMG_CLIENT-ca"; then
+        pass "a bare $DISTRO cannot read the https catalogue at all: ca-certificates is what it lacks"
+        out=$(docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" "$IMG_CLIENT" \
+                bash /marionnet-install.sh --fetch-only --from "$FROM" --list 2>&1 || true)
+        if grep -q 'ca-certificates' <<<"$out"; then
+          pass "and the diagnosis NAMES that store instead of blaming the network"
+        else
+          fail "the diagnosis still reads as an outage: [$(tail -n 2 <<<"$out")]"
+        fi
+      else
+        skip_all "the https catalogue is unreadable on this box even with a CA store"
+      fi
+      RIMG=$IMG_CLIENT-ca; RIMG_CURL=$IMG_CLIENT_CURL-ca
+    fi
+  fi
+
+  # No `--network none' and no private network: the point is the real Internet.
+  function rclient { docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" "$RIMG" \
+                       bash /marionnet-install.sh "$@" 2>&1; }
+  function rclient_in { local v="$1"; shift
+                        docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" -v "$v:/opt/mrn" \
+                          "$RIMG" bash /marionnet-install.sh --prefix /opt/mrn "$@" 2>&1; }
+  function in_rvol { docker run --rm -v "$1:/opt/mrn" "$RIMG" bash -c "$2" 2>&1; }
+
+  # ------------------------------------------------------------ 1. the catalogue over https
+  fetch_to "${FROM%/}/SHA256SUMS" "$RWORK/SHA256SUMS" \
+    || skip_all "cannot read ${FROM%/}/SHA256SUMS from this host"
+
+  out=$(rclient --fetch-only --from "$FROM" --list) || out="EXIT $?
+$out"
+  got=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ {print $1}' | sort | tr '\n' ' ')
+  want=$(awk '{print $2}' "$RWORK/SHA256SUMS" | grep -E '^(filesystems|kernels)_' \
+         | sed -E 's/\.tar\.(xz|gz)$//' | sort -u | tr '\n' ' ')
+  if [[ $got = "$want" ]]; then
+    pass "the catalogue read over https is the server's own SHA256SUMS ($(wc -w <<<"$got") artefacts)"
+  else
+    fail "listed [$got], SHA256SUMS announces [$want]"
+  fi
+
+  # SUM yes on every line: a release published since episode 8 carries the digest of each
+  # artefact, and it is that column which says the client will verify what it downloads.
+  n_no=$(printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/ && $4 != "yes"' | wc -l)
+  if [[ $n_no -eq 0 ]]; then
+    pass "every artefact of the published catalogue announces a digest (SUM yes)"
+  else
+    fail "$n_no published artefact(s) carry no digest: the client would install them unverified"
+  fi
+
+  # ------------------------------------------------------------ 2. fetching one, for real
+  out=$(rclient_in "$RVOL" --fetch-only --from "$FROM" --only guignol-18474 --yes) \
+    || { fail "the fetch failed"; printf '%s\n' "$out" | sed 's/^/      /'; }
+  if in_rvol "$RVOL" 'test -f /opt/mrn/share/marionnet/filesystems/machine-guignol-18474' >/dev/null 2>&1; then
+    pass "the guest image published on the server landed in the prefix"
+  else
+    fail "nothing landed: [$(tail -n 5 <<<"$out")]"
+  fi
+
+  # The invariant of the whole work-stream, measured on the PUBLISHED bytes: UML compares the
+  # mtime of a backing file with the MTIME its .conf records, so an extraction which touched
+  # it -- or a publication which drifted (episode 23) -- gives a Marionnet which refuses to
+  # open projects made with that image.
+  want_mtime=$(in_rvol "$RVOL" "sed -n 's/^MTIME=//p' /opt/mrn/share/marionnet/filesystems/machine-guignol-18474.conf" | tr -d '\r')
+  got_mtime=$(in_rvol "$RVOL" 'stat -c %Y /opt/mrn/share/marionnet/filesystems/machine-guignol-18474')
+  if [[ -n $want_mtime && $got_mtime = "$want_mtime" ]]; then
+    pass "the mtime of the published image is the one its .conf records ($(date -d "@$got_mtime" '+%F %T'))"
+  else
+    fail "mtime $got_mtime on the machine, MTIME=$want_mtime in the .conf: UML would refuse it"
+  fi
+  if in_rvol "$RVOL" 'test -L /opt/mrn/share/marionnet/filesystems/router-guignol-18474 \
+                   && test -e /opt/mrn/share/marionnet/filesystems/router-guignol-18474' >/dev/null 2>&1; then
+    pass "the router image arrived as a symlink, and it resolves"
+  else
+    fail "the router image is not a resolving symlink"
+  fi
+
+  # ------------------------------------------------------------ 3. idempotence
+  out=$(rclient_in "$RVOL" --fetch-only --from "$FROM" --list)
+  if printf '%s\n' "$out" | awk '$1 == "filesystems_machine-guignol-18474" {print $5}' | grep -q installed; then
+    pass "a second run sees it INSTALLED and would not fetch it again"
+  else
+    fail "the state of an installed artefact is not read back from the prefix"
+  fi
+
+  # ------------------------------------------------------------ 4. the application
+  out=$(rclient --binary --from "$FROM" --list) || out="EXIT $?
+$out"
+  if printf '%s\n' "$out" | grep -qE '^marionnet_.*chosen'; then
+    pass "among the published applications, one is CHOSEN for this box: $(printf '%s\n' "$out" | awk '/chosen/{print $1}')"
+  else
+    fail "no published application was chosen for this box: [$(tail -n 3 <<<"$out")]"
+  fi
+
+  out=$(rclient_in "$RVOL_BIN" --binary --from "$FROM" --yes) && rc=0 || rc=$?
+  if ((rc == 0)) && in_rvol "$RVOL_BIN" 'test -x /opt/mrn/bin/marionnet.native' >/dev/null 2>&1; then
+    pass "\`--binary' fetched the application from the server and install.sh laid it down"
+  else
+    fail "the --binary installation did not complete (rc=$rc): [$(tail -n 8 <<<"$out")]"
+  fi
+
+  # ------------------------------------------------------------ 5. the other downloader
+  # Episode 11b, against the real server this time: on a machine with curl and no wget, the
+  # same catalogue must come through -- including its TLS, which is not curl's second-best.
+  out=$(docker run --rm -v "$SCRIPT:/marionnet-install.sh:ro" "$RIMG_CURL" \
+          bash /marionnet-install.sh --fetch-only --from "$FROM" --list 2>&1) || true
+  if printf '%s\n' "$out" | awk '$1 ~ /^(filesystems|kernels)_/' | grep -q .; then
+    pass "a box with curl and no wget reads the same published catalogue"
+  else
+    fail "curl did not bring the catalogue back: [$(tail -n 3 <<<"$out")]"
+  fi
+
+  echo
+  echo "--- $DISTRO against $FROM: $PASSED passed, $FAILED failed"
+  ((FAILED == 0)) || exit 1
+  exit 0
+fi
 
 # ---
 # --- A synthetic release directory, shaped like the real one.

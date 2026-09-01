@@ -105,6 +105,10 @@ bash Makefile.d/release.deb.sh.bench/run.sh                     # debian:trixie-
 bash Makefile.d/release.deb.sh.bench/run.sh --distro ubuntu:26.04
 bash Makefile.d/release.deb.sh.bench/run.sh --distro all        # les quatre boîtes
 bash Makefile.d/release.deb.sh.bench/run.sh /chemin/vers/une/release/
+
+# depuis l'épisode 27, le dépôt peut être le SERVEUR :
+bash Makefile.d/release.deb.sh.bench/run.sh https://www.marionnet.org/download/apt
+bash Makefile.d/release.deb.sh.bench/run.sh --distro all https://www.marionnet.org/download/apt
 ```
 
 Prérequis : `docker`, un **réseau** (apt doit joindre le miroir de la distribution pour
@@ -137,3 +141,36 @@ distribution — et rend le pire des codes de retour, un SKIP ne masquant jamais
   `marionnet-kernels-i386` dépend de `marionnet` et serait refusé pour la raison de
   l'**autre** paquet (mesuré : une première version du cas passait au vert en nommant le
   `libc6` de l'application).
+
+## Le dépôt peut être le serveur (épisode 27)
+
+Point **(6)** de la feuille de route. L'argument peut être une **URL** : la ligne de
+`sources.list` devient `deb [trusted=yes] https://www.marionnet.org/download/apt ./`, **rien
+n'est monté** dans les boîtes, et apt lit `Release`, `Packages` et les quatre `.deb` **par le
+lien stable**.
+
+**Ce qui est téléchargé ici**, et ce qui ne l'est pas : seulement ce qu'un cas doit lire *sur
+cet hôte* — les trois index (quelques kio) et, pour le cas du `mtime`, le tarball d'image
+publié. Les `.deb`, c'est **apt** qui les rapatrie, et il les vérifie contre le digest et la
+taille que `Packages` annonce **pendant** qu'il les rapatrie : c'est exactement la prétention
+que ce banc mesure. Les retélécharger ici pour revérifier un digest ne prouverait rien de
+neuf — cette preuve-là est prise **sur le serveur** par le déposeur (ép. 24), où elle ne coûte
+aucune bande passante.
+
+Deux mesures que **seul** le mode distant pouvait faire, et ce sont deux défauts :
+
+1. **`apt-get update` ne dit pas ce qu'on croyait**, et ce banc a pris son silence pour un
+   accord pendant deux épisodes : une source qu'apt **ne peut pas** rapatrier est un
+   *avertissement*, pas une erreur — le code de retour reste **0** et le run continue avec le
+   dépôt **ignoré**. Mesuré au premier run distant : apt écrivait `Err: … certificate verify
+   failed` et le cas passait au **vert**. Cinquième de la famille « juger par autre chose que
+   ce qu'on mesure » (ép. 19, 20b, 20c, 24). Le verdict se lit désormais dans **les mots
+   d'apt**, et se confirme par ce qu'il **voit** (`apt-cache policy`).
+2. **`ca-certificates` est une dépendance du canal https**, qu'une image Debian nue n'a pas :
+   le cas la mesure (apt **nomme** le certificat), la satisfait, et le dépôt devient lisible.
+   C'est une phrase que la **doc INSTALL** doit à son lecteur, au même titre que le
+   `-o Dpkg::Options::=--force-confold` de l'épisode 15b.
+
+Le cas du `mtime` change alors de portée, et pour le mieux : il compare le `.deb` qu'apt vient
+d'installer au **tarball que le serveur sert**, c'est-à-dire les deux canaux **tels que
+publiés**, et non deux fichiers voisins sur le disque de l'auteur.

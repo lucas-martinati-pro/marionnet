@@ -76,3 +76,28 @@ Soit **184 cas verts**. Les versions **précédentes** (Rocky 9, Leap 15.6) dema
 de build à glibc plus ancienne : un binaire ne tourne que sur une glibc au moins aussi récente
 que celle de sa machine de compilation, garantie qui ne vaut que vers l'avant (épisode 12). Ce
 n'est plus un préalable, c'est un choix de portée.
+
+## Le répertoire de release peut être le serveur (épisode 27)
+
+Point **(6)** de la feuille de route :
+
+```bash
+bash Makefile.d/release.rpm.sh.bench/run.sh -o https://www.marionnet.org/download/rpm
+bash Makefile.d/release.rpm.sh.bench/run.sh --distro all -o https://www.marionnet.org/download/rpm
+```
+
+Ici, **contrairement au banc `.deb`, les paquets sont bel et bien téléchargés** : neuf cas sur
+dix installent un **fichier nommé** (`dnf install /rpms/<nom>.rpm`), qui est le geste de qui a
+récupéré un paquet à la main — et c'est ce geste que ce banc a été écrit pour mesurer. Le cas
+**10** (le dépôt) est celui qui ne le fait pas : `dnf` y est pointé sur le serveur
+(`baseurl=https://…`, rien de monté) et rapatrie lui-même.
+
+Le tri est **piloté par le catalogue** et par rien d'autre (invariant de l'ép. 8, vu du côté
+consommateur) : les `*.rpm`, plus **deux** tarballs qui achètent chacun un cas qu'aucun autre
+ne joue — celui de l'application, que l'ép. 20c compare **octet par octet** au binaire
+installé, et celui de l'image invitée, dont le `mtime` est ce qu'UML vérifie. Les noyaux et les
+grosses images ne sont **pas** rapatriés : aucun cas ne les lit.
+
+Un cas de plus, joué avant les autres : les paquets servis correspondent aux digests de leur
+**propre** `SHA256SUMS`. Le téléchargement **survit à la boucle `--distro all`**
+(`MRN_BENCH_CACHE`) : quatre boîtes mesurent **une** release.

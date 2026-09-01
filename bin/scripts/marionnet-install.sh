@@ -304,6 +304,19 @@ function http_body {   # $1 = url
   esac
 }
 
+# Used for NOTHING but a diagnosis, and never to fetch: when the catalogue cannot be read at
+# all, this says whether the server would have answered had its certificate not been checked.
+# It exists because the failure is otherwise indistinguishable from an outage -- measured at
+# episode 27 on a bare Debian image, where the script announced `server down, no route, wrong
+# URL?' about a server which was up: the machine simply had no CA store. What the user is
+# missing is a package, and no message pointing at the network can lead them to it.
+function tls_would_be_trusted_but_for_the_store {   # $1 = url
+  case "$FETCHER" in
+    wget) wget -q --no-check-certificate --spider -T 10 -t 1 -- "$1" ;;
+    curl) curl -fsSk --max-time 10 -o /dev/null -- "$1" ;;
+  esac
+}
+
 function http_headers {   # $1 = url -- headers on stdout, short timeout, no body
   case "$FETCHER" in
     wget) wget --spider -S -T 10 -t 2 -- "$1" 2>&1 ;;
@@ -400,7 +413,13 @@ else
   # absence of SHA256SUMS never gets reported as a server being down.
   CATALOG_ORIGIN=listing
   if ! CATALOG=$(catalog_list); then
-    die "cannot read the catalogue at $SOURCE (unreachable source: server down, no route, wrong URL?)"
+    hint=""
+    if [[ $SOURCE_KIND = url && $SOURCE = https://* ]] \
+       && tls_would_be_trusted_but_for_the_store "$SOURCE/" >/dev/null 2>&1; then
+      hint=" -- the server DOES answer when its certificate is not verified: this machine has\
+ no certificate store, install ca-certificates"
+    fi
+    die "cannot read the catalogue at $SOURCE (unreachable source: server down, no route, wrong URL?)$hint"
   fi
   warn "the source publishes no SHA256SUMS: the catalogue comes from the directory listing,\
  and nothing will be verified"

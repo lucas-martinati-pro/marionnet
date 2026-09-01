@@ -120,6 +120,10 @@ binaire fait sans afficher : `--help`, `--paths`.
 make release-binary                             # produit l'artefact (configuration FINALE)
 bash Makefile.d/release.binary.sh.bench/run.sh  # [--distro IMAGE|all] [marionnet_*.tar.xz]
 bash Makefile.d/release.binary.sh.bench/run.sh --distro all
+
+# depuis l'épisode 27, l'artefact peut venir du SERVEUR :
+bash Makefile.d/release.binary.sh.bench/run.sh https://www.marionnet.org/download/apt
+bash Makefile.d/release.binary.sh.bench/run.sh --distro all https://www.marionnet.org/download/apt
 ```
 
 Sans argument, le banc prend le plus récent `marionnet_*.tar.xz` publié sous
@@ -137,3 +141,21 @@ tarball), autre = FAIL ; une ligne par cas, un décompte, et le banc retire ses 
    de build, et le binaire mourait sur `libgtksourceview-3.0.so.1`.
 
 Les deux sont désormais dans la liste du `Makefile`, avec leur justification.
+
+## L'artefact peut venir du serveur (épisode 27)
+
+Point **(6)** de la feuille de route. L'argument peut être une **URL** http(s) — d'un
+répertoire de release, ou d'un tarball précis — exactement comme `marionnet-install.sh --from`
+prend une URL **ou** un répertoire, et pour la même raison : seules deux fonctions connaissent
+la différence, si bien qu'un run distant emprunte **le vrai chemin** au lieu d'en réimplémenter
+un second. Ce qui arrive devient le fichier local que les cas savaient déjà lire ; **rien
+d'autre ne change**.
+
+- **Le choix, quand l'URL nomme un répertoire, se fait dans le catalogue** : la plus grande
+  révision que `SHA256SUMS` annonce. **Ni l'arch ni la glibc** n'entrent en ligne de compte
+  ici — ce sont les critères que les cas lisent **dans le nom**, et en tenir compte au moment
+  du choix masquerait silencieusement le refus que l'épisode 12 existe pour mesurer.
+- **Un cas de plus, joué avant tous les autres** : le tarball servi correspond au digest de
+  **son propre** `SHA256SUMS`. Tout le reste est ensuite mesuré sur **ces** octets-là.
+- Le téléchargement **survit à la boucle `--distro all`** (variable `MRN_BENCH_CACHE`) :
+  quatre boîtes mesurent **un** artefact, pas quatre copies.

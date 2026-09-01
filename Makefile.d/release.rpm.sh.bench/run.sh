@@ -28,7 +28,10 @@
 #
 # Usage: Makefile.d/release.rpm.sh.bench/run.sh [OPTIONS]
 #
-#   -o, --output-dir DIR   the release directory holding the packages
+#   -o, --output-dir DIR   the release directory holding the packages -- a path, or since
+#                          episode 27 an http(s) URL, in which case the packages measured
+#                          are the ones www.marionnet.org serves and the repository of
+#                          case 10 is that server (point (6) of the roadmap)
 #                          (default: website-repo/download/marionnet-install.sh/<series>)
 #       --distro IMAGE     the box to receive them (default: fedora:42)
 #       --keep             do not remove the containers afterwards (says their names)
@@ -74,6 +77,14 @@ command -v docker >/dev/null || skip_all "docker is not available"
 ALL_DISTROS=(rockylinux/rockylinux:10 almalinux:10 fedora:42 opensuse/leap:16.0)
 if test "$DISTRO" = all; then
   rc=0
+# One download for the four boxes, not four: the loop makes the cache and the children
+# inherit it through the environment (episode 27). It is removed here, by the invocation
+# which made it, exactly as a single run removes its own.
+  ALL_CACHE=""
+  if test -z "${MRN_BENCH_CACHE:-}"; then
+    ALL_CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+    export MRN_BENCH_CACHE=$ALL_CACHE
+  fi
   forward=()
   test -z "$OUTDIR" || forward+=(--output-dir "$OUTDIR")
   ((KEEP)) && forward+=(--keep)
@@ -81,6 +92,7 @@ if test "$DISTRO" = all; then
     echo; echo "================================================================ $d"
     bash "${BASH_SOURCE[0]}" --distro "$d" "${forward[@]}" || rc=1
   done
+  test -z "$ALL_CACHE" || rm -rf -- "$ALL_CACHE"
   exit $rc
 fi
 
@@ -97,11 +109,73 @@ case "$DISTRO" in
   *)                 FAMILY=dnf ;;
 esac
 
+# ---
+# --- Where the release is read from: a directory, or a server (episode 27)
+# ---
+# The release directory may be named by an http(s) URL, exactly as `marionnet-install.sh
+# --from' takes a URL or a directory -- and for the same reason: only the two functions
+# below know the difference, so a remote run exercises the real path rather than a second
+# implementation of it.
+#
+# Here, unlike the .deb bench, the packages themselves ARE downloaded: nine cases out of ten
+# install a NAMED FILE (`dnf install /rpms/<name>.rpm'), which is the gesture of somebody who
+# fetched a package by hand, and it is that gesture this bench was written to measure. Case
+# 10 -- the repository -- is the one which does not: there dnf is pointed at the server and
+# fetches by itself. Downloaded once, and kept for the whole `--distro all' loop: four boxes
+# measure ONE release, not four copies of it.
+#
+# `curl -f' is not a decoration: without it curl exits 0 on a 404 and the error page would
+# land in the file (episode 11b).
+function is_url { [[ $1 = http://* || $1 = https://* ]]; }
+
+function fetch_to {   # <url> <destination file>
+  if   command -v wget >/dev/null 2>&1; then wget -q -O "$2" -- "$1"
+  elif command -v curl >/dev/null 2>&1; then curl -fsS -o "$2" -- "$1"
+  else return 127
+  fi
+}
+
+CACHE=${MRN_BENCH_CACHE:-}
+if test -z "$CACHE"; then
+  CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+  export MRN_BENCH_CACHE=$CACHE
+  CACHE_OWNED=1
+fi
+
 if test -z "$OUTDIR"; then
   SERIES=$(bash "$ROOT/Makefile.d/filesystem.prepare-snapshot-to-publish.sh" --print-series) || \
     skip_all "cannot read the publication series"
   OUTDIR="$ROOT/website-repo/download/marionnet-install.sh/$SERIES"
 fi
+
+REPO_URL=""
+if is_url "$OUTDIR"; then
+  REPO_URL=${OUTDIR%/}
+  OUTDIR=$CACHE/rpms
+  mkdir -p "$OUTDIR"
+  fetch_to "$REPO_URL/SHA256SUMS" "$OUTDIR/SHA256SUMS" || \
+    skip_all "cannot read $REPO_URL/SHA256SUMS (no downloader, or this is not a release directory)"
+  # Driven by the catalogue and by nothing else -- the invariant of episode 8, seen from the
+  # consumer's side: an artefact SHA256SUMS does not name is one no client can find. Two
+  # tarballs come along with the packages, and each buys one case no other can play: the
+  # application's, which episode 20c compares byte for byte with the installed binary, and
+  # the guest image's, whose mtime is what UML checks (invariant 1). The other artefacts --
+  # the kernels, the big images -- are not downloaded: no case reads them.
+  for f in $(awk '{print $2}' "$OUTDIR/SHA256SUMS" | \
+             grep -E '\.rpm$|^marionnet_.*\.tar\.xz$|^filesystems_machine-guignol-.*\.tar\.xz$'); do
+    test -s "$OUTDIR/$f" && continue
+    info "fetching $f ..."
+    fetch_to "$REPO_URL/$f" "$OUTDIR/$f" || skip_all "cannot download $f from $REPO_URL/"
+  done
+  # And the one case a remote run adds, before any of the others: what the server serves is
+  # what its own catalogue announces. Everything below is then measured on THESE bytes.
+  if (cd -- "$OUTDIR" && grep -E '\.rpm$' SHA256SUMS | sha256sum -c --status -); then
+    pass "the packages served by $REPO_URL match the digests of their own SHA256SUMS"
+  else
+    fail "what $REPO_URL serves does not match the digests SHA256SUMS announces"
+  fi
+fi
+
 test -d "$OUTDIR" || skip_all "no release directory: $OUTDIR"
 OUTDIR=$(cd -- "$OUTDIR" && pwd)
 
@@ -133,13 +207,14 @@ GUIGNOL=$(rpm_named marionnet-fs-guignol || true)
 VDE2=$(rpm_named vde2 || true)
 UMLU=$(rpm_named uml-utilities || true)
 
-info "release dir : $OUTDIR"
+info "release dir : ${REPO_URL:-$OUTDIR}"
 info "box         : $DISTRO"
 info "packages    : $APP ${KERNELS:-} ${GUIGNOL:-} ${VDE2:-} ${UMLU:-}"
 
 BOX="mrn-rpm-bench-$(echo "$DISTRO" | tr ':/' '--')"
 function cleanup {
   if ((KEEP)); then info "container kept: $BOX"; else docker rm -f "$BOX" >/dev/null 2>&1; fi
+  if test -n "${CACHE_OWNED:-}" && ((KEEP == 0)); then rm -rf -- "$CACHE"; fi
 }
 trap cleanup EXIT
 
@@ -555,6 +630,12 @@ fi
 # dnf configuration edited. Measuring "what a plain dnf install gives" needs a machine to which
 # nothing has been done.
 info "10. the repository (a fresh box, nothing but the repo)"
+# Remotely, the index is asked of the SERVER: a repodata/ in the local mirror would say
+# nothing about what dnf is going to find at the other end of the URL.
+if test -n "$REPO_URL"; then
+  fetch_to "$REPO_URL/repodata/repomd.xml" "$CACHE/repomd.xml" >/dev/null 2>&1 && \
+    { mkdir -p "$OUTDIR/repodata"; cp -- "$CACHE/repomd.xml" "$OUTDIR/repodata/repomd.xml"; }
+fi
 if ! test -f "$OUTDIR/repodata/repomd.xml"; then
   skip "no repodata in the release directory (run: make release-dnf)"
 else
@@ -567,7 +648,12 @@ else
 
   BOX2="$BOX-repo"
   docker rm -f "$BOX2" >/dev/null 2>&1
-  if docker run -d --name "$BOX2" -v "$OUTDIR:/repo:ro" "$DISTRO" sleep infinity >/dev/null 2>&1; then
+  # Nothing is mounted in a remote run: the repository under test is on the other side of
+  # the network, which is the whole point of the exercise.
+  MOUNT2=(-v "$OUTDIR:/repo:ro")
+  test -z "$REPO_URL" || MOUNT2=()
+  BASE_URL=${REPO_URL:-file:///repo}
+  if docker run -d --name "$BOX2" "${MOUNT2[@]}" "$DISTRO" sleep infinity >/dev/null 2>&1; then
     function in_box2 { docker exec "$BOX2" bash -c "$1"; }
     case "$FAMILY" in
       dnf)    in_box2 'if test -f /etc/redhat-release && ! grep -qi fedora /etc/redhat-release; then
@@ -575,9 +661,9 @@ else
                          dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
                          dnf config-manager --set-enabled crb >/dev/null 2>&1 || true
                        fi'
-              in_box2 'printf "[marionnet]\nname=Marionnet\nbaseurl=file:///repo\nenabled=1\ngpgcheck=0\n" > /etc/yum.repos.d/marionnet.repo' ;;
-      zypper) in_box2 'zypper --non-interactive addrepo --no-gpgcheck file:///repo marionnet >/dev/null 2>&1
-                       zypper --non-interactive --no-gpg-checks refresh >/dev/null 2>&1' ;;
+              in_box2 "printf '[marionnet]\nname=Marionnet\nbaseurl=$BASE_URL\nenabled=1\ngpgcheck=0\n' > /etc/yum.repos.d/marionnet.repo" ;;
+      zypper) in_box2 "zypper --non-interactive addrepo --no-gpgcheck $BASE_URL marionnet >/dev/null 2>&1
+                       zypper --non-interactive --no-gpg-checks refresh >/dev/null 2>&1" ;;
     esac
     function pm2_install { case "$FAMILY" in
         dnf)    in_box2 "dnf -y install $* >/dev/null 2>&1" ;;

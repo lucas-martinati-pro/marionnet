@@ -43,9 +43,16 @@
 # looks. The default is the box the previous episodes measured, so a run without arguments
 # means what it has always meant.
 #
-# Usage: run.sh [--distro IMAGE|all] [PATH-TO-marionnet_*.tar.xz]
+# Since episode 27 the artefact may come from the SERVER instead of the local release
+# directory: the argument may be an http(s) URL -- of a release directory, or of one tarball
+# in it -- and the bench then measures the very bytes www.marionnet.org serves. Nothing else
+# changes: what is downloaded is turned into the same local file the cases below already
+# knew how to read. That is point (6) of the roadmap for this bench.
+#
+# Usage: run.sh [--distro IMAGE|all] [PATH-OR-URL]
 #        (default distro: debian:trixie-slim; default tarball: the newest one under
-#         website-repo/download/marionnet-install.sh/*/)
+#         website-repo/download/marionnet-install.sh/*/. A URL names either a release
+#         directory -- the greatest revision of its SHA256SUMS is taken -- or a tarball.)
 # ---
 
 set -euo pipefail
@@ -77,6 +84,14 @@ if (( ${#ARGS[@]} )); then set -- "${ARGS[@]}"; else set --; fi
 # a SKIP (77) never masking a FAIL.
 if [[ $DISTRO = all ]]; then
   worst=0
+# One download for the four boxes, not four: the loop makes the cache and the children
+# inherit it through the environment (episode 27). It is removed here, by the invocation
+# which made it, exactly as a single run removes its own.
+  ALL_CACHE=""
+  if [[ -z ${MRN_BENCH_CACHE:-} ]]; then
+    ALL_CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+    export MRN_BENCH_CACHE=$ALL_CACHE
+  fi
   for d in "${DISTROS[@]}"; do
     echo; echo "############ $d"
     rc=0; "${BASH_SOURCE[0]}" --distro "$d" "$@" || rc=$?
@@ -85,6 +100,7 @@ if [[ $DISTRO = all ]]; then
     else worst=1
     fi
   done
+  [[ -z $ALL_CACHE ]] || rm -rf -- "$ALL_CACHE"
   echo; echo "############ the four boxes: worst exit code $worst"
   exit "$worst"
 fi
@@ -112,9 +128,45 @@ BARE_UNPACK=""
 function cleanup {
   docker rm -f "$BOX" "$BOX_ALT" "$BOX_BARE" "$BOX_NET" "$BOX_COMPL" >/dev/null 2>&1 || true
   test -z "$BARE_UNPACK" || rm -rf -- "$BARE_UNPACK"
+  # The download of a remote run is kept for the whole `--distro all' loop and removed by
+  # the invocation which created it: four boxes measure ONE artefact, not four copies of it.
+  test -z "${CACHE_OWNED:-}" || rm -rf -- "$CACHE"
   return 0
 }
 trap cleanup EXIT
+
+# ---
+# --- Where the artefact is read from: a file, or a server (episode 27)
+# ---
+# The argument may be an http(s) URL, exactly as `marionnet-install.sh --from' takes a URL
+# or a directory -- and for the same reason: only the two functions below know the
+# difference, so a remote run exercises the real path instead of a second implementation
+# of it. What arrives is written to a local file, and every case downstream stays as it was.
+#
+# The CHOICE, when the URL names a directory, is made in the catalogue and nowhere else:
+# the greatest revision SHA256SUMS announces. Not the arch, not the glibc -- those are the
+# criteria the cases below already read out of the NAME, and taking them into account here
+# would silently hide the very refusal episode 12 exists to measure.
+#
+# `curl -f' is not a decoration: without it curl exits 0 on a 404 and the error page would
+# land in the file (episode 11b).
+function is_url { [[ $1 = http://* || $1 = https://* ]]; }
+
+function fetch_to {   # <url> <destination file>
+  if   command -v wget >/dev/null 2>&1; then wget -q -O "$2" -- "$1"
+  elif command -v curl >/dev/null 2>&1; then curl -fsS -o "$2" -- "$1"
+  else return 127
+  fi
+}
+
+# The download survives the `--distro all' loop: it is created by the invocation which finds
+# the variable unset, and removed by that same one (see `cleanup').
+CACHE=${MRN_BENCH_CACHE:-}
+if [[ -z $CACHE ]]; then
+  CACHE=$(mktemp -d -- "${TMPDIR:-/tmp}/mrn-bench-cache.XXXXXXXX")
+  export MRN_BENCH_CACHE=$CACHE
+  CACHE_OWNED=1
+fi
 
 # --- What is being measured: a tarball made by `make release-binary'.
 
@@ -122,6 +174,39 @@ TARBALL="${1:-}"
 if [[ -z $TARBALL ]]; then
   TARBALL=$(ls -t "$ROOT"/website-repo/download/marionnet-install.sh/*/marionnet_*.tar.xz 2>/dev/null | head -n 1) || true
 fi
+
+if [[ -n $TARBALL ]] && is_url "$TARBALL"; then
+  REMOTE=$TARBALL
+  if [[ $REMOTE = *.tar.xz ]]; then
+    SUMS_URL=${REMOTE%/*}/SHA256SUMS; WANT=${REMOTE##*/}
+  else
+    SUMS_URL=${REMOTE%/}/SHA256SUMS; WANT=""
+  fi
+  SUMS=$CACHE/SHA256SUMS
+  test -s "$SUMS" || fetch_to "$SUMS_URL" "$SUMS" || \
+    skip_all "cannot read $SUMS_URL (no downloader, or the server does not answer)"
+  if [[ -z $WANT ]]; then
+    # Ordered on the REVISION, numerically: it is the only field which orders two artefacts
+    # of one series -- the rule release.retention.sh owns, and release.rpm.sh reads the same way.
+    WANT=$(awk '{print $2}' "$SUMS" | grep -E '^marionnet_.*\.tar\.xz$' \
+           | sed -E 's/^marionnet_.*-r([0-9]+)_.*/\1 &/' | sort -k1,1n | tail -n 1 | cut -d' ' -f2)
+    [[ -n $WANT ]] || skip_all "the catalogue of $REMOTE announces no marionnet_*.tar.xz"
+  fi
+  TARBALL=$CACHE/$WANT
+  if [[ ! -s $TARBALL ]]; then
+    echo "--- fetching $WANT from ${SUMS_URL%/SHA256SUMS} ..."
+    fetch_to "${SUMS_URL%/SHA256SUMS}/$WANT" "$TARBALL" || \
+      skip_all "cannot download $WANT from ${SUMS_URL%/SHA256SUMS}/"
+  fi
+  # The one case a remote run adds, and it is played before anything else: what the server
+  # serves is what its catalogue announces. Downstream, everything is measured on these bytes.
+  if (cd -- "$CACHE" && grep -E "[ *]$WANT\$" SHA256SUMS | sha256sum -c --status -); then
+    pass "the tarball served by $REMOTE matches the digest of its own SHA256SUMS"
+  else
+    fail "$WANT does not match the digest SHA256SUMS announces for it"
+  fi
+fi
+
 [[ -n $TARBALL && -f $TARBALL ]] || \
   skip_all "no binary tarball found: run \`make release-binary' first (or pass one as argument)"
 

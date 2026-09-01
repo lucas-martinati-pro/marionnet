@@ -587,7 +587,9 @@ mesurer sans elle. L'ordre effectif est donc celui-ci, et il reste **local jusqu
 5. **`upload.www.marionnet.org.sh`** — le dépôt d'un répertoire de release
    (`website-repo/download/marionnet-install.sh/1.0.x/`) sur le serveur. C'est ce qui reste
    de l'étape 1 du § 5.
-6. **Rejeu de (2) et (4) contre le vrai serveur** — la jambe https comprise.
+6. **Rejeu de (2) et (4) contre le vrai serveur** — la jambe https comprise. **FAIT
+   (épisode 27)** : les quatre bancs lisent une release par une **URL**, et 572 cas y sont
+   verts contre `www.marionnet.org`.
 
 **Hors de cet ordre, sur demande** : l'épisode 16 (`marionnet-get-images`), l'**épisode 17**
 (le canal RPM) et l'**épisode 20** (la boîte de compilation — la « matrice de compilation »
@@ -599,7 +601,9 @@ canal doit les empaqueter lui-même. Il reste au canal RPM son dépôt `createre
 servir Rocky 9 / Leap 15.6, une image de build à la glibc plus ancienne.
 
 La **doc INSTALL** (point 5 du § 5) devient le **tout dernier** épisode du chantier : elle
-devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant eux.
+devra parler des `.deb` et des `.rpm`, donc elle ne peut pas être écrite avant eux — et, depuis
+l'épisode 27, elle devra aussi dire que le canal https demande **`ca-certificates`** sur une
+machine Debian/Ubuntu minimale.
 
 ## 6. Décisions sur les questions ouvertes (grill du 2026-07-19)
 
@@ -3775,3 +3779,120 @@ la justesse repose sur le transfert seul. Vérifié : avec `-c`, le même cas do
   « configuration testing » : passe sur `CONFIGME`, **refuse** sur `CONFIGME.testing.sh`
   (éprouvé dans les deux sens, symlink restauré).
 - `make -n release-and-upload` déroule les quatre maillons dans l'ordre ; `dune build` rc 0.
+
+## Épisode 27 (2026-09-01) — les bancs contre le vrai serveur
+
+Point **(6)** de la feuille de route du § 5 bis, le dernier avant la doc INSTALL. Les quatre
+bancs de réception mesuraient une release **posée sur le disque de l'auteur** ; l'épisode 24 a
+déposé cette release sur `www.marionnet.org` et n'en a vérifié la lecture qu'**à la main**, en
+une ligne. Cet épisode donne aux quatre bancs de quoi lire **le serveur**.
+
+### 1. Une seule forme, et c'est celle de l'installeur
+
+L'argument qui nomme la release peut désormais être une **URL http(s)** — exactement comme
+`marionnet-install.sh --from` prend une URL **ou** un répertoire depuis l'épisode 6, et pour la
+même raison : **seules deux fonctions connaissent la différence**, si bien qu'un run distant
+emprunte le **vrai** chemin au lieu d'en réimplémenter un second.
+
+| Banc | Forme | Ce que le mode distant change |
+|---|---|---|
+| `release.binary.sh.bench` | `run.sh [--distro …] <URL>` | le tarball est **choisi dans le catalogue**, téléchargé, et son digest vérifié avant tout le reste |
+| `release.deb.sh.bench` | `run.sh [--distro …] <URL>` | une ligne de `sources.list` (`deb [trusted=yes] <URL> ./`), **rien de monté** ; apt rapatrie et vérifie lui-même |
+| `release.rpm.sh.bench` | `run.sh -o <URL>` | les `.rpm` sont rapatriés (neuf cas sur dix installent un **fichier nommé**) ; le cas **10** pointe `dnf` sur le serveur |
+| `marionnet-install.sh.bench` | `run.sh --from <URL>` | les fixtures et l'Apache du banc sont laissés de côté : une **famille** de cas qu'une release publiée sait répondre |
+
+**Ce qui est téléchargé, et ce qui ne l'est pas.** Pour le canal `.deb`, seulement ce qu'un cas
+doit lire *sur cet hôte* : les trois index, plus le tarball d'image que le cas du `mtime`
+compare. Les paquets, c'est **apt** qui les rapatrie — et il les vérifie contre le digest et la
+taille de `Packages` **pendant** qu'il les rapatrie. Les retélécharger pour revérifier un digest
+ne prouverait **rien de neuf** : cette preuve-là est prise **sur le serveur** par le déposeur
+(ép. 24), où elle ne coûte aucune bande passante. Le canal RPM, lui, télécharge : son geste
+nominal *est* `dnf install <fichier>.rpm`.
+
+**Le catalogue décide encore** (invariant de l'ép. 8, vu du côté consommateur) : ce qui est
+rapatrié est ce que `SHA256SUMS` nomme, et rien d'autre — jamais une liste écrite dans un banc.
+Le téléchargement **survit à la boucle `--distro all`** (`MRN_BENCH_CACHE`) : quatre boîtes
+mesurent **une** release, pas quatre copies.
+
+### 2. Ce que seul le vrai serveur pouvait montrer : le magasin de certificats
+
+Une image Debian nue ne porte **aucune autorité de certification**. Conséquence, mesurée des
+**deux** côtés du canal :
+
+- **`apt`** ne lit pas notre dépôt du tout — et **`apt-get update` sort avec 0** en le disant
+  seulement dans un *avertissement* ;
+- **`marionnet-install.sh`** ne lit pas le catalogue — et annonçait
+  `unreachable source: server down, no route, wrong URL?` **à propos d'un serveur debout**.
+
+Deux corrections en découlent. **(a)** Le script **sonde** désormais la même URL sans
+vérification de certificat avant de décider quoi accuser
+(`tls_would_be_trusted_but_for_the_store`, utilisée **pour le seul diagnostic, jamais pour
+rapatrier**) et **nomme `ca-certificates`** : un message qui pointe le réseau ne peut mener
+personne au paquet qui lui manque. **(b)** Les bancs mesurent la chose au lieu de la contourner :
+un cas la constate, l'installe, et le reste du run continue — et le fait entre dans ce que la
+**doc INSTALL** devra écrire, au même titre que le `-o Dpkg::Options::=--force-confold` de
+l'épisode 15b.
+
+### 3. Deux défauts de banc, de la même famille que ceux des épisodes 19, 20b, 20c et 24
+
+**`apt-get update` ne dit pas ce qu'on croyait.** Une source qu'apt ne peut pas rapatrier est un
+avertissement : le code de retour reste **0**. Le cas « `apt-get update` accepte le dépôt à plat »
+est donc passé au **vert** sur un run où apt venait d'écrire `Err: … certificate verify failed`
+et d'ignorer le dépôt. C'est le **cinquième** de la famille *juger par autre chose que ce qu'on
+mesure*. Le verdict se lit maintenant dans **les mots d'apt** (aucune ligne `Err:`/`E:`) **et**
+dans ce qu'il voit (`apt-cache policy` donne un candidat).
+
+**Un verdict fondé sur un libellé.** La première version du cas « magasin de certificats »
+cherchait le mot *certificate* dans la sortie du script, ne l'y trouvait pas — le script ne
+relayait pas son téléchargeur — et concluait **« cette boîte fait confiance au serveur »** juste
+après un run qui n'avait rien lu. Corrigé par la seule forme qui prouve quelque chose : la boîte
+est interrogée **deux fois**, et si ajouter `ca-certificates` répare, c'est bien lui qui manquait.
+Le libellé n'est mesuré **qu'ensuite**, comme cas distinct.
+
+**Et un défaut de boucle**, du même genre : `--distro all` du banc réseau réémettait
+`"$@"`, où `--from` **ne figure pas** (le parseur l'avait consommé) — trois boîtes vertes qui
+n'avaient jamais touché `www.marionnet.org`. L'option est désormais **transmise explicitement**.
+
+### 4. Ce qui n'a pas changé, et c'est le résultat
+
+Aucun cas n'a été récrit pour le serveur, aucun n'a été retiré : les bancs jouent **les mêmes
+cas** sur des octets qui viennent d'ailleurs. Les runs **locaux** restent aux chiffres des
+épisodes précédents (68 / 48 / 33 / 48), et les runs distants les dépassent d'exactement le cas
+neuf que chacun ajoute — le digest de ce que le serveur sert.
+
+Deux cas changent de portée sans changer de forme, et ce sont les deux qui comptent : le `mtime`
+du canal `.deb` compare désormais le paquet **qu'apt vient d'installer** au tarball **que le
+serveur sert** (les deux canaux *tels que publiés*, et non deux fichiers voisins sur un disque),
+et l'identité binaire du canal RPM se prend sur le tarball **publié**.
+
+### Prouvé (2026-09-01), contre `https://www.marionnet.org/download/{apt,rpm}`
+
+| Banc | Local (fixtures / release locale) | Distant (le serveur) |
+|---|---|---|
+| `marionnet-install.sh.bench` | **68 / 0** (inchangé) | **11 × 4 boîtes = 44 / 0** |
+| `release.binary.sh.bench` | **48 / 0** (inchangé) | **49 × 4 boîtes = 196 / 0** |
+| `release.deb.sh.bench` | **33 / 0** (inchangé) | **34 × 4 boîtes = 136 / 0** |
+| `release.rpm.sh.bench` | **48 / 0** (inchangé) | **50 + 48 + 49 + 49 = 196 / 0** |
+
+Soit **572 cas verts contre le vrai serveur, 0 rouge, 0 SKIP**, et **197 cas locaux inchangés**
+— la non-régression est le premier résultat : aucun cas n'a été récrit pour le serveur.
+
+Ce que ces runs disent, et que personne n'avait mesuré :
+
+- la release **r930** est servie **entière et intacte** sur les trois canaux, chaque banc
+  vérifiant le digest de ce qu'il reçoit contre le `SHA256SUMS` **du serveur** ;
+- `apt install marionnet` **et** `dnf install marionnet` fonctionnent **par les liens stables**
+  `download/apt` et `download/rpm`, sur **huit** distributions (Debian 12/13, Ubuntu 24.04/26.04,
+  Rocky 10, Alma 10, Fedora 42, Leap 16) ;
+- l'installeur choisit `marionnet_trunk-r930_amd64_glibc2.36` sur les quatre boîtes Debian/Ubuntu
+  — **glibc 2.36 y compris**, ce qui est le plancher de l'épisode 20 vérifié depuis le serveur ;
+- le `mtime` de l'image guignol publiée (`2017-06-09 15:01:16`) est **le même** dans le tarball,
+  dans le `.deb` et dans le `.rpm`, tous trois **rapatriés du serveur** ;
+- **les quatre images Debian/Ubuntu nues n'ont aucun magasin de certificats** — mesuré une par
+  une — là où les quatre boîtes RPM en portent un (leur `dnf` lit notre dépôt https sans qu'on
+  ajoute rien).
+
+**Obligation héritée pour la doc INSTALL** (dernier épisode) : dire que le canal https demande
+`ca-certificates` sur une machine Debian/Ubuntu minimale, à côté du
+`-o Dpkg::Options::=--force-confold` (ép. 15b) et du `dpkg --add-architecture i386` (ép. 13).
+
