@@ -971,6 +971,19 @@ Reprise : appliquer le skill `chantier-long`.
   employé par les 5 cibles qui indexent — sans quoi `SIGN=no` se développait en `--sign no` et le
   publieur mourait en cherchant une clef nommée `no`), et la garde du déposeur teste ce que
   `SIGN` **veut dire**, pas sa présence.
+  **Ép. 31 : la page d'installation en français.** `doc-src/INSTALL.FR.md` (pour le site web),
+  **commitée** — d'où la différence avec `teacher-guide.FR.md`, qui se déclare lui-même
+  traduction de relecture non versionnée : être dans git est le critère de l'ép. 14, donc la
+  page FR est **nommée dans `doc-src/dune`** et installée par les 3 canaux, une ligne touchée.
+  **À ne pas défaire** : les blocs de code sont repris **à l'identique** (ils ont été *joués* à
+  l'ép. 29 ; les traduire publierait des commandes que personne n'a jouées) — seuls leurs
+  commentaires sont traduits — et le tableau final nomme les pages **anglaises**, qui sont
+  celles qui sont installées. **9ᵉ défaut de la famille « juger par autre chose que ce qu'on
+  mesure »**, variante *fait recopié* : le banc du tarball comptait la doc livrée par un `26`
+  **écrit dans le banc**, périmé par l'ép. 29 — rouge en puissance depuis 2 épisodes, invisible
+  faute de rejeu depuis l'ép. 20. Le compte est désormais **lu dans `doc-src/dune`** et reste
+  **exact** ; motif ancré sur une **strophe**, un `grep -c` naïf comptant le commentaire
+  d'en-tête qui explique la forme.
 
 ## Où puiser
 

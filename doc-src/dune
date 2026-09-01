@@ -63,6 +63,13 @@
      ;; --- installing is also the page one re-reads on the machine, to add the guest images, to
      ;; --- grant the sudoers rule, or to remove the whole thing.
      (INSTALL.md as doc/marionnet/INSTALL.md)
+     ;; --- The same page in French, for the web site -- and installed here for the same reason
+     ;; --- the English one is: it is re-read ON the machine. It is named although the French
+     ;; --- teacher's guide is not, and the criterion is the one stated above: this file is IN
+     ;; --- GIT. teacher-guide.FR.md says so itself in its first lines -- it is a reading aid,
+     ;; --- not a deliverable; this one is a published document, and the English original
+     ;; --- remains the authority.
+     (INSTALL.FR.md as doc/marionnet/INSTALL.FR.md)
      ;; --- The teacher: from a statement to a mark, one worked example per command.
      (teacher-guide.md as doc/marionnet/teacher-guide.md)
      ;; --- The exam mode: what a session records, and what a mark may rest on.

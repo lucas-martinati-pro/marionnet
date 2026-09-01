@@ -548,7 +548,8 @@ INSTALL
   default -- and installs the scoped sudoers rule Marionnet needs to build its taps.
 
   share/doc/marionnet/ travels with it too: INSTALL.md (the three channels, the guest images,
-  the sudoers rule, and how to remove all of it), the teacher's guide, the guide to the control
+  the sudoers rule, and how to remove all of it) and its French translation INSTALL.FR.md,
+  the teacher's guide, the guide to the control
   channel and its runnable examples, the exam mode, the lab-design page an AI agent is told
   to follow, the .mar format, and a complete replayable lab (labs/session-7/). The example
   scripts are installed executable; the documents cite each other by relative path, so they

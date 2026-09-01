@@ -4535,3 +4535,84 @@ rétabli et vérifié **identique à l'octet**.
 global s'est appliqué à la **définition** du macro elle-même, qui est devenue récursive
 (`sign_flag = $(if …,,$(sign_flag))`). Relire le résultat d'un remplacement global n'est pas une
 politesse.
+
+---
+
+## Épisode 31 (2026-09-01) — la page d'installation en français, et un compte qui avait vieilli
+
+Demande de l'utilisateur : une traduction française de `doc-src/INSTALL.md`, destinée au **site
+web**. Deux questions de forme se posaient, une seule appelait un arbitrage.
+
+### 1. Le nom, et la différence avec `teacher-guide.FR.md`
+
+**`doc-src/INSTALL.FR.md`** — la forme `.FR.md` existe déjà dans le répertoire
+(`teacher-guide.FR.md`) et range la traduction juste à côté de son original.
+
+Mais la ressemblance s'arrête au nom, et c'est ce qui décide de tout le reste :
+`teacher-guide.FR.md` **le dit lui-même dans ses trois premières lignes** — *« traduction de
+lecture, non versionnée […] pas destinée à être commitée »* — c'est une aide à la relecture.
+`INSTALL.FR.md` est un **document publié** : il est commité, donc servi par Launchpad, donc
+copiable vers le site. Cette différence de nature est le seul critère qui tranche la question
+suivante.
+
+### 2. Installée, et pas seulement publiée (décision de l'utilisateur)
+
+Une ligne de plus dans `doc-src/dune` et les **trois canaux** la posent sous
+`<prefix>/share/doc/marionnet/` — aucun canal ne nomme les documents un par un (épisode 14),
+donc ce fichier est le seul endroit touché. L'argument est celui qui avait fait installer
+l'originale : *une page d'installation se relit **sur** la machine* (ajouter les images
+invitées, accorder le sudoers, désinstaller).
+
+Et le critère de l'épisode 14 est respecté sans exception : on ne nomme que des fichiers **qui
+sont dans git**. C'est pour cela que le guide FR de l'enseignant, lui, reste dehors — pas par
+préférence de langue, mais parce que nommer un fichier que dune ne trouve pas casse le build sur
+un clone frais.
+
+### 3. Ce que la traduction n'a pas le droit de faire
+
+Les blocs de code de l'épisode 29 ont été **joués** avant d'être publiés ; les traduire serait
+publier des commandes que personne n'a jouées. Ils sont donc repris **à l'identique** —
+vérification faite en extrayant les blocs des deux pages et en les comparant hors commentaires :
+la **seule** différence est `install <user>` → `install <utilisateur>`, qui est un
+*métavariable*, pas une commande. Les commentaires **dans** les blocs, eux, sont traduits : ils
+ne s'exécutent pas et c'est là que la page explique ce qu'elle fait. L'empreinte de la clef est
+recopiée caractère pour caractère.
+
+Structure conservée : 13 titres, 33 lignes de tableau des deux côtés. Le tableau *« Où aller
+ensuite »* nomme toujours les pages **anglaises**, parce que ce sont celles qui sont installées,
+et le dit. Symétriquement, `INSTALL.md` gagne une ligne vers `INSTALL.FR.md`.
+
+Un bandeau en tête dit que **l'original anglais fait foi** : en cas de divergence, c'est lui
+qu'on corrige, et la traduction à sa suite.
+
+### 4. Le défaut trouvé en chemin : un compte écrit à la main avait vieilli de deux épisodes
+
+Le banc du tarball vérifie que la documentation livrée arrive **entière**, par un compte
+**exact** — et ce compte était **écrit dans le banc** : `26`, depuis l'épisode 14. Or l'épisode
+29 y avait ajouté `INSTALL.md` sans toucher au banc. Ce cas était donc **rouge en puissance
+depuis deux épisodes**, et personne ne l'avait vu parce que le banc binaire n'a pas été rejoué
+depuis l'épisode 20 (les rejeux de 30b quater portaient sur les deux bancs **paquets**).
+
+C'est la même famille que les épisodes 19, 20b, 20c, 24, 27, 30 et 30b — *juger par autre chose
+que ce qu'on mesure* — dans sa variante la plus banale : **un fait recopié**. Le correctif n'est
+donc pas de mettre `28` à la place de `26`, ce qui rendrait le même service jusqu'au prochain
+document : le compte attendu est **lu dans `doc-src/dune`**, qui est l'endroit où il se décide,
+comme la liste des paquets d'exécution est déjà lue à travers `make` et jamais recopiée. Le
+compte reste **exact** — c'est lui qui attrape un fichier qui cesse d'arriver.
+
+**Piège mesuré au passage** : un `grep -c 'as doc/marionnet/'` naïf répond **29** et non 28 — le
+commentaire d'en-tête de `doc-src/dune` *explique* cette forme, et se compte lui-même. Le motif
+est donc ancré sur une **strophe** (`^[[:space:]]*\([^;]* as doc/marionnet/`). Vérifié des deux
+côtés : `28` dans `doc-src/dune`, `28` entrées `doc/marionnet/` dans `marionnet.install`.
+
+### 5. Mesuré
+
+`dune build` rc 0 ; `dune build @install` liste bien `share/doc/marionnet/INSTALL.FR.md` ;
+28 = 28 entre le fichier `dune` et la cible d'installation ; blocs de code identiques (une seule
+différence, la métavariable) ; les 4 pages citées par le tableau final existent dans `doc-src/` ;
+`bash -n` sur le banc modifié.
+
+**Ce qui n'est PAS mesuré ici** : le banc binaire lui-même, qui exige un tarball publié
+(`make release-build-box`) et quatre conteneurs. Son cas corrigé se rejouera à la prochaine
+release — même motif que les épisodes 20c → 22 et 28 → 30b quater : *une preuve qui dépend de ce
+que la boîte contient se prend après le commit.*

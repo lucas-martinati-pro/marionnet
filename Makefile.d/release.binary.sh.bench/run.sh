@@ -440,11 +440,20 @@ fi
 # --- executable bit dune cannot carry, the documents cite each other by paths which resolve
 # --- WHERE THEY NOW SIT, and they belong to root like everything else.
 DOC=/usr/local/share/doc/marionnet
+# HOW MANY files is a FACT WHICH MOVES, so it is read where it is decided -- doc-src/dune,
+# which names them one by one -- and not written here. It had been written here: the number
+# said 26 since episode 14 while episode 29 had added INSTALL.md, so this case was latently
+# red and nobody had run it since. Same reasoning as the runtime package list above, read
+# through `make' rather than recopied. An exact count is still what we want: it is what
+# catches a file which stops arriving.
+# The pattern anchors on a STANZA and not on the words: the header comment of that file
+# explains the `as doc/marionnet/...' form, and a naive grep counted the explanation too.
+EXPECTED_DOC=$(grep -cE '^[[:space:]]*\([^;]* as doc/marionnet/' -- "$ROOT/doc-src/dune" || true)
 n=$(in_box "find $DOC -type f 2>/dev/null | wc -l" || echo 0)
-if [[ $n -eq 26 ]]; then
-  pass "the 26 files of the delivered documentation are under $DOC"
+if [[ ${EXPECTED_DOC:-0} -gt 0 && $n -eq $EXPECTED_DOC ]]; then
+  pass "the $n files doc-src/dune names are under $DOC"
 else
-  fail "$n file(s) of documentation under $DOC, expected 26"
+  fail "$n file(s) of documentation under $DOC, expected $EXPECTED_DOC (doc-src/dune)"
 fi
 
 # The tree is preserved, and that is not cosmetic: the guides cite each other by relative

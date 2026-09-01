@@ -366,6 +366,7 @@ by the removal: `sudo marionnet-sudoers.sh uninstall`.
 
 | Page | Read it for |
 |---|---|
+| `INSTALL.FR.md` | this same page in French |
 | `teacher-guide.md` | preparing a lab, running the session, marking it |
 | `scripting/README.md` | driving Marionnet from a script, through the control channel |
 | `exam-mode.md` | what an exam session records |

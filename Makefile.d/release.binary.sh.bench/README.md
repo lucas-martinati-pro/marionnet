@@ -29,7 +29,9 @@ dans un conteneur jeté ensuite.
   `marionnet-sudoers.sh uninstall`, non posée sous `--no-sudoers` ;
 - que **`REQUIRED_PACKAGES_RUNTIME` suffit** à faire démarrer le binaire : le conteneur ne
   porte que cette liste, lue par `make print-required-packages-runtime` (jamais recopiée) ;
-- la **documentation livrée** (épisode 14) : ses **26** fichiers sous
+- la **documentation livrée** (épisode 14) : ses fichiers (**28** aujourd'hui, compte **lu
+  dans `doc-src/dune`** depuis l'épisode 31 — écrit ici, il disait encore 26 alors que
+  l'épisode 29 avait ajouté `INSTALL.md`) sous
   `<prefix>/share/doc/marionnet/`, **l'arborescence conservée** (les guides se citent par
   chemin relatif), les **14** scripts d'exemple **exécutables** — le bit que `dune` ne sait
   pas porter, mesuré : il installe tout hors `bin/` en 0644 — et les documents, eux, qui ne
