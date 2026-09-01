@@ -691,15 +691,55 @@ Reprise : appliquer le skill `chantier-long`.
   disparu, sa forme reste — un `.conf` ancien peut toujours porter un digest périmé, et rien ne
   lit `MD5SUM`. Mesuré : `sha256sum -c` sur 35 artefacts, `dune build` rc 0, banc réseau
   **68 PASS / 0 FAIL**.
+  **Ép. 24 : le dépôt — le serveur était revenu, et le catalogue décide de ce qui monte.**
+  La prémisse « bloqué par l'extérieur » traînait depuis l'ép. 3 ; **vérifiée avant d'être
+  crue**, elle était fausse (site **200**, `ssh marionnet` OK, **Apache/2.4.18 à
+  `FancyIndexing` qui suit les liens** — le banc de l'ép. 7 imitait donc la bonne chose).
+  `Makefile.d/upload.www.marionnet.org.sh` (cible `make release-upload`) est le **7ᵉ** script
+  de la famille et **le premier qui ne soit pas un publieur** : les 6 autres *fabriquent* une
+  release, celui-ci ne fait que la *porter*, et **il n'écrit rien dans un répertoire de
+  release** (chaque fichier déposé a un écrivain ailleurs). **À ne pas défaire** : (1) **ce qui
+  monte est ce que `SHA256SUMS` nomme** — pendant exact de l'ép. 8, et ici une **panne
+  évitée** : le répertoire porte aussi l'**état de travail du publieur** (les images nues,
+  **7,3 des 11 Gio**) que personne ne télécharge et qui n'entrerait pas dans les **15 Gio**
+  libres du serveur ; (2) la **preuve se prend sur le serveur** (`sha256sum -c` dans le
+  répertoire distant : le catalogue a voyagé avec les artefacts, et la vérification ne coûte
+  aucune bande passante) ; (3) les extras sont **nommés, jamais retirés** (`--prune` le fait,
+  sur demande) ; (4) **deux points d'entrée stables** `download/{apt,rpm}` → série courante,
+  corrigeant le défaut noté à l'ép. 13 (une ligne `sources.list` est épinglée sur la série),
+  cibles **relatives**, et les deux désignent le **même** répertoire parce que 3 catalogues y
+  cohabitent (ép. 18) ; (5) l'installeur est publié sous ses **2 noms** (dispatch `$0`,
+  ép. 16), le second étant un **lien** — n'en publier qu'un rendrait `marionnet-get-images`
+  inobtenable. **La release ne publie plus qu'une forme** : `.tar.gz` **et** `.tar.xz` étaient
+  catalogués pour 4 artefacts, soit **2,16 des 3,87 Gio** — reste d'avant l'ép. 3 ; les
+  fichiers supprimés, **`make release.sha256sums` a retiré leurs lignes de lui-même**
+  (`31 kept, 4 dropped` — le catalogue n'est jamais édité à la main), et `--gz` se **rabat**
+  proprement sur `.xz` (mesuré). Une **garde** nomme désormais ce cas *avant* le transfert.
+  **Signature : câblée, non armée** — `--sign KEYID` produit `InRelease`/`Release.gpg`
+  (éprouvés sur une clef jetable), mais signer, c'est décider 2 choses qui ne sont pas du
+  code : la **garde** de la clef privée et sa **distribution hors bande** (`signed-by=` ne
+  promet rien si la clef arrive par le dépôt qu'elle signe). Mesuré : **1,70 Gio** déposés,
+  *31 catalogued artefacts, whole and intact* **côté serveur**, idempotence (2ᵉ passage :
+  **1,63 Kio**), et — **jambe https du point (6), obtenue en passant** — l'installeur
+  `--from https://www.marionnet.org/download/apt --list` (14 artefacts, `SUM yes`) plus un
+  `apt update`/`install -s marionnet` dans une **`debian:13-slim` nue**, à travers le lien
+  stable. **Piège durable payé ici** : *ne jamais éditer un script bash pendant qu'il
+  tourne* — bash lit par **offsets d'octets**, et le run est mort d'une « erreur de syntaxe »
+  après avoir fini le transfert, laissant les étapes suivantes non jouées.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →
   (4) les `.deb` sur les 4 boîtes — **15a les fabriquer *(fait)*, 15b les installer
   *(fait)*** → (5) `upload.www.marionnet.org.sh` + point d'entrée apt stable
-  ← **prochaine, mais BLOQUÉE par l'extérieur** → (6) rejeu de (2) et (4) contre le vrai
-  serveur. La **doc INSTALL** est le tout dernier épisode.
-  **Bloqué par l'extérieur** : l'étape « serveur » (dépôt des artefacts) attend le retour du
-  site, et avec elle la configuration réelle de `www.marionnet.org` et la jambe **https**.
+  *(fait, ép. 24)* → (6) rejeu de (2) et (4) contre le vrai serveur — **la jambe https est
+  faite** (ép. 24), reste à rejouer les **bancs entiers** en pointant leur `--from` sur
+  `www.marionnet.org` ; ← **prochaine, et plus rien ne la bloque**. La **doc INSTALL** est le
+  tout dernier épisode.
+  **Plus aucun point n'est bloqué par l'extérieur** : le site est revenu le 2026-08-31 et la
+  release 1.0.x y est déposée. Restent, hors feuille de route : **signer `Release`** (la
+  plomberie est prête, la garde et la distribution de la clef ne sont pas tranchées) et
+  **rattraper le canal `.deb`**, en retard d'une révision (dépôt `r920`, tarball et `.rpm`
+  `r923`).
 
 ## Où puiser
 

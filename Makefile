@@ -564,10 +564,26 @@ release-dnf:
 	bash Makefile.d/release.dnf.sh --series $(PUBLICATION_SERIES) \
 	     $(if $(BASE_URL),--base-url $(BASE_URL)) $(if $(CHECK),--check)
 
+# Put a release directory on www.marionnet.org. The seventh script of the family, and the
+# first which is not a publisher: the six above MAKE a release, this one only CARRIES it, and
+# writes nothing into a release directory. WHAT GOES UP IS WHAT SHA256SUMS NAMES -- the
+# counterpart of the episode 8 invariant, and not a detail: a release directory also holds
+# the publisher's working state (the raw guest images, 7.3 of its 11 GiB), which no consumer
+# fetches and which would not fit on the server anyway. It also publishes the installer under
+# both of its names (episode 16) and points download/apt and download/rpm at the current
+# series, so that a sources.list line is not pinned to it (the defect episode 13 noted).
+# `make release-upload DRY_RUN=1' says what would be sent and changes nothing, here or there;
+# `CHECK=1' asks the server whether it still agrees with its own catalogue. Other options
+# (another host, another root, --prune, --sign): --help.
+release-upload:
+	bash Makefile.d/upload.www.marionnet.org.sh --series $(PUBLICATION_SERIES) \
+	     $(if $(DRY_RUN),--dry-run) $(if $(CHECK),--check) $(if $(PRUNE),--prune) \
+	     $(if $(SIGN),--sign $(SIGN))
+
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
-.PHONY: release-rpm release-rpm-deps release-dnf release-build-box
+.PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
 .PHONY: print-required-packages-build print-opam-switch print-opam-packages
 
 

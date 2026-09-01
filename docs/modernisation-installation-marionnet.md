@@ -3295,3 +3295,248 @@ l'ancien digest : c'est une machine installée, pas une source de publication, e
 inerte — à corriger d'un `sed` root le jour où l'on y touche. Par ailleurs
 `Makefile.d/release.deb.sh` n'est pas exécutable (664) là où ses cinq voisins le sont ; le
 `Makefile` l'appelle par `bash`, donc rien n'échoue.
+
+---
+
+## Épisode 24 (2026-08-31) — le dépôt : `www.marionnet.org` est revenu, et le catalogue décide de ce qui monte
+
+Point **(5)** de la feuille de route du § 5 bis — le premier point de ce chantier qui ait
+jamais été **bloqué par l'extérieur**, et le seul. L'épisode s'ouvre sur une mesure qui
+renverse sa propre prémisse.
+
+### 1. La prémisse était fausse : le serveur est revenu
+
+Toutes les notes depuis l'épisode 3 portent la même mention — *bloqué tant que
+`www.marionnet.org` est en panne*. Elle a été **vérifiée avant d'être crue**, comme le veut
+la reprise d'un chantier long, et elle ne tient plus :
+
+| Ce qu'on suppose | Ce qui est mesuré (2026-08-31) |
+|---|---|
+| le site est en panne | `https://www.marionnet.org/` répond **200** |
+| on ne sait pas y déposer | `ssh marionnet` répond ; `/home/marionnet/site/download/` existe |
+| le listing est peut-être autre chose qu'Apache | **Apache/2.4.18 (Ubuntu)**, `FancyIndexing` — exactement ce que le banc de l'épisode 7 imitait |
+| les liens seront peut-être servis en 404 | `/download/Marionnet.ova` **est** un lien, et il est servi (206) |
+| il faudra peut-être un outil de plus là-bas | `rsync`, `tar`, `xz`, `sha256sum`, `gpg` sont présents |
+
+Deux constats de cette reconnaissance commandent le reste. Le premier est une **contrainte** :
+le serveur n'a que **15 Gio libres** sur 39. Le second est une **conception** que le banc de
+l'épisode 7 avait devinée juste : le serveur est bien un Apache à `mod_autoindex`, si bien
+que le **repli** de l'installeur (lire le listing quand `SHA256SUMS` manque) est un vrai
+chemin de production et non une hypothèse de banc.
+
+### 2. Le septième script n'est pas un publieur
+
+`Makefile.d/upload.www.marionnet.org.sh` (cible `make release-upload`) rejoint les six
+autres, mais il en diffère par nature, et c'est la règle de conception de tout le fichier :
+les six **fabriquent** un répertoire de release, celui-ci ne fait que le **porter**. D'où
+l'invariant qu'il s'impose : **ce script n'écrit rien dans un répertoire de release**. Chaque
+fichier qu'il dépose a exactement un écrivain ailleurs, et en ajouter un second ici est
+précisément la manière dont deux catalogues se mettent à diverger (épisode 8) ou dont un
+index se périme sous une empreinte enregistrée pour lui (épisode 9b).
+
+### 3. Le catalogue décide de ce qui monte — et cette fois ce n'est pas une élégance
+
+C'est le pendant exact de l'invariant de l'épisode 8 : `SHA256SUMS` n'est pas un fichier
+d'intégrité qui liste des noms par commodité, il **est** la liste de ce dont une release est
+faite. Le script lit cette liste, et **n'envoie rien d'autre**.
+
+Ici, la règle ne fait pas qu'être juste, elle **évite une panne**. Un répertoire de release
+contient aussi l'**état de travail du publieur** — les images nues et leurs `.conf`, dont les
+tarballs ont été tirés :
+
+| | Taille |
+|---|---|
+| le répertoire `1.0.x` sur disque | **11 Gio** |
+| ce que `SHA256SUMS` catalogue | **3,87 Gio** (35 artefacts) — puis **1,6 Gio** (31), cf. § 10 |
+| les images nues, que personne ne télécharge (`machine-debian-trixie-39212` : 5,4 Gio) | 7,3 Gio |
+| place libre sur le serveur | **15 Gio** |
+
+Déposer « le répertoire de release » aurait donc échoué, et échoué **à mi-chemin** — après
+avoir passé des heures à envoyer une image de 5,4 Gio qu'aucun consommateur ne demande
+jamais, l'installeur téléchargeant des **tarballs**.
+
+### 4. `rsync`, là où l'ancêtre faisait `tar | ssh`
+
+L'aïeul (`useful-scripts/BACKUP/marionnet_from_scratch.install_on_site`) déposait par
+`tar cf - … | ssh marionnet tar -C … -xf -`. Deux raisons qu'il n'avait pas l'imposent
+aujourd'hui : une release fait **3,87 Gio à travers un `ProxyJump`**, donc un dépôt
+interrompu doit **reprendre** au lieu de recommencer ; et la republication est idempotente
+**par le nom** (épisode 8), donc ce qui est déjà là et identique ne doit pas repartir.
+
+`--partial-dir` est la moitié prudente de la première raison. Un artefact tronqué sous le
+**bon** nom serait le pire des cas — l'installeur le téléchargerait, trouverait l'empreinte
+en désaccord et le **retirerait** (épisode 8), en signalant une corruption qui n'est qu'un
+envoi interrompu. **Mesuré, et l'énoncé initial était trop généreux** : ce qui garantit qu'un
+nom réel n'est jamais tronqué, ce n'est pas `--partial-dir`, c'est que `rsync` écrit d'abord
+sous un nom temporaire (`.<nom>.XXXXXX`) et ne renomme **qu'à la fin**. `--partial-dir`, lui,
+n'ajoute que le *rattrapage* : il ne s'exerce que si le récepteur a le temps de ranger son
+fichier partiel, ce qu'une coupure brutale de la connexion ne lui laisse pas — l'interruption
+volontaire du 2026-08-31 a laissé un `.filesystems_…tar.gz.VUPZvk` de 150 Mio à l'endroit
+même, à retirer à la main. La garantie qui compte tient donc sans lui ; ce qu'il apporte, la
+reprise, est conditionnel, et il faut le dire ainsi.
+
+`-rlt` et **non** `-a` : `-a` implique `-pgo`, c'est-à-dire demander la préservation du mode,
+du propriétaire et du groupe du packageur sur une machine où cet utilisateur n'existe pas ;
+les fichiers étant des données publiques, les modes sont **énoncés** (`--chmod=D755,F644`).
+`-t` est gardé, et ce n'est pas cosmétique : c'est lui qui fait dire vrai au listing Apache —
+le catalogue **de repli** de l'installeur — sur la date de publication d'un artefact.
+
+### 5. La preuve se prend sur le serveur
+
+Après le transfert, `sha256sum -c SHA256SUMS` tourne **dans le répertoire distant**. Le
+catalogue ayant voyagé avec les artefacts, le même fichier qui a dit quoi envoyer dit s'ils
+sont arrivés — et la vérification ne coûte **aucune bande passante**, le serveur lisant son
+propre disque. C'est la mesure pour laquelle l'épisode existe : un transfert qui se déclare
+réussi n'est pas un dépôt intact.
+
+Symétriquement, le répertoire local est vérifié **avant que quoi que ce soit ne parte** : on
+ne dépose pas ce qu'on n'a pas contrôlé, et une empreinte prise ici coûte quelques secondes
+et transforme « le dépôt est corrompu » en une question qui a une réponse.
+
+### 6. Les extras sont nommés, jamais retirés
+
+Un fichier présent là-bas et absent du catalogue est **signalé** et laissé en place ;
+`--prune` le retire, et seulement si on le demande. Même posture que la garde de `mtime` de
+l'épisode 23 : nommer le remède plutôt que l'appliquer. Un `rsync --delete` par défaut
+supprimerait sans un mot une release plus ancienne que quelqu'un a posée exprès.
+
+### 7. Deux points d'entrée stables, parce qu'une ligne `sources.list` est épinglée
+
+L'épisode 13 avait noté le défaut sans le corriger : `deb … /download/marionnet-install.sh/1.0.x/ ./`
+**nomme une série**, donc ouvrir `1.1.x` obligerait à éditer chaque machine ayant jamais
+installé Marionnet. Le correctif appartient au serveur : `download/apt` et `download/rpm`,
+deux liens vers la série courante, si bien que changer de série est **un `ln -sfn` ici et rien
+du tout là-bas**. Apache suit les liens sur cet hôte (mesuré). Les deux pointent le **même**
+répertoire, et ce n'est pas un doublon : **trois catalogues y cohabitent** (`SHA256SUMS`,
+`Packages`, `repodata/` — épisode 18), donc ce répertoire *est* réellement les deux dépôts ;
+seul le vocabulaire du lecteur diffère. Les cibles relatives sont voulues — un
+`/home/marionnet/…` absolu dans la racine documentaire publierait aussi le répertoire personnel
+du serveur dans le listing.
+
+### 8. L'installeur est publié sous ses **deux** noms
+
+`bin/scripts/marionnet-install.sh` décide de ce qu'il est en regardant `$0` (épisode 16) :
+sous le nom `marionnet-get-images` il est le chooser d'images et refuse `--binary`. N'en
+publier qu'un rendrait la commande documentée `marionnet-get-images` **inobtenable** — celui
+qui enregistre le fichier sous ce nom obtient bien le chooser, encore faudrait-il qu'il le
+sache. Le second nom est un **lien** et non une copie : deux copies d'un script qui se
+reconnaît à son `$0` sont deux choses à tenir en phase. Il va dans le **parent** du
+répertoire de série, là où siège encore le `marionnet_from_scratch` de l'ancêtre : c'est le
+seul fichier dont l'URL doit survivre à toutes les séries.
+
+### 9. La signature : câblée, non armée — et la raison n'est pas la paresse
+
+C'est la seule question que le § 5 bis laissait ouverte pour cet épisode. `--sign KEYID`
+produit les `InRelease` et `Release.gpg` qu'attend apt ; sans lui le dépôt reste
+`[trusted=yes]`, ce qu'écrit `release.apt.sh` aujourd'hui et ce que **33 cas verts** ont
+mesuré (épisode 15b). Décider de signer, c'est décider **trois** choses, et une seule est du
+code :
+
+1. **la signature elle-même** — une dizaine de lignes, **éprouvées** contre une clef jetable ;
+2. la **garde de la clef privée** : une clef engendrée sur un portable de développement, sans
+   phrase de passe pour qu'un script s'en serve sans surveillance, ne protège rien de ce
+   qu'elle prétend protéger ;
+3. la **distribution de la clef publique**, qui est celle qui décide si tout le reste vaut
+   quelque chose. `signed-by=` n'est une promesse que si la clef atteint l'utilisateur par un
+   canal **autre** que le dépôt qu'elle signe. Publier la clef à côté des paquets et dire
+   d'aller la chercher là prouve exactement ce que https prouve déjà — que le serveur n'a pas
+   été usurpé — et rien du tout sur qui a écrit les paquets.
+
+Les points 2 et 3 ne sont pas des questions sur ce script, donc il ne les tranche pas. À
+noter que la signature nous appartient tout de même, et que cela **n'enfreint pas** la règle
+d'un seul écrivain : `Release` dit ce que le dépôt **contient** et appartient à l'indexeur,
+`Release.gpg` dit **qui en répond** et appartient à qui dépose — ce script.
+
+### 10. Une release ne publie plus qu'une seule forme : `.tar.xz`
+
+Le premier dépôt réel a été **interrompu en cours de route**, sur une remarque de l'auteur, et
+elle porte : le répertoire publiait **les deux formes** de chaque gros artefact,
+`.tar.gz` *et* `.tar.xz`. Ce n'est pas un défaut du dépôt, c'en est un de la **release** —
+un reste d'avant l'épisode 3, qui avait mesuré le facteur 4 et fait de `xz` le défaut sans
+retirer les `.gz` déjà là.
+
+| | |
+|---|---|
+| ce que le catalogue annonçait | **35** artefacts, **3,87 Gio** |
+| dont des `.tar.gz` doublant un `.tar.xz` du même nom | 4 fichiers, **2,16 Gio** |
+| ce qu'il annonce désormais | **31** artefacts, **1,6 Gio** |
+
+Plus de la **moitié** du dépôt était donc la seconde compression des mêmes octets. Le retrait
+est sans conséquence pour le consommateur, et ce n'est pas un raisonnement mais une mesure :
+`artifact_format` (`bin/scripts/marionnet-install.sh`) retient la forme préférée **ou
+l'autre**, si bien qu'un `--gz` joué sur le catalogue allégé liste les 6 artefacts de données
+en `.tar.xz`, colonne `SUM` à `yes`, **au lieu d'échouer** ; et `xz-utils` est une dépendance
+d'exécution **déclarée** depuis l'épisode 9b, donc aucune machine cible n'est démunie.
+
+**Le geste, lui, illustre la règle du seul écrivain** : les 4 fichiers ont été supprimés du
+répertoire, et c'est `make release.sha256sums` qui a **retiré leurs lignes de lui-même**
+(*dropping the line of a file which is no longer there* ×4, `31 kept, 4 dropped`). Le
+catalogue n'a pas été édité à la main — il ne l'est jamais.
+
+**Une garde en est sortie**, et elle appartient au déposeur parce que c'est lui qui paie : le
+catalogue décidant de ce qui monte, une redondance *dans* le catalogue devient une redondance
+*sur le fil*, multipliée par le temps qu'elle prend. Avant tout transfert, le script nomme
+désormais les artefacts catalogués sous **les deux formes** et rappelle le remède — supprimer
+le `.gz` du répertoire, laisser le catalogueur se corriger. Nommer, pas réparer : le catalogue
+a un seul écrivain, et ce n'est pas lui. Discriminance mesurée dans les deux sens : muette sur
+le catalogue à 31 lignes, parlante sur un répertoire fabriqué qui reproduit le cas d'avant.
+
+### 11. Le défaut que le premier run à blanc a montré
+
+`--dry-run` **créait le répertoire de série** qu'il ne faisait que feindre de remplir : le
+`mkdir -p` distant n'était pas gardé, et `rsync` rendait ensuite compte d'une destination que
+le run lui-même venait de fabriquer. C'est la même famille de défauts que les trois précédents
+du chantier (épisodes 19, 20b, 20c) : **juger par autre chose que ce qu'on mesure**. Un essai
+à blanc dont on ne peut pas dire qu'il n'a rien changé n'est pas un essai à blanc. Corrigé, et
+vérifié par la négative : après le second run, le serveur ne portait toujours aucun
+`marionnet-install.sh/`.
+
+### Prouvé (2026-08-31)
+
+- **Reconnaissance** : `https://www.marionnet.org/` **200** ; `ssh marionnet` répond,
+  `/home/marionnet/site/download/` existe, **15 Gio libres** sur 39 ; **Apache/2.4.18
+  (Ubuntu)**, `FancyIndexing` ; `/download/Marionnet.ova` est un **lien** et il est servi
+  (206) ; `rsync`, `tar`, `xz`, `sha256sum`, `gpg` présents là-bas.
+- **Essai à blanc** : 36 chemins, 1,6 Gio annoncés, et le serveur **inchangé** — vérifié par
+  la négative, aucun `marionnet-install.sh/` n'existait après le run.
+- **Dépôt** : `1,70 Gio` envoyés à ~600 kio/s (le `ProxyJump` LIPN est le facteur limitant,
+  pas le serveur), puis **la preuve prise sur le serveur** : *the server holds the 31
+  catalogued artefacts, whole and intact*. **Aucun extra** signalé.
+- **Idempotence par le nom** : le second passage envoie **1,63 Kio** au lieu de 1,70 Gio
+  (`speedup 1 033 204`) — la republication ne renvoie que ce qui a changé.
+- **Points d'entrée** : `apt/SHA256SUMS` 200 (3 250 o, **identique à l'octet** au fichier
+  déposé), `rpm/repodata/repomd.xml` 200, `apt/Packages.gz` 200 ; listing Apache à
+  **36 entrées** (le repli du catalogue fonctionne aussi).
+- **L'installeur sous ses deux noms** : `marionnet-install.sh` et `marionnet-get-images`
+  répondent 200, **48 097 o** l'un comme l'autre.
+- **Bout en bout, contre le vrai serveur** : `marionnet-install.sh --from
+  https://www.marionnet.org/download/apt --fetch-only --binary --list` liste les **14**
+  artefacts logiques, colonne `SUM` à `yes` partout, et retient `r923` (`chosen`). C'est la
+  **jambe https** du point (6) de la feuille de route, obtenue en passant.
+- **apt, dans une `debian:13-slim` nue** : `apt update` lit `Release` (535 o) et `Packages`
+  (2 417 o) **à travers le lien stable**, `apt-cache policy` voit les **4** paquets, et
+  `apt-get install -s marionnet` résout l'application (`Marionnet:1.0.x`) avec ses
+  dépendances Debian. Le point d'entrée stable n'est donc pas une intention.
+- **Signature** : plomberie éprouvée **à part**, sur une clef jetable détruite depuis —
+  `InRelease` (clearsign) et `Release.gpg` (détachée, armée) vérifient tous deux
+  (*Bonne signature*). Rien n'est signé dans la release.
+
+### Restes
+
+- **La signature n'est pas prise**, par décision argumentée (§ 9) : ce qui manque n'est pas
+  du code mais la **garde** de la clef privée et surtout sa **distribution hors bande**. Tant
+  que ce n'est pas tranché, `[trusted=yes]` reste écrit dans la ligne `sources.list`.
+- **Le canal `.deb` est en retard d'une révision** : le dépôt sert `marionnet` en `r920`
+  quand le tarball et le `.rpm` sont en `r923` — l'épisode 22 avait rejoué la boîte et le
+  canal RPM, pas `release-deb`. Un `make release-build-box WITH_DEB=1` suivi d'un
+  `make release-upload` le rattrape ; rien n'est cassé, le dépôt est seulement moins récent
+  que ses voisins.
+- **`marionnet.repo` n'est pas publié** : il s'écrit avec l'URL, désormais connue —
+  `make release-dnf BASE_URL=https://www.marionnet.org/download/rpm/`. Le déposeur le
+  **signale** si le fichier existe sans nommer le point d'entrée stable.
+- **Le débit** (~600 kio/s à travers le rebond) fait d'une release complète une affaire de
+  trois quarts d'heure. C'est supportable parce que la republication est idempotente par le
+  nom ; ce ne le serait plus si l'on reprenait l'habitude de publier deux formes.
+- Les anciennes URLs de `download/marionnet_from_scratch/` ne sont **pas** redirigées vers
+  les nouvelles (décision du § 6, encore à faire) : c'est de la configuration Apache, donc
+  la suite naturelle de cet épisode côté serveur.
