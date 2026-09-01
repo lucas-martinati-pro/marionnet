@@ -637,7 +637,7 @@
     <property name="title" translatable="yes">Marionnet</property>
     <property name="window-position">center</property>
     <property name="default-width">340</property>
-    <property name="default-height">840</property>
+    <property name="default-height">900</property>
     <property name="icon">../images/marionnet-launcher.png</property>
     <child>
       <object class="GtkVBox" id="vbox1">

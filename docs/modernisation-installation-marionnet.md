@@ -3540,3 +3540,83 @@ vérifié par la négative : après le second run, le serveur ne portait toujour
 - Les anciennes URLs de `download/marionnet_from_scratch/` ne sont **pas** redirigées vers
   les nouvelles (décision du § 6, encore à faire) : c'est de la configuration Apache, donc
   la suite naturelle de cet épisode côté serveur.
+
+---
+
+## Épisode 25 (2026-09-01) — une release n'est pas un journal de build
+
+Épisode né d'une question de l'utilisateur en regardant le répertoire déposé la veille :
+*« sont-ils vraiment tous utiles ? »* — non, et c'est un défaut de l'épisode 24. Il avait
+appliqué *le catalogue décide de ce qui monte* sans redemander si le catalogue avait raison,
+c'est-à-dire l'erreur exacte que l'affaire des `.tar.gz` venait de lui apprendre **une heure
+plus tôt, dans le même épisode**.
+
+### 1. Ce que le répertoire annonçait vraiment
+
+| | publié | utile | périmé |
+|---|---|---|---|
+| tarball `marionnet_trunk-r*` | **8** révisions | 1 | 7 (**50 Mio**) |
+| `.deb marionnet_0~trunk+r*` | **4** | 1 | 3 (**22 Mio**) |
+| `.rpm marionnet-0~trunk+r*` | **5** | 1 | 4 (**33 Mio**) |
+
+105 Mio de sous-produits d'une seule journée d'épisodes (9a→23). **Le poids est le moindre
+problème** :
+
+- `Packages` offrait à apt **4** versions de `marionnet`, `repodata/` en offrait **5** à dnf.
+  Un `apt install marionnet=0~trunk+r913` rendait donc, en toute légitimité, une application
+  **d'avant le correctif de l'épisode 21** — l'index la proposait.
+- **5 des 8 tarballs étaient d'avant le plancher** (`glibc2.39`, compilés sur le portable et
+  non dans la boîte de l'épisode 20) : refusés sur Debian 12, donc servis pour rien.
+- Le `--list` de l'installeur affichait 7 lignes `superseded` avant la bonne.
+
+Le `--multiversion` de `release.apt.sh` n'est pas en cause : il existe pour qu'une révision
+puisse en **remplacer** une autre sans trou. Huit révisions ne sont pas un remplacement, c'est
+une accumulation.
+
+### 2. Une garde qui nomme, comme celle des deux formes
+
+Le déposeur savait nommer une redondance de **formes** (`.gz` doublant un `.xz`) ; il ne savait
+pas nommer une redondance de **révisions**. Il le sait désormais, et **il ne retire rien** :
+combien de révisions une release garde n'est pas sa décision (règle du seul écrivain, épisode
+24). Il nettoie en revanche le `.rsync-partial/` vide qu'il laissait derrière lui — c'est la
+seule chose du serveur dont il soit propriétaire, puisqu'il est le seul à la créer.
+
+### 3. La fenêtre : la dernière icône de la planète était hors champ
+
+Défaut d'usage signalé en séance : la fenêtre principale n'est pas assez haute pour montrer la
+**dernière icône de la barre des composants** — la *planète*, c'est-à-dire le menu à trois
+entrées (*Gateway* / *NAT bridge* / *LAN bridge*) que le chantier `modernisation-world-bridge`
+a construit. Une nature accessible par aucun geste visible n'existe pas pour l'utilisateur.
+
+**La piste indiquée menait au vestige** : `bin/gui/gui.xml` (glade-2, `default_height` 690) est
+listé comme vestige par le `CLAUDE.md` du projet, et **il n'est pas chargé** — `bin/gui.ml`
+lit `gui_glade3.xml`, dont la `default-height` valait **840**. L'éditer n'aurait rien changé,
+et c'est précisément le piège que le `CLAUDE.md` signale.
+
+**840 → 900**, et la discriminance est mesurée dans les deux sens, capture d'écran à l'appui :
+à **840** la dernière icône visible est le **nuage**, la planète est **absente** ; à **900**
+la planète apparaît entièrement, avec une marge d'environ 55 px. La fenêtre fait 1102 × 900
+sur cet écran (1440 de haut, donc aucune contrainte du gestionnaire de fenêtres).
+
+### 4. `make revno`, et pourquoi la règle n'est pas dans le `Makefile`
+
+`bzr revno` donnait le numéro de révision d'un coup ; depuis la conversion, il fallait le
+connaître par cœur. La cible existe désormais — mais elle **demande** le numéro à
+`bin/meta.ml.maker.sh --print-revision` au lieu de le recalculer. Ce n'est pas de la
+préciosité : ce script **est** l'endroit où la règle vit (git `rev-list --count`, repli bzr
+tant que `.bzr` est là), et ce numéro est celui dont **tout artefact publié porte le nom**
+(`marionnet_trunk-r<N>_…`, `0~trunk+r<N>`). Écrire `git rev-list --count HEAD` dans le
+`Makefile` aurait fait une seconde source de vérité, et les deux se seraient séparées le jour
+où le repli compte. Même forme que le `--print-series` de
+`filesystem.prepare-snapshot-to-publish.sh`.
+
+### 5. Ce qui n'a PAS été retiré, et pourquoi
+
+L'abandon des `.tar.gz` est **définitif côté publication** (aucun n'est plus produit ni
+déposé), mais l'option `--gz` de `bin/scripts/marionnet-install.sh` et le `--gzip` des deux
+producteurs **restent**. La raison est mesurable : `download/marionnet_from_scratch/0.98.x/`,
+toujours servi, ne contient **que** des `.tar.gz` (`filesystems_guignol.tar.gz`,
+`kernels_linux-3.2.64-ghost.tar.gz`…). Un installeur qui ne saurait plus lire cette forme ne
+saurait plus lire les anciennes séries ; et retirer le drapeau du producteur tout en gardant
+celui du consommateur serait incohérent. L'abandon porte sur ce qu'on **publie**, pas sur ce
+qu'on **sait lire**.

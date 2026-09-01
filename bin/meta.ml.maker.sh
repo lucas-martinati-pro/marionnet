@@ -20,6 +20,26 @@
 # ---
 SRC_PROJECT_DIR="$(dirname $0)/.."
 # ---
+# `--print-revision' prints the revision number and exits, which is what `make revno'
+# is made of -- the answer `bzr revno' used to give. It lives HERE, in front of the
+# rule it prints, because this script is where the rule is: prefer git's
+# `rev-list --count', fall back on bzr while .bzr is still around. Writing
+# `git rev-list --count HEAD' in the Makefile instead would be a second source of
+# truth for the number every published artefact is named after, and the two would
+# part company the day the fallback matters. Same shape as the `--print-series' of
+# Makefile.d/filesystem.prepare-snapshot-to-publish.sh.
+if [[ "${1:-}" = "--print-revision" ]]; then
+  REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [[ -n "$REPO_DIR" ]] && [[ -d "$REPO_DIR/.git" ]]; then
+    git -C "$REPO_DIR" rev-list --count HEAD
+  elif [[ -d "$SRC_PROJECT_DIR/.bzr" ]]; then
+    bzr revno
+  else
+    echo 1>&2 "Error: neither git nor bzr metadata found"; exit 5
+  fi
+  exit 0
+fi
+# ---
 SOURCE1=${1:-"$SRC_PROJECT_DIR/META"}
 SOURCE2=${2:-"$SRC_PROJECT_DIR/CONFIGME"}
 TARGET=${3:-"$SRC_PROJECT_DIR/bin/meta.ml"}

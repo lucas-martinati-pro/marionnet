@@ -437,6 +437,14 @@ module-graph-check: check
 .PHONY: check ocaml-index module-graph module-graph-check
 
 
+# The revision number, the way `bzr revno' used to give it -- and the number every
+# published artefact is named after (marionnet_trunk-r<rev>_..., 0~trunk+r<rev>). The
+# rule is NOT written here: it is asked of bin/meta.ml.maker.sh, which is where it
+# lives (git's rev-list --count, bzr as a fallback while .bzr is still around), so
+# that `make revno', bin/meta.ml and Makefile.d/release.binary.sh cannot drift apart.
+revno:
+	@bash bin/meta.ml.maker.sh --print-revision
+
 # =============================================================
 #                        publication
 # =============================================================
@@ -584,7 +592,7 @@ release-upload:
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
-.PHONY: print-required-packages-build print-opam-switch print-opam-packages
+.PHONY: print-required-packages-build print-opam-switch print-opam-packages revno
 
 
 # =============================================================

@@ -241,6 +241,40 @@ if ((${#BOTH_FORMS[@]})); then
   warn "retires their lines by itself -- the catalogue is never edited by hand."
 fi
 
+# SEVERAL REVISIONS OF THE SAME THING: named too, and for a reason the byte count hides.
+# A release directory is not a build log. Measured on 2026-08-31, the day this script was
+# written: it had accumulated 8 tarballs, 4 marionnet .deb and 5 marionnet .rpm -- one per
+# episode of the day -- so `Packages' offered apt FOUR versions and `repodata/' offered dnf
+# FIVE. Whoever typed `apt install marionnet=0~trunk+r913' would have got, quite legitimately,
+# a build from BEFORE the episode 21 fix, and five of the eight tarballs were compiled here
+# rather than in the floor box (glibc2.39), so they are refused on Debian 12 -- served for
+# nothing. `--multiversion' in release.apt.sh exists so that one revision can REPLACE another
+# without a gap, which is not the same thing as keeping every revision ever built.
+# Named, not repaired: how many revisions a release keeps is not this script's decision.
+function revision_of {  # <name> -> the r<N> it carries, or nothing
+  local n="$1"
+  case "$n" in
+    marionnet_trunk-r*)      echo "${n#marionnet_trunk-r}"    | sed 's/_.*//' ;;
+    marionnet_0~trunk+r*)    echo "${n#marionnet_0~trunk+r}"  | sed 's/_.*//' ;;
+    marionnet-0~trunk+r*)    echo "${n#marionnet-0~trunk+r}"  | sed 's/-.*//' ;;
+  esac
+}
+STALE=()
+for pat in 'marionnet_trunk-r*' 'marionnet_0~trunk+r*' 'marionnet-0~trunk+r*'; do
+  # shellcheck disable=SC2053
+  mapfile -t fam < <(for f in "${CATALOGUED[@]}"; do [[ $f == $pat ]] && echo "$f"; done)
+  ((${#fam[@]} > 1)) || continue
+  newest=$(for f in "${fam[@]}"; do printf '%s\t%s\n' "$(revision_of "$f")" "$f"; done | sort -n | tail -1 | cut -f2)
+  for f in "${fam[@]}"; do [[ $f != "$newest" ]] && STALE+=("$f"); done
+done
+if ((${#STALE[@]})); then
+  warn "${#STALE[@]} superseded revision(s) of the application are catalogued:"
+  printf '        %s\n' "${STALE[@]}" >&2
+  warn "a release directory is not a build log, and both indexes offer every one of them."
+  warn "remove them, then \`make release.sha256sums' + \`release-apt' + \`release-dnf', and"
+  warn "deposit again with --prune."
+fi
+
 TOTAL_BYTES=$(cd -- "$OUTDIR" && du -cbL -- "${CATALOGUED[@]}" 2>/dev/null | tail -1 | cut -f1)
 
 info "release dir  : $OUTDIR"
@@ -373,6 +407,11 @@ if ((!DRYRUN)); then
     || die "the deposit does not match the catalogue it travelled with"
   info "the server holds the ${#CATALOGUED[@]} catalogued artefacts, whole and intact"
 fi
+
+# The partial directory rsync leaves behind: litter, not content, and it survives a clean run
+# because rsync only removes it when it has something to move out of it. Removed if empty --
+# this is the one thing on the server this script owns, since it is the one thing it created.
+((DRYRUN)) || ssh_do "rmdir -- '$REMOTE_DIR/.rsync-partial' 2>/dev/null" || true
 
 # ---
 # --- What is up there and not in the catalogue. Named, never removed (unless asked).
