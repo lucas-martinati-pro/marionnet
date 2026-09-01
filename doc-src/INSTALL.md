@@ -88,11 +88,22 @@ circle is comparing the fingerprint above with **a source which is not this page
 repository, a printed course handout, a machine where Marionnet is already installed. In a
 classroom, the fingerprint read out once at the start of the term settles it for everyone.
 
-You can check what you fetched:
+**Check what you fetched — this step is not optional here**, and not only for the reason above.
+Measured: `git.launchpad.net` answers `200` most of the time and, about one request in six, a
+`302` towards its OpenID login page. `curl` will happily write whatever came back into the file,
+so a key fetch can quietly leave you with something that is not a key. (Do **not** add `-L`: that
+follows the redirect and writes the *login page*, which is worse — a failure that looks like a
+success.)
 
 ```bash
+sudo apt install gnupg
 gpg --show-keys /etc/apt/keyrings/marionnet.asc     # must print the fingerprint above
 ```
+
+If it prints anything else — or nothing — fetch it again. apt itself does not need `gnupg` to
+verify the repository (it has its own verifier); you need it only to *read* what you fetched.
+
+`wget -O /etc/apt/keyrings/marionnet.asc <url>` does just as well, and has the same caveat.
 
 `apt install marionnet` installs **the application alone** — the data packages are `Suggests:`,
 so that this command means the same thing here as `dnf install marionnet` does in § 3. The other

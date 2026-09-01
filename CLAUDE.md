@@ -872,6 +872,17 @@ Reprise : appliquer le skill `chantier-long`.
   dans la boîte est mort-né (pas de pinentry). **Le canal RPM reste non signé** (`gpgcheck=0`),
   et la page INSTALL le dit avec sa raison : là-bas rpm vérifie **chaque paquet** plus
   `repomd.xml` — c'est l'ép. **30b**, avec la même clef.
+  **Ép. 30 bis : le canal hors bande, mesuré — et `-L` est un piège.** Le rejeu distant a rendu
+  2 rouges qui étaient tous deux des défauts de **mesure** (comparer `$(curl …)` à un fichier :
+  `$(...)` **supprime les sauts de ligne finaux** ; et une boîte nue sans CA ni téléchargeur qui
+  faisait rapporter le défaut de l'ép. 28 à propos d'une destination **jamais calculée** — d'où
+  un **verdict distinct** quand la ligne « destination » est absente). Puis, en **nommant le code
+  HTTP** au lieu de supposer « pas encore poussé », le banc a montré que `git.launchpad.net`
+  répond **`302` environ 1 fois sur 6, vers `login.launchpad.net` (OpenID)**. **À ne pas
+  défaire** : le banc **réessaie** et ne suit **jamais** la redirection, et la page **interdit
+  `-L`** — le suivre rapporte une **page de login** (26 o) que `curl -o` écrit dans le fichier de
+  clef **sans un mot** ; *un canal hors bande qui échoue en donnant les mauvais octets est pire
+  qu'un canal qui échoue*, d'où la **vérification d'empreinte rendue obligatoire** dans la page.
   **Feuille de route (§ 5 bis du doc, elle PRIME sur le § 5)** : (1) finir le local *(fait,
   ép. 11)* → (2) les 4 boîtes Debian 12/13, Ubuntu 24.04/26.04 *(fait, ép. 12)* → (3) le
   découpage en `.deb` *(fait, ép. 13)* → (3 bis) `doc-src/` s'installe *(fait, ép. 14)* →

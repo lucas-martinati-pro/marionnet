@@ -4171,6 +4171,63 @@ réclame un pinentry absent, et `set -e` tuait le banc au lieu de mesurer. La cl
 donc le **trousseau de la distribution elle-même** (`/usr/share/keyrings/*archive-keyring.gpg`),
 que toute image Debian ou Ubuntu porte : une vraie clef, simplement pas la nôtre.
 
+### La chaîne jouée contre le vrai serveur, après le push et le dépôt
+
+L'ordre était imposé (motif des ép. 20c → 22) : la clef n'existe sur Launchpad qu'une fois le
+commit **poussé**, et `InRelease` n'est en ligne qu'une fois la release **déposée**.
+
+| Geste | Résultat |
+|---|---|
+| la clef servie par `git.launchpad.net/marionnet/plain/…` | `200`, **1692 octets, identique à l'octet** au fichier versionné, même empreinte |
+| `InRelease`, `Release.gpg`, `Release` sur `download/apt/` | `200` les trois |
+| **la § 1 puis la § 2 de la page, mot pour mot**, sur une `debian:13-slim` **nue** | **0 erreur apt**, `marionnet 0~trunk+r930` proposé, transaction complète résolue |
+
+**Et jouer la page l'a corrigée une troisième fois** : la commande de vérification d'empreinte
+qu'elle propose demande **`gnupg`**, qu'une Debian minimale n'a pas non plus (mesuré). La page le
+dit désormais, en précisant qu'apt, lui, n'en a pas besoin — il a son propre vérificateur ;
+`gnupg` ne sert qu'à *lire* la clef qu'on vient de récupérer.
+
+**Défaut de ma propre mesure, à noter parce qu'il est le sujet de l'épisode** : mon premier
+contrôle de la clef Launchpad a conclu « aucune donnée OpenPGP valable » — c'était le **test** qui
+était mal formé, pas le canal. Refait proprement, il donne l'égalité à l'octet. Septième
+occurrence, dans le même épisode, de *juger par autre chose que ce qu'on mesure*.
+
+### Épisode 30 bis — ce que le canal hors bande a révélé de lui-même
+
+Le rejeu distant a rendu **2 rouges**, et les deux étaient des défauts de **mesure**, pas de
+canal — suite immédiate de la série 19/20b/20c/24/27 :
+
+1. **« serves a DIFFERENT key »** alors que les deux fichiers sont identiques à l'octet
+   (vérifié à la main) : je comparais `$(curl …)` à un fichier, or **`$(...)` supprime tous les
+   sauts de ligne finaux**. La comparaison se fait désormais sur **deux fichiers**, par `cmp`.
+2. **« the installer aims beside … rc=2, [] »** : en distant, la boîte est nue — ni magasin de
+   certificats ni téléchargeur — donc l'installeur sortait **avant** d'avoir calculé la moindre
+   destination, et le cas rapportait le défaut de l'ép. 28 à propos d'une destination qu'il
+   n'avait pas mesurée. La boîte reçoit maintenant ce que le canal exige (motif de l'ép. 27), et
+   **l'absence de ligne « destination » est un verdict distinct** : *« la destination n'a pas
+   été mesurée »*, jamais *« elle est fausse »*.
+
+**Puis le SKIP intermittent a livré la vraie trouvaille.** En nommant le code HTTP au lieu de
+supposer « pas encore poussé », le cas a montré que `git.launchpad.net` répond **200 la plupart
+du temps et `302` environ une fois sur six — vers `login.launchpad.net` (OpenID)**. Deux
+conséquences, l'une pour le banc, l'autre **pour l'utilisateur** :
+
+- le banc **réessaie** (la condition est transitoire) et ne suit **jamais** la redirection ;
+- **`-L` serait un remède pire que le mal** : suivre ce 302 rapporte une **page de login** (26
+  octets), que `curl -o` écrit dans le fichier de clef **sans un mot**. Un canal hors bande qui
+  échoue en vous donnant les mauvais octets est pire qu'un canal qui échoue. La page INSTALL dit
+  donc le fait, **interdit `-L`**, et fait de la vérification d'empreinte une étape **obligatoire**
+  et non plus facultative — c'est elle qui rattrape le cas.
+
+C'est la deuxième fois dans cet épisode que *jouer la page corrige la page*, et la troisième fois
+qu'un verdict fondé sur autre chose que la mesure est pris en défaut.
+
+**Mesuré, les 4 boîtes des deux côtés** : **local 4 × 36/1/0**, **distant 4 × 37/1/0** — soit
+**292 verts, 0 SKIP**, et **un seul rouge**, répété 8 fois : celui que l'épisode 28 a laissé
+exprès (le paquet publié porte l'installeur d'avant son correctif), qui échoue désormais **avec
+sa vraie raison** en nommant `/usr/local/share/marionnet`. Le cas hors bande est vert **8 fois
+sur 8**, donc le réessai absorbe bien le `302` intermittent.
+
 ### Restes
 
 - **Le canal RPM n'est pas signé** (`gpgcheck=0`), et la page le dit avec sa raison : là-bas une

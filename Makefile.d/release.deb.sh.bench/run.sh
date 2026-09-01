@@ -126,8 +126,11 @@ function fail { echo "FAIL: $*"; FAILED=$(( FAILED + 1 )); }
 function skip { echo "SKIP: $*"; SKIPPED=$(( SKIPPED + 1 )); }
 function skip_all { echo "SKIP: $*"; exit 77; }
 
+TMPFILES=()   # scratch files of the run (the archive key fetched from the out-of-band channel)
 function cleanup {
   docker rm -f "$BOX" "$BOX_I386" "$BOX_CONF" >/dev/null 2>&1 || true
+  ((${#TMPFILES[@]})) && rm -f -- "${TMPFILES[@]}"
+
   # What a remote run downloaded is kept for the whole `--distro all' loop and removed by the
   # invocation which created it: four boxes read ONE catalogue, not four copies of it.
   test -z "${CACHE_OWNED:-}" || rm -rf -- "$CACHE"
@@ -450,15 +453,36 @@ fi
 # byte for byte. SKIP, not FAIL, while the commit which publishes it has not been pushed:
 # the file exists here before it exists there, and that is not a defect of the channel.
 KEY_URL="https://git.launchpad.net/marionnet/plain/marionnet-archive-keyring.asc"
-if remote_key=$(curl -fsS --max-time 30 "$KEY_URL" 2>/dev/null) && [[ -n $remote_key ]]; then
-  if [[ $(printf '%s' "$remote_key" | sha256sum | cut -d" " -f1) \
-        = $(sed -e '$a\' "$ARCHIVE_KEY" | sha256sum | cut -d" " -f1) ]]; then
-    pass "the archive key is served by Launchpad, out of band, and it is the same key ($KEY_URL)"
+# COMPARED AS FILES, never as shell strings: `$(...)' strips every trailing newline, so a
+# comparison of two command substitutions declares two identical keys different -- measured,
+# and it is the same defect this episode is about (judging by something other than what one
+# measures). `cmp' on what was downloaded and what is versioned settles it, byte for byte.
+KEY_FETCHED=$(mktemp); TMPFILES+=("$KEY_FETCHED")
+# The HTTP code is read, and not merely the exit status: "not pushed yet" (404) and "could not
+# ask" (no downloader, no network, anything else) are two different facts about this run, and a
+# SKIP which names the wrong one is the very defect this episode keeps finding.
+#
+# RETRIED, AND NEVER FOLLOWED. Measured on 2026-09-01: git.launchpad.net answers 200 most of
+# the time and, about one request in six, 302 towards login.launchpad.net (OpenID). So the
+# request is repeated -- the condition is transient -- and `-L' is deliberately absent: following
+# that redirect yields a LOGIN PAGE, which curl would write into the key file without a word.
+# An out-of-band channel that fails by handing you the wrong bytes is worse than one that fails.
+KEY_HTTP=000
+for _try in 1 2 3; do
+  KEY_HTTP=$(curl -s -o "$KEY_FETCHED" -w '%{http_code}' --max-time 30 "$KEY_URL" 2>/dev/null || echo "000")
+  [[ $KEY_HTTP = 200 ]] && break
+  sleep 2
+done
+if [[ $KEY_HTTP = 200 && -s $KEY_FETCHED ]]; then
+  if cmp -s -- "$KEY_FETCHED" "$ARCHIVE_KEY"; then
+    pass "the archive key is served by Launchpad, out of band, byte for byte the versioned one"
   else
     fail "$KEY_URL serves a DIFFERENT key from $ARCHIVE_KEY"
   fi
-else
+elif [[ $KEY_HTTP = 404 ]]; then
   skip "$KEY_URL does not serve the archive key yet (the commit which adds it is not pushed)"
+else
+  skip "cannot ask $KEY_URL (HTTP $KEY_HTTP): the out-of-band channel was not measured"
 fi
 
 # ------------------------------------------------------- 0 ter. a wrong key must be refused
@@ -631,11 +655,27 @@ else
   else
     fail "marionnet-install.sh / marionnet-get-images are not on the PATH of an apt machine"
   fi
+  # THE BOX MUST BE ABLE TO REACH THE CATALOGUE BEFORE THIS MEANS ANYTHING. On a remote run
+  # the box is bare: no CA store (episode 27) and no downloader at all, so the installer exits
+  # 2 having read nothing -- and the case would report "aims beside" about a destination it
+  # never computed. Same shape as the CA case above: give the box what the channel needs, then
+  # measure. What is measured stays the DESTINATION, and nothing else.
+  if [[ ${REPO_URL:-} = https://* ]]; then
+    ca_ready in_box
+    in_box "command -v wget >/dev/null || command -v curl >/dev/null || \
+            apt-get install -y -qq wget" >/dev/null 2>&1 || true
+  fi
   rc=0; out2=$(in_box "marionnet-install.sh --fetch-only --from ${REPO_URL:-/repo} --dry-run 2>&1") || rc=$?
+  dest=$(grep -i destination <<<"$out2" || true)
   if ((rc == 0)) && grep -q 'destination : /usr/share/marionnet' <<<"$out2"; then
     pass "the images of an apt machine go to /usr/share/marionnet, where its Marionnet looks"
+  elif [[ -z $dest ]]; then
+    # No destination line at all: the installer never got as far as choosing one, so this is
+    # not the defect of episode 28 and must not be reported as it.
+    fail "the installer could not read the catalogue (rc=$rc), so the destination was not measured"
+    grep -iE 'error|no route|down|certificate|downloader' <<<"$out2" | head -2 | sed 's/^/      /' || true
   else
-    fail "the installer aims beside the installation apt made: rc=$rc, [$(grep -i destination <<<"$out2")]"
+    fail "the installer aims beside the installation apt made: rc=$rc, [$dest]"
   fi
 
   # ------------------------------------------------------------ 7. the data packages
