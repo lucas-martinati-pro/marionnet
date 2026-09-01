@@ -677,7 +677,14 @@ release-and-upload:
 	$(MAKE) release-build-box WITH_DEB=1
 	$(MAKE) release-rpm $(if $(SIGN),SIGN=$(SIGN))
 	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) $(if $(SIGN),SIGN=$(SIGN))
-	$(MAKE) release-upload PRUNE=1
+# SIGN IS EXPLICITLY CLEARED FOR THE LAST LINK, and the empty assignment is the whole point:
+# make passes variables given on ITS OWN command line down to every sub-make, so `make
+# release-and-upload SIGN=yes' handed SIGN=yes to release-upload too -- which refuses it, and
+# rightly so, since episode 30 moved the signature to the indexer. The chain therefore died on
+# its last link, after a full build, having signed everything correctly. An assignment on a
+# sub-make's command line overrides the inherited one, so this restores what the three lines
+# above already say: SIGN is for whoever WRITES an index, never for whoever carries it.
+	$(MAKE) release-upload PRUNE=1 SIGN=
 
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums

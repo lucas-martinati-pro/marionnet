@@ -938,6 +938,27 @@ Reprise : appliquer le skill `chantier-long`.
   **discriminant** — ne tournaient **pas du tout** en distant. *Un SKIP qui accuse le mauvais
   coupable est pire qu'un SKIP.* Mesuré : **218 verts / 0 SKIP** sur les 4 boîtes contre le vrai
   serveur (le rouge unique restant celui, assumé, de l'ép. 28).
+  **Ép. 30b ter : une mesure qui peut perdre une course n'est pas une mesure.** `host_glibc` de
+  `release.binary.sh` lisait `ldd --version | head -n 1 | awk …` — or **`/usr/bin/ldd` est un
+  script bash**, il écrit plusieurs fois, `head` ferme le tuyau, SIGPIPE, et sous `pipefail`
+  toute la substitution échoue en répondant `unknown-libc` (**mesuré : 14 échecs / 400 avec le
+  tuyau, 0 / 400 sans**). Le coût n'était pas l'arrêt bruyant de la release r937 mais le **même
+  tirage sur l'appel qui NOMME l'artefact publié** : depuis l'ép. 12 le nom est le **seul endroit
+  où le plancher glibc est écrit**. **À ne pas défaire** : capture sans tuyau (`awk` sur une
+  here-string) **et** `artefact_name` qui **refuse de nommer** au lieu d'inventer `unknown-libc`
+  (règle de l'ép. 20 appliquée à l'autre moitié du nom) ; le `README` du tarball lit le plancher
+  **dans le nom**. Les 3 autres `| head` de `Makefile.d/` ne sont **pas** corrigés par symétrie :
+  leur amont écrit en une fois, ou son statut n'est pas lu.
+  **Ép. 30b quater : `make` propage ce qu'on lui donne.** `make release-and-upload SIGN=yes`
+  faisait tout puis **mourait sur son dernier maillon** — make transmet aux sous-make les
+  variables de **sa** ligne de commande, donc `SIGN=yes` atteignait le **déposeur**, dont la garde
+  de l'ép. 30 le refuse à raison. Correctif : **affectation vide** (`$(MAKE) release-upload
+  PRUNE=1 SIGN=`), celle d'un sous-make l'emportant sur l'héritée — *`SIGN` appartient à qui écrit
+  un index, jamais à qui le transporte*. **`r938` est déposée** (une seule révision sur les 3
+  canaux, les 2 dépôts signés) et les **2 bancs paquets rejoués contre le serveur** sont
+  **entièrement verts** : `.deb` **38/0 ×4**, `.rpm` **57/0 + 55/0 + 56/0 + 54/0** — **374 cas,
+  0 rouge, 0 SKIP**. Le rouge unique traîné depuis l'ép. 28 tombe : le paquet publié porte enfin
+  l'installeur qui lit la cascade.
 
 ## Où puiser
 

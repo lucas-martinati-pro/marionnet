@@ -4446,3 +4446,47 @@ symétrie » : le défaut mesuré est corrigé, les autres attendent d'être mes
 
 **Mesuré** : `release.binary.sh --print-name` joué **200 fois** dans la boîte de compilation →
 **0 nom invalide**.
+
+### Épisode 30b quater — `make` propage ce qu'on lui donne, et la chaîne mourait sur son dernier maillon
+
+`make release-and-upload SIGN=yes` a tout fait — compilation dans la boîte plancher, `.deb`,
+`.rpm` signés, rétention, les trois catalogues réécrits et **re-signés** — puis s'est arrêté sur :
+
+```
+release-upload: SIGN= has no effect here: since episode 30 the signature is written by the
+release-upload: indexer, beside the Release it signs.
+```
+
+La garde a raison (ép. 30 : le déposeur **n'écrit rien** dans une release), mais personne ne lui
+avait demandé de signer : **`make` transmet aux sous-`make` les variables données sur SA ligne de
+commande**, si bien que `SIGN=yes`, destiné aux deux maillons qui *indexent*, atteignait aussi
+celui qui *porte*. Une release complète et correcte mourait donc sur son dernier geste. Le
+correctif est une affectation vide — `$(MAKE) release-upload PRUNE=1 SIGN=` — car une affectation
+sur la ligne de commande d'un sous-`make` l'emporte sur celle qui est héritée. Elle ne fait que
+redire ce que les trois lignes précédentes disent déjà : *`SIGN` appartient à qui écrit un index,
+jamais à qui le transporte.*
+
+### La release r938, et le solde du point 4 octies
+
+`r938` est en ligne : `.tar.xz`, `.deb` et `.rpm` **d'une seule révision**, les deux dépôts signés
+(`InRelease` **et** `repomd.xml.asc`), `r937` élagué par la rétention puis par `--prune`, et les
+17 artefacts vérifiés **sur le serveur**.
+
+Les **deux bancs paquets rejoués contre `www.marionnet.org`** rendent alors ce que l'épisode 28
+avait annoncé et laissé rouge exprès :
+
+| Banc | Avant (ép. 28/30b) | Maintenant |
+|---|---|---|
+| `.deb`, 4 boîtes | 34/1 puis 36/1 | **38/0 ×4 = 152 verts** |
+| `.rpm`, 4 boîtes | 49/1 puis 57/1 | **57/0, 55/0, 56/0, 54/0 = 222 verts** |
+
+**374 cas, 0 rouge, 0 SKIP.** Le rouge unique traîné depuis l'épisode 28 — *« the installer aims
+beside the installation dnf made »* — disparaît parce que le paquet publié porte enfin
+l'installeur qui lit la cascade de `bin/configuration.ml`. C'est le pendant exact des ép. 20c → 22
+et 30b → 30b bis : **une preuve qui dépend de ce que la release publie se prend après avoir
+publié.**
+
+**Observation, sans correctif** : `release.rpm.sh --sign` a signé `…r937…rpm` (sa règle est de
+couvrir tout le répertoire) que la rétention a supprimé trente secondes plus tard. L'ordre
+publier → élaguer est le bon, et le publieur ne peut pas savoir ce que la rétention retirera : le
+gaspillage est de quelques secondes, la règle vaut mieux que l'optimisation.
