@@ -1103,6 +1103,25 @@ Reprise : appliquer le skill `chantier-long`.
   passent à 27, **écrit** car dériver du paquet qu'ils mesurent serait une tautologie.
   **Différé** (pas de release avant la fin de la campagne de bugs) : 4 cas rouges par
   construction jusqu'à la prochaine release, motif habituel.
+  **Ép. 39 : la liste blanche de 2007 — on mesure, on ne devine pas.** L'avertissement
+  « Fichiers creux (sparse) non pris en charge ! » au démarrage était **faux, et pour toute la
+  salle à la fois** : `can-directory-host-sparse-files.sh` déduisait le type de système de
+  fichiers (`df -P` + `mount -l`) et le comparait à une **liste blanche de 2007** où `overlay`
+  — le stockage de **tout conteneur Docker** — ne figure pas (ni `btrfs`/`zfs`/`f2fs`/
+  `bcachefs`, et `xfs` en avait été *retiré* sur une observation d'Ubuntu 12.04). Deux sites
+  touchés : le dialogue de `bin/marionnet.ml:350-356` et le refus « Invalid directory » du
+  sélecteur (`bin/gui/talking.ml:357`). Le script **mesure** désormais : `mktemp` **dans
+  `$DIR`**, `truncate -s 1M`, `stat -c %b`, `trap … EXIT`, verdict = blocs alloués < ¼ de la
+  taille apparente. **À ne pas défaire** : contrat de sortie **inchangé** (0/1/2/3, l'appelant
+  ne lit que 0) ; `truncate`/`stat` manquants ⇒ **2**, pas 1 (*ne pas pouvoir mesurer n'est pas
+  un verdict négatif*) ; la sonde vit **dans le répertoire testé**. **Pourquoi pas ajouter
+  `overlay` à la liste** : la liste **est** le défaut — motif de l'ép. 31 (*un fait recopié se
+  périme*), appliqué à une liste. `tmpfs` reste accepté (les trous y marchent) ; sa
+  consommation de RAM est le **C2** de `bug-critique-crash-host`, distinct. **Mesuré** :
+  overlay **rc 1 → rc 0** (discriminance), **vfat** en boucle → 2048 blocs pour un trou de
+  1 Mio, **rc 1** (le cas négatif est réel) ; ext4/tmpfs/`/var/tmp` rc 0, inexistant 3, non
+  inscriptible 2, **0 résidu** ; **piège n° 7 vérifié** — `strings` sur le binaire : **1**
+  occurrence du texte neuf, **0** de `WHITE_LIST`.
 
 ## Où puiser
 

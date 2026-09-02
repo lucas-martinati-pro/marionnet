@@ -5208,3 +5208,66 @@ soient corrigés ») : les **3 bancs** ne verront le nom nu qu'à la prochaine r
 ligne étant `r943`. Deux cas du banc du tarball et un cas de chacun des deux autres sont donc
 **rouges par construction** jusque-là — le motif habituel (ép. 20c → 22, 28 → 30b quater,
 31 → 32) : *une preuve qui dépend de ce que la boîte contient se prend après la release.*
+
+## Épisode 39 (2026-09-02) — la liste blanche de 2007 : on mesure, on ne devine pas
+
+Au démarrage, sur le poste *teacher* de la salle MarioNUM (conteneur Docker), Marionnet affiche
+**« Fichiers creux (sparse) non pris en charge ! »** — puis tout fonctionne. L'avertissement est
+faux, et il l'était **pour tous les postes de la salle à la fois**.
+
+### 1. La cause : un test qui ne teste rien
+
+`bin/scripts/can-directory-host-sparse-files.sh` déduisait le point de montage (`df -P`), lisait le
+type de système de fichiers (`mount -l`) et le comparait à une **liste blanche écrite en 2007** :
+
+```
+reiserfs reiser4 ext4 ext4dev ext3 ext2 udf ntfs jfs ufs tmpfs vxfs xiafs
+```
+
+`overlay` n'y est pas. Le stockage de tout conteneur Docker l'est. **Faux négatif systématique
+dans toute la salle** — et aussi sur `btrfs`, `zfs`, `f2fs`, `bcachefs`, ainsi que sur `xfs`, qui
+avait été **retiré** de la liste sur une observation faite sous Ubuntu 12.04.
+
+Deux conséquences, deux sites : le dialogue de `bin/marionnet.ml:350-356` (branche « aucun des 7
+candidats de la cascade ne convient »), et `bin/gui/talking.ml:357`, où le sélecteur de répertoire
+de travail refuse un dossier parfaitement valide avec « Invalid directory ».
+
+### 2. Le correctif : poser la question à celui qui sait
+
+Le script **fait un trou et demande au noyau combien de blocs il a alloués** : `mktemp` dans le
+répertoire visé, `truncate -s 1M`, `stat -c %b`, `trap … EXIT` pour ne rien laisser. Verdict :
+les blocs alloués pèsent-ils moins du quart de la taille apparente ?
+
+**À ne pas défaire** : (1) la sonde est créée **dans `$DIR`** — ce qu'on teste est le système de
+fichiers de *ce* répertoire, pas celui d'où le script tourne ; (2) le contrat de sortie est
+**inchangé** (0 = oui, 1 = non, 2 = ne peut pas conclure, 3 = pas de répertoire), donc
+`bin/gui/talking.ml:55-65`, qui ne regarde que `(0,_,_)`, n'est pas touché ; (3) `truncate` ou
+`stat` manquants donnent **2**, pas 1 : *ne pas pouvoir mesurer n'est pas un verdict négatif* ;
+(4) le seuil est **le quart** de la taille apparente — très au-dessus des métadonnées qu'un
+système de fichiers peut légitimement facturer, très en dessous d'une allocation complète.
+
+**Pourquoi pas simplement ajouter `overlay` à la liste** : la liste **est** le défaut. Elle a déjà
+perdu `xfs` à tort et raté quatre systèmes de fichiers courants ; chaque ajout est une dette qui
+vieillit, là où la mesure coûte deux millisecondes et ne se trompe jamais. C'est le même motif que
+l'ép. 31 (*un fait recopié se périme ; un fait lu à la source, non*), appliqué cette fois à une
+liste au lieu d'un nombre.
+
+**Hors périmètre, à ne pas confondre** : `tmpfs` reste accepté — les trous y marchent — exactement
+comme avant. Que `/tmp` en tmpfs consomme de la RAM est un défaut **distinct**, déjà suivi comme
+candidat **C2** du chantier `bug-critique-crash-host`.
+
+### 3. Mesuré
+
+- **Le cas rapporté, reproduit puis corrigé**, dans une `debian:12` (`/tmp` sur `overlay`) :
+  script **avant → rc 1** (l'avertissement), script **après → rc 0**. C'est la discriminance.
+- **Le cas négatif est réel, pas supposé** : sur une image **`vfat`** montée en boucle (conteneur
+  privilégié), un trou de 1 Mio alloue **2048 blocs** et la sonde répond **rc 1** — l'avertissement
+  reste possible quand il est mérité.
+- Non-régression : rc 0 sur ext4 (`/tmp` de l'hôte), sur `tmpfs` (`/dev/shm`) et sur `/var/tmp`
+  d'un conteneur ; rc 3 sur un répertoire inexistant ; rc 2 sur un répertoire non inscriptible
+  (`/proc/sys`) ; **0 résidu** (compte des entrées de `/tmp` inchangé après appel).
+- **Piège n° 7 vérifié explicitement** : le script est embarqué par `INCLUDE_AS_STRING`, donc
+  `dune build` (rc 0), puis `strings` sur le binaire — **1** occurrence du nouveau commentaire,
+  **0** de `WHITE_LIST`. Sans rebuild, le binaire aurait gardé l'ancienne version **en silence**.
+
+Aucun `.ml` touché, donc **aucune chaîne traduisible** : les 12 catalogues restent intacts.
