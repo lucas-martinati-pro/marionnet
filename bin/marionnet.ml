@@ -245,16 +245,32 @@ end (* Just_for_testing *)
     install the sudoers rule when the probe fails: *)
 let () = Log.printf "Loading module bin/marionnet.ml: about to probe the tap provider\n"
 let () =
-  if Tap_provider.is_usable () then
+  match Tap_provider.unavailability () with
+  | None ->
     let n = Tap_provider.purge_orphan_taps () in
     (if n > 0 then Log.printf1 "Tap_provider: %i orphan tap(s) collected\n" n)
-  else
-    Simple_dialogs.warning
-      (s_ "Cannot create network interfaces (taps)")
-      (Printf.sprintf
-        (f_ "The sudo rule allowing Marionnet to create its taps is not installed: some features (graphics on virtual machines, router terminals) won't be available.\nTo enable them, run in a terminal:\n\n    %s install\n\nthen restart Marionnet.")
-        "marionnet-sudoers.sh")
-      ()
+  | Some cause ->
+    (* One message per cause, and each one WHOLE: gettext extracts literals, not
+       concatenations. The sudoers one is unchanged to the byte -- it keeps its
+       twelve translations -- and it is now shown only when it is TRUE. *)
+    let message =
+      match cause with
+      | Tap_provider.No_sudoers_rule ->
+          Printf.sprintf
+            (f_ "The sudo rule allowing Marionnet to create its taps is not installed: some features (graphics on virtual machines, router terminals) won't be available.\nTo enable them, run in a terminal:\n\n    %s install\n\nthen restart Marionnet.")
+            "marionnet-sudoers.sh"
+      | Tap_provider.No_tun_device ->
+          (s_ "This machine does not provide /dev/net/tun, so no network interface (tap) can be created on it at all: some features (graphics on virtual machines, router terminals) won't be available.\n\nThe sudo rule is not in question here: it was not even reached.\n\nIf Marionnet runs inside a container, that container must be started with:\n\n    docker run --device /dev/net/tun --cap-add NET_ADMIN ...\n\nOn a machine of its own, the tun module may simply not be loaded: sudo modprobe tun")
+      | Tap_provider.No_permission ->
+          (s_ "The kernel refuses the creation of network interfaces (taps) on this machine: the capability CAP_NET_ADMIN is missing. Some features (graphics on virtual machines, router terminals) won't be available.\n\nThe sudo rule is not in question here.\n\nIf Marionnet runs inside a container, that container must be started with:\n\n    docker run --device /dev/net/tun --cap-add NET_ADMIN ...")
+      | Tap_provider.Unclear diagnostic ->
+          Printf.sprintf
+            (f_ "Marionnet cannot create its network interfaces (taps), and the reason is not one it knows how to name:\n\n%s\n\nSome features (graphics on virtual machines, router terminals) won't be available.")
+            (* The body of a dialog is a Pango markup label: a diagnostic coming
+               from a tool must be escaped, or a single `<' loses the message. *)
+            (Glib.Markup.escape_text diagnostic)
+    in
+    Simple_dialogs.warning (s_ "Cannot create network interfaces (taps)") message ()
 
 (* --- *)
 (** Two Marionnet sessions running at the same time are allowed, and nobody used to say a word

@@ -546,6 +546,12 @@ if ((${#MISSING[@]})); then
   warn "...but not before those ${#MISSING[@]} package(s) are installed: the binary is linked"
   warn "against libraries they bring (libgtksourceview-3.0-1 among them) and will not start."
 fi
+# What the machine must provide besides the packages. Never fatal -- installing
+# into an image being BUILT is a normal gesture, and the device belongs to the
+# container that will RUN Marionnet (episode 40). The check lives in the script,
+# not here: three channels, one text.
+"$PREFIX/bin/marionnet-tun-check.sh" || true
+
 info "Guest images and UML kernels are NOT in this tarball: they are published beside it"
 info "and fetched by marionnet-install.sh (see the README next to me)."
 INSTALL_SH_EOF

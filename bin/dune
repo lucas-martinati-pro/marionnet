@@ -240,6 +240,10 @@
      ;; --- glob left to abuse. Same requirement as above: it must land next to
      ;; --- marionnet-sudoers.sh, which names it by that path, and be root-owned.
      (glob_files "scripts/marionnet-ipv6.sh")
+     ;; --- What the machine must provide BESIDES the packages: the tun device.
+     ;; --- Called by the three installation channels, never fatal for them, and
+     ;; --- runnable by hand the day the taps do not work (episode 40).
+     (glob_files "scripts/marionnet-tun-check.sh")
      ;; --- And its counterpart, the LAN bridge (episode 8 of the same work-stream):
      ;; --- same contract, same rollback discipline, but this one enslaves the HOST's
      ;; --- own card -- hence sudoers block (c), which it is also the source of.

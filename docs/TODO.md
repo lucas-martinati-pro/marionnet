@@ -34,3 +34,36 @@ importée seulement. Une fois cela fait, l'exposer au canal serait trivial (une 
 *Idée issue de la voie (a) de `forest`, écartée le 2026-08-07 (ép. 4g de `pilotage-par-script`) :
 gardée ici parce qu'elle a une valeur pédagogique propre, indépendante du scripting.*
 
+
+---
+
+## Défaut — une machine virtuelle démarre **sans le dire** avec un tap fantôme
+
+**Constat.** Quand `Tap_provider.make_eth42_tap` échoue, `bin/simulation_level.ml:1166-1170` passe
+au noyau UML le littéral `wrong-tap-name` :
+
+```
+eth42=tuntap,wrong-tap-name,42:42:b2:43:ee:27,172.23.0.254
+```
+
+La machine démarre, et **rien ne le dit à l'utilisateur** : `report_eth42_tap_failure`
+(`bin/simulation_level.ml:1021-1040`) n'ouvre un dialogue que dans **un** cas, la collision
+d'adresse avec une autre session ; les autres échecs se contentent d'une ligne de journal. Dans
+l'invité, la panne se manifeste alors très loin de sa cause — `xeyes` répond
+`Can't open display: :0` — et l'enseignant cherche du côté de X11 (mesuré sur un poste MarioNUM le
+2026-09-02, ép. 40 de `modernisation-installation-marionnet` : le conteneur n'avait pas
+`/dev/net/tun`).
+
+**Ce qu'on veut.** Que le démarrage d'une machine sans son tap eth42 soit **visible** : soit un
+avertissement une fois par session (comme la collision, avec le même garde-fou
+`first_collision_report` pour ne pas répéter par machine), soit un refus explicite si l'on juge
+qu'une machine sans canal hôte n'a pas de sens.
+
+**Obstacles.** (a) Depuis l'ép. 40, `Tap_provider.unavailability ()` sait **pourquoi** — le message
+doit reprendre cette cause plutôt que d'en inventer une ; (b) l'avertissement de démarrage de
+`bin/marionnet.ml` couvre déjà le cas « aucun tap possible », donc en ajouter un par machine
+serait du bruit : le bon déclencheur est l'échec **inattendu**, c'est-à-dire alors que
+`is_usable ()` disait oui ; (c) le mode examen masque certains dialogues, mais celui-ci décrit une
+panne de la machine de l'étudiant, comme la collision — même raisonnement, même exception ;
+(d) `wrong-tap-name` lui-même mériterait de disparaître au profit d'un argument `eth42` absent, à
+condition de vérifier ce que le noyau UML fait d'un `eth42=` manquant.

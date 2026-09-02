@@ -317,7 +317,53 @@ let purge_orphan_taps () : int =
 
 (* --- The sudoers rule *)
 
-let usable : bool option ref = ref None
+(* Why a CAUSE and not a boolean. The probe below answers one question -- "can I
+   run our ip commands" -- and for a long time a `false' was reported to the user
+   as "the sudoers rule is not installed", which is one of THREE reasons it can
+   fail, and not the most frequent one in a classroom. Measured, in containers:
+
+     the sudoers rule is missing   sudo: a password is required
+     /dev/net/tun is missing       open: No such file or directory
+     no CAP_NET_ADMIN              ioctl(TUNSETIFF): Operation not permitted
+
+   Sending someone to run `marionnet-sudoers.sh install' when their container has
+   no tun device wastes their time and hides the real defect (measured on a
+   MarioNUM workstation: the rule was perfect, the device absent). *)
+type unavailability =
+  | No_tun_device        (* nothing at all can create a tap here *)
+  | No_permission        (* the kernel refuses: no CAP_NET_ADMIN *)
+  | No_sudoers_rule      (* sudo -n refuses the command *)
+  | Unclear of string    (* anything else, in the tool's own words *)
+
+let tun_device = "/dev/net/tun"
+
+(* See tap_provider.mli. A pure function, exposed for the test: it is the only
+   part of the diagnosis provable without a privilege and without a device, and
+   the strings it classifies are the ones measured above, verbatim. *)
+let unavailability_of_error (message : string) : unavailability =
+  let contains needle =
+    try ignore (Str.search_forward (Str.regexp_string needle) message 0); true
+    with Not_found -> false
+  in
+  (* `open: No such file or directory' is what `ip tuntap' writes when the device
+     node is missing, and it is looked for BEFORE the sudo signatures: a message
+     such as `sudo: /usr/sbin/ip: command not found' also contains "sudo:", so the
+     order is what keeps each needle in its own lane. Recognising it here as well
+     as through Sys.file_exists is not redundancy for its own sake: the file test
+     can pass and the command still fail (a mount namespace of its own, a device
+     removed between the two), and the message must stay right. *)
+  if contains "open: No such file or directory" then No_tun_device else
+  if contains "TUNSETIFF" || contains "Operation not permitted" then No_permission else
+  (* The needles are sudo's REFUSALS, not the word `sudo': `sudo: command not
+     found' also contains it, and answering that with "install the sudoers rule"
+     would be as wrong as the defect this type exists to fix. Anything else falls
+     through to Unclear, which shows the words as they came. *)
+  if contains "password is required" || contains "not allowed to execute"
+     || contains "may not run" || contains "no tty present"
+    then No_sudoers_rule
+    else Unclear message
+
+let verdict : unavailability option option ref = ref None
 
 (* Deleting a tap that does not exist is a successful no-op (`ip tuntap del'
    returns 0 and creates nothing), and it is covered by our sudoers rule: it is
@@ -328,18 +374,25 @@ let usable : bool option ref = ref None
    this allowed by SOME rule", not "without a password": on any ordinary desktop
    (%sudo ALL=(ALL:ALL) ALL) it says yes even with no rule of ours installed, and
    `sudo -n' then fails asking for a password. And reading /etc/sudoers.d/marionnet
-   is impossible: it is 0440 root:root, as sudoers files must be. *)
-let is_usable () : bool =
-  match !usable with
-  | Some verdict -> verdict
+   is impossible: it is 0440 root:root, as sudoers files must be.
+   --- The device is looked at FIRST, and then no command is run at all: it is
+   exact, it costs nothing, and it still answers when sudo itself is broken. When
+   it is missing, the sudoers rule is not merely innocent -- it was never even
+   reached -- and the message says so. *)
+let unavailability () : unavailability option =
+  match !verdict with
+  | Some cause -> cause
   | None ->
-      let verdict =
+      let cause =
+        if not (Sys.file_exists tun_device) then Some No_tun_device else
         match ip_command (Printf.sprintf "tuntap del dev %sprobe mode tap" tap_prefix) with
-        | Ok _ -> true
-        | Error _ -> false
+        | Ok _ -> None
+        | Error message -> Some (unavailability_of_error message)
       in
-      usable := Some verdict;
-      verdict
+      verdict := Some cause;
+      cause
+
+let is_usable () : bool = (unavailability () = None)
 
 let sudoers_rule ?user () : (string, string) result =
   match (match user with Some u -> Ok u | None -> current_user_name ()) with
@@ -358,7 +411,7 @@ let ensure_sudoers_rule () : (unit, string) result =
       (* Unix.system, not `run': the script re-executes itself with sudo, which
          may need to prompt for a password on the controlling terminal. *)
       let status = Unix.system command in
-      usable := None;
+      verdict := None;
       (match status with
        | Unix.WEXITED 0 when is_usable () -> Ok ()
        | Unix.WEXITED 0 ->

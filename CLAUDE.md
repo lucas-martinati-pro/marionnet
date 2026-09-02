@@ -1122,6 +1122,30 @@ Reprise : appliquer le skill `chantier-long`.
   1 Mio, **rc 1** (le cas négatif est réel) ; ext4/tmpfs/`/var/tmp` rc 0, inexistant 3, non
   inscriptible 2, **0 résidu** ; **piège n° 7 vérifié** — `strings` sur le binaire : **1**
   occurrence du texte neuf, **0** de `WHITE_LIST`.
+  **Ép. 40 : l'avertissement des taps accusait le seul coupable qu'il savait nommer.** « La règle
+  sudo n'est pas installée » alors qu'elle l'était : **mesuré**, le conteneur n'expose pas
+  `/dev/net/tun` (et l'invité bootait avec `eth42=tuntap,wrong-tap-name,…`, d'où `xeyes` sans
+  display). **L'avertissement était VRAI, son TEXTE faux** — le taire aurait masqué une panne
+  réelle. `Tap_provider` rend désormais une **cause** (`No_tun_device` / `No_permission` /
+  `No_sudoers_rule` / `Unclear of string`) ; `is_usable` est **conservé** (`= unavailability () =
+  None`). **À ne pas défaire** : (1) le **périphérique est regardé d'abord**, et alors **aucune
+  commande n'est lancée** (exact, gratuit, répond même si sudo est cassé) ; (2) `open: No such
+  file or directory` est **aussi** reconnu dans le message — le test de fichier peut passer et la
+  commande échouer quand même ; (3) les aiguilles « sudo » sont ses **refus**, jamais le mot
+  `sudo` (`sudo: command not found` le contient : y répondre « installez la règle » serait le
+  défaut qu'on corrige) ; (4) `unavailability_of_error` est **pur et exposé** (motif de
+  `sessions_of_taps`). Côté GUI **un message entier par cause**, celui de la règle **inchangé à
+  l'octet** (ses 12 traductions survivent) et le `%s` d'`Unclear` **échappé** (Pango, ép. 9a).
+  **La cause prise à l'installation** : `bin/scripts/marionnet-tun-check.sh` (script neuf, 26ᵉ
+  compagnon), appelé par les **3** canaux (install.sh, postinst, %post), **jamais fatal** — un
+  `postinst` tourne aussi dans un chroot ou une image en construction, où l'absence du nœud est
+  **attendue**, et il le dit — et il **ne charge aucun module** (*nommer, pas faire*, ép. 13).
+  **Mesuré** : classificateur **5/5** ; le vrai code OCaml dans **5 boîtes** rend les 5 verdicts
+  attendus ; le script **rc 1/1/0** sur les 3 situations ; **non-fatalité prouvée** sur un vrai
+  tarball (`--output-dir` hors release) — `install.sh` rc **0**, **28 noms** dans `bin/` ; i18n
+  **439/0 ×12**, **36/36** dans les `.mo`. **Reste** (versé à `docs/TODO.md`) : une VM démarre
+  **sans le dire** avec `wrong-tap-name`. Bancs `.deb`/`.rpm` : compte 27 → **28**, rouges par
+  construction jusqu'à la prochaine release.
 
 ## Où puiser
 

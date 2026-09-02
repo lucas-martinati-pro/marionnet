@@ -105,12 +105,31 @@ val sessions_of_taps : tap_name list -> (int * int) list
     `ip -o route show ADDRESS' output. Exposed for the same reason. *)
 val route_device_of_output : string -> tap_name option
 
-(** Can we really run our privileged commands, i.e. is the sudoers rule in place?
-    Probed by deleting a tap that does not exist: a successful no-op when the rule
-    is there, a `sudo -n' refusal otherwise. It never prompts and creates nothing.
-    The result is cached until {!ensure_sudoers_rule} runs. A [false] here is the
-    hook for the degraded mode (formerly Daemon_client.disable_daemon_support,
-    with the late daemon). *)
+(** Why we cannot create taps, when we cannot. Three reasons, and telling them
+    apart is the whole point: reporting them all as "the sudoers rule is not
+    installed" sent a user whose container had no {e device} to run a command that
+    could change nothing (measured on a MarioNUM workstation). *)
+type unavailability =
+  | No_tun_device        (** [/dev/net/tun] is missing: nothing can create a tap here *)
+  | No_permission        (** the kernel refuses [TUNSETIFF]: no [CAP_NET_ADMIN] *)
+  | No_sudoers_rule      (** [sudo -n] refuses the command *)
+  | Unclear of string    (** anything else, in the tool's own words *)
+
+(** Why the taps are unavailable, or [None] when they are not. Looks at
+    [/dev/net/tun] first -- then no command is run at all -- and otherwise probes
+    by deleting a tap that does not exist: a successful no-op when everything is
+    in place, a diagnosable failure otherwise. It never prompts and creates
+    nothing. The result is cached until {!ensure_sudoers_rule} runs. *)
+val unavailability : unit -> unavailability option
+
+(** [unavailability_of_error message] classifies the diagnostic of a failed probe.
+    Pure, and exposed for the same reason as {!sessions_of_taps} and
+    {!route_device_of_output}: it is the only part of the diagnosis provable
+    without a privilege and without a device. *)
+val unavailability_of_error : string -> unavailability
+
+(** [unavailability () = None]. A [false] here is the hook for the degraded mode
+    (formerly Daemon_client.disable_daemon_support, with the late daemon). *)
 val is_usable : unit -> bool
 
 (** The sudoers rule that {!is_usable} needs, as the script would install it.

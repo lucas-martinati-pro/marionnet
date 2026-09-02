@@ -825,6 +825,10 @@ cat <<'MESSAGE'
 
         marionnet-get-images
 MESSAGE
+# What the machine must provide besides the packages (episode 40). Never fatal:
+# this runs in image builds too, where the device is legitimately absent -- it is
+# the container that RUNS Marionnet which needs it, and the script says so.
+[ -x /usr/bin/marionnet-tun-check.sh ] && /usr/bin/marionnet-tun-check.sh || true
 fi
 exit 0
 

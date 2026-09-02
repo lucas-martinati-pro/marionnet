@@ -5271,3 +5271,110 @@ candidat **C2** du chantier `bug-critique-crash-host`.
   **0** de `WHITE_LIST`. Sans rebuild, le binaire aurait gardé l'ancienne version **en silence**.
 
 Aucun `.ml` touché, donc **aucune chaîne traduisible** : les 12 catalogues restent intacts.
+
+## Épisode 40 (2026-09-02) — l'avertissement accusait le seul coupable qu'il savait nommer
+
+Sur le poste *teacher* de la salle MarioNUM, Marionnet affiche au démarrage **« Impossible de créer
+les interfaces réseau (taps) — la règle sudo n'est pas installée … lancez `marionnet-sudoers.sh
+install` »**. La règle **est** installée, complète, valide. Le goal disait « faux positif ».
+
+### 1. La mesure renverse la prémisse
+
+Le bloc de commandes joué sur la machine (fonction `test_123` fournie à l'utilisateur) :
+
+```
+sonde `sudo -n ip tuntap del dev mtapprobe mode tap'  ->  open: No such file or directory   rc=1
+création réelle d'un tap                             ->  open: No such file or directory   rc=1
+ls -l /dev/net/tun                                   ->  Aucun fichier ou dossier de ce nom
+CapBnd: 000001ffffffffff        (root du conteneur a toutes les capacités)
+sudo -l                          (les 6 règles mtap* sont là, plus (ALL:ALL) ALL)
+```
+
+Corroboré côté invité : la ligne de commande du noyau UML porte `eth42=tuntap,wrong-tap-name,…` —
+le littéral de repli de `bin/simulation_level.ml:1170` — et `xeyes` répond `Can't open display: :0`.
+
+**L'avertissement était donc VRAI ; c'est son TEXTE qui était faux.** Aucun tap ne peut être créé,
+mais pas pour la raison annoncée : le conteneur n'expose pas `/dev/net/tun`. *Le taire aurait
+masqué une panne réelle ; ce qu'il fallait corriger, c'est le diagnostic.*
+
+### 2. Une cause, plus un booléen
+
+`Tap_provider.is_usable` posait **une** question et rendait un **booléen**, si bien que
+`bin/marionnet.ml` n'avait qu'un message à afficher — celui de la seule cause que la sonde savait
+nommer. Les trois causes ont pourtant des signatures distinctes, **mesurées** en conteneur :
+
+| Cause | Ce que la commande écrit | rc |
+|---|---|---|
+| règle sudo absente | `sudo: a password is required` | 1 |
+| `/dev/net/tun` absent | `open: No such file or directory` | 1 |
+| pas de `CAP_NET_ADMIN` | `ioctl(TUNSETIFF): Operation not permitted` | 1 |
+
+D'où un type `unavailability` (`No_tun_device`, `No_permission`, `No_sudoers_rule`,
+`Unclear of string`), `unavailability : unit -> unavailability option`, et `is_usable` **conservé
+tel quel** (`= (unavailability () = None)`) pour son unique appelant externe.
+
+**À ne pas défaire** : (1) le **périphérique est regardé d'abord** (`Sys.file_exists`) et alors
+**aucune commande n'est lancée** — c'est exact, gratuit, et ça répond encore quand sudo lui-même
+est cassé ; le message dit que la règle sudo n'est pas en cause **parce qu'elle n'a pas été
+atteinte** ; (2) `open: No such file or directory` est **aussi** reconnu dans le message, en
+premier — ce n'est pas de la redondance : le test de fichier peut passer et la commande échouer
+quand même (espace de noms de montage, périphérique retiré entre les deux) ; (3) les aiguilles de
+la cause « sudo » sont ses **refus** (`password is required`, `not allowed to execute`,
+`may not run`, `no tty present`) et **pas le mot `sudo`** — `sudo: command not found` le contient
+aussi, et y répondre « installez la règle sudoers » serait exactement le défaut qu'on corrige
+(mesuré : ce cas tombe désormais dans `Unclear`, qui montre les mots tels quels) ; (4) le
+classificateur `unavailability_of_error` est **pur et exposé**, pour la raison qui a déjà fait
+exposer `sessions_of_taps` et `route_device_of_output` — c'est la seule partie prouvable sans
+privilège ni périphérique.
+
+Côté GUI, **un message entier par cause** (gettext extrait des littéraux, pas des concaténations),
+le message *sudoers* **inchangé à l'octet** — il garde ses 12 traductions et n'est plus montré que
+lorsqu'il est vrai — et le `%s` du cas `Unclear` passe par `Glib.Markup.escape_text` (le corps
+d'un dialogue est un label Pango markup : piège de l'ép. 9a).
+
+### 3. La cause prise à l'installation — `bin/scripts/marionnet-tun-check.sh`
+
+Demandé par l'utilisateur : que l'**installation** vérifie que la machine fournit le périphérique.
+Un **script installé** plutôt que trois paragraphes recopiés (règle des ép. 1, 8, 10) ; il vérifie
+le nœud, puis — si l'appelant est root et qu'`ip` est là — rejoue la sonde, ce qui attrape **aussi**
+la capacité manquante ; il nomme les remèdes (`--device` + `--cap-add` en conteneur ;
+`modprobe tun` et `/etc/modules-load.d/tun.conf` sur une machine à part entière). Trois appelants,
+une ligne chacun : l'`install.sh` du tarball, le `postinst` du `.deb`, le `%post` du `.rpm`.
+
+**À ne pas défaire** : il n'est **jamais fatal** (`|| true` partout) — construire une image Docker
+avec `apt install marionnet` est un geste normal, et le `postinst` y tourne dans un chroot ou un
+conteneur de construction où l'absence du nœud est **attendue** ; le message le dit lui-même. Il
+**ne charge aucun module** et ne crée rien : *nommer, pas faire*, comme le postinst pour la règle
+sudoers (ép. 13). Et une vérité d'installation n'est pas une vérité d'exécution : le diagnostic du
+§ 2 reste le vrai filet, celui-ci ne fait que l'annoncer plus tôt.
+
+### 4. Mesuré
+
+- **Le classificateur, sur les diagnostics que les outils écrivent vraiment** : 5 cas neufs dans
+  `bin/tap_provider_test.ml` (mode `dry_run`, sans privilège), **5/5** — dont « un `sudo` absent
+  n'est pas lu comme une règle absente ».
+- **Bout en bout, le vrai code OCaml dans 5 situations** (l'exécutable de test porté dans des
+  conteneurs) : boîte nue ⇒ **`/dev/net/tun` manquant** (le cas de l'utilisateur) ; `--device`
+  seul ⇒ **pas de CAP_NET_ADMIN** ; device + capacité, en root ⇒ **utilisable** ; device +
+  capacité mais **sans `sudo`** ⇒ `Unclear`, avec les mots de l'outil ; device + capacité, en
+  utilisateur ordinaire **sans règle** ⇒ **règle sudoers absente**.
+- **Le script d'installation**, trois situations : boîte nue ⇒ rc 1 et message « conteneur » ;
+  `--device` seul ⇒ rc 1 et message « capacité » ; boîte saine ⇒ **rc 0, silence**.
+- **Non-fatalité prouvée sur un vrai tarball** construit hors du répertoire de release
+  (`--output-dir` dans un bac à sable, aucune release publiée) : `install.sh` dans une boîte sans
+  `/dev/net/tun` affiche le message **et rend rc 0**, avec **28 noms** posés dans `bin/`.
+- **i18n** : 3 `msgid` neufs, **439 traduits / 0 trou** dans les 12 catalogues, `msgfmt --check`
+  propre, **36/36** entrées interrogées dans les **`.mo` compilés** par clé exacte, arité identique
+  au `msgid`.
+- `make check` rc 0, `dune build` rc 0.
+
+### Reste
+
+Le défaut voisin, versé à `docs/TODO.md` plutôt que traité ici : une machine virtuelle **démarre
+sans le dire** avec `eth42=tuntap,wrong-tap-name,…`, `report_eth42_tap_failure` n'ouvrant un
+dialogue que pour la collision d'adresse. C'est ce qui a fait apparaître la panne très loin de sa
+cause (`xeyes` sans display).
+
+Différé, la campagne n'étant pas finie : les bancs `.deb` et `.rpm` passent leur compte de noms de
+27 à **28** et resteront rouges **par construction** jusqu'à la prochaine release (le banc du
+tarball, lui, **dérive** ce compte depuis l'ép. 38 et suivra tout seul).

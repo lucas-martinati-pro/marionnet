@@ -82,7 +82,14 @@ let dry_run () =
   printf "== Tap_provider, dry run: nothing is created, nothing is destroyed.\n\n";
   printf "  tap prefix .............. %s\n" Tap_provider.tap_prefix;
   printf "  eth42 host address ...... %s\n" Tap_provider.eth42_host_address;
-  printf "  sudoers rule installed .. %b\n" (Tap_provider.is_usable ());
+  printf "  taps usable ............. %b\n" (Tap_provider.is_usable ());
+  printf "  why not ................. %s\n"
+    (match Tap_provider.unavailability () with
+     | None -> "(they are)"
+     | Some Tap_provider.No_tun_device -> "/dev/net/tun is missing"
+     | Some Tap_provider.No_permission -> "no CAP_NET_ADMIN"
+     | Some Tap_provider.No_sudoers_rule -> "the sudoers rule is not installed"
+     | Some (Tap_provider.Unclear d) -> Printf.sprintf "unclear: %s" d);
   printf "\n--- Expected sudoers rule:\n\n";
   (match Tap_provider.sudoers_rule () with
    | Ok text -> print_string text
@@ -115,6 +122,33 @@ let dry_run () =
     (Tap_provider.sessions_of_taps [ tap_of deceased 0; tap_of deceased 1 ] = []);
   check "our own taps are not another session"
     (Tap_provider.sessions_of_taps [ tap_of mine 0 ] = []);
+  (* --- *)
+  (* Why the taps are unavailable, decided on the diagnostics the tools really
+     write. The four strings below are not invented: the first three were MEASURED
+     in containers (bare, with --device only, and with the device but no sudoers
+     rule), which is the only way to be sure the classifier reads what it will
+     actually be given. Telling them apart is what stopped Marionnet from sending
+     a user whose container had no tun device to install a sudoers rule that was
+     already there. *)
+  printf "\n-- Why the taps are unavailable, on the diagnostics the tools really write:\n";
+  check "a missing /dev/net/tun is named, not blamed on sudo"
+    (Tap_provider.unavailability_of_error
+       "`sudo -n /usr/sbin/ip tuntap del dev mtapprobe mode tap' failed: open: No such file or directory"
+     = Tap_provider.No_tun_device);
+  check "a kernel refusal is read as a missing capability"
+    (Tap_provider.unavailability_of_error
+       "`sudo -n /usr/sbin/ip tuntap del dev mtapprobe mode tap' failed: ioctl(TUNSETIFF): Operation not permitted"
+     = Tap_provider.No_permission);
+  check "a sudo refusal is read as the missing rule"
+    (Tap_provider.unavailability_of_error
+       "`sudo -n /usr/sbin/ip tuntap del dev mtapprobe mode tap' failed: sudo: a password is required"
+     = Tap_provider.No_sudoers_rule);
+  check "an unknown diagnostic is repeated, not interpreted"
+    (Tap_provider.unavailability_of_error "something nobody has seen yet"
+     = Tap_provider.Unclear "something nobody has seen yet");
+  check "a missing sudo command is not read as a missing rule"
+    (Tap_provider.unavailability_of_error "sh: 1: sudo: not found"
+     = Tap_provider.Unclear "sh: 1: sudo: not found");
   (* --- *)
   printf "\n-- Reading a route back to its tap:\n";
   check "the device of a route line is found"

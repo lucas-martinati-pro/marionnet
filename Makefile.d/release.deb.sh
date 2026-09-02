@@ -611,6 +611,11 @@ case "$1" in
 
         marionnet-get-images
 MESSAGE
+    # What the machine must provide besides the packages (episode 40). Never
+    # fatal: this runs in chroots and in image builds, where the device is
+    # legitimately absent -- the container that RUNS Marionnet is the one that
+    # needs it, and the script says so.
+    [ -x /usr/bin/marionnet-tun-check.sh ] && /usr/bin/marionnet-tun-check.sh || true
     ;;
 esac
 exit 0
