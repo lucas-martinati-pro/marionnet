@@ -61,18 +61,39 @@ Le tap disparaît avec le projet (`ip link del`, qui détache du bridge implicit
 
 ## 3. Salle de TP : la règle pour un groupe
 
-`marionnet-sudoers.sh install` génère une règle pour **un** utilisateur ; le plus simple
-reste donc une ligne `install <login>` par compte de la salle. Pour une règle unique par
-groupe, partez de la sortie de `print` et éditez-la à la main (puis validez par
-`visudo -cf`) :
+Un principal peut être un **groupe**, dans l'orthographe de sudoers — c'est le cas d'usage
+d'une salle : celui qui la prépare ne connaît pas les logins des étudiants qui s'y assiéront.
 
-- préfixez chaque ligne de commande par `%marionnet` au lieu du login ;
-- la ligne `tuntap add … mode tap user <login>` doit devenir `… mode tap user *` :
-  chaque membre y passera son propre login (Marionnet génère `user $USER`). Le joker
-  n'autorise que la *propriété* du tap, toujours confiné à `mtap*`.
+```
+sudo groupadd marionnet                        # ou le groupe LDAP/AD du site
+sudo gpasswd -a <login> marionnet
+sudo marionnet-sudoers.sh install %marionnet   # (a) pour tout le groupe
+sudo marionnet-sudoers.sh install --enable-natbridge %marionnet   # + (b), sans (c)
+```
+
+Plus rien à éditer à la main : le script écrit la règle du groupe lui-même, et `visudo -cf`
+la valide avant adoption. Deux propriétés à connaître :
+
+- **`ALL` est refusé.** Ce qu'un fichier accorde doit avoir été décidé par quelqu'un, et `ALL`
+  engloberait les comptes système. Le refus nomme la sortie (`groupadd` + `gpasswd`).
+- **La propriété du tap devient un joker pour un groupe** : `ip tuntap add … mode tap user *`
+  au lieu de `… user <login>`. sudoers ne sait pas écrire « l'appelant » dans l'argument d'une
+  commande (il n'y a pas d'expansion `%u` là), donc la ligne ne peut plus lier le tap au login
+  du demandeur. Ce que ça ouvre, mesuré : un membre peut créer un tap **appartenant à un autre
+  compte** — une nuisance, pas une entrée, un tap dont on n'est pas propriétaire ne s'ouvrant
+  pas. Le confinement aux `mtap*` est intact (mesuré : `ip tuntap add dev eth0 …` est refusé),
+  et cela reste plus étroit que la ligne `ip link set mtap* *` que **tout** compte autorisé
+  possède déjà. Un compte nommé, lui, garde sa règle exacte.
+
+`marionnet-sudoers.sh check` répond sur les principaux que le fichier **nomme** : un membre
+d'un groupe autorisé n'en est pas un. La question sur les droits **effectifs** est
+`sudo -l -U <login>`.
 
 C'est toujours moins exposé que l'ancienne socket 0666 du daemon, qui offrait les mêmes
 créations de taps à **tous** les comptes locaux, sans aucune déclaration de l'admin.
+
+Ce que chaque bloc fait à la machine — et pourquoi (b) est sûr là où (c) ne peut pas l'être —
+est écrit pour l'administrateur au § 7.2 de `doc-src/INSTALL.md` (et sa traduction FR).
 
 ## 4. Variante « zéro sudo » : taps pré-provisionnés (non câblée)
 

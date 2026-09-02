@@ -127,11 +127,20 @@ Only --only takes it out of the selection.
 is then left alone). Named USERs make it narrower still: only their rules are
 removed, and the file stays in place for the accounts it still grants.
 
-Several USERs may be named, and \`install' is ADDITIVE: the accounts a file
+A USER is an account, or a GROUP in sudoers spelling -- \`%students'. The group is
+what a classroom needs: whoever sets a room up does not know the logins of the
+students who will sit in it. \`ALL' is refused: what a file grants must have been
+decided by somebody.
+
+Several USERs may be named, and \`install' is ADDITIVE: the principals a file
 already grants are kept (and their rules refreshed). Granting a second person
 therefore never takes the first one's grant away -- \`uninstall USER...' is the
-only way to do that. An account that does not exist is REFUSED: sudoers would
-happily name it, and grant it the day somebody creates it.
+only way to do that. An account or a group that does not exist is REFUSED:
+sudoers would happily name it, and grant it the day somebody creates it.
+
+\`check' answers about the principals a file NAMES, not about effective rights: a
+member of a granted group is not a principal. \`sudo -l -U <login>' is the question
+about effective rights.
 
 USER defaults to \$SUDO_USER, or to the current user. Blocks (a) and (b) grant
 USER the iproute2 commands Marionnet needs on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* interfaces
@@ -236,15 +245,43 @@ function minus_principals {
  echo "${result[*]}"
 }
 
-# known_account_or_die USER...: sudoers is perfectly happy to name an account
-# that does not exist -- for sudo that is a legitimate case (the account may be
-# created later), so `visudo -cf' has nothing to say about `student42', and the
-# rule was installed. Here it is never legitimate: we grant a power to somebody,
-# and "somebody" must be a person. NSS is the authority, and it answers for
-# LDAP/SSSD accounts exactly as it does for local ones.
-function known_account_or_die {
+# is_group PRINCIPAL: a principal is either an account or, in sudoers spelling, a
+# GROUP -- `%students'. A classroom is the reason: an administrator setting up a
+# room does not know the logins of the students who will sit in it, and cannot
+# wait to know them. The group is the only name that exists before they do.
+function is_group {
+ [[ $1 = %* ]]
+}
+
+# known_principal_or_die PRINCIPAL...: sudoers is perfectly happy to name an
+# account that does not exist -- for sudo that is a legitimate case (the account
+# may be created later), so `visudo -cf' has nothing to say about `student42',
+# and the rule was installed. Here it is never legitimate: we grant a power to
+# somebody, and "somebody" must be a person, or a group of them. NSS is the
+# authority, and it answers for LDAP/SSSD accounts and groups exactly as it does
+# for local ones.
+function known_principal_or_die {
  local u rc=0
  for u in "$@"; do
+   # `ALL' is sudoers' own keyword for "every account on this machine", system
+   # ones included, and it would be accepted here without a word. It is refused,
+   # and the refusal says what to do instead: what a file grants must have been
+   # DECIDED by somebody. (The old marionnet-daemon did offer these very tap
+   # creations to every local account through a 0666 socket -- that is what this
+   # script exists to have ended, not a precedent to follow.)
+   if [[ $u = ALL ]]; then
+     echo "$TOOL: refusing 'ALL': it would grant every account on this machine, system ones included." 1>&2
+     echo "$TOOL: name a group instead:  groupadd marionnet; gpasswd -a <login> marionnet; $TOOL install %marionnet" 1>&2
+     rc=2
+     continue
+   fi
+   if is_group "$u"; then
+     if ! getent group -- "${u#%}" >/dev/null 2>&1; then
+       echo "$TOOL: no such group: '${u#%}'. Nothing installed." 1>&2
+       rc=2
+     fi
+     continue
+   fi
    # `getent passwd 1000' answers -- by UID. But sudoers would read `1000' as a
    # NAME, not as a uid (that is spelled `#1000'), so accepting the digits here
    # would install a rule for an account that does not exist. Refuse, and say how.
@@ -271,10 +308,27 @@ function known_account_or_die {
 # `master <bridge>' for the world_bridge). Marionnet never passes user input
 # here: tap names are generated and addresses are computed.
 function content_taps_rules {
- local u=$1 ip
+ local u=$1 ip owner
  ip=$(ip_binary) || return 1
+ # The tap is created for its future user, whose LOGIN the rule names -- which a
+ # group principal, by definition, does not have. sudoers has no way to spell
+ # "the caller" in a command argument (no %u expansion there; the escapes are
+ # for Defaults), so the owner becomes a wildcard for groups, and stays exact for
+ # every named account. What that opens is bounded and stated in the file itself:
+ # a member may create a tap OWNED BY somebody else -- a nuisance, not a way in,
+ # since a tap one does not own cannot be opened. It stays narrower than the
+ # `link set ${TAP_PREFIX}* *' line above, which every granted account already has.
+ if is_group "$u"; then
+   owner='*'
+   cat <<EOF
+# $u is a group: the tap owner below cannot be bound to the caller's login (see
+# content_taps_rules). A member may give a tap away; nobody gains a tap they can open.
+EOF
+ else
+   owner=$u
+ fi
  cat <<EOF
-$u ALL=(root) NOPASSWD: $ip tuntap add dev ${TAP_PREFIX}* mode tap user $u
+$u ALL=(root) NOPASSWD: $ip tuntap add dev ${TAP_PREFIX}* mode tap user $owner
 $u ALL=(root) NOPASSWD: $ip tuntap del dev ${TAP_PREFIX}* mode tap
 $u ALL=(root) NOPASSWD: $ip addr add ${ETH42_HOST_ADDRESS}/32 dev ${TAP_PREFIX}*
 $u ALL=(root) NOPASSWD: $ip route add ${GHOST_NETWORK_PREFIX}* dev ${TAP_PREFIX}*
@@ -740,7 +794,7 @@ fi
 # Never for `uninstall': the account to drop may be exactly the one that should
 # never have existed here.
 case "$COMMAND" in
-  print|check|install) known_account_or_die "${PRINCIPALS[@]}" || exit 2 ;;
+  print|check|install) known_principal_or_die "${PRINCIPALS[@]}" || exit 2 ;;
 esac
 case "$COMMAND" in print|check|install|uninstall) available_blocks_or_die "$COMMAND" ;; esac
 

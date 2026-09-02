@@ -349,20 +349,111 @@ installation de paquet ne peut pas savoir à quel humain une machine appartient.
 qu'administrateur :
 
 ```bash
-sudo marionnet-sudoers.sh install <utilisateur>...
+sudo marionnet-sudoers.sh install <user>...
 ```
 
-Plusieurs comptes peuvent être nommés, et la commande est **additive** : accorder le droit à une
-deuxième personne ne retire jamais celui de la première. `sudo marionnet-sudoers.sh uninstall
-<utilisateur>` retire une autorisation et laisse les autres en place. Un compte qui n'existe pas
-est refusé.
+Cela accorde le **socle** — bloc (a) — sans lequel rien ne marche. L'`install.sh` du tarball
+l'installe pour vous (sauf `--no-sudoers`). Pour tout retirer :
+`sudo marionnet-sudoers.sh uninstall`.
 
-Cela accorde le socle — bloc (a) — sans lequel rien ne marche. Les autorisations du NAT bridge et
-du LAN bridge sont des blocs séparés, demandés par l'utilisateur, depuis l'interface, le jour où
-un composant *bridge* est démarré. L'`install.sh` du tarball installe le bloc (a) pour vous (sauf
-`--no-sudoers`).
+### 7.1 Accorder : un compte, plusieurs, ou une salle entière
 
-Pour la retirer : `sudo marionnet-sudoers.sh uninstall`.
+La commande est **additive** : accorder le droit à une deuxième personne ne retire jamais celui de
+la première, et `sudo marionnet-sudoers.sh uninstall <utilisateur>` retire une autorisation en
+laissant les autres en place. Un compte qui n'existe pas est refusé — sudoers le nommerait
+volontiers, et le droit tomberait dans les mains du premier à qui l'on créerait ce login.
+
+Un principal est un compte, ou un **groupe** dans l'orthographe de sudoers. La salle de TP en est
+la raison : celui qui prépare une salle ne connaît pas les logins des étudiants qui s'y
+assiéront, et ne peut pas attendre de les connaître.
+
+```bash
+sudo groupadd marionnet                      # si le site n'a pas de groupe à lui
+sudo gpasswd -a <login> marionnet            # (ou utilisez le groupe LDAP/AD existant)
+sudo marionnet-sudoers.sh install %marionnet
+```
+
+Tout membre du groupe est alors autorisé, y compris celui qui s'inscrira la semaine prochaine.
+Deux choses à savoir sur une autorisation de groupe : `ALL` est **refusé** (ce qu'un fichier
+accorde doit avoir été décidé par quelqu'un, et cela engloberait les comptes système) ; et la
+ligne de création du tap, qui pour un compte nommé lie le tap à ce login, doit accepter n'importe
+quel propriétaire pour un groupe — sudoers ne sait pas écrire « l'appelant » dans l'argument d'une
+commande. Un membre peut donc créer un tap **appartenant à quelqu'un d'autre** ; personne ne
+gagne un tap qu'il puisse ouvrir, et le confinement aux `mtap*` est intact. `sudo -l -U <login>`
+est la question sur les droits effectifs (`marionnet-sudoers.sh check` répond sur les principaux
+que le fichier **nomme** ; un membre d'un groupe autorisé n'en est pas un).
+
+### 7.2 Les trois blocs, et ce que chacun fait à cette machine
+
+À lire avant d'accorder quoi que ce soit au-delà du socle. Les trois blocs sont trois fichiers de
+`/etc/sudoers.d/`, accordés à trois moments différents, et ils ne sont **pas** également
+dangereux.
+
+| Bloc | Accordé | Ce qu'il permet de faire à l'hôte |
+|---|---|---|
+| **(a) taps fantômes** | à l'installation, par l'administrateur | Créer et détruire des interfaces `mtap*`, leur donner l'adresse fixe `172.23.0.254/32` et y router `172.23.*`. Confiné aux `mtap*` : rien d'autre sur la machine n'est atteignable par là. Sans lui, Marionnet tourne en mode dégradé — pas de graphique dans les invités, pas de terminaux de routeur. |
+| **(b) NAT bridge** | à l'exécution, depuis l'interface | Construire le pont privé `mnbr*` et faire du NAT pour les invités derrière lui. |
+| **(c) LAN bridge** | à l'exécution, depuis l'interface | Mettre la **carte réseau de l'hôte** dans un pont, pour que les invités soient sur le vrai réseau local. |
+
+**(b), en détail — il ne touche jamais l'interface de l'hôte, et c'est ce qui le rend sûr.** Il
+crée un pont `mnbr*` portant l'adresse `.1/24` d'un réseau privé ; il met
+`net.ipv4.ip_forward` **à 1**, ce qui vaut pour toute la machine et non par interface (Marionnet
+ne le remet à 0 au démontage que s'il l'a lui-même mis à 1) ; il ajoute une règle `MASQUERADE` et
+deux règles `FORWARD` avec `iptables`, **toutes porteuses du commentaire
+`marionnet-natbridge:mnbr*`** — la règle sudoers exige ce marqueur, si bien qu'aucune règle
+préexistante de votre pare-feu ne peut être ajoutée, modifiée ni supprimée par cette autorisation.
+Facultativement, il démarre un **`dnsmasq` lié à ce seul pont** (DHCP en `.100-.200`, plus le DNS
+pour les invités) — c'est pourquoi `dnsmasq-base` est une dépendance d'exécution. Facultativement
+encore, l'IPv6 : une ULA `/64`, des *Router Advertisements* émis par ce même dnsmasq, et du NAT66
+sur `ip6tables` — et comme le forwarding IPv6 n'est **pas** par interface, l'activer fait de tout
+l'hôte un routeur, or un routeur ignore les annonces qu'il reçoit ; une porte minuscule et sans
+argument (`marionnet-ipv6.sh`) mémorise donc et restitue `accept_ra`, pour que l'hôte ne perde pas
+sa propre route IPv6 quelques minutes plus tard. La carte de l'hôte, ses adresses et ses routes ne
+sont **jamais nommées** dans ce bloc : elles ne peuvent pas être touchées par lui.
+
+**(c), en détail — c'est le réseau de l'hôte, et cela ne peut pas être cadré.** Un LAN bridge
+**est** la carte de l'hôte asservie à `mnlan0`, avec l'adresse IPv4 et la route par défaut de
+l'hôte **déplacées sur le pont** et l'adresse MAC de la carte clonée dessus. Il y en a exactement
+un par machine (une carte n'a qu'un maître), donc deux sessions Marionnet le partagent. À peser
+avant de l'accorder :
+
+* une fenêtre de quelques millisecondes pendant laquelle l'hôte n'a **plus de route de sortie**
+  (l'adresse est posée sur le pont avant d'être retirée de la carte : elle n'est jamais nulle part) ;
+* les machines virtuelles apparaissent **sur le vrai réseau local, avec leurs propres adresses
+  MAC** — un commutateur avec *port security*, ou la politique réseau d'un campus, peut fort bien
+  le refuser ;
+* votre gestionnaire de réseau (NetworkManager, netplan, systemd-networkd) peut défaire la
+  manipulation ou lutter contre elle ;
+* les trois dernières lignes du fichier sudoers qu'il installe ne sont **restreintes à aucune
+  interface** — `ip addr add|del * dev *` et `ip route add default via * dev *` — parce que la
+  carte de l'hôte n'a pas de nom fixe. En clair : *ce compte peut reconfigurer l'adressage IPv4 de
+  cette machine.* Aucun `iptables` n'est en jeu, pas de NAT, et pas d'IPv6 (pas géré du tout).
+
+Le Wi-Fi est refusé (un point d'accès ne répond pas à plusieurs adresses MAC derrière une seule
+association), de même qu'une carte déjà asservie au pont de quelqu'un d'autre, ou une route par
+défaut ambiguë.
+
+### 7.3 Accorder (b) sans (c)
+
+C'est le **défaut**, et il n'y a rien à faire pour l'obtenir : un `install` nu n'accorde que (a),
+et aucun des deux blocs de pont n'est jamais accordé à l'installation. Quand un utilisateur
+démarre un composant *bridge*, Marionnet demande **son propre mot de passe sudo** et installe ce
+bloc — (c) est donc déjà réservé aux comptes qui peuvent faire du sudo à l'exécution, bien après
+l'installation faite par l'administrateur.
+
+Pour donner d'avance le NAT bridge à une salle, sans qu'aucun mot de passe soit demandé et sans
+que (c) entre jamais en jeu :
+
+```bash
+sudo marionnet-sudoers.sh install --enable-natbridge %marionnet
+```
+
+et, symétriquement, pour retirer un bloc en laissant le socle tranquille :
+
+```bash
+sudo marionnet-sudoers.sh uninstall --disable-lanbridge      # tous les comptes
+sudo marionnet-sudoers.sh uninstall --disable-lanbridge <user>
+```
 
 ## 8. Désinstaller Marionnet
 

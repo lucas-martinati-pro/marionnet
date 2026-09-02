@@ -331,15 +331,99 @@ cannot tell which human a machine belongs to. Run, as an administrator:
 sudo marionnet-sudoers.sh install <user>...
 ```
 
-Several accounts may be named, and the command is **additive**: granting a second person never
-takes the first one's grant away. `sudo marionnet-sudoers.sh uninstall <user>` takes one grant
-back and leaves the others in place. An account that does not exist is refused.
+That grants the **socle** — block (a) — without which nothing works. The tarball's `install.sh`
+installs it for you (unless `--no-sudoers`). To take everything back:
+`sudo marionnet-sudoers.sh uninstall`.
 
-That grants the socle — block (a) — without which nothing works. The NAT bridge and LAN bridge
-grants are separate blocks, asked for by the user, from the interface, the day a bridge component
-is started. The tarball's `install.sh` installs block (a) for you (unless `--no-sudoers`).
+### 7.1 Granting: one account, several, or a whole classroom
 
-To take it away: `sudo marionnet-sudoers.sh uninstall`.
+The command is **additive**: granting a second person never takes the first one's grant away, and
+`sudo marionnet-sudoers.sh uninstall <user>` takes one grant back while leaving the others in
+place. An account that does not exist is refused — sudoers would happily name it, and grant it the
+day somebody creates that login.
+
+A principal is an account, or a **group** in sudoers spelling. A classroom is why: whoever sets a
+room up does not know the logins of the students who will sit in it, and cannot wait to know them.
+
+```bash
+sudo groupadd marionnet                      # if the site has no group of its own
+sudo gpasswd -a <login> marionnet            # (or use the LDAP/AD group you already have)
+sudo marionnet-sudoers.sh install %marionnet
+```
+
+Every member of the group is then granted, including the ones enrolled next week. Two things to
+know about a group grant: `ALL` is **refused** (what a file grants must have been decided by
+somebody, and it would include system accounts); and the tap-creation line, which for a named
+account binds the tap to that login, has to accept any owner for a group — sudoers cannot spell
+"the caller" in a command argument. A member may therefore create a tap **owned by somebody else**;
+nobody gains a tap they can open, and the confinement to `mtap*` is untouched. `sudo -l -U <login>`
+is the question about effective rights (`marionnet-sudoers.sh check` answers about the principals a
+file *names*, so a member of a granted group is not one).
+
+### 7.2 The three blocks, and what each one does to this machine
+
+Read this before granting anything beyond the socle. The three blocks are three files in
+`/etc/sudoers.d/`, granted at three different moments, and they are **not** equally dangerous.
+
+| Block | Granted | What it lets the account do to the host |
+|---|---|---|
+| **(a) ghost taps** | at install time, by the administrator | Create and destroy `mtap*` interfaces, give them the fixed address `172.23.0.254/32` and route `172.23.*` to them. Confined to `mtap*`: nothing else on the machine can be reached through it. Without it Marionnet runs degraded — no graphics in the guests, no router terminals. |
+| **(b) NAT bridge** | at run time, from the interface | Build the private bridge `mnbr*` and NAT the guests behind it. |
+| **(c) LAN bridge** | at run time, from the interface | Put the host's **own network card** into a bridge, so guests sit on the real local network. |
+
+**(b), in detail — it never touches the host interface, and that is what makes it safe.** It
+creates a bridge `mnbr*` with the `.1/24` address of a private network; it turns
+`net.ipv4.ip_forward` **on**, which is host-wide and not per-interface (Marionnet restores it on
+teardown only if it is the one that turned it on); it adds one `MASQUERADE` rule and two `FORWARD`
+rules with `iptables`, **every one of them carrying the comment `marionnet-natbridge:mnbr*`** — the
+sudoers rule requires that tag, so no rule your firewall already has can be added, changed or
+deleted through this grant. Optionally it starts a **`dnsmasq` bound to that bridge alone** (DHCP
+in `.100-.200`, plus DNS for the guests), which is why `dnsmasq-base` is a runtime dependency.
+Optionally again, IPv6: a ULA `/64`, Router Advertisements sent by that same dnsmasq, and NAT66 on
+`ip6tables` — and since IPv6 forwarding is **not** per-interface, turning it on makes the whole
+host a router, and a router ignores the advertisements it receives; a tiny zero-argument gate
+(`marionnet-ipv6.sh`) therefore remembers and restores `accept_ra`, so the host does not lose its
+own IPv6 route minutes later. The host card, its addresses and its routes are **never named** in
+this block: they cannot be touched through it.
+
+**(c), in detail — it is the host's networking, and it cannot be scoped.** A LAN bridge *is* the
+host's card enslaved to `mnlan0`, with the host's IPv4 address and default route **moved onto the
+bridge** and the card's MAC cloned onto it. There is exactly one per host (a card has one master),
+so two Marionnet sessions share it. What to weigh before granting it:
+
+* a window of a few milliseconds during which the host has **no route out** (the address is put on
+  the bridge before being removed from the card, so it is never nowhere);
+* the virtual machines appear **on the real LAN, with their own MAC addresses** — a switch with
+  port security, or a campus network policy, may well refuse that;
+* your network manager (NetworkManager, netplan, systemd-networkd) may undo or fight the change;
+* the last three lines of the sudoers file it installs are **not restricted to any device** —
+  `ip addr add|del * dev *` and `ip route add default via * dev *` — because the host's card has no
+  fixed name. In plain words: *this account may reconfigure the IPv4 addressing of this machine.*
+  No `iptables` is involved, no NAT, and no IPv6 (not handled at all).
+
+Wi-Fi is refused (an access point will not answer several MAC addresses behind one association),
+as is a card already enslaved to somebody else's bridge, or an ambiguous default route.
+
+### 7.3 Granting (b) without (c)
+
+That is the **default**, and nothing has to be done for it: a bare `install` grants (a) only, and
+neither bridge block is ever granted at install time. When a user starts a bridge component,
+Marionnet asks for **their own sudo password** and installs that block — so (c) is already reserved
+to accounts that may sudo at run time, long after the administrator's installation.
+
+To hand a classroom the NAT bridge in advance, without anybody being asked for a password and
+without (c) ever entering the picture:
+
+```bash
+sudo marionnet-sudoers.sh install --enable-natbridge %marionnet
+```
+
+and, symmetrically, to take one block back while leaving the socle alone:
+
+```bash
+sudo marionnet-sudoers.sh uninstall --disable-lanbridge      # every account
+sudo marionnet-sudoers.sh uninstall --disable-lanbridge <user>
+```
 
 ## 8. Removing Marionnet
 

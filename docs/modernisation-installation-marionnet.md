@@ -4958,3 +4958,89 @@ point dur est déjà écrit au § 3 de `docs/admin-taps-and-bridge.md` : la lign
 `tuntap add … mode tap user <login>` lie le propriétaire du tap au nom, donc un principal-groupe
 impose `user *`, à moins d'une porte privilégiée minuscule (patron `marionnet-dnsmasq.sh`) qui
 forcerait le propriétaire depuis `$SUDO_UID`, **en root**.
+
+## Épisode 36 (2026-09-02) — la salle entière, et ce que chaque bloc fait vraiment à la machine
+
+Second défaut du même retour de terrain : **l'administrateur d'une vraie salle ne connaît pas les
+logins des étudiants**. Il ne peut donc pas les prévoir, et l'épisode 35 — qui lui permet d'en
+nommer plusieurs — ne lui sert à rien s'il faut les nommer *tous*. Le seul nom qui existe **avant**
+les comptes est celui d'un **groupe**.
+
+### 1. Un principal peut être un groupe
+
+`install %etudiants` : validé par `getent group`, écrit tel quel (orthographe de sudoers), et rien
+d'autre du fichier ne change — l'union, le retrait, le marqueur `# principals:` et `visudo -cf`
+fonctionnent sur un `%groupe` comme sur un login.
+
+**`ALL` est refusé**, et c'est une décision, pas un oubli : ce qu'un fichier accorde doit avoir
+été **décidé par quelqu'un**, et `ALL` engloberait les comptes système. Le refus **nomme la
+sortie** (`groupadd` + `gpasswd` + `install %marionnet`). Précédent volontairement écarté :
+l'ancien `marionnet-daemon` offrait *exactement* ces créations de taps à tous les comptes locaux
+par une socket 0666 — c'est ce que ce script existe pour avoir terminé, pas un modèle à suivre.
+
+**Le seul élargissement, et il est borné.** La ligne du socle nomme le futur propriétaire du tap
+(`… mode tap user <login>`), ce qu'un groupe n'a par définition pas — sudoers ne sait pas écrire
+« l'appelant » dans l'argument d'une commande (l'expansion `%u` n'existe que pour les `Defaults`).
+Elle devient donc `… user *` **pour les principaux-groupes seulement** ; un compte nommé garde sa
+règle exacte, et le fichier **explique le joker à l'endroit où il l'écrit**. Ce que ça ouvre,
+mesuré par sudo lui-même et non par notre générateur : un membre peut créer un tap **appartenant
+à un autre compte** — nuisance, pas entrée, un tap dont on n'est pas propriétaire ne s'ouvrant
+pas. C'est plus étroit que la ligne `ip link set mtap* *` que **tout** compte autorisé possède
+déjà (et qui permet, elle, de brancher son tap sur n'importe quel pont de l'hôte).
+
+**À ne pas défaire** : `check` répond sur les principaux que le fichier **nomme** — un membre d'un
+groupe autorisé n'en est pas un — et c'est dit dans l'usage, avec la question qui porte sur les
+droits **effectifs** : `sudo -l -U <login>`.
+
+### 2. La page INSTALL dit enfin ce que chaque bloc fait à la machine
+
+Demande explicite de l'utilisateur, et elle manquait : la page accordait des droits sans dire ce
+qu'ils ouvrent. Le § 7 est refait en trois parties — accorder (7.1), **les trois blocs et leurs
+implications système** (7.2), accorder (b) sans (c) (7.3) — dans les deux langues.
+
+Ce qui est désormais écrit, et qui ne l'était que dans les en-têtes des scripts : (b) met
+`net.ipv4.ip_forward` à 1 **pour toute la machine** (restauré au démontage *seulement* si c'est
+Marionnet qui l'a mis à 1 — vérifié dans `marionnet-natbridge.sh`), ajoute 1 `MASQUERADE` et 2
+`FORWARD` **toutes porteuses du commentaire** `marionnet-natbridge:mnbr*` (c'est ce marqueur, exigé
+par la règle sudoers, qui rend impossible de toucher une règle du pare-feu existant), un `dnsmasq`
+**lié au seul pont**, et en option l'IPv6 — qui fait de l'hôte un **routeur**, d'où la porte
+`marionnet-ipv6.sh` qui mémorise et restitue `accept_ra` ; **la carte de l'hôte n'est jamais
+nommée dans ce bloc**. Et (c) : la carte de l'hôte asservie à `mnlan0`, adresse et route par
+défaut **déplacées sur le pont**, MAC clonée — donc quelques millisecondes sans route de sortie,
+des machines virtuelles **visibles sur le vrai réseau avec leurs propres MAC** (qu'un commutateur
+à *port security* ou une politique de campus peut refuser), un gestionnaire de réseau qui peut
+lutter contre, et trois lignes sudoers **restreintes à aucune interface**.
+
+**(b) sans (c) est le défaut, et il n'y avait rien à coder pour ça** : un `install` nu n'accorde
+que (a), et la GUI demande **le mot de passe sudo de l'utilisateur** au moment où un pont démarre —
+(c) est donc déjà réservé aux comptes qui peuvent faire du sudo à l'exécution, longtemps après
+l'installation. Ce que la page ajoute est le geste qui donne (b) **d'avance** à une salle :
+`install --enable-natbridge %marionnet`.
+
+### 3. Mesuré
+
+Boîte `debian:12` en root. **12 PASS / 0 FAIL** sur le banc des groupes (`visudo` accepte le
+principal-groupe ; le compte nommé garde son login ; le groupe reçoit `user *` ; le fichier
+explique le joker ; groupe inexistant et `ALL` refusés rc 2 sans toucher au fichier ; bloc (b)
+pour un groupe validé par `visudo` ; retrait d'un groupe).
+
+**Et surtout, mesuré par sudo et non par nous** — `sudo -n -l` joué sous les comptes :
+
+- `alice`, **membre** du groupe et **non principale** : autorisée ;
+- `bob`, non membre : refusé ;
+- donner le tap à un autre compte : autorisé (l'élargissement documenté, et lui seul) ;
+- `ip tuntap add dev eth0 …` : **refusé** — le confinement aux `mtap*` est intact.
+
+**Les commandes de la page ont été jouées telles qu'écrites** (règle de l'épisode 29) :
+`groupadd` / `gpasswd -a` / `install %marionnet` / `install --enable-natbridge %marionnet` /
+`uninstall --disable-lanbridge [<user>]` / `sudo -l -U alice` — cette dernière montrant les 36
+règles effectives d'alice, (a) et (b), aucune de (c).
+
+### Reste
+
+Ce que l'administrateur **ne peut toujours pas** faire : dire non à (c). Un utilisateur qui a le
+droit de sudo se l'accorde depuis la GUI. Un verrou est possible (marqueur lisible sans privilège,
+`deny`/`allow`, la GUI l'interrogeant **avant** de demander un mot de passe — sans quoi elle
+demande un mot de passe pour quelque chose qui ne sera jamais accordé, cf. `bin/privileges.ml`),
+mais il ne protégerait que contre l'**erreur** : un sudoer complet édite `sudoers.d` lui-même.
+Décision non prise.

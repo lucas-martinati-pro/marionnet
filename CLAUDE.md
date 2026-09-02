@@ -1034,6 +1034,30 @@ Reprise : appliquer le skill `chantier-long`.
   blocs (b) et (c) à deux comptes, bloc (a) intact par le chemin GUI. **Reste** : accorder à tous
   les humains sans connaître leurs logins (`%groupe` ⇒ `user *`, ou une porte privilégiée qui
   force le propriétaire depuis `$SUDO_UID`).
+  **Ép. 36 : la salle entière, et ce que chaque bloc fait vraiment à la machine.** Un principal
+  peut être un **`%groupe`** (validé par `getent group`) — le seul nom qui existe **avant** les
+  comptes des étudiants. **`ALL` est refusé** (ce qu'un fichier accorde doit avoir été *décidé*,
+  et `ALL` prendrait les comptes système ; le refus nomme `groupadd`/`gpasswd`) ; le précédent
+  de la socket 0666 du daemon est ce que ce script a **terminé**, pas un modèle. **Seul
+  élargissement** : la ligne du socle nomme le propriétaire du tap, qu'un groupe n'a pas
+  (sudoers n'expanse pas « l'appelant » dans un argument), donc `user *` **pour les groupes
+  seulement**, le fichier expliquant le joker là où il l'écrit — mesuré par `sudo -n -l` : un
+  membre non-principal est **autorisé**, un non-membre **refusé**, `dev eth0` **refusé**, et
+  donner un tap à un autre compte est la nuisance documentée (plus étroit que le
+  `ip link set mtap* *` que tout compte autorisé a déjà). **À ne pas défaire** : `check` répond
+  sur les principaux que le fichier **nomme** — un membre d'un groupe autorisé n'en est pas
+  un — la question des droits **effectifs** étant `sudo -l -U <login>`. **Page INSTALL § 7
+  refaite ×2 langues** : ce que chaque bloc fait à l'hôte — (b) `ip_forward` **host-wide**
+  (restauré seulement s'il l'a mis), 1 MASQUERADE + 2 FORWARD **toutes tagguées**
+  `marionnet-natbridge:mnbr*` (c'est ce tag exigé qui rend intouchable une règle préexistante),
+  dnsmasq **lié au seul pont**, IPv6 qui fait de l'hôte un **routeur** (d'où la porte
+  `accept_ra`), **carte de l'hôte jamais nommée** ; (c) carte asservie, adresse et route par
+  défaut **déplacées**, MAC clonée, VM **visibles sur le vrai LAN avec leurs MAC**, 3 lignes
+  restreintes à **aucune** interface. **(b) sans (c) est le défaut** et n'a rien coûté : la GUI
+  exige le mot de passe sudo **de l'utilisateur** au démarrage d'un pont. **Reste** : l'admin ne
+  peut toujours pas **dire non** à (c) (un verrou ne protégerait que de l'erreur ; il devrait
+  être lisible **sans privilège**, la GUI demandant le mot de passe *avant* de connaître le
+  verdict — `bin/privileges.ml`).
 
 ## Où puiser
 
