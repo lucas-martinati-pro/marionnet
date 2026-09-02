@@ -425,6 +425,37 @@ sudo marionnet-sudoers.sh uninstall --disable-lanbridge      # every account
 sudo marionnet-sudoers.sh uninstall --disable-lanbridge <user>
 ```
 
+### 7.4 Forbidding a block outright
+
+Taking a grant back does not prevent the next user from asking for it again, from the interface,
+with their own password. An administrator who does not want a LAN bridge built on this machine —
+ever, by anybody — says so once:
+
+```bash
+sudo marionnet-sudoers.sh deny --lanbridge     # or --natbridge, or --bridges
+```
+
+While that veto is in place: the block is refused to everybody, the grant already in place is
+**taken back** (leaving it would make the veto a lie), and Marionnet **says so in its interface
+instead of asking for a password**. Lift it with `sudo marionnet-sudoers.sh allow --lanbridge` —
+which grants nothing: a user still has to ask. Anybody may check the current state, no privilege
+needed:
+
+```bash
+marionnet-sudoers.sh policy          # exit 0 if allowed, 3 if denied; says which
+```
+
+The veto is a file in `/etc/marionnet/`, world-readable on purpose: Marionnet has to know the
+answer *before* asking for a password, and a file in `/etc/sudoers.d/` is 0440 root, as it must be.
+
+Two things it is honest to know. The socle — block (a) — has **no** veto: the administrator grants
+it himself, by hand, so forbidding it would be not typing the command. And a veto stops a
+**mistake**, not a determined administrator: whoever may run `sudo` without restriction edits
+`/etc/sudoers.d/` directly and needs nobody's permission. Where it does bite is the common
+classroom setup — a teacher who may sudo, students who may not — and it is exactly there that a
+LAN bridge is built by accident.
+
+
 ## 8. Removing Marionnet
 
 * **apt**: `sudo apt purge marionnet marionnet-kernels marionnet-kernels-i386 marionnet-fs-guignol`

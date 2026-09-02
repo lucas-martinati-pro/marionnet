@@ -5044,3 +5044,92 @@ droit de sudo se l'accorde depuis la GUI. Un verrou est possible (marqueur lisib
 demande un mot de passe pour quelque chose qui ne sera jamais accordé, cf. `bin/privileges.ml`),
 mais il ne protégerait que contre l'**erreur** : un sudoer complet édite `sudoers.d` lui-même.
 Décision non prise.
+
+## Épisode 37 (2026-09-02) — le veto de l'administrateur, et pourquoi il n'est pas dans `sudoers.d`
+
+Ce que l'épisode 36 laissait ouvert : l'administrateur **ne pouvait pas dire non** au LAN bridge.
+Retirer une autorisation n'empêche rien — l'utilisateur suivant la redemande depuis la GUI, avec
+son propre mot de passe. `deny` / `allow` / `policy` comblent ce trou, et la première décision est
+celle de **l'emplacement**.
+
+### 1. Le veto n'est PAS un fichier de `sudoers.d`, et c'est la GUI qui l'impose
+
+`bin/privileges.ml:160-190` **demande le mot de passe d'abord** et apprend le verdict ensuite (un
+`sudo -n` sans ticket échoue avec 1, sans avoir rien exécuté). Un refus de politique écrit dans
+`/etc/sudoers.d/` serait donc découvert **après** que l'utilisateur ait tapé son mot de passe pour
+quelque chose qui ne lui sera jamais accordé. Or un fichier de `sudoers.d` est **0440 root**, comme
+il se doit — illisible pour qui doit poser la question. Deuxième raison, plus dure : **tout ce qui
+traîne dans `sudoers.d` est analysé par sudo**, et ce n'est pas un endroit pour un fichier qui
+n'est pas une règle.
+
+D'où `POLICY_DIR=/etc/marionnet` (surchargeable par `MARIONNET_SUDOERS_POLICY_DIR` pour les bancs)
+et un marqueur **0644**, chemin **absolu et indépendant du préfixe** exactement comme
+`/etc/sudoers.d` : un veto est une décision **sur cette machine**, pas sur une installation.
+
+### 2. Les trois sous-commandes
+
+- **`deny --lanbridge`** (root) écrit le marqueur **et reprend l'autorisation en place** : laisser
+  un fichier accordé derrière un veto en ferait un mensonge, et c'est le fichier que sudo lit.
+- **`allow --lanbridge`** (root) le retire, et **n'accorde rien** : un utilisateur doit toujours
+  demander.
+- **`policy [--lanbridge]`** — **sans aucun privilège**, rc 0 / **3**, une ligne par bloc interdit
+  sur **stdout**. C'est la seule sous-commande dont la sortie standard est lue par un autre
+  programme.
+
+**À ne pas défaire** : (1) `install` refuse un bloc interdit **avant de toucher à quoi que ce
+soit** (`denied_blocks_or_die`, patron de `available_blocks_or_die`) avec **rc 3** — que la GUI
+distingue d'un mot de passe refusé (1) et d'une erreur d'usage (2) — et **nomme la commande qui
+lève** ; (2) le bloc (a) **n'a pas de veto**, et ce n'est pas un oubli : c'est l'administrateur
+qui l'accorde lui-même, à la main, donc l'interdire reviendrait à **ne pas taper la commande** ;
+(3) `deny`/`allow`/`policy` **refusent un USER** — un veto vaut pour tout le monde — et
+**refusent `--only`** ; les sélecteurs neutres `--natbridge` / `--lanbridge` / `--bridges` sont
+créés pour eux (`deny --enable-lanbridge` serait une phrase qui se contredit) et acceptés
+partout ; (4) la sonde côté GUI **n'est pas mémorisée** : l'administrateur peut lever le veto
+pendant que Marionnet tourne, et l'essai suivant doit le voir.
+
+**Ce qu'un veto vaut, dit dans la doc et dans l'en-tête du script** : il arrête l'**erreur** — le
+prof qui clique « oui » sans lire et transforme la carte de la machine en pont — **pas** un sudoer
+complet, qui édite `/etc/sudoers.d/` lui-même. Là où il mord, c'est la salle ordinaire : un
+enseignant qui peut faire du sudo, des étudiants qui ne peuvent pas.
+
+### 3. Côté GUI : la sonde passe AVANT le mot de passe
+
+`ensure_block` reçoit deux paramètres de plus (`~policy_selector`, `~denied_by_administrator`) et
+interroge `policy_denial` juste après avoir résolu le chemin du script. **L'ordre est réfléchi** :
+la sonde `probe ()` reste **la première** — si la règle est là et que l'hôte obéit, la
+fonctionnalité **marche**, et prétendre le contraire serait décrire une politique au lieu de la
+réalité (`deny` reprenant l'octroi, la fenêtre est étroite : une règle laissée à la main).
+
+**À ne pas défaire** : tout ce qui n'est pas un **rc 3** n'est **pas** un veto — un script d'avant
+cet épisode répond **2** à `policy` (mesuré) — parce que *refuser de travailler au motif qu'on n'a
+pas pu poser la question est le contraire de ce que ce garde-fou existe pour faire*. Et le
+`%s` du message passe par `Glib.Markup.escape_text` : le corps d'un `Simple_dialogs.error` est un
+label **Pango markup** (piège de l'ép. 9a).
+
+### 4. i18n : 1 msgid, 12 langues, l'invariant tenu
+
+Le message est **unique et générique** — le titre du dialogue dit déjà de quel pont il s'agit —
+donc **1** `msgid` neuf, versé dans les 12 catalogues par le flux du `Makefile`
+(`gettext-messages-pot` puis `gettext-update-po`), et le seul écart du `.pot` est cet ajout (le
+reste du diff est du numéro de ligne). **436 traduits, 0 trou** dans les 12, `msgfmt --check`
+propre, arité **1 `%s` sur 1** dans les 12, et les **12 `.mo` compilés interrogés par clé
+exacte** rendent bien la traduction.
+
+### 5. Mesuré
+
+- Banc du veto en `debian:12` root : **19 PASS / 0 FAIL** (le marqueur, son mode 0644, la reprise
+  de l'octroi, `policy` rc 3 avec sa ligne, le refus d'`install` rc 3 sans rien écrire, le NAT
+  bridge intact, `allow` qui n'accorde rien, et les 3 gardes : pas de bloc, un USER, `--only`).
+- Banc des commandes **du § 7.4, jouées telles qu'écrites** (règle de l'ép. 29), dont `policy`
+  lancé **par un étudiant sans privilège** : **13 PASS / 0 FAIL**. **Discriminance mesurée** : le
+  même banc sur `HEAD` rend **3 PASS / 10 FAIL**.
+- `make check` (tous les modules) rc 0, `dune build` rc 0.
+
+### Ce qui n'est PAS mesuré, et pourquoi
+
+**La branche GUI elle-même n'a pas été jouée à l'exécution.** Ce qui la déclenche est le démarrage
+d'un composant *bridge* dans une vraie session, et le verdict s'affiche par un
+`Simple_dialogs.error` **modal** : un banc de `driven-sessions/` (qui exige déjà un `DISPLAY`)
+s'arrêterait dessus. Ce qui est mesuré de bout en bout est tout le reste : le contrat de `policy`
+(rc, stdout, absence de privilège), le fait qu'un script d'avant réponde 2, la compilation de tous
+les modules, et les 12 catalogues. Le chaînon non joué est **un `if`** entre les deux.

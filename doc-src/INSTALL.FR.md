@@ -455,6 +455,39 @@ sudo marionnet-sudoers.sh uninstall --disable-lanbridge      # tous les comptes
 sudo marionnet-sudoers.sh uninstall --disable-lanbridge <user>
 ```
 
+### 7.4 Interdire un bloc pour de bon
+
+Retirer une autorisation n'empêche pas l'utilisateur suivant de la redemander, depuis l'interface,
+avec son propre mot de passe. Un administrateur qui ne veut pas qu'un LAN bridge soit construit sur
+cette machine — jamais, par personne — le dit une fois :
+
+```bash
+sudo marionnet-sudoers.sh deny --lanbridge     # ou --natbridge, ou --bridges
+```
+
+Tant que ce veto est en place : le bloc est refusé à tout le monde, l'autorisation déjà en place
+est **reprise** (la laisser ferait du veto un mensonge), et Marionnet **le dit dans son interface
+au lieu de demander un mot de passe**. On le lève par `sudo marionnet-sudoers.sh allow
+--lanbridge` — ce qui n'accorde rien : un utilisateur doit toujours demander. N'importe qui peut
+consulter l'état, sans aucun privilège :
+
+```bash
+marionnet-sudoers.sh policy          # rc 0 si autorisé, 3 si interdit ; il dit lequel
+```
+
+Le veto est un fichier de `/etc/marionnet/`, lisible par tous à dessein : Marionnet doit connaître
+la réponse *avant* de demander un mot de passe, et un fichier de `/etc/sudoers.d/` est en 0440
+root, comme il se doit.
+
+Deux choses qu'il est honnête de savoir. Le socle — bloc (a) — n'a **pas** de veto : c'est
+l'administrateur qui l'accorde lui-même, à la main, donc l'interdire reviendrait à ne pas taper la
+commande. Et un veto arrête une **erreur**, pas un administrateur déterminé : qui peut faire du
+`sudo` sans restriction édite `/etc/sudoers.d/` directement et n'a besoin de la permission de
+personne. Là où il mord vraiment, c'est la configuration ordinaire d'une salle — un enseignant qui
+peut faire du sudo, des étudiants qui ne peuvent pas — et c'est exactement là qu'un LAN bridge se
+construit par accident.
+
+
 ## 8. Désinstaller Marionnet
 
 * **apt** : `sudo apt purge marionnet marionnet-kernels marionnet-kernels-i386 marionnet-fs-guignol`

@@ -1058,6 +1058,29 @@ Reprise : appliquer le skill `chantier-long`.
   peut toujours pas **dire non** à (c) (un verrou ne protégerait que de l'erreur ; il devrait
   être lisible **sans privilège**, la GUI demandant le mot de passe *avant* de connaître le
   verdict — `bin/privileges.ml`).
+  **Ép. 37 : le veto de l'administrateur — `deny` / `allow` / `policy`.** Retirer une
+  autorisation n'empêche rien (l'utilisateur suivant la redemande depuis la GUI) : l'admin peut
+  désormais **interdire** un bloc de pont sur la machine. **Le marqueur n'est PAS dans
+  `sudoers.d`, et c'est la GUI qui l'impose** : `privileges.ml` **demande le mot de passe
+  d'abord** et apprend le verdict ensuite, or un fichier de `sudoers.d` est **0440 root** — et
+  tout ce qui y traîne est **analysé par sudo**, qui n'est pas un endroit pour un non-règle.
+  D'où `/etc/marionnet/<bloc>.denied` en **0644**, chemin absolu **indépendant du préfixe**
+  (`MARIONNET_SUDOERS_POLICY_DIR` pour les bancs) : un veto est une décision **sur la machine**.
+  **À ne pas défaire** : (1) `deny` **reprend l'octroi en place** (le laisser ferait du veto un
+  mensonge — c'est ce fichier que sudo lit) ; (2) `install` refuse **avant de toucher à quoi que
+  ce soit**, **rc 3** (distinct du mot de passe refusé 1 et de l'usage 2) en **nommant** la
+  commande qui lève ; (3) le **bloc (a) n'a pas de veto** — l'admin l'accorde lui-même, donc
+  l'interdire = ne pas taper la commande ; (4) `deny`/`allow`/`policy` refusent un USER (un veto
+  vaut pour tous) et `--only`, et prennent les **sélecteurs neutres** `--natbridge`/`--lanbridge`/
+  `--bridges` (acceptés partout) ; (5) côté GUI la sonde **n'est pas mémorisée** (le veto peut
+  être levé pendant que Marionnet tourne) et **tout ce qui n'est pas rc 3 n'est pas un veto** —
+  un script d'avant répond **2** (mesuré) : *refuser de travailler parce qu'on n'a pas pu poser
+  la question est le contraire du but*. **i18n** : 1 msgid générique (le titre dit déjà quel
+  pont) → **436 traduits, 0 trou ×12**, arité 1/1, **12 `.mo` interrogés par clé exacte**.
+  **Ce que ça vaut, écrit dans la doc** : ça arrête l'**erreur**, pas un sudoer complet.
+  **Mesuré** : veto **19/0**, commandes du § 7.4 jouées **13/0** (discriminance **3/13** sur le
+  code d'avant), `make check` rc 0. **Non joué** : la branche GUI (dialogue **modal**, un banc
+  `driven-sessions` s'arrêterait dessus) — le chaînon non mesuré est **un `if`**.
 
 ## Où puiser
 

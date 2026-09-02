@@ -23,6 +23,9 @@ marionnet-sudoers.sh print               # affiche la règle attendue (sans rien
 marionnet-sudoers.sh install [USER...]   # installe /etc/sudoers.d/marionnet (se ré-exécute via sudo)
 marionnet-sudoers.sh check   [USER...]   # (root) le fichier installé est-il à jour ?
 marionnet-sudoers.sh uninstall [USER...] # retire l'autorisation (le fichier entier si aucun USER)
+marionnet-sudoers.sh deny  --lanbridge   # (root) interdit ce bloc sur cette machine
+marionnet-sudoers.sh allow --lanbridge   # (root) lève l'interdiction (n'accorde rien)
+marionnet-sudoers.sh policy [--lanbridge] # rc 0 autorisé / 3 interdit — SANS privilège
 ```
 
 Un fichier autorise une **liste** de comptes, et `install` est **additif** : les comptes déjà

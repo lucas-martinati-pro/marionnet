@@ -101,6 +101,31 @@ let max_attempts = 3
 let natbridge_arguments = ["install"; "--only"; "--enable-natbridge"]
 let lanbridge_arguments = ["install"; "--only"; "--enable-lanbridge"]
 
+(* --- The administrator's veto
+   ---
+   `marionnet-sudoers.sh deny --lanbridge' forbids a block on this machine. We ask
+   BEFORE anything else, because the elevation below asks for a password FIRST and
+   learns the verdict afterwards: without this probe, a user would type their
+   password to be told that the answer was no before they started. The question
+   costs no privilege at all -- the marker is a plain readable file, which is the
+   whole reason it does not live in /etc/sudoers.d.
+   ---
+   The answer is NOT memoised: an administrator may lift the veto while Marionnet
+   runs, and the next attempt must see it. It is one `fork' per bridge start. *)
+(* [policy_denial ~script ~selector] is [Some line] when the block named by
+   [selector] (`--natbridge', `--lanbridge') is denied, the line being the
+   script's own words -- untranslated on purpose: it names a file, and it goes to
+   the log. Any other outcome is NOT a denial: an old script with no `policy'
+   subcommand answers 2, and refusing to work because we could not ask is the
+   opposite of what this guard is for. *)
+let policy_denial ~(script : string) ~(selector : string) : string option =
+  let command =
+    Printf.sprintf "%s policy %s 2>/dev/null" (Filename.quote script) (Filename.quote selector)
+  in
+  match UnixExtra.run command with
+  | (output, Unix.WEXITED 3) -> Some (String.trim output)
+  | _ -> None
+
 (* Why the verdict of a FAILED elevation is remembered: starting a single component
    resolves its bridge more than once (bridge_common.ml builds the simulated device,
    then starts it), so without this a user who cancels would be asked again, and told
@@ -124,7 +149,13 @@ let ensure_block
   ~(failure_message : message:string -> script:string -> string)
   ~(installed_but_refused : string)
   ~(cancelled : string)
+  ~(policy_selector : string)                        (* --natbridge | --lanbridge *)
+  ~(denied_by_administrator : command:string -> string)
   () : (unit, string) result =
+  (* The probe first, and the veto only after: if the rule is there and the host
+     obeys it, the feature WORKS, and saying otherwise would be describing a
+     policy instead of reality. (`deny' takes the grant back, so this is a
+     narrow window -- a rule left by hand.) *)
   if probe () then Ok () else
   match !verdict with
   | Some (Error _ as remembered) ->
@@ -135,6 +166,22 @@ let ensure_block
   | Error _ as failure -> failure
   | Ok script ->
       let () = Log.printf2 "Privileges: %s needs its sudoers block; calling %s\n" what script in
+      match policy_denial ~script ~selector:policy_selector with
+      | Some reason ->
+          let () = Log.printf2 "Privileges: %s is denied on this host (%s)\n" what reason in
+          (* The dialog says what to do, and the memoised verdict keeps the log
+             line -- the script's own words, which name the marker file. *)
+          let command =
+            Printf.sprintf "%s allow %s" (Filename.basename script) policy_selector
+          in
+          let () =
+            Simple_dialogs.error failure_title
+              (denied_by_administrator ~command:(Glib.Markup.escape_text command)) ()
+          in
+          let outcome = Error reason in
+          verdict := Some outcome;
+          outcome
+      | None ->
       (* What we run, said plainly and in advance: a password dialog that does not
          say what it unlocks is how one teaches users to type it anywhere. *)
       let header = header ~script in
@@ -210,6 +257,7 @@ let ensure_natbridge () : (unit, string) result =
     ~probe:Nat_bridge_host.is_usable
     ~forget_probe:Nat_bridge_host.forget_usability
     ~verdict:natbridge_verdict
+    ~policy_selector:"--natbridge"
     ~what:"the NAT bridge"
     ~header:(fun ~script ->
        Printf.sprintf
@@ -222,6 +270,10 @@ let ensure_natbridge () : (unit, string) result =
          message (Filename.basename script))
     ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the NAT bridge needs")
     ~cancelled:(s_ "no administrator rights were granted: the NAT bridge cannot be built")
+    ~denied_by_administrator:(fun ~command ->
+       Printf.sprintf
+         (f_ "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
+         command)
     ()
 
 (* The LAN bridge asks for more than the NAT one, and says so: this block lets
@@ -234,6 +286,7 @@ let ensure_lanbridge () : (unit, string) result =
     ~probe:Lan_bridge_host.is_usable
     ~forget_probe:Lan_bridge_host.forget_usability
     ~verdict:lanbridge_verdict
+    ~policy_selector:"--lanbridge"
     ~what:"the LAN bridge"
     ~header:(fun ~script ->
        Printf.sprintf
@@ -246,4 +299,8 @@ let ensure_lanbridge () : (unit, string) result =
          message (Filename.basename script))
     ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the LAN bridge needs")
     ~cancelled:(s_ "no administrator rights were granted: the LAN bridge cannot be built")
+    ~denied_by_administrator:(fun ~command ->
+       Printf.sprintf
+         (f_ "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
+         command)
     ()

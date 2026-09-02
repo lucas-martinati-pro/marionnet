@@ -72,6 +72,23 @@ SUDOERS_FILE_TAPS=${MARIONNET_SUDOERS_FILE:-$SUDOERS_DIR/marionnet}
 SUDOERS_FILE_NATBRIDGE=$SUDOERS_DIR/marionnet-natbridge
 SUDOERS_FILE_LANBRIDGE=$SUDOERS_DIR/marionnet-lanbridge
 
+# --- The administrator's veto (episode 37)
+#
+# `deny --lanbridge' writes a marker here, and blocks (b) and (c) then refuse to
+# be installed at all. Why a directory of our own rather than sudoers.d: the
+# marker must be READABLE WITHOUT PRIVILEGE, because the GUI has to know the
+# verdict BEFORE asking for a password (bin/privileges.ml asks, then runs), and
+# a sudoers.d file is 0440 root -- as it must be. Anything dropped in sudoers.d
+# is also parsed BY SUDO, which is no place for a file that is not a rule.
+#
+# The path is absolute and prefix-independent, exactly like /etc/sudoers.d: a
+# veto is a decision about THIS MACHINE, not about one installation of Marionnet.
+# It is what an administrator can say, and it is worth being honest about what it
+# is worth: it guards against the MISTAKE -- the teacher who clicks "yes" without
+# reading and turns the host's card into a bridge -- not against a full sudoer,
+# who edits /etc/sudoers.d directly and needs nobody's permission.
+POLICY_DIR=${MARIONNET_SUDOERS_POLICY_DIR:-/etc/marionnet}
+
 # The three constants below MUST agree with bin/tap_provider.ml (same names there):
 TAP_PREFIX=mtap
 ETH42_HOST_ADDRESS=172.23.0.254
@@ -109,6 +126,9 @@ Usage: $TOOL print     [BLOCKS] [USER...]  # write the expected sudoers rules on
                                            #   is up to date (root only: the files are 0440)
        $TOOL install   [BLOCKS] [USER...]  # grant them; needs root (re-execs with sudo)
        $TOOL uninstall [BLOCKS] [USER...]  # take the grant back; needs root (re-execs with sudo)
+       $TOOL deny      BLOCK               # forbid a bridge block on this machine; needs root
+       $TOOL allow     BLOCK               # lift that veto; needs root
+       $TOOL policy    [BLOCK]             # exit 0 if allowed, 3 if denied (no privilege needed)
 
 BLOCKS selects what the command applies to. Block (a) -- the ghost taps -- is
 selected by default: it is the socle, and it is what a bare \`install' grants.
@@ -141,6 +161,14 @@ sudoers would happily name it, and grant it the day somebody creates it.
 \`check' answers about the principals a file NAMES, not about effective rights: a
 member of a granted group is not a principal. \`sudo -l -U <login>' is the question
 about effective rights.
+
+THE VETO. \`deny --lanbridge' (or --natbridge, or --bridges) forbids that block on
+this machine: it is then refused to everybody, the grant already in place is taken
+back, and Marionnet says so in its interface instead of asking for a password.
+\`allow' lifts it -- and grants nothing: a user still has to ask. Block (a) has no
+veto: the administrator grants it himself, by hand, so forbidding it would be not
+typing the command. What a veto is worth, plainly: it stops the MISTAKE, not a
+full sudoer, who edits ${SUDOERS_DIR} directly and needs nobody's permission.
 
 USER defaults to \$SUDO_USER, or to the current user. Blocks (a) and (b) grant
 USER the iproute2 commands Marionnet needs on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* interfaces
@@ -581,6 +609,23 @@ function block_file {
  esac
 }
 
+# policy_file BLOCK: where the veto on BLOCK is written. Block (a) has none, and
+# that is not an omission: the socle is granted by the administrator TO somebody,
+# at install time, by hand. There is nothing to forbid -- forbidding it would be
+# not typing the command.
+function policy_file {
+ case $1 in
+   natbridge) echo "$POLICY_DIR/natbridge.denied" ;;
+   lanbridge) echo "$POLICY_DIR/lanbridge.denied" ;;
+ esac
+}
+
+function block_is_denied {
+ local f
+ f=$(policy_file "$1")
+ [[ -n $f && -e $f ]]
+}
+
 function block_content {
  local b=$1; shift
  case $b in
@@ -690,6 +735,57 @@ function uninstall_block {
  echo "$TOOL: rewrote $f for: ${users[*]}." 1>&2
 }
 
+# --- The veto
+
+# deny_block BLOCK: write the marker, and TAKE BACK the grant if there is one.
+# Leaving a granted file behind a veto would make the veto a lie -- and the file
+# is what sudo actually reads.
+function deny_block {
+ local b=$1 f g
+ f=$(policy_file "$b")
+ g=$(block_file "$b")
+ mkdir -p "$POLICY_DIR"
+ chmod 0755 "$POLICY_DIR"
+ cat > "$f" <<EOF
+# Written by $TOOL deny -- the administrator of this machine has disabled
+# Marionnet's '$b' block. While this file exists:
+#   * $TOOL refuses to install that block, for anybody;
+#   * Marionnet says so in its interface instead of asking for a password.
+# Lift it with: $TOOL allow --$b
+# Denied on: $(date -Is)
+EOF
+ chmod 0644 "$f"
+ echo "$TOOL: '$b' is now denied on this host ($f)." 1>&2
+ if [[ -e $g ]]; then
+   rm -f "$g"
+   echo "$TOOL: the grant that was in place has been taken back ($g)." 1>&2
+ fi
+}
+
+function allow_block {
+ local b=$1 f
+ f=$(policy_file "$b")
+ if [[ ! -e $f ]]; then
+   echo "$TOOL: '$b' was not denied; nothing to lift." 1>&2
+   return 0
+ fi
+ rm -f "$f"
+ echo "$TOOL: '$b' is allowed again ($f removed). Nothing is granted by this: a user still has to ask." 1>&2
+}
+
+# report_policy BLOCK: one line per DENIED block, on STDOUT -- this is the only
+# subcommand whose stdout is read by another program (the GUI shows it to the
+# user), and the only one that needs no privilege whatsoever.
+function report_policy {
+ local b=$1 f
+ f=$(policy_file "$b")
+ if [[ -e $f ]]; then
+   echo "$b: denied by the administrator of this machine ($f)"
+   return 3
+ fi
+ return 0
+}
+
 # --- Command line
 #
 # The selection is the same for every subcommand, which is why it is parsed once:
@@ -710,9 +806,13 @@ function parse_command_line {
  COMMAND=${1:-}; shift || true
  for a in "$@"; do
    case "$a" in
-     --enable-natbridge|--disable-natbridge)   WANT_NAT=true; EXPLICIT_SELECTION=true ;;
-     --enable-lanbridge|--disable-lanbridge)   WANT_LAN=true; EXPLICIT_SELECTION=true ;;
-     --enable-bridges|--disable-bridges)       WANT_NAT=true; WANT_LAN=true; EXPLICIT_SELECTION=true ;;
+     # The neutral spellings (--natbridge, --lanbridge, --bridges) say WHICH
+     # block without saying what is done to it, and work everywhere. `deny',
+     # `allow' and `policy' take only those: `deny --enable-lanbridge' would be
+     # a sentence that contradicts itself.
+     --enable-natbridge|--disable-natbridge|--natbridge)   WANT_NAT=true; EXPLICIT_SELECTION=true ;;
+     --enable-lanbridge|--disable-lanbridge|--lanbridge)   WANT_LAN=true; EXPLICIT_SELECTION=true ;;
+     --enable-bridges|--disable-bridges|--bridges)         WANT_NAT=true; WANT_LAN=true; EXPLICIT_SELECTION=true ;;
      --only)                                   ONLY=true ;;
      -*) echo "$TOOL: unknown option '$a'" 1>&2; return 2 ;;
      *) PRINCIPALS+=("$a") ;;
@@ -722,10 +822,14 @@ function parse_command_line {
  # mean "apply to nothing", which is never what anybody meant.  And on `uninstall'
  # it would be noise: --disable-* already leaves (a) alone.
  if $ONLY; then
-   if [[ $COMMAND = uninstall ]]; then
-     echo "$TOOL: --only makes no sense for 'uninstall' (--disable-* already spares block (a))" 1>&2
-     return 2
-   fi
+   case $COMMAND in
+     uninstall)
+       echo "$TOOL: --only makes no sense for 'uninstall' (--disable-* already spares block (a))" 1>&2
+       return 2 ;;
+     deny|allow|policy)
+       echo "$TOOL: --only makes no sense for '$COMMAND': it applies to the named block and to nothing else" 1>&2
+       return 2 ;;
+   esac
    if ! $EXPLICIT_SELECTION; then
      echo "$TOOL: --only needs a selection (--enable-natbridge, --enable-lanbridge or --enable-bridges)" 1>&2
      return 2
@@ -734,7 +838,25 @@ function parse_command_line {
  # `if' rather than `$WANT_NAT && BLOCKS+=(...)': under `set -e' the latter is a
  # failing AND-list whenever the flag is false, which is exactly the kind of
  # silent early exit this script must not have.
- if [[ $COMMAND = uninstall ]]; then
+ if [[ $COMMAND = deny || $COMMAND = allow || $COMMAND = policy ]]; then
+   # These three never reach block (a): it has no veto (see policy_file), and a
+   # principal makes no sense for them -- a veto holds for everybody.
+   if ((${#PRINCIPALS[@]} > 0)); then
+     echo "$TOOL: '$COMMAND' takes no USER: a veto holds for everybody on this machine" 1>&2
+     return 2
+   fi
+   if $WANT_NAT; then BLOCKS+=(natbridge); fi
+   if $WANT_LAN; then BLOCKS+=(lanbridge); fi
+   if ! $EXPLICIT_SELECTION; then
+     if [[ $COMMAND = policy ]]; then
+       # A bare `policy' is a question about the machine: answer for both blocks.
+       BLOCKS=(natbridge lanbridge)
+     else
+       echo "$TOOL: '$COMMAND' needs a block: --natbridge, --lanbridge or --bridges" 1>&2
+       return 2
+     fi
+   fi
+ elif [[ $COMMAND = uninstall ]]; then
    # Removing everything is the default; --disable-* narrows it, and then block
    # (a) is deliberately left in place (the user is dropping a bridge grant, not
    # uninstalling Marionnet).
@@ -785,18 +907,39 @@ function principals_for_install {
  union_principals "$(block_file "$1")" "${PRINCIPALS[@]}"
 }
 
+# denied_blocks_or_die: refuse BEFORE touching anything, like
+# available_blocks_or_die and for the same reason. A veto is not a warning: the
+# administrator said no, and `install' does not argue -- it names the marker and
+# the command that lifts it. Exit code 3, which the GUI tells apart from a
+# refused password (1) and from a usage error (2).
+function denied_blocks_or_die {
+ local b denied=false
+ for b in "${BLOCKS[@]}"; do
+   if block_is_denied "$b"; then
+     echo "$TOOL: '$b' is denied on this host by $(policy_file "$b"); nothing installed." 1>&2
+     echo "$TOOL: an administrator lifts it with: $TOOL allow --$b" 1>&2
+     denied=true
+   fi
+ done
+ $denied && exit 3
+ return 0
+}
+
 parse_command_line "$@" || { usage; exit 2; }
-# `uninstall' with no account means the whole file, as it always has; every other
-# command needs somebody, and that somebody defaults to the caller.
-if ((${#PRINCIPALS[@]} == 0)) && [[ $COMMAND != uninstall ]]; then
-  PRINCIPALS=("$(default_user)")
-fi
+# `uninstall' with no account means the whole file, as it always has; `deny',
+# `allow' and `policy' take no account at all; the rest need somebody, and that
+# somebody defaults to the caller.
+case "$COMMAND" in
+  print|check|install)
+     if ((${#PRINCIPALS[@]} == 0)); then PRINCIPALS=("$(default_user)"); fi ;;
+esac
 # Never for `uninstall': the account to drop may be exactly the one that should
 # never have existed here.
 case "$COMMAND" in
   print|check|install) known_principal_or_die "${PRINCIPALS[@]}" || exit 2 ;;
 esac
 case "$COMMAND" in print|check|install|uninstall) available_blocks_or_die "$COMMAND" ;; esac
+case "$COMMAND" in install) denied_blocks_or_die ;; esac
 
 case "$COMMAND" in
   print)
@@ -811,7 +954,14 @@ case "$COMMAND" in
      for b in "${BLOCKS[@]}"; do check_block "$b" "${PRINCIPALS[@]}" || rc=1; done
      exit $rc
      ;;
-  install|uninstall)
+  policy)
+     # No privilege, and none needed: this is the question the GUI asks before it
+     # asks anything of the user. Silence means "allowed".
+     rc=0
+     for b in "${BLOCKS[@]}"; do report_policy "$b" || rc=3; done
+     exit $rc
+     ;;
+  install|uninstall|deny|allow)
      if [[ $EUID -ne 0 ]]; then
        echo "$TOOL: this requires root; re-executing with sudo." 1>&2
        if [[ $COMMAND = install ]]; then
@@ -823,10 +973,12 @@ case "$COMMAND" in
        exec sudo -- "$0" "$@"
      fi
      for b in "${BLOCKS[@]}"; do
-       if [[ $COMMAND = install ]]
-         then install_block   "$b" "${PRINCIPALS[@]}"
-         else uninstall_block "$b" "${PRINCIPALS[@]}"
-       fi
+       case "$COMMAND" in
+         install)   install_block   "$b" "${PRINCIPALS[@]}" ;;
+         uninstall) uninstall_block "$b" "${PRINCIPALS[@]}" ;;
+         deny)      deny_block  "$b" ;;
+         allow)     allow_block "$b" ;;
+       esac
      done
      ;;
   -h|--help) usage ;;
