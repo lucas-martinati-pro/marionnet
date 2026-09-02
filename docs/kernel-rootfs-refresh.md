@@ -499,6 +499,51 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   message d'erreur du dialogue : *« you didn't select the machine disk but the machine itself
   (you should expand the tree) »*.
 
+- **2026-09-03** — épisode 23 (`Makefile.d/filesystem.update-published-image.sh`,
+  `bin/user_level.ml`) : **mettre à jour une image publiée devient une commande.**
+
+  ```
+  Makefile.d/filesystem.update-published-image.sh --image machine-debian-trixie-39212 \
+      --in-guest 'systemctl mask systemd-networkd-wait-online.service'
+  ```
+
+  Le script enchaîne ce que l'ép. 21 bis avait fait à la main, et **les six pièges deviennent du
+  code exécuté** : (1) le binaire de `_build` lit le préfixe *testing*, donc l'image et le noyau
+  sont rendus visibles par des liens dans `~/.marionnet/` — retirés en sortant, et **seulement
+  ceux qu'il a créés** ; (2) `Disk` filtre toute distribution sans noyau supporté **installé**,
+  d'où les noyaux du répertoire de release liés eux aussi ; (3) la mémoire est lue dans le
+  `.conf` (`MEMORY_SUGGESTED_SIZE`) et non laissée aux 48 Mio du canal, qui tuent une trixie ;
+  (4) l'export passe par `history-export` (ép. 22), donc **aucun `cp` ici** ; (5) la copie creuse
+  appartient au verbe ; (6) `stop` + `wait --state=off` avant l'export, jamais `poweroff`.
+  **Pas de bashbricks**, comme les quatre autres scripts de cette famille : ce qu'il fait —
+  écrire une ligne sur une socket, lire un objet JSON — est `socat` et `jq`, tous deux déjà
+  dépendances de Marionnet.
+  **À ne pas défaire** : une commande d'invité qui échoue **arrête tout avant l'export** (une
+  image changée à moitié ne devient pas un artefact publié) ; une image `router-*` est refusée
+  en disant pourquoi (c'est un **lien** vers l'image machine) ; et le script **ne publie pas en
+  ligne** — il s'arrête au répertoire de release.
+
+  **Le septième piège, trouvé par le banc et corrigé à sa source.** Le premier essai a exporté
+  l'état d'un **guignol** dans le répertoire de variantes d'une **trixie**. Mesuré :
+  `add machine m1 --distrib=guignol-18474` rend bien `distrib = guignol-18474`, mais la ligne
+  d'historique — racine **et** enfant — porte `machine-debian-trixie-16341`, le filesystem *par
+  défaut* : le canal **construit** la machine puis **applique** le champ, et `set_epithet`
+  (`bin/user_level.ml`) ne touchait pas au treeview. Or ce champ est **fonctionnel** : c'est lui
+  qui dit où va une variante. Correctif à la source : `set_epithet` appelle désormais la
+  redirection **que le chemin d'import utilise déjà**
+  (`redirect_history_rows_to_distrib`), avec **la garde qu'il porte déjà** — seulement si le
+  composant n'a **aucun état COW** dans le projet, un état étant lié à son fichier de base
+  (`mtime` compris). Après correctif : racine et enfant portent `machine-guignol-18474`.
+
+  **Mesuré, sur guignol (12 Mio, ~1 min — c'est tout l'intérêt du banc)** : les 4 refus
+  préalables (sans `--image`, image `router-*`, sans geste d'invité, image inexistante) tombent
+  **avant** tout démarrage ; chaîne complète `machine-guignol-18474` → **`machine-guignol-03149`**
+  + `.conf` + `.tar.xz` (13 Mio) + `SHA256SUMS`, dans un `--output-dir` temporaire — le
+  répertoire de release n'est pas un bac à sable ; `sum` = **03149** = le nom, `mtime` = `MTIME`,
+  `sha256sum -c` réussi ; la marque déposée dans l'invité est **dans** l'image neuve et
+  **absente** de l'ancienne (`debugfs`) ; **discriminance** : `--in-guest 'false'` sort en **rc 2**
+  et **aucune variante n'est créée**. `dune build` rc 0, `make check` rc 0.
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une

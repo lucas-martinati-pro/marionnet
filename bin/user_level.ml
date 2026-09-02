@@ -1459,7 +1459,27 @@ class virtual virtual_machine_with_history_and_ifconfig
   val mutable epithet : string = epithet
   initializer ignore (self#check_epithet epithet)
   method get_epithet = epithet
-  method set_epithet x = (epithet <- self#check_epithet x)
+
+  (* Changing the filesystem of a device is not only a field: the history treeview keeps,
+     per row, the PREFIXED FILESYSTEM the states belong to, and that field is functional --
+     it is what says where a variant exported from such a state goes
+     (Treeview_history#export_row_as_variant, Disk.user_export_dirname_of_prefixed_filesystem).
+     Left behind, it lies: MEASURED on 2026-09-03, `add machine m1 --distrib=guignol-18474'
+     through the control channel (which builds the device with the DEFAULT filesystem, then
+     applies the field) exported the state of a guignol into the variants directory of a
+     trixie.
+     ---
+     The redirection is the one the import path already uses, with the guard it already
+     carries: only when this device has NO cow state in the project. A state IS bound to its
+     backing file (its mtime included), so a row pointing at another filesystem while its cow
+     exists would be worse than a stale label. Under loading, this is a no-op when nothing
+     changed, and the import path (remap_absent_distrib_at_import) keeps doing its own. *)
+  method set_epithet x =
+    let x = self#check_epithet x in
+    let changed = (x <> epithet) in
+    let () = epithet <- x in
+    if changed && self#without_cow_states_in_project then
+      self#redirect_history_rows_to_distrib x
   method private check_epithet x =
     match (vm_installations#filesystems#epithet_exists x) with
     | true  -> x

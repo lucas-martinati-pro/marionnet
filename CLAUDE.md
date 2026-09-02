@@ -200,6 +200,21 @@ Reprise : appliquer le skill `chantier-long`.
   `--force`, le chemin GUI passant `~force:true` pour rester **inchangé**. **Piège de mesure** :
   un état n'est pas la racine de `history <nom>` — la racine est la machine, les états sont ses
   `children` (c'est ce que dit déjà l'erreur du dialogue : *« you should expand the tree »*).
+  **Ép. 23 : `Makefile.d/filesystem.update-published-image.sh`** — mettre à jour une image
+  publiée devient **une commande** (`--image … --in-guest 'CMD'`), et les **six pièges** de
+  l'ép. 21 bis deviennent du code : liens de visibilité dans `~/.marionnet/` (le binaire de
+  `_build` lit le préfixe *testing*) **noyaux compris** (`Disk` filtre une distribution sans
+  noyau installé), mémoire lue dans le `.conf` (les 48 Mio du canal tuent une trixie), export
+  par `history-export` (donc **aucun `cp`**), arrêt **gracieux** avant l'export. **À ne pas
+  défaire** : une commande d'invité qui échoue **arrête avant l'export** ; une image `router-*`
+  est refusée (c'est un lien) ; rien n'est mis **en ligne**. **7ᵉ piège, trouvé par le banc et
+  corrigé à sa source** : `add … --distrib=X` construit avec le filesystem **par défaut** puis
+  applique le champ, et `set_epithet` ne mettait pas à jour la ligne d'historique — champ
+  **fonctionnel**, qui dit où va une variante (mesuré : la variante d'un guignol partait chez
+  trixie). `set_epithet` appelle désormais `redirect_history_rows_to_distrib`, **avec la garde
+  du chemin d'import** (aucun état COW). Banc **sur guignol** (12 Mio, ~1 min) : chaîne complète
+  `18474` → **`03149`**, marque présente dans la neuve et absente de l'ancienne, et
+  `--in-guest 'false'` sort en **rc 2 sans créer de variante**.
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
