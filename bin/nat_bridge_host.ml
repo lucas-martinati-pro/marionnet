@@ -198,9 +198,21 @@ let has_ipv6_uplink () : bool =
 
 (* --- Usability
    ---
-   `status' is the right probe: it is read-only, it exercises the same sudo path
-   as the rest (it runs iptables-save), and it needs no artefact to exist. Same
-   spirit as Tap_provider.is_usable, and memoised for the same reason. *)
+   `status' was used for this until the bug of 2026-09-02, and it was the wrong
+   question -- more wrongly than the comment it replaces admitted. That comment
+   claimed status exercised the sudo path (`it runs iptables-save'); MEASURED
+   (`bash -x marionnet-natbridge.sh status' contains not one `sudo'), do_status
+   asks the host NOTHING privileged: it reads /proc and lists bridges with an
+   unprivileged `ip'. It therefore answered "usable" on every machine, block (b)
+   installed or not -- so Privileges.ensure_natbridge returned Ok WITHOUT ever
+   offering the password (privileges.ml: the probe is what it short-circuits
+   on), and the refusal surfaced at `up', when nobody was left to ask. A probe
+   must exercise what it guards.
+   ---
+   `check-privileges' asks exactly that, the way lan_bridge_host.ml already did
+   (do_check_privileges in the script: a real command of our own list, on a
+   bridge name no run can produce, with no effect on anything). Memoised for the
+   same reason as before. *)
 
 let usable : bool option ref = ref None
 
@@ -208,7 +220,11 @@ let is_usable () =
   match !usable with
   | Some verdict -> verdict
   | None ->
-      let verdict = (match call ["status"] with Ok _ -> true | Error _ -> false) in
+      let verdict =
+        match call ["check-privileges"] with
+        | Ok json -> (member "privileged" json) = Some (`Bool true)
+        | Error _ -> false
+      in
       usable := Some verdict;
       verdict
 

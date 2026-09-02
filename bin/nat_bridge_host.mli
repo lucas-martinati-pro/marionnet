@@ -138,7 +138,12 @@ val has_ipv6_uplink : unit -> bool
 
 (** Whether the auxiliary command can be run at all, and without a password
     (i.e. whether the scoped sudoers rule of [marionnet-sudoers.sh] is in
-    place). Probed once, with a read-only sub-command. *)
+    place, and {e sufficient}). Probed once, by [check-privileges]: a real
+    privileged command of our own list, on a bridge name no run can produce,
+    with no effect on anything. A probe reading less than that — [status], used
+    until 2026-09-02, asks the host nothing privileged at all (measured) — says
+    "usable" on a machine where the block is not installed, and the refusal then
+    surfaces at {!up}, where nobody can offer the password any more. *)
 val is_usable : unit -> bool
 
 (** Drop the memoised verdict of {!is_usable}, so that the next call probes the

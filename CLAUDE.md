@@ -1146,6 +1146,33 @@ Reprise : appliquer le skill `chantier-long`.
   **439/0 ×12**, **36/36** dans les `.mo`. **Reste** (versé à `docs/TODO.md`) : une VM démarre
   **sans le dire** avec `wrong-tap-name`. Bancs `.deb`/`.rpm` : compte 27 → **28**, rouges par
   construction jusqu'à la prochaine release.
+  **Ép. 41 : la garde ne posait pas la bonne question, et l'avertissement accusait au hasard.**
+  Le bridge NAT annonçait « aucun réseau privé » **titre en français, corps en anglais**, avec
+  `E_SUDO_DENIED` et pour conseil *« choisissez une autre adresse IPv4 »* — trois défauts dans un
+  message. **(1) La cause** : `Privileges.ensure_block` rend `Ok ()` **sans proposer le mot de
+  passe** dès que sa sonde dit oui, et la sonde était `status` — qui, **mesuré**, n'invoque
+  **aucun** `sudo` (`bash -x … status` : 0 occurrence ; il lit `/proc` et énumère les ponts avec
+  un `ip` non privilégié), là où le commentaire du code prétendait qu'il « exerçait
+  iptables-save ». La sonde répondait donc **oui sur toute machine**, bloc (b) installé ou non :
+  sur **toute installation neuve** la GUI ne demandait jamais le mot de passe, et le refus
+  tombait à `up` quand plus personne ne peut le demander. **Le remède était déjà à côté** : `check-privileges`
+  du LAN bridge (ép. 7b) — une vraie commande de notre liste, sans effet — avec ses 2 pièges
+  payés (verdict lu dans le **libellé**, d'où `LC_ALL=C` ; **`sudo -n -l` inutilisable**, il
+  répond « autorisé » sur un poste `%sudo ALL`) ; **à ne pas défaire** : le nom de sonde est
+  `mnbr999999999` et non `mnbr999`, les vrais noms portant un **pid** (plafonné à 2²²), là où un
+  pid 999 existe. **(2) La langue** : les **continuations `\` indentées** d'un littéral — OCaml
+  mange le saut de ligne *et* les blancs, l'extracteur POT camlp4 non — donnaient un `msgid` que
+  le programme **ne demande jamais** ; c'était le seul du dépôt, d'où la règle : *un littéral
+  traduisible s'écrit sur une seule ligne*. **(3) Le conseil** : `advice_of_error` (pure, patron
+  ép. 40) classe le **code symbolique** — règle sudoers pour `E_SUDO_DENIED`, adresse pour
+  `E_SUBNET_IN_USE`, commande nommée pour `E_NO_*`, et **rien** pour un code inconnu. i18n : les
+  2 phrases déjà traduites sont **reprises** (découpées à l'endroit du `<tt>`), seule la
+  conditionnelle « si le réseau … » devenant affirmative → **442/0 ×12**, 48/48 clefs exactes
+  dans les `.mo`. **Banc neuf** `driven-sessions/nat-bridge-warning-names-its-cause.sh` (ni
+  privilège ni invité : commande hôte fausse, et `sudo` remplacé par le `PATH`) : **11/0/0**,
+  **1/10 sur le code d'avant** — le seul vert étant `E_SUBNET_IN_USE`, la cause que l'ancien
+  message nommait *par hasard*. **Reste** (versé à `docs/TODO.md`) : le **LAN bridge** n'a
+  toujours aucun avertissement de démarrage.
 
 ## Où puiser
 

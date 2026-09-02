@@ -944,6 +944,41 @@ let smallest_free (taken : int list) : int =
   let rec search n = if List.mem n taken then search (n + 1) else n in
   search 1
 
+(* --- Naming the cause, and the gesture that repairs it
+   ---
+   The script reports a symbolic code (Nat_bridge_host.error), so what follows
+   classifies what was MEASURED. Until the bug of 2026-09-02 the warning below
+   blamed every failure on the chosen network -- including a refusal by sudo,
+   whose remedy has nothing to do with an IPv4 address, and which the user could
+   not even guess from the diagnostic. Same discipline as
+   Tap_provider.unavailability_of_error (episode 40), and pure for the same
+   reason: it is the part one can test without a host.
+   ---
+   An unknown code gets NO advice: the raw diagnostic is shown, and nothing is
+   invented. Inventing one is precisely the defect being fixed. *)
+let advice_of_error (e : Nat_bridge_host.error) : string option =
+  let missing (command : string) =
+    Some (Printf.sprintf (f_ "The command `%s' is missing on this host: install the package that provides it (the installation page of Marionnet lists what Marionnet needs).") command)
+  in
+  match e.Nat_bridge_host.code with
+  | "E_SUDO_DENIED" ->
+      (* The rule may be absent, or present and too narrow -- a file written by
+         an older version does not cover the commands added since. Both are
+         repaired by the same gesture, so both are named. *)
+      let command =
+        Printf.sprintf "%s install --only --enable-natbridge"
+          (Filename.basename (Tap_provider.sudoers_script ()))
+      in
+      Some (Printf.sprintf (f_ "The administrator rights needed by the NAT bridge are not granted on this host: the sudoers rule is missing, or it was written by an older version of Marionnet and no longer covers every command. To grant them, run in a terminal:\n\n    %s") (Glib.Markup.escape_text command))
+  | "E_SUBNET_IN_USE" | "E_NO_FREE_SUBNET" | "E_BAD_SUBNET" | "E_ADDRESS6_IN_USE" | "E_BAD_ADDRESS6" ->
+      Some (s_ "The network of this component is already used by the host itself (or by another NAT bridge). Stop the component and choose another IPv4 address in its dialog.")
+  | "E_NO_IPROUTE2" -> missing "ip"
+  | "E_NO_IPTABLES" -> missing "iptables"
+  | "E_NO_IP6TABLES" -> missing "ip6tables"
+  | "E_NO_SYSCTL" -> missing "sysctl"
+  | "E_NO_DNSMASQ" -> missing "dnsmasq"
+  | _ -> None
+
 (* Deliberately impossible as a bridge name (a device name is at most 15 characters
    and this one is longer): when we could not build a bridge, the tap has to fail to
    join it, loudly, exactly as a LAN bridge fails when its host bridge is missing.
@@ -1024,15 +1059,21 @@ class ['parent] nat_bridge =
                if !already_warned then () else
                let () = already_warned := true in
                let title = Printf.sprintf (f_ "NAT bridge \"%s\": no private network") (parent#get_name) in
+               (* One line per translatable literal, and no `\'-continuation
+                  inside one: OCaml eats the newline AND the leading blanks, the
+                  camlp4 POT extractor does not, so an indented continuation
+                  produces a msgid that the runtime string can never match --
+                  measured, that is why this very message was shown in English
+                  to a French user (bug of 2026-09-02). *)
                let message =
                  Printf.sprintf
-                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has \
-                        no network at all: the virtual machines connected to it will reach nothing.\n\n\
-                        <tt><small>%s</small></tt>\n\n\
-                        If the network of this component is already used by the host itself (or by \
-                        another NAT bridge), stop the component and choose another IPv4 address in \
-                        its dialog.")
+                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has no network at all: the virtual machines connected to it will reach nothing.\n\n<tt><small>%s</small></tt>")
                    (parent#get_name) (Glib.Markup.escape_text (Nat_bridge_host.string_of_error e))
+               in
+               let message =
+                 match advice_of_error e with
+                 | None -> message
+                 | Some advice -> message ^ "\n\n" ^ advice
                in
                Simple_dialogs.warning title message ()
              in

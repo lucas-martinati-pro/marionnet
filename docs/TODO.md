@@ -67,3 +67,29 @@ serait du bruit : le bon déclencheur est l'échec **inattendu**, c'est-à-dire 
 panne de la machine de l'étudiant, comme la collision — même raisonnement, même exception ;
 (d) `wrong-tap-name` lui-même mériterait de disparaître au profit d'un argument `eth42` absent, à
 condition de vérifier ce que le noyau UML fait d'un `eth42=` manquant.
+
+## Défaut — le **LAN bridge** ne dit rien quand son pont n'a pas pu être construit
+
+**Constat.** Le bridge NAT avertit l'utilisateur quand sa résolution de pont échoue
+(`bin/nat_bridge.ml`, `Simple_dialogs.warning`, message enrichi à l'ép. 41 de
+`modernisation-installation-marionnet`). Le **LAN bridge** n'a **aucun** avertissement de ce
+genre : `bin/lan_bridge.ml` ne contient pas un seul `Simple_dialogs.warning`, si bien qu'un
+composant dont le pont hôte n'a pas pu être bâti atteint l'état `on` **en silence** — exactement
+ce que l'avertissement du NAT bridge existe pour empêcher —, et les machines qui y sont connectées
+n'atteignent rien sans que rien ne l'ait dit.
+
+**Ce qu'on veut.** Le pendant de l'avertissement du NAT bridge, avec ses trois propriétés : montré
+**une fois** par démarrage (`already_warned`, ré-armé par `after_terminate`), nommant la **cause
+mesurée** (le code symbolique de `Lan_bridge_host.error`, pas une devinette) et le geste qui la
+répare, et passant par `Simple_dialogs.warning` — sûr depuis un autre thread (GMain_actor) et
+transformé en notification dans une session pilotée.
+
+**Obstacles.** (a) Les causes ne sont **pas** celles du NAT bridge : ici la machine peut n'avoir
+aucune carte utilisable, ou celle qu'on veut asservir peut porter l'adresse par laquelle
+l'utilisateur est connecté — un message qui recopierait la table de `advice_of_error` mentirait ;
+(b) le bloc (c) est plus intrusif que le (b) (adresse et route par défaut déplacées), donc le
+conseil « accordez la règle » doit renvoyer au § 7 de la page INSTALL, qui dit ce que le bloc fait
+à l'hôte, et non seulement à la commande ; (c) le banc
+`driven-sessions/nat-bridge-warning-names-its-cause.sh` est directement transposable (fausse
+commande hôte par `MARIONNET_LANBRIDGE_SCRIPT`), ce qui rend le défaut mesurable avant d'être
+corrigé.

@@ -5378,3 +5378,95 @@ cause (`xeyes` sans display).
 Différé, la campagne n'étant pas finie : les bancs `.deb` et `.rpm` passent leur compte de noms de
 27 à **28** et resteront rouges **par construction** jusqu'à la prochaine release (le banc du
 tarball, lui, **dérive** ce compte depuis l'ép. 38 et suivra tout seul).
+
+## Épisode 41 (2026-09-02) — la garde ne posait pas la bonne question, et l'avertissement accusait au hasard
+
+Toujours la salle MarioNUM. Au démarrage d'un **bridge NAT**, une fenêtre annonce
+« Bridge NAT « N1 » : aucun réseau privé » — **titre en français, corps en anglais** — avec, entre
+les deux, `E_SUDO_DENIED: `sudo /usr/sbin/ip link add mnbr2564-1 type bridge' failed: sudo: il est
+nécessaire de saisir un mot de passe`, et pour tout conseil : *« choisissez une autre adresse
+IPv4 »*. **Trois défauts indépendants**, dans un seul message.
+
+### 1. La cause : une sonde qui n'exerce pas ce qu'elle garde
+
+`Privileges.ensure_block` (`bin/privileges.ml`) rend `Ok ()` — **sans jamais proposer le mot de
+passe** — dès que sa sonde répond oui. La sonde du bridge NAT était
+`marionnet-natbridge.sh status` — et c'est **pire** que ce que le commentaire du code prétendait
+(« it runs iptables-save ») : **mesuré**, `bash -x marionnet-natbridge.sh status` ne contient pas
+**un seul** `sudo`. `do_status` lit `/proc` et énumère les ponts avec un `ip` **non privilégié**.
+La sonde répondait donc « utilisable » sur **toute** machine, bloc (b) installé ou non — donc sur
+**toute installation neuve**, la GUI ne demandait **jamais** le mot de passe pour un bridge NAT,
+et le refus ne se manifestait qu'à `up`, quand il n'y a plus personne pour le demander. Mesuré
+sur cette machine, où le bloc (b) n'est pas installé du tout (`sudo -n -l | grep -c mnbr` → 0) :
+
+```
+marionnet-natbridge.sh status            -> {"ip_forward":1, … ,"ok":true}          (la garde passe)
+marionnet-natbridge.sh check-privileges  -> {"privileged":false, …}                 (la vérité)
+```
+
+**Le remède était déjà dans le dépôt, à côté** : le LAN bridge ne s'y est pas laissé prendre
+(`do_check_privileges`, `bin/scripts/marionnet-lanbridge.sh`, ép. 7b) — une **vraie commande de
+notre liste, sans effet** — avec ses deux pièges déjà payés : le verdict se lit dans le **libellé**
+(`Cannot find device`, d'où `LC_ALL=C` : sudo traduit ses refus, iproute2 non), et **`sudo -n -l`
+n'est pas une alternative** (sur un poste `%sudo ALL=(ALL:ALL) ALL` il répond « autorisé » sans
+aucune règle à nous). Le bridge NAT reçoit donc le même sous-commande, à un détail près : son nom
+de sonde est **`mnbr999999999`** et non `mnbr999`, parce que ses vrais noms portent un **pid** et
+que Linux plafonne `pid_max` à 2²² — aucun run ne peut produire ce nom-là, là où un pid 999
+existe. `bin/nat_bridge_host.ml` interroge `check-privileges` au lieu de `status` ; le `.mli` dit
+pourquoi.
+
+### 2. La langue : un `msgid` que le programme ne demande jamais
+
+Le message était écrit avec des **continuations `\` indentées**. OCaml mange le saut de ligne
+**et** les blancs de tête ; l'extracteur POT (camlp4) non. Le `msgid` versionné portait donc
+l'indentation (`bin/po/fr.po` : `"has                         no network at all"`) et la clef
+cherchée à l'exécution ne pouvait **jamais** matcher — dans les 12 catalogues, alors que la
+traduction était là, juste en dessous. Audit : c'était le **seul** `msgid` du dépôt dans ce cas.
+**Règle qui en sort** : un littéral traduisible s'écrit **sur une seule ligne** (style déjà en
+place dans `bin/privileges.ml`).
+
+### 3. Le conseil : une cause, un message
+
+`Nat_bridge_host.error` porte un **code symbolique** ; `advice_of_error` (fonction **pure**,
+patron de `unavailability_of_error` de l'ép. 40) le classe :
+
+| code | ce qui est dit |
+|---|---|
+| `E_SUDO_DENIED` | la règle sudoers manque **ou** est incomplète (version antérieure) ; geste : `marionnet-sudoers.sh install --only --enable-natbridge` (nom du script pris à `Tap_provider.sudoers_script ()`, seul lecteur de `MARIONNET_SUDOERS_SCRIPT`) |
+| `E_SUBNET_IN_USE`, `E_NO_FREE_SUBNET`, `E_BAD_SUBNET`, `E_ADDRESS6_IN_USE`, `E_BAD_ADDRESS6` | le conseil d'avant : le réseau est pris, arrêter le composant et choisir une autre adresse |
+| `E_NO_IPROUTE2`, `E_NO_IPTABLES`, `E_NO_IP6TABLES`, `E_NO_SYSCTL`, `E_NO_DNSMASQ` | la commande manquante, **nommée** |
+| tout le reste | **aucun conseil** — le diagnostic brut seul ; inventer un remède est le défaut corrigé |
+
+Le diagnostic reste en `<tt><small>` et passe toujours par `Glib.Markup.escape_text` (Pango,
+ép. 9a) ; la commande citée aussi.
+
+### 4. i18n
+
+4 `msgid` (le préambule, les 3 conseils) : les **deux** que l'ancien message contenait déjà sont
+**repris de leur traduction existante**, découpés à l'endroit du `<tt>` — on ne retraduit pas ce
+qui l'était —, avec une seule retouche voulue : le conseil « réseau déjà pris » cesse d'être
+**conditionnel** (« si le réseau … »), le code disant désormais que c'en est bien la cause.
+Versement par `msgmerge --compendium`. **442 traduits, 0 trou ×12.**
+
+### 5. Mesuré
+
+- **Banc neuf, rejouable et sans privilège** : `driven-sessions/nat-bridge-warning-names-its-cause.sh`
+  — **11 PASS / 0 FAIL / 0 SKIP**. Sur le code d'avant (les 4 fichiers remisés, `dune build`,
+  même banc) : **1 PASS / 10 FAIL** — le seul vert étant `E_SUBNET_IN_USE`, la cause que l'ancien
+  message nommait *par hasard*. C'est la discriminance des trois moitiés à la fois, y compris le
+  cas qui reproduit la capture : *« le titre est français et le corps anglais »*.
+- **i18n** : `msgfmt --statistics -c` → **442 traduits, 0 trou** sur les 12 ; **48/48** clefs
+  exactes retrouvées dans les **`.mo` compilés** ; audit d'arité sur **5 304** entrées (motif
+  ép. 9b : exclure `%%` **et** le drapeau espace, sinon `%s%%` et `1% implies` sont lus comme des
+  conversions) → **0 écart** hors un faux positif préexistant (`%%%s`, correct, inchangé) ; et la
+  preuve du défaut : la chaîne **exacte** que le programme demande était **absente** du `.mo`
+  d'avant.
+- `dune build` rc 0, `make check` rc 0 ; `strings` sur le binaire : `check-privileges` présent
+  (piège n° 7 — le script est embarqué par `INCLUDE_AS_STRING`, il figure bien dans les
+  `preprocessor_deps` de `bin/dune`).
+
+### Reste
+
+Le défaut voisin, versé à `docs/TODO.md` : **le LAN bridge n'a aucun avertissement de démarrage**
+(`bin/lan_bridge.ml` ne dit rien quand son pont n'est pas construit). Sa sonde, elle, était déjà
+la bonne — c'est d'elle qu'on a copié.

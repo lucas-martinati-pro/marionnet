@@ -34,6 +34,9 @@
 # truth -- including for the privileged command list, which
 # `print-privileged-commands' publishes and bin/scripts/marionnet-sudoers.sh
 # derives its rule from.
+# The same file answers whether that rule is actually GRANTED here
+# (`check-privileges'), which is what Marionnet asks before offering to install
+# it: the list and the probe must not drift apart either.
 #
 # --- THE OUTPUT CONTRACT (what the OCaml caller relies on) ---
 #
@@ -1109,6 +1112,59 @@ function do_check_ipv6 {
  finish 0
 }
 
+# --- check-privileges: can we run our privileged commands WITHOUT a password?
+#
+# The OCaml side (bin/nat_bridge_host.ml) needs that answer BEFORE it offers to
+# ask the user for a password, and `status' -- which was used for it until the
+# bug of 2026-09-02 -- cannot give it: do_status asks the host nothing
+# privileged at all (measured: `bash -x ... status' contains not one `sudo'; it
+# reads /proc and lists bridges with an unprivileged `ip'). It therefore
+# answered "usable" on every machine, block (b) installed or not, so the refusal
+# surfaced much later, at `up', when nobody was left to offer the password. A
+# probe must exercise what it guards.
+#
+# The probe follows the discipline of do_check_privileges in
+# bin/scripts/marionnet-lanbridge.sh (itself following bin/tap_provider.ml): a
+# REAL command of our own list, covered by the rule, with no effect on anything.
+# Here it is `ip link del mnbr999999999': the shape our rule and our own
+# require_bridge accept, matched by the `mnbr*' pattern of block (b), and one no
+# run can ever produce -- Linux caps pid_max at 2^22, so no bridge of ours is
+# ever named after a nine-digit pid.
+#
+# Deleting a device that does not exist FAILS (rc 1), so the verdict cannot be
+# read from the exit status: what tells "sudo let it through" from "sudo refused"
+# is WHICH of the two wrote the message. Hence LC_ALL=C -- sudo's diagnostics are
+# translated, iproute2's are not -- and a verdict read from iproute2's wording.
+#
+# `sudo -n -l <command>' is NOT an alternative: on an ordinary desktop
+# (%sudo ALL=(ALL:ALL) ALL) it answers "allowed" with no rule of ours installed
+# at all, and the `sudo -n' that follows then asks for a password (measured; see
+# the same comment in tap_provider.ml and in marionnet-lanbridge.sh).
+function do_check_privileges {
+ resolve_binaries
+ local probe="${BRIDGE_PREFIX}999999999" out rc=0
+ require_bridge "$probe"
+ REPORT[probe]=$probe
+ # A device of that name would be somebody else's: we must not delete it, and we
+ # have no other harmless command to ask the question with.
+ if link_exists "$probe"; then
+   REPORT[privileged]=false
+   REPORT_TEXT[message]="$probe exists on this host: refusing to use it as a probe"
+   REPORT[ok]=true
+   finish 0
+ fi
+ out=$(LC_ALL=C sudo -n -- "$IP" link del "$probe" 2>&1) || rc=$?
+ if [[ $rc = 0 || $out == *"Cannot find device"* ]]; then
+   REPORT[privileged]=true
+   REPORT_TEXT[message]="the privileged commands of the NAT bridge run without a password"
+ else
+   REPORT[privileged]=false
+   REPORT_TEXT[message]="$out"
+ fi
+ REPORT[ok]=true
+ finish 0
+}
+
 function ports_of_json {
  Array_make ports
  local port
@@ -1565,6 +1621,7 @@ Usage: $TOOL up     [OPTION]...        # create the NAT bridge (idempotent)
        $TOOL down   [OPTION]...        # remove it and its rules (idempotent)
        $TOOL status [OPTION]...        # what exists, for one pid or for all
        $TOOL check-ipv6                # may this host do IPv6? (no privilege needed)
+       $TOOL check-privileges          # is the sudoers rule of block (b) enough?
        $TOOL gc                        # remove the artefacts of DEAD owners only
        $TOOL selftest                  # up + a netns guest + ping/DNS + down + assert clean
                                        #   (MAY ASK FOR A PASSWORD: its veth/netns guest is
@@ -1659,6 +1716,7 @@ case $ACTION in
              if [[ $ACTION = up ]]; then do_up; else do_down; fi ;;
   status)    parse_options "$@"; do_status ;;
   check-ipv6) parse_options "$@"; do_check_ipv6 ;;
+  check-privileges) parse_options "$@"; do_check_privileges ;;
   gc)        parse_options "$@"; do_gc ;;
   selftest)  parse_options "$@"; do_selftest ;;
   print-privileged-commands) parse_options "$@"; do_print_privileged_commands ;;
