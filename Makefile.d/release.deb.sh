@@ -138,7 +138,7 @@ function publication_series {
 }
 
 BINARY_NAME=""          # marionnet_<version>-r<rev>_<arch>_glibc<x.y>
-APP_UPSTREAM=""         # what META says: `trunk' today, `1.0.0' one day
+APP_UPSTREAM=""         # the version, derived from META's series: `1.0.368' since episode 33
 APP_REVISION=""         # the git revision count
 APP_ARCH=""             # the Debian architecture name
 
@@ -155,10 +155,12 @@ function read_identity {
 # --- The version of the `marionnet' package.
 # ---
 # A Debian version MUST start with a digit (measured: dpkg-deb refuses `trunk-r906' with
-# "le numéro de version ne commence pas par un chiffre"), and META says `trunk' today. Hence
-# the `0~' prefix, which is not decoration: `0~trunk+r913' compares LOWER than `1.0.0'
-# (measured with dpkg --compare-versions), so the day META names a real version, apt sees
-# every trunk package as an upgradable predecessor -- which is what a pre-release is.
+# "le numéro de version ne commence pas par un chiffre"), which is why the `0~' branch below
+# exists. It is no longer the branch taken: since episode 33 the version is derived and starts
+# with a digit (`1.0.368+r942'). The branch stays because it is what makes that day harmless
+# -- `0~trunk+r941' compares LOWER than `1.0.368+r942' (measured with dpkg --compare-versions
+# AND with rpm on the other side), so every package published before episode 33 is seen as an
+# upgradable predecessor, which is what a pre-release is.
 #
 # The git revision is appended with `+' rather than `-': `-' opens the Debian revision
 # field, and the revision count is upstream's, not the packager's. Two builds of the same

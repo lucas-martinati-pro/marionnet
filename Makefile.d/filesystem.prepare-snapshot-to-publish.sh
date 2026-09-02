@@ -84,11 +84,13 @@ function usage {
 # ---
 # --- The publication series.
 # ---
-# META is the single source of truth for the version of the project (bin/version.ml.maker.sh
-# reads it to generate Version.version, and so does useful-scripts/make_a_release_from_trunk.sh).
-# A numbered version X.Y.Z publishes into the series X.Y.x. While META still says "trunk", we
-# publish into 1.0.x: the series opened by the dune port (decision of episode 0 of the
-# work-stream `modernisation-installation-marionnet', see docs/, § 6).
+# META is the single source of truth for the series of the project, and since episode 33 it
+# literally holds one (`1.0.x'): the patch level is derived from the revision by
+# bin/meta.ml.maker.sh --print-version, which is why nothing here reads a version.
+# A numbered version X.Y.Z still publishes into the series X.Y.x -- that is what a frozen
+# version in META would mean -- and anything else (`trunk', an empty META) falls back on
+# 1.0.x, the series opened by the dune port (decision of episode 0 of the work-stream
+# `modernisation-installation-marionnet', see docs/, § 6).
 # This function is the ONLY implementation of that rule: the Makefile calls --print-series.
 # ---
 function publication_series {

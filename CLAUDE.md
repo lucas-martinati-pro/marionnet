@@ -992,6 +992,28 @@ Reprise : appliquer le skill `chantier-long`.
   `1042ff5^` rejoué sur le **même** tarball rend **47/1** (`expected 26`), donc le rouge latent
   de 2 épisodes existait bien. Motif de méthode confirmé une 3ᵉ fois (20c → 22, 28 → 30b
   quater) : *une preuve qui dépend de ce que la boîte contient se prend après le commit.*
+  **Ép. 33 : la version cesse de s'appeler `trunk`.** `META` porte désormais la **série**
+  (`version="1.0.x"`) et la révision qui l'ouvre (`series_base_revision="574"`) ; le niveau de
+  patch est **dérivé** — `942 − 574` = **`1.0.368`** — par la **seule** implémentation de cette
+  règle, `bin/meta.ml.maker.sh --print-version`, placée là où vit déjà `--print-revision` et
+  par le même argument. Tous les autres **demandent** (`version.ml.maker.sh`, d'où une dep
+  neuve dans `bin/dune` ; `release.binary.sh` ; `make version`), donc `Meta.version` et
+  `Version.version` sont la même chaîne. **Aucun `.ml` touché** : `initialization.ml:39` teste
+  déjà `^[0-9]+[.][0-9]+[.][0-9]+$`, et le `0~` des 2 publieurs n'existait que parce que META
+  ne commençait pas par un chiffre — le chantier avait câblé ce jour-là sans l'écrire. **À ne
+  pas défaire** : (1) une réponse **non numérique** (`1.0.x`) est ce que rend la règle quand la
+  dérivation échoue (pas de VCS, pas de base, base en avance), et elle est **volontairement**
+  non numérique — l'écran remontre alors la révision, et `artefact_name` **refuse de nommer**
+  (rc 2, règle ép. 30b ter appliquée à l'autre moitié du nom) ; (2) **aucun motif de fichier ne
+  doit épeler la version** — `release.retention.sh` le faisait dans ses 3 motifs, donc il
+  n'aurait **plus rien matché**, rapporté **zéro** révision périmée, et le déposeur l'aurait
+  cru (mesuré : 0 ligne contre 4 sur le même répertoire) : les formes sont ancrées sur le nom
+  du paquet, le `r<chiffres>` et le champ suivant, ce qui garde dehors les paquets de données
+  (aucun `+r` : ils sont versionnés par leur contenu, ép. 26) ; même défaut à une ligne dans le
+  banc RPM, où il donnait un **SKIP**. **Renommer les paquets publiés ne suffit pas** (mesuré) :
+  la version est dans les **métadonnées** que lisent `Packages`/`repodata/` **et compilée dans
+  le binaire** ; **republier ne casse rien**, `0~trunk+r941` < `1.0.368+r943` côté dpkg **et**
+  côté rpm — le `~` avait été écrit pour ce jour-là.
 
 ## Où puiser
 

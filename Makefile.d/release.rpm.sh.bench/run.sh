@@ -851,7 +851,13 @@ else
       fi
       # A release directory legitimately holds several revisions of the application while one
       # replaces the other; the index must not hide any, and dnf must pick the newest.
-      newest=$(ls "$OUTDIR"/marionnet-0~trunk+r*.rpm 2>/dev/null | sed 's/.*+r\([0-9]*\)-.*/\1/' | sort -n | tail -1)
+      # The version is NOT spelled out here (episode 33): the pattern used to say
+      # `marionnet-0~trunk+r*', which stopped matching the day META named a series -- and a
+      # pattern that matches nothing turns this case into a silent SKIP. What is invariant is
+      # the `+r<digits>-<release>' the revision is written as, and it also keeps the data
+      # packages out (they carry no `+r' at all).
+      newest=$(ls "$OUTDIR"/marionnet-*+r*.rpm 2>/dev/null \
+                 | sed -n 's/.*\/marionnet-.*+r\([0-9]\+\)-[0-9]\+\..*\.rpm$/\1/p' | sort -n | tail -1)
       chosen=$(in_box2 'rpm -q --qf "%{VERSION}" marionnet 2>/dev/null' | sed 's/.*+r//')
       if test -n "$newest" && test "$chosen" = "$newest"; then
         pass "with several revisions published, dnf chose the newest (r$chosen)"

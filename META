@@ -1,4 +1,13 @@
 name="marionnet"
 description="A virtual network laboratory"
-version="trunk"
+# --- The publication series opened by the dune port. The patch level is NOT written here:
+# --- it is derived from the VCS as (revision - series_base_revision), by the single
+# --- implementation of that rule, `bin/meta.ml.maker.sh --print-version'. So `1.0.x' is the
+# --- series and `1.0.368' is what a build of revision 942 calls itself.
+version="1.0.x"
+# --- The last revision BEFORE this series (r574 = the last commit before the dune port,
+# --- whose first commit is therefore 1.0.1). It moves the day a new series opens, and it is
+# --- what makes the patch level count the revisions OF THE SERIES rather than the 574
+# --- revisions the 0.90.x and 0.98.x series had already spent.
+series_base_revision="574"
 requires="threads str unix lablgtk3 lablglade ocamlbricks"

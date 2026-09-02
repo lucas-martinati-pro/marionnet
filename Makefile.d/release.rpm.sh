@@ -194,7 +194,7 @@ SIGN_KEY=""             # `@published' until resolved against the keyring below
 KEYRING_ASC="$ROOT/marionnet-archive-keyring.asc"   # the archive's identity, versioned in git
 APP_ARTEFACT=""         # full path of the published tarball the application package is made of
 BINARY_NAME=""          # marionnet_<version>-r<rev>_<arch>_glibc<x.y>
-APP_UPSTREAM=""         # what META says: `trunk' today, `1.0.0' one day
+APP_UPSTREAM=""         # the version, derived from META's series: `1.0.368' since episode 33
 APP_REVISION=""         # the git revision count
 APP_ARCH=""             # the DEBIAN architecture name, as release.binary.sh writes it
 
@@ -255,8 +255,10 @@ function rpm_arch_of {  # <debian architecture>
 # ---
 # The same reasoning as the Debian channel, and it happens to hold word for word here: rpm
 # compares `~' as LOWER than everything, including the empty string, so `0~trunk+r915' sorts
-# below `1.0.0'. The day META names a real version, every trunk package is seen as an
-# upgradable predecessor -- which is what a pre-release is. The `+' before the revision is
+# below `1.0.0'. Since episode 33 META names a series and the version is derived from it, so
+# the branch taken is the first one; the second is what makes the transition harmless, every
+# package published before it being seen as an upgradable predecessor (measured with
+# rpmdev-vercmp in fedora:42: 0~trunk+r941-1 < 1.0.368+r943-1). The `+' before the revision is
 # kept as it is on the other side, and rpm accepts it in a version.
 #
 # Where the two channels genuinely differ: rpm splits what dpkg keeps in one string, into

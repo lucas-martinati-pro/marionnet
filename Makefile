@@ -475,22 +475,29 @@ module-graph-check: check
 
 
 # The revision number, the way `bzr revno' used to give it -- and the number every
-# published artefact is named after (marionnet_trunk-r<rev>_..., 0~trunk+r<rev>). The
+# published artefact is named after (marionnet_1.0.368-r<rev>_..., 1.0.368+r<rev>). The
 # rule is NOT written here: it is asked of bin/meta.ml.maker.sh, which is where it
 # lives (git's rev-list --count, bzr as a fallback while .bzr is still around), so
 # that `make revno', bin/meta.ml and Makefile.d/release.binary.sh cannot drift apart.
 revno:
 	@bash bin/meta.ml.maker.sh --print-revision
 
+# The version, which is a function of the revision above and of the series META names,
+# and which the same script owns for the same reason (episode 33). This is the string
+# the splash and the About dialog show, the `marionnet_<here>-r<rev>_...' of every
+# tarball, and the upstream half of the .deb and .rpm versions.
+version:
+	@bash bin/meta.ml.maker.sh --print-version
+
 # =============================================================
 #                        publication
 # =============================================================
 # Work-stream `modernisation-installation-marionnet'.
 
-# The publication series. META is the single source of truth for the version of the
-# project (bin/version.ml.maker.sh reads it to generate Version.version, and so does
-# useful-scripts/make_a_release_from_trunk.sh); the rule which turns a version into a
-# series lives in ONE place, the script below, which prints it on demand. Override it
+# The publication series. META is the single source of truth for the series of the
+# project, and since episode 33 that is literally what it holds (`1.0.x'): the patch
+# level is derived from the revision, not written down. The rule which turns what META
+# says into a series lives in ONE place, the script below, which prints it on demand. Override it
 # on the command line if needed: make <target> PUBLICATION_SERIES=1.1.x
 PUBLICATION_SERIES := $(shell bash Makefile.d/filesystem.prepare-snapshot-to-publish.sh --print-series)
 
@@ -711,7 +718,7 @@ release-and-upload:
 .PHONY: release-retention release-and-upload
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
-.PHONY: print-required-packages-build print-opam-switch print-opam-packages revno
+.PHONY: print-required-packages-build print-opam-switch print-opam-packages revno version
 
 
 # =============================================================

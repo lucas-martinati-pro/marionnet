@@ -4663,3 +4663,117 @@ tarball, et le correctif est le seul écart entre le rouge et le vert.
 
 Local **192/0/0**, distant **196/0/0** (exit 0 des deux côtés, `worst exit code 0`), rouge de
 contrôle **47/1** sur le banc d'avant. Aucun fichier du dépôt touché par l'épisode.
+
+## Épisode 33 (2026-09-02) — la version cesse de s'appeler `trunk`
+
+Épisode **demandé** (hors feuille de route, qui n'a plus de point ouvert depuis l'ép. 29) :
+tout ce qui est publié — les `.deb`, les `.rpm`, le tarball — et tout ce que le logiciel montre
+— l'écran d'accueil, la fenêtre « À propos » — disait **`trunk revno 942`** alors que la série
+ouverte par le port dune est **1.0.x** depuis la décision de l'épisode 0.
+
+### 1. Ce que la mesure a trouvé : le mécanisme existait déjà, il manquait un numéro
+
+Rien n'était à inventer côté OCaml. `bin/initialization.ml:39` teste
+
+```ocaml
+StrExtra.First.matchingp (Str.regexp "^[0-9]+[.][0-9]+[.][0-9]+$") Version.version
+```
+
+et bascule seul entre *released* (la version, seule) et *trunk* (la version **plus** la
+révision). Les deux publieurs de paquets font le même test à l'envers : le préfixe `0~` de
+`app_deb_version` / `app_rpm_version` n'existe que parce que META ne commençait pas par un
+chiffre. **Le chantier avait donc câblé le jour où META nommerait une version, sans jamais
+l'écrire.** Cet épisode l'écrit.
+
+### 2. Une série dans META, un patch dérivé — et une seule implémentation
+
+`META` porte désormais la **série** (`version="1.0.x"`) et la révision qui l'ouvre
+(`series_base_revision="574"` — la dernière d'avant le port dune, dont le premier commit est
+donc `1.0.1`). Le niveau de patch n'est **pas écrit** : il est dérivé, `942 - 574 = 368`.
+
+C'est un choix contre les deux autres, et pour des raisons qui se disent :
+
+- **contre le bump manuel** (le modèle bzr de `useful-scripts/make_a_release_from_trunk.sh`,
+  où chaque série vivait dans sa branche) : deux révisions différentes pourraient porter le même
+  numéro, et rien ne le rattraperait. Une version dérivée ne peut pas mentir sur ce qu'elle est.
+- **contre `1.0.<revno>`** (soit `1.0.942`) : le numéro compterait les **574 révisions** que les
+  séries 0.90.x et 0.98.x avaient déjà dépensées avant que le port dune existe. Retrancher la
+  base est ce qui fait du patch le compte des révisions **de cette série**.
+
+La règle a **une seule implémentation**, `bin/meta.ml.maker.sh --print-version`, placée là où
+vit déjà `--print-revision` et par le même argument : *ce script est l'endroit où la révision se
+lit, et la version est une fonction d'elle*. Tous les autres **demandent** —
+`bin/version.ml.maker.sh` pour `Version.version`, `Makefile.d/release.binary.sh` pour le nom de
+l'artefact, `make version` pour un humain. `Meta.version` et `Version.version` sont donc, par
+construction, la même chaîne.
+
+**Trois formes sont rendues inchangées**, et c'est délibéré : une version que META écrit en
+toutes lettres (`1.0.42` — une release figée), tout ce qui n'est pas une série (`trunk`), et la
+série elle-même quand la dérivation ne peut pas se faire (pas de VCS, pas de base, une base en
+avance sur la révision). **Cette dernière réponse n'est volontairement pas un numéro** : la
+regex d'`initialization.ml` ne la reconnaît pas, donc l'écran remontre la révision au lieu de
+prétendre un patch que personne n'a calculé — et `artefact_name` **refuse de nommer** un
+tarball avec elle (règle de l'ép. 30b ter, appliquée à l'autre moitié du nom).
+
+### 3. Le défaut qui aurait été silencieux : la rétention ne reconnaissait plus rien
+
+`Makefile.d/release.retention.sh`, propriétaire de la rétention depuis l'ép. 26, épelait
+`trunk` dans ses **trois** motifs et dans le `case` qui lit la révision. Le jour où META nomme
+une série, ces motifs ne matchent **plus rien** — et ne rien matcher est muet ici : le script
+aurait rapporté **zéro révision périmée**, le déposeur l'aurait cru, et le répertoire aurait
+regrossi exactement comme l'ép. 25 a dû le nettoyer à la main.
+
+**Mesuré** sur un répertoire jouet portant les deux conventions (3 tarballs, 2 `.deb`, 2 `.rpm`,
+plus les paquets de données et un `vde2-2.3.2+r586`) : le script d'avant rend **0** ligne, le
+script neuf en rend **4**, les bonnes. Les trois formes sont désormais ancrées sur ce qui est
+**invariant** — le nom du paquet, le `r<chiffres>` de la révision, et le champ qui le suit — ce
+qui garde aussi les paquets de données dehors : ils ne portent **pas** de `+r`, étant versionnés
+par leur contenu (ép. 26). Le banc RPM avait le même défaut à une ligne (`marionnet-0~trunk+r*`),
+où il se serait traduit par un **SKIP** silencieux.
+
+### 4. Ce que le publié devient — et pourquoi renommer ne suffit pas
+
+L'idée de renommer les fichiers, en local et sur le serveur, a été **mesurée puis écartée** : la
+version n'est pas dans le nom, elle est dans les **métadonnées** (`dpkg-deb -f` →
+`Version: 0~trunk+r941` ; `rpm -qp` → `0~trunk+r941-1`), que `Packages` et `repodata/` lisent —
+et elle est **compilée dans le binaire** (`strings` sur le `marionnet.native` extrait du `.deb`
+publié rend `trunk`). Renommer produirait un artefact qui se contredit lui-même.
+
+**Republier ne casse rien, et c'est mesuré des deux côtés** : `0~trunk+r941` < `1.0.368+r943`
+pour `dpkg --compare-versions` **et** pour `rpmdev-vercmp` dans `fedora:42`. Le `~` avait été
+écrit pour ce jour-là (ép. 15a, ép. 17) ; tout ce qui a été publié avant est vu comme un
+prédécesseur *upgradable*, ce qu'une pré-release est.
+
+La release elle-même se prend **après le commit**, la boîte de l'ép. 20 clonant HEAD — c'est le
+motif déjà joué trois fois (20c → 22, 28 → 30b quater, 31 → 32).
+
+### 5. Mesuré (2026-09-02)
+
+- `bin/meta.ml.maker.sh --print-version` → **`1.0.368`** ; `--print-revision` → `942`.
+- Les quatre formes : base absente → `1.0.x` ; base en avance → `1.0.x` ; `version="1.0.42"` →
+  `1.0.42` ; `version="trunk"` → `trunk`. Et `release.binary.sh --print-name` **refuse**
+  (rc **2**) sur un META sans base, en nommant ce qui manque.
+- `dune build` rc **0** ; `_build/default/bin/version.ml` et `meta.ml` portent **la même**
+  chaîne `1.0.368`, avec `revision = "942"`.
+- `marionnet.exe --version` → `marionnet version 1.0.368` ; `--splash` → `Version : 1.0.368`
+  et `Source revision : 942 - 2026-09-01`.
+- **L'écran d'accueil, capturé** (Xvfb `:79`, capture X du splash réel) : *« Version 1.0.368 -
+  2026-09-01 »*, **sans** révision — la branche `released = true` de `bin/splash.ml:34`.
+- `release.binary.sh --print-name` → `marionnet_1.0.368-r942_amd64_glibc2.39` (2.39 étant la
+  glibc de cette machine ; la boîte plancher en dira 2.36). Les deux lecteurs de ce nom —
+  `release.deb.sh:read_identity` et `marionnet-install.sh:binary_fields` — le relisent
+  correctement : ils lisaient déjà la version en `.+`, et le commentaire de l'installeur donnait
+  même `marionnet_0.90.6-r4213_…` en exemple.
+- `make revno` → `942`, `make version` → `1.0.368`, `--print-series` → `1.0.x`.
+
+**Non mesuré ici** : la fenêtre « À propos ». Son format
+(`bin/gui/gui_dialog_A_PROPOS.ml:67`) compose `Version.version` et `Meta.revision`, tous deux
+mesurés ci-dessus, donc elle dira *« Version 1.0.368 revno 942 - … »* — mais le menu ne s'ouvre
+pas sous Xvfb sans gestionnaire de fenêtres, et une capture n'a pas pu être prise. À vérifier
+d'un coup d'œil au prochain lancement interactif.
+
+### Restes
+
+La **republication** de la série sous la nouvelle convention (`make release-and-upload`), qui
+retirera au passage la révision `r941` par la rétention corrigée, et le rejeu des bancs contre
+elle. Épisode suivant, après le commit.

@@ -275,6 +275,9 @@ fi
 # status has been captured -- a failed build must still leave a readable tree behind.
 # ---
 FORCE_FLAG=""; ((! FORCE)) || FORCE_FLAG="--force"
+# Since episode 33 the VERSION is derived from that same revision (plus the series META
+# names), so this one comparison still covers the whole name: the clone is HEAD, it carries
+# the same META, and a box which agrees on the revision cannot disagree on the version.
 EXPECTED_REV=$(git -C "$ROOT" rev-list --count HEAD)
 info "revision     : r$EXPECTED_REV"
 

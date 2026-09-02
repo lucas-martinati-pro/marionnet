@@ -41,6 +41,10 @@
   (deps
     (universe)
     (file version.ml.maker.sh)
+    ;; version.ml.maker.sh asks meta.ml.maker.sh for the version (single implementation of
+    ;; the rule that derives it from META's series and the VCS revision), so the script it
+    ;; calls is a dependency of this rule too.
+    (file meta.ml.maker.sh)
     (file ../META))
   (action (run bash version.ml.maker.sh ../META version.ml)))
 

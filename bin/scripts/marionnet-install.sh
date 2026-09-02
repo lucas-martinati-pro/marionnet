@@ -565,7 +565,8 @@ HOST_ARCH=$(host_arch)
 HOST_GLIBC=$(host_glibc)
 
 # marionnet_<version>-r<rev>_<arch>_glibc<x.y> -> "<rev> <arch> <x.y>", or nothing.
-# The <version> is whatever META holds (`0.90.6', `trunk'), so the name is read from its
+# The <version> is whatever the project calls itself (`1.0.368' since episode 33, `trunk'
+# before it, `0.90.6' in an older series), so the name is read from its
 # TAIL, which is the part release.binary.sh builds itself.
 function binary_fields {
   [[ $1 =~ ^marionnet_.*-r([0-9]+)_([^_]+)_glibc([0-9]+\.[0-9]+)$ ]] || return 1

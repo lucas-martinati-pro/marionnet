@@ -119,19 +119,33 @@ OUTDIR=$(cd -- "$OUTDIR" && pwd)
 # The revision is read FROM THE NAME, as release.rpm.sh does since episode 20c: the name is
 # what the release directory publishes, and asking the working copy instead would describe
 # this machine rather than that directory.
+#
+# What must NOT appear in these three patterns is the version, and episode 33 is what taught
+# it: they used to spell `trunk' out, so the day META named a series they would have matched
+# nothing -- and matching nothing is silent here. This script would have reported no
+# superseded revision at all, the uploader would have believed it, and a release directory
+# would have kept growing exactly the way episode 25 had to clean up by hand. So each shape
+# is anchored on what is INVARIANT: the package name, the `r<digits>' the revision is written
+# as, and the field which follows it. That is also what keeps the data packages out --
+# marionnet-kernels_6.12.95_amd64.deb and marionnet-fs-guignol-18474-1.noarch.rpm carry no
+# `+r', and they are versioned by their own content (episode 26), never by a revision.
 function revision_of {  # <name> -> the r<N> it carries, or nothing
   local n="$1"
-  case "$n" in
-    marionnet_trunk-r*)   echo "${n#marionnet_trunk-r}"   | sed 's/_.*//' ;;
-    marionnet_0~trunk+r*) echo "${n#marionnet_0~trunk+r}" | sed 's/_.*//' ;;
-    marionnet-0~trunk+r*) echo "${n#marionnet-0~trunk+r}" | sed 's/-.*//' ;;
-  esac
+  if   [[ $n =~ ^marionnet_.+-r([0-9]+)_[^_]+_glibc.+$ ]]; then echo "${BASH_REMATCH[1]}"
+  elif [[ $n =~ ^marionnet_.+\+r([0-9]+)_[^_]+\.deb$   ]]; then echo "${BASH_REMATCH[1]}"
+  elif [[ $n =~ ^marionnet-.+\+r([0-9]+)-[0-9]+\..+\.rpm$ ]]; then echo "${BASH_REMATCH[1]}"
+  fi
 }
 
 shopt -s nullglob
 SUPERSEDED=()
-for pat in 'marionnet_trunk-r*' 'marionnet_0~trunk+r*' 'marionnet-0~trunk+r*'; do
-  fam=("$OUTDIR"/$pat)
+for pat in 'marionnet_*.tar.*' 'marionnet_*.deb' 'marionnet-*.rpm'; do
+  # The glob is deliberately wider than the shape; revision_of is the filter, and a name it
+  # does not recognise (a data package, a foreign rpm) is dropped here rather than counted.
+  fam=()
+  for f in "$OUTDIR"/$pat; do
+    test -n "$(revision_of "$(basename -- "$f")")" && fam+=("$f")
+  done
   ((${#fam[@]} > KEEP)) || continue
   # Sorted by revision, oldest first; everything but the last $KEEP is superseded.
   while read -r _ name; do SUPERSEDED+=("$name"); done < <(

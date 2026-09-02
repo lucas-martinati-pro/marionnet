@@ -23,20 +23,23 @@ SRC_PROJECT_DIR="$(dirname $0)/.."
 SOURCE=${1:-"$SRC_PROJECT_DIR/META"}
 TARGET=${2:-"$SRC_PROJECT_DIR/version.ml"}
 # ---
-# Example of the content of META:
+# META names the publication SERIES (`1.0.x'), and the version is derived from it and from
+# the VCS revision. That rule has a single implementation -- `bin/meta.ml.maker.sh
+# --print-version' -- and this script ASKS for it rather than re-deriving it: Version.version
+# and Meta.version are the same string, and two implementations would part company on the day
+# the fallback matters (no VCS, a frozen version in META, a base ahead of the revision).
+# Should the call fail altogether, fall back on what META literally says, which is a series
+# and therefore NOT a number: initialization.ml then keeps showing the revision beside it
+# instead of claiming a patch level nobody computed.
 # ---
-# name="marionnet"
-# description="A virtual network laboratory"
-# version="trunk"
-# requires="threads str unix lablgtk3 lablglade ocamlbricks"
-# ---
-# Default:
-version="trunk"
-# ---
-if test -f $SOURCE; then
-  source $SOURCE
-else
-  echo 1>&2 "Warning: file $SOURCE not found => using the defaut value \"$version\""
+version="$(bash "$SRC_PROJECT_DIR/bin/meta.ml.maker.sh" --print-version "$SOURCE" 2>/dev/null)"
+if test -z "$version"; then
+  version="trunk"
+  if test -f $SOURCE; then
+    source $SOURCE
+  else
+    echo 1>&2 "Warning: file $SOURCE not found => using the defaut value \"$version\""
+  fi
 fi
 # ---
 cat >$TARGET <<EOF
@@ -45,4 +48,3 @@ cat >$TARGET <<EOF
 let version = "${version:-"trunk"}";;
 let build_time = "built in $(date +"%B %Y")";;
 EOF
-

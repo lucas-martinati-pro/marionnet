@@ -26,7 +26,7 @@
 (source
   (uri "git+https://git.launchpad.net/marionnet"))
 
-(version "trunk")
+(version "1.0.x")  ;; the publication series; the patch level is derived (see META)
 
 (authors
   "Jean-Vincent Loddo"

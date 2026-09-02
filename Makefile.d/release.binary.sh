@@ -122,8 +122,10 @@ function publication_series {
 # ---
 # --- The name of the artefact.
 # ---
-# version    : META, the single source of truth for the version of the project (the same
-#              file bin/version.ml.maker.sh reads).
+# version    : asked of bin/meta.ml.maker.sh --print-version, which owns the rule that turns
+#              META's series (`1.0.x') plus the VCS revision into a version (`1.0.368'). The
+#              same string the binary itself carries as Version.version, because the same
+#              place answers both.
 # revision   : the git revision count, exactly as bin/meta.ml.maker.sh computes it, so that
 #              two tarballs of the same version are ordered by the history they were cut at.
 # arch       : the Debian architecture name when dpkg is there (amd64, i386, arm64), which
@@ -131,10 +133,7 @@ function publication_series {
 # glibc      : see the header. `ldd --version' prints it on its first line, last field.
 # ---
 function project_version {
-  local version="trunk"
-  # shellcheck source=/dev/null
-  if test -f "$ROOT/META"; then source "$ROOT/META"; fi
-  echo "$version"
+  bash "$ROOT/bin/meta.ml.maker.sh" --print-version "$ROOT/META" 2>/dev/null
 }
 
 function project_revision {
@@ -172,10 +171,20 @@ function host_glibc {
 # name does not say its floor is worse than no tarball -- marionnet-install.sh would skip it
 # without knowing why, and the .deb built beside it would carry a contradiction.
 function artefact_name {
-  local g
+  local g v
   g=$(host_glibc) || die "cannot read the glibc version of this machine (\`ldd --version'):
        refusing to name an artefact after a floor nobody measured"
-  echo "marionnet_$(project_version)-r$(project_revision)_$(host_arch)_$g"
+  # The same rule, applied to the other half of the name. A SERIES is not a version: when the
+  # patch level could not be derived (no VCS in the tree, a base ahead of the revision, a META
+  # holding `1.0.x' with nothing to count from), --print-version hands back `1.0.x' unchanged,
+  # and naming a published tarball after it would publish an artefact nobody can order against
+  # its neighbours -- release.retention.sh reads the revision out of this name, and so does
+  # release.deb.sh to build a package version. Refuse, and say which half is missing.
+  v=$(project_version) || v=""
+  [[ -n "$v" && ! "$v" =~ [.]x$ ]] || die "cannot derive a version for this working copy \
+(META says a series and the revision could not be counted):
+       refusing to name an artefact after a version nobody computed"
+  echo "marionnet_${v}-r$(project_revision)_$(host_arch)_$g"
 }
 
 # ---
