@@ -154,6 +154,16 @@ function unit_is_enabled_in_image {   # unit_is_enabled_in_image IMAGE DIR UNIT
   debugfs -R "stat $2/$3" "$1" 2>/dev/null | grep -q "^Inode:"
 }
 
+# A MASKED unit cannot start, whoever wants it: `systemctl mask' puts a symlink to
+# /dev/null in /etc/systemd/system, and systemd refuses the job. It does NOT remove the
+# enablement link under <target>.target.wants -- so looking at that link alone would
+# refuse an image which was repaired exactly as this script advises, and a guard its own
+# remedy cannot satisfy is a defect. Hence the two acceptable outcomes: the enablement
+# link is gone (`disable'), or the unit is masked.
+function unit_is_masked_in_image {    # unit_is_masked_in_image IMAGE UNIT
+  debugfs -R "stat /etc/systemd/system/$2" "$1" 2>/dev/null | grep -q 'Fast link dest: "/dev/null"'
+}
+
 function boot_health_check {          # boot_health_check IMAGE -- dies unless --allow-slow-boot
   local image="$1" entry wants_dir unit cost
   local -a found=()
@@ -164,7 +174,9 @@ function boot_health_check {          # boot_health_check IMAGE -- dies unless -
   # `read' rather than `set --': the positional parameters belong to the caller.
   for entry in "${SLOW_BOOT_UNITS[@]}"; do
     read -r wants_dir unit cost <<<"$entry"
-    if unit_is_enabled_in_image "$image" "$wants_dir" "$unit"; then found+=("$unit ($cost)"); fi
+    unit_is_enabled_in_image "$image" "$wants_dir" "$unit" || continue
+    unit_is_masked_in_image "$image" "$unit" && continue
+    found+=("$unit ($cost)")
   done
   ((${#found[@]})) || { info "boot health: no unit known to be costly is enabled"; return 0; }
   if ((ALLOW_SLOW_BOOT)); then

@@ -178,6 +178,15 @@ Reprise : appliquer le skill `chantier-long`.
   après le prompt ; publieur : refus sur trixie, accepté sur guignol et wheezy. **Versé au
   TODO** : `add machine` **par le canal** ignore `MEMORY_SUGGESTED_SIZE` (48 Mio par défaut ⇒
   trixie **meurt d'OOM**, mesuré), et `marionnet-relay.service` coûte **16,5 s** au boot.
+  **Ép. 21 bis : l'image propre est fabriquée, et le garde-fou a dû apprendre le masque.**
+  `systemctl mask` ne retire **pas** le lien d'activation, donc le garde-fou aurait refusé une
+  image réparée par son propre conseil : il accepte désormais **les deux** issues (lien retiré,
+  ou unité masquée — `Fast link dest: "/dev/null"`). L'image a été produite en pilotant
+  Marionnet (masque par `exec`, arrêt propre, export de variante par la commande **exacte** de
+  la GUI) : **`machine-debian-trixie-16341`** + `.conf` + `.tar.xz` déposés dans le répertoire
+  de release, `SHA256SUMS` à jour, `sum` = nom, `mtime` = `MTIME`, garde-fou **rc 0** contre
+  **rc 2** sur l'ancienne, boot réel sans une seule occurrence de l'unité. **Rien n'est mis en
+  ligne** : publication et rétention restent à l'auteur.
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

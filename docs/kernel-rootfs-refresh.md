@@ -431,6 +431,35 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   du `.conf` — que seul le **dialogue GUI** applique — et une trixie à 48 Mio **meurt d'OOM**
   (mesuré : `Out of memory: Killed process 111 (systemd-network)`) ; et `marionnet-relay.service`
   prend **16,5 s** dans le `blame` de la salle, `multi-user.target` n'étant atteint qu'à 26,7 s.
+- **2026-09-02** — épisode 21 bis (`Makefile.d/filesystem.prepare-snapshot-to-publish.sh`) :
+  **l'image propre existe, et la fabriquer a révélé un défaut du garde-fou.** `systemctl mask`
+  pose `/etc/systemd/system/<unité> -> /dev/null` mais **ne retire pas** le lien d'activation
+  sous `network-online.target.wants/` — or le garde-fou de l'épisode 21 ne regardait que ce
+  lien : il aurait **refusé** une image réparée exactement comme il le conseille. *Un garde-fou
+  que son propre remède ne satisfait pas est un défaut.* `boot_health_check` accepte donc
+  désormais **les deux** issues : lien d'activation retiré (`disable`), **ou** unité masquée
+  (`Fast link dest: "/dev/null"`, lu par `debugfs`).
+  **L'image** a été produite en pilotant Marionnet par le canal, depuis l'image publiée
+  `/usr/local/share/marionnet/filesystems/machine-debian-trixie-39212` : machine trixie à
+  **256 Mio** (à 48, le défaut du canal, elle meurt d'OOM), `systemctl mask
+  systemd-networkd-wait-online.service` par `exec`, **arrêt propre** (`stop`, `--state=off` en
+  3,5 s), puis export de la variante par la commande **exacte** de la GUI
+  (`cp --sparse=always`, `bin/treeview_history.ml:451-458`) et
+  `filesystem.prepare-snapshot-to-publish.sh -y`.
+  **Résultat, déposé dans `website-repo/download/marionnet-install.sh/1.0.x/`** :
+  **`machine-debian-trixie-16341`** (5,4 Gio) + son `.conf` (`SUM=16341`,
+  `MD5SUM=5f3d4fe3…`, `MTIME=1788385092`) + `filesystems_machine-debian-trixie-16341.tar.xz`
+  (1,1 Gio), `SHA256SUMS` à 18 artefacts (1 calculé, 0 conservé). **Mesuré** : `sum` du fichier
+  = **16341** = son nom ; `mtime` du disque = `MTIME` du `.conf` ; `sha256sum -c` réussi ; le
+  masque est bien dans l'image (`debugfs` : `Fast link dest: "/dev/null"`) et **networkd,
+  `10-eth0.network` et `systemd-networkd.service` sont intacts** ; garde-fou : **rc 0** sur la
+  neuve, **rc 2** sur la 39212 ; boot réel de la neuve par Marionnet : **0** occurrence de
+  l'unité dans le `boot.log`, console s'arrêtant sur `m1 login:`.
+  **Ce qui n'est PAS mesuré** : un boot de cette image par un Marionnet **sans** le masque de la
+  ligne de commande (c'est-à-dire la release installée en salle) — la preuve tiendrait à une
+  reconstruction du binaire d'avant ; le masque dans `/etc` est en revanche celui que systemd
+  lit, et le garde-fou (code indépendant) le constate. **Rien n'est mis en ligne** : la
+  publication et la rétention de l'ancienne 39212 restent des gestes de l'auteur.
 
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
