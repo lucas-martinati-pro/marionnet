@@ -92,3 +92,9 @@ useful-scripts/*
 website-repo/
 
 docs/daemon-elimination-final-report-about-X11-guest-support.pdf
+_bugs/
+
+# Backups written by editors and by msgmerge (bin/po/*.po~): never versioned.
+# Episode 37 of `modernisation-installation-marionnet` learnt it the hard way --
+# a `git add bin/po` took twelve of them in, 41 000 lines of backup.
+*~
