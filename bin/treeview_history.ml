@@ -397,13 +397,13 @@ object(self)
     | "router" ->  self#export_as_router_variant  (row_id)
     | _ -> () (* ignore (do nothing) *)
 
-  method export_as_machine_variant row_id =
-    self#export_as_variant ~router:false row_id
+  (* The two survive because the contextual menu offers two entries, each with its own label
+     and its own condition on the row type; what they DO no longer differs, the row itself
+     now saying whether it is a router (see #export_row_as_variant). *)
+  method export_as_machine_variant row_id = self#export_as_variant row_id
+  method export_as_router_variant row_id = self#export_as_variant row_id
 
-  method export_as_router_variant row_id =
-    self#export_as_variant ~router:true row_id
-
-  method private export_as_variant ~router row_id =
+  method private export_as_variant row_id =
     let device_name = self#get_row_name row_id in
     let can_startup, _ = Startup_functions.extract () in
     (* We can only export the cow file if we are not running the device: *)
@@ -413,14 +413,8 @@ object(self)
         (s_ "You have to shut it down first.") (* TODO *)
         ()
     else
-    let cow_name = self#get_row_filename row_id in
-    let variant_dir =
-      (* For backward compatibility I can't change the treeview structure
-         to store these informations once. On the contrary, I re-calculate
-	 them at each export; *)
-      let prefixed_filesystem = self#get_row_prefixed_filesystem (row_id) in
-      Disk.user_export_dirname_of_prefixed_filesystem prefixed_filesystem
-    in
+    (* Where the file goes and which file it is are no longer computed here: they belong to
+       #export_row_as_variant, which the control channel calls too. *)
     (* Just show the dialog window, and bind a method which does all the real work to the
        'Ok' button. This continuation-based logic is the best we can do here, because we
        can't loop waiting for the user without giving control back to Gtk+: *)
@@ -435,49 +429,86 @@ object(self)
       ~invalid_text_message:(s_ "The name must begin with a letter and can contain letters, numbers, dashes and underscores.")
       ~enable_cancel:true
       ~ok_callback:(fun variant_name ->
-	self#actually_export_as_variant
-	  ~router
-	  ~cow_name
-	  ~variant_dir
-	  ~variant_name ())
+	self#actually_export_as_variant ~row_id ~variant_name ())
       ()
 
 
-  method private actually_export_as_variant ~router ~variant_dir ~cow_name ~variant_name () =
-    (* Perform the actual copy: *)
-    let cow_path = (self#directory) in
-    let new_variant_pathname = Filename.concat variant_dir variant_name in
-    let cow_fullname = Filename.concat cow_path cow_name in
-    let command_line =
-      Printf.sprintf
-        "(mkdir -p '%s' && test -f '%s' && cp --sparse=always '%s' '%s')"
-        variant_dir
-        cow_fullname
-        cow_fullname
-        new_variant_pathname
+  (* --- The mechanics of an export, without a single dialog
+     ---
+     Written as a method because there are now TWO callers: the contextual menu of this
+     treeview (which asks for the name and reports in a window, just below), and the
+     `history-export' verb of the control channel (control_server.ml), which reports in
+     JSON. What must NOT be duplicated is what is decided here: where a variant goes
+     (Disk.user_export_dirname_of_prefixed_filesystem), which file is copied (the cow of
+     THIS row, in the treeview's own directory), and above all `cp --sparse=always' -- a
+     cow file is a hole with a few megabytes in it (measured: 5.1 MiB of content in
+     5.4 GiB of apparent size), and a dense copy would write the apparent size.
+     ---
+     [force] belongs to the channel: the dialog path never passes it, because a human
+     picking a name sees the directory; a script does not, and a variant is what a
+     published image is made of. Overwriting one silently is a GUI habit, not a rule.
+     ---
+     Returns the pathname written, or the reason it was not. It refreshes the same
+     Lazy_perishable the dialog path refreshed: a variant that exists must appear in the
+     next dialog without restarting Marionnet. *)
+  method export_row_as_variant ?(force=false) ~(row_id:row_id) ~(variant_name:string) ()
+    : (string, string) result =
+    let router = (self#get_row_type row_id = "router") in
+    let variant_dir =
+      Disk.user_export_dirname_of_prefixed_filesystem (self#get_row_prefixed_filesystem row_id)
     in
-    try
-      Log.system_or_fail command_line;
-      (* --- *)
-      if router then Lazy_perishable.set_expired (Disk.get_router_installations)
-                else Lazy_perishable.set_expired (Disk.get_machine_installations);
-      (* --- *)
-      Simple_dialogs.info
-        (s_ "Success")
-        ((s_ "The variant has been exported to the file") ^ "\n\n<tt><small>" ^ new_variant_pathname ^ "</small></tt>\n")
-        ()
-    with _ -> begin
-      (* Remove any partial copy: *)
-      UnixExtra.apply_ignoring_Unix_error Unix.unlink new_variant_pathname;
-      Simple_dialogs.error
-        (s_ "Error")
-        (Printf.sprintf (f_ "\
+    let target = Filename.concat variant_dir variant_name in
+    let cow_fullname = Filename.concat (self#directory) (self#get_row_filename row_id) in
+    if (not force) && Sys.file_exists target then
+      Error (Printf.sprintf "a variant named %s already exists here" variant_name)
+    else if not (Sys.file_exists cow_fullname) then
+      Error (Printf.sprintf "the state file %s does not exist (was this machine ever started?)"
+               (self#get_row_filename row_id))
+    else
+    let command_line =
+      Printf.sprintf "(mkdir -p '%s' && cp --sparse=always '%s' '%s')"
+        variant_dir cow_fullname target
+    in
+    (try
+       let () = Log.system_or_fail command_line in
+       (* The installed variants are memoised: without this, the freshly exported one is
+          invisible until the next run. *)
+       let () =
+         if router then Lazy_perishable.set_expired (Disk.get_router_installations)
+                   else Lazy_perishable.set_expired (Disk.get_machine_installations)
+       in
+       Ok target
+     with e ->
+       (* Never leave a partial copy behind: a truncated cow would be offered as a variant. *)
+       let () = UnixExtra.apply_ignoring_Unix_error Unix.unlink target in
+       Error (Printf.sprintf "the copy failed (%s)" (Printexc.to_string e)))
+
+  (* The dialog half: the mechanics are #export_row_as_variant above, shared with the
+     control channel, and what remains here is what only a window can do -- say that it
+     worked, or why it did not. `force' is TRUE on this path, and only here: it is what the
+     dialog has always done (a human choosing a name sees the directory it goes to), and
+     changing that would be a GUI change smuggled into a channel episode. *)
+  method private actually_export_as_variant ~(row_id:row_id) ~variant_name () =
+    match self#export_row_as_variant ~force:true ~row_id ~variant_name () with
+    | Ok pathname ->
+        Simple_dialogs.info
+          (s_ "Success")
+          ((s_ "The variant has been exported to the file") ^ "\n\n<tt><small>" ^ pathname ^ "</small></tt>\n")
+          ()
+    | Error _ ->
+        let pathname =
+          Filename.concat
+            (Disk.user_export_dirname_of_prefixed_filesystem (self#get_row_prefixed_filesystem row_id))
+            variant_name
+        in
+        Simple_dialogs.error
+          (s_ "Error")
+          (Printf.sprintf (f_ "\
 The variant couldn't be exported to the file \"%s\".\n\n\
 Many reasons are possible:\n - you don't have write access to this directory\n\
  - the machine was never started\n - you didn't select the machine disk but \n\
-the machine itself (you should expand the tree).") new_variant_pathname)
-        ()
-      end
+the machine itself (you should expand the tree).") pathname)
+          ()
 
   initializer
     (* Make columns: *)

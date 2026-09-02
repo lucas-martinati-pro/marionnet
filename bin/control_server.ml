@@ -341,6 +341,12 @@ let arity_of_command : (string * arity) list =
     ("history-del",   one_identifier "history-del <cow file> [--except]");
     ("history-set",   identifier_field_and_free_value
                         "history-set <cow file> <field> [<value>]");
+    (* Episode 22 of `marionnet-kernel-rootfs'. The last entry of this treeview's menu the
+       channel did not cover, and the only step of an image update that could not be
+       driven: exporting a state as a VARIANT, which is what a new published image is made
+       of. Same family, same identifier (the cow file), because it is the same menu. *)
+    ("history-export", two_identifiers
+                        "history-export <cow file> <variant name> [--force]");
     ("open",          one_path "open <absolute path>");
     ("new",           one_path "new <absolute path> [--save|--no-save]");
     ("save",          no_arg "save");
@@ -4445,6 +4451,65 @@ let cmd_history_del (st : State.globalState) ~(timeout:float) ~(cow:string) ~(ex
                        ("removed", jlist (List.map jstr removed));
                        ("count",   jint (List.length removed)) ])
 
+(* Exporting a state as a variant — the gesture an image update is made of (episode 22 of
+   `marionnet-kernel-rootfs': producing machine-debian-trixie-16341 from the published 39212
+   was driven entirely by this channel EXCEPT this step, which had to be done with a `cp' by
+   hand).
+
+   Nothing here decides anything the GUI does not: the guard is the one the menu entry carries
+   (Startup_functions/can_startup, treeview_history.ml — a cow file of a RUNNING machine is a
+   dirty filesystem), the name constraint is the one its dialog enforces
+   (StrExtra.Class.identifierp ~allow_dash:()), and the copy itself is
+   #export_row_as_variant, the method both callers share.
+
+   The one divergence, and it is deliberate: the dialog OVERWRITES a variant of the same name
+   without a word, this refuses unless --force. A human choosing a name sees the directory in
+   front of them; a script does not, and a variant is what a published image comes from. *)
+let cmd_history_export (st : State.globalState) ~(timeout:float) ~(cow:string)
+    ~(variant:string) ~(force:bool) : string
+  =
+  ask ~timeout
+    (fun () ->
+       match history_row_of_cow st cow with
+       | Error f -> Error f
+       | Ok (h, row_id, name) ->
+           if not (StrExtra.Class.identifierp ~allow_dash:() variant) then
+             Error (H_violated
+                      (Printf.sprintf
+                         "%S is not a variant name: it must begin with a letter and hold only \
+                          letters, digits, dashes and underscores (the GUI dialog refuses it too)"
+                         variant))
+           else
+           (match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
+            | None -> Error (H_orphan_row name)
+            | Some n when not n#can_startup ->
+                Error (H_forbidden
+                         (Printf.sprintf
+                            "%S is %s: the GUI refuses to export the state of a running device \
+                             (\"You have to shut it down first\") — its cow file is a filesystem \
+                             nobody unmounted"
+                            name (script_state_of_raw n#state_as_string)))
+            | Some _ ->
+                (match h#export_row_as_variant ~force ~row_id ~variant_name:variant () with
+                 | Error detail -> Error (H_violated detail)
+                 | Ok pathname ->
+                     (* The APPARENT size, read from the file and never guessed — and
+                        apparent is the only one Unix.stat knows (no st_blocks in OCaml's
+                        stats). A variant is a sparse copy: expect a couple of megabytes on
+                        disk for the gigabytes announced here, which is why the copy uses
+                        --sparse=always. A caller wanting the real cost asks `du'. *)
+                     let bytes = (try (Unix.stat pathname).Unix.st_size with _ -> 0) in
+                     Ok (name, pathname, bytes))))
+  |> reply_of_outcome
+       (function
+        | Error f -> history_error ~cow f
+        | Ok (name, pathname, bytes) ->
+            reply_ok [ ("node",    jstr name);
+                       ("state",   jstr cow);
+                       ("variant", jstr variant);
+                       ("path",    jstr pathname);
+                       ("bytes",   jint bytes) ])
+
 (* The one editable cell, for completeness: leaving it out would be a hole a script would meet at
    once (the read side serves Comment, and it is the only thing a human may type here). Same
    pattern as 5b/5c: the verdict before the write, and the callback's own half done by hand. *)
@@ -4678,6 +4743,9 @@ let dispatch (st : State.globalState) (line:string) : string * [ `Continue | `Qu
             | "history-del"   ->
                 (cmd_history_del st ~timeout ~cow:(arg0 r)
                    ~except:(option_value r "except" <> None), `Continue)
+            | "history-export" ->
+                (cmd_history_export st ~timeout ~cow:(arg0 r) ~variant:(arg_at r 1)
+                   ~force:(option_value r "force" <> None), `Continue)
             | "history-set"   ->
                 (cmd_history_set st ~timeout ~cow:(arg0 r) ~field:(arg_at r 1)
                    (* No third argument means the empty string: clearing the cell. *)

@@ -187,6 +187,19 @@ Reprise : appliquer le skill `chantier-long`.
   de release, `SHA256SUMS` à jour, `sum` = nom, `mtime` = `MTIME`, garde-fou **rc 0** contre
   **rc 2** sur l'ancienne, boot réel sans une seule occurrence de l'unité. **Rien n'est mis en
   ligne** : publication et rétention restent à l'auteur.
+  **Ép. 22 : `history-export`, le dernier geste du menu des états.** Le canal savait tout jouer
+  d'une mise à jour d'image **sauf** l'export de variante (fait au `cp` à l'ép. 21 bis) : il
+  gagne `history-export <cow file> <variant name> [--force]`, dans la **famille `history-*`**
+  (même identifiant — le nom du COW —, même prologue `history_row_of_cow`). **À ne pas
+  défaire** : (1) la mécanique vit **une seule fois**, dans
+  `Treeview_history#export_row_as_variant`, que le dialogue GUI **et** le canal appellent —
+  dont `cp --sparse=always` (mesuré : **2,6 Mio réels pour 5,1 Gio apparents**) ; (2) les gardes
+  sont celles **de la GUI** (`can_startup` : le COW d'une machine allumée est un système de
+  fichiers non démonté ; `identifierp ~allow_dash:()` pour le nom) ; (3) **une** divergence
+  voulue — le dialogue écrase une variante homonyme sans un mot, le canal **refuse** sauf
+  `--force`, le chemin GUI passant `~force:true` pour rester **inchangé**. **Piège de mesure** :
+  un état n'est pas la racine de `history <nom>` — la racine est la machine, les états sont ses
+  `children` (c'est ce que dit déjà l'erreur du dialogue : *« you should expand the tree »*).
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

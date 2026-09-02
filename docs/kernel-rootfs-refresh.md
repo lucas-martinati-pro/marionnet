@@ -461,6 +461,44 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   lit, et le garde-fou (code indépendant) le constate. **Rien n'est mis en ligne** : la
   publication et la rétention de l'ancienne 39212 restent des gestes de l'auteur.
 
+- **2026-09-03** — épisode 22 (`bin/treeview_history.ml`, `bin/control_server.ml`) :
+  **`history-export`, le dernier geste du menu des états que le canal ne savait pas jouer.**
+  Produire l'image `16341` depuis la `39212` (ép. 21 bis) a été piloté par le canal de bout en
+  bout **sauf l'export de la variante**, fait avec un `cp` à la main : le canal a pour mandat de
+  donner « les gestes de la GUI », et il en manquait un — celui dont sort toute image publiée.
+  **Le nom vient de la famille** : `history`, `history-start`, `history-del`, `history-set`
+  travaillent déjà sur ce treeview, avec pour identifiant le **nom du fichier COW** (unique, sans
+  espace, publié par la lecture) ; `history-export <cow file> <variant name> [--force]` reprend le
+  même préfixe, le même identifiant et le même prologue (`history_row_of_cow`). `export-variant`
+  aurait fondé une famille d'un seul membre.
+  **Une seule implémentation** : la mécanique déménage dans
+  `Treeview_history#export_row_as_variant` — où va une variante
+  (`Disk.user_export_dirname_of_prefixed_filesystem`), quel fichier est copié, et surtout
+  `cp --sparse=always` (**mesuré** : 2,6 Mio réels pour 5,1 Gio apparents — une copie dense
+  écrirait les 5,1) — et les **deux** appelants s'en servent : le dialogue du menu, qui ne garde
+  que ce qu'une fenêtre sait faire (dire que ça a marché, ou pourquoi non), et le canal, qui
+  répond en JSON. Les gardes ne sont pas inventées ici : machine allumée refusée par
+  `can_startup` (le COW d'une machine en marche est un système de fichiers que personne n'a
+  démonté), nom validé par `StrExtra.Class.identifierp ~allow_dash:()` — les deux conditions que
+  la GUI porte déjà.
+  **Une divergence, assumée** : le dialogue **écrase** une variante du même nom sans un mot ; le
+  canal **refuse** sauf `--force`. Un humain qui choisit un nom voit le répertoire ; un script ne
+  voit rien, et une variante est ce dont sort une image publiée. Le chemin GUI passe donc
+  `~force:true` — son comportement est **inchangé**, ce qui était la condition pour partager le
+  code sans faire passer une modification de GUI dans un épisode de canal.
+  **Mesuré** (session pilotée, image `machine-debian-trixie-16341`) : `help history-export`
+  publie sa syntaxe (invariant : la grammaire a une seule source de vérité, le serveur) ; refus
+  sur machine **allumée**, avec les mots de la GUI ; refus d'un nom **invalide** ; export
+  **accepté** (JSON `node`/`state`/`variant`/`path`/`bytes`) ; **refus** au ré-export, **accepté**
+  avec `--force` ; fichier **creux** (`du` 2,6 Mio contre 5,1 Gio apparents). `dune build` rc 0,
+  `make check` rc 0.
+  **Piège de mesure payé ici** : un état n'est **pas** la racine de l'arbre. `history m1` rend un
+  **forêt** — la racine porte le nom de la machine et un COW qui n'existe pas encore, les états
+  sont dans ses `children` — et mon premier essai a lu `rows[0]`, d'où un « le fichier n'existe
+  pas » qui accusait le verbe alors qu'il disait vrai. C'est aussi ce que dit, depuis toujours, le
+  message d'erreur du dialogue : *« you didn't select the machine disk but the machine itself
+  (you should expand the tree) »*.
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une
