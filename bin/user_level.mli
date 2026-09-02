@@ -158,6 +158,7 @@ class virtual component :
        control server (see [component] in user_level.ml). *)
     method installed_distribs_if_any : string list option
     method variants_of_distrib_if_any : string -> string list option
+    method memory_suggested_size_if_any : string -> int option
     (* --- Run-commands files (work-stream `migration-marshal-to-text', episodes 5 and 6) --- *)
     (* The states/ subdirectory of the project, where the rc scripts live. *)
     method states_directory : string
@@ -286,6 +287,7 @@ class virtual node_with_ports_card :
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
     method variants_of_distrib_if_any : string -> string list option
+    method memory_suggested_size_if_any : string -> int option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -417,6 +419,7 @@ class virtual node_with_defects :
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
     method variants_of_distrib_if_any : string -> string list option
+    method memory_suggested_size_if_any : string -> int option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -538,6 +541,7 @@ class virtual node_with_ledgrid_and_defects :
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
     method variants_of_distrib_if_any : string -> string list option
+    method memory_suggested_size_if_any : string -> int option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list
@@ -713,6 +717,7 @@ class type virtual cable =
     method supported_kernels_if_any : string list option
     method installed_distribs_if_any : string list option
     method variants_of_distrib_if_any : string -> string list option
+    method memory_suggested_size_if_any : string -> int option
     (* Run-commands files: see [component] (work-stream `migration-marshal-to-text', ep. 5-6). *)
     method states_directory  : string
     method rc_contents       : (string * string) list

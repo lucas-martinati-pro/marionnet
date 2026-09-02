@@ -777,6 +777,19 @@ fun ~(network:< .. >)
      `marionnet-todo-transverse'). *)
   method variants_of_distrib_if_any (_ : string) : string list option = None
 
+  (* How much memory the filesystem named by the given epithet asks for
+     (MEMORY_SUGGESTED_SIZE of its .conf, read by
+     Disk.virtual_machine_installations#memory_suggested_size_of). The argument is an epithet
+     rather than "the current one" for the same reason as above: the control server needs the
+     suggestion of a filesystem it is about to apply, before the component carries it.
+     [None] means "this kind has no filesystem" -- or that its .conf declares no suggestion,
+     which is an answer too, not a hole; REDEFINED in machine.ml and router.ml.
+     Read-only, like its three neighbours: the model must keep accepting any memory a .mar
+     names. Who ADOPTS the suggestion is a matter of the creation path -- the GUI dialog does
+     it in its own callback (machine.ml, on_distrib_change), the control server does it in
+     [add]; this method is what lets both read the same number. *)
+  method memory_suggested_size_if_any (_ : string) : int option = None
+
   (* Where this component's rc files live (see [Rc_files] above): the states/ subdirectory of
      the project, the very one treeview_documents.ml writes its documents into. Taken from the
      network rather than from [Treeview_history], which only machines and routers reach — a

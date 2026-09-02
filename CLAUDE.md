@@ -215,6 +215,20 @@ Reprise : appliquer le skill `chantier-long`.
   du chemin d'import** (aucun état COW). Banc **sur guignol** (12 Mio, ~1 min) : chaîne complète
   `18474` → **`03149`**, marque présente dans la neuve et absente de l'ancienne, et
   `--in-guest 'false'` sort en **rc 2 sans créer de variante**.
+  **Ép. 24 : la mémoire que l'image réclame.** `add machine` donnait **48 Mio** sans jamais lire
+  `MEMORY_SUGGESTED_SIZE` (192 trixie / 24 guignol), que seul le dialogue GUI appliquait — d'où
+  l'OOM de l'ép. 21. `cmd_add` gagne `adjust_memory_to_distrib`, **jumeau** de
+  `adjust_kernel_after_distrib_change` (même endroit, même raison : « que `add` seul rende un
+  composant *bootable* »), et `editable` gagne le **4ᵉ** accesseur en lecture seule de la famille,
+  `memory_suggested_size_if_any`. **À ne pas défaire** : `--memory=N` gagne toujours (une valeur
+  explicite est une intention) ; `set <n> distrib` n'ajuste **pas** la mémoire (la GUI le fait,
+  mais un script qui a écrit `set m1 memory 512` ne doit pas se le faire effacer) ; un `.mar` reste
+  souverain. Mesuré : 24 / 192 / 64 / 192, **48 partout** sur le code d'avant.
+  **Ép. 25 (mesure seule) : les ~7 s du relais.** 7,264 s avec `--debug`, **6,899 s sans**, pour
+  `multi-user.target` à 11,0 s. **Ce n'est pas la trace** (324 lignes contre 45, même durée), aucun
+  geste ne bloque seul, et **1,30 s** sont un `daemon-reload`. La suite est instrumentale
+  (`PS4`/`$EPOCHREALTIME`) : entrée `docs/TODO.md` **réécrite avec les chiffres**, plus « cause
+  inconnue ».
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

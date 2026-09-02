@@ -127,6 +127,8 @@ module User_level_machine : sig
       method installed_distribs_if_any       : string list option
       (* The variants installed for a given filesystem, in the GUI combo's order. *)
       method variants_of_distrib_if_any      : string -> string list option
+      (* The memory this filesystem asks for (MEMORY_SUGGESTED_SIZE of its .conf). *)
+      method memory_suggested_size_if_any    : string -> int option
       method get_kernel                      : [ `kernel ] Disk.epithet
       method set_kernel                      : [ `kernel ] Disk.epithet -> unit
       (* --- *)

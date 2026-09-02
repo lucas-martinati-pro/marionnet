@@ -880,6 +880,10 @@ type editable = <
      `marionnet-todo-transverse' -- the model itself still drops an absent variant in silence,
      which is what loading a .mar needs. *)
   variants_of_distrib_if_any : string -> string list option;
+  (* [None] for everything but a machine and a router: the memory the filesystem epithet given
+     as argument asks for (MEMORY_SUGGESTED_SIZE of its .conf). Read by [add] alone, to give a
+     component created here the memory its image needs -- see adjust_memory_to_distrib. *)
+  memory_suggested_size_if_any : string -> int option;
   (* The startup configurations this component owns, as (basename, content) pairs, and the way
      to replace one of them (user_level.ml). Since episode 5 of `migration-marshal-to-text' the
      *content* of a script is no longer an attribute of the forest — the forest carries the
@@ -1238,6 +1242,41 @@ let variant_lost_by_distrib_change (c : editable) (value : string) : string opti
 
 (* Called inside the network_change that has just changed "distrib". Returns what it had to
    rewrite, in the (field, old, new) shape of [Co_set]. *)
+(* The memory half of the same story, and the reason it exists: the constructor gives every
+   machine memory_default = 48 MiB (machine.ml), a number that predates the filesystems we ship
+   -- and `--distrib=' may have brought one which asks for four times that. MEASURED on
+   2026-09-02: a trixie created through this channel and started dies of OOM
+   (`Out of memory: Killed process (systemd-network)') and answers nothing more, which looks
+   like a hang. The .conf has always known the number (MEMORY_SUGGESTED_SIZE = 192 there, 24 for
+   guignol); until now only the GUI dialog read it, in its on_distrib_change callback
+   (machine.ml). Adopting it here is that same callback, for the other creation path.
+   ---
+   Its name is not `..._after_distrib_change' like its kernel neighbour, and that is the point:
+   it applies to the filesystem the component ENDS UP with, whether it came from `--distrib=' or
+   from the default the constructor chose -- a plain `add machine' on a host whose default
+   filesystem is a trixie would OOM exactly the same.
+   ---
+   It applies to [add] alone, and only when the caller gave no --memory=: an explicit value is
+   an intention, and this channel does not undo intentions. `set <n> distrib' does NOT adopt it
+   either -- the GUI does rewrite its memory box on every distribution change, but a script
+   which wrote `set m1 memory 512' beforehand must not have it erased in silence. Loading a
+   .mar goes through neither, so a saved memory stays sovereign. *)
+let adjust_memory_to_distrib (c : editable) : (string * string * string) list =
+  let fields = fields_of_tree c#to_tree in
+  match List.assoc_opt "distrib" fields, List.assoc_opt "memory" fields with
+  | Some distrib, Some current ->
+      (match c#memory_suggested_size_if_any distrib with
+       | Some suggested when string_of_int suggested <> current ->
+           let () = c#eval_forest_attribute ("memory", string_of_int suggested) in
+           let now =
+             match List.assoc_opt "memory" (fields_of_tree c#to_tree) with
+             | Some v -> v
+             | None   -> string_of_int suggested
+           in
+           [ ("memory", current, now) ]
+       | _ -> [])
+  | _ -> []
+
 let adjust_kernel_after_distrib_change (c : editable) : (string * string * string) list =
   match supported_kernels_and_distrib c with
   | None -> []
@@ -1579,8 +1618,14 @@ let cmd_add (st : State.globalState) ~(timeout:float) ~(kind:string) ~(name:stri
                       let failure = ref None in
                       let () =
                         st#network_change
-                          (fun () -> try ignore (adjust_kernel_after_distrib_change component)
-                                     with e -> failure := Some e) ()
+                          (fun () ->
+                             try
+                               let () = ignore (adjust_kernel_after_distrib_change component) in
+                               (* Only when the caller said nothing about the memory: see the
+                                  comment on the function itself. *)
+                               if not (List.mem_assoc "memory" extra) then
+                                 ignore (adjust_memory_to_distrib component)
+                             with e -> failure := Some e) ()
                       in
                       (match !failure with
                        | Some e ->

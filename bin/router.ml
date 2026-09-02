@@ -1118,6 +1118,13 @@ class router
     if not (List.mem d vm_installations#filesystems#get_epithet_list) then None else
     Some (vm_installations#variants_of d)#get_epithet_list
 
+  (* Redefinition (User_level.component answers None): the memory this filesystem asks for.
+     Guarded like its neighbour: #memory_suggested_size_of goes through a String_map.find on
+     the epithet (disk.ml), so an epithet which is not installed here has no answer. *)
+  method! memory_suggested_size_if_any (d : string) =
+    if not (List.mem d vm_installations#filesystems#get_epithet_list) then None else
+    vm_installations#memory_suggested_size_of d
+
   method dotImg iconsize =
    let imgDir = Initialization.Path.images in
    (imgDir^"ico.router."^(self#icon_suffix_of_state)^"."^iconsize^".png")

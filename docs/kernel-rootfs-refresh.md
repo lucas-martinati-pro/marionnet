@@ -544,6 +544,52 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   **absente** de l'ancienne (`debugfs`) ; **discriminance** : `--in-guest 'false'` sort en **rc 2**
   et **aucune variante n'est créée**. `dune build` rc 0, `make check` rc 0.
 
+- **2026-09-03** — épisode 24 (`bin/user_level.ml{,.mli}`, `bin/machine.ml{,.mli}`,
+  `bin/router.ml`, `bin/control_server.ml`) : **la mémoire que l'image réclame, là où le canal la
+  manquait.** `add machine` donnait `memory_default = 48` (`bin/machine.ml:67`), une constante qui
+  précède les filesystems qu'on livre, sans jamais lire le `MEMORY_SUGGESTED_SIZE` du `.conf`
+  (192 pour trixie, 24 pour guignol) — que **seul le dialogue GUI** appliquait, dans son callback
+  `on_distrib_change`. Mesuré à l'ép. 21 : une trixie créée par le canal **meurt d'OOM** et ne
+  répond plus, ce qui ressemble à un gel.
+  **Le site était déjà écrit à côté** : `cmd_add` finit par `adjust_kernel_after_distrib_change`,
+  dont le commentaire dit *« Realign before answering, so that `add` alone yields a bootable
+  component »* — une machine qui meurt d'OOM ne l'est pas davantage. D'où
+  `adjust_memory_to_distrib`, son jumeau, au même endroit. **Le nom n'est pas
+  `..._after_distrib_change`, et c'est le propos** : l'ajustement vaut pour le filesystem que le
+  composant **porte au final**, qu'il vienne de `--distrib=` ou du défaut choisi par le
+  constructeur — un simple `add machine` sur un hôte dont le défaut est une trixie mourait
+  pareillement.
+  **Le chemin de lecture aussi** : le canal ne parle pas à `Disk`, il passe par les accesseurs en
+  lecture seule d'`editable` (`supported_kernels_if_any`, `installed_distribs_if_any`,
+  `variants_of_distrib_if_any`) ; le quatrième de la famille, `memory_suggested_size_if_any`, est
+  ajouté avec la même forme (`None` sur la classe de base, redéfini dans `machine.ml`/`router.ml`,
+  gardé contre un épithète non installé) et déclaré dans les `.mli` (5 occurrences dans
+  `user_level.mli`, 1 dans `machine.mli`).
+  **À ne pas défaire** : (1) `--memory=N` **gagne toujours** — une valeur explicite est une
+  intention, et ce canal ne défait pas les intentions ; (2) `set <n> distrib` n'ajuste **pas** la
+  mémoire, alors que la GUI réécrit sa case à chaque changement : un script qui a écrit
+  `set m1 memory 512` avant ne doit pas se le faire effacer en silence ; (3) charger un `.mar` ne
+  passe ni par l'un ni par l'autre, donc une mémoire enregistrée reste souveraine.
+  **Mesuré** : `guignol-18474` → **24**, `debian-trixie-16341` → **192**, `--memory=64` → **64**,
+  `add machine` sans distrib (défaut trixie) → **192**, `add router` inchangé ; **discriminance**
+  sur le binaire d'avant (`git stash` + rebuild) → **48 partout** ; et le boot qui motivait tout :
+  une trixie créée **sans** `--memory` démarre et répond à `exec` (là où elle mourait d'OOM).
+  `dune build` rc 0, `make check` rc 0. L'entrée correspondante de `docs/TODO.md` **disparaît**.
+
+- **2026-09-03** — épisode 25 (mesure seule, sans code) : **les ~7 s de `marionnet-relay.service`,
+  et ce que la mesure élimine déjà.** Sur cette machine, image publiée
+  `machine-debian-trixie-16341` : le relais coûte **7,264 s** avec `--debug` et **6,899 s** sans,
+  pour un `multi-user.target` à **11,0 s** — l'homologue des 16,5 s / 26,7 s de la salle, à
+  l'échelle de la machine près. **Trois choses sont acquises** : (a) *ce n'est pas la trace* — le
+  relais journalise **324** lignes sous `--debug` contre **45** sans, pour la **même durée** ;
+  (b) *aucun geste ne bloque à lui seul* — pas un écart de 2 s entre deux lignes tracées ;
+  (c) *une part est nommée* — un **`daemon-reload` de systemd à 1,30 s**, ~19 % du total.
+  La suite est **instrumentale** (un `PS4` portant `$EPOCHREALTIME` pour un coût par commande,
+  journald ne datant qu'à la seconde), donc un épisode en soi : l'entrée de `docs/TODO.md` est
+  **réécrite** avec ces chiffres et ses arbitrages (sortir un geste du chemin critique, changer
+  le `Type=`, ou déplacer l'écriture des unités vers `pupisto.debian.sh`), au lieu de rester
+  « cause inconnue ».
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une
