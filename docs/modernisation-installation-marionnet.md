@@ -4777,3 +4777,88 @@ d'un coup d'œil au prochain lancement interactif.
 La **republication** de la série sous la nouvelle convention (`make release-and-upload`), qui
 retirera au passage la révision `r941` par la rétention corrigée, et le rejeu des bancs contre
 elle. Épisode suivant, après le commit.
+
+## Épisode 34 (2026-09-02) — la série republiée, et la rétention mesurée sur le vrai répertoire
+
+Épisode **sans code**, dans l'ordre que la méthode impose depuis l'ép. 20 (`release.build-box.sh`
+clone **HEAD**, donc la mesure se prend *après* le commit — motif 20c → 22, 28 → 30b quater,
+31 → 32). Il solde le seul point ouvert de la fiche, le 5 *quater* : republier la série sous la
+convention que l'ép. 33 a posée.
+
+### 1. La chaîne, jouée maillon par maillon
+
+`make release-and-upload` enchaîne quatre cibles (ép. 26) ; ce sont ces quatre cibles qui ont été
+jouées, dans leur ordre, avec le même effet :
+
+| Maillon | Ce qu'il a rendu |
+|---|---|
+| `make release-build-box WITH_DEB=1` | `marionnet_1.0.369-r943_amd64_glibc2.36.tar.xz` et `marionnet_1.0.369+r943_amd64.deb` |
+| `make release-rpm SIGN=yes` | `marionnet-1.0.369+r943-1.x86_64.rpm`, **signé**, rien de compilé (le tarball publié est déplié, ép. 20c) |
+| `make release-retention SIGN=yes` | **3 fichiers retirés**, les 3 catalogues réécrits par leurs écrivains, les 2 dépôts re-signés |
+| `make release-upload PRUNE=1` | **17 artefacts intacts côté serveur**, les 3 `trunk+r941` élagués |
+
+**Le plancher n'a pas bougé** : le symbole glibc maximal référencé reste `GLIBC_2.35`, donc le nom
+annonce toujours `glibc2.36`, la boîte de compilation (ép. 20). Changer la façon de nommer la
+version n'a pas déplacé l'autre moitié du nom.
+
+### 2. La mesure qui motivait l'épisode : la discriminance, prise sur le VRAI répertoire
+
+L'ép. 33 avait mesuré son correctif de `release.retention.sh` sur un **répertoire jouet** aux deux
+conventions. Ici le répertoire est le vrai, et il porte pour de bon les deux : `r941` en `trunk`,
+`r943` en `1.0.369`. Les deux versions du script, sur ce même répertoire, avec `--print-superseded` :
+
+```
+AVANT (7b5a205^) : 0 ligne
+APRÈS (HEAD)     : marionnet_trunk-r941_amd64_glibc2.36.tar.xz
+                   marionnet_0~trunk+r941_amd64.deb
+                   marionnet-0~trunk+r941-1.x86_64.rpm
+```
+
+Le défaut annoncé se confirme donc **en situation** : le script d'avant, confronté à une série qui
+ne s'épelle plus `trunk`, ne reconnaissait plus rien, rapportait **zéro** révision périmée — et le
+déposeur, qui l'**interroge** au lieu de recalculer (ép. 26), l'aurait cru. Le répertoire aurait
+regrossi exactement comme à l'ép. 25.
+
+### 3. Ce que les bancs ont mesuré
+
+Les 4 bancs rejoués contre `www.marionnet.org`, `--distro all` — **614 cas, 0 rouge, 0 SKIP** :
+
+| Banc | Total | Par boîte |
+|---|---|---|
+| `release.rpm.sh.bench` | **222** | 57 Rocky 10 · 55 Alma 10 · 56 Fedora 42 · 54 Leap 16 |
+| `release.deb.sh.bench` | **152** | 38 × Debian 12/13, Ubuntu 24.04/26.04 |
+| `release.binary.sh.bench` | **196** | 49 × les 4 boîtes Debian/Ubuntu |
+| `marionnet-install.sh.bench` | **44** | 11 × les 4 boîtes (sous-ensemble distant ; les autres cas exigent l'Apache local) |
+
+Les trois premiers chiffres sont **exactement** ceux des ép. 30b quater et 32 : la convention de
+version n'a rien coûté. Et le **SKIP** que le motif de version donnait dans le banc RPM (défaut à
+une ligne relevé à l'ép. 33) a disparu — **0 SKIP** partout.
+
+**Trois cas disent l'épisode** :
+
+- *« the binary runs and says who it is: **marionnet version 1.0.369** »* — la dérivation atteint
+  le **binaire compilé**, et pas seulement les noms de fichiers. C'est la moitié de l'ép. 33 que
+  seule une release pouvait montrer : renommer les paquets n'aurait pas suffi, la version étant
+  aussi dans les métadonnées et dans le binaire.
+- *« the installed binary is the published tarball's, to the byte
+  (`marionnet_1.0.369-r943_amd64_glibc2.36.tar.xz`) »* — le contrat de l'ép. 20c tient sous la
+  convention neuve.
+- *« the candidate version is the one the index announces (**1.0.369+r943**) »* — apt lit la
+  version dans `Packages`, non dans un nom de fichier.
+
+**Les deux lecteurs du nom d'artefact tiennent** aussi : `marionnet-install.sh --binary --list`
+contre le serveur rend *« `marionnet_1.0.369-r943_amd64_glibc2.36` … chosen »* — les champs
+`r<rev>` et `glibc<x.y>` sont restés là où le lecteur les attend, et le banc réseau le confirme
+depuis l'intérieur des 4 boîtes.
+
+### 4. Ce qui n'a pas été rejoué, et pourquoi
+
+Les **runs locaux** des bancs (les fixtures Apache du banc réseau, notamment) n'ont pas été
+rejoués : cet épisode n'a touché **aucun fichier versionné**, et les fixtures locales portent des
+noms que le banc **écrit lui-même** — la convention de version ne peut donc pas les atteindre. Ce
+qui pouvait bouger est ce qui lit une release **publiée**, et c'est précisément ce qui a été joué.
+
+### Restes
+
+Rien du chantier. Les points restants de la fiche sont, comme avant, l'essai toolchain système,
+l'essaimage des chantiers enfants et les redirections Apache des anciennes URLs.
