@@ -93,3 +93,47 @@ conseil « accordez la règle » doit renvoyer au § 7 de la page INSTALL, qui d
 `driven-sessions/nat-bridge-warning-names-its-cause.sh` est directement transposable (fausse
 commande hôte par `MARIONNET_LANBRIDGE_SCRIPT`), ce qui rend le défaut mesurable avant d'être
 corrigé.
+
+## Défaut — une machine ajoutée **par le canal** ignore la mémoire que son image réclame
+
+**Constat.** `add machine m1` par le canal de contrôle donne `memory_default = 48`
+(`bin/machine.ml:67`), une constante écrite dans le code, alors que le `.conf` de l'image dit
+`MEMORY_MIN_SIZE=48` **et `MEMORY_SUGGESTED_SIZE=192`** (trixie ; guignol : 16 et 24). Ces deux
+champs sont bien lus (`bin/disk.ml:615-619`) mais **seul le dialogue GUI** les applique
+(`bin/machine.ml:437-441`, callback `on_distrib_change`). Une machine trixie créée par le canal
+démarre donc avec **48 Mio** et **meurt d'OOM** — mesuré le 2026-09-02 sur l'image publiée
+`machine-debian-trixie-39212` : la console affiche
+`oom-kill:… task=systemd-network` puis `Out of memory: Killed process 111 (systemd-network)`, et
+l'invité ne répond plus à `exec`. Avec `set m1 memory 256`, le même invité boote en ~9 s.
+
+**Ce qu'on veut.** Que la suggestion de l'image soit la valeur par défaut **quel que soit le
+chemin de création** — GUI, canal, ou chargement d'un `.mar` qui ne porte pas de mémoire. Le
+minimum de l'image devrait de même être un plancher refusé, pas un conseil.
+
+**Obstacles.** (a) `memory_default` est consulté à la construction, avant que la distribution ne
+soit connue : il faut faire descendre le choix après la résolution du `distrib`, ou donner au
+constructeur la valeur suggérée ; (b) les bancs `driven-sessions/` et les TP de
+`marionnet-lab-design` créent leurs machines par le canal — leur comportement changerait, ce qui
+est le but, mais un banc qui compte sur 48 doit être relu ; (c) un `.mar` ancien porte une mémoire
+explicite : la suggestion ne doit **pas** l'écraser au chargement, sous peine de changer un projet
+enregistré sans le dire.
+
+## Défaut — `marionnet-relay.service` coûte 16,5 s au démarrage d'un invité trixie
+
+**Constat.** Sur la salle MarioNUM (image publiée `machine-debian-trixie-39212`, 2026-09-02),
+`systemd-analyze blame` place `marionnet-relay.service` en **deuxième position avec 16,5 s**, et
+`systemd-analyze critical-chain` montre que c'est **lui** qui retarde `multi-user.target`,
+atteint à **26,7 s** : `graphical.target @26,692s ← multi-user.target @26,679s ←
+marionnet-relay.service @10,113s +16,538s`. Une demi-minute avant le prompt, sur une machine qui
+ne fait rien d'autre que démarrer.
+
+**Ce qu'on veut.** Savoir *ce qui* prend ces 16 s dans le relais (il source plusieurs journaux
+depuis le hostfs, écrit `marionnet-report`, arme `marionnet-watch`), et rendre au boot ce qui peut
+l'être — au minimum en sortant du chemin critique ce qui n'a pas besoin d'y être.
+
+**Obstacles.** (a) le relais est le point d'entrée de toute la journalisation profonde : ce qu'on
+en sort doit rester **avant** les gestes qui en dépendent (le marqueur de disponibilité, le
+rapport) ; (b) `Type=oneshot` sans `--no-block` retient `multi-user.target` par construction —
+changer cela déplace le problème vers l'ordre des unités, pas vers sa disparition ; (c) le constat
+voisin « trixie n'écrit pas `marionnet-guest-ready` » (`docs/kernel-rootfs-refresh.md`) touche le
+même fichier et devrait être traité avec celui-ci.

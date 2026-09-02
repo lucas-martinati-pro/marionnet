@@ -44,6 +44,10 @@
 #       --do-not-update-binary-list
 #                                keep the BINARY_LIST inherited from the source .conf
 #                                (no loop mount, no sudo)
+#       --allow-slow-boot        publish even if the image enables a unit known to cost
+#                                every boot dearly (see step 4 bis)
+#       --check-image FILE       ask that same question about an image, and exit
+#                                (0: healthy, 2: a costly unit is enabled)
 #       --gz                     build a .tar.gz instead of the default .tar.xz
 #       --xz                     build a .tar.xz (the default; kept to be explicit)
 #   -y, --yes                    do not ask before building the tarball
@@ -113,9 +117,75 @@ ARGUMENT=""
 COW=""
 FORCE=0
 UPDATE_BINARY_LIST=1
+ALLOW_SLOW_BOOT=0
 ASSUME_YES=0
 MAKE_TARBALL=1
 USE_XZ=1
+
+# ---
+# --- Boot health: what an image would make EVERY guest wait for.
+# ---
+# A snapshot is taken from a guest somebody has been TUNING by hand, and one `systemctl
+# enable' there can cost two minutes at every boot, for ever, in every lab room. That
+# happened, and this is the door it came through: machine-debian-trixie-39212 was
+# published with `network-online.target.wants/systemd-networkd-wait-online.service'
+# enabled -- pulled in on its own by `systemctl enable systemd-networkd' (`Also=' in the
+# unit Debian ships) -- and a Marionnet guest is NEVER "online" in that unit's sense: its
+# links are cabled by the user, so the unit ran to its 120-second timeout and failed, and
+# the [OK] lines of the late services landed after the login prompt (measured 2026-09-02
+# on the published image: `systemd-analyze blame' = 2min 956ms, multi-user.target at
+# 26.7 s).
+#
+# We look, and we REFUSE rather than repair: what a tuning session enabled, only that
+# session knows why. The remedy is named, and --allow-slow-boot is there for the day the
+# answer is "yes, on purpose".
+#
+# Read with `debugfs', not with a loop mount: the question costs no privilege at all
+# (without -w, debugfs cannot write), and it must be asked even under
+# --do-not-update-binary-list. Not being ABLE to look is not a verdict: a missing debugfs
+# warns and lets the publication through.
+# ---
+# One line per unit: WANTS-DIRECTORY UNIT COST.
+SLOW_BOOT_UNITS=(
+  "/etc/systemd/system/network-online.target.wants systemd-networkd-wait-online.service 120s"
+)
+
+function unit_is_enabled_in_image {   # unit_is_enabled_in_image IMAGE DIR UNIT
+  debugfs -R "stat $2/$3" "$1" 2>/dev/null | grep -q "^Inode:"
+}
+
+function boot_health_check {          # boot_health_check IMAGE -- dies unless --allow-slow-boot
+  local image="$1" entry wants_dir unit cost
+  local -a found=()
+  if ! command -v debugfs >/dev/null; then
+    warn "\`debugfs' not found (package e2fsprogs): the boot-health check is SKIPPED"
+    return 0
+  fi
+  # `read' rather than `set --': the positional parameters belong to the caller.
+  for entry in "${SLOW_BOOT_UNITS[@]}"; do
+    read -r wants_dir unit cost <<<"$entry"
+    if unit_is_enabled_in_image "$image" "$wants_dir" "$unit"; then found+=("$unit ($cost)"); fi
+  done
+  ((${#found[@]})) || { info "boot health: no unit known to be costly is enabled"; return 0; }
+  if ((ALLOW_SLOW_BOOT)); then
+    warn "this image enables ${found[*]} -- published anyway (--allow-slow-boot)"
+    return 0
+  fi
+  die "this image enables a unit which costs every boot dearly:
+    ${found[*]}
+
+A Marionnet guest is never \"network online\" in that unit's sense (its links are cabled by
+the user), so the unit runs to its timeout and fails -- long after the login prompt. The
+current Marionnet masks it on the kernel command line, but an image is downloaded by other
+versions too, and this is the last place to catch it.
+
+Remedy, in the guest, then take the snapshot again:
+    systemctl mask systemd-networkd-wait-online.service
+(a mask, not a disable: \`systemctl enable systemd-networkd' pulls it back in, which is
+exactly how it got here.)
+
+Deliberate? Publish it with --allow-slow-boot."
+}
 
 while (($#)); do
   case "$1" in
@@ -124,6 +194,10 @@ while (($#)); do
     --print-series)  publication_series; exit 0 ;;
     -f|--force)      FORCE=1; shift ;;
     --do-not-update-binary-list) UPDATE_BINARY_LIST=0; shift ;;
+    --allow-slow-boot)  ALLOW_SLOW_BOOT=1; shift ;;
+    --check-image)      test -n "${2:-}" || die "--check-image needs a file"
+                        test -r "$2" || die "--check-image: cannot read $2"
+                        boot_health_check "$2"; exit 0 ;;
     -y|--yes)        ASSUME_YES=1; shift ;;
     --no-tarball)    MAKE_TARBALL=0; shift ;;
     --xz)            USE_XZ=1; shift ;;
@@ -369,6 +443,11 @@ if ((! TARBALL_ONLY)); then
   else
     warn "BINARY_LIST is INHERITED from $SRC_CONF (--do-not-update-binary-list) and may be stale"
   fi
+
+  # ---
+  # --- 4 bis. Boot health (see boot_health_check, defined above).
+  # ---
+  boot_health_check "$IMAGE"
 
   # ---
   # --- 5. The .conf: the source one, with the fields which describe the image recomputed.

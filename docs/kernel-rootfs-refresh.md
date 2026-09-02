@@ -382,6 +382,56 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   `bash -n` OK sur les deux scripts. Note : la couche (b) n'exige qu'un rebuild dune ; (a) et (c)
   exigent un rebuild d'image (déjà fait).
 
+- **2026-09-02** — épisode 21 (`bin/simulation_level.ml`,
+  `Makefile.d/filesystem.prepare-snapshot-to-publish.sh`) : **le boot ne se terminait pas quand
+  le prompt paraissait**. Signalé depuis la salle MarioNUM (image publiée
+  `machine-debian-trixie-39212`) : les `[OK]` s'affichent **après** `m1 login:` et même après le
+  login. **Mesuré dans l'invité** : `systemd-analyze blame` → `2min 956ms
+  systemd-networkd-wait-online.service` (enabled, *failed*), `critical-chain` →
+  `multi-user.target @26,7 s`, et `rpc-statd-notify.service` est le seul actif à vouloir
+  `network-online.target`. Prompt à ~27 s, échec de l'attente à ~147 s : ce n'était pas un
+  désordre d'affichage, c'était un boot qui traînait deux minutes.
+  **Mesuré dans l'image** (`debugfs`, lecture seule) : trois liens portent **la même minute**,
+  `multi-user.target.wants/systemd-networkd.service`,
+  `network-online.target.wants/systemd-networkd-wait-online.service` et
+  `sysinit.target.wants/systemd-network-generator.service` — 23-Aug-2026 14:51, quand tout le
+  reste date du 16-Jul (le build pupisto). Un `systemctl enable systemd-networkd` fait pendant la
+  session de mise à jour (`trixie-47362-update-and-tuning.mar`) a **traîné le guetteur avec lui** :
+  l'unité que Debian livre le dit elle-même (`Also=systemd-networkd-wait-online.service`).
+  Le passage à networkd était **voulu** — `/etc/systemd/network/10-eth0.network` demande `DHCP=yes`
+  et la strophe `eth0` d'ifupdown est commentée — donc on garde networkd et **seul le guetteur**
+  s'en va. `pupisto.debian.sh` est hors de cause (0 site n'y nomme networkd) : le défaut est entré
+  par un réglage à la main, et il a été **figé et publié**.
+  **Correctif en deux moitiés.** (a) `bin/simulation_level.ml` ajoute
+  `systemd.mask=systemd-networkd-wait-online.service` à la ligne de commande de **tout** invité
+  systemd — même mécanisme, et même raison, que le `systemd.mask=serial-getty@ttyS0.service`
+  voisin (dont le commentaire mesure déjà « 90 seconds of boot waiting for a job that then
+  fails »). Placé **hors** de la branche du masque getty (conditionnée à l'enregistrement des
+  consoles *et* à un `console=` explicite) et **hors** de `boot_quirks` (indexé par série de noyau,
+  alors que ce défaut n'en dépend pas) : une liste propre, gardée par le seul
+  `init_system = "systemd"` — sous SysV un argument inconnu partirait en argument à `init`.
+  (b) `filesystem.prepare-snapshot-to-publish.sh` **refuse** (rc 2) de publier un instantané qui
+  active une unité connue pour coûter cher au boot, et **nomme le remède**
+  (`systemctl mask …` dans l'invité, puis refaire l'instantané) au lieu de réparer en silence ;
+  `--allow-slow-boot` pour le cas délibéré, `--check-image FILE` pour poser la question à une
+  image déjà publiée. Lu par **`debugfs`**, donc **sans privilège** et même sous
+  `--do-not-update-binary-list` ; `debugfs` absent ⇒ avertissement, pas verdict (on ne condamne
+  pas pour n'avoir pas pu mesurer).
+  **Mesuré ici, sur l'image et le noyau publiés** (`website-repo/download/…/1.0.x`, montés en
+  `~/.marionnet/`, session pilotée par le canal) : la ligne de commande de l'UML porte bien
+  `systemd.mask=systemd-networkd-wait-online.service` ; dans l'invité,
+  `systemctl is-enabled` → **`masked-runtime`**, `is-active` → **`inactive`** ; le `boot.log` du
+  hostfs ne contient **0** occurrence de `systemd-networkd-wait-online` et le boot entier tient en
+  **~9 s** ; capture de la console : après `m1 login:`, **plus rien**. Garde-fou du publieur joué
+  sur trois images réelles : **refus** sur la trixie publiée (avec le remède), **accepté** sur
+  guignol et wheezy (sysv), **avertissement seul** avec `--allow-slow-boot`.
+  `dune build` rc 0, `make check` rc 0.
+  **Deux trouvailles versées à `docs/TODO.md`** : une machine ajoutée **par le canal** reçoit
+  `memory_default = 48` (`bin/machine.ml:67`) sans jamais consulter le `MEMORY_SUGGESTED_SIZE=192`
+  du `.conf` — que seul le **dialogue GUI** applique — et une trixie à 48 Mio **meurt d'OOM**
+  (mesuré : `Out of memory: Killed process 111 (systemd-network)`) ; et `marionnet-relay.service`
+  prend **16,5 s** dans le `blame` de la salle, `multi-user.target` n'étant atteint qu'à 26,7 s.
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une

@@ -1271,6 +1271,34 @@ class uml_process =
      systemd-getty-generator spawns a getty on the Marionnet console. Never override an
      already-specified `console=' (e.g. from SUPPORTED_KERNELS). *)
   let boot_quirks = [ (("6.12", "systemd"), [ "console=tty0" ]) ] in
+  (* --- What a systemd guest must NOT wait for
+     ---
+     `systemd-networkd-wait-online' waits until networkd declares an interface
+     "online", and a Marionnet guest never is: its links are cabled by the user, at
+     the pace of the lab, and an interface may legitimately stay down for the whole
+     session. The unit then runs to its 120-second timeout and fails -- MEASURED on
+     the published trixie image (machine-debian-trixie-39212, 2026-09-02):
+     `systemd-analyze blame' says `2min 956ms', while multi-user.target -- hence the
+     getty and the login prompt -- is reached at 26.7 s. That is the whole bug the
+     user reported: the [OK] lines of late services land AFTER the login prompt, and
+     even after the login.
+     ---
+     Why the guest cannot be trusted to have it disabled: `systemctl enable
+     systemd-networkd' pulls it in by itself (`Also=systemd-networkd-wait-online.service'
+     in the unit shipped by Debian), so it comes back on any image where somebody
+     enables networkd -- which is exactly how it arrived in that image, and how it
+     would arrive again. Masking it here makes EVERY systemd guest immune, including
+     the images already published.
+     ---
+     Only the WAITER is masked: networkd itself keeps configuring the interfaces (the
+     trixie image asks it for DHCP on eth0), only "wait until it is online" goes away.
+     Under SysV nothing is added: an unknown kernel argument is handed to `init' as an
+     argument. Same mechanism, and same reason, as the `serial-getty@ttyS0' mask below. *)
+  let systemd_arguments =
+    if init_system = "systemd"
+    then [ "systemd.mask=systemd-networkd-wait-online.service" ]
+    else []
+  in
   let kernel_series =
     try
       let _ = Str.search_forward (Str.regexp "linux-\\([0-9]+[.][0-9]+\\)") kernel_file_name 0 in
@@ -1327,7 +1355,7 @@ class uml_process =
           console_related_arguments
   in
   let command_line_arguments =
-    command_line_arguments @ console_related_arguments
+    command_line_arguments @ console_related_arguments @ systemd_arguments
   in
   let console_journal_output =
     match console_journal_descriptor with Some fd -> fd | None -> dev_null_out

@@ -157,6 +157,27 @@ Reprise : appliquer le skill `chantier-long`.
 - **noyaux + rootfs** (intégration Dave Appadoo ; Trixie + UML 6.12 ; touche `uml/` **et** l'OCaml
   via un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`. **Bloque vwifi.**
+  **Ép. 21 : le boot ne se terminait pas quand le prompt paraissait.** Sur l'image publiée
+  `machine-debian-trixie-39212`, les `[OK]` tombaient **après** `m1 login:` : `systemd-analyze
+  blame` = **`2min 956ms systemd-networkd-wait-online.service`** pour un `multi-user.target`
+  atteint à 26,7 s. Cause **datée à la minute** dans l'image (`debugfs`) : un `systemctl enable
+  systemd-networkd` de la session de réglage du 23-Aug a **traîné le guetteur** avec lui
+  (`Also=` dans l'unité Debian) — le passage à networkd, lui, était voulu
+  (`10-eth0.network`, `DHCP=yes`), donc **seul le guetteur s'en va**. **À ne pas défaire** :
+  (1) `bin/simulation_level.ml` masque l'unité à la **ligne de commande noyau** de tout invité
+  systemd — donc y compris sur les images **déjà publiées** — placé **hors** de la branche du
+  masque `serial-getty` (conditionnée à l'enregistrement des consoles) et **hors** de
+  `boot_quirks` (indexé par série de noyau, alors que ce défaut n'en dépend pas), et **rien**
+  sous SysV (un argument inconnu partirait en argument à `init`) ; (2)
+  `filesystem.prepare-snapshot-to-publish.sh` **refuse** de publier un instantané qui active une
+  telle unité et **nomme le remède** (`--allow-slow-boot` pour le cas délibéré, `--check-image`
+  pour interroger une image publiée) — la question est posée par **`debugfs`**, donc sans
+  privilège et même sous `--do-not-update-binary-list`, et un `debugfs` absent **avertit** au
+  lieu de condamner. Mesuré sur l'image et le noyau **publiés** : `is-enabled` →
+  `masked-runtime`, **0** occurrence de l'unité dans le `boot.log`, boot en **~9 s**, plus rien
+  après le prompt ; publieur : refus sur trixie, accepté sur guignol et wheezy. **Versé au
+  TODO** : `add machine` **par le canal** ignore `MEMORY_SUGGESTED_SIZE` (48 Mio par défaut ⇒
+  trixie **meurt d'OOM**, mesuré), et `marionnet-relay.service` coûte **16,5 s** au boot.
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
