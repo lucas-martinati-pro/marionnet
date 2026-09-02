@@ -349,8 +349,13 @@ installation de paquet ne peut pas savoir à quel humain une machine appartient.
 qu'administrateur :
 
 ```bash
-sudo marionnet-sudoers.sh install <utilisateur>
+sudo marionnet-sudoers.sh install <utilisateur>...
 ```
+
+Plusieurs comptes peuvent être nommés, et la commande est **additive** : accorder le droit à une
+deuxième personne ne retire jamais celui de la première. `sudo marionnet-sudoers.sh uninstall
+<utilisateur>` retire une autorisation et laisse les autres en place. Un compte qui n'existe pas
+est refusé.
 
 Cela accorde le socle — bloc (a) — sans lequel rien ne marche. Les autorisations du NAT bridge et
 du LAN bridge sont des blocs séparés, demandés par l'utilisateur, depuis l'interface, le jour où

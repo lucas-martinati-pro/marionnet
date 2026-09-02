@@ -328,8 +328,12 @@ channel grants it automatically, and the packages deliberately do not: a package
 cannot tell which human a machine belongs to. Run, as an administrator:
 
 ```bash
-sudo marionnet-sudoers.sh install <user>
+sudo marionnet-sudoers.sh install <user>...
 ```
+
+Several accounts may be named, and the command is **additive**: granting a second person never
+takes the first one's grant away. `sudo marionnet-sudoers.sh uninstall <user>` takes one grant
+back and leaves the others in place. An account that does not exist is refused.
 
 That grants the socle — block (a) — without which nothing works. The NAT bridge and LAN bridge
 grants are separate blocks, asked for by the user, from the interface, the day a bridge component

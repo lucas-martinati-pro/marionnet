@@ -4862,3 +4862,99 @@ qui pouvait bouger est ce qui lit une release **publiée**, et c'est préciséme
 
 Rien du chantier. Les points restants de la fiche sont, comme avant, l'essai toolchain système,
 l'essaimage des chantiers enfants et les redirections Apache des anciennes URLs.
+
+## Épisode 35 (2026-09-02) — un fichier sudoers grante une salle, pas une personne
+
+Premier retour d'un **usage réel** de la release : la 1.0.369 installée par `.deb` dans une salle
+de TP virtuelle de MarioNUM (poste *teacher* en conteneur, Ubuntu 24.04, postes étudiants
+identiques). L'installation par apt s'est passée comme le banc le promettait ; c'est le geste
+**d'après** — accorder la règle sudoers — qui ne tenait pas debout dans une salle. Deux défauts,
+et une seule racine : **le fichier était écrit pour *un* principal, jamais pour un ensemble.**
+
+### 1. Ce qui a été mesuré sur la machine de l'utilisateur
+
+```
+$ sudo marionnet-sudoers.sh install teacher
+marionnet-sudoers.sh: /etc/sudoers.d/marionnet is already up to date for user teacher.
+$ sudo marionnet-sudoers.sh install student
+marionnet-sudoers.sh: installed /etc/sudoers.d/marionnet for user student.
+$ sudo cat /etc/sudoers.d/marionnet          # teacher a disparu, sans un mot
+$ sudo marionnet-sudoers.sh install student42        # ce compte n'existe pas
+marionnet-sudoers.sh: installed /etc/sudoers.d/marionnet for user student42.
+```
+
+**(a) La révocation silencieuse.** `install_block` régénérait le fichier entier pour le seul
+compte reçu : accorder à `student` **retirait** `teacher`, et le message ne parlait que de ce
+qu'il installait. C'est exactement l'accident que l'en-tête du script avait vu venir — tout le
+paragraphe sur `--only`, écrit pour que la GUI ne réécrive jamais le fichier de l'administrateur —
+mais **traité du seul côté de l'exécution** : côté administrateur, le trou est resté grand ouvert,
+là où une salle de TP en a le plus besoin.
+
+**(b) Le compte fantôme.** Rien ne demandait à NSS si `student42` existait. `visudo -cf` ne pouvait
+pas le dire : nommer un compte qui n'existe pas encore est **légitime pour sudo** (il sera créé un
+jour). Ici ça ne l'est jamais — on accorde un pouvoir à quelqu'un, et « quelqu'un » doit être une
+personne. La règle attendait, et serait tombée dans les mains du premier venu à qui l'on aurait
+créé ce login.
+
+### 2. La décision : `install` est ADDITIF, `uninstall USER...` est le seul retrait
+
+Trois sémantiques étaient tenables (liste explicite avec refus de rétrécir ; remplacement pur mais
+bruyant ; addition). **Retenue : l'addition**, parce qu'elle rend la révocation silencieuse
+impossible *par construction* plutôt que détectable, et parce que « accorder à un étudiant de
+plus » est le geste réel d'une salle. Le prix — il faut connaître le geste inverse — est payé par
+sa symétrie : `uninstall USER...` retire un compte et laisse les autres, `uninstall` sans argument
+retire le fichier, comme il l'a toujours fait (c'est ce que disent les messages de suppression des
+paquets, inchangés).
+
+**À ne pas défaire :**
+
+1. **Le fichier porte sa propre liste** (`# principals: teacher student`), au lieu d'être
+   ré-analysé : il est à nous, il peut s'indexer lui-même. Un fichier écrit par la version
+   d'avant n'a pas ce marqueur → repli sur le **premier champ des lignes de règles**, et il gagne
+   le marqueur en étant régénéré (mesuré).
+2. **`install` régénère TOUS les comptes de l'union**, pas seulement le nouveau : c'est ce qui
+   remet à jour un fichier écrit quand `ip` était ailleurs. Corollaire, `check USER...` pose
+   désormais **deux** questions — le fichier grante-t-il chaque USER, *et* est-il exactement ce
+   qu'on écrirait pour les comptes qu'il nomme — sans quoi un fichier périmé passerait pour bon.
+3. **`uninstall` ne valide aucun compte**, à dessein : celui qu'on retire est justement celui qui
+   n'aurait jamais dû être là (`student42`), ou un compte depuis supprimé. C'est la porte de
+   sortie de l'état déjà installé sur les machines.
+4. **Un retrait qui ne retire rien ne réécrit pas le fichier** : le `mtime` d'un fichier de
+   `sudoers.d` qui bouge sans raison est une question qu'un administrateur ne devrait pas avoir à
+   se poser.
+5. **`getent passwd 1000` répond — par uid.** Accepter les chiffres aurait donc installé une règle
+   pour un compte inexistant, puisque sudoers lit `1000` comme un **nom** (l'uid s'écrit `#1000`).
+   Un principal purement numérique est refusé, en nommant la forme correcte.
+6. **`--only` reste nécessaire, pour une raison qui a changé de sens.** Le danger n'est plus « X
+   perd ses taps » (l'addition l'a supprimé) mais « Y **gagne** en silence le socle que personne
+   ne lui a accordé ». L'en-tête le dit désormais ainsi ; le chemin GUI est mesuré intact.
+
+Les trois blocs partagent la même forme (en-tête, marqueur, un groupe de règles par compte) et
+`write_block_file` — génération, `visudo -cf`, adoption — est désormais **partagé par install et
+uninstall**, qui tous deux réécrivent un fichier.
+
+### 3. Mesuré
+
+Banc manuel dans une `debian:12` en root (le sandbox de la machine de dev n'accorde pas
+`unshare -r`, et `install -o root` exige un vrai uid 0) :
+
+- **10 PASS / 0 FAIL** sur le scénario rapporté ; **discriminance mesurée** en rejouant le *même*
+  banc sur `HEAD` : **5 PASS / 5 FAIL**, dont les deux défauts ci-dessus.
+- Bloc (b) par le chemin GUI (`install --only --enable-natbridge`, deux comptes l'un après
+  l'autre) : 29 lignes chacun, `visudo: parsed OK` — l'échappement `\!` `\,` `\:` tient à deux
+  comptes — et **le bloc (a) n'est jamais créé**.
+- Bloc (c) à deux comptes : `parsed OK`. Fichier *legacy* sans marqueur : `teacher` retrouvé dans
+  les règles, conservé, marqueur acquis.
+- **Aucun `.ml` touché** : `check` n'a aucun appelant programmatique (la GUI sonde `sudo -n` à
+  l'exécution, `privileges.ml` passe `install --only --enable-*`), donc le changement de sémantique
+  de `check` n'a pas de rayon d'impact côté OCaml.
+
+### Reste
+
+Le second défaut rapporté par le même essai : **accorder à tous les humains sans connaître leurs
+logins**, ce qu'une vraie salle exige (l'administrateur ne prévoit pas les comptes des étudiants).
+Le porteur est posé — un fichier acceptant N principaux accepte `%groupe` comme un de plus — et le
+point dur est déjà écrit au § 3 de `docs/admin-taps-and-bridge.md` : la ligne
+`tuntap add … mode tap user <login>` lie le propriétaire du tap au nom, donc un principal-groupe
+impose `user *`, à moins d'une porte privilégiée minuscule (patron `marionnet-dnsmasq.sh`) qui
+forcerait le propriétaire depuis `$SUDO_UID`, **en root**.

@@ -1014,6 +1014,26 @@ Reprise : appliquer le skill `chantier-long`.
   la version est dans les **métadonnées** que lisent `Packages`/`repodata/` **et compilée dans
   le binaire** ; **republier ne casse rien**, `0~trunk+r941` < `1.0.368+r943` côté dpkg **et**
   côté rpm — le `~` avait été écrit pour ce jour-là.
+  **Ép. 35 : un fichier sudoers grante une salle, pas une personne.** Premier retour d'un
+  **usage réel** (release 1.0.369 posée par `.deb` dans une salle MarioNUM) : `install student`
+  **révoquait `teacher` sans un mot** — `install_block` régénérait le fichier pour le seul compte
+  reçu — et `install student42` accordait un **compte inexistant** (`visudo -cf` ne pouvait pas
+  le dire : nommer un compte à venir est légitime *pour sudo*). Même racine : le fichier était
+  écrit pour **un** principal. Désormais il en grante une **liste**, `install` est **ADDITIF** et
+  `uninstall USER...` est le **seul** retrait (sans USER : le fichier, comme avant). **À ne pas
+  défaire** : (1) le fichier porte sa propre liste (`# principals: …`), avec repli sur le premier
+  champ des règles pour un fichier d'avant ; (2) `install` régénère **tous** les comptes de
+  l'union — d'où un `check` qui pose **deux** questions (grante-t-il chaque USER *et* est-il à
+  jour pour ceux qu'il nomme) ; (3) `uninstall` ne valide **aucun** compte, à dessein — c'est la
+  porte de sortie pour un `student42` déjà installé ; (4) un retrait qui ne retire rien ne
+  réécrit pas le fichier ; (5) **`getent passwd 1000` répond, par uid**, alors que sudoers lit
+  `1000` comme un **nom** — un principal numérique est refusé en nommant `#1000` ; (6) `--only`
+  reste nécessaire, mais son danger a changé de sens (plus « X perd ses taps » : « Y **gagne** en
+  silence le socle »). Mesuré en `debian:12` root : **10/0** sur le scénario rapporté,
+  **discriminance 5/5** en rejouant le même banc sur le code d'avant, `visudo: parsed OK` sur les
+  blocs (b) et (c) à deux comptes, bloc (a) intact par le chemin GUI. **Reste** : accorder à tous
+  les humains sans connaître leurs logins (`%groupe` ⇒ `user *`, ou une porte privilégiée qui
+  force le propriétaire depuis `$SUDO_UID`).
 
 ## Où puiser
 

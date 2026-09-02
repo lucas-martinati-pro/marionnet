@@ -43,10 +43,14 @@
 # (a), the one without which Marionnet cannot start a single component.
 # (No dot in those file names: sudo silently ignores such files in sudoers.d.)
 # Separate files are only half of that guarantee: --only is the other half, since
-# without it a bare `install --enable-natbridge' also refreshes (a) -- for the
-# CALLING user.  Let the administrator grant (a) to X, then let Y activate the NAT
-# bridge from the GUI, and X silently loses its taps.  Hence: the GUI always says
-# --only, and block (a) then stays exactly as the administrator wrote it.
+# without it a bare `install --enable-natbridge' also touches (a) -- for the
+# CALLING user, who would then silently gain the socle nobody granted them.
+# Hence: the GUI always says --only, and block (a) stays exactly as the
+# administrator wrote it.
+#
+# Each of the three files grants a LIST of accounts, and `install' only ever adds
+# to it: see the `Principals' section.  A classroom has more than one human on it,
+# and until then `install student' quietly REVOKED `teacher'.
 #
 # For (b) and (c) the commands are NOT invented here: they are exactly what
 # `marionnet-natbridge.sh print-privileged-commands' and
@@ -100,11 +104,11 @@ TOOL=$(basename "$0")
 
 function usage {
  cat 1>&2 <<EOF
-Usage: $TOOL print     [BLOCKS] [USER]   # write the expected sudoers rules on stdout
-       $TOOL check     [BLOCKS] [USER]   # exit 0 iff every selected block is present and up to
-                                         #   date (root only: the files are 0440, as they must be)
-       $TOOL install   [BLOCKS] [USER]   # install (or refresh) them; needs root (re-execs with sudo)
-       $TOOL uninstall [BLOCKS]          # remove them; needs root (re-execs with sudo)
+Usage: $TOOL print     [BLOCKS] [USER...]  # write the expected sudoers rules on stdout
+       $TOOL check     [BLOCKS] [USER...]  # exit 0 iff every selected block grants every USER and
+                                           #   is up to date (root only: the files are 0440)
+       $TOOL install   [BLOCKS] [USER...]  # grant them; needs root (re-execs with sudo)
+       $TOOL uninstall [BLOCKS] [USER...]  # take the grant back; needs root (re-execs with sudo)
 
 BLOCKS selects what the command applies to. Block (a) -- the ghost taps -- is
 selected by default: it is the socle, and it is what a bare \`install' grants.
@@ -120,7 +124,14 @@ Only --only takes it out of the selection.
 
 \`uninstall' removes everything by default, and takes --disable-natbridge,
 --disable-lanbridge or --disable-bridges to remove those blocks only (block (a)
-is then left alone).
+is then left alone). Named USERs make it narrower still: only their rules are
+removed, and the file stays in place for the accounts it still grants.
+
+Several USERs may be named, and \`install' is ADDITIVE: the accounts a file
+already grants are kept (and their rules refreshed). Granting a second person
+therefore never takes the first one's grant away -- \`uninstall USER...' is the
+only way to do that. An account that does not exist is REFUSED: sudoers would
+happily name it, and grant it the day somebody creates it.
 
 USER defaults to \$SUDO_USER, or to the current user. Blocks (a) and (b) grant
 USER the iproute2 commands Marionnet needs on ${TAP_PREFIX}* and ${BRIDGE_PREFIX}* interfaces
@@ -157,22 +168,112 @@ function default_user {
  echo "${SUDO_USER:-$(id -un)}"
 }
 
+# --- Principals
+#
+# One of our files grants a LIST of accounts, not one. It used to grant exactly
+# one, and `install student' therefore REVOKED `teacher' without saying so -- the
+# very accident the header above describes for run-time elevations, left wide
+# open on the administrator's side, where a classroom needs it least. Hence:
+#
+#   * `install USER...' is ADDITIVE. The accounts already named in the file are
+#     kept, and their rules are regenerated along with the new ones (so a file
+#     written when `ip' sat elsewhere is brought up to date for everybody).
+#   * `uninstall USER...' is the way back, and it is the ONLY way to take a grant
+#     away: no invocation of `install' can ever narrow a file.
+#
+# The list is read back from a marker line rather than guessed from the rules:
+# the file is ours, so it may as well carry its own index.
+PRINCIPALS_MARK='# principals:'
+
+# file_principals FILE: the accounts FILE grants, in the order it names them, on
+# one line. Falls back to the first field of the rule lines, so that a file
+# written by a version of this script older than the marker is still understood
+# (and, being regenerated, gains the marker).
+function file_principals {
+ local f=$1 line
+ [[ -r $f ]] || return 0
+ line=$(sed -n "s/^${PRINCIPALS_MARK} *//p" "$f" | head -n 1)
+ if [[ -n $line ]]; then
+   echo "$line"
+ else
+   awk '$2 == "ALL=(root)" { if (!seen[$1]++) printf "%s ", $1 } END { print "" }' "$f"
+ fi
+}
+
+# member_of NEEDLE HAYSTACK...: `case' and not a loop, because a loop whose last
+# test fails returns non-zero, and this script runs under `set -e'.
+function member_of {
+ local needle=$1; shift
+ local x
+ for x in "$@"; do if [[ $x = "$needle" ]]; then return 0; fi; done
+ return 1
+}
+
+# union_principals FILE USER...: what FILE must grant after an `install'.
+function union_principals {
+ local f=$1; shift
+ local -a existing=() result=()
+ read -r -a existing <<<"$(file_principals "$f")"
+ local p
+ for p in "${existing[@]}" "$@"; do
+   if ! member_of "$p" "${result[@]}"; then result+=("$p"); fi
+ done
+ echo "${result[*]}"
+}
+
+# minus_principals FILE USER...: what FILE must grant after an `uninstall USER...'.
+# The accounts to drop are NOT checked for existence, on purpose: the one to
+# remove is quite likely the one that should never have been granted (a typo, a
+# `student42'), or an account since deleted.
+function minus_principals {
+ local f=$1; shift
+ local -a existing=() result=()
+ read -r -a existing <<<"$(file_principals "$f")"
+ local p
+ for p in "${existing[@]}"; do
+   if ! member_of "$p" "$@"; then result+=("$p"); fi
+ done
+ echo "${result[*]}"
+}
+
+# known_account_or_die USER...: sudoers is perfectly happy to name an account
+# that does not exist -- for sudo that is a legitimate case (the account may be
+# created later), so `visudo -cf' has nothing to say about `student42', and the
+# rule was installed. Here it is never legitimate: we grant a power to somebody,
+# and "somebody" must be a person. NSS is the authority, and it answers for
+# LDAP/SSSD accounts exactly as it does for local ones.
+function known_account_or_die {
+ local u rc=0
+ for u in "$@"; do
+   # `getent passwd 1000' answers -- by UID. But sudoers would read `1000' as a
+   # NAME, not as a uid (that is spelled `#1000'), so accepting the digits here
+   # would install a rule for an account that does not exist. Refuse, and say how.
+   if [[ $u =~ ^[0-9]+$ ]]; then
+     echo "$TOOL: '$u' is a number, and sudoers reads it as a user NAME. Give the login name (or write it '#$u' to mean the uid)." 1>&2
+     rc=2
+     continue
+   fi
+   if ! getent passwd -- "$u" >/dev/null 2>&1; then
+     echo "$TOOL: no such account: '$u'. Nothing installed." 1>&2
+     rc=2
+   fi
+ done
+ return $rc
+}
+
 # --- (a) The ghost taps -- chantier marionnet-daemon-elimination
 
-# content_taps USER: the exact content we install and expect in $SUDOERS_FILE_TAPS.
+# content_taps_rules USER: the rules granted to ONE account (see content_taps for
+# the file as a whole).
 # Wildcards are kept as tight as the commands allow: the address is literal, the
 # routed network is prefix-bound, and every device is ${TAP_PREFIX}*. Only
 # `link set' keeps a free trailing `*' (it must accept `up', and `promisc on' /
 # `master <bridge>' for the world_bridge). Marionnet never passes user input
 # here: tap names are generated and addresses are computed.
-function content_taps {
+function content_taps_rules {
  local u=$1 ip
  ip=$(ip_binary) || return 1
  cat <<EOF
-# Installed by $TOOL -- do not edit by hand, regenerate instead.
-# Lets $u create and destroy Marionnet's ghost taps (${TAP_PREFIX}*) with iproute2.
-# Replaces marionnet-daemon, the former permanent root service (chantier
-# marionnet-daemon-elimination). Remove with: $TOOL uninstall
 $u ALL=(root) NOPASSWD: $ip tuntap add dev ${TAP_PREFIX}* mode tap user $u
 $u ALL=(root) NOPASSWD: $ip tuntap del dev ${TAP_PREFIX}* mode tap
 $u ALL=(root) NOPASSWD: $ip addr add ${ETH42_HOST_ADDRESS}/32 dev ${TAP_PREFIX}*
@@ -184,7 +285,8 @@ EOF
 
 # --- (b) The private NAT bridge -- chantier modernisation-world-bridge
 
-# content_natbridge USER: what goes into $SUDOERS_FILE_NATBRIDGE. Scoped the same
+# content_natbridge_rules USER: the NAT bridge rules granted to ONE account (see
+# content_natbridge for the file as a whole). Scoped the same
 # way as (a): every device is ${BRIDGE_PREFIX}*, every address is forced to the
 # `.1/24' host side of a /24, and -- the tightest guard of the three -- every
 # iptables rule must carry OUR comment, `${TAG_PREFIX}:${BRIDGE_PREFIX}*'. Without that tag
@@ -221,7 +323,7 @@ function root_owned_all_the_way {
  return 0
 }
 
-function content_natbridge {
+function content_natbridge_rules {
  local u=$1 ip iptables iptables_save sysctl ip6tables ip6tables_save
  ip=$(ip_binary) || return 1
  iptables=$(iptables_binary) || return 1
@@ -273,10 +375,6 @@ function content_natbridge {
    echo "$TOOL: NOT granting the IPv6 gate: $IPV6_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
  fi
  cat <<EOF
-# Installed by $TOOL --enable-natbridge -- do not edit by hand, regenerate instead.
-# Lets $u build and destroy Marionnet's private NAT bridge (${BRIDGE_PREFIX}*), the one
-# marionnet-natbridge.sh creates for the "NAT bridge" component (chantier
-# modernisation-world-bridge). Remove with: $TOOL uninstall --disable-natbridge
 $u ALL=(root) NOPASSWD: $ip link add ${BRIDGE_PREFIX}* type bridge
 $u ALL=(root) NOPASSWD: $ip link del ${BRIDGE_PREFIX}*
 $u ALL=(root) NOPASSWD: $ip link set ${BRIDGE_PREFIX}* up
@@ -314,7 +412,8 @@ EOF
 
 # --- (c) The LAN bridge -- chantier modernisation-world-bridge, episode 8
 
-# content_lanbridge USER: what goes into $SUDOERS_FILE_LANBRIDGE. Derived, command
+# content_lanbridge_rules USER: the LAN bridge rules granted to ONE account (see
+# content_lanbridge for the file as a whole). Derived, command
 # by command, from `marionnet-lanbridge.sh print-privileged-commands' -- that
 # script is the one that runs them, and the single source of the list.
 #
@@ -333,7 +432,7 @@ EOF
 # This is precisely why (c) is a block of its own, off by default, asked for from
 # the GUI at the moment a LAN bridge component is started, and never granted at
 # install time by an administrator who is not the user.
-function content_lanbridge {
+function content_lanbridge_rules {
  local u=$1 ip
  ip=$(ip_binary) || return 1
  # `:' separates host specs in sudoers and must be escaped inside a command
@@ -342,17 +441,6 @@ function content_lanbridge {
  # form still matches the alias the script really sets.
  local colon='\:'
  cat <<EOF
-# Installed by $TOOL --enable-lanbridge -- do not edit by hand, regenerate instead.
-# Lets $u build and destroy Marionnet's LAN bridge (${LAN_BRIDGE_PREFIX}*), the one
-# marionnet-lanbridge.sh puts the host's own network card into, so that virtual
-# machines sit on the REAL local network (chantier modernisation-world-bridge).
-# Remove with: $TOOL uninstall --disable-lanbridge
-#
-# The last three lines below are NOT restricted to a device: the host's card has
-# no fixed name. Granting them means granting the right to reconfigure the IPv4
-# addressing of this machine. That is what a LAN bridge does; it is why this
-# block is separate, and why it is the end user -- not the installer -- who asks
-# for it.
 $u ALL=(root) NOPASSWD: $ip link add ${LAN_BRIDGE_PREFIX}* type bridge
 $u ALL=(root) NOPASSWD: $ip link del ${LAN_BRIDGE_PREFIX}*
 $u ALL=(root) NOPASSWD: $ip link set ${LAN_BRIDGE_PREFIX}* address *
@@ -371,9 +459,65 @@ $u ALL=(root) NOPASSWD: $ip route add default via * dev *
 EOF
 }
 
+# --- Whole files: a header, the marker line, then one group of rules per account
+
+# content_taps USER...: the exact content we install and expect in
+# $SUDOERS_FILE_TAPS. The three functions below share one shape, and the loop is
+# written out three times rather than factored: each block has its own header,
+# and a header is the only place where what is granted is said in words.
+function content_taps {
+ local u
+ cat <<EOF
+# Installed by $TOOL -- do not edit by hand, regenerate instead.
+# Lets the accounts listed below create and destroy Marionnet's ghost taps
+# (${TAP_PREFIX}*) with iproute2. Replaces marionnet-daemon, the former permanent
+# root service (chantier marionnet-daemon-elimination).
+# Grant one more with: $TOOL install <user>     (the others are kept)
+# Take one back with:  $TOOL uninstall <user>
+# Take them all back:  $TOOL uninstall
+$PRINCIPALS_MARK $*
+EOF
+ for u in "$@"; do echo; content_taps_rules "$u" || return 1; done
+}
+
+function content_natbridge {
+ local u
+ cat <<EOF
+# Installed by $TOOL --enable-natbridge -- do not edit by hand, regenerate instead.
+# Lets the accounts listed below build and destroy Marionnet's private NAT bridge
+# (${BRIDGE_PREFIX}*), the one marionnet-natbridge.sh creates for the "NAT bridge"
+# component (chantier modernisation-world-bridge).
+# Take one back with: $TOOL uninstall --disable-natbridge <user>
+# Take them all back: $TOOL uninstall --disable-natbridge
+$PRINCIPALS_MARK $*
+EOF
+ for u in "$@"; do echo; content_natbridge_rules "$u" || return 1; done
+}
+
+function content_lanbridge {
+ local u
+ cat <<EOF
+# Installed by $TOOL --enable-lanbridge -- do not edit by hand, regenerate instead.
+# Lets the accounts listed below build and destroy Marionnet's LAN bridge
+# (${LAN_BRIDGE_PREFIX}*), the one marionnet-lanbridge.sh puts the host's own network
+# card into, so that virtual machines sit on the REAL local network (chantier
+# modernisation-world-bridge).
+# Take one back with: $TOOL uninstall --disable-lanbridge <user>
+# Take them all back: $TOOL uninstall --disable-lanbridge
+#
+# The last three lines of each group below are NOT restricted to a device: the
+# host's card has no fixed name. Granting them means granting the right to
+# reconfigure the IPv4 addressing of this machine. That is what a LAN bridge
+# does; it is why this block is separate, and why it is the end user -- not the
+# installer -- who asks for it.
+$PRINCIPALS_MARK $*
+EOF
+ for u in "$@"; do echo; content_lanbridge_rules "$u" || return 1; done
+}
+
 # --- Blocks as a whole
 
-# block_file BLOCK / block_content BLOCK USER: the two per-block dispatchers.
+# block_file BLOCK / block_content BLOCK USER...: the two per-block dispatchers.
 # Everything below is written once and applied to whichever blocks were selected.
 function block_file {
  case $1 in
@@ -384,59 +528,112 @@ function block_file {
 }
 
 function block_content {
- case $1 in
-   taps)      content_taps      "$2" ;;
-   natbridge) content_natbridge "$2" ;;
-   lanbridge) content_lanbridge "$2" ;;
+ local b=$1; shift
+ case $b in
+   taps)      content_taps      "$@" ;;
+   natbridge) content_natbridge "$@" ;;
+   lanbridge) content_lanbridge "$@" ;;
  esac
 }
 
-# check_block BLOCK USER: is the installed file exactly what we would install now?
+# check_block BLOCK USER...: does the installed file grant every USER, and is it
+# exactly what we would write now for the accounts IT names? Two questions, and
+# both matter: the first is the one that was asked for, the second is what keeps
+# a file written when `ip' sat elsewhere from passing as up to date.
 # Needs to READ the file, which is 0440 root:root as sudoers files must be: this
 # is an admin check, meaningful for root only. What the runtime asks instead is
 # "can I run the commands without a password", which Tap_provider.is_usable
 # probes with a harmless `sudo -n ip tuntap del' of a tap that does not exist.
 function check_block {
- local b=$1 u=$2 f
+ local b=$1; shift
+ local f u
  f=$(block_file "$b")
  if [[ ! -r $f ]]; then
    [[ $EUID -eq 0 || ! -e $f ]] || \
      echo "$TOOL: $f exists but is not readable by $(id -un); re-run as root to check it." 1>&2
    return 1
  fi
- diff -q <(block_content "$b" "$u") "$f" >/dev/null
+ local -a granted=()
+ read -r -a granted <<<"$(file_principals "$f")"
+ for u in "$@"; do
+   if ! member_of "$u" "${granted[@]}"; then return 1; fi
+ done
+ diff -q <(block_content "$b" "${granted[@]}") "$f" >/dev/null
 }
 
-# install_block BLOCK USER: idempotent -- an up-to-date file is not rewritten at
-# all. Validated by visudo BEFORE being adopted, so a botched generation can
-# never lock the user out of sudo.
-function install_block {
- local b=$1 u=$2 f tmp
- f=$(block_file "$b")
- if check_block "$b" "$u" 2>/dev/null; then
-   echo "$TOOL: $f is already up to date for user $u." 1>&2
-   return 0
- fi
+# write_block_file BLOCK FILE USER...: generate, validate, adopt. Validated by
+# visudo BEFORE being adopted, so a botched generation can never lock the user
+# out of sudo. Shared by install and uninstall, which now BOTH rewrite a file.
+function write_block_file {
+ local b=$1 f=$2; shift 2
+ local tmp
  tmp=$(mktemp /tmp/marionnet-sudoers.XXXXXX)
  # Global on purpose: the EXIT trap runs after this function has returned, when a
  # `local' would be long gone (and would abort the script under `set -u'):
  TMPFILE=$tmp
  trap 'rm -f "${TMPFILE:-}"' EXIT
- block_content "$b" "$u" > "$tmp"
+ block_content "$b" "$@" > "$tmp"
  chmod 0440 "$tmp"
  if ! visudo -cf "$tmp" >/dev/null; then
    echo "$TOOL: generated rule for block '$b' REJECTED by visudo; nothing installed." 1>&2
    return 1
  fi
  install -m 0440 -o root -g root "$tmp" "$f"
- echo "$TOOL: installed $f for user $u." 1>&2
 }
 
-function uninstall_block {
+# install_block BLOCK USER...: idempotent -- an up-to-date file is not rewritten
+# at all -- and ADDITIVE: the accounts already granted are kept. An `install'
+# never narrows a file; `uninstall USER...' is the only way to take a grant back.
+function install_block {
+ local b=$1; shift
  local f
- f=$(block_file "$1")
- rm -f "$f"
- echo "$TOOL: removed $f." 1>&2
+ f=$(block_file "$b")
+ if check_block "$b" "$@" 2>/dev/null; then
+   echo "$TOOL: $f is already up to date for: $*." 1>&2
+   return 0
+ fi
+ local -a users=()
+ read -r -a users <<<"$(union_principals "$f" "$@")"
+ write_block_file "$b" "$f" "${users[@]}" || return 1
+ echo "$TOOL: installed $f for: ${users[*]}." 1>&2
+}
+
+# uninstall_block BLOCK [USER...]: with no USER the file goes (that is what
+# `uninstall' has always meant, and what the packages' removal messages say).
+# With USERs, only their rules go, and the file survives for the others -- the
+# symmetry install needed: a classroom grants and revokes one student at a time.
+function uninstall_block {
+ local b=$1; shift
+ local f u
+ f=$(block_file "$b")
+ if (($# == 0)); then
+   rm -f "$f"
+   echo "$TOOL: removed $f." 1>&2
+   return 0
+ fi
+ # Silently, and on purpose: taking an account back is asked for the three blocks
+ # at once (that is what `uninstall USER' means), and two of the three files are
+ # normally absent. Saying so three times would bury the one line that matters.
+ if [[ ! -e $f ]]; then return 0; fi
+ local -a granted=() users=()
+ read -r -a granted <<<"$(file_principals "$f")"
+ for u in "$@"; do
+   if ! member_of "$u" "${granted[@]}"; then
+     echo "$TOOL: $f does not grant '$u'; nothing to take back for that account." 1>&2
+   fi
+ done
+ read -r -a users <<<"$(minus_principals "$f" "$@")"
+ # Nothing to drop: leave the file alone rather than rewrite it identically. A
+ # sudoers file whose mtime moves for no reason is a question an administrator
+ # should never have to ask.
+ if [[ "${users[*]}" = "${granted[*]}" ]]; then return 0; fi
+ if ((${#users[@]} == 0)); then
+   rm -f "$f"
+   echo "$TOOL: removed $f (no account left in it)." 1>&2
+   return 0
+ fi
+ write_block_file "$b" "$f" "${users[@]}" || return 1
+ echo "$TOOL: rewrote $f for: ${users[*]}." 1>&2
 }
 
 # --- Command line
@@ -448,7 +645,7 @@ function uninstall_block {
 
 BLOCKS=()
 COMMAND=""
-USER_ARG=""
+PRINCIPALS=()
 WANT_NAT=false
 WANT_LAN=false
 EXPLICIT_SELECTION=false
@@ -464,13 +661,7 @@ function parse_command_line {
      --enable-bridges|--disable-bridges)       WANT_NAT=true; WANT_LAN=true; EXPLICIT_SELECTION=true ;;
      --only)                                   ONLY=true ;;
      -*) echo "$TOOL: unknown option '$a'" 1>&2; return 2 ;;
-     *)
-       if [[ -n $USER_ARG ]]; then
-         echo "$TOOL: unexpected argument '$a' (USER is already '$USER_ARG')" 1>&2
-         return 2
-       fi
-       USER_ARG=$a
-       ;;
+     *) PRINCIPALS+=("$a") ;;
    esac
  done
  # --only is a modifier of the selection, not a selection: on its own it would
@@ -522,7 +713,7 @@ function available_blocks_or_die {
  local b rc=0
  if [[ $1 = uninstall ]]; then return 0; fi
  for b in "${BLOCKS[@]}"; do
-   block_content "$b" "$USER_ARG" >/dev/null || rc=$?
+   block_content "$b" "${PRINCIPALS[@]}" >/dev/null || rc=$?
    if [[ $rc -ne 0 ]]; then
      echo "$TOOL: block '$b' cannot be generated on this machine; nothing installed." 1>&2
      exit $rc
@@ -531,34 +722,57 @@ function available_blocks_or_die {
  return 0
 }
 
+# principals_for_install BLOCK: what `install' would put in that block's file --
+# the accounts it already grants, plus the ones just named. Used by `print' too,
+# so that what is shown is what would be written. Non-root cannot read the file
+# (0440), and then this is just the accounts named on the command line: `print'
+# stays useful without privilege, and says less rather than something false.
+function principals_for_install {
+ union_principals "$(block_file "$1")" "${PRINCIPALS[@]}"
+}
+
 parse_command_line "$@" || { usage; exit 2; }
-USER_ARG=${USER_ARG:-$(default_user)}
+# `uninstall' with no account means the whole file, as it always has; every other
+# command needs somebody, and that somebody defaults to the caller.
+if ((${#PRINCIPALS[@]} == 0)) && [[ $COMMAND != uninstall ]]; then
+  PRINCIPALS=("$(default_user)")
+fi
+# Never for `uninstall': the account to drop may be exactly the one that should
+# never have existed here.
+case "$COMMAND" in
+  print|check|install) known_account_or_die "${PRINCIPALS[@]}" || exit 2 ;;
+esac
 case "$COMMAND" in print|check|install|uninstall) available_blocks_or_die "$COMMAND" ;; esac
 
 case "$COMMAND" in
   print)
      for b in "${BLOCKS[@]}"; do
        echo "# >>> $(block_file "$b")"
-       block_content "$b" "$USER_ARG"
+       # shellcheck disable=SC2046 -- word splitting is what turns the list into arguments
+       block_content "$b" $(principals_for_install "$b")
      done
      ;;
   check)
      rc=0
-     for b in "${BLOCKS[@]}"; do check_block "$b" "$USER_ARG" || rc=1; done
+     for b in "${BLOCKS[@]}"; do check_block "$b" "${PRINCIPALS[@]}" || rc=1; done
      exit $rc
      ;;
   install|uninstall)
      if [[ $EUID -ne 0 ]]; then
        echo "$TOOL: this requires root; re-executing with sudo." 1>&2
        if [[ $COMMAND = install ]]; then
-         for b in "${BLOCKS[@]}"; do block_content "$b" "$USER_ARG" | sed 's/^/    /' 1>&2; done
+         # shellcheck disable=SC2046 -- see principals_for_install
+         for b in "${BLOCKS[@]}"; do block_content "$b" $(principals_for_install "$b") | sed 's/^/    /' 1>&2; done
        fi
        # "$@" and not a rebuilt command line: the user's own words go through,
        # so a re-exec can never grant a block the caller did not ask for.
        exec sudo -- "$0" "$@"
      fi
      for b in "${BLOCKS[@]}"; do
-       if [[ $COMMAND = install ]]; then install_block "$b" "$USER_ARG"; else uninstall_block "$b"; fi
+       if [[ $COMMAND = install ]]
+         then install_block   "$b" "${PRINCIPALS[@]}"
+         else uninstall_block "$b" "${PRINCIPALS[@]}"
+       fi
      done
      ;;
   -h|--help) usage ;;

@@ -19,11 +19,17 @@ Source unique : le script `marionnet-sudoers.sh` (installé dans `$PREFIX/bin/`,
 dans les sources sous `bin/scripts/`).
 
 ```
-marionnet-sudoers.sh print      # affiche la règle attendue (sans rien installer)
-marionnet-sudoers.sh install    # installe /etc/sudoers.d/marionnet (se ré-exécute via sudo)
-marionnet-sudoers.sh check      # (root) le fichier installé est-il à jour ?
-marionnet-sudoers.sh uninstall  # retire la règle
+marionnet-sudoers.sh print               # affiche la règle attendue (sans rien installer)
+marionnet-sudoers.sh install [USER...]   # installe /etc/sudoers.d/marionnet (se ré-exécute via sudo)
+marionnet-sudoers.sh check   [USER...]   # (root) le fichier installé est-il à jour ?
+marionnet-sudoers.sh uninstall [USER...] # retire l'autorisation (le fichier entier si aucun USER)
 ```
+
+Un fichier autorise une **liste** de comptes, et `install` est **additif** : les comptes déjà
+présents sont conservés (et leurs règles régénérées). Accorder le droit à un deuxième utilisateur
+ne retire donc jamais celui du premier — `uninstall <login>` est le seul geste qui retire. Un
+compte inexistant est **refusé** : `visudo` accepterait volontiers `student42`, et le droit
+tomberait dans les mains du premier venu à qui l'on créerait ce login.
 
 `make install-final-as-root` installe la règle dans le même geste. Sans elle, Marionnet
 fonctionne en **mode dégradé** (pas de X11 dans les invités, pas de world_bridge) et
