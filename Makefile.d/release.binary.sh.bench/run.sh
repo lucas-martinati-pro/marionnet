@@ -375,15 +375,21 @@ else
   fail "the nominal install failed: [$out]"
 fi
 
+# The expected count is READ FROM THE TARBALL, never written here: episode 31 was
+# a red case latent for two episodes because a number carved into this bench had
+# gone stale. What the case really asserts is that install.sh lays down in
+# /usr/local/bin everything the artefact carries in its own bin/ -- and that it
+# drops nothing on the way.
 names=$(in_box "ls /usr/local/bin | wc -l")
-if [[ $names -eq 26 ]]; then
-  pass "26 names in /usr/local/bin (the binary and the 25 companions of bin/scripts/)"
+expected=$(in_box "ls $UNPACKED/bin | wc -l")
+if [[ $names -eq $expected ]]; then
+  pass "$names names in /usr/local/bin -- exactly what the artefact carries in its bin/"
 else
-  fail "$names names in /usr/local/bin, expected 26"
+  fail "$names names in /usr/local/bin, but the artefact carries $expected"
 fi
 
 missing=""
-for n in marionnet.native marionnet-sudoers.sh marionnet-cleanup marionnet-natbridge.sh \
+for n in marionnet marionnet.native marionnet-sudoers.sh marionnet-cleanup marionnet-natbridge.sh \
          marionnet-lanbridge.sh marionnet-dnsmasq.sh marionnet-ipv6.sh mrnctl mrn-verify; do
   in_box "test -x /usr/local/bin/$n" || missing="$missing $n"
 done
@@ -559,6 +565,17 @@ if [[ $RUNNABLE = yes ]]; then
   else
     fail "the binary does not start with the published dependency list: [$out]"
     echo "     (this is a hole in REQUIRED_PACKAGES_RUNTIME, not a defect of the bench)"
+  fi
+
+  # The name the delivered documentation actually types (`marionnet --exam',
+  # `marionnet -r lab.mar', `marionnet --control-socket ...'). It is a symlink to
+  # marionnet.native, so this case measures that install.sh KEPT it a symlink --
+  # `cp' without -a would have dereferenced it into a second 27 MiB copy, which
+  # would still pass a naive `--help' test but not `test -L' above.
+  if out=$(in_box "marionnet --help 2>&1"); then
+    pass "the bare name 'marionnet' runs the same program"
+  else
+    fail "the bare name 'marionnet' does not run: [$out]"
   fi
 
   if out=$(in_box "marionnet.native --paths 2>&1"); then

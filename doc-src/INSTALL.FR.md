@@ -488,6 +488,17 @@ peut faire du sudo, des étudiants qui ne peuvent pas — et c'est exactement l�
 construit par accident.
 
 
+### 7.5 Le lancer
+
+```bash
+marionnet                    # ou : marionnet -r lab.mar, marionnet --exam, marionnet --help
+```
+
+`marionnet` est le nom que tape chaque page de cette documentation — le guide de l'enseignant, le
+mode examen, les exemples du canal de contrôle, les scripts de TP. C'est un lien symbolique vers
+`marionnet.native`, le nom que `dune install` donne à l'exécutable : le même programme, sous le
+nom qu'emploie un humain.
+
 ## 8. Désinstaller Marionnet
 
 * **apt** : `sudo apt purge marionnet marionnet-kernels marionnet-kernels-i386 marionnet-fs-guignol`

@@ -5133,3 +5133,78 @@ d'un composant *bridge* dans une vraie session, et le verdict s'affiche par un
 s'arrêterait dessus. Ce qui est mesuré de bout en bout est tout le reste : le contrat de `policy`
 (rc, stdout, absence de privilège), le fait qu'un script d'avant réponde 2, la compilation de tous
 les modules, et les 12 catalogues. Le chaînon non joué est **un `if`** entre les deux.
+
+## Épisode 38 (2026-09-02) — le nom que la documentation tape n'existait pas
+
+Constat de terrain, en une ligne :
+
+```
+[0 teacher@ws0 ~]$ type marionnet
+bash: type: marionnet : non trouvé
+```
+
+**Ce n'est pas une régression, c'est un manque d'origine** : `EXECUTABLES = marionnet.native` est
+là depuis l'ère ocamlbuild, aucun canal n'a jamais posé d'autre nom, et personne ne l'avait vu
+parce que le développeur lance son binaire par un chemin.
+
+### 1. L'ampleur : la documentation livrée tape `marionnet`, et rien d'autre
+
+`doc-src/` — c'est-à-dire ce que les trois canaux **installent** — contient **plus de vingt lignes
+de commande** qui commencent par `marionnet` : le guide de l'enseignant (EN et FR),
+`exam-mode.md` (`marionnet --exam`), `project-format-v3.md`, `lab-design-skill.md` (la page qu'un
+agent est censé suivre), `scripting/examples/README.md`, `labs/session-7/README.md`, et **5
+scripts d'exemple installés exécutables** qui la nomment. Sur une machine installée, **aucune** de
+ces lignes ne marchait. Symétriquement, la page INSTALL — qui, elle, avait été jouée (ép. 29) — ne
+disait nulle part **comment lancer l'application**.
+
+**Leçon durable** : la règle de l'ép. 29 (*écrire une commande, c'est affirmer qu'elle marche, donc
+la jouer*) avait été appliquée à **une** page. Les documents qui voyagent avec le produit n'ont
+jamais été joués **depuis une machine installée** — et c'est là que le nom manque.
+
+### 2. Le correctif : un lien, posé une fois pour les trois canaux
+
+`ln -sfT marionnet.native "$PREFIX_DIR/bin/marionnet"` dans le **staging** de
+`release.binary.sh` : le tarball prend ce staging, le `.deb` en est assemblé (ép. 15a) et le
+`.rpm` déplie le tarball publié (ép. 20c). Vérifié dans les trois chaînes de copie : `cp -a`
+(install.sh, `release.deb.sh`) et `tar` gardent un lien **symbolique** (mesuré : membre tar de
+**0 octet**, `lrwxrwxrwx`), et le glob `%{_bindir}/*` du spec le prend. Plus les deux cibles
+d'installation depuis les sources (`install-final-as-root`, `install-for-testing`), et le retrait
+dans `uninstall-for-testing` — `dune uninstall` ne connaît pas ce lien et le laisserait pendant.
+
+**À ne pas défaire** : (1) un **lien**, pas une seconde copie — le binaire pèse **27 Mio**
+(mesuré), et l'ép. 15a avait déjà refusé de dépenser des octets sur ce fichier en gardant les deux
+canaux sur **le même** binaire ; (2) le lien est **relatif**, donc il survit au déplacement du
+préfixe — ce que `install.sh` fait par construction ; (3) `marionnet.native` **reste le vrai
+nom**, celui que `dune install` pose et que nomment `marionnet-install.sh`
+(`command -v marionnet.native`), `release.binary.sh`, les bancs et la doc des chemins : renommer
+l'exécutable aurait été un autre épisode, avec un rayon d'impact sans rapport avec le défaut
+constaté ; (4) `Sys.executable_name` a été **vérifié** avant : `bin/development_tree.ml` ne
+regarde que les **noms de répertoires** (`_build/default/bin`), jamais le nom du fichier — un
+binaire invoqué sous le nom nu se reconnaît donc comme installé exactement pareil.
+
+### 3. Bancs : un compte qui ne pouvait que vieillir
+
+Le banc du tarball vérifiait `26 names in /usr/local/bin` — **un nombre écrit dans le banc**,
+c'est-à-dire la faute exacte de l'ép. 31. Il est désormais **lu dans l'artefact** :
+`ls $UNPACKED/bin | wc -l`, ce qui transforme le cas en la propriété qu'on voulait vraiment —
+*`install.sh` pose dans `bin/` tout ce que l'artefact porte, et n'en perd rien* — et le rend
+insensible à tout nom ajouté plus tard. Deux cas neufs : le nom nu **est là** (dans la liste des
+noms exigés) et **tourne** (`marionnet --help`), ce second cas mesurant aussi que `install.sh` l'a
+gardé **lien** (un `cp` sans `-a` en aurait fait une copie de 27 Mio qui passerait un test naïf).
+
+Les bancs `.deb` et `.rpm` passent leur compte à **27**, écrit et non dérivé : contrairement au
+banc du tarball, ce qu'ils mesurent **est** la liste de fichiers du paquet, donc la dériver du
+paquet serait une tautologie.
+
+### 4. Mesuré, et ce qui est différé
+
+Mesuré ici : staging réel produit par `release.binary.sh --staging-dir … --no-tarball` →
+`bin/marionnet` est un **lien** vers `marionnet.native`, `--help` répond sous le nom nu, `bin/`
+pèse toujours **28 Mio** (le lien ne double rien), et `tar` le conserve. Les deux cibles du
+`Makefile` vérifiées par `make -n` (la commande est bien produite, au bon endroit).
+
+**Différé, à la demande de l'utilisateur** (« pas de nouvelle release avant que tous les bugs
+soient corrigés ») : les **3 bancs** ne verront le nom nu qu'à la prochaine release, la release en
+ligne étant `r943`. Deux cas du banc du tarball et un cas de chacun des deux autres sont donc
+**rouges par construction** jusque-là — le motif habituel (ép. 20c → 22, 28 → 30b quater,
+31 → 32) : *une preuve qui dépend de ce que la boîte contient se prend après la release.*

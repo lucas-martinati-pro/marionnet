@@ -356,6 +356,12 @@ install-final-as-root:
 	echo $$(opam env) >> $(TMPSCRIPT)
 	echo "dune install --prefix $(PREFIX_INSTALL)" >> $(TMPSCRIPT)
 	echo "for i in $(SHARE_DIR)/scripts/*; do chmod +x \$$i && cp -lf \$$i $(PREFIX_INSTALL)/bin/; done" >> $(TMPSCRIPT)
+	# The bare name: `marionnet.native' is what dune installs, `marionnet' is what
+	# the delivered documentation tells the reader to type (teacher-guide, exam-mode,
+	# scripting examples, lab scripts -- twenty-odd command lines). A relative symlink,
+	# not a copy: the binary is 27 MiB, and it is the same one. Same gesture in
+	# Makefile.d/release.binary.sh, for the three published channels.
+	echo "ln -sfT marionnet.native $(PREFIX_INSTALL)/bin/marionnet" >> $(TMPSCRIPT)
 	echo "chmod +x $(DOC_DIR)/labs/session-7/*.sh $(DOC_DIR)/scripting/examples/*.sh" >> $(TMPSCRIPT)
 	# The scoped sudoers rule letting Tap_provider build the ghost taps with
 	# iproute2 (chantier marionnet-daemon-elimination). The script is the single
@@ -402,9 +408,11 @@ install-for-testing:
 	@# Shell glob, NOT $(wildcard): make expands wildcard when parsing the recipe,
 	@# i.e. BEFORE `dune install' above has populated share/marionnet/scripts/.
 	@for i in $(SHARE_DIR_FOR_TESTING)/scripts/*; do test -e $$i || continue; chmod +x $$i && ln -sf $$i $$OPAM_SWITCH_PREFIX/bin/; done
+	@# The bare name, as in install-final-as-root (see the comment there).
+	ln -sfT marionnet.native $$OPAM_SWITCH_PREFIX/bin/marionnet
 	@chmod +x $(DOC_DIR_FOR_TESTING)/labs/session-7/*.sh $(DOC_DIR_FOR_TESTING)/scripting/examples/*.sh
 	@echo "---"
-	which $(EXECUTABLES)
+	which $(EXECUTABLES) marionnet
 	@echo "Success."
 
 # ---
@@ -425,6 +433,8 @@ configure: configure-for-final
 # ---
 uninstall-for-testing:
 	dune uninstall
+	@# The bare name is ours, not dune's: dune uninstall would leave it dangling.
+	rm -f $$OPAM_SWITCH_PREFIX/bin/marionnet
 	@echo "Success."
 
 

@@ -456,6 +456,16 @@ classroom setup — a teacher who may sudo, students who may not — and it is e
 LAN bridge is built by accident.
 
 
+### 7.5 Launching it
+
+```bash
+marionnet                    # or: marionnet -r lab.mar, marionnet --exam, marionnet --help
+```
+
+`marionnet` is the name every page of this documentation types — the teacher's guide, the exam
+mode, the control-channel examples, the lab scripts. It is a symlink to `marionnet.native`, the
+name `dune install` gives the executable: the same program, under the name a human uses.
+
 ## 8. Removing Marionnet
 
 * **apt**: `sudo apt purge marionnet marionnet-kernels marionnet-kernels-i386 marionnet-fs-guignol`

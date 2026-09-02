@@ -311,6 +311,23 @@ dune install --prefix "$PREFIX_DIR" 2>&1 | sed -e 's/^/    /' || die "dune insta
 
 test -x "$PREFIX_DIR/bin/marionnet.native" || die "no marionnet.native in the staging: $PREFIX_DIR/bin"
 
+# The bare name. `marionnet.native' is an ocamlbuild-era spelling that no reader of
+# the delivered documentation ever types: the teacher's guide, the exam-mode page,
+# the scripting examples and the lab scripts all say `marionnet --exam',
+# `marionnet -r lab.mar', `marionnet --control-socket ...' -- more than twenty
+# command lines that, until now, did not exist on an installed machine.
+# A SYMLINK and not a second copy: the binary is 27 MiB (measured), which no
+# channel should carry twice -- episode 15a already kept the two channels on the
+# SAME binary rather than spend bytes on it. The link is relative,
+# so it survives the prefix being moved -- which install.sh does, by construction.
+# One place for the three channels: the tarball takes this staging, the .deb is
+# assembled from it (episode 15a) and the .rpm unpacks the published tarball
+# (episode 20c); `cp -a' and `tar' keep a symlink a symlink, and the spec's
+# %{_bindir}/* glob takes it in.
+ln -sfT marionnet.native "$PREFIX_DIR/bin/marionnet"
+test -L "$PREFIX_DIR/bin/marionnet" && test -x "$PREFIX_DIR/bin/marionnet" \
+  || die "the bare name was not staged as a working symlink: $PREFIX_DIR/bin/marionnet"
+
 SCRIPTS_DIR="$PREFIX_DIR/share/marionnet/scripts"
 test -d "$SCRIPTS_DIR" || die "no scripts directory in the staging: $SCRIPTS_DIR"
 shopt -s nullglob
@@ -524,7 +541,7 @@ case ":$PATH:" in
      warn "Add it to the PATH, or install under a prefix which is already in it." ;;
 esac
 
-info "done. Try: $PREFIX/bin/marionnet.native --help"
+info "done. Try: $PREFIX/bin/marionnet --help"
 if ((${#MISSING[@]})); then
   warn "...but not before those ${#MISSING[@]} package(s) are installed: the binary is linked"
   warn "against libraries they bring (libgtksourceview-3.0-1 among them) and will not start."
@@ -568,6 +585,12 @@ INSTALL
   (mrnctl, mrn-check, mrn2sh, mrn-verify...) complete their verbs and the names of the
   running components, in a new shell, provided the prefix is one bash-completion looks in
   (/usr, /usr/local) and jq is there.
+
+RUN
+  marionnet                    the bare name, and the one every page of the delivered
+                               documentation types (marionnet --exam, marionnet -r lab.mar,
+                               marionnet --control-socket ...). It is a symlink to
+                               marionnet.native, the name dune installs: same program.
 
 WHAT THE MACHINE MUST HAVE (Debian/Ubuntu package names)
   $RUNTIME_PACKAGES

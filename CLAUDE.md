@@ -1081,6 +1081,28 @@ Reprise : appliquer le skill `chantier-long`.
   **Mesuré** : veto **19/0**, commandes du § 7.4 jouées **13/0** (discriminance **3/13** sur le
   code d'avant), `make check` rc 0. **Non joué** : la branche GUI (dialogue **modal**, un banc
   `driven-sessions` s'arrêterait dessus) — le chaînon non mesuré est **un `if`**.
+  **Ép. 38 : le nom que la documentation tape n'existait pas.** `type marionnet` → *non trouvé*
+  sur une machine installée : **manque d'origine** (`EXECUTABLES = marionnet.native` depuis
+  l'ère ocamlbuild), invisible parce qu'un développeur lance son binaire par un chemin. Or
+  `doc-src/` — ce que les 3 canaux **installent** — contient **plus de 20 lignes de commande**
+  en `marionnet …` (guide de l'enseignant ×2, `exam-mode`, `lab-design-skill`, exemples du
+  canal, TP session-7) et **5 scripts d'exemple** qui le nomment ; et la page INSTALL ne disait
+  **pas comment lancer**. **Leçon** : la règle de l'ép. 29 (*jouer les commandes qu'on écrit*)
+  n'avait été appliquée qu'à **une** page — jamais aux documents qui voyagent avec le produit.
+  **Correctif** : `ln -sfT marionnet.native` dans le **staging** de `release.binary.sh` (donc
+  tarball + `.deb` assemblé du staging + `.rpm` déplié du tarball ; `cp -a` et `tar` gardent le
+  lien — mesuré, membre tar de **0 octet** — et `%{_bindir}/*` le prend), plus
+  `install-final-as-root`, `install-for-testing` et son `uninstall` (dune ne connaît pas ce
+  lien). **À ne pas défaire** : (1) un **lien**, pas une copie (binaire = **27 Mio**) ; (2)
+  **relatif**, donc il survit au déplacement du préfixe ; (3) `marionnet.native` **reste le vrai
+  nom** (le renommer aurait un rayon d'impact sans rapport : `marionnet-install.sh`,
+  `release.binary.sh`, les 3 bancs) ; (4) `bin/development_tree.ml` ne lit que des **noms de
+  répertoires**, jamais le nom du binaire — vérifié avant. **Banc** : le `26 names` écrit en dur
+  (faute de l'ép. 31) est **lu dans l'artefact** (`ls $UNPACKED/bin`), ce qui dit enfin la vraie
+  propriété — *install.sh ne perd rien de ce que l'artefact porte* ; les bancs `.deb`/`.rpm`
+  passent à 27, **écrit** car dériver du paquet qu'ils mesurent serait une tautologie.
+  **Différé** (pas de release avant la fin de la campagne de bugs) : 4 cas rouges par
+  construction jusqu'à la prochaine release, motif habituel.
 
 ## Où puiser
 

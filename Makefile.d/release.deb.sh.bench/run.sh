@@ -575,10 +575,14 @@ else
   # apt pulled in has put its own files there. A count of the directory would measure the
   # box. (And not by name either: one of the 23 is `bashbricks.sh'.)
   names=$(in_box "dpkg -L marionnet | grep -c '^/usr/bin/.'")
-  if [[ $names -eq 26 ]]; then
-    pass "26 names in /usr/bin (the binary and the 25 companions of bin/scripts/)"
+  # 27 since the bare name `marionnet' is staged beside marionnet.native. Written
+  # here and not derived: unlike the tarball bench -- which compares the installed
+  # prefix with the artefact's own bin/ -- what this case measures IS the package's
+  # file list, so deriving it from the package would be a tautology.
+  if [[ $names -eq 27 ]]; then
+    pass "27 names in /usr/bin (the binary, its bare name, and the 25 companions of bin/scripts/)"
   else
-    fail "the package owns $names names in /usr/bin, expected 26"
+    fail "the package owns $names names in /usr/bin, expected 27"
   fi
 
   compl=$(in_box "dpkg -L marionnet | grep -c '/share/bash-completion/completions/.'")

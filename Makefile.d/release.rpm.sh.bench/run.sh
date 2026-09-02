@@ -437,7 +437,9 @@ fi
 # ---------------------------------------------------------------- 4. what landed
 info "4. what the packages put on the machine"
 n=$(in_box "rpm -ql marionnet 2>/dev/null | grep -c '^/usr/bin/'")
-test "$n" = 26 && pass "the 26 commands of bin/ are installed" || fail "expected 26 commands in /usr/bin, found $n"
+# 27 since the bare name `marionnet' is staged beside marionnet.native (see the
+# twin case of the .deb bench for why this number is written and not derived).
+test "$n" = 27 && pass "the 27 commands of bin/ are installed" || fail "expected 27 commands in /usr/bin, found $n"
 
 n=$(in_box "ls /usr/share/bash-completion/completions/ 2>/dev/null | grep -cE 'mrn|marionnet'")
 test "$n" = 12 && pass "the twelve completion files are installed (episode 11a)" || \
