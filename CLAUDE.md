@@ -239,6 +239,23 @@ Reprise : appliquer le skill `chantier-long`.
   en **huit** `systemctl stop getty@tty$i` **un par un**, le reste à ~5 ms par commande. La mesure
   a été prise dans un **COW jetable** (le relais vit dans l'image) : rien de produit, rien de
   publié. Correctifs **non faits**, chiffrés dans `docs/TODO.md` avec leurs contreparties.
+- **triage des binaires d'une image invitée** (chantier **enfant** du précédent : une image
+  publiée ne doit contenir que des binaires qui **fonctionnent**, et le constat doit se refaire
+  sur n'importe quelle image **sans rouvrir de chantier**) :
+  `docs/triage-binaires-image-invitee.md` ; mémoire `triage-binaires-image-invitee` ;
+  `git log --grep="triage-binaires-image-invitee"`. Né d'un constat en salle (`xlinks2` →
+  `BadMatch X_CreateWindow` sur trixie 16341, quand `xeyes` et `wireshark` marchent). **Ép. 0
+  fait** (conception seule) : **3 étages** — un script **sonde** (un boot, toutes les sondes ;
+  `ldd` décide si c'est une application X, jamais une liste), un agent **décide une fois**, un
+  script **applique** — et les verdicts sont **gelés** dans une politique versionnée
+  (`keep`/`fix`/`drop`/`ignore`) que consomment **et** le respin **et** `pupisto`. **À ne pas
+  défaire** : l'agent est *entre* la sonde et la politique, **jamais dans la boucle** (sinon
+  chaque passage coûte des tokens et peut décider autrement) ; **une sonde ne publie jamais**
+  (COW jetable — le nom d'une image *est* son `sum`) ; `/loop` est refusé (un boot par
+  itération). Livrable de clôture : **`make` pour la mécanique, un skill pour le jugement et le
+  rituel** — pas un skill coordinateur (motif : l'ép. 26 de
+  `modernisation-installation-marionnet`). **Ép. 1 bloqué sur un prérequis** : le chemin du
+  répertoire de release (`--from`).
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
