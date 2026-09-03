@@ -656,6 +656,63 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   geste. L'image de mesure `machine-debian-trixie-11950` n'était **pas** publiable telle quelle
   (`--do-not-update-binary-list`, `--no-tarball`) — c'était un banc, pas un artefact.
 
+- **2026-09-03** — épisode 28 (`bin/simulation_level.ml`,
+  `bin/scripts/marionnet-relay.zz-journal.sh`) : **le prompt de login est enfin la dernière ligne
+  de la console.** Signalé depuis la salle MarioNUM (conteneur Docker Ubuntu 24.04, release
+  `1.0.392+r966`, deux captures) : la console affiche `m1 login:` **puis** cinq lignes de plus
+  (`Finished marionnet-report`, `Started marionnet-watch`, `Finished marionnet-relay`,
+  `Reached multi-user.target`, `Reached graphical.target`). Le prompt est noyé, l'étudiant croit
+  la machine occupée.
+  **Ce n'est pas une affaire de DURÉE, et c'est pourquoi trois épisodes n'y ont rien fait**
+  (21, 26, 27, tous consacrés à raccourcir le relais). `getty@tty0.service` est activé hors-ligne
+  dans `getty.target.wants` (`fix_etc_inittab`) et n'hérite du patron Debian que
+  `After=getty-pre.target sysinit.target … basic.target rc-local.service` : **aucun ordre** contre
+  `multi-user.target` ni contre nos unités, donc il démarre au milieu de la transaction. **Mesuré
+  dans l'image publiée `machine-debian-trixie-16341`** : getty actif à **4,73 s**, relais à
+  10,92 s, `multi-user.target` à 10,93 s — une fenêtre de **6,2 s** qu'aucun raccourcissement
+  n'allait fermer.
+  **Correctif, en deux moitiés qui vivent toutes les deux sur l'hôte** : (1) la ligne de commande
+  noyau porte `systemd.mask=getty.target` pour tout invité systemd, à côté du masque de l'ép. 21
+  et pour la même raison — **y compris sur les images déjà publiées** ; (2) l'épilogue du relais
+  démarre le prompt une fois la transaction finie
+  (`systemd-run --no-block --unit=marionnet-console-prompt`, qui attend
+  `systemctl is-system-running --wait` puis `systemctl start getty@tty0.service`).
+  **À ne pas défaire** : (a) c'est la **target** qui est masquée, jamais l'instance — une target
+  masquée ne tire plus rien mais `getty@tty0.service` reste chargeable, donc démarrable, alors
+  que `systemd.mask=` sur l'instance passe par `/run/systemd/generator.early`, que
+  `systemctl unmask` ne défait pas ; (b) `systemd-run` plutôt qu'une unité écrite dans `/run`
+  (motif du guetteur, juste au-dessus dans le même fichier) parce qu'une unité transitoire
+  **ne coûte pas de `systemctl daemon-reload`**, et ce reload est le poste à 1,30 s de l'ép. 26 ;
+  (c) `--no-block` pour la même raison que le guetteur (on est sourcé **par** le relais, que
+  systemd est en train de démarrer), le `systemctl start` **dans** l'unité transitoire étant au
+  contraire bloquant, la transaction étant alors finie ; (d) **le repli est le point** : sans
+  `systemd-run`, sans D-Bus, sur un refus, le prompt est démarré tout de suite (le symptôme
+  d'avant, jamais l'absence de login), et le `timeout 120` dit la même chose de l'attente — un
+  boot qui ne finit pas ne doit pas coûter le login. Le relais n'est pas touché : ses
+  `systemctl start getty@tty1..N-1` nomment les **instances**, jamais la target.
+  **Ce que la mesure a condamné** : le correctif évident — un drop-in
+  `getty@tty0.service.d/prompt-last.conf` disant `After=multi-user.target graphical.target`,
+  gravé dans `pupisto.debian.sh` — a été écrit, joué **et jeté**. Posé dans un invité puis
+  redémarré, il rend *« multi-user.target: Found ordering cycle on getty.target/start »* et
+  *« Job getty.target/start deleted to break ordering cycle »* : le prompt tombait bien en
+  dernier (10,42 s contre 10,41 s), **mais parce que systemd venait de supprimer un job en
+  silence**. Un correctif qui marche parce que systemd efface quelque chose n'en est pas un.
+  D'où **un seul mécanisme, sur l'hôte** — et la conséquence heureuse : **rien à graver, rien à
+  reconstruire, rien à republier** (une image *est* son `sum`).
+  **Mesuré, paires strictement comparables sur l'image publiée 16341** : getty@tty0 actif à
+  **4,73 s** (binaire d'avant) contre **10,95 → 11,13 s** (binaire neuf) pour un
+  `graphical.target` à 10,71-10,96 s — le prompt passe **dernier**, de 180 à 250 ms ;
+  `getty.target` = `masked/inactive` et `getty@tty0.service` = `loaded/active` ; **aucun** cycle
+  d'ordonnancement dans le journal du boot (`NONE`) ; `dune build` et `make check` rc 0 ; piège
+  n° 7 vérifié (`strings` sur le binaire : 1 occurrence de `marionnet-console-prompt`).
+  **Observé une fois, non reproduit** : un arrêt gracieux resté « on » après 60 s, sur le premier
+  run du binaire neuf ; trois runs identiques ultérieurs (dont deux à sondes identiques) se sont
+  arrêtés proprement, comme le run du binaire d'avant. La seule unité en échec de cette image est
+  `run-rpc_pipefs.mount`, préexistante, qui explique son `degraded`. À surveiller, pas attribué.
+  **Reste** : les consoles supplémentaires (`console_no > 1`) gardent le symptôme — le relais les
+  démarre lui-même, tôt ; les traiter demanderait un `--no-block` dans le relais **et** un
+  ordonnancement par instance, donc l'image. Le cas de TP courant est `console_no = 1`.
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une

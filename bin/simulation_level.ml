@@ -1294,9 +1294,44 @@ class uml_process =
      trixie image asks it for DHCP on eth0), only "wait until it is online" goes away.
      Under SysV nothing is added: an unknown kernel argument is handed to `init' as an
      argument. Same mechanism, and same reason, as the `serial-getty@ttyS0' mask below. *)
+  (* --- The login prompt, LAST (work-stream `marionnet-kernel-rootfs') ---
+     Reported from the MarioNUM classroom: the console shows `m1 login:' and THEN five more
+     lines ("Finished marionnet-report", "Started marionnet-watch", "Finished marionnet-relay",
+     "Reached multi-user.target", "Reached graphical.target"). The prompt is buried, and the
+     student believes the machine is still busy.
+     ---
+     This is NOT a matter of duration, and that is why three episodes of shortening the relay
+     (21, 26, 27) did not touch it. `getty@tty0.service' is enabled offline into
+     getty.target.wants by pupisto (`fix_etc_inittab'), and the only ordering it inherits from
+     Debian's template is `After=getty-pre.target sysinit.target ... basic.target'. It has NO
+     ordering whatsoever against multi-user.target nor against our own units, so it starts in
+     the MIDDLE of the boot transaction. MEASURED in the published image 16341: the getty is
+     active at 4.95 s, the relay at 11.31 s, multi-user.target at 11.33 s -- a 6.4 s window
+     that no shortening was ever going to close.
+     ---
+     Masking the TARGET, not the instance, and for two reasons. A masked target is not started,
+     so its `Wants' pulls nothing -- but `getty@tty0.service' ITSELF stays loadable, hence
+     startable later by the relay's epilogue (marionnet-relay.zz-journal.sh), which is where the
+     prompt now comes from. Masking the instance instead would be a trap: `systemd.mask=' goes
+     through /run/systemd/generator.early, which `systemctl unmask' does not undo.
+     The relay's own `systemctl start getty@tty1..N-1' (extra consoles) is unaffected: it names
+     the instances, never the target.
+     ---
+     WHY NOTHING IS ENGRAVED IN THE IMAGE. The obvious fix -- a drop-in
+     `getty@tty0.service.d' saying `After=multi-user.target graphical.target' -- was written,
+     measured, and thrown away: it makes a CYCLE. Measured in the guest, with the drop-in in
+     place: "multi-user.target: Found ordering cycle on getty.target/start" and "Job
+     getty.target/start deleted to break ordering cycle". The prompt did come last, but only
+     because systemd had silently deleted a job to break the loop -- and a fix which works by
+     having systemd delete something is not a fix. So: one mechanism, here, on the host, which
+     needs no image rebuilt and no 1.09 GiB republished (an image IS its `sum': republishing
+     changes what yesterday's .mar files refer to). Measured on the published image 16341:
+     with this mask, no ordering cycle at all, getty.target masked, getty@tty0 active at
+     10.95 s against 10.71 s for graphical.target -- the prompt last, by 250 ms. *)
   let systemd_arguments =
     if init_system = "systemd"
-    then [ "systemd.mask=systemd-networkd-wait-online.service" ]
+    then [ "systemd.mask=systemd-networkd-wait-online.service";
+           "systemd.mask=getty.target" ]
     else []
   in
   let kernel_series =

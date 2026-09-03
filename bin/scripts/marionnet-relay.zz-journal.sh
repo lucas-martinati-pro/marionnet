@@ -300,4 +300,56 @@ UNIT
 fi
 unset __mrn_journal_watch
 
+# ---------------------------------------------------------------------------
+# The login prompt, LAST.  (Work-stream `marionnet-kernel-rootfs'.)
+#
+# Reported from the MarioNUM classroom: the console showed `m1 login:' and then
+# five more `[ OK ]' lines, so the prompt was buried and the student believed
+# the machine was still busy.  MEASURED in the published image 16341:
+# getty@tty0 active at 4.95 s, our relay at 11.31 s, multi-user.target at
+# 11.33 s -- a 6.4 s window which is NOT a matter of duration but of ordering
+# (the getty inherits no ordering against multi-user.target), which is why
+# three episodes of shortening the relay never touched it.
+#
+# The host side masks `getty.target' on the kernel command line
+# (bin/simulation_level.ml), so nothing starts the prompt any more: starting it
+# is now this epilogue's job, and it does so only once the boot transaction is
+# over.  `systemd-run' rather than a unit file of our own, on purpose: a
+# transient unit costs no `systemctl daemon-reload', and that reload was
+# measured at 1.30 s of an 11 s boot (episode 26).
+#
+# `--no-block' is not an optimisation, it is the same reason as the watcher
+# above: we are being sourced BY the relay, which systemd is itself starting,
+# so a blocking request would order us into a transaction we are part of.  The
+# `systemctl start' inside the transient unit, on the contrary, is deliberately
+# blocking -- by then the transaction is finished.
+#
+# THE FALLBACK IS THE POINT: whatever fails here (no `systemd-run', no D-Bus,
+# a refusal), the prompt is started straight away instead.  A guest that gets
+# its prompt too early is the defect we are fixing; a guest that never gets one
+# is a guest nobody can log into.  Same reason for the `timeout': waiting for
+# the end of a boot which never ends must not cost the login.
+# ---------------------------------------------------------------------------
+
+if [[ -d /run/systemd/system ]] && type -p systemctl >/dev/null 2>&1; then
+
+  case $- in *x*) __mrn_x_prompt=yes ;; *) __mrn_x_prompt=no ;; esac
+  { set +x ; } 2>/dev/null
+
+  __mrn_prompt_started=no
+  if type -p systemd-run >/dev/null 2>&1; then
+    systemd-run --no-block --quiet --unit=marionnet-console-prompt \
+      --description="Marionnet: the login prompt, once the boot is over" \
+      /bin/sh -c 'timeout 120 systemctl is-system-running --wait >/dev/null 2>&1; exec systemctl start getty@tty0.service' \
+      >/dev/null 2>&1 && __mrn_prompt_started=yes
+  fi
+  if [[ "$__mrn_prompt_started" != yes ]]; then
+    systemctl start --no-block getty@tty0.service >/dev/null 2>&1
+  fi
+  unset __mrn_prompt_started
+
+  [[ "$__mrn_x_prompt" = yes ]] && { set -x ; } 2>/dev/null
+  unset __mrn_x_prompt
+fi
+
 :

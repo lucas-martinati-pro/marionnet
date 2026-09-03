@@ -239,6 +239,34 @@ Reprise : appliquer le skill `chantier-long`.
   en **huit** `systemctl stop getty@tty$i` **un par un**, le reste à ~5 ms par commande. La mesure
   a été prise dans un **COW jetable** (le relais vit dans l'image) : rien de produit, rien de
   publié. Correctifs **non faits**, chiffrés dans `docs/TODO.md` avec leurs contreparties.
+  **Ép. 28 : le prompt de login est la dernière ligne de la console.** Signalé de la salle
+  MarioNUM et **survivant aux ép. 21/26/27** — parce que ce n'est pas une affaire de **durée**
+  mais d'**ordonnancement** : `getty@tty0` est activé dans `getty.target.wants` et n'a **aucun**
+  ordre contre `multi-user.target` ni contre nos unités (mesuré sur l'image publiée `16341` :
+  getty à **4,73 s**, `multi-user.target` à **10,93 s** — une fenêtre de **6,2 s** qu'aucun
+  raccourcissement ne ferme). Correctif **entièrement sur l'hôte**, donc valable pour les images
+  **déjà publiées** : `systemd.mask=getty.target` sur la ligne de commande noyau
+  (`bin/simulation_level.ml`, à côté du masque de l'ép. 21) et démarrage du prompt **après** la
+  transaction par l'épilogue du relais (`marionnet-relay.zz-journal.sh`,
+  `systemd-run --no-block` qui attend `systemctl is-system-running --wait`). **À ne pas
+  défaire** : (1) on masque la **target**, jamais l'instance — une target masquée ne tire plus
+  rien mais l'unité reste **démarrable**, là où `systemd.mask=` sur l'instance passe par
+  `/run/systemd/generator.early`, que `systemctl unmask` ne défait pas ; (2) `systemd-run`
+  (unité **transitoire**) et non une unité écrite dans `/run` comme le guetteur juste au-dessus,
+  parce qu'elle **ne coûte pas de `daemon-reload`** — le poste à 1,30 s de l'ép. 26 ; (3) le
+  **repli** est le point : sans `systemd-run`, sans D-Bus, sur un refus, le prompt part
+  immédiatement (le symptôme d'avant, **jamais** l'absence de login), et le `timeout 120` dit la
+  même chose de l'attente ; (4) le relais est intact — ses `start getty@tty1..N-1` nomment les
+  **instances**. **Piège durable, payé par la mesure** : le correctif « évident » — un drop-in
+  `getty@tty0.service.d` disant `After=multi-user.target graphical.target`, gravé dans
+  `pupisto.debian.sh` — a été écrit, joué **et jeté** : il fait un **cycle**
+  (*« Found ordering cycle on getty.target/start »*, *« Job getty.target/start deleted to break
+  ordering cycle »*), et le prompt ne tombait en dernier que **parce que systemd venait
+  d'effacer un job en silence**. D'où **un seul mécanisme, sur l'hôte** — et donc **rien à
+  graver, rien à reconstruire, rien à republier**. Mesuré : prompt **10,95 → 11,13 s** contre un
+  `graphical.target` à 10,71-10,96 s, `getty.target` **masked**, `getty@tty0` **active**,
+  **aucun** cycle (`NONE`), `make check` rc 0. **Reste** : `console_no > 1` garde le symptôme
+  (les consoles 1..N-1 sont démarrées par le relais, tôt).
 - **triage des binaires d'une image invitée** (chantier **enfant** du précédent : une image
   publiée ne doit contenir que des binaires qui **fonctionnent**, et le constat doit se refaire
   sur n'importe quelle image **sans rouvrir de chantier**) :
