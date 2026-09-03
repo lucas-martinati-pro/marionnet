@@ -672,6 +672,15 @@ release-upload:
 	bash Makefile.d/upload.www.marionnet.org.sh --series $(PUBLICATION_SERIES) \
 	     $(if $(DRY_RUN),--dry-run) $(if $(CHECK),--check) $(if $(PRUNE),--prune)
 
+# Render the four installation pages of doc-src/ as standalone HTML, for the web site. They
+# are NOT part of a release: they describe none, they are in no catalogue, and they go beside
+# the installer script -- in the PARENT of the series directory -- so that a URL printed in a
+# course handout outlives every version number. `make release-upload' carries whatever this
+# target has left there; `OUTPUT_DIR=' writes them elsewhere, `DRY_RUN=1' writes nothing.
+release-install-pages:
+	bash Makefile.d/release.install-pages.sh \
+	     $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR)) $(if $(DRY_RUN),--dry-run)
+
 # Tidy the release directory: keep only the newest revision(s) of the APPLICATION and let the
 # three catalogues be rewritten by their own writers. A release directory accumulates -- every
 # publication leaves one more tarball, .deb and .rpm -- and both package indexes then offer
@@ -714,6 +723,10 @@ release-and-upload:
 	$(MAKE) release-build-box WITH_DEB=1
 	$(MAKE) release-rpm SIGN=$(RELEASE_SIGN)
 	$(MAKE) release-retention $(if $(KEEP),KEEP=$(KEEP)) SIGN=$(RELEASE_SIGN)
+# The pages are rendered here and not in the deposit: the uploader writes nothing into a
+# release directory and builds nothing, it carries. Rendering them last also means they are
+# made from the sources the release was just built from.
+	$(MAKE) release-install-pages
 # SIGN IS EXPLICITLY CLEARED FOR THE LAST LINK, and the empty assignment is the whole point:
 # make passes variables given on ITS OWN command line down to every sub-make, so `make
 # release-and-upload SIGN=yes' handed SIGN=yes to release-upload too -- which refuses it, and
@@ -725,7 +738,7 @@ release-and-upload:
 
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
-.PHONY: release-retention release-and-upload
+.PHONY: release-retention release-and-upload release-install-pages
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
 .PHONY: print-required-packages-build print-opam-switch print-opam-packages revno version

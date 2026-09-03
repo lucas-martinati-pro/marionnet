@@ -70,6 +70,14 @@
      ;; --- not a deliverable; this one is a published document, and the English original
      ;; --- remains the authority.
      (INSTALL.FR.md as doc/marionnet/INSTALL.FR.md)
+     ;; --- The same two pages with the prose taken out: the blocks to paste, under headings
+     ;; --- flat enough to be found by scrolling. They are the pages served in HTML at
+     ;; --- www.marionnet.org/download/marionnet-install.sh/ (Makefile.d/release.install-pages.sh),
+     ;; --- and they are installed for the same reason the long ones are -- the commands of
+     ;; --- § 4 to § 7 (images, sudoers rule, launching, removal) are typed ON the machine,
+     ;; --- long after the installation which brought them here.
+     (INSTALL-quick-guide.md as doc/marionnet/INSTALL-quick-guide.md)
+     (INSTALL-quick-guide.FR.md as doc/marionnet/INSTALL-quick-guide.FR.md)
      ;; --- The teacher: from a statement to a mark, one worked example per command.
      (teacher-guide.md as doc/marionnet/teacher-guide.md)
      ;; --- The exam mode: what a session records, and what a mark may rest on.

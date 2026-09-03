@@ -129,6 +129,8 @@
 #                                (`--sign' USED TO BE HERE and is not any more: the signature
 #                                is written by the indexer, `make release-apt SIGN=yes'. This
 #                                script only checks it, against the key the sources publish.)
+#       --no-pages               do not publish the installation pages (the .html which
+#                                Makefile.d/release.install-pages.sh renders)
 #   -h, --help                   this help
 # ---
 
@@ -164,6 +166,7 @@ CHECK=0
 PRUNE=0
 ENTRY_POINTS=1
 PUBLISH_SCRIPT=1
+PUBLISH_PAGES=1
 # The public key the SOURCES publish: the archive's identity, versioned in git and fetched by
 # users from there -- i.e. from an infrastructure which is NOT the server this script feeds.
 # That separation is the whole point (episode 30); it is also why this file is never uploaded
@@ -182,6 +185,7 @@ while (($#)); do
        --prune)         PRUNE=1; shift ;;
        --no-entry-points) ENTRY_POINTS=0; shift ;;
        --no-script)     PUBLISH_SCRIPT=0; shift ;;
+       --no-pages)      PUBLISH_PAGES=0; shift ;;
        --sign)          die "--sign moved to the indexer: run \`make release-apt SIGN=yes'
    (a signature belongs beside the Release it signs, written by whoever writes it -- so a
     release directory is complete before it is deposited, and this script keeps its rule of
@@ -458,6 +462,40 @@ if ((PUBLISH_SCRIPT)); then
 fi
 
 # ---
+# --- The installation pages, beside the script they explain.
+# ---
+# Same place, same reasons, same rsync as the block above: they describe no release, they are
+# in no catalogue, and they must not move when the series does -- a page whose URL is printed
+# in a course handout outlives every version number on this server. They are rendered by
+# Makefile.d/release.install-pages.sh into the PARENT of the series directory, which is where
+# they are read from here; nothing about them ever enters $OUTDIR, so the extras of the series
+# are computed exactly as before.
+#
+# A missing page WARNS and names the target rather than killing the run: the deposit of a
+# release does not depend on them, and an absent page leaves the previously served one in
+# place, which harms nobody. That is the opposite of a signature going missing (episode 30b
+# quinquies), where what stays behind is a repository the installed fleet refuses.
+if ((PUBLISH_PAGES)); then
+  PAGES_DIR="$(dirname -- "$OUTDIR")"
+  PAGES=()
+  for p in INSTALL.html INSTALL.FR.html INSTALL-quick-guide.html INSTALL-quick-guide.FR.html; do
+    if test -f "$PAGES_DIR/$p"; then PAGES+=("$PAGES_DIR/$p"); else warn "no $p in $PAGES_DIR"; fi
+  done
+  if ((${#PAGES[@]} == 0)); then
+    warn "no installation page to publish; render them with: make release-install-pages"
+  elif ((DRYRUN)); then
+    info "would send ${#PAGES[@]} pages -> $REMOTE_BASE/ (0644)"
+    for p in "${PAGES[@]}"; do info "  $(basename -- "$p")"; done
+  else
+    info "publishing ${#PAGES[@]} installation pages, in $REMOTE_BASE"
+    # -c (compare by CONTENT), for the reason written in the block above: these files are in
+    # no catalogue, so nothing downstream would notice a published copy which had drifted
+    # while keeping its size and its mtime.
+    rsync -ltc --chmod=F644 -e "ssh ${SSH_OPTS[*]}" -- "${PAGES[@]}" "$HOST:$REMOTE_BASE/"
+  fi
+fi
+
+# ---
 # --- The two stable entry points. See the header.
 # ---
 if ((ENTRY_POINTS)); then
@@ -532,6 +570,10 @@ echo
            || info "deposited. The three ways in:"
 echo "    # the installer, series-independent:"
 echo "    wget $URL/marionnet-install.sh/marionnet-install.sh && bash marionnet-install.sh --help"
+echo
+echo "    # the pages, series-independent too (English, and .FR for French):"
+echo "    $URL/marionnet-install.sh/INSTALL-quick-guide.html   # copy-paste"
+echo "    $URL/marionnet-install.sh/INSTALL.html               # the whole thing"
 echo
 echo "    # apt (the entry point follows the series, the line does not):"
 if test -f "$OUTDIR/InRelease"; then
