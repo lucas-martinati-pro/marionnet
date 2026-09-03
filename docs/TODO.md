@@ -156,3 +156,59 @@ une évidence ; (c) le constat voisin « trixie n'écrit pas `marionnet-guest-re
 (`docs/kernel-rootfs-refresh.md`) touche le même fichier et devrait être traité avec celui-ci ;
 (d) le `daemon-reload` est peut-être évitable (écrire les unités **avant** le premier boot, dans
 l'image), mais cela déplace du travail vers `pupisto.debian.sh` — encore un arbitrage.
+
+---
+
+## Chantier à amorcer — **`modernisation-routeur-64bits`** : un routeur qui ne coûte plus une architecture étrangère
+
+**Constat.** Le seul système de fichiers de **routeur** publié est `router-guignol-18474`, un
+userland **i386**. Mesuré dans son `.conf` : `SUPPORTED_KERNELS='/3.2.[6-9]/ /-i386$/'`, que
+`linux-6.12.95` **ne satisfait pas** — seul `linux-6.12.95-i386` convient. Et le filtre de
+`bin/disk.ml:544-547` est **dur** (*« do not propose any filesystems which haven't at least one
+compatible installed kernel »*) : sans ce noyau, guignol n'apparaît simplement pas, sans un mot.
+Trois conséquences, toutes payées aujourd'hui par l'utilisateur :
+
+1. un routeur coûte **deux** paquets (`marionnet-fs-guignol` **et** `marionnet-kernels-i386`), là
+   où une machine récente n'en coûte qu'un ;
+2. sur Debian/Ubuntu, il impose `dpkg --add-architecture i386` — activer une architecture
+   étrangère sur toutes les machines d'une salle pour obtenir un routeur ;
+3. sur **RHEL 10 / AlmaLinux 10 / Rocky 10**, qui ont supprimé tout le multilib 32 bits (mesuré à
+   l'ép. 19 de `modernisation-installation-marionnet`), `marionnet-kernels-i386` n'est **pas
+   installable** : sur cette famille, **aucun routeur n'est possible**.
+
+**Ce qu'on veut.** Une image de routeur **64 bits**, supportée par `linux-6.12.95`, publiée dans
+les mêmes canaux et sous les mêmes conventions que les autres (`router-<distrib>-<sum>`), afin
+qu'un routeur ne coûte ni plus ni autre chose qu'une machine. Le noyau i386 redeviendrait alors ce
+que la documentation dit qu'il est : la rétro-compatibilité des vieux couples et des `.mar`
+antérieurs à 2026.
+
+**Pourquoi *amorcer* et non planifier tout de suite.** Le chemin n'est pas connu — plusieurs
+décisions se tiennent l'une l'autre, ce qui est exactement le critère du skill `chantier-amorce`.
+
+**Ce que l'implémentation devra affronter.**
+
+* **Quagga est mort, l'image récente porte FRR.** `bin/router.ml` **écrit la configuration Quagga**
+  et code le chemin en dur : `/etc/quagga/%s` (`:395`, avec les `zebra.conf`, `ripd.conf`,
+  `ospfd.conf`… et le `password zebra` du gabarit, `:100-140`). Or l'arbre de construction trixie
+  contient déjà **`frr`** (`uml/pupisto.debian/_build…/debianroot/usr/share/doc/frr/`), dont la
+  disposition diffère (`/etc/frr/`, fichier `daemons`, vtysh intégré). Le fichier porte d'ailleurs
+  déjà la trace du défaut : `:1524`, *« Example "/etc/quagga/zebra.conf" => TODO: LEGGERE NEI
+  PARAMETRI DELLA MV!! »* — le chemin devrait venir des paramètres de la machine, pas du code.
+  C'est **la** décision d'amorce : porter le générateur vers FRR, ou faire dire à l'image où sa
+  configuration se pose (et le générateur s'y adapter), ou les deux.
+* **La mémoire.** guignol demande 24 Mio (`MEMORY_SUGGESTED_SIZE`), trixie 192. Un TP à huit
+  routeurs passerait de ~200 Mio à ~1,5 Gio. Une image de routeur **taillée** (pas une trixie
+  complète) est probablement ce qu'il faut, ce qui rouvre le choix de la base — donc du chantier
+  `marionnet-kernel-rootfs` (`uml/pupisto.debian/`), avec lequel celui-ci devra se coordonner.
+* **La forme publiée.** Un artefact `router-*` est un **lien** vers l'image *machine* d'un autre
+  tarball (invariant des ép. 13 et 16 de `modernisation-installation-marionnet`) : la nouvelle
+  image devra suivre cette forme, ou la changer sciemment — et le paquet `marionnet-fs-*`
+  correspondant devra être découpé en conséquence.
+* **La rétro-compatibilité.** Les `.mar` existants nomment `router-guignol-18474` ; le remap
+  d'import (`remap_absent_distrib_at_import`, ép. 4 de `marionnet-retro-compat-kernels-images`)
+  existe déjà et devra être étendu, sans quoi les TP déjà écrits changeraient de routeur en
+  silence.
+* **La documentation suit, elle ne précède pas.** Les 4 pages d'installation
+  (`doc-src/INSTALL{,.FR}.md`, `doc-src/INSTALL-quick-guide{,.FR}.md`) disent aujourd'hui qu'un
+  routeur coûte deux paquets et annoncent cette image comme **prévue** : la clôture du chantier
+  devra les corriger, ainsi que le `.html` publié.
