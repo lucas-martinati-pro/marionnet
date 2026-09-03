@@ -101,3 +101,23 @@ strong { color: var(--ink); }
 ul, ol { padding-left: 1.4em; }
 li { margin: .2em 0; }
 img { max-width: 100%; }
+
+/* --- copy buttons (doc-src/marionnet-doc-copy.html builds them) ---------------------------
+ * The wrapper is what the script inserts around each <pre>; the button is positioned over its
+ * top-right corner and NOT inside the block, so it is neither copied nor scrolled away with a
+ * long command line. Always visible rather than shown on hover: an administrator has to SEE
+ * that the block is copyable, which is the whole point.
+ */
+.copy-wrap { position: relative; }
+.copy-btn {
+  position: absolute; top: .45em; right: .45em;
+  font-family: "Noto Sans", "DejaVu Sans", system-ui, sans-serif; font-size: .75rem;
+  line-height: 1; padding: .35em .6em; cursor: pointer;
+  color: var(--accent-dark); background: var(--page-bg);
+  border: 1px solid var(--rule); border-radius: 3px;
+  opacity: .75; transition: opacity .15s, border-color .15s;
+}
+.copy-btn:hover, .copy-btn:focus-visible { opacity: 1; border-color: var(--accent); }
+.copy-btn.copy-ok { color: var(--page-bg); background: var(--accent); border-color: var(--accent); opacity: 1; }
+.copy-btn.copy-ko { color: var(--page-bg); background: #a3302f; border-color: #a3302f; opacity: 1; }
+@media print { .copy-btn { display: none; } }

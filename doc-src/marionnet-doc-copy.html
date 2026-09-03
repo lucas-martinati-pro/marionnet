@@ -1,0 +1,80 @@
+<!-- Copy buttons for the code blocks of the Marionnet documentation pages.
+     Inlined at the end of <body> by Makefile.d/release.install-pages.sh
+     (pandoc --include-after-body), so the published page stays standalone.
+
+     Copyright (C) 2026  Jean-Vincent Loddo -- GNU GPL, version 2 or later. -->
+<script>
+(function () {
+  "use strict";
+
+  // The button is built by this script, so a page read without JavaScript simply has none --
+  // and it is inserted BESIDE the <pre>, never inside it, so it can never end up in what is
+  // copied. Both properties come from the structure; neither is a precaution to remember.
+  var blocks = document.querySelectorAll("pre");
+  if (!blocks.length) return;
+
+  var fr = (document.documentElement.lang || "en").toLowerCase().indexOf("fr") === 0;
+  var L = fr ? { copy: "copier", done: "copié", fail: "échec", aria: "Copier ce bloc" }
+             : { copy: "copy",    done: "copied", fail: "failed", aria: "Copy this block" };
+
+  var async_ok = !!(navigator.clipboard && navigator.clipboard.writeText);
+  var sync_ok  = (typeof document.execCommand === "function");
+  if (!async_ok && !sync_ok) return;   // no way to copy: no button, rather than a dead one
+
+  // navigator.clipboard exists only in a secure context: served over https it is there, but a
+  // page opened locally as file:// may have nothing but the deprecated execCommand.
+  function copy(text) {
+    if (async_ok) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "absolute";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      if (ok) resolve(); else reject();
+    });
+  }
+
+  Array.prototype.forEach.call(blocks, function (pre) {
+    var parent = pre.parentNode;
+    if (!parent) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "copy-wrap";
+    parent.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "copy-btn";
+    b.textContent = L.copy;
+    b.setAttribute("aria-label", L.aria);
+    wrap.appendChild(b);
+
+    b.addEventListener("click", function () {
+      // textContent and not innerText: it is the text of the document, independent of how the
+      // block happens to be laid out. The trailing newline is REMOVED on purpose -- pasted into
+      // a terminal it would run the last command at once, and several of these blocks are sudo.
+      // The reader presses Enter, which is where the decision belongs.
+      copy(pre.textContent.replace(/\n+$/, "")).then(
+        function () { flash(b, L.done, "copy-ok"); },
+        function () { flash(b, L.fail, "copy-ko"); }
+      );
+    });
+  });
+
+  function flash(b, label, cls) {
+    b.textContent = label;
+    b.classList.add(cls);
+    setTimeout(function () {
+      b.textContent = L.copy;
+      b.classList.remove(cls);
+    }, 1200);
+  }
+})();
+</script>

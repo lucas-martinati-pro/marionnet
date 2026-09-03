@@ -40,6 +40,13 @@
 # ours, so a page which names an external stylesheet is a page rendered naked. And a release
 # script cannot depend on a file living in somebody's private configuration directory.
 #
+# THE COPY BUTTONS (doc-src/marionnet-doc-copy.html, inlined by --include-after-body) copy the
+# block VERBATIM, and that is only honest because of a property of these pages: not one of
+# their code blocks carries a `$' prompt or an interleaved output -- measured, 24 blocks per
+# page, 0 prompt lines -- so what a block shows IS what one pastes. A page which showed
+# `$ cmd' followed by its output would need the button to edit the text before copying it,
+# which is where such buttons usually start lying.
+#
 # No bashbricks here, on purpose: like the eight scripts of Makefile.d/ it joins, this one
 # sources nothing. Rendering four files in a loop is native shell all the way, and sourcing a
 # library for it would add indirection, not safety.
@@ -87,6 +94,8 @@ command -v pandoc >/dev/null 2>&1 \
 
 CSS="$ROOT/doc-src/marionnet-doc.css"
 test -f "$CSS" || die "no such file: $CSS"
+AFTER="$ROOT/doc-src/marionnet-doc-copy.html"
+test -f "$AFTER" || die "no such file: $AFTER"
 
 ((DRYRUN)) || mkdir -p -- "$OUTDIR"
 info "rendering ${#PAGES[@]} pages into $OUTDIR"
@@ -120,6 +129,7 @@ for md in "${PAGES[@]}"; do
          --from=gfm --to=html5 --standalone --embed-resources \
          --toc --toc-depth=2 \
          --css "$CSS" \
+         --include-after-body "$AFTER" \
          --metadata pagetitle="$TITLE" \
          --metadata lang="$LANG_TAG"
   mv -f -- "$TMP" "$DST"
