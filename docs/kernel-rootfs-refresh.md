@@ -620,6 +620,33 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   ~0,9 s ; livrer les deux unités dans l'image supprimerait le `daemon-reload` mais leur
   `TimeoutStopSec` vient du hostfs du boot courant).
 
+- **2026-09-03** — épisode 27 (`uml/pupisto.debian/pupisto.debian.sh.files/marionnet-relay.trixie`,
+  `Makefile.d/filesystem.update-published-image.sh`, `docs/TODO.md`) : **les gettys en une seule
+  invocation, et ce que la mesure a corrigé de l'attente.** Le premier des deux postes chiffrés
+  par l'ép. 26 est traité : les unités surnuméraires (`stop`) comme les consoles demandées
+  (`start`) sont réunies dans un tableau et passées à `systemctl` **d'un coup**, garde de tableau
+  vide comprise (`console_no` > 8 ne doit pas produire une commande sans argument).
+  **Le gain n'est pas celui qu'annonçait le TODO** : au boot, la ligne unique coûte **0,577 s**
+  contre **~1,02 s** pour les huit, et l'A/B joué **dans le même invité, au même boot** (3 tours)
+  donne **0,761 / 0,811 / 0,808 s** pour huit appels contre **0,485 / 0,516 / 0,486 s** pour un
+  seul. Soit **~0,3 s**, pas ~0,9 : un `systemctl` de plus ne vaut que ~41 ms, et **les huit
+  unités coûtent dans la même transaction** — ~0,50 s alors qu'**aucun getty ne tourne**
+  (`NAutoVTs=0`). Ce que le modèle « un aller-retour au lieu de huit » ne disait pas est écrit
+  dans `docs/TODO.md`, avec la suite possible (ne rien arrêter quand rien n'est chargé).
+  **La preuve par l'outil de l'ép. 23**, et sans rien publier : l'image publiée
+  `machine-debian-trixie-16341` reçoit le relais de HEAD par `--in-guest-script`, la variante est
+  publiée **hors** du répertoire de release (`--no-tarball`, scratchpad) sous le nom
+  `machine-debian-trixie-11950`, et c'est **elle** qu'on redémarre pour lire sa trace. Deux
+  choses apprises en chemin, **à ne pas défaire** : (1) la trace du relais n'est **pas** dans
+  `/mnt/hostfs/rc_config.log` — celui-ci ne porte que les 6 lignes du prologue (ép. 26), le reste
+  étant la sortie d'erreur du service, donc `journalctl -u marionnet-relay` ; (2)
+  **`--in-guest-script` n'avait jamais tourné** et mourait aussitôt : il cherchait le hostfs
+  **sous `$PROJECT_DIR`**, où ne vit que le `.mar`, alors que le répertoire de travail est
+  `<MARIONNET_TMPDIR>/marionnet-<aléa>.dir/<projet>/hostfs/<composant>` — l'aléa n'étant pas
+  prédictible, l'outil **demande** désormais au canal, qui publie ce chemin dans le champ
+  `hostfs` de `rc-get` (`bin/control_server.ml`, `Co_rc_read`). Une ligne de plus sur la socket,
+  et rien à deviner.
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une

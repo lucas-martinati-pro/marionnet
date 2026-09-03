@@ -117,14 +117,31 @@ lignes datées couvrant **4,55 s** :
 | coût | où | quoi |
 |---|---|---|
 | **1,633 s** | `marionnet-relay.00-journal:311` | le bloc **non tracé** qui suit (`{ set +x ; }`) : écriture des unités `marionnet-report`/`marionnet-watch`, **`systemctl daemon-reload`** (1,30 s à lui seul) et `systemctl start marionnet-report.service` |
-| **~1,02 s** | `marionnet-relay:415-417` | **huit** `systemctl stop getty@tty$i.service`, **un par un** (0,085 à 0,144 s chacun) |
+| **~1,02 s** | `marionnet-relay:415-417` | **huit** `systemctl stop getty@tty$i.service`, **un par un** (0,085 à 0,144 s chacun) — **corrigé le 2026-09-03**, voir ci-dessous |
 | 0,135 s | `marionnet-relay:134` | `ip netns add marionnet-mgmt` |
 | 0,086 s | `marionnet-relay:108` | `mount none /mnt/hostfs -t hostfs` |
 | le reste | ~300 lignes | ~5 ms par commande tracée |
 
-**Ce qu'on veut, maintenant que c'est chiffré.** (a) Les gettys : **une seule** invocation
-(`systemctl stop getty@tty{N..8}.service`) au lieu de huit — même effet, un aller-retour au lieu
-de huit, ~0,9 s. (b) Le `daemon-reload` : les deux unités sont écrites dans `/run/systemd/system`
+**(a) Les gettys : FAIT le 2026-09-03, et le gain n'est pas celui qu'on attendait.** Le relais
+(`marionnet-relay.trixie`) passe les unités surnuméraires à **une seule** invocation — les deux
+listes, `start` et `stop`, sont construites dans un tableau et données à `systemctl` d'un coup.
+Mesuré par l'outil de l'épisode 23 (`filesystem.update-published-image.sh`, image publiée
+`machine-debian-trixie-16341` respinnée en `machine-debian-trixie-11950`, hors répertoire de
+release) :
+
+- au boot, **une** ligne tracée au lieu de huit, et elle coûte **0,577 s** contre les **~1,02 s**
+  de l'épisode 26 ;
+- A/B **dans le même invité, au même boot** (3 tours) : huit appels **0,761 / 0,811 / 0,808 s**,
+  un seul appel **0,485 / 0,516 / 0,486 s**.
+
+Donc **~0,3 s** gagnées, et non ~0,9 : le modèle « un aller-retour au lieu de huit » était faux.
+Le prix d'un `systemctl` supplémentaire est ~41 ms, mais **les huit unités coûtent dans la même
+transaction** (~0,50 s à elles seules, alors qu'aucun getty ne tourne — `NAutoVTs=0`, seul
+`getty@tty0` est actif). **Suite possible, non faite** : ne rien arrêter quand rien n'est chargé
+(un `systemctl list-units 'getty@tty*'` d'abord), ce qui viserait les 0,5 s restantes au lieu des
+41 ms par appel — à mesurer, car cette interrogation coûte elle aussi un aller-retour.
+
+**Ce qu'on veut encore.** (b) Le `daemon-reload` : les deux unités sont écrites dans `/run/systemd/system`
 à **chaque** boot ; les poser dans l'image (`pupisto.debian.sh`) supprimerait le rechargement,
 mais déplace du travail vers la fabrication de l'image — et une unité livrée dans l'image ne peut
 plus dépendre de ce que le boot courant a lu dans le hostfs (le `TimeoutStopSec` vient de

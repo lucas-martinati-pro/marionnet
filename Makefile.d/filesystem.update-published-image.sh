@@ -292,8 +292,16 @@ for cmd in ${IN_GUEST+"${IN_GUEST[@]}"}; do run_in_guest "$cmd"; done
 if test -n "$IN_GUEST_SCRIPT"; then
   # Through the hostfs the guest already mounts: `exec' takes a command line, not a file, and
   # copying the script into the project's hostfs is how Marionnet itself hands scripts over.
-  GUEST_SCRIPT_DIR=$(find "$PROJECT_DIR" -type d -name m1 -path '*/hostfs/*' | head -n 1)
-  test -n "$GUEST_SCRIPT_DIR" || die "--in-guest-script: no hostfs directory for m1 (is the guest really up?)"
+  #
+  # That directory is NOT under $PROJECT_DIR -- only the .mar file is. The working directory
+  # lives under MARIONNET_TMPDIR as marionnet-<random>.dir/<project>/hostfs/<component>, and
+  # the random part is unpredictable (measured: the first --in-guest-script ever run died here).
+  # So we ASK: the channel publishes the directory as the `hostfs' field of rc-get
+  # (bin/control_server.ml, Co_rc_read) -- one more line on the socket, one more JSON object.
+  GUEST_SCRIPT_DIR=$(jq -r '.hostfs // empty' \
+                       <<<"$(ask_ok "rc-get m1" "asking for the hostfs directory")")
+  test -n "$GUEST_SCRIPT_DIR" || die "--in-guest-script: the channel named no hostfs directory for m1"
+  test -d "$GUEST_SCRIPT_DIR" || die "--in-guest-script: no such hostfs directory: $GUEST_SCRIPT_DIR"
   cp -- "$IN_GUEST_SCRIPT" "$GUEST_SCRIPT_DIR/respin-script.sh"
   chmod +x "$GUEST_SCRIPT_DIR/respin-script.sh"
   run_in_guest "bash /mnt/hostfs/respin-script.sh"
