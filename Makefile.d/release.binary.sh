@@ -93,6 +93,16 @@
 
 set -euo pipefail
 
+# What ends up under a prefix is system data: directories 0755, files 0644. The
+# releaser's own umask is typically 002, and the staging built here is what BOTH the
+# tarball and (through --staging-dir) the .deb are made of. Its two siblings have had
+# this line since episodes 15a and 17 (release.deb.sh, release.rpm.sh); this channel
+# did not, and held the property only BY ACCIDENT -- the build box of episode 20 runs
+# as root, whose umask is 022. Measured cost of losing it: a group-writable /usr or
+# /usr/bin makes marionnet-sudoers.sh refuse the two NAT-bridge helper rules, rightly
+# (a NOPASSWD rule on a script a group can replace is a root shell for that group).
+umask 022
+
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
@@ -403,6 +413,14 @@ cat > "$PREFIX_DIR/install.sh" <<'INSTALL_SH_EOF'
 #   -h, --help      this help
 # ---
 set -euo pipefail
+
+# Same reason as in the publisher that writes this file, and needed SEPARATELY: this
+# runs on another machine, as another process, under the umask of whoever invokes it.
+# `cp -a' carries the tarball's own 0755 directories, but the prefix and
+# /etc/marionnet are created HERE, by mkdir -- with a umask of 002 they would come
+# out group-writable, which is exactly the state that makes marionnet-sudoers.sh
+# refuse the NAT-bridge helper rules.
+umask 022
 
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PREFIX=/usr/local

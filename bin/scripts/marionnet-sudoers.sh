@@ -389,20 +389,75 @@ EOF
 # root shell, plainly. Being able to say NO is worth these few lines: an
 # administrator installing from an unpacked source tree would otherwise hand out
 # exactly that, and never know.
+#
+# Returns 0 and prints nothing when the path is usable. Otherwise it PRINTS THE
+# CAUSE on stdout -- one sentence, the only true one -- and returns 1. Naming it is
+# not a nicety: this refusal used to read "is missing, or it (or a directory above
+# it) is not root-owned and unwritable by others", three very different situations
+# in one `or', leaving the administrator to guess. MEASURED in a classroom
+# container where both helpers were present, root-owned and 0755, and the fault was
+# /usr and /usr/bin at 775, two levels up -- which is why the path NAMED here is
+# the one that fails, never the argument. Same lesson as episodes 40 and 41: a
+# warning must name its cause.
 function root_owned_all_the_way {
- local path=$1 owner mode
- path=$(readlink -f "$path") || return 1
- [[ -e $path ]] || return 1
+ local path=$1 owner mode fault out=""
+ local -a faults=()
+ path=$(readlink -f "$path" 2>/dev/null) || { echo "no such file: $1"; return 1; }
+ [[ -e $path ]] || { echo "no such file: $path"; return 1; }
+ # The WHOLE chain is walked even after a fault, and every fault is reported. On the
+ # machine that prompted this both /usr and /usr/bin were 775: stopping at the first
+ # one would have had the administrator run the command, fix one directory, run it
+ # again, fix the other -- a remedy delivered one instalment at a time.
  while : ; do
-   read -r owner mode < <(stat -c '%u %a' "$path") || return 1
-   [[ $owner = 0 ]] || return 1
+   read -r owner mode < <(stat -c '%u %a' "$path") || { echo "cannot stat: $path"; return 1; }
+   [[ $owner = 0 ]] || faults+=("$path is owned by uid $owner, not by root")
    # No write bit for group or other. Counted from the RIGHT: %a is three digits,
    # or four when a setuid/sticky bit is set.
-   (( (0${mode: -2:1} & 2) == 0 && (0${mode: -1} & 2) == 0 )) || return 1
+   (( (0${mode: -2:1} & 2) == 0 && (0${mode: -1} & 2) == 0 )) || \
+     faults+=("$path is mode $mode, writable by group or others")
    if [[ $path = / ]]; then break; fi
    path=$(dirname "$path")
  done
- return 0
+ ((${#faults[@]})) || return 0
+ # Joined by "; " -- helper_refusal_advice splits on the semicolon to gather the
+ # paths of each kind, so that one `chmod' names them all.
+ for fault in "${faults[@]}"; do out+="${out:+; }$fault"; done
+ echo "$out"
+ return 1
+}
+
+# helper_refusal_advice CAUSE: the remedies that match CAUSE -- as produced by
+# root_owned_all_the_way, which may report several faults joined by "; " -- said once
+# per distinct advice. This used to be a single unconditional line, "install Marionnet
+# first, then run this from the INSTALLED scripts", which on the machine that prompted
+# this (Marionnet installed, /usr and /usr/bin at 775) was simply FALSE. Saying the
+# same advice twice buries it, since the two helpers sit in the same directory and so
+# usually fail for the same reason; two DIFFERENT causes still get two.
+#
+# The cause is parsed back from the string because root_owned_all_the_way runs in a
+# command substitution: a subshell, which can hand nothing back but its output.
+function helper_refusal_advice {
+ local cause=$1 part advice="" install_needed=0
+ local -a modes=() owners=() lines=()
+ local IFS=';'
+ for part in $cause; do
+   part=${part# }
+   case $part in
+     "no such file: "*)     install_needed=1 ;;
+     *" is mode "*)         modes+=("${part%% is mode *}") ;;
+     *" is owned by uid "*) owners+=("${part%% is owned by uid *}") ;;
+   esac
+ done
+ IFS=' '
+ ((install_needed)) && lines+=("install Marionnet first, then run this from the INSTALLED scripts -- a NOPASSWD rule on an editable script is a root shell.")
+ ((${#owners[@]})) && lines+=("give the path(s) back to root (\`chown root ${owners[*]}') and run this again -- a NOPASSWD rule naming a script its owner can replace is a root shell for that owner.")
+ ((${#modes[@]})) && lines+=("remove the group and other write bits (\`chmod go-w ${modes[*]}') and run this again -- a NOPASSWD rule naming a script that a non-root account can replace is a root shell for that account.")
+ ((${#lines[@]})) || return 0
+ for part in "${lines[@]}"; do advice+="${advice:+
+}$part"; done
+ [[ ${HELPER_ADVICE_SAID:-} = "$advice" ]] && return 0
+ HELPER_ADVICE_SAID=$advice
+ for part in "${lines[@]}"; do echo "$TOOL: $part" 1>&2; done
 }
 
 function content_natbridge_rules {
@@ -432,7 +487,8 @@ function content_natbridge_rules {
  # with. Refusing loudly beats granting silently: without this line the NAT
  # bridge still works, guests are simply addressed by hand, as before episode 10c.
  local -a helper_lines=()
- if root_owned_all_the_way "$DHCP_HELPER"; then
+ local why=""
+ if why=$(root_owned_all_the_way "$DHCP_HELPER"); then
    # Three sub-commands, three lines: the trailing globs are harmless because the
    # script itself refuses any call whose argument COUNT is not the one it expects
    # (episodes 10c and 11).
@@ -443,18 +499,19 @@ function content_natbridge_rules {
    # Said once: the content of a block is generated twice (once to check that it
    # CAN be generated here, once to write it), and one warning is one warning.
    DHCP_REFUSAL_SAID=1
-   echo "$TOOL: NOT granting the DHCP service: $DHCP_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
-   echo "$TOOL: install Marionnet first, then run this from the INSTALLED scripts -- a NOPASSWD rule on an editable script is a root shell." 1>&2
+   echo "$TOOL: NOT granting the DHCP service: $why." 1>&2
+   helper_refusal_advice "$why"
  fi
  # The IPv6 gate, under exactly the same condition and for the same reason.
  # Without these two lines the NAT bridge still works: it simply stays IPv4-only,
  # and says so (E_NO_IPV6_UPLINK is not the only way IPv6 can be absent).
- if root_owned_all_the_way "$IPV6_HELPER"; then
+ if why=$(root_owned_all_the_way "$IPV6_HELPER"); then
    helper_lines+=("$u ALL=(root) NOPASSWD: $IPV6_HELPER enable")
    helper_lines+=("$u ALL=(root) NOPASSWD: $IPV6_HELPER disable")
  elif [[ -z ${IPV6_REFUSAL_SAID:-} ]]; then
    IPV6_REFUSAL_SAID=1
-   echo "$TOOL: NOT granting the IPv6 gate: $IPV6_HELPER is missing, or it (or a directory above it) is not root-owned and unwritable by others." 1>&2
+   echo "$TOOL: NOT granting the IPv6 gate: $why." 1>&2
+   helper_refusal_advice "$why"
  fi
  cat <<EOF
 $u ALL=(root) NOPASSWD: $ip link add ${BRIDGE_PREFIX}* type bridge
@@ -688,7 +745,12 @@ function install_block {
  local f
  f=$(block_file "$b")
  if check_block "$b" "$@" 2>/dev/null; then
-   echo "$TOOL: $f is already up to date for: $*." 1>&2
+   # What the FILE grants, not what was asked for -- the very thing the line below
+   # says when it writes. Since `install' became additive (a classroom grants one
+   # student at a time), printing "$*" here UNDER-REPORTED the file: asked for
+   # `teacher' on a file granting `teacher student', it answered "already up to
+   # date for: teacher", which reads as though student had been dropped.
+   echo "$TOOL: $f is already up to date for: $(file_principals "$f")." 1>&2
    return 0
  fi
  local -a users=()
