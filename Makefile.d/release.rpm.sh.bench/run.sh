@@ -437,9 +437,10 @@ fi
 # ---------------------------------------------------------------- 4. what landed
 info "4. what the packages put on the machine"
 n=$(in_box "rpm -ql marionnet 2>/dev/null | grep -c '^/usr/bin/'")
-# 27 since the bare name `marionnet' is staged beside marionnet.native (see the
-# twin case of the .deb bench for why this number is written and not derived).
-test "$n" = 28 && pass "the 28 commands of bin/ are installed" || fail "expected 28 commands in /usr/bin, found $n"
+# The binary, its bare name (staged beside marionnet.native, episode 38) and the
+# companions of bin/scripts/ (see the twin case of the .deb bench for why this
+# number is written and not derived).
+test "$n" = 29 && pass "the 29 commands of bin/ are installed" || fail "expected 29 commands in /usr/bin, found $n"
 
 n=$(in_box "ls /usr/share/bash-completion/completions/ 2>/dev/null | grep -cE 'mrn|marionnet'")
 test "$n" = 12 && pass "the twelve completion files are installed (episode 11a)" || \

@@ -47,6 +47,11 @@ let ip_binary = lazy (List.find_opt Sys.file_exists ip_binary_candidates)
 let sudoers_script () =
   try Sys.getenv "MARIONNET_SUDOERS_SCRIPT" with Not_found -> "marionnet-sudoers.sh"
 
+(* The privileged door that provides /dev/net/tun. Installed and named exactly
+   like the one above, and overridable the same way in a source tree. *)
+let tun_device_script () =
+  try Sys.getenv "MARIONNET_TUN_DEVICE_SCRIPT" with Not_found -> "marionnet-tun-device.sh"
+
 (* --- Running commands *)
 
 (* Run a command line capturing both channels: an error message is useless
@@ -393,6 +398,46 @@ let unavailability () : unavailability option =
       cause
 
 let is_usable () : bool = (unavailability () = None)
+
+(* Provide the device node, then RE-MEASURE. See tap_provider.mli.
+
+   Why the application and not the installation. /dev is volatile everywhere: a
+   devtmpfs rebuilt at every boot on a machine of its own -- where udev puts the
+   node back by itself, so this never runs -- and a FRESH tmpfs at every start
+   inside a container, where nothing does. A node made once, while building an
+   image or by a postinst, is therefore gone at the next start: the only gesture
+   that lasts is the one repeated at each start of the application.
+
+   Why through sudo. mknod(2) of a character device needs CAP_MKNOD, which a plain
+   account does not have even inside a container whose bounding set contains it.
+   So this asks the same way everything else here does, and the door it calls is
+   granted by the socle (block a) of marionnet-sudoers.sh.
+
+   Why the exit status of the door is NOT the answer. Creating the node does not
+   prove a tap can be made: opening it may still be refused by a container's
+   device cgroup, and TUNSETIFF still needs CAP_NET_ADMIN. So the verdict cache is
+   dropped and the real question asked again -- what is returned is what is STILL
+   wrong, [None] meaning the taps work now.
+
+   The caller is expected to have found [Some No_tun_device] first: nothing else
+   is repaired by a mknod, and a machine whose node is already there must not pay
+   a sudo call to be told so. *)
+let ensure_tun_device () : unavailability option =
+  let command = Printf.sprintf "sudo -n %s create" (Filename.quote (tun_device_script ())) in
+  match run command with
+  | Ok _ -> verdict := None; unavailability ()
+  | Error message ->
+      verdict := None;
+      (* The door's own failure is classified by the function that classifies every
+         other one. A sudo REFUSAL is the interesting case, and it is not "no
+         device": it means this account was granted the socle before this door
+         existed, so the remedy is to run marionnet-sudoers.sh install again --
+         which is exactly what the No_sudoers_rule message already says. Anything
+         else (no sudo at all, no CAP_MKNOD, a node of the wrong kind) is not
+         guesswork either: we simply ask the machine again and report what is. *)
+      (match unavailability_of_error message with
+       | No_sudoers_rule -> Some No_sudoers_rule
+       | _ -> unavailability ())
 
 let sudoers_rule ?user () : (string, string) result =
   match (match user with Some u -> Ok u | None -> current_user_name ()) with

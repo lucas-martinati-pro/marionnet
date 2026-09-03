@@ -1255,6 +1255,39 @@ Reprise : appliquer le skill `chantier-long`.
   **1/10 sur le code d'avant** — le seul vert étant `E_SUBNET_IN_USE`, la cause que l'ancien
   message nommait *par hasard*. **Reste** (versé à `docs/TODO.md`) : le **LAN bridge** n'a
   toujours aucun avertissement de démarrage.
+  **Ép. 42 : le périphérique manquant se répare, et c'est l'APPLICATION qui le fait.** Né du
+  constat *« un contrôle sans corriger la cause »* (ép. 41 bis). La piste proposée — le `mknod`
+  dans les 3 canaux d'installation — est **écartée par la mesure** : `/dev` est volatile
+  **partout**, devtmpfs recréé à chaque boot (avec `CONFIG_TUN=y` et
+  `50-udev-default.rules` → **udev repose le nœud tout seul**, donc rien à réparer là) et
+  **tmpfs neuf à chaque démarrage de conteneur** (donc un nœud fait au build ou par un
+  `postinst` a déjà disparu) — *le seul geste qui dure est celui que l'application répète à
+  chaque démarrage*. Les 3 canaux restent donc inchangés, et c'est désormais juste
+  **techniquement**, plus seulement par principe (ép. 40). **L'objection qui a façonné la
+  conception** : `mknod` d'un périphérique caractère exige **`CAP_MKNOD`**, qu'un compte
+  non-root n'a pas — même dans un conteneur qui l'a dans son *bounding set* — d'où une
+  **porte + sudoers**, comme tout geste privilégié ici. **`bin/scripts/marionnet-tun-device.sh`**
+  (27ᵉ compagnon, patron `marionnet-ipv6.sh` : `create`/`status`, **zéro argument variable**,
+  chemin et major/minor dans le fichier ⇒ règle **entièrement littérale**) est grantée par le
+  **socle, bloc (a)** : ce qu'elle accorde est *ce que udev accorde déjà partout*, et le nœud est
+  la **précondition** des taps, pas un pouvoir de plus. **À ne pas défaire** : (1) ce n'est
+  **pas** un `--repair` de `marionnet-tun-check.sh` — 110 lignes qui tourneraient en root, et son
+  en-tête énonce qu'il ne crée aucun périphérique ; (2) un nœud déjà là est un succès qui **ne
+  touche pas son mode** (un mode délibérément restreint n'est pas écrasé) et un fichier de la
+  mauvaise nature est **nommé, jamais remplacé** ; (3) `Tap_provider.ensure_tun_device` (patron
+  d'`ensure_sudoers_rule`) **jette le cache `verdict` et re-mesure** — créer le nœud ne prouve
+  pas qu'on puisse en faire un tap (cgroup, `TUNSETIFF`) ; (4) `bin/marionnet.ml` ne l'appelle que
+  sur `No_tun_device`, et **se tait quand ça marche**. **Épisode gratuit en i18n (0 `msgid`
+  neuf)** : un refus de `sudo` est rendu **`No_sudoers_rule`**, dont le message existant est
+  *exactement* le bon remède — **conséquence à retenir : une machine déjà grantée doit
+  réinstaller le socle** pour gagner la porte (`install` est additif, ép. 35). Mesuré : banc
+  conteneurs **13/0**, **discriminance 2/11** sur le code d'avant ; les 4 branches de la porte
+  (créée / non-root / `--cap-drop MKNOD` / mauvaise nature) ; sur une vraie machine
+  **aucune tentative, aucun `sudo`** ; compte de noms **dérivé** (27 compagnons + binaire + nom
+  nu = **29**), les 2 bancs paquets 28 → 29 donc **rouges jusqu'à la prochaine release**.
+  **2 défauts de banc** (famille « juger par autre chose que ce qu'on mesure ») : `echo | check`
+  perd ses compteurs dans un **sous-shell**, et un montage nommé `/scripts` faisait exercer le
+  script **du dépôt** au lieu de la porte **installée** — le banc condamnait un code correct.
 
 ## Où puiser
 

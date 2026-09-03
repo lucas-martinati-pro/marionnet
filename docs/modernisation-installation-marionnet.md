@@ -5470,3 +5470,121 @@ Versement par `msgmerge --compendium`. **442 traduits, 0 trou ×12.**
 Le défaut voisin, versé à `docs/TODO.md` : **le LAN bridge n'a aucun avertissement de démarrage**
 (`bin/lan_bridge.ml` ne dit rien quand son pont n'est pas construit). Sa sonde, elle, était déjà
 la bonne — c'est d'elle qu'on a copié.
+
+---
+
+## Épisode 42 (2026-09-03) — le périphérique manquant se répare, et c'est l'application qui le fait
+
+Né d'une remarque de l'auteur sur l'épisode 41 bis (`dcdcb0d`) : *« tu as ajouté un contrôle sans
+corriger la cause »*. Exact — ce commit n'avait touché qu'un message. La proposition initiale était
+de faire le `mknod` **dans les 3 canaux d'installation** ; la mesure l'a écartée, et a désigné le
+seul placement qui tienne.
+
+### 1. Ce que la mesure impose : ni l'installation, ni le constructeur d'image
+
+`/dev` est **volatile partout**, et c'est cela qui décide :
+
+| Fait | Mesure |
+|---|---|
+| `/dev` volatile | `stat -f -c %T /dev` → tmpfs ; `findmnt /dev` → **devtmpfs (udev)** |
+| `tun` n'est **pas** un module | `CONFIG_TUN=y`, **aucun `tun.ko`** sous `/lib/modules/6.8.0-138-generic` |
+| c'est **udev** qui pose le nœud | `50-udev-default.rules:109` — `KERNEL=="tun", MODE="0666", OPTIONS+="static_node=net/tun"` |
+
+Donc : sur une machine à elle, le nœud est **remis par udev à chaque boot**, en 0666 — il n'y a
+rien à réparer, et le `[ -e ] ||` d'un `postinst` y serait un no-op. Dans un conteneur, udev ne
+tourne pas et le moteur monte un **tmpfs neuf sur `/dev` à chaque démarrage** — un nœud fait une
+fois, en construisant l'image ou par un `postinst`, a disparu au démarrage suivant. Une réparation
+posée à l'installation ne tiendrait donc **dans aucun des deux cas** : elle marcherait le jour de
+la mesure et s'évaporerait en service. **Le seul geste qui dure est celui que l'application répète
+à chaque démarrage.** Les 3 canaux restent donc inchangés — ils *nomment*, ils ne réparent pas
+(ép. 40) — et c'est désormais juste **techniquement**, pas seulement par principe.
+
+Argument d'empaquetage qui va dans le même sens : un nœud créé par un `postinst` n'est pas un
+fichier du paquet — `dpkg`/`rpm` ne le connaissent pas, ne le vérifient pas, ne le retirent pas.
+
+### 2. L'objection qui a façonné la conception : `CAP_MKNOD`
+
+`mknod(2)` d'un périphérique caractère exige **`CAP_MKNOD` dans le set effectif**. Marionnet tourne
+sous un compte non privilégié : même dans un conteneur dont le *bounding set* contient `CAP_MKNOD`,
+un processus non-root ne l'a pas. « S'il en a le droit » ne pouvait donc pas vouloir dire « s'il y
+arrive tout seul » — il n'y arriverait jamais. Le droit vient d'où viennent tous les gestes
+privilégiés de Marionnet : **une porte + une règle sudoers**.
+
+### 3. La porte, et pourquoi elle est à elle seule un fichier
+
+`bin/scripts/marionnet-tun-device.sh` (**27ᵉ compagnon**), patron **`marionnet-ipv6.sh`** (ép. 11) :
+`create` / `status`, **aucun argument variable**, chemin, major et minor écrits **dans le fichier**
+— donc règle sudoers **entièrement littérale**, sans le moindre glob à détourner (piège ép. 10c :
+un `*` d'argument avale des mots entiers). Rien n'est sourcé, aucune variable d'environnement n'est
+lue, aucun chemin n'est accepté de l'appelant.
+
+**Ce n'est délibérément PAS un `--repair` de `marionnet-tun-check.sh`** : celui-là fait 110 lignes,
+il est appelé par les 3 canaux, et son propre en-tête énonce qu'il *ne crée aucun périphérique* —
+en faire la porte ferait tourner ces 110 lignes en root et rendrait sa documentation fausse. *Une
+porte est minuscule et valide en root.*
+
+**Deux refus inscrits dans le code** : un nœud déjà présent est un succès qui **ne change rien**
+(son mode reste **exactement** celui que l'administrateur a mis — la réparation vise l'absence de
+nœud, pas un mode délibérément restreint) ; et un fichier du bon nom mais **de la mauvaise nature**
+est **nommé, jamais remplacé** (détruire ce qu'un autre a posé n'est pas une décision de ce script).
+
+### 4. Le socle grante la porte, et ce que cela accorde, dit franchement
+
+La règle entre dans le **bloc (a)**, gardée par `root_owned_all_the_way` comme les helpers du bloc
+(b). Ce qu'elle accorde : *créer `/dev/net/tun` en 0666* — **la configuration que udev pose déjà
+sur tout poste Linux**. Accorder le socle veut déjà dire « ce compte peut créer des taps » ; le
+nœud est la **précondition du même acte**, pas un pouvoir de plus : sans lui `ip tuntap` répond
+`open: No such file or directory` et le bloc entier n'accorde rien d'utilisable.
+
+**Conséquence à ne pas oublier** : une machine où le socle est **déjà** installé doit le
+**réinstaller** pour gagner la porte (`install` est additif depuis l'ép. 35, `check` dit s'il est à
+jour).
+
+### 5. Côté OCaml : aucun message neuf, et c'est le point
+
+`Tap_provider.ensure_tun_device` (patron **exact** de `ensure_sudoers_rule`) lance la porte par
+`sudo -n`, **jette le cache `verdict`** et **re-mesure** : créer le nœud ne prouve pas qu'on puisse
+en faire un tap (le filtre de cgroup d'un conteneur peut refuser l'`open`, et `TUNSETIFF` exige
+toujours `CAP_NET_ADMIN`). Ce qu'elle rend est **ce qui reste faux**.
+
+`bin/marionnet.ml` ne l'appelle que sur `No_tun_device` — les 3 autres causes ne se réparent pas
+par un `mknod`, et une machine qui a déjà son nœud ne doit pas payer un appel `sudo` pour se
+l'entendre dire. **Silencieux en cas de succès** (une ligne de journal).
+
+**À ne pas défaire** : un refus de `sudo` est rendu comme **`No_sudoers_rule`**, et c'est ce qui
+rend l'épisode **gratuit en i18n** — le message existant (« la règle sudo n'est pas installée,
+lancez `marionnet-sudoers.sh install` ») est **exactement** le bon remède pour un compte granté
+avant que cette porte existe. Les autres issues retombent sur les messages existants : nœud
+impossible → `No_tun_device` (`--device`), nœud fait mais noyau qui refuse → `No_permission`
+(`--cap-add NET_ADMIN`). **0 `msgid` neuf, les 12 catalogues restent complets sans être touchés.**
+
+### 6. Mesuré
+
+- Banc ad hoc en conteneurs (forme de l'ép. 35), 4 scénarios : **13 PASS / 0 FAIL**, et
+  **discriminance 2 PASS / 11 FAIL** en le rejouant sur le code d'avant (les 2 verts survivants
+  sont vrais des deux côtés). Les deux cas qui comptent : socle **non** granté → l'avertissement
+  nomme **la règle sudoers** et pas le périphérique ; conteneur **sans** `--cap-add NET_ADMIN` →
+  le nœud **est** créé et le verdict nomme **`CAP_NET_ADMIN`**.
+- Les 4 branches de la porte, une par une : nœud créé (`crw-rw-rw- 10, 200`), non-root **refusé en
+  nommant root**, `--cap-drop MKNOD` **refusé en nommant `CAP_MKNOD`**, fichier de mauvaise nature
+  **refusé sans être remplacé**.
+- **Machine à elle** : `--provide-tun-device` sur cet hôte → *« not attempted »*, **aucun appel
+  `sudo`** — la réparation ne se déclenche jamais là où udev a déjà travaillé.
+- `visudo -cf` sur le fichier granté, pour **un compte** et pour **un groupe**.
+- `dune build` rc 0, `make check` rc 0. Compte de noms **dérivé** et non supposé :
+  `ls _build/install/default/share/marionnet/scripts/` = **27** compagnons, + le binaire + le nom
+  nu = **29** (les 2 bancs paquets passent de 28 à 29).
+
+**Deux défauts de banc, même famille que les ép. 19 / 20b / 20c / 24 / 27 / 30 / 30b** — *juger par
+autre chose que ce qu'on mesure* : (1) `echo … | check` fait tourner `check` dans un **sous-shell**,
+donc les compteurs étaient perdus et le banc annonçait `0 PASS / 0 FAIL` en affichant des échecs ;
+(2) surtout, le montage du dépôt s'appelait `/scripts`, or le pilote de test bascule sur
+`./scripts/marionnet-tun-device.sh` **s'il existe relativement au cwd** — le banc demandait donc à
+sudo une porte que la règle n'accorde pas (`/scripts/…` au lieu de `/usr/bin/…`) et **condamnait un
+code correct**. Un banc doit exercer la porte **installée**, comme une vraie machine.
+
+### Reste
+
+Les 2 bancs paquets sont **rouges par construction** jusqu'à la prochaine release (ils comptent 29
+noms dans un paquet qui en porte 28) — motif habituel : *la preuve du paquet se prend après le
+commit* (ép. 20c → 22, 28 → 30b quater). Aucune release avant la fin de la campagne.

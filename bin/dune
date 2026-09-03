@@ -150,8 +150,9 @@
 (test
   (name tap_provider_test)
   (modules tap_provider_test)
-  ;; So that the driver can show the rule without the script being installed yet:
-  (deps scripts/marionnet-sudoers.sh)
+  ;; So that the driver can show the rule -- and ask for the tun device with
+  ;; --provide-tun-device -- without the scripts being installed yet:
+  (deps scripts/marionnet-sudoers.sh scripts/marionnet-tun-device.sh)
   (preprocessor_deps
       (file ../lib/option_extract_p4.cmo)
       (file ../lib/raise_p4.cmo)
@@ -244,6 +245,13 @@
      ;; --- Called by the three installation channels, never fatal for them, and
      ;; --- runnable by hand the day the taps do not work (episode 40).
      (glob_files "scripts/marionnet-tun-check.sh")
+     ;; --- And the door that PROVIDES that device, asked by Marionnet at each
+     ;; --- start-up through sudo: /dev is volatile everywhere (a devtmpfs rebuilt
+     ;; --- at each boot, a fresh tmpfs at each container start), so the node can
+     ;; --- only be provided by the application, never once at installation time.
+     ;; --- Granted by the socle, block (a) of marionnet-sudoers.sh, which names it
+     ;; --- by this path -- so it must land here and be root-owned.
+     (glob_files "scripts/marionnet-tun-device.sh")
      ;; --- And its counterpart, the LAN bridge (episode 8 of the same work-stream):
      ;; --- same contract, same rollback discipline, but this one enslaves the HOST's
      ;; --- own card -- hence sudoers block (c), which it is also the source of.

@@ -112,6 +112,18 @@ DHCP_HELPER=$SCRIPT_DIR/marionnet-dnsmasq.sh
 # untouchable by the user (root_owned_all_the_way, as for the DHCP helper).
 IPV6_HELPER=$SCRIPT_DIR/marionnet-ipv6.sh
 
+# And the same again for the device the taps are made of. /dev is volatile
+# everywhere -- a devtmpfs rebuilt at every boot on a machine of its own, where
+# udev puts /dev/net/tun back by itself, and a FRESH tmpfs at every start inside a
+# container, where nothing does. So the node cannot be provided once at
+# installation time: Marionnet asks for it at each start-up, through this door
+# (its header says the rest). It takes no variable argument either, so its single
+# line is entirely literal. It belongs to the socle because granting the socle
+# already means "this account may create taps", and the node is the precondition
+# of that very act: without it `ip tuntap' answers `open: No such file or
+# directory' and the whole block grants nothing usable.
+TUN_HELPER=$SCRIPT_DIR/marionnet-tun-device.sh
+
 # And these two with bin/scripts/marionnet-lanbridge.sh (BRIDGE_PREFIX and
 # ALIAS_PREFIX there):
 LAN_BRIDGE_PREFIX=mnlan
@@ -336,8 +348,25 @@ function known_principal_or_die {
 # `master <bridge>' for the world_bridge). Marionnet never passes user input
 # here: tap names are generated and addresses are computed.
 function content_taps_rules {
- local u=$1 ip owner
+ local u=$1 ip owner why=""
+ local -a helper_lines=()
  ip=$(ip_binary) || return 1
+ # The device the taps are made of, granted only when the script that provides it
+ # cannot be tampered with -- same condition as the DHCP and IPv6 helpers of
+ # block (b), and for the same reason (a NOPASSWD rule naming a script a non-root
+ # account can replace is a root shell for that account). Refusing loudly beats
+ # granting silently: without this line Marionnet still works wherever the node is
+ # already there, which is every machine of its own, and says what is missing
+ # where it is not.
+ if why=$(root_owned_all_the_way "$TUN_HELPER"); then
+   helper_lines+=("$u ALL=(root) NOPASSWD: $TUN_HELPER create")
+ elif [[ -z ${TUN_REFUSAL_SAID:-} ]]; then
+   # Said once: the content of a block is generated twice (once to check that it
+   # CAN be generated here, once to write it), and one warning is one warning.
+   TUN_REFUSAL_SAID=1
+   echo "$TOOL: NOT granting the tun device: $why." 1>&2
+   helper_refusal_advice "$why"
+ fi
  # The tap is created for its future user, whose LOGIN the rule names -- which a
  # group principal, by definition, does not have. sudoers has no way to spell
  # "the caller" in a command argument (no %u expansion there; the escapes are
@@ -363,6 +392,8 @@ $u ALL=(root) NOPASSWD: $ip route add ${GHOST_NETWORK_PREFIX}* dev ${TAP_PREFIX}
 $u ALL=(root) NOPASSWD: $ip link set ${TAP_PREFIX}* *
 $u ALL=(root) NOPASSWD: $ip link del ${TAP_PREFIX}*
 EOF
+ local line
+ for line in ${helper_lines[@]+"${helper_lines[@]}"}; do echo "$line"; done
 }
 
 # --- (b) The private NAT bridge -- chantier modernisation-world-bridge

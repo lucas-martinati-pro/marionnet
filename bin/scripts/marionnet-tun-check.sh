@@ -59,13 +59,16 @@ $TOOL: Marionnet cannot create a single network interface (tap) without it: no
 $TOOL: graphics inside the virtual machines, no router terminals. The sudoers
 $TOOL: rule is not in question -- it is not even reached.
 $TOOL:
-$TOOL:   * in a container started fresh each time (docker run):
+$TOOL:   * this may well fix itself: Marionnet asks for the device at every
+$TOOL:     start-up, through a privileged door which the sudoers socle grants.
+$TOOL:     Grant it, and start Marionnet:
+$TOOL:         sudo marionnet-sudoers.sh install <user>
+$TOOL:     (an account granted BEFORE that door existed needs this again). Nothing
+$TOOL:     can be done here instead: /dev is a fresh tmpfs at every container
+$TOOL:     start, so a node made now would not survive to the next one.
+$TOOL:   * if even that is refused -- a container may withhold CAP_MKNOD -- then
+$TOOL:     the device has to come from the engine:
 $TOOL:         docker run --device $TUN --cap-add NET_ADMIN ...
-$TOOL:   * in an image whose container is (re)started by a script you control (a
-$TOOL:     classroom image, say): create the node THERE, at each start -- Docker
-$TOOL:     remounts a fresh tmpfs over /dev, so a node baked into the image at
-$TOOL:     build time will not survive it:
-$TOOL:         mkdir -p /dev/net && [ -e $TUN ] || mknod $TUN c 10 200 && chmod 666 $TUN
 $TOOL:   * on a machine of its own, the tun module may simply not be loaded:
 $TOOL:         sudo modprobe tun
 $TOOL:     and, to keep it across reboots: echo tun | sudo tee /etc/modules-load.d/tun.conf

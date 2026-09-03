@@ -78,18 +78,21 @@ let dead_pid () : int =
 
 (* --- *)
 
+(* Spelled once: two modes report a verdict, and a bench which greps for these
+   words must find the same ones in both. *)
+let why_not = function
+  | None -> "(they are)"
+  | Some Tap_provider.No_tun_device -> "/dev/net/tun is missing"
+  | Some Tap_provider.No_permission -> "no CAP_NET_ADMIN"
+  | Some Tap_provider.No_sudoers_rule -> "the sudoers rule is not installed"
+  | Some (Tap_provider.Unclear d) -> Printf.sprintf "unclear: %s" d
+
 let dry_run () =
   printf "== Tap_provider, dry run: nothing is created, nothing is destroyed.\n\n";
   printf "  tap prefix .............. %s\n" Tap_provider.tap_prefix;
   printf "  eth42 host address ...... %s\n" Tap_provider.eth42_host_address;
   printf "  taps usable ............. %b\n" (Tap_provider.is_usable ());
-  printf "  why not ................. %s\n"
-    (match Tap_provider.unavailability () with
-     | None -> "(they are)"
-     | Some Tap_provider.No_tun_device -> "/dev/net/tun is missing"
-     | Some Tap_provider.No_permission -> "no CAP_NET_ADMIN"
-     | Some Tap_provider.No_sudoers_rule -> "the sudoers rule is not installed"
-     | Some (Tap_provider.Unclear d) -> Printf.sprintf "unclear: %s" d);
+  printf "  why not ................. %s\n" (why_not (Tap_provider.unavailability ()));
   printf "\n--- Expected sudoers rule:\n\n";
   (match Tap_provider.sudoers_rule () with
    | Ok text -> print_string text
@@ -279,12 +282,47 @@ let live_bridge_run (bridge : string) =
       (* --- *)
       printf "\n== %s\n" (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
 
-(* Installed Marionnet finds the script in $PATH; here dune has just copied it
-   next to us (see the (deps ...) of the test stanza), so make it findable: *)
+(* --provide-tun-device: the very gesture bin/marionnet.ml makes at start-up when
+   /dev/net/tun is missing, without the GUI and without a guest image. It DOES
+   change the machine -- it is the only mode here that asks for a device node --
+   which is why it has a flag of its own and is not part of the dry run.
+
+   It proves the whole chain in a container: the socle grants the door, the door
+   makes the node, and the verdict is taken AGAIN afterwards (creating the node
+   does not prove a tap can be made). Expect, in a plain container started with
+   --cap-add NET_ADMIN and no --device:
+
+     before .... /dev/net/tun is missing
+     after ..... (they are)
+
+   and, with the socle NOT granted, `the sudoers rule is not installed' after --
+   which is the true remedy for an account granted before this door existed. *)
+let provide_tun_device_run () =
+  let before = Tap_provider.unavailability () in
+  printf "== Tap_provider.ensure_tun_device: the start-up repair.\n\n";
+  printf "  before .................. %s\n" (why_not before);
+  (* Guarded exactly as bin/marionnet.ml guards it: nothing else is repaired by a
+     device node, and a machine which already has one owes no sudo call. *)
+  (match before with
+   | Some Tap_provider.No_tun_device ->
+       let after = Tap_provider.ensure_tun_device () in
+       printf "  after ................... %s\n" (why_not after);
+       check "the taps are usable now" (after = None)
+   | _ ->
+       printf "  after ................... (not attempted: only a missing device is repaired here)\n");
+  show "the device node" "ls -l /dev/net/tun 2>&1 || true";
+  printf "\n== %s\n"
+    (if !failures = 0 then "All checks passed." else Printf.sprintf "%d CHECK(S) FAILED." !failures)
+
+(* Installed Marionnet finds the scripts in $PATH; here dune has just copied them
+   next to us (see the (deps ...) of the test stanza), so make them findable: *)
 let () =
-  let script = "scripts/marionnet-sudoers.sh" in
-  if Sys.getenv_opt "MARIONNET_SUDOERS_SCRIPT" = None && Sys.file_exists script then
-    Unix.putenv "MARIONNET_SUDOERS_SCRIPT" (Filename.concat (Sys.getcwd ()) script)
+  let export variable script =
+    if Sys.getenv_opt variable = None && Sys.file_exists script then
+      Unix.putenv variable (Filename.concat (Sys.getcwd ()) script)
+  in
+  export "MARIONNET_SUDOERS_SCRIPT" "scripts/marionnet-sudoers.sh";
+  export "MARIONNET_TUN_DEVICE_SCRIPT" "scripts/marionnet-tun-device.sh"
 
 let () =
   let live = Array.exists (fun x -> x = "--live") Sys.argv in
@@ -304,9 +342,11 @@ let () =
           else acc)
       None Sys.argv
   in
-  (match live, live_bridge, live_collision with
-   | _, _, Some address -> live_collision_run address
-   | _, Some bridge, None -> (if live then live_run ()); live_bridge_run bridge
-   | true, None, None -> live_run ()
-   | false, None, None -> dry_run ());
+  let provide_tun_device = Array.exists (fun x -> x = "--provide-tun-device") Sys.argv in
+  (match provide_tun_device, live, live_bridge, live_collision with
+   | true, _, _, _ -> provide_tun_device_run ()
+   | false, _, _, Some address -> live_collision_run address
+   | false, _, Some bridge, None -> (if live then live_run ()); live_bridge_run bridge
+   | false, true, None, None -> live_run ()
+   | false, false, None, None -> dry_run ());
   exit (if !failures = 0 then 0 else 1)

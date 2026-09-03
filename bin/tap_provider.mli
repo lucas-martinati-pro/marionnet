@@ -132,6 +132,24 @@ val unavailability_of_error : string -> unavailability
     (formerly Daemon_client.disable_daemon_support, with the late daemon). *)
 val is_usable : unit -> bool
 
+(** Ask the privileged door bin/scripts/marionnet-tun-device.sh for [/dev/net/tun],
+    then measure again: the result is what is STILL wrong, [None] meaning the taps
+    work now. Call it when {!unavailability} answered [Some No_tun_device] -- it is
+    the only cause a device node repairs, and a machine that already has one should
+    not pay a [sudo] call to be told so.
+
+    Placed in the application, and not in the three installation channels, because
+    [/dev] is volatile everywhere: a devtmpfs rebuilt at each boot (where udev puts
+    the node back by itself) and a fresh tmpfs at each container start (where
+    nothing does). A node provided once at installation time survives neither.
+
+    The exit status of the door is deliberately not the answer: creating the node
+    does not prove a tap can be made (a device cgroup may still refuse to open it,
+    and [TUNSETIFF] still needs [CAP_NET_ADMIN]). A [sudo] refusal is reported as
+    {!No_sudoers_rule}, whose remedy -- granting the socle again, this door
+    included -- is the true one for an account granted before it existed. *)
+val ensure_tun_device : unit -> unavailability option
+
 (** The sudoers rule that {!is_usable} needs, as the script would install it.
     For display in a dialog / in the log. [user] defaults to the current user. *)
 val sudoers_rule : ?user:string -> unit -> (string, string) result

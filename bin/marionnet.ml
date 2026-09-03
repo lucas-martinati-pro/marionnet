@@ -245,7 +245,23 @@ end (* Just_for_testing *)
     install the sudoers rule when the probe fails: *)
 let () = Log.printf "Loading module bin/marionnet.ml: about to probe the tap provider\n"
 let () =
-  match Tap_provider.unavailability () with
+  (* A missing /dev/net/tun is not a verdict, it is a repair to attempt: /dev is
+     volatile everywhere, so nothing done at installation time could have provided
+     the node durably -- inside a container it is a fresh tmpfs at every start.
+     Marionnet therefore asks its privileged door for it here, at each start-up,
+     and only then decides what to say. Silent when it works: on a machine of its
+     own udev has already put the node there and this never runs at all. The three
+     other causes are left alone -- none of them is repaired by a device node. *)
+  let cause =
+    match Tap_provider.unavailability () with
+    | Some Tap_provider.No_tun_device ->
+        let remaining = Tap_provider.ensure_tun_device () in
+        (if remaining = None then
+           Log.printf "Tap_provider: /dev/net/tun was missing; the privileged door provided it\n");
+        remaining
+    | other -> other
+  in
+  match cause with
   | None ->
     let n = Tap_provider.purge_orphan_taps () in
     (if n > 0 then Log.printf1 "Tap_provider: %i orphan tap(s) collected\n" n)
