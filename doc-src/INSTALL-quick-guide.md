@@ -51,19 +51,24 @@ sudo apt install gnupg
 gpg --show-keys /etc/apt/keyrings/marionnet.asc     # must print the fingerprint above
 ```
 
-### 1.4 Optional data packages
+### 1.4 Data packages — alone, the application boots nothing
 
 ```bash
-sudo apt install marionnet-kernels          # 64-bit UML kernel
-sudo apt install marionnet-fs-guignol       # small guest image, machine and router
+sudo apt install marionnet-kernels          # 64-bit kernel: without it, no recent image (trixie)
+sudo apt install marionnet-fs-guignol       # the only ROUTER filesystem: without it, no router
 ```
 
-32-bit kernel, for the old kernel/filesystem couples — needs a foreign architecture:
+**A router needs `marionnet-fs-guignol` AND the 32-bit kernel below**: guignol does not run on
+the 64-bit one. That kernel also carries every `.mar` project made before 2026, and it needs a
+foreign architecture enabled:
 
 ```bash
 sudo dpkg --add-architecture i386 && sudo apt update
 sudo apt install marionnet-kernels-i386
 ```
+
+A filesystem whose supported kernel is not installed is **not offered at all** — nothing fails,
+it is simply absent from the list (`INSTALL.md § 2`).
 
 ### 1.5 If a Marionnet tarball was installed here before
 
@@ -95,10 +100,11 @@ sudo curl -o /etc/yum.repos.d/marionnet.repo \
 sudo dnf install marionnet          # zypper install marionnet, on openSUSE
 ```
 
-### 2.3 Optional data packages
+### 2.3 Data packages
 
-Same three names as § 1.4. `marionnet-kernels-i386` is not installable on RHEL 10 (no 32-bit
-multilib there at all).
+Same three names as § 1.4, needed for the same things. `marionnet-kernels-i386` is not
+installable on RHEL 10 (no 32-bit multilib there at all), and with it go guignol, wheezy and
+therefore the router (temporary: a 64-bit router image is planned).
 
 ## 3. Any distribution — the precompiled tarball
 

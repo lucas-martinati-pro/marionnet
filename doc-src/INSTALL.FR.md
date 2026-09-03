@@ -110,13 +110,22 @@ vous avez récupéré.
 
 `apt install marionnet` installe **l'application seule** — les paquets de données sont des
 `Suggests:`, afin que cette commande veuille dire ici la même chose que `dnf install marionnet`
-au § 3. Les trois autres paquets, tous facultatifs :
+au § 3. Ce ne sont pas des accessoires : **seule, l'application ne démarre rien.** Un invité a
+besoin d'un système de fichiers *et* d'un noyau que ce système de fichiers déclare supporter, et
+Marionnet **ne propose pas** un système de fichiers dont aucun noyau supporté n'est installé.
+Rien n'échoue et rien n'est dit : le composant est simplement absent de la liste.
 
-| Paquet | Ce qu'il porte |
+| Paquet | Ce qu'il porte — et ce qui manque sans lui |
 |---|---|
-| `marionnet-kernels` | le noyau UML 64 bits |
-| `marionnet-fs-guignol` | la petite image invitée, machine *et* routeur |
-| `marionnet-kernels-i386` | le noyau UML 32 bits, pour les vieux couples noyau/système de fichiers |
+| `marionnet-kernels` | le noyau UML 64 bits `linux-6.12.95`. Sans lui, **les images récentes** (Debian trixie) ne sont pas proposées |
+| `marionnet-fs-guignol` | la petite image invitée, machine *et* **routeur** — le seul système de fichiers de routeur publié. Sans lui, **aucun routeur ne peut être construit** |
+| `marionnet-kernels-i386` | le noyau UML 32 bits `linux-6.12.95-i386`. Sans lui, **guignol et wheezy** ne sont pas proposés, et avec eux tout projet `.mar` antérieur à 2026 |
+
+**Un routeur coûte deux paquets, pas un.** Mesuré dans le `.conf` publié : guignol déclare
+`SUPPORTED_KERNELS='/3.2.[6-9]/ /-i386$/'`, que `linux-6.12.95` ne satisfait pas. Donc
+`marionnet-fs-guignol` exige `marionnet-kernels-i386` — le noyau 64 bits ne le fera pas tourner —
+et l'architecture étrangère ci-dessous n'est pas affaire de vieux projets seulement : c'est ce
+que coûte un routeur aujourd'hui.
 
 `marionnet-kernels-i386` exige une **architecture étrangère activée sur votre machine**, parce
 que l'interpréteur du noyau 32 bits est `/lib/ld-linux.so.2` et que seul `libc6:i386` possède ce
@@ -204,11 +213,13 @@ sur Fedora 42 et 44) ; ils sont construits ici à partir des paquets source Debi
 résout depuis le même répertoire, si bien que vous n'avez pas à savoir qu'ils existent — sauf sur
 openSUSE, qui livre `vde2` et dont c'est le paquet qui est utilisé.
 
-Les paquets de données facultatifs sont les trois mêmes qu'au § 2, sous les mêmes noms. Le
-multilib étant natif ici, le noyau 32 bits n'a pas besoin d'un équivalent du
+Les trois paquets de données sont les mêmes qu'au § 2, sous les mêmes noms, et nécessaires aux
+mêmes choses. Le multilib étant natif ici, le noyau 32 bits n'a pas besoin d'un équivalent du
 `dpkg --add-architecture` ; mais RHEL 10 a **supprimé tout le multilib 32 bits**, si bien que sur
 cette famille `marionnet-kernels-i386` n'est tout simplement pas installable — c'est pourquoi il
-est un paquet séparé : que son refus n'emporte pas celui de 64 bits.
+est un paquet séparé : que son refus n'emporte pas celui de 64 bits. Il faut en prendre la
+conséquence : pas de noyau 32 bits, donc pas de guignol ni de wheezy, donc **pas de routeur** sur
+RHEL 10 (§ 2) — état temporaire, la publication d'une image de routeur 64 bits étant prévue.
 
 ## 4. N'importe quelle distribution — le tarball précompilé
 

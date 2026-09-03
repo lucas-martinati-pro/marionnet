@@ -55,20 +55,24 @@ sudo apt install gnupg
 gpg --show-keys /etc/apt/keyrings/marionnet.asc     # doit afficher l'empreinte ci-dessus
 ```
 
-### 1.4 Paquets de données facultatifs
+### 1.4 Paquets de données — seule, l'application ne démarre rien
 
 ```bash
-sudo apt install marionnet-kernels          # noyau UML 64 bits
-sudo apt install marionnet-fs-guignol       # petite image invitée, machine et routeur
+sudo apt install marionnet-kernels          # noyau 64 bits : sans lui, aucune image récente (trixie)
+sudo apt install marionnet-fs-guignol       # le seul système de fichiers de ROUTEUR : sans lui, pas de routeur
 ```
 
-Noyau 32 bits, pour les vieux couples noyau/système de fichiers — exige une architecture
-étrangère :
+**Un routeur exige `marionnet-fs-guignol` ET le noyau 32 bits ci-dessous** : guignol ne tourne
+pas sur le 64 bits. Ce noyau porte aussi tout projet `.mar` antérieur à 2026, et il exige une
+architecture étrangère :
 
 ```bash
 sudo dpkg --add-architecture i386 && sudo apt update
 sudo apt install marionnet-kernels-i386
 ```
+
+Un système de fichiers dont le noyau supporté n'est pas installé n'est **pas proposé du tout** —
+rien n'échoue, il est simplement absent de la liste (`INSTALL.FR.md § 2`).
 
 ### 1.5 Si un tarball Marionnet a d'abord été installé ici
 
@@ -100,10 +104,11 @@ sudo curl -o /etc/yum.repos.d/marionnet.repo \
 sudo dnf install marionnet          # zypper install marionnet, sur openSUSE
 ```
 
-### 2.3 Paquets de données facultatifs
+### 2.3 Paquets de données
 
-Les trois mêmes noms qu'au § 1.4. `marionnet-kernels-i386` n'est pas installable sur RHEL 10 (le
-multilib 32 bits n'y existe plus du tout).
+Les trois mêmes noms qu'au § 1.4, nécessaires aux mêmes choses. `marionnet-kernels-i386` n'est
+pas installable sur RHEL 10 (le multilib 32 bits n'y existe plus du tout), et avec lui s'en vont
+guignol, wheezy et donc le routeur (temporaire : une image de routeur 64 bits est prévue).
 
 ## 3. N'importe quelle distribution — le tarball précompilé
 

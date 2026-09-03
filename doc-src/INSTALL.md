@@ -98,14 +98,23 @@ repository (it has its own verifier); you need it to *read* what you fetched.
 ### The packages
 
 `apt install marionnet` installs **the application alone** — the data packages are `Suggests:`,
-so that this command means the same thing here as `dnf install marionnet` does in § 3. The other
-three packages, all optional:
+so that this command means the same thing here as `dnf install marionnet` does in § 3. They are
+not accessories: **alone, the application boots nothing.** A guest needs a filesystem *and* a
+kernel that filesystem declares support for, and Marionnet **does not offer** a filesystem for
+which no supported kernel is installed. Nothing fails and nothing is said: the component is
+simply absent from the list.
 
-| Package | What it carries |
+| Package | What it carries — and what is missing without it |
 |---|---|
-| `marionnet-kernels` | the 64-bit UML kernel |
-| `marionnet-fs-guignol` | the small guest image, machine *and* router |
-| `marionnet-kernels-i386` | the 32-bit UML kernel, for the old kernel/filesystem couples |
+| `marionnet-kernels` | the 64-bit UML kernel `linux-6.12.95`. Without it, **the recent images** (Debian trixie) are not offered |
+| `marionnet-fs-guignol` | the small guest image, machine *and* **router** — the only router filesystem published. Without it, **no router can be built at all** |
+| `marionnet-kernels-i386` | the 32-bit UML kernel `linux-6.12.95-i386`. Without it, **guignol and wheezy** are not offered, and with them every `.mar` project made before 2026 |
+
+**A router costs two packages, not one.** Measured in the published `.conf`: guignol declares
+`SUPPORTED_KERNELS='/3.2.[6-9]/ /-i386$/'`, which `linux-6.12.95` does not match. So
+`marionnet-fs-guignol` needs `marionnet-kernels-i386` — the 64-bit kernel will not run it — and
+the foreign architecture below is not a matter of old projects only: it is what a router costs
+today.
 
 `marionnet-kernels-i386` needs a **foreign architecture enabled on your machine**, because the
 32-bit kernel's interpreter is `/lib/ld-linux.so.2` and only `libc6:i386` owns that path:
@@ -190,11 +199,13 @@ on Fedora 42 and 44); they are built here from the Debian source packages. `dnf`
 from the same directory, so you do not have to know they exist — except on openSUSE, which ships
 `vde2` and whose own package is used instead.
 
-The optional data packages are the same three as in § 2, under the same names. Multilib is native
-here, so the 32-bit kernel needs no `dpkg --add-architecture` counterpart; but RHEL 10 has
-**removed 32-bit multilib entirely**, so on that family `marionnet-kernels-i386` is simply not
-installable — which is why it is a separate package, so that its refusal does not carry away the
-64-bit one.
+The three data packages are the same as in § 2, under the same names, and needed for the same
+things. Multilib is native here, so the 32-bit kernel needs no `dpkg --add-architecture`
+counterpart; but RHEL 10 has **removed 32-bit multilib entirely**, so on that family
+`marionnet-kernels-i386` is simply not installable — which is why it is a separate package, so
+that its refusal does not carry away the 64-bit one. Take the consequence with it: no 32-bit
+kernel means no guignol and no wheezy, hence **no router** on RHEL 10 (§ 2) — a temporary
+state of affairs, a 64-bit router image being planned for publication.
 
 ## 4. Any distribution — the precompiled tarball
 
