@@ -371,7 +371,12 @@ Reprise : appliquer le skill `chantier-long`.
   **`xz -dc -T0 | tar xf -` et jamais `tar xJf`** (facteur 4 mesuré) ; **jamais `-m`/`--touch`**
   à l'extraction et `--owner=root --group=root` à la création (le `mtime` d'un backing file est
   ce qu'UML vérifie) ; une image *router* est un **lien** vers l'image *machine* d'un **autre**
-  tarball. `website-repo/` (copie de travail du site) est gitignoré.
+  tarball. **Le « répertoire de release », nommé partout ici, est
+  `website-repo/download/marionnet-install.sh/<série>/`** — soit aujourd'hui
+  `website-repo/download/marionnet-install.sh/1.0.x/` : c'est ce que les 6 publieurs
+  alimentent, ce que le déposeur porte en ligne, et ce que `--from` attend.
+  `website-repo/` (copie de travail du site) est **gitignoré** — donc invisible d'un `grep`
+  du code, d'où ce rappel.
   Le chemin **réseau** n'est plus une supposition : l'ép. 7 le mesure sans le serveur, en
   dressant un **Apache en conteneur** (`bin/scripts/marionnet-install.sh.bench/`, 16 cas,
   discriminance rouge/vert mesurée). Trois choses à ne pas défaire : le banc sert le listing
