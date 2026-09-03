@@ -109,10 +109,26 @@ geste unique qui bloque* : aucun écart de plus de 2 s entre deux lignes tracée
 (c) *Une part est identifiée* : un **`daemon-reload` de systemd coûte 1,30 s** (« Reloading
 finished in 1302 ms »), soit ~19 % du total — le relais écrit des unités et les fait relire.
 
-**Ce qu'on veut.** Savoir où passent les ~5,5 s restantes, puis rendre au boot ce qui peut
-l'être. La prochaine mesure est **instrumentale** : un `PS4` portant `$EPOCHREALTIME` donne le
-coût **par commande**, là où journald ne date qu'à la seconde. C'est un changement du relais,
-donc un épisode en soi.
+**Où passent les secondes, mesuré (2026-09-03, épisode 26).** Le relais trace désormais à la
+**microseconde** (`PS4` portant `$EPOCHREALTIME`), et l'écart entre deux lignes **est** le coût de
+la commande entre elles — le prompt étant imprimé avant l'exécution. Sur un boot trixie, 314
+lignes datées couvrant **4,55 s** :
+
+| coût | où | quoi |
+|---|---|---|
+| **1,633 s** | `marionnet-relay.00-journal:311` | le bloc **non tracé** qui suit (`{ set +x ; }`) : écriture des unités `marionnet-report`/`marionnet-watch`, **`systemctl daemon-reload`** (1,30 s à lui seul) et `systemctl start marionnet-report.service` |
+| **~1,02 s** | `marionnet-relay:415-417` | **huit** `systemctl stop getty@tty$i.service`, **un par un** (0,085 à 0,144 s chacun) |
+| 0,135 s | `marionnet-relay:134` | `ip netns add marionnet-mgmt` |
+| 0,086 s | `marionnet-relay:108` | `mount none /mnt/hostfs -t hostfs` |
+| le reste | ~300 lignes | ~5 ms par commande tracée |
+
+**Ce qu'on veut, maintenant que c'est chiffré.** (a) Les gettys : **une seule** invocation
+(`systemctl stop getty@tty{N..8}.service`) au lieu de huit — même effet, un aller-retour au lieu
+de huit, ~0,9 s. (b) Le `daemon-reload` : les deux unités sont écrites dans `/run/systemd/system`
+à **chaque** boot ; les poser dans l'image (`pupisto.debian.sh`) supprimerait le rechargement,
+mais déplace du travail vers la fabrication de l'image — et une unité livrée dans l'image ne peut
+plus dépendre de ce que le boot courant a lu dans le hostfs (le `TimeoutStopSec` vient de
+`report_deadline`).
 
 **Obstacles (inchangés, et c'est pourquoi ce n'est pas un correctif en passant).** (a) le relais
 est le point d'entrée de toute la journalisation profonde : ce qu'on en sort doit rester

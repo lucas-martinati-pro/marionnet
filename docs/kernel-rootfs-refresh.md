@@ -590,6 +590,36 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   le `Type=`, ou déplacer l'écriture des unités vers `pupisto.debian.sh`), au lieu de rester
   « cause inconnue ».
 
+- **2026-09-03** — épisode 26 (`bin/scripts/marionnet-relay.00-journal.sh`,
+  `uml/pupisto.debian/pupisto.debian.sh.files/marionnet-relay{,.trixie}`) : **le relais se date à
+  la microseconde, et les ~7 s ont enfin des noms.** L'ép. 25 butait sur la granularité :
+  journald ne date qu'à la **seconde**, pour un relais qui exécute 60 à 100 commandes tracées par
+  seconde. Le remède tient en une définition de `PS4` portant **`$EPOCHREALTIME`** — le prompt
+  étant imprimé **avant** la commande, l'écart entre deux lignes **est** le coût de celle du
+  milieu. Rien à mesurer depuis l'hôte, rien à instrumenter à la main.
+  **Deux endroits, et le premier ne suffisait pas** : poser `PS4` dans le prologue de journal
+  déposé par Marionnet n'a daté que **6 lignes sur 325** — mesuré — parce que ce prologue n'est
+  sourcé qu'à la **fin** du relais (phase de configuration), alors que l'essentiel de la trace
+  (233 lignes) vient du `set -x` que le relais active lui-même sous `debug_mode`, **dans
+  l'image**. Les deux sites reçoivent donc la même définition, avec la même garde :
+  `$EPOCHREALTIME` est une variable de **bash ≥ 5.0**, et là où le shell est plus ancien
+  (wheezy, bash 4.2) elle laisserait un champ vide — le choix se fait **une fois**, à la pose du
+  `PS4`, pas par une expansion incapable de dire qu'elle a échoué.
+  **Mesuré** (boot trixie, 314 lignes datées couvrant **4,55 s**) :
+  **1,633 s** dans le bloc **non tracé** de `00-journal:311` — écriture des unités
+  `marionnet-report`/`marionnet-watch`, **`systemctl daemon-reload`** (1,30 s à lui seul) et
+  `systemctl start` ; **~1,02 s** en **huit** `systemctl stop getty@tty$i.service` lancés **un par
+  un** (`marionnet-relay:415-417`, 0,085 à 0,144 s chacun) ; 0,135 s pour `ip netns add`, 0,086 s
+  pour le `mount hostfs` ; le reste étant ~300 commandes à ~5 ms.
+  **La mesure sans publier quoi que ce soit** : le relais vit dans l'image, donc le correctif du
+  dépôt n'atteindra un invité qu'à la prochaine fabrication ; la mesure d'aujourd'hui a été prise
+  en appliquant le **même** changement dans le **COW jetable** d'une machine (par `exec` d'un
+  script déposé dans le hostfs), puis en la redémarrant — aucune image produite, aucune publiée.
+  **Aucun correctif ici, et c'est délibéré** : les deux gros postes sont maintenant nommés et
+  chiffrés dans `docs/TODO.md` avec leurs contreparties (grouper les gettys en **une** invocation
+  ~0,9 s ; livrer les deux unités dans l'image supprimerait le `daemon-reload` mais leur
+  `TimeoutStopSec` vient du hostfs du boot courant).
+
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
 Relevé **hors de ce chantier**, par l'épisode 2 de `modernisation-world-bridge`, en pilotant une

@@ -229,6 +229,16 @@ Reprise : appliquer le skill `chantier-long`.
   geste ne bloque seul, et **1,30 s** sont un `daemon-reload`. La suite est instrumentale
   (`PS4`/`$EPOCHREALTIME`) : entrée `docs/TODO.md` **réécrite avec les chiffres**, plus « cause
   inconnue ».
+  **Ép. 26 : le relais se date à la microseconde.** `PS4` porte `$EPOCHREALTIME` (le prompt étant
+  imprimé **avant** la commande, l'écart entre deux lignes **est** son coût), aux **deux**
+  endroits qui tracent — car le prologue de journal déposé par Marionnet n'a daté que **6 lignes
+  sur 325** (il n'est sourcé qu'en fin de relais), l'essentiel venant du `set -x` que le relais
+  active **dans l'image**. Garde : `$EPOCHREALTIME` est **bash ≥ 5.0**, choix fait **une fois** à
+  la pose du `PS4` (wheezy = 4.2). **Mesuré** : 314 lignes datées, 4,55 s — **1,633 s** dans le
+  bloc non tracé de `00-journal:311` (dont **1,30 s** de `systemctl daemon-reload`), **~1,02 s**
+  en **huit** `systemctl stop getty@tty$i` **un par un**, le reste à ~5 ms par commande. La mesure
+  a été prise dans un **COW jetable** (le relais vit dans l'image) : rien de produit, rien de
+  publié. Correctifs **non faits**, chiffrés dans `docs/TODO.md` avec leurs contreparties.
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

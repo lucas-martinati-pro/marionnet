@@ -43,7 +43,19 @@
 export $(tr </proc/cmdline ' ' '\n' | \grep "^[a-zA-Z][a-zA-Z0-9_]*[=]")
 
 # Do `set -x' if Marionnet is currently in the debug mode (MARIONNET_DEBUG=true)!
+# The trace is DATED to the microsecond, which is what turns it into a measuring
+# instrument: the prompt is printed BEFORE the command runs, so the gap between two
+# lines is the cost of the one in between. journald, which stamps the same lines on
+# the host side, only dates to the second -- a hundred times too coarse here, this
+# relay running sixty to a hundred traced commands per second (measured 2026-09-03:
+# 6.9 s of relay, and no way to say where they went).
+# $EPOCHREALTIME is bash >= 5.0 (2019): where the guest is older it expands to the
+# empty string, so the choice is made ONCE, here, rather than by an expansion which
+# cannot say it failed.
 if [[ -n "$debug_mode" ]]; then
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
+    PS4='+ ${EPOCHREALTIME} ${BASH_SOURCE##*/}:${LINENO}: '
+  fi
   set -x
 fi
 

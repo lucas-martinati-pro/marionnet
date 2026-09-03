@@ -130,7 +130,22 @@ if [[ -n "$__mrn_journal_log" ]]; then
   set -o errtrace
   trap '__mrn_journal_on_error' ERR
 
-  PS4='+ ${BASH_SOURCE##*/}:${LINENO}: '
+  # --- The trace is dated to the MICROSECOND, and that is what makes it a
+  #     measuring instrument rather than a story: the prompt is printed BEFORE
+  #     the command runs, so the gap between two lines IS the cost of the one in
+  #     between. journald, which stamps the same lines on the host side, only
+  #     dates to the second -- a hundred times too coarse for a relay running
+  #     sixty to a hundred traced commands per second (episode 25 measured 6.9 s
+  #     of relay without being able to say where they went).
+  #     $EPOCHREALTIME is bash >= 5.0 (2019): the guests of this repository are
+  #     not all recent (wheezy carries 4.2), and there it would expand to the
+  #     empty string, leaving a ghost field on every line. So the choice is made
+  #     ONCE, here, rather than by an expansion which cannot say it failed.
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
+    PS4='+ ${EPOCHREALTIME} ${BASH_SOURCE##*/}:${LINENO}: '
+  else
+    PS4='+ ${BASH_SOURCE##*/}:${LINENO}: '
+  fi
   set -x
 fi
 
