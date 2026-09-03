@@ -3,11 +3,13 @@
 > **Traduction française de `INSTALL.md`.** L'original anglais fait foi : en cas de divergence,
 > c'est lui qu'il faut corriger, et cette page à sa suite.
 
-*Quel canal prendre, ce que chacun dépose, et ce qu'une machine vous doit encore ensuite.*
+*Quelle méthode utiliser, ce que chacune installe sur le système de fichiers, et ce que vous devez
+ou pouvez faire ensuite.*
 
-Marionnet est publié par **trois canaux**, tous alimentés par le même répertoire de release sur
-`www.marionnet.org` et portant tous le **même binaire**. Celui qu'il faut prendre dépend du
-gestionnaire de paquets de votre machine, pas de ce que vous comptez faire de Marionnet :
+Marionnet est publié sous **trois formes prêtes à l'emploi**, toutes alimentées par le même
+répertoire de release sur `www.marionnet.org` et portant toutes le **même binaire**. Celle qu'il
+faut prendre dépend du gestionnaire de paquets de votre machine, pas de ce que vous comptez faire
+de Marionnet :
 
 | Votre machine | Prenez | § |
 |---|---|---|
@@ -16,9 +18,12 @@ gestionnaire de paquets de votre machine, pas de ce que vous comptez faire de Ma
 | tout le reste — ou vous ne voulez aucun gestionnaire de paquets | le **tarball précompilé** | § 4 |
 | vous comptez modifier Marionnet | **depuis les sources** | § 6 |
 
-Quel que soit le canal, les **images invitées et les noyaux UML se récupèrent séparément** (§ 5) :
-ils pèsent des gibioctets, ils changent à leur propre rythme, et ce n'est pas à cela que sert un
-gestionnaire de paquets. Marionnet démarre sans eux et le dit.
+Quelle que soit la méthode, les **images invitées et les noyaux UML se récupèrent séparément**
+(§ 5) : ils pèsent des gibioctets et changent à leur propre rythme. Marionnet démarre sans eux et
+le dit.
+
+Marionnet est un programme graphique : il lui faut un affichage X (`DISPLAY`), et il en ouvre
+l'accès aux invités avec `xhost` (§ 7.2).
 
 Tout chemin relatif de cette page est relatif **au répertoire où se trouve ce fichier** :
 `doc-src/` dans les sources, `<prefix>/share/doc/marionnet/` sur une machine où Marionnet est
@@ -26,7 +31,7 @@ installé.
 
 ## 1. Avant toute chose, sur une Debian ou une Ubuntu minimale
 
-Les trois canaux atteignent le site en **https**, et un système Debian ou Ubuntu *minimal* —
+Les trois méthodes atteignent le site en **https**, et un système Debian ou Ubuntu *minimal* —
 notamment une image de conteneur nue — ne porte **aucun magasin de certificats** (mesuré sur
 Debian 12 et 13 et sur Ubuntu 24.04 et 26.04 ; les images de la famille RPM, elles, en ont un).
 Sans lui, `apt` ne lira pas notre dépôt et l'installeur ne lira pas le catalogue, alors même que
@@ -37,12 +42,12 @@ sudo apt update && sudo apt install ca-certificates curl
 ```
 
 `curl` est dans cette ligne pour la même raison : une image *slim* n'a pas non plus de
-téléchargeur, et le § 2 récupère la clef de l'archive avec (`wget` fait tout aussi bien —
-`wget -O` à la place de `curl -o`).
+téléchargeur, et le § 2 récupère la clef de l'archive avec (`wget -O` à la place de `curl -o`
+fait tout aussi bien).
 
-`marionnet-install.sh` diagnostique le cas du magasin de certificats **en le nommant** plutôt
-qu'en accusant le réseau, mais il ne peut pas le réparer : installer ce paquet demande un
-gestionnaire de paquets en état de marche, c'est-à-dire précisément ce qui est en jeu.
+`marionnet-install.sh` **nomme** cette cause plutôt que d'accuser le réseau, mais il ne peut pas
+la réparer : installer ce paquet demande le gestionnaire de paquets en état de marche qui est
+précisément en jeu.
 
 ## 2. Debian et Ubuntu — le dépôt apt
 
@@ -61,7 +66,7 @@ sudo apt install marionnet
 `download/apt` est un **point d'entrée stable** : il suit la série de publication courante, si
 bien que la ligne ci-dessus n'a pas à être modifiée quand la série change.
 
-### La clef, et ce que signer achète — ou n'achète pas
+### La clef
 
 Le fichier `Release` du dépôt est signé, et c'est `signed-by=` qui fait qu'apt le vérifie. La
 clef est :
@@ -71,36 +76,26 @@ Marionnet Archive Signing Key <loddo@lipn.univ-paris13.fr>
 4A65 3434 0BF9 7733 E74C  9DFC 12E4 6000 225F 0E56
 ```
 
-**Remarquez d'où vient la clef : `git.launchpad.net`, et non `www.marionnet.org`.** C'est tout
-l'intérêt de la manœuvre, et cela vaut deux minutes d'attention.
+Elle vient de `git.launchpad.net`, et **non** de `www.marionnet.org` : c'est tout l'intérêt.
+https ne prouve que ceci, que le serveur n'a pas été usurpé ; qui contrôle ce serveur réécrit les
+paquets *et* les empreintes qui en répondent. Une signature déplace le point de confiance vers
+une clef privée qui n'y vit pas.
 
-Sans signature, tout ce que vous téléchargez n'est protégé que par https, qui prouve que le
-serveur n'a pas été usurpé — et rien du tout sur qui a écrit les paquets. Qui contrôle ce serveur
-réécrit les paquets *et* les empreintes qui en répondent : tout reste cohérent, tout vérifie, et
-tout est faux. La signature déplace le point de confiance vers une clef privée qui ne vit pas sur
-le serveur.
+*Ce qu'elle protège* : les machines **déjà installées**. Elles ne relisent jamais cette page — à
+chaque `apt upgrade` elles contrôlent contre la clef présente sur leur propre disque, si bien que
+personne qui prendrait le serveur demain ne peut leur pousser une mise à jour piégée, sur des
+machines où Marionnet installe une règle sudoers. *Ce qu'elle ne protège pas* : votre toute
+première installation, si vous apprenez tout d'une page compromise, qui nommerait une autre clef
+et vérifierait parfaitement. La sortie est de comparer l'empreinte ci-dessus avec **une source
+qui n'est pas cette page** : le dépôt git (§ *Où aller ensuite*), un polycopié imprimé, une
+machine où Marionnet tourne déjà. Dans une salle de TP, l'empreinte lue à voix haute une fois en
+début de semestre règle la question pour tout le monde.
 
-*Ce qu'elle protège, concrètement* : les machines **déjà installées**. Une telle machine ne relit
-jamais cette page ; à chaque `apt upgrade` elle contrôle contre la clef déjà présente sur son
-disque. Qui prendrait le serveur demain ne peut rien leur pousser — apt refuse, et le dit. Sans
-signature, une salle entière prendrait une mise à jour piégée **en silence**, sur des machines où
-Marionnet installe une règle sudoers.
-
-*Ce qu'elle ne protège pas* : votre toute première installation, si vous apprenez tout d'un site
-compromis — la page nommerait alors une autre clef, et tout vérifierait. Aucune signature ne
-résout cela (le trousseau de Debian lui-même arrive dans une ISO téléchargée depuis un site web).
-Ce qui rompt le cercle, c'est de comparer l'empreinte ci-dessus avec **une source qui n'est pas
-cette page** : le dépôt git, un polycopié imprimé, une machine où Marionnet est déjà installé.
-Dans une salle de TP, l'empreinte lue à voix haute une fois en début de semestre règle la
-question pour tout le monde.
-
-**Contrôlez ce que vous avez récupéré — cette étape n'est pas facultative ici**, et pas seulement
-pour la raison ci-dessus. Mesuré : `git.launchpad.net` répond `200` la plupart du temps et,
-environ une requête sur six, un `302` vers sa page de connexion OpenID. `curl` écrira sans
-sourciller dans le fichier ce qui lui est revenu : une récupération de clef peut donc vous
-laisser tranquillement autre chose qu'une clef. (N'ajoutez **pas** `-L` : cela suit la
-redirection et écrit la *page de connexion*, ce qui est pire — un échec qui ressemble à une
-réussite.)
+**Contrôlez ce que vous avez récupéré — cette étape n'est pas facultative.** Mesuré :
+`git.launchpad.net` répond `200` la plupart du temps et, environ une requête sur six, un `302`
+vers sa page de connexion OpenID, et `curl` écrit dans le fichier ce qui lui est revenu.
+N'ajoutez **pas** `-L` : cela suit la redirection et écrit la *page de connexion* — un échec qui
+ressemble à une réussite.
 
 ```bash
 sudo apt install gnupg
@@ -108,10 +103,10 @@ gpg --show-keys /etc/apt/keyrings/marionnet.asc     # doit afficher l'empreinte 
 ```
 
 Si autre chose s'affiche — ou rien — récupérez-la de nouveau. apt n'a pas besoin de `gnupg` pour
-vérifier le dépôt (il a son propre vérificateur) ; vous en avez besoin, vous, uniquement pour
-*lire* ce que vous avez récupéré.
+vérifier le dépôt (il a son propre vérificateur) ; vous en avez besoin, vous, pour *lire* ce que
+vous avez récupéré.
 
-`wget -O /etc/apt/keyrings/marionnet.asc <url>` fait tout aussi bien, avec la même réserve.
+### Les paquets
 
 `apt install marionnet` installe **l'application seule** — les paquets de données sont des
 `Suggests:`, afin que cette commande veuille dire ici la même chose que `dnf install marionnet`
@@ -132,9 +127,8 @@ sudo dpkg --add-architecture i386 && sudo apt update
 sudo apt install marionnet-kernels-i386
 ```
 
-Sans cela, apt refuse le paquet en nommant `libc6:i386`. C'est pourquoi le noyau 32 bits est un
-paquet à part : activer une architecture étrangère est une décision, et elle n'a pas à être
-imposée à tous ceux qui veulent le 64 bits.
+Sans cela, apt refuse le paquet en nommant `libc6:i386`. Activer une architecture étrangère est
+une décision : c'est pourquoi le noyau 32 bits est un paquet à part.
 
 **Si un tarball Marionnet (§ 4) a d'abord été installé sur cette machine**,
 `/etc/marionnet/marionnet.conf` existe déjà et dpkg demandera quoi en faire — et un
@@ -147,8 +141,8 @@ sudo apt install -o Dpkg::Options::=--force-confold marionnet
 ```
 
 La version du fichier livrée par le paquet est alors laissée à côté, sous le nom
-`marionnet.conf.dpkg-dist`. Notez que les deux fichiers divergent sur un point qui compte : un
-paquet installe sous `/usr`, un tarball sous `/usr/local`.
+`marionnet.conf.dpkg-dist`. Les deux divergent sur un point qui compte : un paquet installe sous
+`/usr`, un tarball sous `/usr/local`.
 
 ## 3. Fedora, famille RHEL et openSUSE — le dépôt dnf/zypper
 
@@ -172,17 +166,11 @@ sudo dnf install marionnet          # zypper install marionnet, sur openSUSE
 
 ### La clef, de ce côté-ci
 
-C'est **la même clef qu'au § 2** — même empreinte, même endroit d'où la récupérer, et tout ce que
-le § 2 dit de ce qu'une signature achète ou n'achète pas s'applique ici mot pour mot. La ligne du
-milieu du bloc ci-dessus est celle qu'il ne faut pas sauter, et elle vient **avant**
-`rpm --import` à dessein : importer *est* l'acte de faire confiance, donc regarder ensuite ce
-qu'on a récupéré serait regarder trop tard. La réserve est la même qu'au § 2 —
-`git.launchpad.net` répond une redirection environ une requête sur six, et `curl` écrit ce qui
-lui est revenu.
-
-Si `gpg` n'est pas sur la machine : `sudo dnf install gnupg2` (`zypper install gpg2` sur
-openSUSE). Ni `dnf` ni `rpm` n'en ont besoin — ils ont leur propre vérificateur ; vous en avez
-besoin, vous, uniquement pour *lire* la clef, exactement comme au § 2.
+Même clef, même endroit, mêmes réserves qu'au § 2 — y compris la redirection une requête sur six.
+La ligne du milieu du bloc ci-dessus vient **avant** `rpm --import` à dessein : importer *est*
+l'acte de faire confiance, donc regarder ensuite serait regarder trop tard. Si `gpg` manque :
+`sudo dnf install gnupg2` (`zypper install gpg2` sur openSUSE) ; ni `dnf` ni `rpm` n'en ont
+besoin.
 
 Ce qui diffère, c'est la *forme* de la vérification, pas sa force. Là où apt a une signature sur
 `Release` qui couvre tous les paquets par leur empreinte, rpm a **deux** mécanismes, et la
@@ -193,19 +181,15 @@ strophe demande les deux :
 | `gpgcheck=1` | **chaque paquet**, par une signature que `rpmsign` a logée dans le fichier lui-même |
 | `repo_gpgcheck=1` | **l'index**, par le `repodata/repomd.xml.asc` posé à côté |
 
-Notez aussi que la strophe nomme la clef par un **fichier local**
-(`gpgkey=file:///etc/pki/rpm-gpg/…`) et non par une URL — d'où le fait que vous la récupériez
-vous-même dans le bloc ci-dessus. C'est délibéré, et mesuré : `dnf` récupère `gpgkey=` lui-même
-et *suit les redirections*, si bien qu'un `gpgkey=` nommant `git.launchpad.net` télécharge la
-page de connexion une fois sur six et fait mourir l'installation sur `Failed to import OpenPGP
-keys` — après avoir téléchargé tous les paquets. Contrairement à `curl`, on ne peut pas dire à
-`dnf` de ne pas suivre. Récupérer la clef à la main rétablit du même coup l'étape qui compte :
-*une clef que le gestionnaire de paquets va chercher tout seul est une clef que personne n'a
-regardée*.
+La strophe nomme la clef par un **fichier local** (`gpgkey=file:///etc/pki/rpm-gpg/…`) et non par
+une URL — d'où le fait que vous la récupériez vous-même ci-dessus : `dnf` récupère `gpgkey=`
+lui-même et *suit les redirections*, sans qu'on puisse l'en empêcher, si bien qu'une URL pointant
+sur `git.launchpad.net` télécharge la page de connexion une fois sur six et fait mourir
+l'installation sur `Failed to import OpenPGP keys`, après avoir téléchargé tous les paquets.
 
 `dnf` peut encore vous montrer une empreinte et vous demander s'il faut accepter la clef : il
-tient un trousseau à lui pour `repo_gpgcheck`, que le `rpm --import` ci-dessus n'alimente pas.
-Comparez ce qu'il affiche avec l'empreinte du § 2 avant de répondre oui.
+tient un trousseau à lui pour `repo_gpgcheck`, que le `rpm --import` n'alimente pas. Comparez ce
+qu'il affiche avec l'empreinte du § 2 avant de répondre oui.
 
 **Sur la famille RHEL, activez d'abord EPEL** : `gtksourceview3`, l'une des dépendances
 d'exécution de Marionnet, y vit et non dans les dépôts de base.
@@ -215,36 +199,32 @@ sudo dnf install epel-release
 ```
 
 Le dépôt porte aussi **`vde2` et `uml-utilities`**, sans lesquels Marionnet ne peut pas tourner
-et qu'*aucune* distribution RPM n'empaquette — mesuré sur Rocky 9 avec EPEL, CRB et epel-next, et
-sur Fedora 42 et 44. Ils sont construits ici à partir des paquets source Debian, série de patches
-comprise. `dnf` les résout depuis le même répertoire, si bien que vous n'avez pas à savoir qu'ils
-existent ; sur openSUSE, qui *livre* `vde2`, c'est le paquet de la distribution qui est utilisé
-et le nôtre n'est pas tiré.
+et qu'*aucune* distribution RPM n'empaquette (mesuré sur Rocky 9 avec EPEL, CRB et epel-next, et
+sur Fedora 42 et 44) ; ils sont construits ici à partir des paquets source Debian. `dnf` les
+résout depuis le même répertoire, si bien que vous n'avez pas à savoir qu'ils existent — sauf sur
+openSUSE, qui livre `vde2` et dont c'est le paquet qui est utilisé.
 
-Les paquets de données facultatifs sont les trois mêmes qu'au § 2, sous les mêmes noms. Le paquet
-du noyau 32 bits n'a pas ici d'équivalent du `dpkg --add-architecture` — le multilib est natif —
-mais RHEL 10 a **supprimé tout le multilib 32 bits**, si bien que sur cette famille
-`marionnet-kernels-i386` n'est tout simplement pas installable ; c'est pourquoi il est un paquet
-séparé : que son refus n'emporte pas celui de 64 bits.
+Les paquets de données facultatifs sont les trois mêmes qu'au § 2, sous les mêmes noms. Le
+multilib étant natif ici, le noyau 32 bits n'a pas besoin d'un équivalent du
+`dpkg --add-architecture` ; mais RHEL 10 a **supprimé tout le multilib 32 bits**, si bien que sur
+cette famille `marionnet-kernels-i386` n'est tout simplement pas installable — c'est pourquoi il
+est un paquet séparé : que son refus n'emporte pas celui de 64 bits.
 
 ## 4. N'importe quelle distribution — le tarball précompilé
 
 L'application est aussi publiée sous la forme d'un tarball relocatable, nommé
 `marionnet_<version>-r<rev>_<arch>_glibc<x.y>.tar.xz`. Les deux derniers champs sont ceux qui
 décident : l'artefact tourne sur une machine dont l'architecture est `<arch>` et dont la glibc
-est **au moins** `<x.y>` — un binaire lié dynamiquement exige une glibc pas plus ancienne que
-celle contre laquelle il a été lié, et le versionnement des symboles de la glibc ne garantit que
-ce sens-là.
+est **au moins** `<x.y>`, le versionnement des symboles de la glibc ne garantissant la
+compatibilité que dans ce sens-là. L'artefact publié est construit sur **le plus ancien système
+que nous servons** (actuellement Debian 12, glibc 2.36) : il tourne donc sur toutes les
+distributions listées aux § 2 et § 3, et sur aucune plus ancienne — Rocky 9 et openSUSE Leap 15.6
+le refusent en nommant la glibc.
 
-L'artefact publié est construit sur **le plus ancien système que nous servons** (actuellement
-Debian 12, glibc 2.36) : il tourne donc sur toutes les distributions listées aux § 2 et § 3.
-
-Ce canal **n'est pas signé**. L'empreinte de chaque artefact est dans `SHA256SUMS`, que
-l'installeur contrôle pendant le téléchargement — cela prouve que le fichier est arrivé entier,
-pas qui l'a écrit, puisque le catalogue voyage par la même route que les tarballs. Les deux
-canaux de paquets (§ 2 et § 3), eux, sont signés. Si cette distinction compte pour vous, prenez
-l'un des deux. Le tarball ne tourne *pas* sur Rocky 9 ni sur openSUSE Leap 15.6, dont la glibc
-est plus ancienne ; toutes deux le refusent en nommant la glibc.
+Cette forme **n'est pas signée** : `SHA256SUMS`, que l'installeur contrôle pendant le
+téléchargement, prouve que le fichier est arrivé entier, pas qui l'a écrit — le catalogue voyage
+par la même route que les tarballs. Si cette distinction compte pour vous, prenez le § 2 ou le
+§ 3.
 
 Le plus simple est de laisser l'installeur choisir et déplier pour vous :
 
@@ -286,8 +266,8 @@ sudo apt install $(tr '\n' ' ' < REQUIRED-PACKAGES-RUNTIME)
 
 ## 5. Les images invitées et les noyaux UML
 
-Quel que soit le canal qui a installé l'application, voici la commande qui propose les images et
-les noyaux publiés sous forme de liste à cocher, et récupère ce que vous avez coché :
+Quelle que soit la méthode qui a installé l'application, voici la commande qui propose les images
+et les noyaux publiés sous forme de liste à cocher, et récupère ce que vous avez coché :
 
 ```bash
 marionnet-get-images
@@ -298,8 +278,8 @@ modification correspond au `MTIME` que son `.conf` enregistre, lequel est le cha
 user-mode-linux lui-même contrôle sur un *backing file*.
 
 **Ne passez pas `--prefix` après une installation par paquet.** Sans `--prefix`, les images vont
-là où *le Marionnet installé ici* les cherche — demandé à `marionnet.native --paths`, seul
-lecteur de la cascade de configuration — soit `/usr/share/marionnet/...` pour un paquet et
+là où *le Marionnet installé ici* les cherche — demandé à `marionnet --paths`, seul lecteur de la
+cascade de configuration — soit `/usr/share/marionnet/...` pour un paquet et
 `/usr/local/share/marionnet/...` pour un tarball. Un `--prefix` écrit à la main, c'est ainsi que
 des images finissent dans un répertoire que l'application ne lit jamais : rien n'échoue, et les
 images n'apparaissent simplement pas.
@@ -329,11 +309,8 @@ dune build                 # un clone frais n'a besoin de rien d'autre : prépro
 make install-final-as-root # elle appelle sudo elle-même, pour la seule étape qui l'exige
 ```
 
-`make dependencies` installe les dépendances apt de compilation, crée le switch opam et installe
-les paquets opam ; lancez ses parties séparément (`make apt-dependencies`, `make opam-switch`,
-`make opam-dependencies`) si vous voulez les voir une à une.
-
-Deux choses à savoir avant de compiler :
+Lancez les parties de `make dependencies` séparément (`make apt-dependencies`, `make opam-switch`,
+`make opam-dependencies`) si vous voulez les voir une à une. Deux choses à savoir :
 
 * `dune build` n'est **pas** un typecheck du projet entier — pour un exécutable, dune ne compile
   que ce que `marionnet.ml` atteint. `make check` compile tous les modules.
@@ -341,12 +318,12 @@ Deux choses à savoir avant de compiler :
   `make install-for-testing` (et `make rebuild-for-final` / `make rebuild-for-testing` quand vous
   passez de l'un à l'autre : le préfixe est compilé dans le binaire comme valeur par défaut).
 
-## 7. Ce qui reste dû après n'importe quel canal : la règle sudoers
+## 7. Ce qui reste dû après n'importe quelle méthode : la règle sudoers
 
 Marionnet construit ses *taps* réseau avec `iproute2`, ce qui exige une règle sudoers **cadrée**.
-Aucun canal ne l'accorde automatiquement, et les paquets s'en abstiennent délibérément : une
-installation de paquet ne peut pas savoir à quel humain une machine appartient. Lancez, en tant
-qu'administrateur :
+Aucune méthode d'installation ne l'accorde automatiquement, et les paquets s'en abstiennent
+délibérément : une installation de paquet ne peut pas savoir à quel humain une machine appartient.
+Lancez, en tant qu'administrateur :
 
 ```bash
 sudo marionnet-sudoers.sh install <user>...
@@ -365,7 +342,7 @@ volontiers, et le droit tomberait dans les mains du premier à qui l'on créerai
 
 Un principal est un compte, ou un **groupe** dans l'orthographe de sudoers. La salle de TP en est
 la raison : celui qui prépare une salle ne connaît pas les logins des étudiants qui s'y
-assiéront, et ne peut pas attendre de les connaître.
+assiéront.
 
 ```bash
 sudo groupadd marionnet                      # si le site n'a pas de groupe à lui
@@ -374,14 +351,16 @@ sudo marionnet-sudoers.sh install %marionnet
 ```
 
 Tout membre du groupe est alors autorisé, y compris celui qui s'inscrira la semaine prochaine.
-Deux choses à savoir sur une autorisation de groupe : `ALL` est **refusé** (ce qu'un fichier
-accorde doit avoir été décidé par quelqu'un, et cela engloberait les comptes système) ; et la
-ligne de création du tap, qui pour un compte nommé lie le tap à ce login, doit accepter n'importe
-quel propriétaire pour un groupe — sudoers ne sait pas écrire « l'appelant » dans l'argument d'une
-commande. Un membre peut donc créer un tap **appartenant à quelqu'un d'autre** ; personne ne
-gagne un tap qu'il puisse ouvrir, et le confinement aux `mtap*` est intact. `sudo -l -U <login>`
-est la question sur les droits effectifs (`marionnet-sudoers.sh check` répond sur les principaux
-que le fichier **nomme** ; un membre d'un groupe autorisé n'en est pas un).
+Deux choses à savoir sur une autorisation de groupe. `ALL` est **refusé** : ce qu'un fichier
+accorde doit avoir été décidé par quelqu'un, et cela engloberait les comptes système. Et la ligne
+de création du tap, qui pour un compte nommé lie le tap à ce login, doit accepter n'importe quel
+propriétaire pour un groupe — sudoers ne sait pas écrire « l'appelant » dans l'argument d'une
+commande ; un membre peut donc créer un tap **appartenant à quelqu'un d'autre**, mais personne ne
+gagne un tap qu'il puisse ouvrir et le confinement aux `mtap*` est intact.
+
+`sudo -l -U <login>` est la question sur les droits effectifs ; `marionnet-sudoers.sh check`
+répond sur les principaux que le fichier **nomme**, si bien qu'un membre d'un groupe autorisé n'en
+est pas un.
 
 ### 7.2 Les trois blocs, et ce que chacun fait à cette machine
 
@@ -391,12 +370,11 @@ dangereux.
 
 | Bloc | Accordé | Ce qu'il permet de faire à l'hôte |
 |---|---|---|
-| **(a) taps fantômes** | à l'installation, par l'administrateur | Créer et détruire des interfaces `mtap*`, leur donner l'adresse fixe `172.23.0.254/32` et y router `172.23.*`. Confiné aux `mtap*` : rien d'autre sur la machine n'est atteignable par là. Sans lui, Marionnet tourne en mode dégradé — pas de graphique dans les invités, pas de terminaux de routeur. |
+| **(a) taps fantômes** | à l'installation, par l'administrateur | Créer et détruire des interfaces `mtap*`, leur donner l'adresse fixe `172.23.0.254/32` et y router `172.23.*`. Confiné aux `mtap*` : rien d'autre sur la machine n'est atteignable par là. Ce tap est aussi la route par laquelle les clients X11 d'un invité atteignent l'affichage de l'hôte — `xterm` sur une machine ou un routeur, et surtout **`wireshark`** lancé dans un routeur ou une machine pour capturer son propre trafic ; Marionnet en ouvre la porte par `xhost +172.23.0.254`. Sans ce bloc, Marionnet tourne en mode dégradé : pas de graphique depuis les invités, pas de terminaux de routeur. |
 | **(b) NAT bridge** | à l'exécution, depuis l'interface | Construire le pont privé `mnbr*` et faire du NAT pour les invités derrière lui. |
 | **(c) LAN bridge** | à l'exécution, depuis l'interface | Mettre la **carte réseau de l'hôte** dans un pont, pour que les invités soient sur le vrai réseau local. |
 
-**(b), en détail — il ne touche jamais l'interface de l'hôte, et c'est ce qui le rend sûr.** Il
-crée un pont `mnbr*` portant l'adresse `.1/24` d'un réseau privé ; il met
+**(b), en détail.** Il crée un pont `mnbr*` portant l'adresse `.1/24` d'un réseau privé ; il met
 `net.ipv4.ip_forward` **à 1**, ce qui vaut pour toute la machine et non par interface (Marionnet
 ne le remet à 0 au démontage que s'il l'a lui-même mis à 1) ; il ajoute une règle `MASQUERADE` et
 deux règles `FORWARD` avec `iptables`, **toutes porteuses du commentaire
@@ -407,9 +385,9 @@ pour les invités) — c'est pourquoi `dnsmasq-base` est une dépendance d'exéc
 encore, l'IPv6 : une ULA `/64`, des *Router Advertisements* émis par ce même dnsmasq, et du NAT66
 sur `ip6tables` — et comme le forwarding IPv6 n'est **pas** par interface, l'activer fait de tout
 l'hôte un routeur, or un routeur ignore les annonces qu'il reçoit ; une porte minuscule et sans
-argument (`marionnet-ipv6.sh`) mémorise donc et restitue `accept_ra`, pour que l'hôte ne perde pas
-sa propre route IPv6 quelques minutes plus tard. La carte de l'hôte, ses adresses et ses routes ne
-sont **jamais nommées** dans ce bloc : elles ne peuvent pas être touchées par lui.
+argument (`marionnet-ipv6.sh`) mémorise donc et restitue `accept_ra`. La carte de l'hôte, ses
+adresses et ses routes ne sont **jamais nommées** dans ce bloc : elles ne peuvent pas être
+touchées par lui.
 
 **(c), en détail — c'est le réseau de l'hôte, et cela ne peut pas être cadré.** Un LAN bridge
 **est** la carte de l'hôte asservie à `mnlan0`, avec l'adresse IPv4 et la route par défaut de
@@ -479,16 +457,13 @@ Le veto est un fichier de `/etc/marionnet/`, lisible par tous à dessein : Mario
 la réponse *avant* de demander un mot de passe, et un fichier de `/etc/sudoers.d/` est en 0440
 root, comme il se doit.
 
-Deux choses qu'il est honnête de savoir. Le socle — bloc (a) — n'a **pas** de veto : c'est
-l'administrateur qui l'accorde lui-même, à la main, donc l'interdire reviendrait à ne pas taper la
-commande. Et un veto arrête une **erreur**, pas un administrateur déterminé : qui peut faire du
-`sudo` sans restriction édite `/etc/sudoers.d/` directement et n'a besoin de la permission de
-personne. Là où il mord vraiment, c'est la configuration ordinaire d'une salle — un enseignant qui
-peut faire du sudo, des étudiants qui ne peuvent pas — et c'est exactement là qu'un LAN bridge se
-construit par accident.
+Le socle — bloc (a) — n'a **pas** de veto : c'est l'administrateur qui l'accorde à la main, donc
+l'interdire reviendrait à ne pas taper la commande. Et un veto arrête une **erreur**, pas un
+administrateur déterminé, qui édite `/etc/sudoers.d/` directement. Là où il mord, c'est la
+configuration ordinaire d'une salle — un enseignant qui peut faire du sudo, des étudiants qui ne
+peuvent pas — et c'est exactement là qu'un LAN bridge se construit par accident.
 
-
-### 7.5 Le lancer
+### 7.5 Le lancer, et contrôler l'installation
 
 ```bash
 marionnet                    # ou : marionnet -r lab.mar, marionnet --exam, marionnet --help
@@ -498,6 +473,17 @@ marionnet                    # ou : marionnet -r lab.mar, marionnet --exam, mari
 mode examen, les exemples du canal de contrôle, les scripts de TP. C'est un lien symbolique vers
 `marionnet.native`, le nom que `dune install` donne à l'exécutable : le même programme, sous le
 nom qu'emploie un humain.
+
+Deux commandes répondent à *« cette installation est-elle bien celle que je crois ? »*, quelle
+que soit la méthode qui l'a posée :
+
+```bash
+marionnet -v                 # version et révision
+marionnet --paths            # où cette installation cherche images, noyaux et scripts
+```
+
+`--paths` est la réponse à *« les images n'apparaissent pas »* : il affiche les répertoires que la
+cascade de configuration a effectivement résolus (§ 5).
 
 ## 8. Désinstaller Marionnet
 
@@ -520,16 +506,24 @@ pas retirée par la désinstallation : `sudo marionnet-sudoers.sh uninstall`.
 | `Failed to import OpenPGP keys`, ou dnf annonce que le dépôt n'a aucun paquet | le fichier de clef du § 3 est absent, n'a pas été accepté, ou n'est pas une clef du tout — récupérez-le de nouveau et contrôlez l'empreinte avant d'importer |
 | le tarball est refusé, en nommant une glibc | votre distribution est plus ancienne que le plancher de compilation — § 4 |
 | `marionnet-kernels-i386` est refusé, en nommant `libc6:i386` | `dpkg --add-architecture i386` — § 2 |
-| Marionnet démarre mais les images invitées n'apparaissent pas | elles ont été déposées sous un préfixe que l'application ne lit pas — § 5 |
-| *Unsatisfied dependency* au démarrage | `vde2`, `graphviz` ou `uml-utilities` manque ; le canal du tarball nomme ce qui manque, `--with-deps` l'installe |
+| Marionnet démarre mais les images invitées n'apparaissent pas | elles ont été déposées sous un préfixe que l'application ne lit pas — § 5, puis `marionnet --paths` |
+| *Unsatisfied dependency* au démarrage | `vde2`, `graphviz` ou `uml-utilities` manque ; l'`install.sh` du tarball nomme ce qui manque, `--with-deps` l'installe |
 | une machine virtuelle refuse de démarrer, les taps ne peuvent pas être construits | la règle sudoers — § 7 |
+| rien ne s'ouvre quand un invité lance `wireshark` ou `xterm` | le bloc (a) n'est pas accordé (§ 7.2), ou l'hôte n'a pas d'affichage X |
 
 ## Où aller ensuite
 
-Ces pages sont installées à côté de celle-ci ; elles sont en anglais.
+Ces pages sont installées à côté de celle-ci ; sauf mention contraire, elles sont en anglais. Elles
+vivent dans `doc-src/` du dépôt des sources, qui est aussi là où est publiée la clef d'archive des
+§ 2 et § 3 :
+
+```bash
+git clone https://git.launchpad.net/marionnet
+```
 
 | Page | À lire pour |
 |---|---|
+| `INSTALL.md` | cette même page en anglais — c'est elle qui fait foi |
 | `teacher-guide.md` | préparer un TP, conduire la séance, la noter |
 | `scripting/README.md` | piloter Marionnet depuis un script, par le canal de contrôle |
 | `exam-mode.md` | ce qu'une session d'examen enregistre |
