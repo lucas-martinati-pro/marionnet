@@ -646,6 +646,15 @@ Hors périmètre : vwifi côté OCaml, rootfs vwifi (→ chantier vwifi).
   prédictible, l'outil **demande** désormais au canal, qui publie ce chemin dans le champ
   `hostfs` de `rc-get` (`bin/control_server.ml`, `Co_rc_read`). Une ligne de plus sur la socket,
   et rien à deviner.
+  **Rien n'est republié, et c'est une décision** (2026-09-03) : l'image en ligne reste
+  `machine-debian-trixie-16341`, la source étant corrigée, toute image fabriquée ou respinnée
+  désormais porte le correctif. Republier coûte un tarball de 1,09 Gio, un nom neuf (une image
+  *est* son `sum`, donc les `.mar` d'hier changent de référence) et une question de rétention —
+  cher pour **0,3 s** sur un boot de 11 s. Le gain **attend la prochaine republication**, à
+  livrer avec le `daemon-reload` (point (b) de `docs/TODO.md`, 1,30 s, quatre fois plus) et le
+  constat *« trixie n'écrit pas `marionnet-guest-ready` »* ci-dessous : mêmes fichiers, même
+  geste. L'image de mesure `machine-debian-trixie-11950` n'était **pas** publiable telle quelle
+  (`--do-not-update-binary-list`, `--no-tarball`) — c'était un banc, pas un artefact.
 
 ## Constat entrant — trixie n'écrit pas `marionnet-guest-ready` (2026-08-15)
 
