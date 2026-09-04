@@ -1136,6 +1136,59 @@ function install_ipv6_care {
  sudo_chroot_fcall $ROOT install_ipv6_care_in_chroot
 }
 
+# Stage 3b of the work-stream `triage-binaires-image-invitee' (../../docs/triage-binaires-image-invitee.md).
+#
+# The same frozen judgements act in two places, from ONE source: a published image is repaired by
+# Makefile.d/filesystem.apply-binary-policy.sh, which drives a guest; an image being BUILT is
+# repaired here, in the chroot, where there is neither image to respin nor guest to drive. Doing
+# it here is the cheap side by far -- a respin renames and republishes five gigabytes to remove a
+# few links, which is why the trixie image 16341 was left as it is (episode 7).
+#
+# THIS FUNCTION DOES NOT READ THE POLICY. It asks the applier for the actions
+# (`--print-actions'), which prints them only after checking the file exactly as it would before
+# a run: unknown verdict, `drop'/`fix' without an action, an action on a verdict which wants
+# none, wrong column count, empty reason -- any of these and it refuses the file as a whole,
+# naming the line, and prints nothing at all. A second reader of the four-column format could
+# drift from the first; there is therefore only one.
+function apply_binary_policy {
+ # global DEBIANROOT PUPISTO_DIR PUPISTO_FILES RELEASE
+ local ROOT=${1:-$DEBIANROOT}
+ [[ -n $ROOT ]] || return 1
+ local POLICY="$PUPISTO_DIR/$PUPISTO_FILES/binary_policy.${RELEASE}.tsv"
+ local APPLIER="$PUPISTO_DIR/../../Makefile.d/filesystem.apply-binary-policy.sh"
+ # A distribution nobody has triaged has no policy, and that is not a failure: the policy is per
+ # distribution (wheezy and stretch have none). Say so, and build the image all the same.
+ if [[ ! -r $POLICY ]]; then
+   echo "* No binary policy for \`${RELEASE}' ($POLICY): nothing to apply."
+   return 0
+ fi
+ [[ -x $APPLIER ]] || { echo "No executable at $APPLIER"; return 1; }
+ local -a ACTIONS=()
+ # No `local A=$(...)' here: it would swallow the exit status of the applier, and a refused
+ # policy would look like an empty one -- exactly the silence this work-stream keeps paying for.
+ local ACTIONS_TEXT
+ ACTIONS_TEXT=$("$APPLIER" --policy "$POLICY" --print-actions) || {
+   echo "The binary policy was REFUSED (see the message above): nothing has been applied."
+   return 1
+ }
+ mapfile -t ACTIONS <<<"$ACTIONS_TEXT"
+ echo "* Applying the binary policy ${POLICY##*/}: ${#ACTIONS[@]} action(s)..."
+ local A
+ for A in "${ACTIONS[@]}"; do
+   [[ -n $A ]] || continue
+   echo "*   $A"
+   # Verbatim, in the chroot. An action which fails stops the build (`set -e' through the return
+   # below): an image whose policy did not fully apply is not the image the policy describes, and
+   # `once' does not register a failed step, so the build resumes where it stopped.
+   sudo_careful_chroot "$ROOT" bash -c "$A" || {
+     echo "The action \`$A' FAILED in the chroot: fix the policy (or the package name it carries)."
+     return 1
+   }
+ done
+ echo "Success."
+}
+
+
 function clean_debian_filesystem {
  # global DEBIANROOT INSTALL_LOCALES TWDIR
  local ROOT=${1:-$DEBIANROOT}
@@ -1506,6 +1559,10 @@ once install_wireshark_marionnet_wrapper
 
 # Install this nice program, useful for labs about IPv6 compliance:
 # once install_ipv6_care || true
+
+# Apply the frozen binary policy (stage 3b) BEFORE the final cleaning, so that the packages it
+# removes leave their orphans to `apt-get autoremove' and `deborphan' just below:
+once apply_binary_policy
 
 # Final cleaning:
 once clean_debian_filesystem

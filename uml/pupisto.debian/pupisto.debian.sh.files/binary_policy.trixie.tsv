@@ -23,6 +23,19 @@
 # rather than once per line because nothing but a reader needs it. Nothing in the format
 # depends on the order; regrouping is a human's business.
 #
+# WHERE THIS HAS BEEN APPLIED -- AND WHERE IT HAS NOT (episode 7).
+#
+# This file describes a WANTED state, not the state of the image in service. It is applied at
+# BUILD time, by uml/pupisto.debian/pupisto.debian.sh (`apply_binary_policy', stage 3b), so every
+# image built from now on carries its judgements. The published image machine-debian-trixie-16341
+# has deliberately NOT been rebuilt for it: respinning renames and republishes 5.4 GB to remove
+# 47 dead Qt5 wrappers no lab exercise ever calls. The criterion, so that it is not re-argued at
+# every policy: an image already published is rebuilt when a binary WITHIN THE SCOPE OF THE LAB
+# is broken, not when the failure blocks no pedagogical gesture.
+#
+# So a re-probe of 16341 WILL find the 47 again. That is this decision, not a regression -- and
+# not a reason to touch them here.
+#
 # Evidence -- the two probe reports this was read on (docs/probe-reports/):
 #   machine-debian-trixie-16341-2026-09-03.tsv      2060 candidates, first classifier
 #   machine-debian-trixie-16341-2026-09-04-x2.tsv     92 X candidates, transitive closure

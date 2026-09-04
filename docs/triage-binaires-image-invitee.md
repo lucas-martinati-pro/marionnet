@@ -6,17 +6,50 @@
 
 ## DESTINATION
 
-**Une image invitée publiée ne contient que des binaires qui fonctionnent** — et le constat
-se refait, sur n'importe quelle image, **sans rouvrir de chantier** : sonder, relire un diff
-de décisions, appliquer.
+*(Reformulée à l'épisode 7 — la formulation d'origine est juste en dessous, avec ce qui l'a
+fait bouger.)*
 
-Le chantier est terminé quand, tous ensemble : la chaîne tourne de bout en bout sur trixie
-avec une **re-sonde verte** ; la **politique** porte un verdict pour *chaque* candidat de
+**Toute image invitée CONSTRUITE désormais ne contient que des binaires qui fonctionnent** — et
+le constat se refait, sur n'importe quelle image, **sans rouvrir de chantier** : sonder, relire
+un diff de décisions, appliquer.
+
+Le chantier est terminé quand, tous ensemble : la chaîne tourne de bout en bout sur trixie avec
+une **re-sonde verte** ; la **politique** porte un verdict pour *chaque* candidat de
 `BINARY_LIST` ; `uml/pupisto.debian.sh` la consomme à la construction ; le **skill** et ce
 document existent. Le test qui le prouve tient en une phrase :
 
 > **la prochaine image ne doit pas rouvrir un chantier** — juste `make image-probe`, une
 > passe d'agent sur le diff, `make image-apply`.
+
+### Le critère de reprise d'une image DÉJÀ publiée (épisode 7)
+
+La formulation d'origine disait *« une image invitée **publiée** ne contient que des binaires qui
+fonctionnent »*. Elle promettait donc de reprendre l'existant, et l'épisode 6 a mis le prix de
+cette promesse sur la table : reconstruire `machine-debian-trixie-16341` pour ses 47 lanceurs Qt5
+morts, c'est recompresser 5,4 Go, republier **sous un nouveau nom** (le nom *est* le `sum`),
+réécrire `SHA256SUMS` et redéposer — pour 8301 ko et des binaires (`qmake`, `designer`, `qml*`)
+qu'aucun énoncé de TP réseau ne traverse. Décision de l'auteur : **on laisse 16341 en l'état**.
+
+Pour que cette décision ne se re-tranche pas à chaque politique, elle s'écrit comme un critère,
+et il porte sur l'**usage**, pas sur la taille :
+
+> **On ne reconstruit pas une image publiée pour des binaires dont l'échec ne bloque aucun geste
+> pédagogique. On la reconstruit quand un binaire du périmètre du TP est cassé.**
+
+Conséquences à ne pas perdre de vue :
+
+- l'**étage 3a** (`filesystem.apply-binary-policy.sh`) n'aura donc jamais tourné **jusqu'à
+  l'export**. Il est éprouvé en `--dry-run`, en `--print-actions` et en `--measure` — pas au
+  bout. Ce n'est pas un outil mort : c'est celui du jour où un défaut, lui, vaudra la reprise.
+  Mais la chaîne « verte de bout en bout » que la destination promet sera démontrée par
+  **`pupisto`** (étage 3b, à la construction), et la clôture doit le dire ainsi — sans quoi on
+  croira avoir prouvé ce qu'on n'a pas prouvé ;
+- le critère ne donne **pas** la même réponse pour les deux `fix` restants : `snmpcheck` et
+  `snmp-bridge-mib` sont des outils **réseau**, en plein périmètre. La question se repose pour
+  eux à l'épisode 8, une fois les noms de paquets confirmés ;
+- l'image en ligne et la politique **divergent volontairement** : la politique décrit désormais
+  un état *voulu*, pas l'état de 16341. Une re-sonde de 16341 y retrouvera les 47 — ce n'est pas
+  une nouveauté, c'est cette décision.
 
 ## 1. Le constat d'origine (2026-09-03)
 
@@ -452,7 +485,29 @@ l'image ni aux scripts ; l'humain valide, ça se commite.
   pour l'effacer ensuite. Sous `--no-export`, un statut non nul n'arrête plus le run : c'est
   une **mesure** (`dpkg -S` répond 1 pour un fichier qu'aucun paquet ne possède), et il n'y a
   rien à protéger puisque rien n'est produit.
-- **3b, le constructeur** : `uml/pupisto.debian.sh` lit **le même fichier** à la construction.
+- **3b, le constructeur** (épisode 7) : `uml/pupisto.debian/pupisto.debian.sh` applique **les
+  mêmes jugements** dans son chroot, par la fonction `apply_binary_policy`, appelée **juste avant
+  `clean_debian_filesystem`** — de sorte que les orphelins laissés par une purge tombent d'
+  eux-mêmes dans l'`apt-get autoremove` et le `deborphan` qui suivent. C'est le côté **bon
+  marché** de la correction : ici il n'y a ni image à republier ni invité à piloter, et c'est
+  pourquoi 16341 a pu être laissée en l'état.
+
+  **Mais il ne LIT pas la politique.** Le format à quatre colonnes n'a qu'**un seul lecteur**,
+  l'étage 3a, qui a gagné pour cela une option **`--print-actions`** : elle contrôle le fichier
+  exactement comme avant un run — verdict inconnu, `drop`/`fix` sans action, action sur un
+  verdict qui n'en veut pas, colonnes ≠ 4, raison vide — puis imprime sur **stdout** les actions
+  dédupliquées, et **rien du tout** si le fichier est refusé (les 5 refus rejoués : `rc` 2, sortie
+  vide). Elle se passe d'image quand `--policy` est donné, puisqu'il n'y a alors rien à dériver.
+  Un second lecteur du format aurait été libre de diverger du premier ; il n'y en a donc qu'un.
+  Ce que `pupisto` reçoit pour trixie : **3 actions pour 49 noms**.
+
+  Trois comportements éprouvés hors invité (la fonction seule, avec un chroot factice) : la
+  politique réelle donne ses 3 actions **verbatim** au chroot ; une distribution **sans**
+  politique (wheezy, stretch) dit *« nothing to apply »* et rend **0** — n'avoir jamais été triée
+  n'est pas une faute ; une politique **refusée** rend **1** et n'applique rien. Une action qui
+  échoue arrête la construction (`set -e`) : une image dont la politique n'a pas été appliquée
+  jusqu'au bout n'est pas l'image que la politique décrit — et `once` n'enregistre pas une étape
+  ratée, donc la construction reprend là où elle s'est arrêtée.
 
 ## 6. HORS PÉRIMÈTRE (écarté consciemment, avec le pourquoi)
 
@@ -867,3 +922,37 @@ périmètre (§ 6) ; savoir si l'un d'eux porte un binaire cassé est en revanch
 chantier — non mesurée, notée telle quelle.
 
 **Rien n'est appliqué.** L'image neuve attend toujours le feu vert de l'auteur.
+
+
+### 2026-09-04 — épisode 7 : ce qui se capitalise, et ce qu'on renonce à reprendre
+
+**Décision de l'auteur, prise sur le chiffre de l'épisode 6** : *si la conclusion appliquée à la
+trixie actuelle est d'enlever un paquet, ça ne vaut pas la peine de régénérer une image — on
+laisse 16341 ; en revanche on capitalise autant que possible pour les images à venir.* Le calcul
+est sans appel : recompresser 5,4 Go et republier sous un nouveau nom pour 8301 ko de lanceurs Qt5
+que nul énoncé n'appelle. S'y ajoute la consigne active du chantier parent — *aucune release avant
+la fin de la campagne* : republier une image **est** une publication.
+
+**Ce que l'épisode a écrit plutôt que laissé implicite.** La destination promettait *« une image
+**publiée** ne contient que des binaires qui fonctionnent »* : la laisser telle quelle en gardant
+16341 en ligne l'aurait rendue fausse, et le critère d'arrêt du chantier invérifiable. Elle porte
+désormais sur **toute image construite désormais**, et la reprise de l'existant devient un
+critère explicite, écrit sur l'**usage** et non sur la taille — *on ne reconstruit pas une image
+publiée pour des binaires dont l'échec ne bloque aucun geste pédagogique*. Sans cette phrase, la
+question se re-tranchait à chaque politique.
+
+**Ce que l'épisode a construit : l'étage 3b** (§ 5). `pupisto.debian.sh` applique la politique
+dans son chroot, juste avant le nettoyage final, et **sans lire le fichier** : il demande ses
+actions à l'unique lecteur du format (`--print-actions`, neuf). C'est l'invariant « une seule
+source de vérité » que ce dépôt applique déjà à la grammaire du canal et aux dépendances runtime ;
+ici il évite qu'un second lecteur accepte un jour une ligne que le premier refuse.
+
+**Trois conséquences consignées, pour ne pas croire avoir prouvé ce qu'on n'a pas prouvé** :
+l'étage 3a n'aura jamais tourné jusqu'à l'export (la chaîne verte de bout en bout sera démontrée
+par `pupisto`, pas par le respin) ; les deux `fix` réseau (`snmpcheck`, `snmp-bridge-mib`) ne
+tombent **pas** sous le critère de renoncement et se reposeront à l'épisode 8 ; et l'image en
+ligne diverge désormais **volontairement** de la politique, ce que l'en-tête du fichier dit
+maintenant lui-même — une re-sonde de 16341 y retrouvera les 47, et ce sera cette décision, pas
+une régression.
+
+**Aucune image n'a été produite, et aucune ne le sera pour 16341.**

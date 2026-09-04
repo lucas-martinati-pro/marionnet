@@ -79,6 +79,11 @@ Usage: $0 --image NAME [OPTIONS]
   --in-guest CMD       an extra command, played AFTER the ones the policy gives; repeatable.
                        The way a measurement run checks what the policy was not supposed to
                        touch (episode 4: the seven wrappers which still work).
+  --print-actions      print the actions the policy carries, one per line, and stop: the policy
+                       is read and CHECKED exactly as for a run, then translated. Needs no image
+                       when --policy is given. This is how a SECOND applier -- pupisto, which
+                       plays them in its chroot at build time -- gets them without writing a
+                       second reader of the format.
   --dry-run            print the command line which would be run, boot nothing
   --measure            play the commands in the guest and export NOTHING (--no-export)
   --from DIR           where the image and its .conf live
@@ -98,7 +103,7 @@ EOF
 }
 
 # --- Options.
-IMAGE=""; POLICY=""; ONLY_VERDICT="drop,fix"; DRY_RUN=0; MEASURE=0
+IMAGE=""; POLICY=""; ONLY_VERDICT="drop,fix"; DRY_RUN=0; MEASURE=0; PRINT_ACTIONS=0
 declare -a EXTRA_IN_GUEST=()
 declare -a RELAY=()
 
@@ -108,6 +113,7 @@ while (($#)); do
     --policy)         POLICY=${2:-};           shift 2 ;;
     --only-verdict)   ONLY_VERDICT=${2:-};     shift 2 ;;
     --in-guest)       EXTRA_IN_GUEST+=("${2:-}"); shift 2 ;;
+    --print-actions)  PRINT_ACTIONS=1;         shift ;;
     --dry-run)        DRY_RUN=1;               shift ;;
     --measure)        MEASURE=1;               shift ;;
     # Relayed verbatim to filesystem.update-published-image.sh: this script does not
@@ -126,10 +132,16 @@ ROOT=$(cd -- "$HERE/.." && pwd)
 RESPIN="$HERE/filesystem.update-published-image.sh"
 PUBLISHER="$HERE/filesystem.prepare-snapshot-to-publish.sh"
 
-test -n "$IMAGE" || { usage; die "--image is required"; }
-test -x "$RESPIN" || die "no executable at $RESPIN"
+# --print-actions translates a policy; it drives no image, so it needs none -- provided the policy
+# is named outright, since without an image there is nothing to derive its name from.
+if ((PRINT_ACTIONS)) && test -z "$IMAGE"; then
+  test -n "$POLICY" || { usage; die "--print-actions without --image needs --policy"; }
+else
+  test -n "$IMAGE" || { usage; die "--image is required"; }
+  test -x "$RESPIN" || die "no executable at $RESPIN"
+fi
 
-case "$IMAGE" in
+test -z "$IMAGE" || case "$IMAGE" in
   machine-*) : ;;
   router-*)  die "$IMAGE is a ROUTER image: on the published side it is a symbolic LINK to a
 machine image, which carries the binaries. Act on the machine image it points to." ;;
@@ -141,7 +153,7 @@ esac
 # Its name is DERIVED from the image name, and the derivation refuses rather than guesses: the
 # policy is per distribution (§ 6 of the doc), and applying trixie's judgements to a wheezy image
 # would remove names nobody ever probed there.
-if test -z "$POLICY"; then
+if test -z "$POLICY" && test -n "$IMAGE"; then
   # machine-debian-trixie-16341 -> debian-trixie-16341 -> trixie
   TAG=$(cut -d- -f2 <<<"${IMAGE#machine-}")
   test -n "$TAG" || die "cannot read a distribution tag out of the image name \`$IMAGE': give --policy"
@@ -231,6 +243,19 @@ info "policy     : $POLICY"
 info "verdicts   : $(for v in $KNOWN_VERDICTS; do test -n "${COUNT[$v]:-}" && printf '%s %s  ' "${COUNT[$v]}" "$v"; done)"
 info "playing    : ${#ACTIONS[@]} action(s) for ${#ACTED_NAMES[@]} name(s) with verdict(s) $ONLY_VERDICT$( ((DEDUPED)) && echo " ($DEDUPED line(s) repeat an action already played)" )$( ((${#EXTRA_IN_GUEST[@]})) && echo ", plus ${#EXTRA_IN_GUEST[@]} of your own" )"
 test "${#ACTIONS[@]}" -gt 0 || die "nothing to play: no line of the policy carries a verdict among $ONLY_VERDICT"
+
+# --- Just the actions, for whoever else has to play them.
+#
+# The policy has ONE reader, and this is it. A second applier exists -- pupisto, which plays the
+# same judgements in its chroot while the image is being BUILT, where there is no image to respin
+# and no guest to drive -- and a second reader of the four-column format would be free to drift
+# from this one, refusing (or worse, accepting) lines it does not. So it does not read the file:
+# it asks for the actions, already checked and already deduplicated. Everything this script says
+# about itself goes to stderr, so stdout carries the actions and nothing else.
+if ((PRINT_ACTIONS)); then
+  printf '%s\n' "${ACTIONS[@]}"
+  exit 0
+fi
 
 # --- Do the acted names still exist in this image? A measurement, not a gate.
 #

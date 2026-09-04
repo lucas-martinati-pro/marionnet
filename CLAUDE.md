@@ -234,11 +234,14 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     et un `.mar` restent souverains, et `set <n> distrib` n'ajuste **pas** la mémoire (ép. 24).
 
 - **triage des binaires d'une image invitée** (chantier **enfant** du précédent) :
-  `docs/triage-binaires-image-invitee.md` (ép. 0→6) ; mémoire `triage-binaires-image-invitee` ;
-  `git log --grep="triage-binaires-image-invitee"`. **État** : l'étage 1 (la sonde) existe et a
-  tourné — 2060 candidats en un boot ; le faux négatif du classificateur (Qt, GTK) est soldé par
-  une fermeture transitive mémoïsée ; et **la première politique existe**
-  (`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, 210 lignes).
+  `docs/triage-binaires-image-invitee.md` (ép. 0→7) ; mémoire `triage-binaires-image-invitee` ;
+  `git log --grep="triage-binaires-image-invitee"`. **État** : les **3 étages existent** — la
+  sonde (2060 candidats en un boot), la **politique** gelée
+  (`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, 225 lignes), et les
+  deux applicateurs : `Makefile.d/filesystem.apply-binary-policy.sh` pour une image publiée,
+  `apply_binary_policy` de `pupisto.debian.sh` à la construction. **Rien n'a été appliqué à
+  16341, et rien ne le sera** (ép. 7). Reste : l'ép. 8 (les 7 `ignore` posés sur des cassés, les
+  2 `fix` réseau aux noms de paquets non vérifiés), puis la clôture.
 
   **Gardes** : l'agent est **entre** la sonde et la politique, **jamais dans la boucle** ; une
   sonde **ne publie jamais** (COW jetable) ; `/loop` est refusé (un boot par itération) ; un
@@ -255,7 +258,12 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
   **la question qui décide d'un `drop` porte sur le PAQUET**, pas sur le binaire — *P a-t-il
   encore un intérêt sans X ?* —, elle se pose **à chaque maillon** de la chaîne de dépendances,
   et les paquets s'y **nomment** (jamais d'`autoremove`) : un binaire qui marche peut devoir
-  partir, un paquet fautif devoir rester (ép. 6).
+  partir, un paquet fautif devoir rester (ép. 6) ; **le format à 4 colonnes n'a qu'UN lecteur**
+  (`--print-actions` de l'étage 3a) — `pupisto` (étage 3b, dans son chroot, juste avant
+  `clean_debian_filesystem`) lui **demande** les actions au lieu de reparser ; et **une image
+  publiée ne se reprend pas pour le principe** : on la reconstruit quand un binaire **du
+  périmètre du TP** est cassé, pas pour un `qmake` mort — d'où 16341 laissée en l'état, et une
+  politique qui décrit un état **voulu**, divergeant volontairement de l'image en ligne (ép. 7).
 
 - **modernisation-world-bridge** (l'accès au vrai réseau sans config hôte risquée ; le « mode »
   est devenu un **choix de composant** : menu planète *Gateway* / *NAT bridge* / *LAN bridge*) :
