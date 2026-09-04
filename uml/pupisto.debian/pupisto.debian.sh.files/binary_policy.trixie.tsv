@@ -34,62 +34,94 @@
 # with 1. The probe now has a BROKEN verdict for that (episode 3); this file was written by
 # reading the stderr of the reports above, not by trusting their verdict.
 #
-# THE qt5-wrapper ACTION WAS WRONG, AND THE GUEST SAID SO (episode 4). It read
-# `apt-get -y purge qtchooser', which apt answers by removing qtbase5-dev-tools and
+# THE qt5-wrapper ACTION HAS BEEN WRONG TWICE, AND THE SECOND TIME IT WAS TOO SMALL (episodes 4, 6).
+#
+# It first read `apt-get -y purge qtchooser', which apt answers by removing qtbase5-dev-tools and
 # python3-pyqtgraph too -- and qtbase5-dev-tools is what puts moc, rcc, uic, qlalr, qvkgen,
-# qdbuscpp2xml and qdbusxml2cpp in /usr/lib/qt5/bin, all of them WORKING wrappers (probed
-# rc 0). Repairing 32 broken names at the price of seven that work is the opposite of the criterion
-# of this work-stream. The action is now `rm -f' on the dangling link, one line per name:
-# qtchooser stays, and so does everything that still resolves. Measured in the guest, not
-# supposed: `dpkg -L qtchooser' DOES own those links (they go with a purge), `apt-get -s -y
-# purge' names the cascade, and debugfs shows the 10 real tools sitting in /usr/lib/qt5/bin.
-# Same pass, same measurement: 7 more wrappers are broken for the same reason and had been
-# missed, because qtchooser tells them so in ANOTHER sentence (`could not find a Qt
-# installation of <empty>' instead of `could not exec /usr/lib/qt5/bin/<name>').
+# qdbuscpp2xml and qdbusxml2cpp in /usr/lib/qt5/bin, all of them WORKING wrappers (probed rc 0).
+# Repairing 32 broken names at the price of seven that work was rightly refused, and the action
+# became an `rm -f' per dangling link.
+#
+# THE QUESTION THAT DECIDES IS NOT THE ONE THAT WAS ASKED. It is not `does this binary work?' but
+# `DOES THE PACKAGE WHICH HOLDS IT STILL HAVE AN INTEREST WITHOUT IT?'. Asked of qtchooser, it
+# does not stop there: the answer walks up a chain which the image itself spells out, and which
+# the measurement below shows to be LINEAR AND EXCLUSIVE --
+#
+#   binwalk (manually installed, wanted)
+#     `-- python3-binwalk            auto  --Recommends--> python3-pyqtgraph
+#           `-- python3-pyqtgraph    auto  --Depends-----> qtbase5-dev-tools   (its ONLY holder)
+#                 `-- qtbase5-dev-tools  auto --Depends--> qtchooser           (its ONLY holder)
+#                       `-- qtchooser    auto             carries the 46 links
+#
+# qtchooser without the 39 keeps only seven Qt5 development wrappers; qtbase5-dev-tools exists
+# for pyqtgraph alone; and pyqtgraph is a mere Recommends of binwalk. Read in the image with
+# debugfs, not supposed: /var/lib/dpkg/status gives the two `ONLY holder' facts,
+# /var/lib/apt/extended_states marks the three of them Auto-Installed, and -- the fact which
+# settles it -- NO .py FILE OF python3-binwalk MENTIONS pyqtgraph. Entropy plotting goes through
+# matplotlib (installed), behind its own ImportError guard. The Recommends has no call site.
+#
+# So the whole chain goes, and with it 597 files and the 47 names below: the 39 broken links, the
+# 7 which work (they are Qt5 dev tools, and nothing in this image builds Qt), and qtchooser
+# itself -- a selector with nothing left to select. binwalk stays, and loses nothing measurable.
+#
+# Every one of the 47 keeps its own line although ONE command answers for all of them: a policy
+# must name everything which disappears, or a re-probe cannot tell an intended removal from a
+# surprise. The applier plays strictly equal actions once (filesystem.apply-binary-policy.sh).
 #
 #
-# --- qt5-wrapper (39): dangling links, removed ONE BY ONE -- see the note above
-# The 32 which named their target:
-assistant	drop	rm -f /usr/bin/assistant	dangling qtchooser wrapper: no /usr/lib/qt5/bin/assistant to exec
-designer	drop	rm -f /usr/bin/designer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/designer to exec
-lconvert	drop	rm -f /usr/bin/lconvert	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lconvert to exec
-linguist	drop	rm -f /usr/bin/linguist	dangling qtchooser wrapper: no /usr/lib/qt5/bin/linguist to exec
-lrelease	drop	rm -f /usr/bin/lrelease	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lrelease to exec
-lupdate	drop	rm -f /usr/bin/lupdate	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lupdate to exec
-pixeltool	drop	rm -f /usr/bin/pixeltool	dangling qtchooser wrapper: no /usr/lib/qt5/bin/pixeltool to exec
-qcollectiongenerator	drop	rm -f /usr/bin/qcollectiongenerator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qcollectiongenerator to exec
-qdbusviewer	drop	rm -f /usr/bin/qdbusviewer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdbusviewer to exec
-qdoc3	drop	rm -f /usr/bin/qdoc3	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc3 to exec
-qdoc	drop	rm -f /usr/bin/qdoc	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc to exec
-qgltf	drop	rm -f /usr/bin/qgltf	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qgltf to exec
-qhelpconverter	drop	rm -f /usr/bin/qhelpconverter	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpconverter to exec
-qhelpgenerator	drop	rm -f /usr/bin/qhelpgenerator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpgenerator to exec
-qmake	drop	rm -f /usr/bin/qmake	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmake to exec
-qml1plugindump	drop	rm -f /usr/bin/qml1plugindump	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qml1plugindump to exec
-qmlbundle	drop	rm -f /usr/bin/qmlbundle	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlbundle to exec
-qmlcachegen	drop	rm -f /usr/bin/qmlcachegen	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlcachegen to exec
-qmleasing	drop	rm -f /usr/bin/qmleasing	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmleasing to exec
-qmljs	drop	rm -f /usr/bin/qmljs	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmljs to exec
-qmllint	drop	rm -f /usr/bin/qmllint	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmllint to exec
-qmlmin	drop	rm -f /usr/bin/qmlmin	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlmin to exec
-qmlplugindump	drop	rm -f /usr/bin/qmlplugindump	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlplugindump to exec
-qmlprofiler	drop	rm -f /usr/bin/qmlprofiler	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlprofiler to exec
-qmltestrunner	drop	rm -f /usr/bin/qmltestrunner	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmltestrunner to exec
-qmlviewer	drop	rm -f /usr/bin/qmlviewer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlviewer to exec
-qtattributionsscanner	drop	rm -f /usr/bin/qtattributionsscanner	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtattributionsscanner to exec
-qtconfig	drop	rm -f /usr/bin/qtconfig	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtconfig to exec
-repc	drop	rm -f /usr/bin/repc	dangling qtchooser wrapper: no /usr/lib/qt5/bin/repc to exec
-uic3	drop	rm -f /usr/bin/uic3	dangling qtchooser wrapper: no /usr/lib/qt5/bin/uic3 to exec
-xmlpatterns	drop	rm -f /usr/bin/xmlpatterns	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatterns to exec
-xmlpatternsvalidator	drop	rm -f /usr/bin/xmlpatternsvalidator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatternsvalidator to exec
-# The 7 the sieve missed: same cause, other message (`could not find a Qt installation')
-qdbus	drop	rm -f /usr/bin/qdbus	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qml	drop	rm -f /usr/bin/qml	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qmlimportscanner	drop	rm -f /usr/bin/qmlimportscanner	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qmlscene	drop	rm -f /usr/bin/qmlscene	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qtdiag	drop	rm -f /usr/bin/qtdiag	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qtpaths	drop	rm -f /usr/bin/qtpaths	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
-qtplugininfo	drop	rm -f /usr/bin/qtplugininfo	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+# --- qt5-wrapper (47): the chain goes, package by package -- see the note above
+# The 32 broken links which named their missing target:
+assistant	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/assistant to exec; goes with its package
+designer	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/designer to exec; goes with its package
+lconvert	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lconvert to exec; goes with its package
+linguist	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/linguist to exec; goes with its package
+lrelease	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lrelease to exec; goes with its package
+lupdate	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lupdate to exec; goes with its package
+pixeltool	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/pixeltool to exec; goes with its package
+qcollectiongenerator	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qcollectiongenerator to exec; goes with its package
+qdbusviewer	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdbusviewer to exec; goes with its package
+qdoc3	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc3 to exec; goes with its package
+qdoc	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc to exec; goes with its package
+qgltf	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qgltf to exec; goes with its package
+qhelpconverter	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpconverter to exec; goes with its package
+qhelpgenerator	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpgenerator to exec; goes with its package
+qmake	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmake to exec; goes with its package
+qml1plugindump	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qml1plugindump to exec; goes with its package
+qmlbundle	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlbundle to exec; goes with its package
+qmlcachegen	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlcachegen to exec; goes with its package
+qmleasing	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmleasing to exec; goes with its package
+qmljs	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmljs to exec; goes with its package
+qmllint	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmllint to exec; goes with its package
+qmlmin	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlmin to exec; goes with its package
+qmlplugindump	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlplugindump to exec; goes with its package
+qmlprofiler	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlprofiler to exec; goes with its package
+qmltestrunner	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmltestrunner to exec; goes with its package
+qmlviewer	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlviewer to exec; goes with its package
+qtattributionsscanner	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtattributionsscanner to exec; goes with its package
+qtconfig	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtconfig to exec; goes with its package
+repc	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/repc to exec; goes with its package
+uic3	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/uic3 to exec; goes with its package
+xmlpatterns	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatterns to exec; goes with its package
+xmlpatternsvalidator	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatternsvalidator to exec; goes with its package
+# The 7 the sieve of episode 3 missed: same cause, other message (`could not find a Qt installation')
+qdbus	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qml	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qmlimportscanner	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qmlscene	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qtdiag	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qtpaths	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+qtplugininfo	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	dangling qtchooser wrapper: qtchooser resolves no default Qt for it; goes with its package
+# The 7 which WORK (probed rc 0, targets present in /usr/lib/qt5/bin): kept by episode 4, dropped by
+# episode 6 -- they work, but their package has no interest left: Qt5 build tools, and nothing here builds Qt
+moc	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/moc: Qt5 development tool, no user in this image
+rcc	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/rcc: Qt5 development tool, no user in this image
+uic	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/uic: Qt5 development tool, no user in this image
+qlalr	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/qlalr: Qt5 development tool, no user in this image
+qvkgen	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/qvkgen: Qt5 development tool, no user in this image
+qdbuscpp2xml	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/qdbuscpp2xml: Qt5 development tool, no user in this image
+qdbusxml2cpp	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	working qtchooser wrapper to /usr/lib/qt5/bin/qdbusxml2cpp: Qt5 development tool, no user in this image
+# And the selector itself:
+qtchooser	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	the qtchooser binary: with qtbase5-dev-tools gone there is no Qt installation left to select
 #
 # --- missing-perl-module (9)
 dh_autotools-dev_restoreconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent

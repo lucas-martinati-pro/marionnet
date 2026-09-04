@@ -381,16 +381,23 @@ où vivent déjà les ressources par distribution** (`package_catalog/*.trixie.*
 `binary_list.<image>`), parce que c'est `pupisto` qui le lira à la construction (étage 3b).
 
 ```
-# --- qt5-wrapper (39)          <- la famille est un EN-TÊTE DE GROUPE, pas une colonne
-# name    verdict  action                reason
-qmake     drop     rm -f /usr/bin/qmake  dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmake to exec
+# --- qt5-wrapper (47)          <- la famille est un EN-TÊTE DE GROUPE, pas une colonne
+# name    verdict  action                                     reason
+qmake     drop     apt-get -y purge python3-pyqtgraph …       dangling qtchooser wrapper: …
+moc       drop     apt-get -y purge python3-pyqtgraph …       working wrapper, package without interest: …
 # --- missing-perl-module (11)
 snmpcheck fix      apt-get -y install perl-tk  network tool, in scope; Tk.pm absent
 # --- no-help-option (…)
 ping      ignore   -                     works: knows neither --help nor --version
 ```
 
-**Elle ne porte que des exceptions.** `keep` est le défaut, et ne s'écrit pas : **217 lignes**
+**Un `drop` ne vise pas toujours le binaire** (épisode 6) : quand le paquet qui le porte n'a plus
+d'intérêt une fois le binaire parti, l'action est le retrait du **paquet**, et une seule commande
+répond alors pour tous les noms qu'il portait — 47 lignes de la famille `qt5-wrapper` pour un
+`apt-get purge`. Chaque nom garde néanmoins **sa** ligne (la politique doit nommer tout ce qui
+disparaît), et c'est l'applicateur qui joue une fois les actions strictement égales.
+
+**Elle ne porte que des exceptions.** `keep` est le défaut, et ne s'écrit pas : **225 lignes**
 couvrent un catalogue de **2060** candidats. Écrire une ligne pour chacun des 1820 qui ont
 répondu simplement serait la liste blanche que ce chantier refuse (§ 3.2).
 
@@ -771,3 +778,92 @@ a démarré, et c'est le message qui le dit ; et la vérification par `dpkg-quer
 rapporté, son `${binary:Package}` étant aussi de la syntaxe bash, mangée par le shell de l'invité
 avant `dpkg-query` — vérification mal écrite, à laquelle l'inventaire de `/usr/lib/qt5/bin` répond
 de toute façon.
+
+### 2026-09-04 — épisode 6 : la question qui décide n'était pas celle qu'on posait
+
+**Ce que l'auteur a corrigé, et qui est une doctrine, pas une ligne.** Les 39 `drop` de la
+politique portaient chacun un `rm -f /usr/bin/<nom>` — le correctif de l'épisode 4, qui avait
+sauvé sept lanceurs sains d'une purge trop large. La consigne de l'épisode 6 renverse le point de
+vue : *ce ne sont pas les binaires qu'il faut supprimer, mais les paquets `.deb` qui les
+contiennent, selon la gravité du problème*. Et elle donne la question qui tranche :
+
+> **Le paquet P qui contient le binaire X qui ne fonctionne pas a-t-il quand même un intérêt sans X ?**
+
+La question que le chantier posait jusque-là — *ce binaire marche-t-il ?* — ne mène qu'à un
+`rm -f`, c'est-à-dire à une image d'où l'on a effacé la **trace** d'un paquet dont la raison
+d'être avait disparu. La bonne question porte sur le **reste**.
+
+**Ce que l'image répond, lue hors ligne (aucun boot).** `debugfs` sur l'image publiée donne
+`/var/lib/dpkg/status`, `/var/lib/apt/extended_states` et les 1220 `*.list`. La chaîne qui amène
+`qtchooser` dans une image de laboratoire réseau y est écrite, et elle est **linéaire et
+exclusive** :
+
+```
+binwalk (installé manuellement — voulu)
+  `-- python3-binwalk           auto  --Recommends--> python3-pyqtgraph
+        `-- python3-pyqtgraph   auto  --Depends-----> qtbase5-dev-tools   (son SEUL détenteur)
+              `-- qtbase5-dev-tools auto --Depends--> qtchooser           (son SEUL détenteur)
+                    `-- qtchooser   auto             porte les 46 liens
+```
+
+Les deux faits « seul détenteur » sont mesurés sur `status` (aucun autre paquet installé ne
+dépend de `qtbase5-dev-tools`, aucun autre de `qtchooser`) ; `extended_states` marque les trois
+`Auto-Installed`. La question, remontée maillon par maillon : `qtchooser` sans les 39 ne garde que
+sept outils de développement Qt5 ; `qtbase5-dev-tools` n'existe que pour `pyqtgraph` ; et
+`pyqtgraph` n'est qu'un **Recommends** de binwalk.
+
+**Le fait qui a tranché — et qu'il aurait été facile de supposer dans l'autre sens.** Un
+`Recommends` se justifie d'ordinaire par une fonctionnalité optionnelle ; on pouvait donc craindre
+que purger `pyqtgraph` coûte à binwalk son tracé d'entropie. La mesure dit le contraire :
+**aucun fichier `.py` de `python3-binwalk` ne mentionne `pyqtgraph`**. Le tracé passe par
+`matplotlib` (installé), derrière son propre `except ImportError` — lu dans
+`binwalk/modules/entropy.py`. Le `Recommends` n'a, dans cette version, **aucun site d'appel**.
+
+**Ce que la politique dit désormais.** La famille `qt5-wrapper` passe de 39 à **47 lignes**, toutes
+`drop`, toutes portant la même action :
+
+```
+apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser
+```
+
+47 et non 46 : les fichiers de `/usr/bin` possédés par les trois paquets sont **exactement** les
+46 liens **plus `qtchooser` lui-même**, et les 47 sont **tous** dans la `BINARY_LIST` de l'image
+(mesuré). S'y ajoutent donc les **7 lanceurs qui marchent**, que l'épisode 4 avait protégés : ils
+fonctionnent, mais leur paquet n'a plus d'intérêt — ce sont des outils de construction Qt5, et
+rien dans cette image ne construit du Qt. Le sélecteur lui-même part enfin, n'ayant plus rien à
+sélectionner.
+
+**Les paquets sont nommés, jamais déduits.** L'action ne fait **pas** d'`autoremove` : un
+`apt-get autoremove` déciderait à la place de la politique ce qui s'en va. Les trois noms sont
+écrits, et ce sont les trois que l'invité retire.
+
+**Une ligne par nom, malgré une seule commande.** La politique doit **nommer tout ce qui
+disparaît**, sans quoi une re-sonde n'a aucun moyen de distinguer un retrait voulu d'une surprise.
+Mais jouer 47 fois la même commande ferait 46 boots d'inutilité. `filesystem.apply-binary-policy.sh`
+**déduplique donc les actions strictement égales** — chaîne pour chaîne, sans fusion, sans
+réécriture, sans réordonnancement : il ne décide toujours rien. Le `--dry-run` l'affiche :
+`1 action(s) for 47 name(s) (46 line(s) repeat an action already played)`. Les cinq refus du
+lecteur de politique (verdict inconnu, `drop`/`fix` sans action, action sur un verdict qui n'en
+veut pas, colonnes ≠ 4, raison vide) ont été rejoués : tous à `rc` 2.
+
+**Ce que l'invité a répondu** (un boot, `--measure`, **rien d'exporté**) :
+
+- apt retire **exactement les trois paquets nommés**, 8301 ko libérés, aucun autre ;
+- `binwalk` et `python3-binwalk` restent `ii`, `binwalk --help` sort `rc` 0 et
+  `python3 -c 'import binwalk'` répond — la crainte du tracé perdu était infondée, comme la
+  lecture des sources le laissait attendre ;
+- les quatre témoins `qtchooser`, `moc`, `qmake`, `qdbus` sont **absents** ;
+- `dpkg -l` ne connaît plus les trois paquets.
+
+Les 43 autres noms ne sont pas vérifiés un par un : ce sont, par construction, les fichiers que
+dpkg possédait et qu'il retire. La preuve exhaustive est **gratuite au run réel** — le publieur
+reconstruit `BINARY_LIST` en lisant l'image produite, et le diff avant/après nommera les 47.
+
+**Un fait mesuré qu'on ne traite pas ici** : la purge laisse **32 paquets orphelins**
+(`pyqt5-dev-tools`, `pyqt6-dev-tools`, `qt6-base-dev-tools`, `python3-pyqt6`, `libqt5opengl5t64`,
+`x11proto-dev`…), qu'apt signale « no longer required » sans les retirer. `pyqtgraph` tirait donc
+bien plus que la chaîne linéaire ci-dessus. Les retirer serait de l'**amaigrissement**, hors
+périmètre (§ 6) ; savoir si l'un d'eux porte un binaire cassé est en revanche une question de ce
+chantier — non mesurée, notée telle quelle.
+
+**Rien n'est appliqué.** L'image neuve attend toujours le feu vert de l'auteur.

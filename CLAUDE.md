@@ -234,7 +234,7 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     et un `.mar` restent souverains, et `set <n> distrib` n'ajuste **pas** la mémoire (ép. 24).
 
 - **triage des binaires d'une image invitée** (chantier **enfant** du précédent) :
-  `docs/triage-binaires-image-invitee.md` (ép. 0→4) ; mémoire `triage-binaires-image-invitee` ;
+  `docs/triage-binaires-image-invitee.md` (ép. 0→6) ; mémoire `triage-binaires-image-invitee` ;
   `git log --grep="triage-binaires-image-invitee"`. **État** : l'étage 1 (la sonde) existe et a
   tourné — 2060 candidats en un boot ; le faux négatif du classificateur (Qt, GTK) est soldé par
   une fermeture transitive mémoïsée ; et **la première politique existe**
@@ -251,7 +251,11 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
   sans quoi 165 cas se re-jugeraient à chaque image ; **une action de politique se mesure dans
   l'invité avant d'être appliquée** (`--no-export` : mesurer sans produire d'image), et un
   verdict de **cause structurelle** se vérifie **par la structure**, jamais par le seul motif
-  du message — c'est ce qui a réfuté l'action de l'ép. 3 et trouvé 7 cassés de plus (ép. 4).
+  du message — c'est ce qui a réfuté l'action de l'ép. 3 et trouvé 7 cassés de plus (ép. 4) ;
+  **la question qui décide d'un `drop` porte sur le PAQUET**, pas sur le binaire — *P a-t-il
+  encore un intérêt sans X ?* —, elle se pose **à chaque maillon** de la chaîne de dépendances,
+  et les paquets s'y **nomment** (jamais d'`autoremove`) : un binaire qui marche peut devoir
+  partir, un paquet fautif devoir rester (ép. 6).
 
 - **modernisation-world-bridge** (l'accès au vrai réseau sans config hôte risquée ; le « mode »
   est devenu un **choix de composant** : menu planète *Gateway* / *NAT bridge* / *LAN bridge*) :

@@ -34,6 +34,15 @@
 # inventing a name is the same rule as `artefact_name' (episode 30b ter of
 # `modernisation-installation-marionnet').
 #
+# --- A `drop' IS NOT ALWAYS A BINARY TO ERASE (episode 6) ---
+#
+# The question which decides is not `does this binary work?' but `does the package which holds it
+# still have an interest without it?'. When the answer is no, the action is the removal of the
+# PACKAGE, and one command then answers for every name that package carries -- which is why lines
+# whose action is STRICTLY the same string are played once. Every name keeps its line all the
+# same: the policy must name everything which disappears, or a re-probe cannot tell an intended
+# removal from a surprise.
+#
 # --- MEASURE BEFORE PRODUCING ---
 #
 # `--measure' relays `--no-export' to filesystem.update-published-image.sh: the commands are
@@ -159,6 +168,8 @@ test "${#PLAYED[@]}" -gt 0 || die "--only-verdict: nothing to play"
 # Everything which is not a comment or a blank line MUST parse. A line which does not is not a
 # line to skip: it is a judgement whose meaning is unclear, and the file is refused as a whole.
 declare -a ACTIONS=() ACTED_NAMES=()
+declare -A ACTION_SEEN=()
+DEDUPED=0
 declare -a SEEN_NAMES=()
 declare -A COUNT=()
 LINE_NO=0
@@ -193,15 +204,32 @@ a line which does nothing must say so with \`-', or its verdict is wrong" ;;
   SEEN_NAMES+=("$name")
   COUNT[$verdict]=$(( ${COUNT[$verdict]:-0} + 1 ))
   if test -n "${PLAYED[$verdict]:-}"; then
-    ACTIONS+=("$action")
     ACTED_NAMES+=("$name")
+    # An action carried IDENTICALLY by several lines is played ONCE.
+    #
+    # A `drop' is not always a binary to erase. When the package which holds it has no interest
+    # left once it is gone -- the question which decides, episode 6 -- the action is the removal
+    # of that PACKAGE, and one and the same command answers for every name that package carries:
+    # the forty-six names of the qtchooser family carry a single `apt-get purge'. Playing it
+    # forty-six times would boot the guest into forty-five no-ops.
+    #
+    # This deduplicates STRICTLY EQUAL strings, and nothing else: it merges nothing, reorders
+    # nothing, rewrites nothing, so it still decides nothing. And every acted name keeps its own
+    # line -- the policy must NAME everything which disappears, or a re-probe cannot tell an
+    # intended removal from a surprise.
+    if test -z "${ACTION_SEEN[$action]:-}"; then
+      ACTION_SEEN[$action]=1
+      ACTIONS+=("$action")
+    else
+      DEDUPED=$((DEDUPED + 1))
+    fi
   fi
 done < "$POLICY"
 
 test "${#SEEN_NAMES[@]}" -gt 0 || die "$POLICY: no policy line at all"
 info "policy     : $POLICY"
 info "verdicts   : $(for v in $KNOWN_VERDICTS; do test -n "${COUNT[$v]:-}" && printf '%s %s  ' "${COUNT[$v]}" "$v"; done)"
-info "playing    : ${#ACTIONS[@]} action(s) for verdict(s) $ONLY_VERDICT$( ((${#EXTRA_IN_GUEST[@]})) && echo ", plus ${#EXTRA_IN_GUEST[@]} of your own" )"
+info "playing    : ${#ACTIONS[@]} action(s) for ${#ACTED_NAMES[@]} name(s) with verdict(s) $ONLY_VERDICT$( ((DEDUPED)) && echo " ($DEDUPED line(s) repeat an action already played)" )$( ((${#EXTRA_IN_GUEST[@]})) && echo ", plus ${#EXTRA_IN_GUEST[@]} of your own" )"
 test "${#ACTIONS[@]}" -gt 0 || die "nothing to play: no line of the policy carries a verdict among $ONLY_VERDICT"
 
 # --- Do the acted names still exist in this image? A measurement, not a gate.
