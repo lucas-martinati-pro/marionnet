@@ -304,4 +304,40 @@ let () =
   in
   ()
 
+(* ***************************************** *
+     Instrumentation: who changes the height?
+ * ***************************************** *)
+
+(* Only one site of this repository resizes the main window: the adjustment above (there is no
+   other #resize, no set_default_size, no maximize -- checked). Yet a session in the classroom
+   (2026-09-04, screen 1080, xfwm4) reported a window which grew by itself: the adjustment left
+   it at 781 px, and starting a virtual machine took it to about 1044 px -- the bottom edge of
+   the screen -- WITHOUT any line of the adjustment in between. Reproduction failed here, on a
+   1440 screen, with the same topology and the same gesture (driven session, dialogs kept, the
+   window even shrunk by hand to 700 px: it stayed there).
+   What is missing is not code reading but the INSTANT: at which event does the height change?
+   Hence this listener, which writes every change of the allocated height, with the moment it
+   happens and the two numbers of the palette. It costs one comparison per size-allocate and
+   writes nothing when the height does not change; like every Log.printf here, it is silent
+   unless --debug (or MARIONNET_DEBUG) is set. It is a probe, not a fix: it is here to name the
+   event that makes the window grow, so that the next correction is made on a measurement. *)
+let () =
+  let t0   = Unix.gettimeofday () in
+  let last = ref 0 in
+  let _ =
+    w#window_MARIONNET#misc#connect#size_allocate
+      ~callback:(fun rect ->
+         let height = rect.Gtk.height in
+         if height <> !last then begin
+           let previous = !last in
+           let () = last := height in
+           Log.printf6
+             "Main window: height %d -> %d px (width %d) at t+%.1f s; the palette demands %d px and got %d px [size-allocate]\n"
+             previous height (rect.Gtk.width) (Unix.gettimeofday () -. t0)
+             (w#toolbar_COMPONENTS#misc#allocated_height)
+             (w#scrolledwindow2#misc#allocated_height)
+           end)
+  in
+  ()
+
 end
