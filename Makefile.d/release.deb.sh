@@ -598,10 +598,11 @@ Description: virtual network laboratory
  marionnet-get-images command which fetches the larger guest images, and the
  delivered documentation in /usr/share/doc/marionnet.
  .
- The 64-bit UML kernel it boots is recommended by this package, so `apt install'
- brings it along: without a kernel nothing starts at all. The guest images are a
- choice, not an implication -- the small one is the suggested marionnet-fs-guignol,
- the larger ones are downloaded by marionnet-get-images.
+ The 64-bit UML kernel it boots is recommended by this package, so installing
+ Marionnet with apt brings the kernel along: without one, nothing starts at all.
+ The guest images are a choice, not an implication -- the small one is the
+ suggested marionnet-fs-guignol, the larger ones are downloaded by the
+ marionnet-get-images command.
 EOF
 
   # What is left to do on the machine: the scoped sudoers rule Marionnet needs to build
