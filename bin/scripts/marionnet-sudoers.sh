@@ -134,9 +134,11 @@ TOOL=$(basename "$0")
 function usage {
  cat 1>&2 <<EOF
 Usage: $TOOL print     [BLOCKS] [USER...]  # write the expected sudoers rules on stdout
-       $TOOL check     [BLOCKS] [USER...]  # exit 0 iff every selected block grants every USER and
-                                           #   is up to date (root only: the files are 0440);
-                                           #   4 if granted but STALE, 1 if not granted
+       $TOOL check     [BLOCKS] [USER...]  # exit 0 iff every selected block is up to date and
+                                           #   grants every USER (root only: the files are 0440);
+                                           #   4 if granted but STALE, 1 if not granted.
+                                           #   Bare, it is a question about the FILE: no account
+                                           #   is implied. --explain names what is out of date.
        $TOOL install   [BLOCKS] [USER...]  # grant them; needs root (re-execs with sudo)
        $TOOL uninstall [BLOCKS] [USER...]  # take the grant back; needs root (re-execs with sudo)
        $TOOL deny      BLOCK               # forbid a bridge block on this machine; needs root
@@ -760,6 +762,37 @@ function check_block {
  diff -q <(block_content "$b" "${granted[@]}") "$f" >/dev/null || return $CHECK_STALE
 }
 
+# granted_commands: the COMMANDS a block file grants, one per line, sorted and
+# deduplicated -- the right-hand side of `<principal> ALL=(root) NOPASSWD: ...'.
+# The principal is dropped on purpose: WHO is granted is the other question, the
+# one `check USER' answers; this one is about WHAT the file allows.
+function granted_commands {
+ sed -n 's/^[^[:space:]]* ALL=(root) NOPASSWD: //p' | sort -u
+}
+
+# explain_block BLOCK: what refreshing the file would change, in the only terms
+# that mean anything to an administrator -- commands gained (`+') and lost (`-').
+# MEASURED, never illustrated: the message which sent us here named /dev/net/tun
+# as an example baked into its own text, which happened to be right on the machine
+# that reported it and would have been wrong on the next one (episodes 40 and 41:
+# a warning names the cause it measured).
+#
+# Prints nothing when the two sets agree -- which is a REAL case, not an oversight:
+# the file may differ by its header or by its `# principals:' line alone. Whoever
+# asks must have a sentence for that, and marionnet-setup-check.sh has one.
+function explain_block {
+ local b=$1 f installed now
+ f=$(block_file "$b")
+ [[ -r $f ]] || return 0
+ local -a granted=()
+ read -r -a granted <<<"$(file_principals "$f")"
+ now=$(block_content "$b" ${granted[@]+"${granted[@]}"} | granted_commands) || return 0
+ installed=$(granted_commands < "$f")
+ comm -13 <(echo "$installed") <(echo "$now") | sed '/^$/d; s/^/+ /'
+ comm -23 <(echo "$installed") <(echo "$now") | sed '/^$/d; s/^/- /'
+ return 0
+}
+
 # write_block_file BLOCK FILE USER...: generate, validate, adopt. Validated by
 # visudo BEFORE being adopted, so a botched generation can never lock the user
 # out of sudo. Shared by install and uninstall, which now BOTH rewrite a file.
@@ -905,6 +938,7 @@ WANT_NAT=false
 WANT_LAN=false
 EXPLICIT_SELECTION=false
 ONLY=false
+EXPLAIN=false
 
 function parse_command_line {
  local a
@@ -919,6 +953,7 @@ function parse_command_line {
      --enable-lanbridge|--disable-lanbridge|--lanbridge)   WANT_LAN=true; EXPLICIT_SELECTION=true ;;
      --enable-bridges|--disable-bridges|--bridges)         WANT_NAT=true; WANT_LAN=true; EXPLICIT_SELECTION=true ;;
      --only)                                   ONLY=true ;;
+     --explain)                                EXPLAIN=true ;;
      -*) echo "$TOOL: unknown option '$a'" 1>&2; return 2 ;;
      *) PRINCIPALS+=("$a") ;;
    esac
@@ -926,6 +961,10 @@ function parse_command_line {
  # --only is a modifier of the selection, not a selection: on its own it would
  # mean "apply to nothing", which is never what anybody meant.  And on `uninstall'
  # it would be noise: --disable-* already leaves (a) alone.
+ if $EXPLAIN && [[ $COMMAND != check ]]; then
+   echo "$TOOL: --explain belongs to 'check': it says what is out of date, and changes nothing" 1>&2
+   return 2
+ fi
  if $ONLY; then
    case $COMMAND in
      uninstall)
@@ -1032,10 +1071,21 @@ function denied_blocks_or_die {
 
 parse_command_line "$@" || { usage; exit 2; }
 # `uninstall' with no account means the whole file, as it always has; `deny',
-# `allow' and `policy' take no account at all; the rest need somebody, and that
-# somebody defaults to the caller.
+# `allow' and `policy' take no account at all; `print' and `install' need somebody
+# -- they PRODUCE a content, which has to name an account -- and that somebody
+# defaults to the caller.
+#
+# `check' is NOT in that list, and the difference is the whole point: it produces
+# nothing, so it has no "for whom?" to fill in. Bare, it is a question about the
+# FILE -- is it up to date for the accounts it names -- which is what its own
+# header says and what the administrator's guide promises. Adding $SUDO_USER to it
+# silently asked something else, and answered 1 ("not granted") on a machine where
+# the file grants somebody ELSE: measured on a classroom case -- teacher granted,
+# `apt upgrade' run by root -- where the postinst then told the administrator that
+# Marionnet could not build a tap, which was false. Naming USERs still asks the
+# other question, and asks it of every one of them.
 case "$COMMAND" in
-  print|check|install)
+  print|install)
      if ((${#PRINCIPALS[@]} == 0)); then PRINCIPALS=("$(default_user)"); fi ;;
 esac
 # Never for `uninstall': the account to drop may be exactly the one that should
@@ -1060,7 +1110,15 @@ case "$COMMAND" in
      # would be the wrong advice for a block that has none.
      rc=0
      for b in "${BLOCKS[@]}"; do
-       check_block "$b" "${PRINCIPALS[@]}" || { [[ $? -eq $CHECK_STALE && $rc -ne 1 ]] && rc=$CHECK_STALE || rc=1; }
+       brc=0
+       check_block "$b" ${PRINCIPALS[@]+"${PRINCIPALS[@]}"} || brc=$?
+       if [[ $brc -ne 0 ]]; then
+         if [[ $brc -eq $CHECK_STALE && $rc -ne 1 ]]; then rc=$CHECK_STALE; else rc=1; fi
+         if $EXPLAIN; then
+           if ((${#BLOCKS[@]} > 1)); then echo "# >>> $(block_file "$b")"; fi
+           explain_block "$b"
+         fi
+       fi
      done
      exit $rc
      ;;

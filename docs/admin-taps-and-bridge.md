@@ -22,6 +22,7 @@ dans les sources sous `bin/scripts/`).
 marionnet-sudoers.sh print               # affiche la règle attendue (sans rien installer)
 marionnet-sudoers.sh install [USER...]   # installe /etc/sudoers.d/marionnet (se ré-exécute via sudo)
 marionnet-sudoers.sh check   [USER...]   # (root) le fichier installé est-il à jour ?
+marionnet-sudoers.sh check --explain     # (root) ... et ce qu'un rafraîchissement changerait
 marionnet-sudoers.sh uninstall [USER...] # retire l'autorisation (le fichier entier si aucun USER)
 marionnet-sudoers.sh deny  --lanbridge   # (root) interdit ce bloc sur cette machine
 marionnet-sudoers.sh allow --lanbridge   # (root) lève l'interdiction (n'accorde rien)
@@ -91,6 +92,14 @@ la valide avant adoption. Deux propriétés à connaître :
 `marionnet-sudoers.sh check` répond sur les principaux que le fichier **nomme** : un membre
 d'un groupe autorisé n'en est pas un. La question sur les droits **effectifs** est
 `sudo -l -U <login>`.
+
+**`check` nu est une question sur le FICHIER** — *est-il à jour pour les comptes qu'il nomme ?* —
+et n'implique **aucun** compte : contrairement à `print` et `install`, qui produisent un contenu
+et doivent donc savoir « pour qui », il ne produit rien. Nommer des USER pose l'autre question,
+*les grante-t-il*. Codes de sortie : **0** à jour, **4** accordé mais **périmé** (écrit par une
+version antérieure), **1** non accordé. `--explain` nomme alors l'écart en **commandes**
+accordées — `+` gagnées, `-` perdues — mesurées sur ce fichier-ci, et ne rend rien quand l'écart
+n'est que dans le texte (en-tête, ligne `# principals:`).
 
 C'est toujours moins exposé que l'ancienne socket 0666 du daemon, qui offrait les mêmes
 créations de taps à **tous** les comptes locaux, sans aucune déclaration de l'admin.

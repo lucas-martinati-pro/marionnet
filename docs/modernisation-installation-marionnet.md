@@ -5759,3 +5759,65 @@ Les deux bancs paquets passent le compte de noms à **30** et gagnent la discrim
 épisode (le même script parle, puis cesse de parler, sur la même boîte). Comme d'habitude
 pendant la campagne, ils mesurent le paquet **publié** : ces cas sont **rouges par construction
 jusqu'à la prochaine release** (motif ép. 20c → 22, 28 → 30b quater).
+
+## Épisode 45 (2026-09-04) — le message périmé nomme ce qu'il a mesuré, et `check` pose la bonne question
+
+### Le constat
+
+Suite immédiate de l'ép. 44. En salle, l'`apt upgrade` r966 → r977 déclenche désormais le
+**bon** paragraphe — socle *accordé mais périmé* — mais son texte cite `/dev/net/tun`, et
+l'administrateur y lit *« il reste un problème de tun »*, alors que l'ép. 42 a précisément fait
+en sorte que Marionnet **fournisse le périphérique lui-même** à chaque démarrage.
+
+La phrase n'était pas fausse — mesuré, l'écart de cette machine **est** la porte du tun — mais
+elle était **devinée** : un exemple gravé dans le texte le jour où l'on imaginait le cas
+typique, et non ce que la machine a répondu. Famille des ép. 40 et 41 : *un avertissement nomme
+la cause qu'il a mesurée*. Sur la machine suivante, ce texte aurait nommé la mauvaise chose avec
+le même aplomb.
+
+### Ce que la mesure a trouvé en plus : `check` ne posait pas la question qu'on croyait
+
+Conteneur `debian:12`, root, un compte granté par la version **r969** (celle d'avant la porte du
+tun), interrogé par celle d'aujourd'hui :
+
+| question | rc avant | ce que cela voulait dire |
+|---|---|---|
+| `check jean` | 4 | périmé — correct |
+| `check` (nu) | **1** | *« pas accordé »* — **faux** |
+
+Le dispatch ajoutait silencieusement `$SUDO_USER` (ou le compte courant) à `check`, comme il le
+fait à `print` et `install`. **Conséquence pour une salle** : un `apt upgrade` lancé par **root**
+(cron, image, `sudo -i`) sur une machine où **teacher** est granté faisait dire au message
+*« Marionnet cannot build its network taps yet »* — exactement la fausse accusation que l'ép. 44
+venait supprimer. Et c'est la question que la doc admin promet depuis toujours : *« le fichier
+installé est-il à jour ? »*
+
+**Correctif** : le défaut par appelant reste à `print` et `install` — qui **produisent** un
+contenu, lequel doit nommer un compte — et **disparaît de `check`**, qui ne produit rien. Nu,
+`check` interroge le **fichier** ; nommer des USER pose l'autre question.
+
+### `check --explain`
+
+Option **en lecture seule**, qui ne change aucun code de sortie : elle nomme l'écart en
+**commandes accordées** (`+` gagnées, `-` perdues), le principal étant retiré de la comparaison
+puisque *qui* est granté est la question de `check <user>`. Elle ne rend **rien** quand les deux
+ensembles s'accordent — cas réel, non oubli : l'en-tête ou la ligne `# principals:` peuvent
+différer seuls — et l'appelant a une phrase pour ce cas.
+
+Le paragraphe de `marionnet-setup-check.sh` perd donc son exemple et gagne la liste mesurée,
+plus la phrase qui manquait et qui répond au malentendu : **ce sont des autorisations, pas des
+réparations ; rien n'est cassé sur cette machine.**
+
+### Mesuré (conteneur `debian:12`, root)
+
+| cas | résultat |
+|---|---|
+| A. fichier r969 pour `jean` (le cas rapporté) | `check` nu **4** (avant : 1) ; `--explain` = **`+ /usr/bin/marionnet-tun-device.sh create`**, seule ligne ; message sans **aucune** mention de `/dev/net/tun` |
+| B. `teacher` granté, `check` en root **sans `SUDO_USER`** | **4**, et non 1 ; après `install teacher` → **0**, message **entièrement muet** |
+| C. écart de **texte** seul (un commentaire ajouté) | `check` **4**, `--explain` **vide**, message : *« the difference is in the text of the file, not in what it grants »* |
+| D. non-régression | `install` nu et `print` nu écrivent toujours **7** règles pour `$SUDO_USER` ; `check` nu sur un fichier frais **0** ; `check teacher` non granté **1** ; `--explain` hors de `check` refusé **rc 2** |
+
+### Reste
+
+Rien de neuf : les deux cas du banc `.deb` (§ 5 bis) cherchent `earlier version` et `ADDITIVE`,
+deux formulations conservées à dessein.

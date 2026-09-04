@@ -113,13 +113,39 @@ else
     0) ;;   # granted and up to date: silence.
     "$SUDOERS_STALE_RC")
       SOMETHING_MISSING=1
+      # NAMED, not illustrated. This paragraph used to cite the door which provides
+      # /dev/net/tun as its example -- true on the machine which reported it, a guess
+      # everywhere else, and read by its administrator as "there is still a tun
+      # problem" when in fact there is nothing to repair. What is printed now is what
+      # the file and the script disagree about, asked of the script which owns both.
+      EXPLANATION=$("$SUDOERS" check --explain 2>/dev/null)
       cat 1>&2 <<EOF
 
 ==> The Marionnet sudoers rule is installed, but it was written by an earlier
-    version and does not grant everything Marionnet asks for today (the door
-    which provides /dev/net/tun, for one). Refresh it, as an administrator:
+    version of Marionnet: it does not grant everything the application asks for
+    today. Refresh it, as an administrator:
 
         sudo $SUDOERS install
+EOF
+      if [[ -n $EXPLANATION ]]; then
+        cat 1>&2 <<EOF
+
+    What that would change, measured on this machine (\`+' gained, \`-' dropped):
+
+$(sed 's/^/        /' <<<"$EXPLANATION")
+
+    These are AUTHORISATIONS, not repairs: nothing on this machine is broken.
+    Marionnet asks for each of them when it needs it, and does without the ones
+    it is not granted -- saying so at the time, rather than failing silently.
+EOF
+      else
+        cat 1>&2 <<EOF
+
+    The difference is in the text of the file, not in what it grants: refreshing
+    brings it up to date without changing anybody's rights.
+EOF
+      fi
+      cat 1>&2 <<EOF
 
     \`install' is ADDITIVE: no account already granted is taken away, and every
     rule of the file is regenerated. Name accounts to add some at the same time.

@@ -1441,6 +1441,26 @@ Reprise : appliquer le skill `chantier-long`.
   **se tait** (rc 0) après `install root` / **périmé** signalé, `check` rendant **4** ; seul
   le paquet manquant est nommé. Bancs paquets 29 → **30** noms + la discriminance, **rouges
   jusqu'à la prochaine release**.
+  **Ép. 45 : le message périmé nomme ce qu'il a mesuré, et `check` posait la mauvaise
+  question.** Le paragraphe de l'ép. 44 citait `/dev/net/tun` — vrai sur la machine qui l'a
+  signalé (**mesuré** : l'écart y **est** la porte du tun), **deviné** partout ailleurs, et lu
+  par son administrateur comme *« il reste un problème de tun »* alors que l'ép. 42 fait
+  fournir le périphérique **par l'application**. L'exemple gravé disparaît au profit de
+  **`marionnet-sudoers.sh check --explain`** (lecture seule, aucun code de sortie changé) : il
+  nomme l'écart en **commandes accordées** (`+`/`-`, principal retiré — *qui* est granté est la
+  question de `check <user>`), et ne rend **rien** quand les ensembles s'accordent (l'en-tête ou
+  la ligne `# principals:` peuvent différer seuls — le message a une phrase pour ce cas). Plus
+  la phrase qui manquait : **ce sont des autorisations, pas des réparations ; rien n'est cassé
+  ici.** **Défaut adjacent trouvé en mesurant** : `check` **nu** répondait **1** (« pas
+  accordé ») là où `check <user>` répondait 4, le dispatch lui ajoutant `$SUDO_USER` comme à
+  `print`/`install` — donc un `apt upgrade` lancé par **root** sur une machine où *teacher* est
+  granté annonçait que Marionnet ne pouvait pas faire de tap. **À ne pas défaire** : le défaut
+  par appelant reste à `print`/`install`, qui **produisent** un contenu et doivent nommer un
+  compte, et **quitte `check`**, qui ne produit rien — nu, c'est une question sur le **fichier**
+  (ce que la doc admin promettait déjà). Mesuré : `check` nu **4** (avant 1) et `--explain` =
+  **une** ligne, message **0** mention de `/dev/net/tun` ; cas de salle (root, sans `SUDO_USER`)
+  **4** puis **0** et silence total ; écart de texte seul → `--explain` vide ; `install`/`print`
+  nus inchangés (7 règles pour `$SUDO_USER`), `--explain` hors de `check` **rc 2**.
 
 ## Où puiser
 

@@ -347,7 +347,11 @@ account binds the tap to that login, has to accept any owner for a group — sud
 else**, though nobody gains a tap they can open and the confinement to `mtap*` is untouched.
 
 `sudo -l -U <login>` is the question about effective rights; `marionnet-sudoers.sh check` answers
-about the principals a file *names*, so a member of a granted group is not one.
+about the principals a file *names*, so a member of a granted group is not one. Bare, `check` is a
+question about the **file**: is it up to date for the accounts it names (0), granted but written by
+an earlier version of Marionnet (4), or not granted at all (1)? On a **4**, `check --explain` names
+what refreshing would change, in commands gained and lost — and refreshing is
+`marionnet-sudoers.sh install`, which is additive and takes nobody's grant away.
 
 ### 7.2 The three blocks, and what each one does to this machine
 

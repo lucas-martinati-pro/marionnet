@@ -371,7 +371,11 @@ gagne un tap qu'il puisse ouvrir et le confinement aux `mtap*` est intact.
 
 `sudo -l -U <login>` est la question sur les droits effectifs ; `marionnet-sudoers.sh check`
 répond sur les principaux que le fichier **nomme**, si bien qu'un membre d'un groupe autorisé n'en
-est pas un.
+est pas un. Nu, `check` est une question sur le **fichier** : est-il à jour pour les comptes qu'il
+nomme (0), accordé mais écrit par une version antérieure de Marionnet (4), ou pas accordé du tout
+(1) ? Sur un **4**, `check --explain` nomme ce qu'un rafraîchissement changerait, en commandes
+gagnées et perdues — et rafraîchir, c'est `marionnet-sudoers.sh install`, qui est additif et ne
+retire le droit de personne.
 
 ### 7.2 Les trois blocs, et ce que chacun fait à cette machine
 
