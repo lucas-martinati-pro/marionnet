@@ -520,6 +520,40 @@ PUBLICATION_SERIES := $(shell bash Makefile.d/filesystem.prepare-snapshot-to-pub
 filesystem.prepare-snapshot-to-publish:
 	bash Makefile.d/filesystem.prepare-snapshot-to-publish.sh --series $(PUBLICATION_SERIES)
 
+# ---
+# --- Work-stream `triage-binaires-image-invitee': the two ends of the chain, as targets.
+# ---
+# Between them sits a DECISION, and that is why there is no third target wrapping the two:
+# what an agent judges once is frozen in the versioned policy
+# uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.<tag>.tsv, and the ritual which
+# surrounds that judgement is a skill, not a recipe (episode 0, section 7 of the doc).
+# Neither target takes --series: unlike the publishers above, both scripts derive the
+# release directory themselves (--from overrides it).
+# The grammar of the options stays where it is written, in the scripts: IMAGE is spelled out
+# here because a Makefile variable is what a target can teach, everything else goes through
+# OPTIONS untouched -- `bash Makefile.d/<script> --help' lists it.
+
+# Stage 1 -- OBSERVE. Boot a published guest image in a cow file of its own, run every binary
+# its BINARY_LIST announces, and write down what each one answers (docs/probe-reports/). It
+# publishes nothing and exports nothing: the cow is thrown away, which is also what makes it
+# safe to probe a binary which turns out to do its job instead of printing its usage.
+# A short run for the road: OPTIONS="--limit 20", or OPTIONS="--only wireshark,geany".
+filesystem.probe-image-binaries:
+	@test -n "$(IMAGE)" || { echo "usage: make $@ IMAGE=machine-debian-trixie-16341 [OPTIONS=...]"; exit 2; } >&2
+	bash Makefile.d/filesystem.probe-image-binaries.sh --image $(IMAGE) $(OPTIONS)
+
+# Stage 3a -- APPLY, to an ALREADY PUBLISHED image. Read the policy, refuse the whole file by
+# naming the line if one of them does not say clearly what to do, and play what it says in the
+# guest, verbatim: this script decides nothing. WITHOUT OPTIONS IT WRITES A NEW IMAGE in the
+# release directory -- republishing an image is renaming it, its name being its `sum'. Hence
+# the two rehearsals: OPTIONS=--dry-run (boots nothing) and OPTIONS=--measure (plays the
+# commands, exports nothing). The build-time applier (pupisto, stage 3b) does not go through
+# this target: it asks the same script for its actions (--print-actions), so that the four
+# columns keep a single reader.
+filesystem.apply-binary-policy:
+	@test -n "$(IMAGE)" || { echo "usage: make $@ IMAGE=machine-debian-trixie-16341 [OPTIONS=--dry-run]"; exit 2; } >&2
+	bash Makefile.d/filesystem.apply-binary-policy.sh --image $(IMAGE) $(OPTIONS)
+
 # Put a UML kernel and its .config into the release directory, and build the tarball the
 # installer downloads (kernels_<kernel>.tar.xz). The kernel is MANDATORY: unlike a
 # filesystem snapshot, there is no sensible "most recent one" to guess. One kernel, one
@@ -738,6 +772,7 @@ release-and-upload:
 
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
+.PHONY: filesystem.probe-image-binaries filesystem.apply-binary-policy
 .PHONY: release-retention release-and-upload release-install-pages
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload

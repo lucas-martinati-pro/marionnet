@@ -18,8 +18,9 @@ une **re-sonde verte** ; la **politique** porte un verdict pour *chaque* candida
 `BINARY_LIST` ; `uml/pupisto.debian.sh` la consomme à la construction ; le **skill** et ce
 document existent. Le test qui le prouve tient en une phrase :
 
-> **la prochaine image ne doit pas rouvrir un chantier** — juste `make image-probe`, une
-> passe d'agent sur le diff, `make image-apply`.
+> **la prochaine image ne doit pas rouvrir un chantier** — juste
+> `make filesystem.probe-image-binaries`, une passe d'agent sur le diff,
+> `make filesystem.apply-binary-policy`.
 
 ### Le critère de reprise d'une image DÉJÀ publiée (épisode 7)
 
@@ -537,7 +538,7 @@ décision au milieu**. Le livrable se sépare donc exactement là où la chaîne
 | Ce qui reste | Forme | Pourquoi cette forme |
 |---|---|---|
 | **La politique** | TSV versionné | *Le plus précieux* : le jugement accumulé, sans quoi il serait re-dérivé (ou re-payé en tokens) à chaque image |
-| **La mécanique** | **2 cibles `make`** : `image-probe`, `image-apply` | Maillons linéaires et sans connaissance propre ⇒ pas de script de regroupement (ép. 26) |
+| **La mécanique** | **2 cibles `make`** : `filesystem.probe-image-binaries`, `filesystem.apply-binary-policy` *(nommées à l'ép. 9 ; l'ép. 0 les appelait `image-probe`/`image-apply`)* | Maillons linéaires et sans connaissance propre ⇒ pas de script de regroupement (ép. 26) |
 | **Le jugement + le rituel** | **1 skill** | La seule part qu'une cible `make` ne peut pas porter |
 | **L'archive** | ce document + la fiche mémoire | Convention des chantiers du dépôt |
 
@@ -557,6 +558,58 @@ image, c'est la renommer**. Il ne recopie ni la grammaire des scripts ni la poli
   *backing file* fait foi (ép. 23). Chaque tour d'application produit une image **neuve**.
 
 ## 9. Journal d'avancement
+
+### 2026-09-05 — épisode 9 : les deux bouts de la chaîne deviennent des cibles
+
+L'épisode qui était prévu ici — *la première image construite avec la politique* — **dépend du
+chantier parent** `marionnet-kernel-rootfs` : on ne construit pas une image de plusieurs Go pour
+ce seul motif. Il glisse donc, et l'épisode joue la part du § 7 qui ne demande **aucune image** :
+la **mécanique**.
+
+Deux cibles ajoutées au `Makefile`, à côté des publieurs de la famille `filesystem.` :
+
+- **`filesystem.probe-image-binaries`** (étage 1, observer) ;
+- **`filesystem.apply-binary-policy`** (étage 3a, appliquer à une image **publiée**).
+
+**Trois choix de forme, et leur raison.**
+
+1. **Le nom.** Le § 7 disait `image-probe` / `image-apply`, écrits à l'ép. 0 — avant que les
+   scripts existent. Les quatre cibles voisines nomment **exactement leur script**
+   (`filesystem.prepare-snapshot-to-publish`, `kernel.prepare-to-publish`,
+   `release.sha256sums`) ; garder les noms de l'ép. 0 aurait rompu cette correspondance 1:1 pour
+   ces deux-là seulement, et perdu le regroupement par préfixe qu'offre la complétion de `make`.
+   Les cibles portent donc le nom de leur script, et le § 7 est corrigé.
+
+2. **`IMAGE=` explicite, tout le reste par `OPTIONS=`.** Une cible pourrait déclarer les 12
+   options du script de l'étage 3a. Ce serait un **second endroit où la grammaire est écrite** —
+   exactement le défaut que ce chantier refuse ailleurs (un format, **un** lecteur ; § 5). Ce
+   qu'une cible peut enseigner et qu'un script ne peut pas, c'est la **syntaxe make** : d'où le
+   seul `IMAGE`, avec un message d'usage quand il manque, sur le modèle de
+   `kernel.prepare-to-publish KERNEL=…`. Le reste traverse intact, et `--help` reste la source.
+
+3. **Aucune des deux ne prend `--series`**, contrairement aux publieurs voisins : les deux
+   scripts dérivent eux-mêmes le répertoire de release (`--print-series` du publieur), et
+   `--from` l'écrase. Passer la série ici aurait ajouté un troisième endroit qui la connaît.
+
+**Et pas de troisième cible.** Le § 7 le disait déjà et l'épisode le confirme en le rendant
+visible : entre les deux bouts il y a une **décision**, que seul un skill peut porter — un
+`make image-triage` obligerait à choisir ce que l'agent décide, ou à mentir sur l'automatisme.
+Le commentaire du `Makefile` le dit à l'endroit où quelqu'un chercherait la cible manquante.
+Symétriquement, l'étage **3b** (pupisto) ne passe **pas** par la cible : il demande ses actions
+au script (`--print-actions`), pour que les quatre colonnes gardent un seul lecteur.
+
+**Preuves prises dans la session** (aucun boot, aucune image écrite) :
+
+| Commande | Attendu | Mesuré |
+|---|---|---|
+| `make filesystem.probe-image-binaries` (sans `IMAGE`) | usage + refus | `rc 2`, ligne d'usage |
+| `make filesystem.apply-binary-policy` (sans `IMAGE`) | usage + refus | `rc 2`, ligne d'usage |
+| `make filesystem.apply-binary-policy IMAGE=machine-debian-trixie-16341 OPTIONS=--dry-run` | la politique relue, la ligne de commande imprimée, rien de booté | `rc 0` — `2 fix / 55 drop / 168 ignore`, **11 actions pour 57 noms**, les 57 dans la `BINARY_LIST` |
+| `make filesystem.probe-image-binaries IMAGE=… OPTIONS="--only pas-un-binaire"` | `OPTIONS` découpé en deux mots, refus **avant** tout boot | `rc 2`, *not in the BINARY_LIST* |
+
+Ce que ces preuves **ne** montrent pas, et qui reste à l'ép. 10 : un run réel de la sonde par la
+cible (il coûte un boot et ~2 h), et l'application jusqu'à l'export — qui, par la décision de
+l'ép. 7, n'aura **jamais** lieu depuis l'étage 3a.
 
 ### 2026-09-03 — épisode 0 : la stratégie, et ce que le chantier laissera derrière lui
 
