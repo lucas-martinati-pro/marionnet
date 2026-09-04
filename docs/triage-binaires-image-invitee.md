@@ -429,3 +429,26 @@ donc les premiers candidats paient le remplissage du cache pour tous les autres.
 run complet, à comparer aux **3287 s** de l'épisode 1 — mesure prise à part (§ 9, épisode 3).
 Et le micro-banc local dit que l'instrument n'y est pour presque rien : `grep -o` + `sort -u`
 coûte **1,6×** un `grep -q` sur le même fichier, pas cinq fois.
+
+**Le run complet a tranché les deux questions** —
+`docs/probe-reports/machine-debian-trixie-16341-2026-09-04-x2.tsv`, `--x-only`, **2060
+candidats** :
+
+- **le coût amorti** : `elapsed=5095s` contre les **3287 s** de l'épisode 1, soit **2,47 s par
+  candidat contre 1,60** — **+55 %**, et non le facteur cinq que le préfixe laissait craindre.
+  **497 bibliothèques** lues, chacune une seule fois, pour 2060 candidats : c'est exactement ce
+  que la mémoïsation achète. Un passage reste de l'ordre de l'heure et demie ;
+- **ce que la fermeture trouve** : **16 binaires** basculent *plain* → X, et **aucun** X de
+  l'épisode 1 n'est perdu (X passe de 73 à 89). Ce sont `wireshark` sous ses **trois** noms (le
+  lien, le wrapper, le `.real`), `geany`, `mtr`, `broadwayd`, `gtk-launch`,
+  `gtk-builder-tool`, `gtk-encode-symbolic-svg`, `gtk-query-settings`, `hydra`,
+  `hydra-wizard`, `dpl4hydra`, `listres`, `xmore`, `bmtoa` — GTK, Qt, Xaw et Xmu, **aucune de
+  ces bibliothèques n'étant nommée nulle part dans le code**.
+
+**Et ce que ça coûte à l'étage 2, mesuré**. Huit de ces seize sortent en `X_DIED` — mais leur
+`stderr` les nomme pour ce qu'ils sont : `gtk-launch: missing application name`,
+`bmtoa: unable to read bitmap from f…`. Ce sont des **outils en ligne de commande liés à une
+toolkit**, que la sonde X éprouve sans leur donner ce qu'ils attendent. La sur-approximation
+n'est donc pas gratuite : elle fait passer quelques cas de plus devant l'agent. C'est le côté
+où il faut se tromper — un faux positif se lit et se classe `ignore` **une fois**, là où le
+faux négatif laissait une application graphique sortir **sans aucun jugement**.

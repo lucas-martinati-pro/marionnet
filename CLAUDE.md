@@ -333,7 +333,15 @@ Reprise : appliquer le skill `chantier-long`.
   `libX11` se répond désormais **dans la liste déjà extraite**. **Mesuré** : `wireshark` et
   **`geany`** basculent `OK` → `X_ALIVE` (via `wireshark.real:libQt6Gui.so.6` et `libgeany.so.0`),
   seules lignes qui changent sur 10 témoins — `geany` n'était pas dans l'énoncé, le défaut était
-  **plus large** que son cas connu.
+  **plus large** que son cas connu. **À l'échelle, le run complet tranche les 2 questions** :
+  **+55 %** de temps (`elapsed` 5095 s contre 3287 s, soit 2,47 s/candidat contre 1,60) — et non
+  le facteur 5 que le préfixe laissait craindre, **497** bibliothèques lues une fois chacune pour
+  2060 candidats — et **16 bascules** *plain* → X (73 → 89 X), **aucun X perdu** : `wireshark`
+  sous ses 3 noms, `geany`, `mtr`, `broadwayd`, la famille `gtk-*`, `hydra*`, `listres`, `xmore`,
+  `bmtoa`. **Prix mesuré de la sur-approximation** : 8 des 16 sortent `X_DIED` — des outils CLI
+  liés à une toolkit (`gtk-launch: missing application name`), donc quelques cas de plus devant
+  l'agent ; c'est **le côté où il faut se tromper** (un faux positif se classe `ignore` une fois,
+  un faux négatif laissait passer une application graphique sans jugement).
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

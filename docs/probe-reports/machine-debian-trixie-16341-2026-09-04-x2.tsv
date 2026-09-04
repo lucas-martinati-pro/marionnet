@@ -1,0 +1,102 @@
+# probe report -- machine-debian-trixie-16341
+# taken     : 2026-09-04T11:30:45+02:00
+# image     : /home/jean/.shared/DEVEL/repos/MARIONNET-dune-project/website-repo/download/marionnet-install.sh/1.0.x/machine-debian-trixie-16341
+# sum       : 16341
+# candidates: 2060 (BINARY_LIST of the .conf)
+# probes    : help-timeout=5s x-timeout=6s x-only=1
+# X server  : DISPLAY=:0 vendor string: The X.Org Foundation X.Org version: 21.1.11 
+#
+# name	verdict	rc	probe	via	first line of stderr
+apache2ctl	X_DIED	1	x	www-browser:libX11	Usage: /usr/sbin/apache2ctl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+apachectl	X_DIED	1	x	www-browser:libX11	Usage: /usr/sbin/apachectl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+appres	X_OK	0	x	libX11	
+bin	MISSING	-	none	-	not in PATH
+bitmap	X_ALIVE	124	x	libX11	
+bmtoa	X_DIED	1	x	libXmu.so.6	/usr/bin/bmtoa:  unable to read bitmap from file "(stdin)"
+broadwayd	X_ALIVE	124	x	libcairo.so.2	
+compose	X_OK	0	x	xterm:libX11	
+dpl4hydra	X_OK	0	x	hydra:libfreerdp3.so.3	
+edit	X_OK	0	x	xterm:libX11	
+editres	X_ALIVE	124	x	libX11	
+fixproc	X_DIED	10	x	xterm:libX11	/usr/bin/fixproc: no process specified
+geany	X_ALIVE	124	x	libgeany.so.0	
+gtk-builder-tool	X_DIED	1	x	libgdk-3.so.0	
+gtk-encode-symbolic-svg	X_DIED	1	x	libgdk-3.so.0	Usage:
+gtk-launch	X_DIED	1	x	libgdk-3.so.0	gtk-launch: missing application name
+gtk-query-settings	X_OK	0	x	libgtk-3.so.0	
+hwloc-gather-topology	X_DIED	1	x	lstopo:libX11	
+hwloc-ls	X_ALIVE	124	x	libX11	
+hydra	X_DIED	255	x	libfreerdp3.so.3	
+hydra-wizard	X_DIED	1	x	hydra:libfreerdp3.so.3	
+ico	X_ALIVE	124	x	libX11	
+koi8rxterm	X_ALIVE	124	x	xmessage:libX11	koi8rxterm tried to use locale ru_RU.KOI8-R by setting $LANG
+links2	X_DIED	4	x	libX11	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+listres	X_OK	0	x	libXaw.so.7	
+lstopo	X_ALIVE	124	x	libX11	
+lxterm	X_ALIVE	124	x	xterm:libX11	
+marionnet-relay	X_DIED	1	x	xauth:libX11	+ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+mtr	X_ALIVE	124	x	libgtk-3.so.0	
+oclock	X_ALIVE	124	x	libX11	
+open	X_OK	0	x	xterm:libX11	
+print	X_OK	0	x	xterm:libX11	
+rendercheck	X_ALIVE	124	x	libX11	
+run-mailcap	X_OK	0	x	xterm:libX11	
+sbin	MISSING	-	none	-	not in PATH
+see	X_OK	0	x	xterm:libX11	
+sensible-browser	X_ALIVE	124	x	www-browser:libX11	
+setxkbmap	X_OK	0	x	libX11	
+snmpcheck	X_DIED	2	x	xterm:libX11	Can't locate Tk.pm in @INC (you may need to install the Tk module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64-linux-gnu/p
+transset	X_DIED	1	x	libX11	unknown_program: error: Can't grab the mouse.
+uxterm	X_ALIVE	124	x	xmessage:libX11	
+viewres	X_ALIVE	124	x	libX11	
+wireshark	X_ALIVE	124	x	wireshark.real:libQt6Gui.so.6	NOTICE: about to exec /usr/bin/wireshark.real -o capture.no_interface_load:TRUE -k -i lo
+wireshark.marionnet.sh	X_ALIVE	124	x	wireshark.real:libQt6Gui.so.6	NOTICE: about to exec /usr/bin/wireshark.real -o capture.no_interface_load:TRUE -k -i lo
+wireshark.real	X_ALIVE	124	x	libQt6Gui.so.6	nl80211 not found.
+www-browser	X_DIED	4	x	libX11	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+X11	MISSING	-	none	-	not in PATH
+x11perf	X_DIED	1	x	libX11	usage: /usr/bin/x11perf [-options ...]
+x11perfcomp	X_OK	0	x	x11perf:libX11	
+xauth	X_OK	0	x	libX11	
+xbiff	X_ALIVE	124	x	libX11	
+xcalc	X_ALIVE	124	x	libX11	
+xclip	X_OK	0	x	libX11	
+xclipboard	X_ALIVE	124	x	libX11	
+xclip-copyfile	X_DIED	1	x	xclip:libX11	Usage: [options] /usr/bin/xclip-copyfile file...
+xclip-cutfile	X_DIED	1	x	xclip:libX11	Usage: [options] /usr/bin/xclip-cutfile file...
+xclip-pastefile	X_DIED	2	x	xclip:libX11	Error: target STRING not available
+xclock	X_ALIVE	124	x	libX11	
+xconsole	X_ALIVE	124	x	libX11	
+xcursorgen	X_DIED	1	x	libX11	/usr/bin/xcursorgen: Error reading config file from stdin
+xcutsel	X_ALIVE	124	x	libX11	
+xditview	X_ALIVE	124	x	libX11	
+xdpyinfo	X_OK	0	x	libX11	
+xdriinfo	X_ALIVE	124	x	libX11	
+xedit	X_ALIVE	124	x	libX11	
+xev	X_ALIVE	124	x	libX11	
+xeyes	X_ALIVE	124	x	libX11	
+xfd	X_DIED	1	x	libX11	/usr/bin/xfd:  no font to display
+xfontsel	X_ALIVE	124	x	libX11	
+xgc	X_ALIVE	124	x	libX11	
+xkbbell	X_OK	0	x	libX11	
+xkbcomp	X_DIED	1	x	libX11	Error:            No input file specified
+xkbevd	X_ALIVE	124	x	libX11	Temporarily disabling the audible bell
+xkbprint	X_DIED	1	x	libX11	Error:            No input file specified
+xkbvleds	X_ALIVE	124	x	libX11	
+xkbwatch	X_ALIVE	124	x	libX11	
+xkill	X_ALIVE	124	x	libX11	
+xlinks2	X_ALIVE	124	x	links2:libX11	
+xload	X_ALIVE	124	x	libX11	
+xlogo	X_ALIVE	124	x	libX11	
+xlsfonts	X_OK	0	x	libX11	
+xmag	X_ALIVE	124	x	libX11	
+xman	X_ALIVE	124	x	libX11	
+xmessage	X_DIED	1	x	libX11	Unknown argument(s):
+xmore	X_DIED	1	x	libXaw.so.7	
+xprop	X_ALIVE	124	x	libX11	
+xterm	X_ALIVE	124	x	libX11	
+x-terminal-emulator	X_ALIVE	124	x	xterm:libX11	
+xvinfo	X_OK	0	x	libX11	
+xwd	X_ALIVE	124	x	libX11	
+xwud	X_DIED	1	x	libX11	xwud: Error => Unable to read dump file header.
+x-www-browser	X_ALIVE	124	x	links2:libX11	
+#END	-	-	-	-	elapsed=5095s libraries-read=497
