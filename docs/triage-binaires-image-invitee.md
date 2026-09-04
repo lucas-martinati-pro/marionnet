@@ -238,25 +238,85 @@ mode texte, et échoue sur `Epoll ADD(1) on fd 0` — c'est le `</dev/null` de l
 binaire. Un binaire dont le mode par défaut n'est pas graphique n'est pas jugeable par
 « survit-il à l'écran ? ».
 
+### 3.6 Le tamis laissait passer les cassés — mesuré à l'épisode 3
+
+La passe de décision ne s'est pas contentée des 177 cas que le rapport lui tendait : elle a
+relu **les 1820 `OK`**. Elle y a trouvé **33 binaires qui ne démarrent pas du tout**.
+
+**Pourquoi le verdict les avait manqués** : `OK` accepte `rc` 0 **ou** 1, parce que quantité
+d'outils impriment leur usage et sortent avec 1. Or un lanceur `qtchooser` qui ne trouve pas
+sa cible sort **aussi** avec 1. Le `rc` ne porte pas la différence entre *« j'ai répondu »* et
+*« je n'ai pas démarré »* — le **message**, lui, la porte, et il était déjà dans le rapport.
+
+**Trois familles, et rien d'autre de deviné** (motifs relevés sur le rapport, pas imaginés) :
+
+| famille | n | ce que le message dit |
+|---|---|---|
+| lanceur `qtchooser` | 32 | `could not exec '/usr/lib/qt5/bin/…'` — l'image porte Qt6, et 32 noms (`qmake`, `designer`, `linguist`, `lrelease`, `qml*`…) sont des liens vers `qtchooser`, dont le `.conf` Qt5 désigne un répertoire absent |
+| module Perl absent | 9 | `Can't locate …pm in @INC` |
+| bibliothèque absente | 1 | `error while loading shared libraries` |
+
+D'où un **verdict de plus, `BROKEN`**, lu sur le message et jamais sur le `rc`, et posé **avant**
+l'échelle : un binaire qui ne démarre pas ne démarrera pas mieux à la seconde question, si bien
+que le repli `--version` ne lui est même plus posé. **Éprouvé sans booter**, en rejouant
+`is_broken` sur les deux rapports : **42 reconnus sur 42**, **0 faux positif sur 2060 lignes**.
+
+**Et un second défaut de la même famille** — *juger par autre chose que ce qu'on mesure* :
+**26 des cas** arrivaient à la décision avec un **message vide**, parce que la sonde ne gardait
+que `stderr` et qu'un bon nombre d'outils écrivent leur usage sur **stdout** avant de sortir
+avec un statut non nul. Le rapport tendait donc à l'agent des cas *sans rien à juger*. La sonde
+prend désormais `stderr`, **puis stdout à défaut**, en **disant lequel** (`stdout: …`) — un
+message pris en silence dans l'autre flux ne décrirait rien. C'est le même argument que la
+colonne `via` de l'épisode 2 : *une classification qu'un humain ne peut pas contester n'est pas
+une mesure*.
+
 ## 4. La politique — le seul fichier que l'agent écrit
 
-Un TSV versionné, à côté des ressources de la distribution. Quatre verdicts, et c'est tout :
+`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv` — un TSV versionné, **là
+où vivent déjà les ressources par distribution** (`package_catalog/*.trixie.*`,
+`binary_list.<image>`), parce que c'est `pupisto` qui le lira à la construction (étage 3b).
 
 ```
-# binaire       verdict  action                          raison
-xlinks2         drop     apt-get -y purge links2         BadMatch X_CreateWindow, non corrigeable (ép. N)
-marionnet-relay ignore   -                               interne à Marionnet, pas destiné à l'utilisateur
-wireshark       keep     -                               sondé OK le 2026-09-03
-<autre>         fix      <commande jouée dans l'invité>  <pourquoi>
+# name    verdict  action                     reason                                    family
+qmake     drop     apt-get -y purge qtchooser qtchooser wrapper: execs /usr/lib/qt5/…    qt5-wrapper
+snmpcheck fix      apt-get -y install perl-tk network tool, in scope; Tk.pm absent       missing-perl-module
+ping      ignore   -                          works: knows neither --help nor --version  no-help-option
 ```
 
-`ignore` porte le **discernement** de l'énoncé d'origine (« `marionnet-relay` n'a aucun
-intérêt pour l'utilisateur ») — écrit **une fois, avec sa raison**, au lieu d'être re-jugé à
-chaque passage.
+**Elle ne porte que des exceptions.** `keep` est le défaut, et ne s'écrit pas : **210 lignes**
+couvrent un catalogue de **2060** candidats. Écrire une ligne pour chacun des 1820 qui ont
+répondu simplement serait la liste blanche que ce chantier refuse (§ 3.2).
 
-**L'agent (Sonnet) ne fait qu'une chose** : lire le rapport + la politique courante et
-proposer un **diff de politique** dont chaque ligne est adossée à une preuve du rapport. Il
-ne touche ni à l'image ni aux scripts ; l'humain valide, ça se commite.
+**Une ligne par cas examiné, en revanche** — et pas seulement pour les cas actionnables. C'est
+ce qui fait que la passe suivante **ne montre que ce qui est nouveau** : sans ces lignes, les
+165 cas *« il fonctionne, la sonde ne sait pas le juger »* seraient re-jugés à chaque image, ce
+que le gel devait précisément éviter. Le test de la destination — *la prochaine image ne rouvre
+pas un chantier* — est à ce prix.
+
+**Une cinquième colonne, `family`.** Elle est à ce fichier ce que `via` est au rapport : elle
+dit **sur quoi** le verdict a été lu (`qt5-wrapper`, `no-help-option`, `needs-arguments`,
+`no-stderr`, `needs-selinux`…), donc ce qu'un humain doit contester s'il n'est pas d'accord.
+Les lignes sont groupées par famille pour cette relecture ; rien dans le format n'en dépend.
+
+**Ce que la première politique contient** (épisode 3, 210 lignes) :
+
+| verdict | n | quoi |
+|---|---|---|
+| `drop` | 32 | les lanceurs `qtchooser`, tous par la même action (`apt-get -y purge qtchooser`) |
+| `fix` | 2 | `snmpcheck` et `snmp-bridge-mib` — outils réseau, donc **dans** le périmètre pédagogique, à qui il manque un module Perl |
+| `ignore` | 176 | jugé une fois : le binaire fonctionne (il ne connaît pas `--help`, il réclame ses arguments), ou il est hors d'usage ici (SELinux absent, helper PAM, outil de packaging Debian), ou ce n'est pas un binaire |
+
+Trois de ces `ignore` méritent d'être nommés : **`bin`, `sbin` et `X11` ne sont pas des
+binaires** mais des **répertoires** que `BINARY_LIST` a ramassés — un défaut du générateur de
+la liste, constaté ici et laissé là où il est.
+
+**Ce que les deux `fix` disent d'eux-mêmes** : leur action **nomme un paquet candidat**
+(`perl-tk`, `libsnmp-perl`) que rien n'a encore vérifié dans l'invité, et leur raison le dit.
+C'est la re-sonde de l'étage 3 qui le confirmera ou l'infirmera — une action fausse s'y voit.
+
+**L'agent ne fait qu'une chose** : lire le rapport + la politique courante et proposer un
+**diff de politique** dont chaque ligne est adossée à une preuve du rapport. Il ne touche ni à
+l'image ni aux scripts ; l'humain valide, ça se commite.
 
 ## 5. L'étage 3 — appliquer, aux deux endroits
 
@@ -452,3 +512,43 @@ toolkit**, que la sonde X éprouve sans leur donner ce qu'ils attendent. La sur-
 n'est donc pas gratuite : elle fait passer quelques cas de plus devant l'agent. C'est le côté
 où il faut se tromper — un faux positif se lit et se classe `ignore` **une fois**, là où le
 faux négatif laissait une application graphique sortir **sans aucun jugement**.
+
+### 2026-09-04 — épisode 3 : la première politique, et ce que le tamis laissait passer
+
+**Livrable** : `uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, **210
+lignes** de jugement gelé (§ 4) — et deux correctifs de la sonde que cette passe a rendus
+obligatoires (§ 3.6).
+
+**Aucun boot.** La décision s'est prise sur les deux rapports déjà versionnés, **fusionnés** :
+celui du 09-03 (2060 candidats, ancien classificateur) et le `x2` du 09-04 (`--x-only`, 92
+lignes, fermeture transitive), **le second faisant autorité sur ce qu'il a jugé** et le premier
+sur le reste. La fusion est exacte parce que la fermeture est un **sur-ensemble** de l'ancien
+classificateur : re-payer 1 h 25 de sonde n'aurait rien appris. Après fusion, les cas à juger
+sont **177** et non 186 — la fermeture en avait reclassé 16.
+
+**Ce que la passe a trouvé, et que personne n'avait demandé.** Elle a relu les 1820 `OK`, et y
+a trouvé **33 binaires qui ne démarrent pas** (§ 3.6) : 32 lanceurs `qtchooser` vers un
+`/usr/lib/qt5/bin` absent — `qmake`, `designer`, `linguist`, `lrelease`, `assistant`, tous les
+`qml*` — plus `vimplate`. Le verdict `OK` les couvrait parce qu'il accepte `rc` 1, que le
+lanceur cassé rend lui aussi. **Le `rc` ne portait pas la différence ; le message, oui, et il
+était déjà dans le rapport.** D'où `BROKEN`, lu sur le message, posé avant l'échelle.
+
+**Preuve, prise sans invité** : `is_broken` rejoué sur les deux rapports reconnaît **42
+messages sur 42** et fait **0 faux positif sur 2060 lignes** ; `message` rend bien `stderr`,
+puis `stdout: …` à défaut, puis rien. C'est la vérification que cet épisode pouvait produire —
+la sonde corrigée ne sera exercée en vrai qu'au prochain passage.
+
+**Deux questions de conception tranchées** (elles étaient au brouillard depuis l'ép. 0) :
+
+- **où vit la politique** — dans `pupisto.debian.sh.files/`, avec les autres ressources par
+  distribution, parce que c'est `pupisto` qui la lira ;
+- **ce que la politique garde** — **une ligne par cas examiné**, `ignore` compris. Sans elles,
+  les 165 cas *« il fonctionne, la sonde ne sait pas le juger »* seraient re-jugés à chaque
+  image ; avec elles, la passe suivante ne montre **que ce qui est nouveau**. C'est le test de
+  la destination, et il valait ses 165 lignes.
+
+**Ce qui reste actionnable** est petit et c'est bon signe : **32 `drop`** par une seule action
+(`apt-get -y purge qtchooser`), **2 `fix`** (`snmpcheck`, `snmp-bridge-mib` — outils réseau,
+donc dans le périmètre), **176 `ignore`**. L'épisode 4 appliquera **un** cas de bout en bout ;
+`qtchooser` est le candidat naturel — 32 binaires réparés d'un geste, et une re-sonde
+discriminante immédiate.

@@ -58,6 +58,21 @@
 # So the header of the report records the X server it was taken against (vendor, release,
 # depths): a reader who compares two reports must be able to see that.
 #
+# --- THE VERDICTS ---
+#
+#   MISSING   BINARY_LIST announces it, the PATH does not have it
+#   BROKEN    it did not run at all: a library, a Perl module or a wrapper target is absent.
+#             Read on the MESSAGE and not on the rc, which does not carry it (episode 3)
+#   OK        answered --help (or, falling back, --version) with 0 or 1
+#   ERR       answered something else
+#   TIMEOUT   did not give the hand back to --help
+#   X_ALIVE   an X application still there when the clock ran out: it opened its window
+#   X_OK      an X application gone with 0: a command-line X tool which did its job
+#   X_DIED    an X application gone with anything else
+#
+# Only MISSING, BROKEN, ERR, TIMEOUT and X_DIED reach the decision pass -- 9 % of the catalogue,
+# measured. The rest is `nothing to report', and the policy carries exceptions only.
+#
 # --- NO BASHBRICKS HERE, ON PURPOSE ---
 #
 # Sixth of a family (the two *.prepare-to-publish.sh, release.sha256sums.sh, release.binary.sh,
@@ -407,6 +422,34 @@ function first_line {   # first_line FILE
   head -n 1 "$1" 2>/dev/null | tr '\t\r' '  ' | cut -c1-200
 }
 
+# What the binary SAID -- stderr first, and stdout when stderr is empty. MEASURED on the first
+# full report: twenty-six of the cases handed to the agent carried an empty message, because a
+# good number of tools write their usage on stdout and leave with a non-zero status. Those
+# reached the decision pass with nothing to decide on, which is the same defect the `via' column
+# was added for: a verdict a human cannot read is not a measurement. The prefix says which
+# stream it came from -- a message silently taken from the other one describes nothing.
+function message {   # message ERRFILE OUTFILE
+  local m; m=$(first_line "$1")
+  if test -z "$m"; then m=$(first_line "$2"); test -n "$m" && m="stdout: $m"; fi
+  printf '%s' "$m"
+}
+
+# The binary did not run AT ALL -- as opposed to running and disliking its arguments. The three
+# patterns are the three families MEASURED on the first full report, and nothing else is
+# guessed: a dynamic library which cannot be opened, a Perl module which is not in @INC, and a
+# wrapper whose target is not there (thirty-two qtchooser links to /usr/lib/qt5/bin, an image
+# which carries Qt6). This is a verdict of its own because rc does not carry it: `qmake' leaves
+# with 1, which the scale below reads as an ordinary answer to --help -- thirty-three broken
+# binaries were reported OK that way (episode 3, found by reading the report, not the verdicts).
+function is_broken {   # is_broken MESSAGE
+  case "$1" in
+    *"error while loading shared libraries"*) return 0 ;;
+    *"Can't locate "*" in @INC"*)             return 0 ;;
+    *"could not exec '"*)                     return 0 ;;
+  esac
+  return 1
+}
+
 started=$SECONDS
 seen=0
 while read -r name; do
@@ -433,27 +476,33 @@ while read -r name; do
     : >"$out"; : >"$err"
     timeout "$X_TIMEOUT" "$path" >"$out" 2>"$err" </dev/null
     rc=$?
+    msg=$(message "$err" "$out")
+    if is_broken "$msg"; then emit "$name" BROKEN "$rc" x "$via" "$msg"; continue; fi
     case "$rc" in
       # Still there when the clock ran out: it opened its window and waited, which is what an
       # application with a window does.
-      124) emit "$name" X_ALIVE "$rc" x "$via" "$(first_line "$err")" ;;
+      124) emit "$name" X_ALIVE "$rc" x "$via" "$msg" ;;
       # Gone, but with a zero status. MEASURED on the first full report: twelve of the
       # thirty-three the probe had called X_DIED are xdpyinfo, xlsfonts, xauth, appres,
       # xvinfo, setxkbmap... -- command-line X tools which did their job and left. Leaving
       # with 0 is a success whatever the probe, and a verdict which calls it a death would
       # hand the agent of stage 2 twelve failures to judge that never happened.
-      0)   emit "$name" X_OK    "$rc" x "$via" "$(first_line "$err")" ;;
-      *)   emit "$name" X_DIED  "$rc" x "$via" "$(first_line "$err")" ;;
+      0)   emit "$name" X_OK    "$rc" x "$via" "$msg" ;;
+      *)   emit "$name" X_DIED  "$rc" x "$via" "$msg" ;;
     esac
   else
     : >"$out"; : >"$err"
     timeout "$HELP_TIMEOUT" "$path" --help >"$out" 2>"$err" </dev/null
     rc=$?
+    msg=$(message "$err" "$out")
+    # Asked before the scale, and before the --version fallback: a binary which cannot start
+    # will not start any better for a second question, and its rc says nothing (see is_broken).
+    if is_broken "$msg"; then emit "$name" BROKEN "$rc" help - "$msg"; continue; fi
     case "$rc" in
       # 0 and 1 are both ordinary answers to --help: plenty of tools print their usage and
       # leave with 1. What we are looking for is neither of those.
-      0|1)   emit "$name" OK      "$rc" help - "$(first_line "$err")" ;;
-      124)   emit "$name" TIMEOUT "$rc" help - "$(first_line "$err")" ;;
+      0|1)   emit "$name" OK      "$rc" help - "$msg" ;;
+      124)   emit "$name" TIMEOUT "$rc" help - "$msg" ;;
       *)
         # --version, the fallback of the scale, and it is not a refinement: measured on the
         # first forty candidates, six of the seven ERR were `a2enmod' and its family answering
@@ -466,12 +515,14 @@ while read -r name; do
         #
         # The stderr of --help is kept BEFORE trying --version: a report whose rc comes from
         # one probe and whose message comes from the other describes nothing that happened.
-        err_help=$(first_line "$err")
+        err_help=$msg
         : >"$out"; : >"$err"
         timeout "$HELP_TIMEOUT" "$path" --version >"$out" 2>"$err" </dev/null
         rc2=$?
+        msg=$(message "$err" "$out")
+        if is_broken "$msg"; then emit "$name" BROKEN "$rc2" version - "$msg"; continue; fi
         case "$rc2" in
-          0|1) emit "$name" OK  "$rc2" version - "$(first_line "$err")" ;;
+          0|1) emit "$name" OK  "$rc2" version - "$msg" ;;
           *)   emit "$name" ERR "$rc"  help    - "$err_help" ;;
         esac ;;
     esac
@@ -543,7 +594,7 @@ done
   # not necessarily two images which disagree -- so the server is written down.
   echo "# X server  : ${X_HEADER:-<not measured>}"
   echo "#"
-  echo "# name	verdict	rc	probe	via	first line of stderr"
+  echo "# name	verdict	rc	probe	via	first line of stderr (or of stdout, said so)"
   cat "$REPORT_TSV"
 } > "$OUTPUT"
 

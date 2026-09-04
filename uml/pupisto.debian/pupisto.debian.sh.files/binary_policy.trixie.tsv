@@ -1,0 +1,274 @@
+# binary policy -- Debian trixie guest image
+#
+# What this file is: the frozen judgement of the second stage of the work-stream
+# `triage-binaires-image-invitee' (docs/triage-binaires-image-invitee.md, § 4). A probe
+# observes, an agent decides ONCE, a script applies -- and what the agent decided lives here,
+# in git, instead of being re-derived (or re-paid in tokens) at every image.
+#
+# THE FILE CARRIES EXCEPTIONS ONLY. A binary with no line here is `keep': the default is
+# `nothing to report', which is why 210 lines cover a catalogue of 2060 candidates. Adding a
+# line for each of the 1820 which answered plainly would be a white list, and a white list
+# goes stale (episode 39 of `modernisation-installation-marionnet').
+#
+# Four verdicts:
+#   keep    leave it alone (never written: it is the default)
+#   fix     run <action> in the guest, then re-probe
+#   drop    remove it, by <action>
+#   ignore  judged once, nothing to do -- the reason says why
+#
+# Columns: name  verdict  action  reason  family
+# `family' is to this file what the `via' column is to the probe report: it says WHAT the
+# verdict was read on, so that a human can contest it. Lines are grouped by family for that
+# reading; nothing in the format depends on the order.
+#
+# Evidence -- the two probe reports this was read on (docs/probe-reports/):
+#   machine-debian-trixie-16341-2026-09-03.tsv      2060 candidates, first classifier
+#   machine-debian-trixie-16341-2026-09-04-x2.tsv     92 X candidates, transitive closure
+# The second is authoritative on what it judged (its classifier reaches libX11 through
+# libraries), the first on the rest. Image: machine-debian-trixie-16341, sum 16341.
+#
+# WARNING -- 33 of the 42 broken binaries below were reported OK by the probe: it accepts rc 1
+# as an ordinary answer to --help, and a qtchooser wrapper which cannot exec its target leaves
+# with 1. The probe now has a BROKEN verdict for that (episode 3); this file was written by
+# reading the stderr of the reports above, not by trusting their verdict.
+#
+#
+# --- qt5-wrapper (32)
+assistant	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+designer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+lconvert	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+linguist	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+lrelease	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+lupdate	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+pixeltool	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qcollectiongenerator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qdbusviewer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qdoc3	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qdoc	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qgltf	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qhelpconverter	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qhelpgenerator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmake	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qml1plugindump	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlbundle	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlcachegen	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmleasing	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmljs	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmllint	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlmin	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlplugindump	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlprofiler	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmltestrunner	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qmlviewer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qtattributionsscanner	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+qtconfig	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+repc	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+uic3	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+xmlpatterns	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+xmlpatternsvalidator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+#
+# --- missing-perl-module (9)
+dh_autotools-dev_restoreconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
+dh_autotools-dev_updateconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
+dh_bash-completion	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
+dh_installxmlcatalogs	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
+dh_numpy3	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
+dtd2vim	ignore	-	marginal vim/SGML tool; Perl module absent
+snmp-bridge-mib	fix	apt-get -y install libsnmp-perl	network tool, in scope; NetSNMP::OID absent -- package name to be confirmed by the re-probe
+snmpcheck	fix	apt-get -y install perl-tk	network tool, in scope; Tk.pm absent -- package name to be confirmed by the re-probe
+vimplate	ignore	-	marginal vim/SGML tool; Perl module absent
+#
+# --- missing-lib (1)
+dumpmscat	ignore	-	samba debug tool, no pedagogical use; private samba library absent
+#
+# --- not-a-binary (3)
+bin	ignore	-	BINARY_LIST entry which is a directory, not a binary
+sbin	ignore	-	BINARY_LIST entry which is a directory, not a binary
+X11	ignore	-	BINARY_LIST entry which is a directory, not a binary
+#
+# --- marionnet-internal (1)
+marionnet-relay	ignore	-	internal to Marionnet, not meant for the user
+#
+# --- no-help-option (64)
+a2disconf	ignore	-	works: knows neither --help nor --version
+a2dismod	ignore	-	works: knows neither --help nor --version
+a2dissite	ignore	-	works: knows neither --help nor --version
+a2enconf	ignore	-	works: knows neither --help nor --version
+a2enmod	ignore	-	works: knows neither --help nor --version
+a2ensite	ignore	-	works: knows neither --help nor --version
+cryptoflex-tool	ignore	-	works: knows neither --help nor --version
+dash	ignore	-	works: knows neither --help nor --version
+debconf-apt-progress	ignore	-	works: knows neither --help nor --version
+dnie-tool	ignore	-	works: knows neither --help nor --version
+doveconf	ignore	-	works: knows neither --help nor --version
+e2fsck	ignore	-	works: knows neither --help nor --version
+e2scrub_all	ignore	-	works: knows neither --help nor --version
+e2scrub	ignore	-	works: knows neither --help nor --version
+fsck.ext2	ignore	-	works: knows neither --help nor --version
+fsck.ext3	ignore	-	works: knows neither --help nor --version
+fsck.ext4	ignore	-	works: knows neither --help nor --version
+genl	ignore	-	works: knows neither --help nor --version
+gids-tool	ignore	-	works: knows neither --help nor --version
+iasecc-tool	ignore	-	works: knows neither --help nor --version
+json_pp	ignore	-	works: knows neither --help nor --version
+lighttpd	ignore	-	works: knows neither --help nor --version
+mailq	ignore	-	works: knows neither --help nor --version
+mingetty	ignore	-	works: knows neither --help nor --version
+newaliases	ignore	-	works: knows neither --help nor --version
+nfnl_osf	ignore	-	works: knows neither --help nor --version
+opensc-explorer	ignore	-	works: knows neither --help nor --version
+ping4	ignore	-	works: knows neither --help nor --version
+ping6	ignore	-	works: knows neither --help nor --version
+ping	ignore	-	works: knows neither --help nor --version
+piv-tool	ignore	-	works: knows neither --help nor --version
+pkcs11-tool	ignore	-	works: knows neither --help nor --version
+pkcs15-crypt	ignore	-	works: knows neither --help nor --version
+pkcs15-tool	ignore	-	works: knows neither --help nor --version
+postlock	ignore	-	works: knows neither --help nor --version
+postqueue	ignore	-	works: knows neither --help nor --version
+pw-inspector	ignore	-	works: knows neither --help nor --version
+rmail	ignore	-	works: knows neither --help nor --version
+rtacct	ignore	-	works: knows neither --help nor --version
+rtmon	ignore	-	works: knows neither --help nor --version
+sc-hsm-tool	ignore	-	works: knows neither --help nor --version
+sendmail	ignore	-	works: knows neither --help nor --version
+sestatus	ignore	-	works: knows neither --help nor --version
+setcifsacl	ignore	-	works: knows neither --help nor --version
+setfiles	ignore	-	works: knows neither --help nor --version
+sh	ignore	-	works: knows neither --help nor --version
+sievec	ignore	-	works: knows neither --help nor --version
+sieve-dump	ignore	-	works: knows neither --help nor --version
+sieve-filter	ignore	-	works: knows neither --help nor --version
+sieve-test	ignore	-	works: knows neither --help nor --version
+ssh	ignore	-	works: knows neither --help nor --version
+tc	ignore	-	works: knows neither --help nor --version
+tcptraceroute.db	ignore	-	works: knows neither --help nor --version
+tcptraceroute	ignore	-	works: knows neither --help nor --version
+tput	ignore	-	works: knows neither --help nor --version
+tracepath	ignore	-	works: knows neither --help nor --version
+traceproto.db	ignore	-	works: knows neither --help nor --version
+traceproto	ignore	-	works: knows neither --help nor --version
+traceroute-nanog	ignore	-	works: knows neither --help nor --version
+which.debianutils	ignore	-	works: knows neither --help nor --version
+which	ignore	-	works: knows neither --help nor --version
+xmessage	ignore	-	works: knows neither --help nor --version
+xsubpp	ignore	-	works: knows neither --help nor --version
+zipnote	ignore	-	works: knows neither --help nor --version
+#
+# --- needs-arguments (51)
+ab	ignore	-	works: asks for its arguments
+apache2ctl	ignore	-	works: asks for its arguments
+apachectl	ignore	-	works: asks for its arguments
+aptitude-changelog-parser	ignore	-	works: asks for its arguments
+bmtoa	ignore	-	works: asks for its arguments
+bridge	ignore	-	works: asks for its arguments
+checkgid	ignore	-	works: asks for its arguments
+cracklib-unpacker	ignore	-	works: asks for its arguments
+dbus-update-activation-environment	ignore	-	works: asks for its arguments
+fixproc	ignore	-	works: asks for its arguments
+flash_otp_dump	ignore	-	works: asks for its arguments
+flash_otp_erase	ignore	-	works: asks for its arguments
+flash_otp_info	ignore	-	works: asks for its arguments
+flash_otp_lock	ignore	-	works: asks for its arguments
+flash_otp_write	ignore	-	works: asks for its arguments
+fstab-decode	ignore	-	works: asks for its arguments
+funzip	ignore	-	works: asks for its arguments
+getfilecon	ignore	-	works: asks for its arguments
+getpidcon	ignore	-	works: asks for its arguments
+getpidprevcon	ignore	-	works: asks for its arguments
+git-shell	ignore	-	works: asks for its arguments
+gtk-encode-symbolic-svg	ignore	-	works: asks for its arguments
+gtk-launch	ignore	-	works: asks for its arguments
+h2xs	ignore	-	works: asks for its arguments
+htdbm	ignore	-	works: asks for its arguments
+htpasswd	ignore	-	works: asks for its arguments
+ip	ignore	-	works: asks for its arguments
+ipsvd-cdb	ignore	-	works: asks for its arguments
+mxtar	ignore	-	works: asks for its arguments
+ncftpbatch	ignore	-	works: asks for its arguments
+ncftpspooler	ignore	-	works: asks for its arguments
+pod2html	ignore	-	works: asks for its arguments
+psfaddtable	ignore	-	works: asks for its arguments
+psfgettable	ignore	-	works: asks for its arguments
+psfstriptable	ignore	-	works: asks for its arguments
+psfxtable	ignore	-	works: asks for its arguments
+rpc.nfsd	ignore	-	works: asks for its arguments
+scalar	ignore	-	works: asks for its arguments
+tcpsvd	ignore	-	works: asks for its arguments
+ubirename	ignore	-	works: asks for its arguments
+udpsvd	ignore	-	works: asks for its arguments
+update-catalog	ignore	-	works: asks for its arguments
+x11perf	ignore	-	works: asks for its arguments
+xclip-copyfile	ignore	-	works: asks for its arguments
+xclip-cutfile	ignore	-	works: asks for its arguments
+xcursorgen	ignore	-	works: asks for its arguments
+xfd	ignore	-	works: asks for its arguments
+xkbcomp	ignore	-	works: asks for its arguments
+xkbprint	ignore	-	works: asks for its arguments
+xwud	ignore	-	works: asks for its arguments
+zipinfo	ignore	-	works: asks for its arguments
+#
+# --- no-stderr (26)
+arj	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+bzegrep	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+bzfgrep	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+bzgrep	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+cardos-tool	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+charon-systemd	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+dtrust-tool	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+gcore	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+gtk-builder-tool	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+hwloc-gather-topology	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+hydra	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+hydra-wizard	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+lighttpd-disable-mod	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+lighttpd-enable-mod	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+lighty-disable-mod	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+lighty-enable-mod	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+mkhomedir_helper	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+ncftpbookmarks	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+ncftpget	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+ncftpls	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+ncftpput	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+routel	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+vsftpd	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+westcos-tool	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+xmore	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+zipsplit	ignore	-	answered other than 0/1 writing nothing on stderr (the probe keeps no stdout)
+#
+# --- interactive-or-tty (9)
+cpan5.40-x86_64-linux-gnu	ignore	-	wants a terminal or a running agent
+cpan	ignore	-	wants a terminal or a running agent
+enc2xs	ignore	-	wants a terminal or a running agent
+h2ph	ignore	-	wants a terminal or a running agent
+pam-auth-update	ignore	-	wants a terminal or a running agent
+ptardiff	ignore	-	wants a terminal or a running agent
+ptar	ignore	-	wants a terminal or a running agent
+snmpconf	ignore	-	wants a terminal or a running agent
+ssh-add	ignore	-	wants a terminal or a running agent
+#
+# --- needs-selinux (3)
+policyvers	ignore	-	requires SELinux, not enabled in the guest
+restorecon_xattr	ignore	-	requires SELinux, not enabled in the guest
+selinuxexeccon	ignore	-	requires SELinux, not enabled in the guest
+#
+# --- refuses-this-invocation (3)
+pwhistory_helper	ignore	-	PAM helper which refuses to be run this way
+unix_chkpwd	ignore	-	PAM helper which refuses to be run this way
+unix_update	ignore	-	PAM helper which refuses to be run this way
+#
+# --- acts-on-help (1)
+tgz	ignore	-	acts instead of answering (wrote --help.tgz); why the probe runs in a throwaway COW
+#
+# --- no-answer-to-help (3)
+fsidd	ignore	-	did not return within the --help timeout
+instmodsh	ignore	-	did not return within the --help timeout
+llvm-PerfectShuffle-19	ignore	-	did not return within the --help timeout
+#
+# --- text-mode-default (2)
+links2	ignore	-	default mode is not graphical; the failure is the probe </dev/null, not the binary
+www-browser	ignore	-	default mode is not graphical; the failure is the probe </dev/null, not the binary
+#
+# --- needs-x-interaction (2)
+transset	ignore	-	wants an interaction (mouse, clipboard) the probe does not give
+xclip-pastefile	ignore	-	wants an interaction (mouse, clipboard) the probe does not give

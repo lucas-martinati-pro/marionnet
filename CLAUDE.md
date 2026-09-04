@@ -229,17 +229,21 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     et un `.mar` restent souverains, et `set <n> distrib` n'ajuste **pas** la mémoire (ép. 24).
 
 - **triage des binaires d'une image invitée** (chantier **enfant** du précédent) :
-  `docs/triage-binaires-image-invitee.md` (ép. 0→2) ; mémoire `triage-binaires-image-invitee` ;
+  `docs/triage-binaires-image-invitee.md` (ép. 0→3) ; mémoire `triage-binaires-image-invitee` ;
   `git log --grep="triage-binaires-image-invitee"`. **État** : l'étage 1 (la sonde) existe et a
-  tourné — 2060 candidats en un boot, 186 cas (9 %) pour l'agent ; le faux négatif du
-  classificateur (Qt, GTK) est soldé par une fermeture transitive mémoïsée.
+  tourné — 2060 candidats en un boot ; le faux négatif du classificateur (Qt, GTK) est soldé par
+  une fermeture transitive mémoïsée ; et **la première politique existe**
+  (`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, 210 lignes).
 
   **Gardes** : l'agent est **entre** la sonde et la politique, **jamais dans la boucle** ; une
   sonde **ne publie jamais** (COW jetable) ; `/loop` est refusé (un boot par itération) ; un
   verdict X est une propriété du **couple (image, serveur X)**, que l'en-tête du rapport nomme ;
   la sur-approximation du classificateur est **du bon côté** (un faux positif se classe `ignore`
   une fois, un faux négatif laisse passer une application graphique sans jugement), et la colonne
-  **`via`** existe pour qu'un humain puisse la contester.
+  **`via`** existe pour qu'un humain puisse la contester ; **un `rc` ne dit pas si le binaire a
+  démarré** — c'est le **message** qui le dit (33 cassés étaient classés `OK`, d'où `BROKEN`,
+  ép. 3) ; la politique **ne porte que des exceptions**, mais **une ligne par cas examiné**,
+  sans quoi 165 cas se re-jugeraient à chaque image.
 
 - **modernisation-world-bridge** (l'accès au vrai réseau sans config hôte risquée ; le « mode »
   est devenu un **choix de composant** : menu planète *Gateway* / *NAT bridge* / *LAN bridge*) :
