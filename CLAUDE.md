@@ -1388,6 +1388,28 @@ Reprise : appliquer le skill `chantier-long`.
   **2 défauts de banc** (famille « juger par autre chose que ce qu'on mesure ») : `echo | check`
   perd ses compteurs dans un **sous-shell**, et un montage nommé `/scripts` faisait exercer le
   script **du dépôt** au lieu de la porte **installée** — le banc condamnait un code correct.
+  **Ép. 43 : la fenêtre s'ouvrait à une hauteur devinée, et la palette savait se taire.** La
+  fenêtre principale est trop haute en salle **et** `default-height=860` est bien appliqué
+  partout (mesuré : 1223×860 en salle, 940×860 en boîte nue, 1102×860 ici) — c'est **la valeur**
+  qui ne peut pas être juste, ce que l'ép. 25 avait déjà payé en la faisant passer de 840 à 860.
+  **Deux hypothèses démenties par la mesure** : `propagate-natural-height` sur le
+  `GtkScrolledWindow` de la palette n'y change **rien** (toujours 583, planète coupée), et la
+  palette n'est pas dimensionnée vide (instrumentation : `demanded=428 granted=428`). **La
+  cause** : une barre d'outils trop courte **ne réclame rien, elle déborde** — `GtkToolbar`
+  confie les items qui ne tiennent pas à un menu de débordement, donc son minimum reste petit et
+  le scrolled window n'a jamais rien à propager ; et ce menu **n'achète rien ici** (mesuré :
+  aucune flèche dessinée, composants hors d'atteinte). D'où **`show-arrow=False`** (la palette
+  doit alors demander sa hauteur) et, ne pouvant plus rétrécir, une barre à qui le `GtkViewport`
+  alloue ce qu'elle demande : son allocation **est** la demande, celle du scrolled window est
+  l'offre, la différence est ce qui manque — mesuré une fois au premier réveil de la boucle
+  principale par `bin/gui/gui_window_MARIONNET.ml`, qui agrandit d'autant. `default-height`
+  **disparaît** du glade. **À ne pas défaire** : la mesure est réessayée tant qu'un widget répond
+  `1` (non alloué — mesurer alors **rétrécirait**), le plafond est `Gdk.Screen.height ()`, et la
+  fenêtre ne rétrécit jamais. **Mesuré** : 940×**778** (8 icônes, aucun vide) contre 940×860
+  (8 icônes **et 82 px de vide**) et 940×**583** en discriminance (6 icônes, la 6ᵉ coupée) ;
+  **600** sous plafond écran 1024x600 ; **845** ici — *le nombre suit la machine*. **Versé au
+  TODO** : sur un écran plus court que la palette, les derniers composants restent hors
+  d'atteinte (ni flèche, ni molette) — **défaut préexistant**, rendu rare et non corrigé.
 
 ## Où puiser
 

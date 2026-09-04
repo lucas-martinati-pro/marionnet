@@ -17,6 +17,8 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. *)
 
 
+module Log = Marionnet_log
+
 open Gettext;;
 
 (** Gui completion for the widget window_MARIONNET (main window) defined with glade. *)
@@ -203,5 +205,68 @@ let () =
     w#toplevel#event#connect#delete ~callback
 
   in ()
+
+(* ***************************************** *
+     The height the components palette needs
+ * ***************************************** *)
+
+(* The window used to open at a height written by hand in the glade file (860, after 840
+   before it). No constant can be right: what the palette needs depends on the theme and on
+   the icon size of the machine that runs Marionnet. Measured on a bare ubuntu:24.04, the
+   eighth icon of the palette (the planet) was cut below 780, while 860 left 80 px of empty
+   space under it -- the constant was at once too tall here and too short elsewhere, which is
+   what already made it grow from 840 to 860 once.
+   Two things had to be understood, and only the measurement gave them:
+   (1) the palette does not scroll when it is too short, it OVERFLOWS. A GtkToolbar hands the
+       items that do not fit to an arrow menu, so its minimum height stays small and it never
+       asks its GtkScrolledWindow for anything -- which is why the window opened at 583 with
+       the last icons gone, why `propagate-natural-height' on that scrolled window changed
+       nothing, and why the height had to be guessed in the first place. That overflow menu
+       buys nothing here anyway: measured, no arrow is ever drawn and the hidden components
+       are simply out of reach. Hence `show-arrow' is False in the glade file;
+   (2) the toolbar being then unable to shrink, the GtkViewport allocates it the height it
+       asks for: its allocation IS what the palette demands, and the scrolled window's
+       allocation is what it was given. The difference is what the window is short of.
+   Measured on ubuntu:24.04, 1920x1080: demanded 623, granted 428, window 583 -> 778, the
+   whole palette visible with no empty space; on a 1024x600 screen the window stops at 600.
+   Residual defect, pre-existing and not introduced here: on a screen shorter than the
+   palette, the last components stay out of reach (docs/TODO.md). *)
+let () =
+  let attempts = ref 0 in
+  let adjust_height_to_palette () =
+    let window   = w#window_MARIONNET in
+    let demanded = w#toolbar_COMPONENTS#misc#allocated_height in
+    let granted  = w#scrolledwindow2#misc#allocated_height in
+    let current  = window#misc#allocated_height in
+    (* A widget that is not allocated yet answers 1: measuring then would shrink the window
+       instead of growing it. Try again -- the window may not be mapped yet. *)
+    if demanded <= 1 || granted <= 1 || current <= 1 then false else
+    let screen  = Gdk.Screen.height () in
+    let missing = demanded - granted in
+    let wanted  = min (current + missing) screen in
+    let () =
+      Log.printf4
+        "Main window: the palette demands %d px and got %d px; the window is %d px high (screen %d)\n"
+        demanded granted current screen
+    in
+    let () =
+      if missing > 0 && wanted > current then begin
+        Log.printf2
+          "Main window: growing from %d to %d px, so that the whole palette is visible\n"
+          current wanted;
+        window#resize ~width:(window#misc#allocated_width) ~height:wanted
+        end
+    in
+    true
+  in
+  let _ =
+    GMain.Timeout.add ~ms:400
+      ~callback:(fun () ->
+         incr attempts;
+         if adjust_height_to_palette ()
+         then false                 (* done, once *)
+         else !attempts < 25        (* ten seconds, then give up quietly *))
+  in
+  ()
 
 end

@@ -159,6 +159,33 @@ l'image), mais cela déplace du travail vers `pupisto.debian.sh` — encore un a
 
 ---
 
+## Défaut — sur un écran plus court que la palette, les derniers composants sont **hors d'atteinte**
+
+**Constat** (mesuré le 2026-09-04, `ubuntu:24.04` + Xvfb en 1024x600) : la fenêtre principale
+s'ouvre à 600 px, la palette n'en montre que **six** icônes sur huit, et les deux dernières
+(le nuage, la planète) ne sont accessibles **par aucun geste** — ni flèche de débordement (le
+`GtkToolbar` n'en dessine aucune, mesuré), ni molette (la palette ne défile pas, mesuré :
+0 pixel de différence entre la capture avant et après dix crans de molette, à l'artefact de
+survol près).
+
+**Défaut préexistant** : il n'est pas introduit par l'ajustement de hauteur à l'exécution — le
+binaire publié le montre à l'identique dès que la fenêtre est trop courte (mesuré à 583 px :
+six icônes, la sixième coupée). L'ajustement le rend simplement **rare** au lieu d'être le cas
+nominal : la fenêtre demande désormais exactement ce que la palette exige, donc seul un écran
+réellement plus petit que la palette (< ~780 px utiles ici, ~845 sur une machine au thème plus
+large) reste concerné.
+
+**Ce qu'on veut à la place** : que la palette **défile** quand elle ne tient pas. Elle est déjà
+dans un `GtkScrolledWindow` (`scrolledwindow2`), c'est-à-dire l'endroit exact où cela devrait se
+produire.
+
+**Obstacle déjà identifié** : on ne sait pas encore *pourquoi* elle ne défile pas alors que la
+barre demande 623 px dans un viewport qui n'en offre que 445. Deux pistes non départagées — les
+événements de molette ne parviennent pas au `GtkScrolledWindow` (les items de la palette sont des
+`GMenu.menu_bar`, ce qui n'est pas l'usage prévu d'une barre d'outils), ou l'ajustement vertical
+du viewport reste à `upper = page_size`. Trancher demande une mesure côté GTK (état de
+l'ajustement), pas une lecture de code.
+
 ## Chantier à amorcer — **`modernisation-routeur-64bits`** : un routeur qui ne coûte plus une architecture étrangère
 
 **Constat.** Le seul système de fichiers de **routeur** publié est `router-guignol-18474`, un

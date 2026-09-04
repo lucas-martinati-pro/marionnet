@@ -637,7 +637,9 @@
     <property name="title" translatable="yes">Marionnet</property>
     <property name="window-position">center</property>
     <property name="default-width">350</property>
-    <property name="default-height">860</property>
+    <!-- No default-height: what the window needs is measured at run time, once the
+         components palette is filled (bin/gui/gui_window_MARIONNET.ml). A constant here
+         was at once too tall on one machine and too short on the next. -->
     <property name="icon">../images/marionnet-launcher.png</property>
     <child>
       <object class="GtkVBox" id="vbox1">
@@ -684,6 +686,12 @@
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="orientation">vertical</property>
+                                <!-- A toolbar too short for its items hands them to an
+                                     overflow arrow instead of asking for room. Measured
+                                     here: no arrow is drawn, the last icons (the cloud, the
+                                     planet) simply disappear, and the window has no way of
+                                     knowing it is too short. See gui_window_MARIONNET.ml. -->
+                                <property name="show-arrow">False</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>

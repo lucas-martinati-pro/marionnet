@@ -5588,3 +5588,77 @@ code correct**. Un banc doit exercer la porte **installée**, comme une vraie ma
 Les 2 bancs paquets sont **rouges par construction** jusqu'à la prochaine release (ils comptent 29
 noms dans un paquet qui en porte 28) — motif habituel : *la preuve du paquet se prend après le
 commit* (ép. 20c → 22, 28 → 30b quater). Aucune release avant la fin de la campagne.
+
+---
+
+## Épisode 43 (2026-09-04) — la fenêtre s'ouvrait à une hauteur devinée, et la palette savait se taire
+
+### Le constat
+
+En salle (Docker Ubuntu 24.04, release `1.0.392+r966` fraîchement réinstallée), la fenêtre
+principale est **trop haute** : elle s'ouvre à 860 px et laisse un vide sous la dernière icône
+de la palette. Le symptôme survit aux correctifs récents, dont l'ép. 25 du chantier
+`modernisation-installation-marionnet` qui avait fait passer la constante de **840 à 860**
+précisément pour que la planète cesse d'être coupée.
+
+**Ce n'est pas un défaut d'application de valeur** : `default-height=860` est appliqué partout
+(mesuré — 1223 × **860** en salle, la largeur ayant été élargie à la main ; 940 × **860** dans une
+`ubuntu:24.04` nue avec le `.deb` publié ; 1102 × **860** sur la machine de développement).
+La valeur arrive bien. C'est **la valeur elle-même** qui ne peut pas être juste.
+
+### Ce que la mesure a démenti, deux fois
+
+**Première hypothèse, fausse** : le `GtkScrolledWindow` de la palette ne propagerait pas la
+hauteur naturelle de son enfant, et `propagate-natural-height` (GTK ≥ 3.22, la propriété faite
+pour cela) réparerait tout. Mesuré sur ce widget : **aucun changement** — la fenêtre s'ouvre
+toujours à 583 px, planète coupée.
+
+**Deuxième hypothèse, fausse aussi** : la palette serait remplie *après* le calcul de la taille
+naturelle (`Gui_toolbar_COMPONENTS.Make` est appliqué après `Gui_window_MARIONNET.Make`), si bien
+que GTK dimensionnerait une barre vide. Instrumentation posée dans le binaire, dans la boîte :
+`demanded=428 granted=428` — la barre d'outils **n'est pas plus haute** que ce qu'on lui donne.
+
+**La cause, qu'aucune des deux ne nommait** : une barre d'outils trop courte **ne réclame rien,
+elle déborde**. `GtkToolbar` confie les items qui ne tiennent pas à un menu de débordement, donc
+sa hauteur *minimale* reste petite et le `GtkScrolledWindow` n'a jamais rien à propager. C'est
+pourquoi la fenêtre s'ouvrait à 583 avec les dernières icônes tout simplement absentes, pourquoi
+`propagate-natural-height` était sans effet, et pourquoi la hauteur **devait** être devinée.
+
+Et ce menu de débordement **n'achète rien ici** : mesuré, aucune flèche n'est dessinée et les
+composants cachés sont hors d'atteinte. Il ne fait que taire le manque de place.
+
+### Le correctif
+
+Deux gestes, aucun n'étant une constante.
+
+1. `show-arrow=False` sur `toolbar_COMPONENTS` (`bin/gui/gui_glade3.xml`) : la palette ne peut
+   plus rien cacher, donc elle **doit** demander sa hauteur.
+2. Ne pouvant plus rétrécir, la barre reçoit du `GtkViewport` la hauteur qu'elle demande : son
+   allocation **est** ce que la palette exige, celle du `GtkScrolledWindow` est ce qu'on lui a
+   donné, et la différence est ce qui manque à la fenêtre. `bin/gui/gui_window_MARIONNET.ml`
+   la mesure une fois, au premier réveil de la boucle principale, et agrandit la fenêtre d'autant
+   — **jamais** au-delà de l'écran, **jamais** vers le bas. `default-height` disparaît du glade.
+
+**À ne pas défaire** : la mesure est réessayée (400 ms, 25 fois au plus) tant qu'un widget répond
+`1`, c'est-à-dire tant qu'il n'est pas alloué — mesurer alors **rétrécirait** la fenêtre au lieu
+de l'agrandir ; et le plafond est la hauteur de l'écran, `Gdk.Screen.height ()`.
+
+### Mesuré
+
+| cas | géométrie |
+|---|---|
+| correctif, `ubuntu:24.04` nue, écran 1920x1080 | 940 × **778**, les 8 icônes, aucun vide |
+| correctif, même boîte, écran 1024x600 | 940 × **600** (plafond écran) |
+| correctif, machine de développement (thème plus large) | 1102 × **845** |
+| binaire d'avant, `default-height` retiré (discriminance) | 940 × **583**, **6** icônes, la 6ᵉ coupée |
+| binaire d'avant, tel que publié | 940 × **860**, les 8 icônes **et 82 px de vide** |
+
+Le nombre suit donc la machine : 778 sur une Ubuntu nue, 845 ici — là où une constante unique
+était à la fois trop grande dans la boîte et trop petite ailleurs. `dune build` rc 0,
+`make check` rc 0.
+
+### Reste
+
+Versé à `docs/TODO.md` : sur un écran **plus court que la palette**, les derniers composants
+restent hors d'atteinte (ni flèche, ni molette — mesuré). **Défaut préexistant**, que
+l'ajustement rend rare au lieu de le corriger.
