@@ -156,11 +156,11 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
 
 - **modernisation-installation-marionnet** (chantier PARENT : diffusion moderne — installeur,
   tarball, `.deb`+apt, `.rpm`+dnf, Docker) : `docs/modernisation-installation-marionnet.md`
-  (46 épisodes) ; mémoire `modernisation-installation-marionnet` ;
+  (47 épisodes) ; mémoire `modernisation-installation-marionnet` ;
   `git log --grep="modernisation-installation-marionnet"`.
   **État** : feuille de route SOLDÉE — release `1.0.369+r943` signée et en ligne sur les 3 canaux,
   **6 publieurs** + déposeur + rétention, **4 bancs** rejouables contre le vrai serveur.
-  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→45).
+  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→46).
   **Consigne active : AUCUNE release avant la fin de la campagne** — d'où des cas de banc *rouges
   par construction* (le paquet publié porte l'installeur d'avant), et la règle qui en découle :
   *une preuve qui dépend de ce que la boîte contient se prend après le commit*.
@@ -200,6 +200,11 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     retire ; `%groupe` accepté, `ALL` refusé), et le **veto** admin vit dans
     `/etc/marionnet/<bloc>.denied` (0644, hors de `sudoers.d`) parce que la GUI demande le mot de
     passe **avant** de connaître le verdict (ép. 35, 36, 37) ;
+  - la hauteur de la fenêtre principale est **mesurée**, jamais devinée (aucun `default-height` ;
+    `show-arrow=False`, sans quoi la palette **déborde** au lieu de réclamer) — et l'ajustement
+    n'agit que sur une mesure **stable**, deux réveils qui s'accordent : lue au premier layout
+    venu, elle voit une palette qui n'a pas encore demandé sa hauteur et laisse la fenêtre trop
+    courte *une fois sur trois* (ép. 43, 43 bis) ;
   - **ne pas éditer un script bash pendant qu'il tourne** (bash lit par offsets d'octets) ; il n'y
     a **qu'un** gestionnaire `EXIT` (ép. 24, 25) ;
   - famille de défauts revenue **10 fois** : *juger par autre chose que ce qu'on mesure* — un

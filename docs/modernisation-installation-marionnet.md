@@ -5821,3 +5821,75 @@ réparations ; rien n'est cassé sur cette machine.**
 
 Rien de neuf : les deux cas du banc `.deb` (§ 5 bis) cherchent `earlier version` et `ADDITIVE`,
 deux formulations conservées à dessein.
+
+---
+
+## Épisode 43 bis (2026-09-04) — la mesure était juste, mais prise trop tôt une fois sur trois
+
+### Le constat
+
+Lancé **sans argument**, Marionnet ouvre parfois une fenêtre **trop courte** : la palette
+s'arrête au **câble droit**, le 5ᵉ composant sur 8. Ouvrir un projet, en revanche, donne la
+bonne hauteur — d'où l'apparence d'un défaut propre au démarrage « à vide ».
+
+**Ce n'est pas un mode, c'est une course.** Trois lancements du binaire de l'ép. 43, sans
+argument, sur cette machine (écran 1440) :
+
+| run | ce que la trace dit | géométrie |
+|---|---|---|
+| 1 | `palette demands **533** px and got **533** px; window 647` → *aucune croissance* | 1102 × **647**, palette coupée |
+| 2 | `demands 615, got 417` → `growing 647 → 845` | 1102 × **845**, les 8 icônes |
+| 3 | idem | 1102 × **845** |
+
+Ouvrir un projet **masque** le défaut (la fenêtre y grandit pour d'autres raisons), il ne le
+supprime pas.
+
+### La cause
+
+L'ép. 43 prenait **une seule** mesure, au premier réveil (400 ms) où les trois allocations
+valent plus de 1, puis s'arrêtait *pour de bon*. Or **rien ne dit qu'un réveil donné voit la
+dernière passe de layout** : au run 1, la lecture est tombée sur un état **intermédiaire** —
+`demanded = granted = 533`, une palette qui n'avait **pas encore** réclamé ses 615 px — d'où
+`missing = 0`, aucune croissance, et une fenêtre 198 px trop courte pour le reste de la session.
+
+Le garde-fou existant (`<= 1` = widget non alloué) ne couvre que le cas **non alloué**, pas le
+cas **pas encore stabilisé**. Et on ne peut pas contourner par la requisition : **lablgtk3 ne lie
+pas** `gtk_widget_get_preferred_height` (vérifié : aucune occurrence de `preferred` ni de
+`requisition` dans `/home/jean/.opam/5.4.1/lib/lablgtk3`). Les **allocations sont tout ce qu'on
+a** — il faut donc ne les croire que **stables**.
+
+### Le correctif
+
+`bin/gui/gui_window_MARIONNET.ml`, seul fichier touché (le glade de l'ép. 43 est intact :
+`show-arrow=False`, pas de `default-height`).
+
+1. La vérification est **répétée** pendant le démarrage (20 réveils de 300 ms ≈ 6 s) au lieu de
+   s'arrêter au premier verdict. Agrandir est **idempotent** : dès que la palette tient,
+   `missing ≤ 0` et il ne se passe plus rien.
+2. **On n'agit que sur une mesure stable** : le triplet `(demanded, granted, current)` doit être
+   **identique à celui du réveil précédent**. Cela tue **deux** courses d'un coup — l'état
+   intermédiaire ci-dessus (`533/533` puis `615/417` : deux triplets différents, donc aucune
+   action) **et** la lecture périmée du réveil qui suit un `resize`, qui aurait sinon ajouté une
+   seconde fois les pixels déjà donnés (sur-agrandissement que le code d'avant n'excluait pas).
+3. La trace n'est écrite **que lorsqu'elle change**, pour ne pas répéter 20 fois la même ligne.
+
+Inchangés : le plafond `Gdk.Screen.height ()`, le fait de ne **jamais** rétrécir, et la garde
+`<= 1`.
+
+### Mesuré
+
+| cas | résultat |
+|---|---|
+| **6 lancements** consécutifs sans argument | **6 × 1102 × 845**, les 8 icônes |
+| runs 2 et 4 de ces six | traversent l'état piège `533/533` — **ignoré** — puis lisent `615/417` et grandissent |
+| dernière ligne de trace de chaque run | `demands 615 px and got 615 px` : ni manque, ni vide |
+| non-régression avec projet (`trixie-47362-update-and-tuning.mar`) | 1102 × **845**, **une seule** croissance, aucun sur-agrandissement |
+
+`dune build` rc 0, `make check` rc 0.
+
+### Ce que cet épisode ajoute à la leçon de l'ép. 43
+
+L'ép. 43 avait remplacé une **constante devinée** par une **mesure**. Il restait à admettre
+qu'une mesure a un **instant** : lue trop tôt, elle est aussi fausse qu'une constante — et
+d'autant plus traître qu'elle est *parfois* juste. La forme qui tient : **répéter, et n'agir que
+sur deux lectures qui s'accordent**.

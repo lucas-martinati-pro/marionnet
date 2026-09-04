@@ -232,40 +232,75 @@ let () =
    Residual defect, pre-existing and not introduced here: on a screen shorter than the
    palette, the last components stay out of reach (docs/TODO.md). *)
 let () =
-  let attempts = ref 0 in
-  let adjust_height_to_palette () =
-    let window   = w#window_MARIONNET in
+  (* The measurement must not be believed the first time it can be read. Measured here on
+     three launches with no project (2026-09-04): one of them saw an INTERMEDIATE layout at
+     the first tick -- `demanded=533 granted=533', that is, a palette which had not yet asked
+     for its 615 px -- concluded that nothing was missing, stopped for good, and left the
+     window 200 px too short, the palette cut at the fifth component (the direct cable). The
+     two other launches read 615/417 and grew the window to 845. Opening a project hid the
+     defect (the window is then made taller for other reasons), which is why it looked as if
+     only the no-project start-up were concerned: it is a race, not a mode.
+     Nothing tells us which layout pass is the last one, and lablgtk3 binds no way of reading
+     a widget's requisition (there is no gtk_widget_get_preferred_height), so the allocations
+     are all we have. Hence the check is REPEATED during the first seconds of the session and
+     a measurement is acted upon only when the previous tick read exactly the SAME triple.
+     Two races die there: the intermediate layout above (533/533 then 615/417 -- two different
+     triples, so no action), and the stale reading of the tick that follows a resize, which
+     would otherwise add a second time the pixels already given. Growing is idempotent: as
+     soon as the palette fits, `missing' is <= 0 and nothing more happens. *)
+  let ms = 300 and ticks_max = 20 in  (* six seconds of start-up, then leave the user alone *)
+  let ticks    = ref 0 in
+  let previous = ref None in   (* the triple read at the previous tick *)
+  let logged   = ref None in   (* the last triple written in the log, to keep it readable *)
+  (* --- *)
+  let measure () =
     let demanded = w#toolbar_COMPONENTS#misc#allocated_height in
     let granted  = w#scrolledwindow2#misc#allocated_height in
-    let current  = window#misc#allocated_height in
+    let current  = w#window_MARIONNET#misc#allocated_height in
     (* A widget that is not allocated yet answers 1: measuring then would shrink the window
-       instead of growing it. Try again -- the window may not be mapped yet. *)
-    if demanded <= 1 || granted <= 1 || current <= 1 then false else
+       instead of growing it. *)
+    if demanded <= 1 || granted <= 1 || current <= 1 then None else
+    Some (demanded, granted, current)
+  in
+  (* --- *)
+  let grow_if_needed (demanded, granted, current) =
+    let window  = w#window_MARIONNET in
     let screen  = Gdk.Screen.height () in
     let missing = demanded - granted in
     let wanted  = min (current + missing) screen in
-    let () =
+    if missing > 0 && wanted > current then begin
+      Log.printf2
+        "Main window: growing from %d to %d px, so that the whole palette is visible\n"
+        current wanted;
+      window#resize ~width:(window#misc#allocated_width) ~height:wanted
+      end
+  in
+  (* --- *)
+  let log_when_it_changes triple =
+    if !logged <> Some triple then begin
+      logged := Some triple;
+      let (demanded, granted, current) = triple in
       Log.printf4
         "Main window: the palette demands %d px and got %d px; the window is %d px high (screen %d)\n"
-        demanded granted current screen
-    in
-    let () =
-      if missing > 0 && wanted > current then begin
-        Log.printf2
-          "Main window: growing from %d to %d px, so that the whole palette is visible\n"
-          current wanted;
-        window#resize ~width:(window#misc#allocated_width) ~height:wanted
-        end
-    in
-    true
+        demanded granted current (Gdk.Screen.height ())
+      end
   in
+  (* --- *)
   let _ =
-    GMain.Timeout.add ~ms:400
+    GMain.Timeout.add ~ms
       ~callback:(fun () ->
-         incr attempts;
-         if adjust_height_to_palette ()
-         then false                 (* done, once *)
-         else !attempts < 25        (* ten seconds, then give up quietly *))
+         incr ticks;
+         let current_measure = measure () in
+         let () =
+           match current_measure with
+           | None -> ()
+           | Some triple ->
+               log_when_it_changes triple;
+               (* Act on a STABLE measurement only: see the note above. *)
+               if !previous = Some triple then grow_if_needed triple
+         in
+         previous := current_measure;
+         !ticks < ticks_max)
   in
   ()
 
