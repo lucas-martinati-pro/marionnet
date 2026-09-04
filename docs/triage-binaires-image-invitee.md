@@ -270,6 +270,45 @@ message pris en silence dans l'autre flux ne décrirait rien. C'est le même arg
 colonne `via` de l'épisode 2 : *une classification qu'un humain ne peut pas contester n'est pas
 une mesure*.
 
+### 3.7 L'action de la politique était fausse, et l'invité l'a dit — épisode 4
+
+La politique de l'ép. 3 réparait ses 32 lanceurs `qtchooser` par **une** action collective,
+`apt-get -y purge qtchooser`. Elle a été écrite **sans booter**, sur les rapports ; l'épisode 4
+est allé la mesurer **dans l'invité**, avant de l'appliquer. Trois faits, aucun supposé.
+
+**1. La purge emporte ce qui marche.** `apt-get -s -y purge qtchooser` répond qu'elle retirerait
+**trois** paquets : `qtchooser`, `qtbase5-dev-tools` et `python3-pyqtgraph`. Or
+`qtbase5-dev-tools` est précisément ce qui pose les **10 outils réels** de `/usr/lib/qt5/bin`
+(`moc`, `rcc`, `uic`, `qlalr`, `qvkgen`, `qdbuscpp2xml`, `qdbusxml2cpp`, `tracegen`,
+`syncqt.pl`, `fixqt4headers.pl`) — lus **sans booter**, par `debugfs` sur l'image publiée. Les
+lanceurs qui pointent vers eux **fonctionnent** : la sonde les a mesurés à `rc` 0. L'action
+réparait donc 32 noms cassés en supprimant **sept qui marchent**, plus une bibliothèque Python
+qui n'avait rien demandé. C'est l'inverse du critère du chantier (*« que ça marche »*).
+
+**2. La supposition sur les liens est démentie — dans l'autre sens.** On tablait sur des liens
+que `dpkg` ne connaît pas ; `dpkg -L qtchooser` les **possède** tous. Le fait ne sauve pas
+l'action pour autant : il dit seulement que le remède devait viser les **liens**, pas le paquet.
+D'où l'action retenue, une par ligne : `rm -f /usr/bin/<nom>`. `qtchooser` reste installé, et
+tout ce qui se résout encore continue de marcher.
+
+**3. Le tamis de l'ép. 3 en avait manqué sept.** Les 32 étaient reconnus sur le message
+`could not exec '/usr/lib/qt5/bin/<nom>'`. Sept autres lanceurs — `qdbus`, `qml`,
+`qmlimportscanner`, `qmlscene`, `qtdiag`, `qtpaths`, `qtplugininfo` — sont cassés **pour la même
+raison** mais `qtchooser` le leur dit **dans une autre phrase** :
+`could not find a Qt installation of ''`. Ils étaient dans le rapport, classés `OK` avec `rc` 1,
+et la relecture de l'ép. 3 ne les a pas vus. C'est **la même famille de défauts** que celle qui
+avait produit `BROKEN` : *juger sur un motif plutôt que sur ce qu'on mesure* — un motif reconnaît
+ce qu'il a été écrit pour reconnaître. La leçon n'est pas « écrire un meilleur motif » : c'est
+que **la cause se vérifie par un chemin indépendant du message**. Ici la vérification tient en
+une comparaison d'ensembles : *les 46 liens que `dpkg -L qtchooser` livre dans `/usr/bin`*,
+moins *les 7 dont le contenu réel de `/usr/lib/qt5/bin` porte la cible* (les 3 autres outils de
+ce répertoire n'ont pas de lien) = **39 pendants**, contre 32 retenus.
+
+La politique passe donc de 210 à **217 lignes**, et l'action collective disparaît. Note assumée :
+retirer un fichier que `dpkg` possède laisse le paquet « modifié » aux yeux de `dpkg -V`. C'est
+acceptable pour une image livrée — elle est un artefact, pas un système administré — et ça l'est
+d'autant plus que l'alternative propre (purger) est exactement ce qui casse le reste.
+
 ## 4. La politique — le seul fichier que l'agent écrit
 
 `uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv` — un TSV versionné, **là
@@ -277,13 +316,16 @@ où vivent déjà les ressources par distribution** (`package_catalog/*.trixie.*
 `binary_list.<image>`), parce que c'est `pupisto` qui le lira à la construction (étage 3b).
 
 ```
-# name    verdict  action                     reason                                    family
-qmake     drop     apt-get -y purge qtchooser qtchooser wrapper: execs /usr/lib/qt5/…    qt5-wrapper
-snmpcheck fix      apt-get -y install perl-tk network tool, in scope; Tk.pm absent       missing-perl-module
-ping      ignore   -                          works: knows neither --help nor --version  no-help-option
+# --- qt5-wrapper (39)          <- la famille est un EN-TÊTE DE GROUPE, pas une colonne
+# name    verdict  action                reason
+qmake     drop     rm -f /usr/bin/qmake  dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmake to exec
+# --- missing-perl-module (11)
+snmpcheck fix      apt-get -y install perl-tk  network tool, in scope; Tk.pm absent
+# --- no-help-option (…)
+ping      ignore   -                     works: knows neither --help nor --version
 ```
 
-**Elle ne porte que des exceptions.** `keep` est le défaut, et ne s'écrit pas : **210 lignes**
+**Elle ne porte que des exceptions.** `keep` est le défaut, et ne s'écrit pas : **217 lignes**
 couvrent un catalogue de **2060** candidats. Écrire une ligne pour chacun des 1820 qui ont
 répondu simplement serait la liste blanche que ce chantier refuse (§ 3.2).
 
@@ -293,16 +335,19 @@ ce qui fait que la passe suivante **ne montre que ce qui est nouveau** : sans ce
 que le gel devait précisément éviter. Le test de la destination — *la prochaine image ne rouvre
 pas un chantier* — est à ce prix.
 
-**Une cinquième colonne, `family`.** Elle est à ce fichier ce que `via` est au rapport : elle
-dit **sur quoi** le verdict a été lu (`qt5-wrapper`, `no-help-option`, `needs-arguments`,
-`no-stderr`, `needs-selinux`…), donc ce qu'un humain doit contester s'il n'est pas d'accord.
-Les lignes sont groupées par famille pour cette relecture ; rien dans le format n'en dépend.
+**La famille est un en-tête de groupe, pas une colonne** (précisé à l'épisode 4 : l'en-tête du
+fichier annonçait une 5ᵉ colonne que **pas une ligne ne portait** — les 210 lignes de l'ép. 3
+en ont quatre). Elle est à ce fichier ce que `via` est au rapport : elle dit **sur quoi** le
+verdict a été lu (`qt5-wrapper`, `no-help-option`, `needs-arguments`, `no-stderr`,
+`needs-selinux`…), donc ce qu'un humain doit contester s'il n'est pas d'accord. Elle s'écrit
+**une fois par groupe** parce que personne d'autre qu'un lecteur n'en a besoin : le
+consommateur, lui, lit quatre champs.
 
-**Ce que la première politique contient** (épisode 3, 210 lignes) :
+**Ce que la politique contient** (épisode 3, corrigée à l'épisode 4 — 217 lignes) :
 
 | verdict | n | quoi |
 |---|---|---|
-| `drop` | 32 | les lanceurs `qtchooser`, tous par la même action (`apt-get -y purge qtchooser`) |
+| `drop` | 39 | les lanceurs `qtchooser` *pendants*, chacun par son `rm -f /usr/bin/<nom>` (§ 3.7 : l'action collective de l'ép. 3 emportait des binaires qui marchent, et 7 cassés manquaient à l'appel) |
 | `fix` | 2 | `snmpcheck` et `snmp-bridge-mib` — outils réseau, donc **dans** le périmètre pédagogique, à qui il manque un module Perl |
 | `ignore` | 176 | jugé une fois : le binaire fonctionne (il ne connaît pas `--help`, il réclame ses arguments), ou il est hors d'usage ici (SELinux absent, helper PAM, outil de packaging Debian), ou ce n'est pas un binaire |
 
@@ -321,7 +366,15 @@ l'image ni aux scripts ; l'humain valide, ça se commite.
 ## 5. L'étage 3 — appliquer, aux deux endroits
 
 - **3a, l'image publiée** : la politique se traduit mécaniquement en `--in-guest` passés à
-  `filesystem.update-published-image.sh` (`fix` → sa commande, `drop` → son `apt-get purge`).
+  `filesystem.update-published-image.sh` (`fix` → sa commande, `drop` → la sienne).
+- **3a bis, mesurer avant d'appliquer** : `filesystem.update-published-image.sh` a gagné à
+  l'épisode 4 une option **`--no-export`** — *joue les commandes dans l'invité, n'exporte rien,
+  ne publie rien*. Le cow part avec la session, comme celui de la sonde : **une mesure ne
+  produit pas d'image**. Sans elle, poser une question à l'invité (« que retire cette purge ? »,
+  « qui possède ce lien ? ») obligeait à exporter une variante dans le répertoire de release
+  pour l'effacer ensuite. Sous `--no-export`, un statut non nul n'arrête plus le run : c'est
+  une **mesure** (`dpkg -S` répond 1 pour un fichier qu'aucun paquet ne possède), et il n'y a
+  rien à protéger puisque rien n'est produit.
 - **3b, le constructeur** : `uml/pupisto.debian.sh` lit **le même fichier** à la construction.
 
 ## 6. HORS PÉRIMÈTRE (écarté consciemment, avec le pourquoi)
@@ -552,3 +605,68 @@ la sonde corrigée ne sera exercée en vrai qu'au prochain passage.
 donc dans le périmètre), **176 `ignore`**. L'épisode 4 appliquera **un** cas de bout en bout ;
 `qtchooser` est le candidat naturel — 32 binaires réparés d'un geste, et une re-sonde
 discriminante immédiate.
+
+### 2026-09-04 — épisode 4 : la mesure qui a réfuté l'action, et les sept que le motif n'avait pas vus
+
+**Ce que l'épisode devait faire** : appliquer **un** cas de bout en bout — `qtchooser`, 32 lignes
+d'un geste — avec re-sonde discriminante. Il s'est arrêté **avant d'appliquer**, parce que la
+mesure préalable a montré que l'action était fausse. C'est exactement ce que la mesure était là
+pour faire.
+
+**L'outil qui manquait, et qui tient en dix lignes** : `--no-export` sur
+`filesystem.update-published-image.sh` (§ 5). Poser une question à un invité n'est pas le
+changer ; le chantier a déjà une garde pour ça — *une sonde ne publie jamais* — et ce script
+n'avait aucun moyen de l'honorer : `--no-publish` exporte quand même une variante dans le
+répertoire de release. Deuxième point, découvert en s'en servant : `run_in_guest` **tuait** le
+run sur un statut non nul, ce qui est juste quand une image est en jeu et faux quand on mesure —
+`dpkg -S` répond `1` pour un fichier qu'aucun paquet ne possède, et cette réponse-là est la
+donnée. Sous `--no-export`, le statut est **rapporté** et le run continue.
+
+**Ce que l'invité a dit** (un boot, cinq commandes, rien d'exporté) :
+
+| question | réponse mesurée |
+|---|---|
+| `dpkg -l qtchooser` | `ii 66-2` — installé |
+| `dpkg -L qtchooser` | possède `/usr/bin/qtchooser`, **46 liens** dans `/usr/bin`, et les `.conf` |
+| `apt-get -s -y purge qtchooser` | retirerait **3 paquets** : `qtchooser`, **`qtbase5-dev-tools`**, **`python3-pyqtgraph`** |
+| `ls -l` sur les 32 | tous des liens symboliques vers `qtchooser` |
+| `dpkg -S` sur les 32 | tous possédés par `qtchooser` |
+
+Et, **sans booter**, `debugfs` sur l'image publiée : `/usr/lib/qt5/bin` **existe** et porte
+**10 binaires réels** — le répertoire que la politique disait *« absent de l'image »*.
+
+**Quatre conséquences**, les trois premières détaillées au § 3.7 :
+
+1. **L'action est remplacée.** `apt-get -y purge qtchooser` aurait emporté `qtbase5-dev-tools`,
+   donc `moc`, `rcc`, `uic`, `qlalr`, `qvkgen`, `qdbuscpp2xml`, `qdbusxml2cpp` — **sept lanceurs
+   que la sonde a mesurés à `rc` 0**, c'est-à-dire qui marchent — et `python3-pyqtgraph` par
+   surcroît. Chaque ligne porte désormais son `rm -f /usr/bin/<nom>` : on retire le **lien
+   pendant**, pas le paquet.
+2. **Une supposition démentie, dans l'autre sens** : `dpkg -L` **possède** bien les liens (on
+   craignait qu'il les ignore). La purge les aurait donc emportés — mais le remède devait viser
+   les liens, pas le paquet.
+3. **Sept cassés de plus**, invisibles à la relecture de l'ép. 3 parce que `qtchooser` les
+   éconduit dans une **autre phrase** (`could not find a Qt installation of ''`) : `qdbus`,
+   `qml`, `qmlimportscanner`, `qmlscene`, `qtdiag`, `qtpaths`, `qtplugininfo`. La politique passe
+   à **217 lignes** (39 `drop`, 2 `fix`, 176 `ignore`).
+4. **Le format que le fichier annonçait n'était pas celui qu'il portait** : l'en-tête décrivait
+   **cinq** colonnes, `family` comprise, et **aucune** des 210 lignes n'en avait plus de quatre —
+   la famille vivait déjà, et seulement, dans l'en-tête `# --- <famille> (n)` de chaque groupe.
+   Écrire mes 39 lignes sur cinq colonnes aurait rendu le fichier illisible à un consommateur
+   qui découpe par tabulation. C'est la description qui est corrigée, pas les 178 autres
+   lignes : la famille n'a **aucun** consommateur, et une colonne qu'aucun programme ne lit ne
+   vaut pas 178 lignes réécrites.
+
+**La leçon, et elle n'est pas « écrire un meilleur motif »** : un motif reconnaît ce qu'il a été
+écrit pour reconnaître. Ce qui a trouvé les sept manquants n'est pas une relecture plus
+attentive des messages, c'est un **chemin indépendant** vers la même cause — l'ensemble des liens
+que le paquet possède, moins l'ensemble des cibles qui existent. Quand un verdict porte sur une
+**cause structurelle**, il doit se vérifier par la structure, pas seulement par ce que le binaire
+a bien voulu écrire. Encore la famille *juger par autre chose que ce qu'on mesure* — cette fois
+en aval, sur la **relecture**, et non sur la sonde.
+
+**Ce qui n'a pas été fait, et pourquoi** : l'application et la re-sonde. L'action de 32 lignes
+sur laquelle l'épisode devait s'appuyer n'existe plus ; appliquer maintenant, ce serait appliquer
+la version corrigée sans l'avoir relue. L'épisode 5 la joue — et il a désormais **39** noms à
+faire disparaître, ce qui rend la re-sonde plus discriminante encore.
+

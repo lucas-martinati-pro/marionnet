@@ -6,7 +6,7 @@
 # in git, instead of being re-derived (or re-paid in tokens) at every image.
 #
 # THE FILE CARRIES EXCEPTIONS ONLY. A binary with no line here is `keep': the default is
-# `nothing to report', which is why 210 lines cover a catalogue of 2060 candidates. Adding a
+# `nothing to report', which is why 217 lines cover a catalogue of 2060 candidates. Adding a
 # line for each of the 1820 which answered plainly would be a white list, and a white list
 # goes stale (episode 39 of `modernisation-installation-marionnet').
 #
@@ -16,10 +16,12 @@
 #   drop    remove it, by <action>
 #   ignore  judged once, nothing to do -- the reason says why
 #
-# Columns: name  verdict  action  reason  family
-# `family' is to this file what the `via' column is to the probe report: it says WHAT the
-# verdict was read on, so that a human can contest it. Lines are grouped by family for that
-# reading; nothing in the format depends on the order.
+# Columns: name  verdict  action  reason  -- four of them, tab separated.
+# The FAMILY is not a column: it is the `# --- <family> (n)' heading each group of lines sits
+# under. It is to this file what the `via' column is to the probe report -- it says WHAT the
+# verdict was read on, so that a human can contest it -- and it is written once per group
+# rather than once per line because nothing but a reader needs it. Nothing in the format
+# depends on the order; regrouping is a human's business.
 #
 # Evidence -- the two probe reports this was read on (docs/probe-reports/):
 #   machine-debian-trixie-16341-2026-09-03.tsv      2060 candidates, first classifier
@@ -27,45 +29,67 @@
 # The second is authoritative on what it judged (its classifier reaches libX11 through
 # libraries), the first on the rest. Image: machine-debian-trixie-16341, sum 16341.
 #
-# WARNING -- 33 of the 42 broken binaries below were reported OK by the probe: it accepts rc 1
+# WARNING -- 40 of the 49 broken binaries below were reported OK by the probe: it accepts rc 1
 # as an ordinary answer to --help, and a qtchooser wrapper which cannot exec its target leaves
 # with 1. The probe now has a BROKEN verdict for that (episode 3); this file was written by
 # reading the stderr of the reports above, not by trusting their verdict.
 #
+# THE qt5-wrapper ACTION WAS WRONG, AND THE GUEST SAID SO (episode 4). It read
+# `apt-get -y purge qtchooser', which apt answers by removing qtbase5-dev-tools and
+# python3-pyqtgraph too -- and qtbase5-dev-tools is what puts moc, rcc, uic, qlalr, qvkgen,
+# qdbuscpp2xml and qdbusxml2cpp in /usr/lib/qt5/bin, all of them WORKING wrappers (probed
+# rc 0). Repairing 32 broken names at the price of seven that work is the opposite of the criterion
+# of this work-stream. The action is now `rm -f' on the dangling link, one line per name:
+# qtchooser stays, and so does everything that still resolves. Measured in the guest, not
+# supposed: `dpkg -L qtchooser' DOES own those links (they go with a purge), `apt-get -s -y
+# purge' names the cascade, and debugfs shows the 10 real tools sitting in /usr/lib/qt5/bin.
+# Same pass, same measurement: 7 more wrappers are broken for the same reason and had been
+# missed, because qtchooser tells them so in ANOTHER sentence (`could not find a Qt
+# installation of <empty>' instead of `could not exec /usr/lib/qt5/bin/<name>').
 #
-# --- qt5-wrapper (32)
-assistant	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-designer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-lconvert	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-linguist	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-lrelease	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-lupdate	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-pixeltool	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qcollectiongenerator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qdbusviewer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qdoc3	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qdoc	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qgltf	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qhelpconverter	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qhelpgenerator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmake	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qml1plugindump	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlbundle	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlcachegen	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmleasing	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmljs	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmllint	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlmin	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlplugindump	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlprofiler	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmltestrunner	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qmlviewer	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qtattributionsscanner	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-qtconfig	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-repc	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-uic3	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-xmlpatterns	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
-xmlpatternsvalidator	drop	apt-get -y purge qtchooser	qtchooser wrapper: execs /usr/lib/qt5/bin, absent from the image (Qt5 not installed)
+#
+# --- qt5-wrapper (39): dangling links, removed ONE BY ONE -- see the note above
+# The 32 which named their target:
+assistant	drop	rm -f /usr/bin/assistant	dangling qtchooser wrapper: no /usr/lib/qt5/bin/assistant to exec
+designer	drop	rm -f /usr/bin/designer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/designer to exec
+lconvert	drop	rm -f /usr/bin/lconvert	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lconvert to exec
+linguist	drop	rm -f /usr/bin/linguist	dangling qtchooser wrapper: no /usr/lib/qt5/bin/linguist to exec
+lrelease	drop	rm -f /usr/bin/lrelease	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lrelease to exec
+lupdate	drop	rm -f /usr/bin/lupdate	dangling qtchooser wrapper: no /usr/lib/qt5/bin/lupdate to exec
+pixeltool	drop	rm -f /usr/bin/pixeltool	dangling qtchooser wrapper: no /usr/lib/qt5/bin/pixeltool to exec
+qcollectiongenerator	drop	rm -f /usr/bin/qcollectiongenerator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qcollectiongenerator to exec
+qdbusviewer	drop	rm -f /usr/bin/qdbusviewer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdbusviewer to exec
+qdoc3	drop	rm -f /usr/bin/qdoc3	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc3 to exec
+qdoc	drop	rm -f /usr/bin/qdoc	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qdoc to exec
+qgltf	drop	rm -f /usr/bin/qgltf	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qgltf to exec
+qhelpconverter	drop	rm -f /usr/bin/qhelpconverter	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpconverter to exec
+qhelpgenerator	drop	rm -f /usr/bin/qhelpgenerator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qhelpgenerator to exec
+qmake	drop	rm -f /usr/bin/qmake	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmake to exec
+qml1plugindump	drop	rm -f /usr/bin/qml1plugindump	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qml1plugindump to exec
+qmlbundle	drop	rm -f /usr/bin/qmlbundle	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlbundle to exec
+qmlcachegen	drop	rm -f /usr/bin/qmlcachegen	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlcachegen to exec
+qmleasing	drop	rm -f /usr/bin/qmleasing	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmleasing to exec
+qmljs	drop	rm -f /usr/bin/qmljs	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmljs to exec
+qmllint	drop	rm -f /usr/bin/qmllint	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmllint to exec
+qmlmin	drop	rm -f /usr/bin/qmlmin	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlmin to exec
+qmlplugindump	drop	rm -f /usr/bin/qmlplugindump	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlplugindump to exec
+qmlprofiler	drop	rm -f /usr/bin/qmlprofiler	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlprofiler to exec
+qmltestrunner	drop	rm -f /usr/bin/qmltestrunner	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmltestrunner to exec
+qmlviewer	drop	rm -f /usr/bin/qmlviewer	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qmlviewer to exec
+qtattributionsscanner	drop	rm -f /usr/bin/qtattributionsscanner	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtattributionsscanner to exec
+qtconfig	drop	rm -f /usr/bin/qtconfig	dangling qtchooser wrapper: no /usr/lib/qt5/bin/qtconfig to exec
+repc	drop	rm -f /usr/bin/repc	dangling qtchooser wrapper: no /usr/lib/qt5/bin/repc to exec
+uic3	drop	rm -f /usr/bin/uic3	dangling qtchooser wrapper: no /usr/lib/qt5/bin/uic3 to exec
+xmlpatterns	drop	rm -f /usr/bin/xmlpatterns	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatterns to exec
+xmlpatternsvalidator	drop	rm -f /usr/bin/xmlpatternsvalidator	dangling qtchooser wrapper: no /usr/lib/qt5/bin/xmlpatternsvalidator to exec
+# The 7 the sieve missed: same cause, other message (`could not find a Qt installation')
+qdbus	drop	rm -f /usr/bin/qdbus	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qml	drop	rm -f /usr/bin/qml	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qmlimportscanner	drop	rm -f /usr/bin/qmlimportscanner	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qmlscene	drop	rm -f /usr/bin/qmlscene	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qtdiag	drop	rm -f /usr/bin/qtdiag	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qtpaths	drop	rm -f /usr/bin/qtpaths	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
+qtplugininfo	drop	rm -f /usr/bin/qtplugininfo	dangling qtchooser wrapper: qtchooser resolves no default Qt for it
 #
 # --- missing-perl-module (9)
 dh_autotools-dev_restoreconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent

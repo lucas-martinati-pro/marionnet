@@ -86,6 +86,8 @@ Usage: $0 --image NAME [OPTIONS]
   --binary PATH             the marionnet to drive (default: _build/default/bin/marionnet.exe)
   --output-dir DIR          relayed to filesystem.prepare-snapshot-to-publish.sh
   --no-publish              stop after the export: the variant is made, nothing is published
+  --no-export               stop after the guest commands: a MEASUREMENT run -- the cow is
+                            thrown away with the session, nothing is exported nor published
   --keep-project            do not remove the temporary project directory (for a post-mortem)
   -y, --yes                 do not ask before the long steps
   -h, --help                this help
@@ -96,7 +98,7 @@ EOF
 
 # --- Options.
 IMAGE=""; FROM=""; KERNEL=""; VARIANT=""; MEMORY=""; BINARY=""; OUTPUT_DIR=""
-PUBLISH=1; ASSUME_YES=0; KEEP_PROJECT=0
+PUBLISH=1; EXPORT=1; ASSUME_YES=0; KEEP_PROJECT=0
 declare -a IN_GUEST=()
 IN_GUEST_SCRIPT=""
 
@@ -112,6 +114,7 @@ while (($#)); do
     --binary)           BINARY=${2:-};       shift 2 ;;
     --output-dir)       OUTPUT_DIR=${2:-};   shift 2 ;;
     --no-publish)       PUBLISH=0;           shift ;;
+    --no-export)        EXPORT=0; PUBLISH=0; shift ;;
     --keep-project)     KEEP_PROJECT=1;      shift ;;
     -y|--yes)           ASSUME_YES=1;        shift ;;
     -h|--help)          usage; exit 0 ;;
@@ -249,11 +252,15 @@ function ask_ok {   # ask_ok REQUEST WHAT -- dies unless the answer says ok
 }
 
 info "image      : $FROM/$IMAGE"
-info "variant    : $VARIANT"
+info "variant    : $( ((EXPORT)) && echo "$VARIANT" || echo "<none: --no-export>" )"
 info "memory     : ${MEMORY:-<default>} MiB"
 info "guest      : ${#IN_GUEST[@]} command(s)${IN_GUEST_SCRIPT:+ + $IN_GUEST_SCRIPT}"
 if ((ASSUME_YES == 0)); then
-  read -r -p "Boot this image and change it? [y/N] " answer
+  if ((EXPORT)); then
+    read -r -p "Boot this image and change it? [y/N] " answer
+  else
+    read -r -p "Boot this image and run these commands in it (nothing exported)? [y/N] " answer
+  fi
   case "${answer:-}" in y|Y|yes) : ;; *) die "nothing done" ;; esac
 fi
 
@@ -284,7 +291,16 @@ function run_in_guest {   # run_in_guest COMMAND
   status=$(jq -r '.status' <<<"$answer")
   output=$(jq -r '.output // ""' <<<"$answer")
   test -z "$output" || sed 's/^/    /' <<<"$output"
-  test "$status" = "0" || die "in-guest \`$1' exited with status $status: nothing is exported"
+  # A non-zero status stops everything ONLY when there is something to protect: an image
+  # changed by halves must not become a published artefact. Under --no-export nothing is
+  # produced, and the status of a command is the very thing being measured (`dpkg -S FILE'
+  # answers 1 for a file no package owns -- that is an answer, not a failure), so we report
+  # it and go on.
+  if test "$status" != "0"; then
+    ((EXPORT == 0)) || die "in-guest \`$1' exited with status $status: nothing is exported"
+    info "in-guest \`$1': status $status (measurement run: going on)"
+    return 0
+  fi
   info "in-guest \`$1': ok"
 }
 
@@ -308,6 +324,27 @@ if test -n "$IN_GUEST_SCRIPT"; then
   rm -f -- "$GUEST_SCRIPT_DIR/respin-script.sh"
 fi
 
+function close_session {
+  info "closing the session..."
+  ask "quit" >/dev/null || true
+  for ((i = 0; i < 60; i++)); do kill -0 "$SESSION_PID" 2>/dev/null || break; sleep 1; done
+  SESSION_PID=""
+}
+
+# --- A measurement run stops here.
+#
+# `--no-export' is what makes this script usable to ANSWER A QUESTION about a guest instead of
+# changing it: what a purge would drag along, what a package owns, whether a link survives it.
+# The cow the guest wrote goes away with the session, like the one the probe of the same
+# work-stream throws away -- a measurement must produce no image (the name of an image IS its
+# `sum', episode 23 of `marionnet-kernel-rootfs'). Without this, measuring meant exporting a
+# variant into the release directory and deleting it afterwards.
+if ((EXPORT == 0)); then
+  info "--no-export: the guest commands ran, nothing was exported"
+  close_session
+  exit 0
+fi
+
 # --- Clean shutdown (trap 6), then the export (episode 22).
 info "shutting the machine down..."
 ask_ok "stop m1" "stopping the machine" >/dev/null
@@ -324,10 +361,7 @@ EXPORTED=$(ask_ok "history-export $COW $VARIANT" "exporting the variant")
 VARIANT_PATH=$(jq -r '.path' <<<"$EXPORTED")
 info "variant    : $VARIANT_PATH ($(du -h -- "$VARIANT_PATH" | cut -f1) on disk)"
 
-info "closing the session..."
-ask "quit" >/dev/null || true
-for ((i = 0; i < 60; i++)); do kill -0 "$SESSION_PID" 2>/dev/null || break; sleep 1; done
-SESSION_PID=""
+close_session
 
 # --- Publication (local: the release directory, not the server).
 if ((PUBLISH == 0)); then
