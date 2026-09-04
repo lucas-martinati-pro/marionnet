@@ -1,0 +1,20 @@
+# probe report -- machine-debian-trixie-16341
+# taken     : 2026-09-04T09:45:39+02:00
+# image     : /home/jean/.shared/DEVEL/repos/MARIONNET-dune-project/website-repo/download/marionnet-install.sh/1.0.x/machine-debian-trixie-16341
+# sum       : 16341
+# candidates: 10 (BINARY_LIST of the .conf)
+# probes    : help-timeout=5s x-timeout=6s x-only=0 only=wireshark,geany,xeyes,xlinks2,xmessage,ls,grep,bash,python3,tar
+# X server  : DISPLAY=:0 vendor string: The X.Org Foundation X.Org version: 21.1.11 
+#
+# name	verdict	rc	probe	via	first line of stderr
+bash	OK	0	help	-	
+geany	X_ALIVE	124	x	libgeany.so.0	
+grep	OK	0	help	-	
+ls	OK	0	help	-	
+python3	OK	0	help	-	
+tar	OK	0	help	-	
+wireshark	X_ALIVE	124	x	wireshark.real:libQt6Gui.so.6	NOTICE: about to exec /usr/bin/wireshark.real -o capture.no_interface_load:TRUE -k -i lo
+xeyes	X_ALIVE	124	x	libX11	
+xlinks2	X_ALIVE	124	x	links2:libX11	
+xmessage	X_DIED	1	x	libX11	Unknown argument(s):
+#END	-	-	-	-	elapsed=35s libraries-read=57

@@ -95,7 +95,7 @@ L'échelle de sonde est **déterministe : aucun jugement, que des mesures**.
 | # | Question | Mesure | Verdict |
 |---|---|---|---|
 | 1 | le binaire est-il là ? | `command -v` | absent ⇒ `MISSING` |
-| 2 | **est-ce une application X ?** | `grep -a libX11` sur le fichier, **puis un saut** à travers le wrapper (cf. § 3.3) | oriente vers 3 ou 4 |
+| 2 | **est-ce une application X ?** | `libX11` **atteint transitivement** depuis le fichier (§ 3.5), **plus un saut** à travers le wrapper (cf. § 3.3) | oriente vers 3 ou 4 |
 | 3 | non-X : répond-elle ? | `--help` puis, en repli, `--version`, sous timeout | rc + `stderr` |
 | 4 | X : survit-elle à l'écran ? | lancement avec `DISPLAY`, timeout court | vivante ⇒ `X_ALIVE` ; morte + `stderr` ⇒ `X_DIED` |
 
@@ -196,20 +196,47 @@ par autre chose que ce qu'on mesure*, la famille que ce dépôt collectionne :
 running in this way »*. Une sonde `--help` **fait agir** certains binaires. La garde n'est pas
 une liste de dangereux — elle se périmerait — c'est le **COW jetable**.
 
-### 3.5 Une limite mesurée, laissée ouverte : le faux négatif indirect
+### 3.5 Le faux négatif indirect — tranché à l'épisode 2 par une fermeture mesurée
 
-**`wireshark` est classé non-X** : il n'a pas `libX11` en dépendance directe (il passe par Qt),
-et le classificateur lit le fichier. Son verdict `OK` (par `--help`) reste vrai, mais il n'a
-pas été éprouvé **à l'écran** — or c'est la grosse application graphique de l'image.
+**Le défaut.** `wireshark` était classé non-X : il n'a pas `libX11` en dépendance directe (il
+passe par Qt), et le classificateur lit le fichier. Son verdict `OK` (par `--help`) restait
+vrai, mais **la grosse application graphique de l'image n'avait jamais été éprouvée à
+l'écran** — jugée par une sonde faite pour des outils en ligne de commande. Et il n'était pas
+seul : `geany` (GTK) était dans le même cas.
 
-Les deux issues évidentes sont fermées : élargir le motif à `libgtk`/`libQt` serait écrire la
-liste blanche que ce chantier refuse (§ 3.2), et `ldd` transitif est **mesuré trop lent**
-(§ 3.3 c). La question est nette, elle est donc une **prochaine étape**, pas une improvisation.
+**Les deux issues évidentes étaient fermées**, et le restent : élargir le motif à
+`libgtk`/`libQt` serait écrire la liste blanche que ce chantier refuse (§ 3.2) — elle se
+périme le jour où une toolkit apparaît — et `ldd` transitif est **mesuré trop lent** (§ 3.3 c).
 
-Deuxième limite du même ordre : **`links2` est lancé sans `-g`**, donc en mode texte, et
-échoue sur `Epoll ADD(1) on fd 0` — c'est le `</dev/null` de la sonde, pas le binaire. Un
-binaire dont le mode par défaut n'est pas graphique n'est pas jugeable par « survit-il à
-l'écran ? ».
+**Ce qui a été fait à la place** : la fermeture transitive est calculée **dans l'image
+elle-même**, avec `libX11` pour **unique graine** — qui n'est pas une liste, mais la
+*définition* d'« application X ». Une bibliothèque atteint X si elle mentionne une
+bibliothèque qui atteint X ; un binaire est X s'il mentionne une telle bibliothèque. **Qt et
+GTK ne sont nommés nulle part : ils sont découverts.** Et le prix que `ldd` ne pouvait pas
+payer est payé **une seule fois** : une bibliothèque est lue une fois pour **tout le run**
+(mémoïsation), pas une fois par binaire.
+
+**Mesuré avant d'être écrit** (`debugfs` sur l'image publiée, **sans booter**) :
+`/usr/bin/wireshark` est un wrapper Marionnet → `wireshark.real`, qui ne mentionne **aucun**
+`libX11` mais nomme `libQt6Gui.so.6`, laquelle porte `libX11.so.6` en **`DT_NEEDED`**
+(`readelf`, donc une dépendance réelle et pas une chaîne littérale). La chaîne existait ; le
+classificateur devait savoir la parcourir.
+
+**Ce que la sur-approximation coûte, et pourquoi elle est du bon côté** : on lit les
+*mentions* d'un fichier, ce qui est un sur-ensemble de ses `DT_NEEDED` (une chaîne littérale
+compte). Un binaire ainsi classé X à tort n'est qu'éprouvé à l'écran, où il répond aussitôt —
+là où l'erreur inverse (le faux négatif) fait passer une application graphique **sans être
+jugée du tout**. C'est aussi ce qui capte ce qu'un `ldd` transitif aurait manqué : une
+bibliothèque chargée par `dlopen` dont le nom est écrit dans le fichier.
+
+**Le rapport dit sur quoi il a classé.** Une colonne `via` porte ce qui a décidé —
+`libX11`, `wireshark.real:libQt6Gui.so.6`, `links2:libX11` — parce qu'une classification qu'un
+humain ne peut pas contester n'est pas une mesure.
+
+**Limite du même ordre, elle toujours ouverte** : **`links2` est lancé sans `-g`**, donc en
+mode texte, et échoue sur `Epoll ADD(1) on fd 0` — c'est le `</dev/null` de la sonde, pas le
+binaire. Un binaire dont le mode par défaut n'est pas graphique n'est pas jugeable par
+« survit-il à l'écran ? ».
 
 ## 4. La politique — le seul fichier que l'agent écrit
 
@@ -347,3 +374,58 @@ traverse **2059 candidats** là où le précédent s'arrêtait à **6**. Le rapp
 **Reste ouvert, et nettement formulé** (§ 3.5) : le faux négatif du classificateur sur les
 applications qui lient X **indirectement** (`wireshark` via Qt), les deux issues évidentes
 étant fermées — une liste se périme, `ldd` transitif est trop lent.
+
+### 2026-09-04 — épisode 2 : la fermeture transitive, mesurée avant d'être écrite
+
+L'étape était nette (§ 3.5) et elle est **soldée** : le classificateur atteint désormais
+`libX11` **transitivement**, avec cette seule graine, en lisant l'image elle-même.
+
+**Mesuré d'abord, et sans booter** (`debugfs`, lecture seule, sur l'image publiée) : la chaîne
+`wireshark` → `wireshark.real` (zéro mention de `libX11`) → `libQt6Gui.so.6`, qui porte
+`libX11.so.6` en **`DT_NEEDED`** (`readelf` : une dépendance réelle, pas une chaîne littérale).
+Sans cette mesure, écrire la fermeture aurait été un pari — elle aurait pu très bien ne rien
+relier, Qt cherchant son plugin `xcb` par répertoire et non par nom.
+
+**Ce qui a été écrit** (`Makefile.d/filesystem.probe-image-binaries.sh`) :
+
+- `lib_reaches_x`, **mémoïsée** (`LIB_VERDICT`) et protégée des cycles : une bibliothèque est
+  lue **une fois pour tout le run**, ce qui est exactement le prix que `ldd` ne pouvait pas
+  payer, lui qui forke le chargeur *par binaire* ;
+- la résolution nom → fichier vient d'un **seul** `ldconfig -p` pour le run, avec repli sur les
+  répertoires usuels ;
+- une colonne **`via`** dans le rapport (6 colonnes désormais), qui dit **sur quoi** le
+  classement a été prononcé — une classification qu'un humain ne peut pas contester n'est pas
+  une mesure ;
+- **`--only A,B,C`**, l'instrument de cet épisode : sans lui, éprouver un témoin coûtait les
+  deux heures du catalogue. Il **sélectionne dans `BINARY_LIST`** et **refuse en nommant** un
+  nom qui n'y est pas, avant tout boot : un témoin silencieusement écarté est pire qu'un refus.
+
+**La discriminance, sur dix témoins** (`docs/probe-reports/…-2026-09-04-witnesses.tsv`, 35 s,
+57 bibliothèques lues) — les deux seules lignes qui changent contre le rapport du 2026-09-03
+sont exactement celles que l'épisode visait :
+
+| binaire | avant | après | `via` |
+|---|---|---|---|
+| `wireshark` | `OK` (help) | **`X_ALIVE`** | `wireshark.real:libQt6Gui.so.6` |
+| `geany` | `OK` (help) | **`X_ALIVE`** | `libgeany.so.0` |
+| `xeyes`, `xlinks2`, `xmessage` | X | X (inchangé) | `libX11`, `links2:libX11`, `libX11` |
+| `ls`, `grep`, `bash`, `python3`, `tar` | non-X | non-X (inchangé) | — |
+
+`geany` n'était pas dans l'énoncé de l'étape : le faux négatif était **plus large** que le seul
+cas connu, ce qui est l'argument contre la liste blanche, mesuré.
+
+**Ce que la première forme a coûté, et pourquoi elle a été refaite.** Elle posait **deux
+questions au fichier** — « mentionnes-tu `libX11` ? », puis « quelles bibliothèques
+mentionnes-tu ? » — donc **deux lectures complètes** de chaque binaire non-X, c'est-à-dire de
+presque tout le catalogue. Mesuré dans l'invité : **10,9 s par candidat** (8 → 19 en 120 s),
+contre les **1,60 s** de l'épisode 1 (`elapsed=3287s` pour 2059 candidats, ligne `#END` de son
+rapport `--x-only`). Le run a été arrêté et la question `libX11` se répond désormais **dans la
+liste déjà extraite** : un fichier est lu **une fois**.
+
+**Le coût amorti ne se mesure pas sur un préfixe**, et c'est un piège de mesure de la même
+famille que ceux de l'épisode 1 : une bibliothèque est lue **une seule fois pour tout le run**,
+donc les premiers candidats paient le remplissage du cache pour tous les autres. Un
+`--limit 150` mesure la phase chère et rien d'autre. Le chiffre qui compte est l'`elapsed` d'un
+run complet, à comparer aux **3287 s** de l'épisode 1 — mesure prise à part (§ 9, épisode 3).
+Et le micro-banc local dit que l'instrument n'y est pour presque rien : `grep -o` + `sort -u`
+coûte **1,6×** un `grep -q` sur le même fichier, pas cinq fois.

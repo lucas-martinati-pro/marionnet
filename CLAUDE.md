@@ -312,6 +312,28 @@ Reprise : appliquer le skill `chantier-long`.
   2 rapports, et **2059** candidats traversés contre 6. **Reste ouvert** : le faux négatif du
   classificateur sur les applications liant X **indirectement** (`wireshark` via Qt), les
   2 issues évidentes étant fermées (une liste se périme ; `ldd` transitif est trop lent).
+  **Ép. 2 : le faux négatif est soldé, par une fermeture mesurée.** Le classificateur atteint
+  `libX11` **transitivement**, avec cette **seule graine** — donc Qt et GTK ne sont nommés nulle
+  part, ils sont **découverts** — et le prix que `ldd` ne pouvait pas payer l'est **une fois** :
+  une bibliothèque est lue une fois pour **tout le run** (mémoïsation), pas une par binaire.
+  **Mesuré avant d'être écrit, sans booter** (`debugfs` sur l'image publiée) : `wireshark` est un
+  wrapper → `wireshark.real`, qui n'a **aucun** `libX11` mais nomme `libQt6Gui.so.6`, laquelle
+  porte `libX11.so.6` en **`DT_NEEDED`** (`readelf`) — sans cette mesure, écrire la fermeture
+  était un pari (Qt cherche son plugin `xcb` par **répertoire**, pas par nom). **À ne pas
+  défaire** : (1) la sur-approximation est **du bon côté** — on lit les *mentions*, sur-ensemble
+  des `DT_NEEDED`, donc un binaire classé X à tort est seulement éprouvé à l'écran, là où le faux
+  négatif laissait passer une application graphique **sans aucun jugement** (et cela capte un
+  `dlopen` dont le nom est écrit, que `ldd` transitif manque) ; (2) le rapport porte une colonne
+  **`via`** (6 colonnes) — *une classification qu'un humain ne peut pas contester n'est pas une
+  mesure* ; (3) **`--only A,B,C`** sélectionne **dans `BINARY_LIST`** et **refuse en nommant** un
+  nom qui n'y est pas, **avant tout boot** : un témoin silencieusement écarté est pire qu'un
+  refus. **Piège de perf payé ici** : la 1ʳᵉ forme posait **2 questions au fichier** (« mentionnes-tu
+  `libX11` ? » puis « quelles libs ? ») ⇒ **2 lectures complètes** par candidat non-X, mesuré
+  **10,9 s/candidat contre 1,60 s** (`elapsed` des rapports de l'ép. 1, invité) ; la question
+  `libX11` se répond désormais **dans la liste déjà extraite**. **Mesuré** : `wireshark` et
+  **`geany`** basculent `OK` → `X_ALIVE` (via `wireshark.real:libQt6Gui.so.6` et `libgeany.so.0`),
+  seules lignes qui changent sur 10 témoins — `geany` n'était pas dans l'énoncé, le défaut était
+  **plus large** que son cas connu.
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts

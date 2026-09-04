@@ -42,7 +42,10 @@
 #      `#!/bin/sh' wrapper doing `exec links2 -g "$@"', so ldd sees no libX11 -- and 417 of the
 #      2057 candidates are not ELF at all. Too slow: it forks the dynamic loader per binary and
 #      did not finish the catalogue in 300 s. We read the file itself (grep -a) and follow the
-#      wrapper, which is a read, not an exec.
+#      wrapper, which is a read, not an exec. Since episode 2 that reading is TRANSITIVE, with
+#      libX11 as its only seed: wireshark reaches X through Qt, and was classified plain -- the
+#      biggest graphical application of the image, judged by a probe made for command-line
+#      tools. A library is read ONCE for the whole run, which is the price ldd could not pay.
 #   4. A binary can kill the guest it is probed in (reboot, halt, poweroff). The report is
 #      therefore written LINE BY LINE into the hostfs: what died is NAMED by the last line
 #      written, instead of being guessed after losing everything.
@@ -80,6 +83,8 @@ Usage: $0 --image NAME [OPTIONS]
   --memory N         MiB given to the machine (default: MEMORY_SUGGESTED_SIZE of the .conf)
   --binary PATH      the marionnet to drive (default: _build/default/bin/marionnet.exe)
   --limit N          probe only the first N binaries (a short run, for the road)
+  --only A,B,C       probe only these binaries of BINARY_LIST (a named short run: the way to
+                     measure the classifier on witnesses without paying for the catalogue)
   --x-only           probe only the binaries classified as X applications
   --help-timeout N   seconds given to a --help probe (default: 5)
   --x-timeout N      seconds an X application must survive to be called alive (default: 6)
@@ -93,7 +98,7 @@ EOF
 }
 
 # --- Options.
-IMAGE=""; FROM=""; KERNEL=""; OUTPUT=""; MEMORY=""; BINARY=""; LIMIT=0; X_ONLY=0
+IMAGE=""; FROM=""; KERNEL=""; OUTPUT=""; MEMORY=""; BINARY=""; LIMIT=0; ONLY=""; X_ONLY=0
 HELP_TIMEOUT=5; X_TIMEOUT=6; ASSUME_YES=0; KEEP_PROJECT=0
 
 while (($#)); do
@@ -105,6 +110,7 @@ while (($#)); do
     --memory)        MEMORY=${2:-};       shift 2 ;;
     --binary)        BINARY=${2:-};       shift 2 ;;
     --limit)         LIMIT=${2:-0};       shift 2 ;;
+    --only)          ONLY=${2:-};         shift 2 ;;
     --x-only)        X_ONLY=1;            shift ;;
     --help-timeout)  HELP_TIMEOUT=${2:-5};shift 2 ;;
     --x-timeout)     X_TIMEOUT=${2:-6};   shift 2 ;;
@@ -154,6 +160,17 @@ test -r "$FROM/$IMAGE.conf" || die "no configuration $FROM/$IMAGE.conf (an image
 CANDIDATES=$(sed -n "s/^BINARY_LIST='\(.*\)'.*/\1/p" "$FROM/$IMAGE.conf" | head -n 1 | tr ' ' '\n' | grep -v '^$' || true)
 test -n "$CANDIDATES" || die "no BINARY_LIST in $IMAGE.conf: nothing to probe"
 CANDIDATE_NO=$(wc -l <<<"$CANDIDATES")
+if test -n "$ONLY"; then
+  # A named short run. It still SELECTS from BINARY_LIST rather than probing whatever it is
+  # given: this report answers for the published list, and a name which is not in it would be
+  # measured without ever appearing there. A witness which is silently dropped is worse than a
+  # refusal -- so the name is spelled out, and nothing is booted.
+  declared=$(tr ',' '\n' <<<"$ONLY" | grep -v '^$' || true)
+  missing=$(comm -23 <(sort -u <<<"$declared") <(sort -u <<<"$CANDIDATES") | tr '\n' ' ')
+  test -z "${missing// /}" || die "--only: not in the BINARY_LIST of $IMAGE: ${missing% }"
+  CANDIDATES=$(grep -Fx -f <(printf '%s\n' "$declared") <<<"$CANDIDATES" || true)
+  CANDIDATE_NO=$(wc -l <<<"$CANDIDATES")
+fi
 if ((LIMIT > 0)); then
   CANDIDATES=$(head -n "$LIMIT" <<<"$CANDIDATES")
   CANDIDATE_NO=$(wc -l <<<"$CANDIDATES")
@@ -295,21 +312,93 @@ err=/tmp/probe.err
 # dynamic loader per binary). We read the file, and we follow the wrapper one hop: a script is
 # an X application when what it runs is one. One hop is not a limitation we regret -- it is
 # what the measured case needs, and a fixpoint over scripts would be a parser.
-function is_x_application {   # is_x_application PATH
+#
+# TRANSITIVE since episode 2, and this is the point of that episode. A direct mention of libX11
+# is not what makes an application graphical: `wireshark' reaches X through Qt, so it was
+# classified plain and never tried on the screen -- the biggest graphical application of the
+# image, judged by a probe meant for command-line tools. The two obvious ways out were closed:
+# widening the pattern to libgtk|libQt is the hand-written whitelist this work-stream refuses
+# (it dates the moment a toolkit appears), and transitive `ldd' is measured too slow.
+#
+# So the closure is computed HERE, from the image itself, with libX11 as the ONLY seed -- which
+# is not a list but the definition of `X application'. Qt and GTK are not named anywhere: they
+# are DISCOVERED, because they mention libX11. And the price ldd could not pay is paid once: a
+# library is read once for the WHOLE run (LIB_VERDICT memoises it), not once per binary.
+#
+# MEASURED before being written (episode 2, debugfs on the published image, no boot):
+# wireshark -> wireshark.real (no libX11 at all) -> libQt6Gui.so.6, which carries libX11.so.6
+# as a DT_NEEDED. The chain exists; the classifier had to be able to walk it.
+declare -A LIB_VERDICT=()   # library name -> 1 (reaches X) / 0 (does not) / 2 (being visited)
+declare -A LIB_PATH=()      # library name -> file, from ldconfig -p (one fork for the run)
+X_VIA=""                    # what decided the last classification -- the report shows it
+
+while read -r n p; do test -n "${LIB_PATH[$n]:-}" || LIB_PATH[$n]=$p
+done < <(ldconfig -p 2>/dev/null | sed -n 's/^\t\([^ ]*\) .*=> \(.*\)$/\1 \2/p')
+
+# The libraries a file names. A superset of its DT_NEEDED (a literal string counts too), which
+# is the safe side to err on: a binary wrongly called X is merely probed on the screen, where
+# it answers at once.
+#
+# ONE READ PER FILE, and it is not a detail. The first shape of this classifier asked `does it
+# mention libX11?' and then, on failure, `which libraries does it mention?' -- two full reads of
+# every non-X binary, which is most of the catalogue. MEASURED inside the guest: 10.9 s per
+# candidate against the 3.5 s of episode 1, i.e. six hours for a run that took two. The libX11
+# question is answered from THIS list instead, so a file is read once.
+function libs_named_in {   # libs_named_in PATH
+  grep -aoE 'lib[a-zA-Z0-9_+.-]*\.so[.0-9]*' "$1" 2>/dev/null | sort -u
+}
+
+function lib_reaches_x {   # lib_reaches_x NAME -- memoised, cycle-safe
+  local name=$1 p sub named
+  case "$name" in libX11.so*) return 0 ;; esac
+  case "${LIB_VERDICT[$name]:-}" in
+    1) return 0 ;;
+    # 2 is `already on the stack': a cycle. Answering `no' here is not a verdict on that
+    # library, only on this path through it -- its other edges still decide it.
+    0|2) return 1 ;;
+  esac
+  p=${LIB_PATH[$name]:-}
+  test -n "$p" || { for d in /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu /usr/lib /lib; do
+                      test -r "$d/$name" && { p=$d/$name; break; }; done; }
+  test -n "$p" && test -r "$p" || { LIB_VERDICT[$name]=0; return 1; }
+  named=$(libs_named_in "$p")
+  case "$named" in *libX11.so*) LIB_VERDICT[$name]=1; return 0 ;; esac
+  LIB_VERDICT[$name]=2
+  for sub in $named; do
+    if lib_reaches_x "$sub"; then LIB_VERDICT[$name]=1; return 0; fi
+  done
+  LIB_VERDICT[$name]=0
+  return 1
+}
+
+function file_is_x {   # file_is_x PATH -- sets X_VIA
+  local f=$1 l named
+  named=$(libs_named_in "$f")
+  case "$named" in *libX11.so*) X_VIA=libX11; return 0 ;; esac
+  for l in $named; do
+    if lib_reaches_x "$l"; then X_VIA=$l; return 0; fi
+  done
+  return 1
+}
+
+function is_x_application {   # is_x_application PATH -- sets X_VIA
   local f=$1 w t
-  grep -qa libX11 "$f" 2>/dev/null && return 0
+  X_VIA=""
+  file_is_x "$f" && return 0
   # Not ELF? then it is text: look at what it calls.
   head -c4 "$f" 2>/dev/null | grep -q ELF && return 1
   for w in $(grep -oE '[a-zA-Z0-9_.+-]+' "$f" 2>/dev/null | sort -u); do
     t=$(command -v "$w" 2>/dev/null) || continue
     test "$t" = "$f" && continue
-    grep -qa libX11 "$t" 2>/dev/null && return 0
+    if file_is_x "$t"; then X_VIA="$w:$X_VIA"; return 0; fi
   done
   return 1
 }
 
-function emit {   # emit NAME VERDICT RC PROBE DETAIL
-  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >> "$REPORT"
+# The free-text column stays LAST: `via' is what the classifier answered on, and a human who
+# disputes a classification must be able to read it without walking past a line of stderr.
+function emit {   # emit NAME VERDICT RC PROBE VIA DETAIL
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "${5:--}" "${6:-}" >> "$REPORT"
 }
 
 # A single line of stderr, TSV-safe: tabs and newlines would break the columns, and a stack of
@@ -327,10 +416,11 @@ while read -r name; do
   # the report grow read that silence as a hang -- it stopped a probe which was working, after
   # six lines out of seventy-three. What the host must watch is progress, not output.
   seen=$((seen+1)); echo "$seen" > "$DIR/probe-progress"
-  path=$(command -v "$name" 2>/dev/null) || { emit "$name" MISSING - none "not in PATH"; continue; }
+  path=$(command -v "$name" 2>/dev/null) || { emit "$name" MISSING - none - "not in PATH"; continue; }
 
+  via=-
   if is_x_application "$path"; then
-    kind=x
+    kind=x; via=${X_VIA:--}
   else
     kind=plain
     test "$X_ONLY" = 1 && continue
@@ -346,14 +436,14 @@ while read -r name; do
     case "$rc" in
       # Still there when the clock ran out: it opened its window and waited, which is what an
       # application with a window does.
-      124) emit "$name" X_ALIVE "$rc" x "$(first_line "$err")" ;;
+      124) emit "$name" X_ALIVE "$rc" x "$via" "$(first_line "$err")" ;;
       # Gone, but with a zero status. MEASURED on the first full report: twelve of the
       # thirty-three the probe had called X_DIED are xdpyinfo, xlsfonts, xauth, appres,
       # xvinfo, setxkbmap... -- command-line X tools which did their job and left. Leaving
       # with 0 is a success whatever the probe, and a verdict which calls it a death would
       # hand the agent of stage 2 twelve failures to judge that never happened.
-      0)   emit "$name" X_OK    "$rc" x "$(first_line "$err")" ;;
-      *)   emit "$name" X_DIED  "$rc" x "$(first_line "$err")" ;;
+      0)   emit "$name" X_OK    "$rc" x "$via" "$(first_line "$err")" ;;
+      *)   emit "$name" X_DIED  "$rc" x "$via" "$(first_line "$err")" ;;
     esac
   else
     : >"$out"; : >"$err"
@@ -362,8 +452,8 @@ while read -r name; do
     case "$rc" in
       # 0 and 1 are both ordinary answers to --help: plenty of tools print their usage and
       # leave with 1. What we are looking for is neither of those.
-      0|1)   emit "$name" OK      "$rc" help "$(first_line "$err")" ;;
-      124)   emit "$name" TIMEOUT "$rc" help "$(first_line "$err")" ;;
+      0|1)   emit "$name" OK      "$rc" help - "$(first_line "$err")" ;;
+      124)   emit "$name" TIMEOUT "$rc" help - "$(first_line "$err")" ;;
       *)
         # --version, the fallback of the scale, and it is not a refinement: measured on the
         # first forty candidates, six of the seven ERR were `a2enmod' and its family answering
@@ -381,14 +471,14 @@ while read -r name; do
         timeout "$HELP_TIMEOUT" "$path" --version >"$out" 2>"$err" </dev/null
         rc2=$?
         case "$rc2" in
-          0|1) emit "$name" OK  "$rc2" version "$(first_line "$err")" ;;
-          *)   emit "$name" ERR "$rc"  help    "$err_help" ;;
+          0|1) emit "$name" OK  "$rc2" version - "$(first_line "$err")" ;;
+          *)   emit "$name" ERR "$rc"  help    - "$err_help" ;;
         esac ;;
     esac
   fi
 done < "$LIST"
 
-emit "#END" "-" "-" "-" "elapsed=$((SECONDS-started))s"
+emit "#END" "-" "-" "-" "-" "elapsed=$((SECONDS-started))s libraries-read=${#LIB_VERDICT[@]}"
 GUEST
 
 printf '%s\n' "$CANDIDATES" > "$HOSTFS/probe-candidates"
@@ -446,12 +536,14 @@ done
   echo "# image     : $FROM/$IMAGE"
   echo "# sum       : $(sed -n "s/^SUM=\(.*\)/\1/p" "$FROM/$IMAGE.conf" | head -n 1)"
   echo "# candidates: $CANDIDATE_NO (BINARY_LIST of the .conf)"
-  echo "# probes    : help-timeout=${HELP_TIMEOUT}s x-timeout=${X_TIMEOUT}s x-only=$X_ONLY"
+  # A partial run must SAY it is partial: a reader comparing this with a full report would
+  # otherwise read a shorter list as an image which lost binaries.
+  echo "# probes    : help-timeout=${HELP_TIMEOUT}s x-timeout=${X_TIMEOUT}s x-only=$X_ONLY${ONLY:+ only=$ONLY}$( ((LIMIT > 0)) && echo " limit=$LIMIT")"
   # An X verdict is a property of the pair (image, X server). Two reports which disagree are
   # not necessarily two images which disagree -- so the server is written down.
   echo "# X server  : ${X_HEADER:-<not measured>}"
   echo "#"
-  echo "# name	verdict	rc	probe	first line of stderr"
+  echo "# name	verdict	rc	probe	via	first line of stderr"
   cat "$REPORT_TSV"
 } > "$OUTPUT"
 
