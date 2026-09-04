@@ -6,7 +6,7 @@
 # in git, instead of being re-derived (or re-paid in tokens) at every image.
 #
 # THE FILE CARRIES EXCEPTIONS ONLY. A binary with no line here is `keep': the default is
-# `nothing to report', which is why 217 lines cover a catalogue of 2060 candidates. Adding a
+# `nothing to report', which is why 225 lines cover a catalogue of 2060 candidates. Adding a
 # line for each of the 1820 which answered plainly would be a white list, and a white list
 # goes stale (episode 39 of `modernisation-installation-marionnet').
 #
@@ -42,7 +42,7 @@
 # The second is authoritative on what it judged (its classifier reaches libX11 through
 # libraries), the first on the rest. Image: machine-debian-trixie-16341, sum 16341.
 #
-# WARNING -- 40 of the 49 broken binaries below were reported OK by the probe: it accepts rc 1
+# WARNING -- 41 of the 57 broken binaries below were reported OK by the probe: it accepts rc 1
 # as an ordinary answer to --help, and a qtchooser wrapper which cannot exec its target leaves
 # with 1. The probe now has a BROKEN verdict for that (episode 3); this file was written by
 # reading the stderr of the reports above, not by trusting their verdict.
@@ -81,6 +81,48 @@
 # must name everything which disappears, or a re-probe cannot tell an intended removal from a
 # surprise. The applier plays strictly equal actions once (filesystem.apply-binary-policy.sh).
 #
+#
+#
+# THE SAME QUESTION, ASKED OF THE EIGHT BROKEN BINARIES WHICH WERE STILL `ignore' (episode 8).
+#
+# Eight lines said `ignore' about binaries which DO NOT START -- five debhelper helpers, dtd2vim,
+# vimplate, dumpmscat. `ignore' means `judged once, nothing to do', so they contradicted the
+# destination of the work-stream: an image built from now on carries no binary which fails.
+# Asked of each holder, the question of episode 6 answers the other way round than it did for
+# qtchooser: EVERY ONE OF THESE PACKAGES KEEPS ITS INTEREST WITHOUT THE BROKEN BINARY, and each
+# is required by something installed (automake, bash, curl, polkitd, python3-numpy) or wanted in
+# its own right (vim-scripts, samba). So the package stays and the binary goes -- `rm -f' by name,
+# the action of episode 4, which is here the RIGHT one and not a fallback.
+#
+# The five dh_* cannot be repaired at any price worth paying: debhelper is NOT installed (read in
+# /var/lib/dpkg/status), so Debian/Debhelper/Dh_Lib.pm is absent by construction, and installing
+# debhelper to make a packaging helper work in a networking lab image is the opposite of the
+# criterion. dtd2vim and vimplate each miss one CPAN module (SGML/DTD.pm, Template.pm): a `fix'
+# would add a package for a tool no exercise calls.
+#
+# ONE REASON WAS FALSE, AND THE STRUCTURE SAID SO -- not the message (episode 4's rule, again).
+# dumpmscat was written down as `private samba library absent'. It is not absent: debugfs finds
+# libsamba-debug-private-samba.so.0 in /usr/lib/x86_64-linux-gnu/samba, 41248 bytes. What is
+# missing is a RUNPATH: dumpmscat has one, the library it needs first
+# (libmscat-private-samba.so.0) has NONE -- and an executable's RUNPATH, unlike an RPATH, is not
+# searched for transitive dependencies. A Debian packaging bug, nothing this policy can fix.
+#
+# EACH MODULE NAMED IN A MESSAGE WAS CHECKED IN THE IMAGE, not believed. Dh_Lib.pm, SGML/DTD.pm,
+# NetSNMP/OID.pm, Tk.pm and Template.pm: all five really absent from every @INC directory the
+# image has. vimplate is the one the report called OK (rc 1): it loads Template by a dynamic
+# `require' and diagnoses itself -- a static reading of its `use' lines would have missed it, so
+# the check must start from the module NAMED IN THE MESSAGE.
+#
+# THE TWO `fix' NAMES ARE NO LONGER GUESSES. The image carries the whole trixie main catalogue
+# (/var/lib/apt/lists/..._Packages, 54 MB): perl-tk 1:804.036+dfsg1-5 `Provides: libtk-perl', and
+# libsnmp-perl 5.9.4 is net-snmp's Perl5 support. Both exist; the re-probe still says whether
+# they put the module where the script looks.
+#
+# AND A QUESTION CLOSED WITH NOTHING TO DO: the qt5-wrapper purge leaves orphan packages behind
+# (apt reports them, this policy never autoremoves them). Recomputed offline from status +
+# extended_states -- 56 of them, a superset of the 32 apt names -- they carry exactly SEVEN
+# /usr/bin entries: pylupdate5/6, pyrcc5, pyuic5/6, qtpaths6, androiddeployqt6. All seven start.
+# None is broken, so nothing is added here; removing them would be slimming, out of scope.
 #
 # --- qt5-wrapper (47): the chain goes, package by package -- see the note above
 # The 32 broken links which named their missing target:
@@ -137,18 +179,18 @@ qdbusxml2cpp	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser
 qtchooser	drop	apt-get -y purge python3-pyqtgraph qtbase5-dev-tools qtchooser	the qtchooser binary: with qtbase5-dev-tools gone there is no Qt installation left to select
 #
 # --- missing-perl-module (9)
-dh_autotools-dev_restoreconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
-dh_autotools-dev_updateconfig	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
-dh_bash-completion	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
-dh_installxmlcatalogs	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
-dh_numpy3	ignore	-	Debian packaging helper, no pedagogical use; Dh_Lib.pm absent
-dtd2vim	ignore	-	marginal vim/SGML tool; Perl module absent
-snmp-bridge-mib	fix	apt-get -y install libsnmp-perl	network tool, in scope; NetSNMP::OID absent -- package name to be confirmed by the re-probe
-snmpcheck	fix	apt-get -y install perl-tk	network tool, in scope; Tk.pm absent -- package name to be confirmed by the re-probe
-vimplate	ignore	-	marginal vim/SGML tool; Perl module absent
+dh_autotools-dev_restoreconfig	drop	rm -f /usr/bin/dh_autotools-dev_restoreconfig	debhelper is NOT installed, so Dh_Lib.pm can never be there; autotools-dev stays (automake depends on it) but this helper cannot ever run
+dh_autotools-dev_updateconfig	drop	rm -f /usr/bin/dh_autotools-dev_updateconfig	debhelper is NOT installed, so Dh_Lib.pm can never be there; autotools-dev stays (automake depends on it) but this helper cannot ever run
+dh_bash-completion	drop	rm -f /usr/bin/dh_bash-completion	debhelper is NOT installed, so Dh_Lib.pm can never be there; bash-completion stays (bash and curl depend on it) but this helper cannot ever run
+dh_installxmlcatalogs	drop	rm -f /usr/bin/dh_installxmlcatalogs	debhelper is NOT installed, so Dh_Lib.pm can never be there; xml-core stays (polkitd depends on it) but this helper cannot ever run
+dh_numpy3	drop	rm -f /usr/bin/dh_numpy3	debhelper is NOT installed, so Dh_Lib.pm can never be there; python3-numpy-dev stays (python3-numpy depends on it) but this helper cannot ever run
+dtd2vim	drop	rm -f /usr/bin/dtd2vim	SGML/DTD.pm absent (libsgml-dtdparse-perl not installed); vim-scripts stays for its vim scripts, but an SGML-to-vim generator is outside the lab scope -- not worth a new package
+snmp-bridge-mib	fix	apt-get -y install libsnmp-perl	network tool, in scope; NetSNMP/OID.pm absent -- libsnmp-perl (net-snmp Perl5 support) confirmed present in the trixie catalogue carried by the image
+snmpcheck	fix	apt-get -y install perl-tk	network tool, in scope; Tk.pm absent -- perl-tk (Provides: libtk-perl) confirmed present in the trixie catalogue carried by the image
+vimplate	drop	rm -f /usr/bin/vimplate	Template.pm absent (libtemplate-perl not installed), loaded by a dynamic require -- which is why the probe read rc 1 and said OK; vim-scripts stays, a template generator is outside the lab scope
 #
 # --- missing-lib (1)
-dumpmscat	ignore	-	samba debug tool, no pedagogical use; private samba library absent
+dumpmscat	drop	rm -f /usr/bin/dumpmscat	NOT a missing library: libsamba-debug-private-samba.so.0 IS in the image; libmscat-private-samba.so.0 carries no RUNPATH, and an executable RUNPATH does not reach transitive deps -- Debian packaging bug, unfixable from here; samba stays, it is wanted
 #
 # --- not-a-binary (3)
 bin	ignore	-	BINARY_LIST entry which is a directory, not a binary

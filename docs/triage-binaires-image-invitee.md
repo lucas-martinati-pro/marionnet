@@ -448,21 +448,23 @@ verdict a été lu (`qt5-wrapper`, `no-help-option`, `needs-arguments`, `no-stde
 **une fois par groupe** parce que personne d'autre qu'un lecteur n'en a besoin : le
 consommateur, lui, lit quatre champs.
 
-**Ce que la politique contient** (épisode 3, corrigée à l'épisode 4 — 217 lignes) :
+**Ce que la politique contient** (épisode 3, corrigée aux épisodes 4, 6 et 8 — 225 lignes) :
 
 | verdict | n | quoi |
 |---|---|---|
-| `drop` | 39 | les lanceurs `qtchooser` *pendants*, chacun par son `rm -f /usr/bin/<nom>` (§ 3.7 : l'action collective de l'ép. 3 emportait des binaires qui marchent, et 7 cassés manquaient à l'appel) |
-| `fix` | 2 | `snmpcheck` et `snmp-bridge-mib` — outils réseau, donc **dans** le périmètre pédagogique, à qui il manque un module Perl |
-| `ignore` | 176 | jugé une fois : le binaire fonctionne (il ne connaît pas `--help`, il réclame ses arguments), ou il est hors d'usage ici (SELinux absent, helper PAM, outil de packaging Debian), ou ce n'est pas un binaire |
+| `drop` | 55 | 47 pour la chaîne `qtchooser`, qui part **par paquets nommés** (journal, épisode 6) ; 8 pour les binaires cassés dont le paquet, lui, garde son intérêt — un `rm -f /usr/bin/<nom>` chacun (journal, épisode 8) |
+| `fix` | 2 | `snmpcheck` et `snmp-bridge-mib` — outils réseau, donc **dans** le périmètre pédagogique, à qui il manque un module Perl ; leurs paquets sont **vérifiés** depuis l'épisode 8 |
+| `ignore` | 168 | jugé une fois : le binaire fonctionne (il ne connaît pas `--help`, il réclame ses arguments), ou il est hors d'usage ici (SELinux absent, helper PAM), ou ce n'est pas un binaire. **Plus aucun `ignore` ne porte sur un binaire qui ne démarre pas** (journal, épisode 8) |
 
 Trois de ces `ignore` méritent d'être nommés : **`bin`, `sbin` et `X11` ne sont pas des
 binaires** mais des **répertoires** que `BINARY_LIST` a ramassés — un défaut du générateur de
 la liste, constaté ici et laissé là où il est.
 
-**Ce que les deux `fix` disent d'eux-mêmes** : leur action **nomme un paquet candidat**
-(`perl-tk`, `libsnmp-perl`) que rien n'a encore vérifié dans l'invité, et leur raison le dit.
-C'est la re-sonde de l'étage 3 qui le confirmera ou l'infirmera — une action fausse s'y voit.
+**Ce que les deux `fix` disent d'eux-mêmes** : leur action **nomme un paquet**
+(`perl-tk`, `libsnmp-perl`). Ce n'était qu'un *candidat* jusqu'à l'épisode 8, qui l'a vérifié
+contre le catalogue trixie que l'image transporte elle-même. Ce qui reste à la re-sonde n'est
+plus l'existence du paquet mais le seul fait qui compte : met-il le module **là où le script le
+cherche** ?
 
 **L'agent ne fait qu'une chose** : lire le rapport + la politique courante et proposer un
 **diff de politique** dont chaque ligne est adossée à une preuve du rapport. Il ne touche ni à
@@ -956,3 +958,79 @@ maintenant lui-même — une re-sonde de 16341 y retrouvera les 47, et ce sera c
 une régression.
 
 **Aucune image n'a été produite, et aucune ne le sera pour 16341.**
+
+### 2026-09-04 — épisode 8 : le reste de la politique, jugé sans booter
+
+L'épisode solde les quatre questions que les épisodes 4, 6 et 7 avaient laissées écrites, et il
+les solde **sans un seul boot** : tout ce qu'il fallait savoir est *dans* l'image, lisible par
+`debugfs` — `/var/lib/dpkg/{status,info/*.list}`, `/var/lib/apt/extended_states`, les binaires
+eux-mêmes, et jusqu'au **catalogue trixie complet** que l'image transporte encore
+(`/var/lib/apt/lists/…_Packages`, 54 Mo).
+
+**(a) Huit `ignore` posés sur des binaires qui ne démarrent pas — ils contredisaient la
+destination.** Cinq helpers debhelper (`dh_autotools-dev_restoreconfig`,
+`dh_autotools-dev_updateconfig`, `dh_bash-completion`, `dh_installxmlcatalogs`, `dh_numpy3`),
+`dtd2vim`, `vimplate`, `dumpmscat`. La question de l'épisode 6 leur est posée telle quelle — *le
+paquet qui le contient a-t-il encore un intérêt sans lui ?* — et elle répond, pour les huit,
+**l'inverse** de ce qu'elle répondait à `qtchooser` : chaque paquet garde son intérêt, et chacun
+est **requis par quelque chose d'installé** (`automake` → `autotools-dev`, `bash` et `curl` →
+`bash-completion`, `polkitd` → `xml-core`, `python3-numpy` → `python3-numpy-dev`) ou voulu pour
+lui-même (`vim-scripts`, `samba` — un TP réseau veut samba). Donc le paquet reste et le binaire
+part : `rm -f` par nom, l'action de l'épisode 4, qui est ici la **bonne** et non un repli.
+
+Les cinq `dh_*` ne sont réparables à aucun prix acceptable : **`debhelper` n'est pas installé**
+(lu dans `status`), donc `Debian/Debhelper/Dh_Lib.pm` est absent par construction, et installer
+`debhelper` pour faire marcher un outil de packaging dans une image de laboratoire réseau est
+exactement l'inverse du critère du chantier. `dtd2vim` et `vimplate` manquent chacun d'un module
+CPAN (`SGML/DTD.pm`, `Template.pm`) : un `fix` ajouterait un paquet pour un outil qu'aucun énoncé
+n'appelle.
+
+**(c) Une raison était fausse, et c'est la structure qui l'a dit — la règle de l'épisode 4, de
+nouveau.** `dumpmscat` portait « private samba library absent ». Elle ne l'est pas :
+`libsamba-debug-private-samba.so.0` **est** dans `/usr/lib/x86_64-linux-gnu/samba`, 41 248 octets.
+Ce qui manque est un `RUNPATH` — `dumpmscat` en a un, mais la bibliothèque qu'il charge d'abord
+(`libmscat-private-samba.so.0`) **n'en a aucun**, et le `RUNPATH` d'un exécutable, contrairement
+à un `RPATH`, **n'est pas consulté pour les dépendances transitives**. C'est un défaut de
+packaging Debian, que cette politique ne peut pas réparer : le verdict ne change pas, la raison
+si.
+
+**Chaque module nommé dans un message a été cherché dans l'image**, pas cru sur parole :
+`Dh_Lib.pm`, `SGML/DTD.pm`, `NetSNMP/OID.pm`, `Tk.pm`, `Template.pm` — les cinq sont réellement
+absents de tous les répertoires `@INC` que l'image possède. Et `vimplate` livre le piège de
+méthode de l'épisode : il charge `Template` par un **`require` dynamique** (il se diagnostique
+lui-même, d'où le `rc` 1 que la sonde a lu `OK`), si bien qu'une lecture **statique** de ses
+lignes `use` — que cet épisode a d'abord faite — ne voit pas le module manquant. La vérification
+doit partir du module **nommé dans le message**, le `use` ne servant qu'à contre-vérifier.
+
+**La question de l'épisode 4, élargie aux 168 `ignore` : reste-t-il un verdict qui repose sur un
+motif de message sans vérification structurelle ?** Passe faite sur les 168, en cherchant les
+signatures d'un binaire qui **n'a pas démarré** (`error while loading shared libraries`,
+`Can't locate`, `Exec format error`, `Traceback`, `ModuleNotFoundError`…). Sept lignes remontent,
+et les sept sont des messages **applicatifs** : le binaire a démarré et se plaint de son argument
+(`checkgid: group '--help' not found`, `fstab-decode: --help: No such file or directory`…).
+**Aucun `ignore` ne porte plus sur un binaire qui ne démarre pas.**
+
+**(b) Les deux `fix` ne nomment plus des candidats.** L'image transporte le catalogue trixie
+main complet : `perl-tk` 1:804.036+dfsg1-5 y est, avec `Provides: libtk-perl`, et `libsnmp-perl`
+5.9.4 y est comme *SNMP Perl5 support* de net-snmp. Les deux paquets existent — ce qui restait
+à prouver depuis l'épisode 3. Ce que la re-sonde dira encore est le seul fait qui compte et
+qu'aucun catalogue ne donne : le module atterrit-il **là où le script le cherche** ?
+
+**(d) Une question ouverte à l'épisode 6, close sans rien à faire.** La purge `qt5-wrapper`
+laisse des paquets orphelins qu'apt signale et que cette politique ne retire pas (jamais
+d'`autoremove`). Recalculés hors ligne depuis `status` + `extended_states` — fermeture depuis les
+paquets *manuels*, les trois purgés retirés : **56**, sur-ensemble des 32 noms qu'apt avait
+affichés, et le même calcul donne **0** orphelin *avant* la purge, ce qui valide la méthode. Ces
+56 portent en tout **sept** entrées de `/usr/bin` : `pylupdate5`, `pylupdate6`, `pyrcc5`,
+`pyuic5`, `pyuic6`, `qtpaths6`, `androiddeployqt6`. **Les sept démarrent.** Aucun n'est cassé :
+rien à ajouter à la politique, et les retirer serait de l'amaigrissement — hors périmètre (§ 6).
+
+**Ce que le fichier dit maintenant** : 225 lignes, **55 `drop`**, 2 `fix`, **168 `ignore`**. Son
+unique lecteur les relit sans broncher — `11 action(s) for 57 name(s)`, `rc` 0 — et refuse
+toujours ce qu'il doit refuser (ligne fabriquée `drop` sans action : `rc` 2, sortie vide). Les
+huit chemins visés par un `rm -f` existent bien dans l'image (vérifié par `debugfs`) : un `rm -f`
+sur un fichier absent serait un succès silencieux, c'est-à-dire une preuve creuse.
+
+**Rien n'est appliqué, et cette fois ce n'est même plus une attente** : c'est la décision de
+l'épisode 7. La chaîne verte sera démontrée par la première image que `pupisto` construira avec
+cette politique.
