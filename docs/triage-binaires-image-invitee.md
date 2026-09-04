@@ -526,6 +526,8 @@ l'image ni aux scripts ; l'humain valide, ça se commite.
 
 ## 7. Le livrable, une fois le chantier clos
 
+> **Livré** : la mécanique à l'épisode 9, le jugement à l'épisode 10 — bilan au § 9.
+
 > Question posée à l'ouverture : *« un skill qui coordonne tous les helpers ? »* —
 > **oui à un skill, non à « qui coordonne »**.
 
@@ -576,7 +578,108 @@ décision au milieu.
 - **Republier une image, c'est la renommer** : son nom est son `sum`, et le `mtime` du
   *backing file* fait foi (ép. 23). Chaque tour d'application produit une image **neuve**.
 
-## 9. Journal d'avancement
+## 9. Clôture (2026-09-05) — ce qui est atteint, et ce qui ne l'est pas
+
+Le chantier se clôt à l'**épisode 11**, sur une destination **atteinte pour trois de ses quatre
+conditions**, la quatrième étant **déléguée** — pas abandonnée, et surtout pas prouvée en douce.
+
+### 9.1 Atteint
+
+| Condition de la DESTINATION | État | Où c'est |
+|---|---|---|
+| La **politique** porte un verdict pour *chaque* candidat de `BINARY_LIST` | **fait** (ép. 3→8) | `uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv` — 225 lignes, 55 `drop`, 2 `fix`, 168 `ignore` |
+| `pupisto.debian.sh` la **consomme à la construction** | **fait** (ép. 7) | `apply_binary_policy`, appelée juste avant `clean_debian_filesystem` |
+| Le **skill** et ce **document** existent | **fait** (ép. 10) | `.claude/skills/marionnet-triage-binaires/SKILL.md` (89 l.) + ce fichier |
+| La chaîne tourne **de bout en bout sur trixie**, re-sonde verte | **délégué** — cf. § 9.2 | à la prochaine image trixie construite (chantier `marionnet-kernel-rootfs`) |
+
+S'y ajoutent, hors condition mais au livrable (ép. 9) : les deux cibles
+`filesystem.probe-image-binaries` et `filesystem.apply-binary-policy`, `IMAGE=` seul explicite,
+le reste par `OPTIONS=`.
+
+### 9.2 Non prouvé — à dire, pas à masquer
+
+Deux choses n'ont **jamais** tourné pour de vrai, et aucune formulation de clôture ne doit
+laisser croire le contraire :
+
+- **L'étage 3a n'aura jamais tourné jusqu'à l'export.** C'est la conséquence assumée du critère
+  de reprise de l'épisode 7 (§ DESTINATION) : 16341 reste en l'état. 3a est éprouvé en
+  `--dry-run`, `--print-actions` et `--measure` — jamais au bout. Ce n'est pas un outil mort :
+  c'est celui du jour où un défaut vaudra la reprise d'une image publiée.
+- **L'étage 3b n'a pas de run réel.** `apply_binary_policy` est éprouvé **hors invité** (fonction
+  seule + chroot factice : politique réelle → 3 actions **verbatim** ; distribution sans politique
+  → *nothing to apply*, rc 0 ; politique refusée → rc 1, rien d'appliqué ; les 5 refus rejoués en
+  `--print-actions` → rc 2, sortie vide). C'est une preuve **par construction**, pas une re-sonde.
+
+Le risque résiduel est faible et **bruyant** : sous `set -e`, une action qui échoue **arrête** la
+construction, et `once` n'enregistre pas une étape ratée — l'échec ne peut pas passer en silence.
+
+### 9.3 Pourquoi clore maintenant plutôt que veiller
+
+Il ne restait pas un *travail*, mais une *vérification* qui se produira d'elle-même à la
+prochaine construction d'image — laquelle appartient au chantier parent, pas à celui-ci. Or la
+DESTINATION porte son propre test de réussite : **« la prochaine image ne doit pas rouvrir un
+chantier »**. Si constater une image neuve exigeait de rouvrir celui-ci, ce serait la preuve que
+le livrable a raté ; il existe précisément pour que ce geste soit `make` + une passe d'agent.
+Face à cela, la veille se paie à **chaque session** (fiche mémoire et pointeur `CLAUDE.md` relus)
+pour une étape dont la date dépend d'autrui.
+
+La contrepartie, non négociable, est le § 9.4 : la vérification est **écrite chez celui qui
+construira l'image**. Une clôture qui l'aurait seulement espérée aurait été un abandon déguisé.
+
+### 9.4 Ce qui est délégué à `marionnet-kernel-rootfs`, et comment le lire
+
+> **À la première image trixie construite avec la politique** : re-sonder l'image neuve
+> (`make filesystem.probe-image-binaries IMAGE=…`) et y lire **deux faits**, seuls restes non
+> prouvés de la politique :
+> 1. les **2 `fix`** (`snmpcheck`, `snmp-bridge-mib`) déposent-ils le module perl **là où le
+>    script le cherche** ? Les paquets (`perl-tk` via `Provides: libtk-perl`, `libsnmp-perl`)
+>    sont acquis depuis l'ép. 8 ; c'est l'emplacement qui ne l'est pas ;
+> 2. les **55 `drop`** sont-ils tous **absents** de la `BINARY_LIST` de l'image produite ?
+>
+> Un écart n'est **pas** une réouverture de ce chantier : c'est un épisode du chantier qui a
+> construit l'image, joué avec le skill `marionnet-triage-binaires`.
+
+### 9.5 Ce qui reste vrai après la clôture
+
+- **La politique décrit un état *voulu*, pas l'état de 16341** : une re-sonde de l'image en ligne
+  y retrouvera les 47 lanceurs Qt5 — c'est la décision de l'ép. 7, pas une régression.
+- **Le format à 4 colonnes n'a qu'un lecteur**, l'étage 3a (`--print-actions`) ; `pupisto` lui
+  *demande* les actions au lieu de reparser. Ajouter un second lecteur, c'est rouvrir le défaut
+  que le chantier a passé son temps à refuser.
+- **Les interdits** (11, chacun payé par une mesure) vivent dans le skill, pas ici : c'est lui
+  qu'on charge avant de juger un rapport ou d'écrire une ligne de politique.
+- **HORS PÉRIMÈTRE** (§ 6) est une archive d'arbitrages, **pas** un reste à faire.
+
+## 10. Journal d'avancement
+
+### 2026-09-05 — épisode 11 : la clôture, et la preuve confiée au chantier qui construira l'image
+
+Question de l'auteur : *« on peut clore le chantier temporairement, quitte à le rouvrir, non ? »*
+Réponse — **oui sur le fond, non sur la forme**. Il ne restait pas un travail à faire mais une
+**vérification** qui se produira d'elle-même à la prochaine construction d'image, laquelle
+appartient au chantier parent. « Clore temporairement » n'est pas une opération de la méthode et
+décrit mal cela ; la forme juste est une **clôture pleine (MODE C) avec la dernière vérification
+déléguée**, écrite chez celui qui la fera.
+
+Ce que l'épisode a écrit, et rien d'autre — **aucun code touché, aucun boot** :
+
+- le **§ 9** de ce document : les trois conditions atteintes, la quatrième déléguée, et surtout
+  le **§ 9.2** — *ce qui n'a jamais tourné pour de vrai* (3a jamais allé jusqu'à l'export, 3b sans
+  run réel, éprouvé hors invité). Une clôture qui tait son niveau de preuve ment ;
+- la **garde déléguée** dans `docs/kernel-rootfs-refresh.md` et dans la fiche mémoire
+  `marionnet-kernel-rootfs` : re-sonder la première image trixie construite, y lire **deux
+  faits** (les 2 `fix` déposent-ils le module là où le script le cherche ; les 55 `drop` sont-ils
+  absents de la `BINARY_LIST`) ;
+- la **fiche mémoire** de ce chantier réduite à un renvoi, son entrée de `MEMORY.md` et de
+  `CLAUDE.md` passées aux archives.
+
+Le raisonnement qui a tranché, à ne pas re-dérouler : la DESTINATION porte **son propre test de
+réussite** — *la prochaine image ne doit pas rouvrir un chantier*. Si constater une image neuve
+exigeait de rouvrir celui-ci, ce serait la preuve que le livrable (2 cibles `make` + 1 skill) a
+raté. À l'inverse, la veille se paierait à chaque session pour une étape dont la date dépend
+d'autrui. Le risque résiduel accepté est nommé : 3b n'a pas de run réel — mais sous `set -e` une
+action ratée **arrête** la construction, l'échec ne peut pas passer en silence.
+
 
 ### 2026-09-05 — épisode 10 : le jugement, écrit là où une cible `make` ne peut pas le porter
 
@@ -777,7 +880,7 @@ liste déjà extraite** : un fichier est lu **une fois**.
 famille que ceux de l'épisode 1 : une bibliothèque est lue **une seule fois pour tout le run**,
 donc les premiers candidats paient le remplissage du cache pour tous les autres. Un
 `--limit 150` mesure la phase chère et rien d'autre. Le chiffre qui compte est l'`elapsed` d'un
-run complet, à comparer aux **3287 s** de l'épisode 1 — mesure prise à part (§ 9, épisode 3).
+run complet, à comparer aux **3287 s** de l'épisode 1 — mesure prise à part (§ 10, épisode 3).
 Et le micro-banc local dit que l'instrument n'y est pour presque rien : `grep -o` + `sort -u`
 coûte **1,6×** un `grep -q` sur le même fichier, pas cinq fois.
 

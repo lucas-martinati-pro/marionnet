@@ -215,7 +215,10 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
   par un dispatch de boot compat SysV/systemd) : `docs/kernel-rootfs-refresh.md` (ép. 0→28) ;
   mémoire `marionnet-kernel-rootfs` ; `git log --grep="marionnet-kernel-rootfs"`.
   **Bloque vwifi.** **État** : le boot trixie est propre et le prompt de login est enfin la
-  dernière ligne de la console ; reste le test GUI intégral (`GHOSTIFICATION=netns`).
+  dernière ligne de la console ; reste le test GUI intégral (`GHOSTIFICATION=netns`). **Hérité du
+  chantier enfant `triage-binaires-image-invitee`, clos** : à la **première image trixie
+  construite**, re-sonder et lire deux faits — l'étage 3b (`apply_binary_policy`) n'a jamais
+  tourné dans une vraie construction (doc, § « Constat entrant … 2026-09-05 »).
 
   **Gardes** :
   - deux défauts de boot sont corrigés **sur l'hôte**, à la ligne de commande noyau
@@ -232,38 +235,6 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     passant par `history-export` (donc **aucun `cp`**), jamais à la main (ép. 22, 23) ;
   - `add machine` lit `MEMORY_SUGGESTED_SIZE` (sans quoi trixie meurt d'OOM), mais `--memory=N`
     et un `.mar` restent souverains, et `set <n> distrib` n'ajuste **pas** la mémoire (ép. 24).
-
-- **triage des binaires d'une image invitée** (chantier **enfant** du précédent) :
-  `docs/triage-binaires-image-invitee.md` (ép. 0→7) ; mémoire `triage-binaires-image-invitee` ;
-  `git log --grep="triage-binaires-image-invitee"`. **État** : les **3 étages existent** — la
-  sonde (2060 candidats en un boot), la **politique** gelée
-  (`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, 225 lignes), et les
-  deux applicateurs : `Makefile.d/filesystem.apply-binary-policy.sh` pour une image publiée,
-  `apply_binary_policy` de `pupisto.debian.sh` à la construction. **Rien n'a été appliqué à
-  16341, et rien ne le sera** (ép. 7). Reste : l'ép. 8 (les 7 `ignore` posés sur des cassés, les
-  2 `fix` réseau aux noms de paquets non vérifiés), puis la clôture.
-
-  **Gardes** : l'agent est **entre** la sonde et la politique, **jamais dans la boucle** ; une
-  sonde **ne publie jamais** (COW jetable) ; `/loop` est refusé (un boot par itération) ; un
-  verdict X est une propriété du **couple (image, serveur X)**, que l'en-tête du rapport nomme ;
-  la sur-approximation du classificateur est **du bon côté** (un faux positif se classe `ignore`
-  une fois, un faux négatif laisse passer une application graphique sans jugement), et la colonne
-  **`via`** existe pour qu'un humain puisse la contester ; **un `rc` ne dit pas si le binaire a
-  démarré** — c'est le **message** qui le dit (33 cassés étaient classés `OK`, d'où `BROKEN`,
-  ép. 3) ; la politique **ne porte que des exceptions**, mais **une ligne par cas examiné**,
-  sans quoi 165 cas se re-jugeraient à chaque image ; **une action de politique se mesure dans
-  l'invité avant d'être appliquée** (`--no-export` : mesurer sans produire d'image), et un
-  verdict de **cause structurelle** se vérifie **par la structure**, jamais par le seul motif
-  du message — c'est ce qui a réfuté l'action de l'ép. 3 et trouvé 7 cassés de plus (ép. 4) ;
-  **la question qui décide d'un `drop` porte sur le PAQUET**, pas sur le binaire — *P a-t-il
-  encore un intérêt sans X ?* —, elle se pose **à chaque maillon** de la chaîne de dépendances,
-  et les paquets s'y **nomment** (jamais d'`autoremove`) : un binaire qui marche peut devoir
-  partir, un paquet fautif devoir rester (ép. 6) ; **le format à 4 colonnes n'a qu'UN lecteur**
-  (`--print-actions` de l'étage 3a) — `pupisto` (étage 3b, dans son chroot, juste avant
-  `clean_debian_filesystem`) lui **demande** les actions au lieu de reparser ; et **une image
-  publiée ne se reprend pas pour le principe** : on la reconstruit quand un binaire **du
-  périmètre du TP** est cassé, pas pour un `qmake` mort — d'où 16341 laissée en l'état, et une
-  politique qui décrit un état **voulu**, divergeant volontairement de l'image en ligne (ép. 7).
 
 - **modernisation-world-bridge** (l'accès au vrai réseau sans config hôte risquée ; le « mode »
   est devenu un **choix de composant** : menu planète *Gateway* / *NAT bridge* / *LAN bridge*) :
@@ -316,6 +287,15 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
 - **Récit d'architecture** (build, 2 niveaux, GUI, état, privilèges/taps, i18n, uml, ocamlbricks) :
   `docs/ARCHITECTURE.md` — lire la tranche pertinente, pas tout.
 - **Chantiers clos** (archives durables, à consulter avant de rouvrir un sujet qu'ils couvrent) :
+  `docs/triage-binaires-image-invitee.md` (**triage des binaires d'une image invitée**, chantier
+  enfant de `marionnet-kernel-rootfs` — 11 épisodes, clos 2026-09-05 ; **§ 9 = clôture, dont ce
+  qui n'a PAS été prouvé**, § 7 = livrable ; à lire avant de sonder une image, de juger un
+  rapport ou de toucher `binary_policy.<distrib>.tsv` — mais c'est le skill
+  `marionnet-triage-binaires` qu'on charge pour le faire. **Garde survivante** : la politique
+  décrit un état **voulu**, pas celui de l'image publiée 16341, laissée en l'état par arbitrage ;
+  et une vérification reste **déléguée** au chantier noyau — à la première image trixie
+  **construite**, re-sonder et lire deux faits, l'étage 3b n'ayant jamais tourné dans une vraie
+  construction),
   `docs/refonte-automate-composants.md` (automate d'état des composants **et** discipline des
   appels Gtk+ hors thread principal — 16 épisodes, clos 2026-08-03 ; à lire avant de toucher
   `user_level.ml`, `treeview*.ml` ou de déléguer un appel GUI),

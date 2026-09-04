@@ -792,3 +792,36 @@ des doublons dégradent cette liste, ils ne cassent rien. Le script de publicati
 (`Makefile.d/filesystem.prepare-snapshot-to-publish.sh`) **reconstruit** la liste par un montage
 `loop,ro` de l'image produite, avec `sort -u` : les images **republiées** sortent donc assainies
 (2 060 binaires, une ligne). Cela masque le défaut sans le corriger — la source, elle, le garde.
+
+## Constat entrant — la politique de binaires attend sa première image construite (2026-09-05)
+
+Vient du chantier **enfant** `triage-binaires-image-invitee`, **clos** ce jour à son épisode 11
+(archive : `docs/triage-binaires-image-invitee.md`, § 9 = clôture). Ce chantier a livré une
+politique versionnée
+(`uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv`, 225 lignes) et son
+application **à la construction** : `apply_binary_policy` dans `uml/pupisto.debian/pupisto.debian.sh`,
+appelée juste avant `clean_debian_filesystem`. Elle n'a **jamais tourné dans une vraie
+construction** — seulement hors invité (fonction seule + chroot factice). C'est le seul reste non
+prouvé de ce chantier, et il tombe ici parce que c'est ce chantier-ci qui **construit** les images.
+
+> **À la première image trixie construite** : re-sonder l'image neuve
+> (`make filesystem.probe-image-binaries IMAGE=…`) et y lire **deux faits** :
+>
+> 1. les **2 `fix`** (`snmpcheck`, `snmp-bridge-mib`) déposent-ils le module perl **là où le
+>    script le cherche** ? Les paquets (`perl-tk`, qui `Provides: libtk-perl`, et `libsnmp-perl`)
+>    sont acquis ; c'est l'**emplacement** qui ne l'est pas ;
+> 2. les **55 `drop`** sont-ils tous **absents** de la `BINARY_LIST` de l'image produite ?
+
+Deux choses à ne pas confondre :
+
+- **un écart ne rouvre pas le chantier enfant** : il se traite ici, comme un épisode, en chargeant
+  le skill `marionnet-triage-binaires` (jugement + rituel + les 11 interdits). C'est exactement ce
+  que la destination de l'enfant promettait — *la prochaine image ne doit pas rouvrir un chantier* ;
+- **un échec ne peut pas passer en silence** : sous `set -e`, une action de politique qui échoue
+  **arrête** la construction, et `once` n'enregistre pas une étape ratée. Si la construction va au
+  bout, les actions ont été jouées.
+
+Rappel de l'arbitrage à ne pas re-trancher : l'image **publiée** `machine-debian-trixie-16341`
+reste en l'état (5,4 Go à republier pour 8301 ko de lanceurs Qt5 qu'aucun énoncé n'appelle). La
+politique décrit donc un état **voulu**, pas celui de 16341 — une re-sonde de l'image en ligne y
+retrouvera les 47.
