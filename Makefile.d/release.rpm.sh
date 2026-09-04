@@ -805,31 +805,18 @@ chown -R root:root %{buildroot}
 /usr/share/doc/marionnet
 
 %post
-if [ "\$1" = 1 ]; then
-cat <<'MESSAGE'
-==> Marionnet is installed, but it cannot build its network taps yet.
-
-    One scoped sudoers rule is needed, and this package does not grant it: a
-    package installation cannot tell WHICH user this machine belongs to. Run,
-    as an administrator:
-
-        sudo marionnet-sudoers.sh install <user>
-
-    That grants the socle (block a). The NAT and LAN bridge grants are asked
-    for by the user, from the interface, the day a bridge component is started.
-
-    Guest images and UML kernels: dnf install marionnet-fs-guignol
-    marionnet-kernels for the small ones. The larger images (Debian wheezy,
-    Debian trixie) are not in the repository -- gibibytes are not what a package
-    manager is for -- and this command offers them as a list to tick:
-
-        marionnet-get-images
-MESSAGE
+# What is left to do on the machine, MEASURED rather than recited -- and with no
+# "\$1 = 1" guard around it, which is the point. Counting installations cannot answer
+# the question being asked (is the socle granted here, are the images there?): on the
+# first install only, this text was withheld from a machine which had never been
+# granted anything and was merely upgrading, and it could never report a socle written
+# by an older version of marionnet-sudoers.sh. The text itself lives once, in the
+# script, shared with the .deb channel. Never fatal: a %post runs in image builds too.
+[ -x /usr/bin/marionnet-setup-check.sh ] && /usr/bin/marionnet-setup-check.sh --package-manager dnf || true
 # What the machine must provide besides the packages (episode 40). Never fatal:
 # this runs in image builds too, where the device is legitimately absent -- it is
 # the container that RUNS Marionnet which needs it, and the script says so.
 [ -x /usr/bin/marionnet-tun-check.sh ] && /usr/bin/marionnet-tun-check.sh || true
-fi
 exit 0
 
 %preun

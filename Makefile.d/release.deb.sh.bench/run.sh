@@ -580,10 +580,10 @@ else
   # here and not derived: unlike the tarball bench -- which compares the installed
   # prefix with the artefact's own bin/ -- what this case measures IS the package's
   # file list, so deriving it from the package would be a tautology.
-  if [[ $names -eq 29 ]]; then
-    pass "29 names in /usr/bin (the binary, its bare name, and the 27 companions of bin/scripts/)"
+  if [[ $names -eq 30 ]]; then
+    pass "30 names in /usr/bin (the binary, its bare name, and the 28 companions of bin/scripts/)"
   else
-    fail "the package owns $names names in /usr/bin, expected 29"
+    fail "the package owns $names names in /usr/bin, expected 30"
   fi
 
   compl=$(in_box "dpkg -L marionnet | grep -c '/share/bash-completion/completions/.'")
@@ -628,6 +628,49 @@ else
     pass "and it granted nothing: no rule in /etc/sudoers.d"
   else
     fail "the package granted a sudoers rule by itself, to a user it cannot know"
+  fi
+
+  # ------------------------------------------------------------ 5 bis. and it says it
+  # only while it is true (marionnet-setup-check.sh)
+  #
+  # The defect this section measures was reported from a MarioNUM classroom: an
+  # `apt upgrade' of a machine set up months earlier printed, word for word, the text
+  # above -- install the sudoers rule, fetch the images -- for gestures which had been
+  # made. A postinst runs at every `configure', so a FIXED text is bound to be wrong on
+  # every upgrade; the .rpm channel guarded it with "$1 = 1" and was wrong the other way
+  # round. Hence one script, called by both, which measures before it speaks. What is
+  # proved here is the discriminance: the same command on the same box says the thing and
+  # then stops saying it.
+  # `set -e' is on: a check which exits 1 -- which is precisely the case being measured --
+  # must not take the bench down with it.
+  rc_before=0; before=$(in_box "marionnet-setup-check.sh 2>&1") || rc_before=$?
+  if ((rc_before != 0)) && grep -q 'marionnet-sudoers.sh install' <<<"$before"; then
+    pass "on a box where nothing is granted, the check SPEAKS and names \`install' (rc $rc_before)"
+  else
+    fail "the check said nothing about the missing socle on a fresh box: [$(tail -n 3 <<<"$before")]"
+  fi
+  # Granting for real, with the script the package installed: this is also the only case
+  # of this bench which exercises marionnet-sudoers.sh through apt's own files (root-owned
+  # all the way, which the rule REQUIRES).
+  if in_box "marionnet-sudoers.sh install root" >/dev/null 2>&1; then
+    after=$(in_box "marionnet-setup-check.sh 2>&1") || true
+    if ! grep -q 'marionnet-sudoers.sh install' <<<"$after"; then
+      pass "once the socle is granted, the check no longer asks for it (the upgrade defect)"
+    else
+      fail "the check still asks for a socle which is granted: [$(tail -n 3 <<<"$after")]"
+    fi
+    # The third state, which no channel could report before: the file GRANTS its accounts
+    # and is out of date (episode 42 -- a machine granted before the tun device door
+    # existed). `check' answers 4 for that, and the advice changes accordingly.
+    stale=$(in_box "echo '# written by an older version' >> /etc/sudoers.d/marionnet; marionnet-setup-check.sh 2>&1") || true
+    if grep -q 'earlier version' <<<"$stale" && grep -q 'ADDITIVE' <<<"$stale"; then
+      pass "a socle written by an older version is reported as STALE, and refreshing is additive"
+    else
+      fail "a stale socle was not reported as such: [$(tail -n 3 <<<"$stale")]"
+    fi
+    in_box "marionnet-sudoers.sh uninstall" >/dev/null 2>&1 || true
+  else
+    fail "marionnet-sudoers.sh install root failed on a box furnished by apt alone"
   fi
 
   # ------------------------------------------------------------ 6. it starts

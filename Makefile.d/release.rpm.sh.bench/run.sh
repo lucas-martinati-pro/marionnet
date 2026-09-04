@@ -440,7 +440,7 @@ n=$(in_box "rpm -ql marionnet 2>/dev/null | grep -c '^/usr/bin/'")
 # The binary, its bare name (staged beside marionnet.native, episode 38) and the
 # companions of bin/scripts/ (see the twin case of the .deb bench for why this
 # number is written and not derived).
-test "$n" = 29 && pass "the 29 commands of bin/ are installed" || fail "expected 29 commands in /usr/bin, found $n"
+test "$n" = 30 && pass "the 30 commands of bin/ are installed" || fail "expected 30 commands in /usr/bin, found $n"
 
 n=$(in_box "ls /usr/share/bash-completion/completions/ 2>/dev/null | grep -cE 'mrn|marionnet'")
 test "$n" = 12 && pass "the twelve completion files are installed (episode 11a)" || \
@@ -482,6 +482,30 @@ if in_box 'ls /etc/sudoers.d/ 2>/dev/null | grep -q marionnet'; then
   fail "the package GRANTED a sudoers rule: it must only name it"
 else
   pass "no sudoers rule was granted (the %post only names it)"
+fi
+
+# ---------------------------------------------------------------- 5 bis. and only while true
+# The same discriminance as the twin section of the .deb bench, on the channel whose defect
+# was the opposite one: the %post used to be guarded by "$1 = 1", so it spoke on the first
+# installation and never again -- including on the machine which had never been granted
+# anything and was merely upgrading. The guard is gone; what decides now is the measurement.
+info "5 bis. what the check says, and stops saying"
+rc_before=0; before=$(in_box "marionnet-setup-check.sh 2>&1") || rc_before=$?
+if test "$rc_before" != 0 && grep -q 'marionnet-sudoers.sh install' <<<"$before"; then
+  pass "on a box where nothing is granted, the check SPEAKS and names \`install' (rc $rc_before)"
+else
+  fail "the check said nothing about the missing socle: [$(tail -n 3 <<<"$before")]"
+fi
+if in_box "marionnet-sudoers.sh install root" >/dev/null 2>&1; then
+  after=$(in_box "marionnet-setup-check.sh 2>&1") || true
+  if grep -q 'marionnet-sudoers.sh install' <<<"$after"; then
+    fail "the check still asks for a socle which is granted: [$(tail -n 3 <<<"$after")]"
+  else
+    pass "once the socle is granted, the check no longer asks for it (the upgrade defect)"
+  fi
+  in_box "marionnet-sudoers.sh uninstall" >/dev/null 2>&1 || true
+else
+  fail "marionnet-sudoers.sh install root failed on a box furnished by dnf alone"
 fi
 
 # ---------------------------------------------------------------- 6. the mtime UML checks

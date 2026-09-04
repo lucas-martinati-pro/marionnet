@@ -245,6 +245,13 @@
      ;; --- Called by the three installation channels, never fatal for them, and
      ;; --- runnable by hand the day the taps do not work (episode 40).
      (glob_files "scripts/marionnet-tun-check.sh")
+     ;; --- And what is still to be DONE on the machine: the sudoers socle, the guest
+     ;; --- images. Same shape as the one above -- it measures, it repairs nothing, it
+     ;; --- is never fatal for its callers -- and it holds the text ONCE for the two
+     ;; --- package channels, which used to recite it: the .deb at every `configure'
+     ;; --- (so an upgrade told a machine already set up to do what it had done), the
+     ;; --- .rpm on the first install only (so an upgrade said nothing at all).
+     (glob_files "scripts/marionnet-setup-check.sh")
      ;; --- And the door that PROVIDES that device, asked by Marionnet at each
      ;; --- start-up through sudo: /dev is volatile everywhere (a devtmpfs rebuilt
      ;; --- at each boot, a fresh tmpfs at each container start), so the node can

@@ -1410,6 +1410,29 @@ Reprise : appliquer le skill `chantier-long`.
   **600** sous plafond écran 1024x600 ; **845** ici — *le nombre suit la machine*. **Versé au
   TODO** : sur un écran plus court que la palette, les derniers composants restent hors
   d'atteinte (ni flèche, ni molette) — **défaut préexistant**, rendu rare et non corrigé.
+  **Ép. 44 : l'avertissement d'installation se mesure, au lieu de se réciter.** Un
+  `apt upgrade` en salle réaffichait mot pour mot le texte de première installation (*« it
+  cannot build its network taps yet »*, `install <user>`, `marionnet-get-images`) sur une
+  machine où **les deux gestes avaient été faits** — le `postinst` parle à **chaque**
+  `configure`, quand le `%post` rpm, gardé par `[ "$1" = 1 ]`, se taisait au contraire sur
+  une machine jamais grantée qui met à jour. *Compter les installations ne répond pas à la
+  question posée* : le socle est-il accordé **ici**, les images sont-elles là ?
+  `bin/scripts/marionnet-setup-check.sh` (**28ᵉ compagnon**, patron de `marionnet-tun-check.sh`
+  de l'ép. 40) mesure les deux et **se tait quand il n'y a rien à dire** ; les 2 canaux
+  l'appellent (`--package-manager apt|dnf`), le garde `$1 = 1` **tombe**, et le texte vit
+  **une fois**. **Le 3ᵉ état, que rien ne signalait** : `marionnet-sudoers.sh check` gagne
+  l'issue **`4`** — *accordé mais périmé* (`1` = non accordé, et domine `4`) —, contrat
+  `0 vs non-0` intact pour tous ses appelants ; c'est le cas de l'**ép. 42** (une machine
+  grantée avant la porte `marionnet-tun-device.sh` porte un fichier qui **passe pour
+  accordé**), et le conseil devient le bon : *rafraîchis, `install` est **additif***. **À ne
+  pas défaire** : hors root le fichier est 0440, donc le script **dit** qu'il ne peut pas
+  lire au lieu d'affirmer « pas accordé », et sans réponse de `marionnet.native --paths` —
+  **seul lecteur de la cascade**, ép. 28 — il ne dit **rien** des images (règle ép. 39) ;
+  le `prerm`/`%preun` est intact (sa phrase est déjà conditionnelle) et le **tarball** aussi
+  (son `install.sh` accorde lui-même le socle). Mesuré en `debian:12` root : parle (rc 1) /
+  **se tait** (rc 0) après `install root` / **périmé** signalé, `check` rendant **4** ; seul
+  le paquet manquant est nommé. Bancs paquets 29 → **30** noms + la discriminance, **rouges
+  jusqu'à la prochaine release**.
 
 ## Où puiser
 

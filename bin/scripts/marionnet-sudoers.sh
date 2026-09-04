@@ -135,7 +135,8 @@ function usage {
  cat 1>&2 <<EOF
 Usage: $TOOL print     [BLOCKS] [USER...]  # write the expected sudoers rules on stdout
        $TOOL check     [BLOCKS] [USER...]  # exit 0 iff every selected block grants every USER and
-                                           #   is up to date (root only: the files are 0440)
+                                           #   is up to date (root only: the files are 0440);
+                                           #   4 if granted but STALE, 1 if not granted
        $TOOL install   [BLOCKS] [USER...]  # grant them; needs root (re-execs with sudo)
        $TOOL uninstall [BLOCKS] [USER...]  # take the grant back; needs root (re-execs with sudo)
        $TOOL deny      BLOCK               # forbid a bridge block on this machine; needs root
@@ -731,6 +732,17 @@ function block_content {
 # is an admin check, meaningful for root only. What the runtime asks instead is
 # "can I run the commands without a password", which Tap_provider.is_usable
 # probes with a harmless `sudo -n ip tuntap del' of a tap that does not exist.
+#
+# TWO questions, therefore TWO answers, and they are not the same news: 1 says
+# the grant is NOT there, 4 says it is there but STALE -- the file was written by
+# an older version of this script and does not name everything we would name now
+# (the tun device door of `marionnet-tun-device.sh' is exactly such a line: a
+# machine granted before it existed has a file that passes for granted and does
+# not carry it). Whoever asks needs to tell those apart to say the right thing;
+# the file itself is the only place that knows, so the distinction is made here
+# rather than guessed by the caller. The old contract -- 0 versus non-0 -- is
+# untouched for everybody who only ever asked "is it granted?".
+CHECK_STALE=4
 function check_block {
  local b=$1; shift
  local f u
@@ -745,7 +757,7 @@ function check_block {
  for u in "$@"; do
    if ! member_of "$u" "${granted[@]}"; then return 1; fi
  done
- diff -q <(block_content "$b" "${granted[@]}") "$f" >/dev/null
+ diff -q <(block_content "$b" "${granted[@]}") "$f" >/dev/null || return $CHECK_STALE
 }
 
 # write_block_file BLOCK FILE USER...: generate, validate, adopt. Validated by
@@ -1043,8 +1055,13 @@ case "$COMMAND" in
      done
      ;;
   check)
+     # The worst verdict of the selected blocks wins, and "not granted" is worse
+     # than "stale": a caller which learns 4 is told to REFRESH a grant, which
+     # would be the wrong advice for a block that has none.
      rc=0
-     for b in "${BLOCKS[@]}"; do check_block "$b" "${PRINCIPALS[@]}" || rc=1; done
+     for b in "${BLOCKS[@]}"; do
+       check_block "$b" "${PRINCIPALS[@]}" || { [[ $? -eq $CHECK_STALE && $rc -ne 1 ]] && rc=$CHECK_STALE || rc=1; }
+     done
      exit $rc
      ;;
   policy)

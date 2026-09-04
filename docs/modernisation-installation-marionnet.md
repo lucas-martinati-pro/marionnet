@@ -5662,3 +5662,100 @@ Le nombre suit donc la machine : 778 sur une Ubuntu nue, 845 ici — là où une
 Versé à `docs/TODO.md` : sur un écran **plus court que la palette**, les derniers composants
 restent hors d'atteinte (ni flèche, ni molette — mesuré). **Défaut préexistant**, que
 l'ajustement rend rare au lieu de le corriger.
+
+## Épisode 44 (2026-09-04) — l'avertissement d'installation se mesure, au lieu de se réciter
+
+### Le constat
+
+En salle (Docker Ubuntu 24.04), un `apt upgrade` de `marionnet_1.0.392+r966` vers
+`1.0.402+r976` réaffiche **mot pour mot** l'avertissement de première installation :
+
+```
+Paramétrage de marionnet (1.0.402+r976) ...
+==> Marionnet is installed, but it cannot build its network taps yet.
+    ...
+        sudo marionnet-sudoers.sh install <user>
+    ...
+        marionnet-get-images
+```
+
+Or les deux gestes avaient été faits. Le message est **faux dans ce cas**, et un avertissement
+qui se trompe est un avertissement qu'on cesse de lire — la même famille que l'ép. 40, où
+l'avertissement des taps accusait le seul coupable qu'il savait nommer.
+
+**Ce que les deux canaux faisaient, tous deux à côté de la question :**
+
+| canal | avant | défaut |
+|---|---|---|
+| `.deb` (`postinst`, `configure`) | texte affiché à **chaque** configuration | ment sur toute mise à jour d'une machine déjà réglée |
+| `.rpm` (`%post`, `[ "$1" = 1 ]`) | texte affiché à la **première** installation | se tait sur une machine jamais grantée qui met à jour |
+
+**Compter les installations ne peut pas répondre à la question posée** : *ce socle est-il
+accordé sur cette machine, ces images sont-elles là ?* Seule une mesure le peut.
+
+### Le correctif : un script qui mesure, et le texte une seule fois
+
+`bin/scripts/marionnet-setup-check.sh` — **28ᵉ compagnon**, patron exact de son frère
+`marionnet-tun-check.sh` (ép. 40) : il mesure, il ne répare rien, il n'est **jamais fatal** pour
+ses appelants, et il se tape à la main le jour où l'on se demande ce qu'il reste à faire. Les
+deux canaux paquets l'appellent (`--package-manager apt|dnf`, dérivé si l'argument manque) et
+ne récitent plus rien ; le garde `[ "$1" = 1 ]` du `%post` **tombe**, puisque c'est la mesure
+qui décide. Le texte vit donc **une fois** pour les deux canaux, et les deux disent enfin la
+même chose au même moment.
+
+**Deux mesures indépendantes, et le silence quand il n'y a rien à dire :**
+
+1. **le socle sudoers** — `marionnet-sudoers.sh check` ;
+2. **les images et les noyaux** — les deux répertoires sont demandés à
+   `marionnet.native --paths`, **seul lecteur de la cascade** (ép. 28) ; relire
+   `/etc/marionnet/marionnet.conf` en bash serait la seconde implémentation que l'ép. 8 a
+   supprimée. Et seul ce qui manque est nommé : conseiller un paquet déjà installé est la
+   version réduite du défaut que cet épisode solde.
+
+### Le troisième état, que rien ne signalait
+
+`check` rendait deux verdicts distincts et les écrasait en un seul. La question « ce fichier
+est-il **périmé** ? » porte sur le fichier, donc son propriétaire est `marionnet-sudoers.sh`,
+pas un `postinst` : `check` gagne une **3ᵉ issue**, `4` — *accordé, mais écrit par une version
+antérieure* — `1` restant *non accordé* et dominant `4` quand plusieurs blocs sont interrogés.
+Le contrat existant (**0 contre non-0**) est intact pour tous les appelants d'aujourd'hui.
+
+C'est exactement le cas de l'**ép. 42** : une machine grantée avant que la porte
+`marionnet-tun-device.sh` n'existe porte un fichier qui **passe pour accordé** et ne la contient
+pas. L'épisode 42 le savait et ne pouvait le dire à personne ; le conseil est maintenant le bon
+— *rafraîchis, `install` est **additif***, et non *accorde-le*, qui serait faux.
+
+### À ne pas défaire
+
+- **Ne pas pouvoir mesurer n'est pas un verdict négatif** (règle de l'ép. 39) : hors root le
+  fichier est 0440, donc le script **le dit** au lieu d'affirmer « pas accordé » ; sans binaire
+  ou sans réponse de `--paths`, il ne dit **rien** des images plutôt que quelque chose qu'il ne
+  peut pas soutenir.
+- Le `prerm` / `%preun` n'est **pas** touché : sa phrase est déjà conditionnelle (« *If you
+  installed the Marionnet sudoers rule…* »), donc vraie.
+- Le canal **tarball** n'a pas le défaut et reste inchangé : son `install.sh` connaît
+  `SUDO_USER` et **accorde lui-même** le socle.
+
+### Mesuré
+
+Conteneur `debian:12` en **root** (les scripts posés root-owned dans `/usr/bin`, `iproute2` et
+`sudo` installés) :
+
+| état de la machine | ce que le script dit | rc |
+|---|---|---|
+| rien d'accordé | *« cannot build its network taps yet »*, nomme `install <user>` | 1 |
+| `marionnet-sudoers.sh install root` joué | **rien** | 0 |
+| une ligne ajoutée au fichier (socle périmé) | *« written by an earlier version »*, nomme `install`, dit **ADDITIVE** | 1 |
+| `check` seul sur ce même fichier | — | **4** |
+
+Répertoires : `filesystems/` et `kernels/` vides → paragraphe complet ; noyaux posés, images
+vides → **seul** `marionnet-fs-guignol` est nommé ; les deux pleins → silence. `dune build`
+rc 0 ; `dune install --prefix` place le script parmi les **28** de `share/marionnet/scripts/`,
+que `release.binary.sh` copie par **glob** dans `bin/` — d'où **30** noms.
+
+### Reste
+
+Les deux bancs paquets passent le compte de noms à **30** et gagnent la discriminance de cet
+épisode (le même script parle, puis cesse de parler, sur la même boîte). Comme d'habitude
+pendant la campagne, ils mesurent le paquet **publié** : ces cas sont **rouges par construction
+jusqu'à la prochaine release** (motif ép. 20c → 22, 28 → 30b quater).

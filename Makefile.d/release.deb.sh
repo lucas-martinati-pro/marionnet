@@ -584,33 +584,20 @@ Description: virtual network laboratory
  suggests, and the larger images are downloaded by marionnet-install.sh.
 EOF
 
-  # The scoped sudoers rule Marionnet needs to build its ghost taps. NAMED here, not
-  # granted: `apt install' does not know which human this machine belongs to (see the
-  # header, invariant 3). The rule text itself lives in exactly one place -- the script.
+  # What is left to do on the machine: the scoped sudoers rule Marionnet needs to build
+  # its ghost taps -- NAMED here, not granted, since `apt install' does not know which
+  # human this machine belongs to (see the header, invariant 3) -- and the guest images.
+  # NOT recited here: this postinst runs at every `configure', so a fixed text told a
+  # machine set up months ago, on every upgrade, to do what it had already done. The
+  # question is measured instead, by the script which holds the text once for the two
+  # package channels. Never fatal, exactly like its sibling below: a postinst also runs
+  # in chroots and in images being built.
   cat > "$root/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 case "$1" in
   configure)
-    cat <<'MESSAGE'
-==> Marionnet is installed, but it cannot build its network taps yet.
-
-    One scoped sudoers rule is needed, and this package does not grant it: a
-    package installation cannot tell WHICH user this machine belongs to. Run,
-    as an administrator:
-
-        sudo marionnet-sudoers.sh install <user>
-
-    That grants the socle (block a). The NAT and LAN bridge grants are asked
-    for by the user, from the interface, the day a bridge component is started.
-
-    Guest images and UML kernels: apt install marionnet-fs-guignol
-    marionnet-kernels for the small ones. The larger images (Debian wheezy,
-    Debian trixie) are not in apt -- gibibytes are not what a package manager
-    is for -- and this command offers them as a list to tick:
-
-        marionnet-get-images
-MESSAGE
+    [ -x /usr/bin/marionnet-setup-check.sh ] && /usr/bin/marionnet-setup-check.sh --package-manager apt || true
     # What the machine must provide besides the packages (episode 40). Never
     # fatal: this runs in chroots and in image builds, where the device is
     # legitimately absent -- the container that RUNS Marionnet is the one that
