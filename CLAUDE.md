@@ -361,6 +361,9 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
 - **Rôle d'un fichier** : `CLAUDE-file-overview.md` du dossier (`bin/`, `bin/gui/`).
 - **Chantiers** (skills à charger en l'annonçant) : `marionnet-composants`, `marionnet-build`,
   `marionnet-gui`, `marionnet-pupisto` (`.claude/skills/`).
+- **Juger les binaires d'une image invitée** (sonder / décider une fois / appliquer) : skill
+  `marionnet-triage-binaires` — la passe de décision et les interdits ; conception et journal
+  dans `docs/triage-binaires-image-invitee.md`.
 - **Concevoir, jouer et NOTER un TP** (canal de contrôle + mode examen) : skill
   `marionnet-lab-design`, qui renvoie au document livré `doc-src/lab-design-skill.md`.
 - **Code OCaml** (`bin/` + `lib/`, hors `uml/`) : skill `marionnet-ocaml` — outillage

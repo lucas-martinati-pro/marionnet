@@ -539,7 +539,7 @@ décision au milieu**. Le livrable se sépare donc exactement là où la chaîne
 |---|---|---|
 | **La politique** | TSV versionné | *Le plus précieux* : le jugement accumulé, sans quoi il serait re-dérivé (ou re-payé en tokens) à chaque image |
 | **La mécanique** | **2 cibles `make`** : `filesystem.probe-image-binaries`, `filesystem.apply-binary-policy` *(nommées à l'ép. 9 ; l'ép. 0 les appelait `image-probe`/`image-apply`)* | Maillons linéaires et sans connaissance propre ⇒ pas de script de regroupement (ép. 26) |
-| **Le jugement + le rituel** | **1 skill** | La seule part qu'une cible `make` ne peut pas porter |
+| **Le jugement + le rituel** | **1 skill** : `.claude/skills/marionnet-triage-binaires/` *(livré à l'ép. 10)* | La seule part qu'une cible `make` ne peut pas porter |
 | **L'archive** | ce document + la fiche mémoire | Convention des chantiers du dépôt |
 
 **Ce que le skill contient — et ne contient pas.** Il porte (1) la *passe de décision* ;
@@ -547,6 +547,25 @@ décision au milieu**. Le livrable se sépare donc exactement là où la chaîne
 ne se re-dérive pas**, **`ldd` répond à « est-ce une application X ? »**, et **republier une
 image, c'est la renommer**. Il ne recopie ni la grammaire des scripts ni la politique : il
 **renvoie ici**, comme les autres skills du dépôt.
+
+**Écrit à l'épisode 10, 89 lignes.** Il porte les quatre étages en une table (où l'agent *se
+tient* : **entre** la sonde et la politique, jamais dans la boucle), la passe de décision en cinq
+temps — prendre le rapport **entier**, **relire aussi les `OK`**, poser la question de l'ép. 6 à
+**chaque maillon**, écrire **une ligne par cas examiné**, adosser chaque ligne à une preuve —,
+puis **onze interdits**, chacun payé par une mesure d'un épisode. Deux ont été ajoutés à ceux que
+l'ouverture avait prévus, parce qu'ils sont ce qui coûte le plus cher quand on l'ignore :
+*une action se **mesure** dans l'invité avant d'être appliquée* — et, en le vérifiant dans le
+`Makefile` au moment de l'écrire, **l'étage 3a sans options écrit une nouvelle image dans le
+répertoire de release**, d'où les deux répétitions `--dry-run` puis `--measure` — et *une cause
+structurelle se vérifie par la **structure**, jamais par le motif du message*. La formulation de
+l'ouverture (« `ldd` répond à… ») a été corrigée en « **`ldd` non : la fermeture transitive vers
+`libX11`** » : l'esprit de la règle tient (on **mesure**, on ne lit pas une liste écrite à la
+main), l'instrument a changé à l'ép. 2 — un skill qui aurait gardé la lettre aurait enseigné un
+instrument que l'ép. 1 a mesuré **faux *et* trop lent** (§ 3.3).
+
+**Ce qu'il ne fait pas** : aucune option n'y est documentée (`--help` du script, § 4 et § 5 de ce
+document), et il n'y a **aucun skill coordinateur** — la chaîne reste deux cibles `make` avec une
+décision au milieu.
 
 ## 8. Réserves établies à l'ouverture
 
@@ -558,6 +577,38 @@ image, c'est la renommer**. Il ne recopie ni la grammaire des scripts ni la poli
   *backing file* fait foi (ép. 23). Chaque tour d'application produit une image **neuve**.
 
 ## 9. Journal d'avancement
+
+### 2026-09-05 — épisode 10 : le jugement, écrit là où une cible `make` ne peut pas le porter
+
+L'épisode 10 *prévu* — la première image **construite** avec la politique — dépend du chantier
+parent `marionnet-kernel-rootfs` : on ne construit pas une image invitée pour ce seul motif. Comme
+à l'épisode 9, l'épisode joue donc la part du § 7 qui ne demande **aucune image**, et l'image
+neuve glisse à l'épisode 11 (la clôture suivra).
+
+**Livré** : `.claude/skills/marionnet-triage-binaires/SKILL.md` (89 lignes), et son pointeur dans
+le `CLAUDE.md` du projet. Le § 7 ci-dessus dit ce qu'il contient et pourquoi ; deux points valent
+d'être notés ici, parce qu'ils ont été **trouvés en l'écrivant**, pas recopiés :
+
+- **Une garde que le chantier connaissait sans l'avoir énoncée comme telle** : l'étage 3a
+  **sans options écrit une nouvelle image dans le répertoire de release**. Le commentaire de la
+  cible `make` le disait déjà (épisode 9) ; le skill en fait un **interdit** au même rang que
+  « une sonde ne publie jamais », avec ses deux répétitions (`--dry-run`, puis `--measure`).
+  C'est la seule marche de la chaîne qui publie, et c'est celle qu'on atteint par défaut.
+- **La lettre du § 7 avait vieilli** : il prescrivait d'enseigner que « `ldd` répond à *est-ce une
+  application X ?* », formulation de l'épisode 0 que l'épisode 1 a mesurée **fausse *et* trop
+  lente** et que l'épisode 2 a remplacée par une fermeture transitive vers `libX11`. Le skill
+  enseigne la **règle** (on mesure, on ne lit pas une liste écrite à la main) et l'**instrument
+  actuel**. C'est la même famille de défaut que le chantier traque depuis l'épisode 3 — *juger par
+  autre chose que ce qu'on mesure* —, ici sous sa forme documentaire : un livrable de clôture
+  écrit d'après un plan d'ouverture, et non d'après l'état mesuré.
+
+**Vérifié en l'écrivant, pas supposé** : les deux cibles existent bien (`Makefile:541,553,775`),
+la politique est bien à 225 lignes, les colonnes du rapport sont bien celles que le skill annonce
+(`name verdict rc probe via <message>`, en-tête d'un rapport de `docs/probe-reports/`), le défaut
+de `--output` est bien `docs/probe-reports/<image>-<date>.tsv`, et `pupisto` dit bien
+*nothing to apply* pour une distribution sans politique (`pupisto.debian.sh:1162`). Le harness a
+chargé le skill dès son écriture — sa `description` est donc bien celle qui le rendra
+découvrable. **Aucun boot, aucune image, rien d'appliqué.**
 
 ### 2026-09-05 — épisode 9 : les deux bouts de la chaîne deviennent des cibles
 
