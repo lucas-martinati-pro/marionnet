@@ -5893,3 +5893,81 @@ L'ép. 43 avait remplacé une **constante devinée** par une **mesure**. Il rest
 qu'une mesure a un **instant** : lue trop tôt, elle est aussi fausse qu'une constante — et
 d'autant plus traître qu'elle est *parfois* juste. La forme qui tient : **répéter, et n'agir que
 sur deux lectures qui s'accordent**.
+
+---
+
+## Note (2026-09-04) — un hôte sans espace disque produit des symptômes qui ressemblent à des défauts d'interface
+
+Signalé en salle : la fenêtre principale, après l'ajustement de l'ép. 43 bis, **grandissait toute
+seule jusqu'au bord bas de l'écran** au démarrage d'une machine virtuelle. Le journal de la
+séance a d'emblée **disculpé le mécanisme** — ses trois lignes s'arrêtent à `542 → 781`, palette
+`616/616`, et **aucune** ligne ne l'accompagne pendant la croissance suivante (≈ 1044 px) ; sa
+boucle est d'ailleurs morte depuis six secondes.
+
+La reproduction a échoué ici sur tous les chemins essayés (écran 1440, session pilotée, même
+topologie, `--keep-dialogs`, fenêtre rétrécie de force). **Trois hypothèses y sont mortes** : ce
+n'est pas la boucle, ce n'est pas l'application (il y a **exactement un** `#resize` dans le
+dépôt, aucun `set_default_size`, aucune maximisation), et ce n'est pas un plancher imposé par
+`show-arrow=False` — mesuré, `xwininfo` rend un minimum de **1102 × 364**, le `GtkScrolledWindow`
+absorbant le minimum de la palette.
+
+**Le fait qui a clos l'incident** est venu de l'hôte, pas du code : l'installation des images
+invitées (`marionnet-get-images`) avait **rempli le disque**. Le symptôme n'est pas reparu une
+fois la place rendue.
+
+**Ce qu'il faut en retenir**, parce que la salle le représentera : un hôte à court d'espace
+disque fait échouer en silence des choses dont l'interface dépend (le `dot` qui écrit le PNG du
+réseau, les fichiers COW et de swap, les caches de GTK), et **le premier réflexe est d'accuser la
+fenêtre**. Avant de chercher un défaut de *layout*, demander un `df`. Ce qui reste du travail :
+la **sonde** committée à cette occasion (`a4f5dfb`, un écouteur `size-allocate` qui écrit chaque
+changement de hauteur avec son instant, muet sans `--debug`) — au prochain rapport, le journal
+nommera l'événement au lieu de laisser deviner. Et le défaut **reproductible** que l'incident a
+mis au jour, lui, part au TODO : `marionnet-get-images` remplit l'hôte **sans jamais regarder la
+place disponible**.
+
+---
+
+## Épisode 46 (2026-09-05) — le noyau arrive avec l'application, là où le gestionnaire de paquets tient parole
+
+### Le constat
+
+`apt install marionnet` n'apportait que l'application : les trois paquets de données étaient des
+`Suggests:`, que rien n'installe. Le message d'après-installation (ép. 44, 45) **mesurait** et
+disait `sudo apt install marionnet-kernels` — mais dire n'est pas faire, et **sans noyau UML rien
+ne démarre du tout** : l'utilisateur obtient une application qui s'ouvre et ne peut rien booter.
+
+### Ce qui empêchait de simplement passer en `Recommends:`
+
+Une décision **déjà mesurée**, écrite dans `Makefile.d/release.rpm.sh` : `Recommends:` avait été
+essayé et **dnf saute en silence** la dépendance faible sur `marionnet-kernels` (qui tire
+`glibc.i686`) tout en honorant celle sur `marionnet-fs-guignol` (noarch). Une image sans noyau,
+et rien qui dise pourquoi : *la moitié qui arrive est pire que rien*. D'où `Suggests:` — et, par
+la règle « les deux canaux donnent la même chose pour le même geste », `Suggests:` **aussi** côté
+Debian, où pourtant rien n'empêchait le noyau d'arriver.
+
+### Le correctif : la même promesse, pas le même mot-clef
+
+Ce que les deux canaux se doivent est une **promesse** — après une commande, une machine qui peut
+booter, et un message qui nomme ce qui manque encore — et non un mot-clef identique. Là où le
+gestionnaire de paquets sait la tenir, il la tient ; là où il ne le sait pas, le message la tient.
+
+* `.deb` : **`Recommends: marionnet-kernels`** (apt l'installe par défaut ; `--no-install-recommends`
+  reste la porte de sortie), `Suggests: marionnet-fs-guignol, marionnet-kernels-i386` — les
+  gibioctets restent un choix, et le noyau 32 bits demande une architecture étrangère.
+* `.rpm` : **inchangé**, `Suggests:` pour les trois, la mesure ci-dessus n'ayant pas bougé. Son
+  commentaire dit désormais que l'asymétrie est **voulue** et pourquoi, au lieu d'invoquer une
+  symétrie qui n'est plus la règle.
+
+Les 4 pages d'installation suivent : `INSTALL{,.FR}.md` explique ce que chaque canal apporte
+**et pourquoi ils diffèrent** ; `INSTALL-quick-guide{,.FR}.md` cesse de faire taper une commande
+qu'apt a déjà jouée. Le `%description` du RPM disait « recommends » alors que le canal
+`Suggests:` — corrigé, et il nomme maintenant le noyau comme *ce par quoi commencer*.
+
+### Reste
+
+**La preuve ne peut pas se prendre ici** : elle exige de construire et de publier les paquets,
+donc une release — interdite jusqu'à la fin de la campagne. Ce qui est vérifiable l'a été :
+`bash -n` sur les deux publieurs, et aucun banc ni aucune page ne cite plus un `Suggests:` de
+noyau. Le cas à jouer au prochain tour de release : `apt install marionnet` dans une `debian:12`
+nue **amène `marionnet-kernels`** (et `apt install --no-install-recommends marionnet` ne l'amène
+pas), tandis que `dnf install marionnet` ne l'amène toujours pas et **le dit**.

@@ -558,6 +558,23 @@ EOF
   done
   runtime=$(printf '%s, ' "${keep[@]}"); runtime="${runtime%, }"
 
+  # --- The kernel is Recommends:, the images are Suggests:
+  #
+  # `apt install marionnet' must bring something that can boot, and without a UML kernel
+  # nothing starts at all: apt installs Recommends: by default, so the kernel comes along
+  # (and `--no-install-recommends' is there for whoever does not want it). The images stay
+  # Suggests: -- gibibytes are a choice, and marionnet-get-images is the command that makes
+  # it -- and so does marionnet-kernels-i386, which only the old kernel/filesystem couples
+  # need and which asks for a foreign architecture.
+  #
+  # This is DELIBERATELY not what the RPM channel does, and the asymmetry is measured, not a
+  # slip: there, Recommends: on marionnet-kernels was honoured for the noarch image and
+  # SILENTLY SKIPPED for the kernel, which pulls glibc.i686 (see suggests_lines in
+  # release.rpm.sh). Half a contract -- an image and no kernel -- is worse than none, so dnf
+  # keeps Suggests: and says the rest in its %post. Apt has no such trap: it installs the
+  # weak dependency or says why. The two channels therefore promise the same THING (a
+  # machine that can boot after one command, plus a message naming what is still missing),
+  # by the means each package manager actually honours.
   cat > "$root/DEBIAN/control" <<EOF
 Package: marionnet
 Version: $version
@@ -567,7 +584,8 @@ Architecture: $APP_ARCH
 Maintainer: $MAINTAINER
 Homepage: $HOMEPAGE
 Depends: $shlibs, $runtime
-Suggests: marionnet-kernels, marionnet-fs-guignol, marionnet-kernels-i386
+Recommends: marionnet-kernels
+Suggests: marionnet-fs-guignol, marionnet-kernels-i386
 Description: virtual network laboratory
  Marionnet lets a student define, configure and run a complete computer network
  -- machines, routers, switches, hubs, cables, gateways -- on a single host, with
@@ -580,8 +598,10 @@ Description: virtual network laboratory
  marionnet-get-images command which fetches the larger guest images, and the
  delivered documentation in /usr/share/doc/marionnet.
  .
- The UML kernels and the guest images it boots are in the packages this one
- suggests, and the larger images are downloaded by marionnet-install.sh.
+ The 64-bit UML kernel it boots is recommended by this package, so `apt install'
+ brings it along: without a kernel nothing starts at all. The guest images are a
+ choice, not an implication -- the small one is the suggested marionnet-fs-guignol,
+ the larger ones are downloaded by marionnet-get-images.
 EOF
 
   # What is left to do on the machine: the scoped sudoers rule Marionnet needs to build

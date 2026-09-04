@@ -54,7 +54,7 @@ gpg --show-keys /etc/apt/keyrings/marionnet.asc     # must print the fingerprint
 ### 1.4 Data packages — alone, the application boots nothing
 
 ```bash
-sudo apt install marionnet-kernels          # 64-bit kernel: without it, no recent image (trixie)
+sudo apt install marionnet-kernels          # 64-bit kernel -- apt brought it already (Recommends:); ask for it under dnf
 sudo apt install marionnet-fs-guignol       # the only ROUTER filesystem: without it, no router
 ```
 

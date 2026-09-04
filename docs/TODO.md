@@ -239,3 +239,37 @@ décisions se tiennent l'une l'autre, ce qui est exactement le critère du skill
   (`doc-src/INSTALL{,.FR}.md`, `doc-src/INSTALL-quick-guide{,.FR}.md`) disent aujourd'hui qu'un
   routeur coûte deux paquets et annoncent cette image comme **prévue** : la clôture du chantier
   devra les corriger, ainsi que le `.html` publié.
+
+---
+
+## Défaut — `marionnet-get-images` remplit le disque **sans jamais regarder la place disponible**
+
+**Constat** (2026-09-04, poste de salle) : servir les images invitées a **rempli l'espace disque
+de l'hôte**. Vérifié dans le code : `bin/scripts/marionnet-install.sh` (qui est aussi
+`marionnet-get-images`) ne contient **aucun** `df`, `statvfs` ni test d'espace — 1170 lignes, zéro
+occurrence. Rien n'est vérifié ni avant le téléchargement, ni avant l'extraction. La machine se
+remplit, et ce qui casse ensuite casse **ailleurs** (dans l'application, dans GTK, dans `dot`),
+sans que rien ne désigne la cause — c'est exactement ce qui a fait accuser la fenêtre principale
+d'un défaut de *layout* (cf. la note de clôture d'`docs/modernisation-installation-marionnet.md`).
+
+**Ce qu'on veut à la place** : avant de servir une sélection, comparer ce qu'elle pèse à ce que le
+système de fichiers **de destination** offre encore, et **refuser en nommant les deux nombres**
+plutôt que remplir. Le geste est peu coûteux : le chooser **connaît déjà la taille** de chaque
+artefact — `artifact_size` la lit dans le `Content-Length` d'un `HEAD` et le menu l'affiche
+(`--list` la publie aussi).
+
+**Obstacles déjà identifiés** :
+
+* la taille connue est celle du **compressé**. L'extraction pèse plusieurs fois plus (facteur
+  usuel 3 à 4 en `xz` sur ces images) et **aucun catalogue ne porte la taille décompressée** :
+  soit on applique une marge assumée et on le dit, soit on ajoute la taille réelle au catalogue —
+  ce qui touche `Makefile.d/release.sha256sums.sh`, **seul écrivain** de `SHA256SUMS` (ép. 8) ;
+* `artifact_size` peut légitimement répondre **inconnu** (corps *chunked* ou compressé, cf. son
+  commentaire) : le garde-fou doit alors **avertir sans refuser**, sinon il bloque un cas
+  parfaitement sain ;
+* la destination n'est pas forcément le système de fichiers courant (`--prefix`, ou les
+  répertoires que `marionnet.native --paths` désigne) : le `df` doit porter sur **le répertoire
+  cible**, pas sur `$PWD` ;
+* bonne nouvelle à ne pas défaire : l'extraction **ruisselle** (`xz -dc -T0 | tar xf -`, ép. 3),
+  donc il n'y a **pas** de pic à « compressé + décompressé » — le besoin à vérifier est bien la
+  taille décompressée seule.

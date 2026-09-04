@@ -97,12 +97,19 @@ repository (it has its own verifier); you need it to *read* what you fetched.
 
 ### The packages
 
-`apt install marionnet` installs **the application alone** — the data packages are `Suggests:`,
-so that this command means the same thing here as `dnf install marionnet` does in § 3. They are
-not accessories: **alone, the application boots nothing.** A guest needs a filesystem *and* a
-kernel that filesystem declares support for, and Marionnet **does not offer** a filesystem for
-which no supported kernel is installed. Nothing fails and nothing is said: the component is
-simply absent from the list.
+`apt install marionnet` installs the application **and the 64-bit kernel**: `marionnet-kernels`
+is a `Recommends:`, which apt installs by default — without a kernel nothing starts at all.
+(`--no-install-recommends` is there for whoever does not want it.) The **images** stay
+`Suggests:`: gibibytes are a choice, not an implication. In § 3, `dnf install marionnet` brings
+the application only, and that is **measured, not an oversight**: dnf silently skips the weak
+dependency on the kernel (which pulls `glibc.i686`), so that channel keeps it a `Suggests:` and
+says so after the installation. In both cases the post-installation message **measures** what is
+still missing and names it.
+
+They are not accessories: **without an image, the application boots nothing.** A guest needs a
+filesystem *and* a kernel that filesystem declares support for, and Marionnet **does not offer**
+a filesystem for which no supported kernel is installed. Nothing fails and nothing is said: the
+component is simply absent from the list.
 
 | Package | What it carries — and what is missing without it |
 |---|---|

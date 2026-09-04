@@ -655,18 +655,21 @@ function rpm_requires_of_debian_package {  # <debian package name>: prints one R
 }
 
 # ---
-# --- The kernels and the guest image: Suggests:, like the Debian channel, and not Recommends:
+# --- The kernels and the guest image: Suggests: here, where the Debian channel Recommends: the kernel
 # ---
-# Both channels must give the same thing for the same gesture. `apt install marionnet' brings
-# the application alone -- the three data packages are Suggests: there -- and the postinst says
-# what to add; this one says the same in its %post, so it must behave the same.
-#
 # Recommends: was tried first and measured, which is how the choice stopped being a matter of
 # taste: dnf honoured the weak dependency on marionnet-fs-guignol (noarch) and SILENTLY SKIPPED
 # the one on marionnet-kernels -- which installs perfectly well when asked for by name, pulling
 # glibc.i686 with it. A weak dependency whose effect depends on whether the package happens to
 # need multilib is not a promise this channel can make, and half of it arriving is worse than
-# none: the user gets an image and no kernel, and nothing says why.
+# none: the user gets an image and no kernel, and nothing says why. Hence Suggests:, and a %post
+# which names what is still missing.
+#
+# The .deb channel DOES Recommends: marionnet-kernels, and the difference is deliberate (see the
+# control file in release.deb.sh): apt has no such trap -- it installs the weak dependency or
+# says why it cannot. What the two channels owe each other is the same PROMISE, not the same
+# keyword: after one command, a machine that can boot, and a message naming what is left. Where
+# a package manager cannot keep that promise silently, the message keeps it.
 function suggests_lines {
   echo "Suggests:       marionnet-kernels"
   echo "Suggests:       marionnet-fs-guignol"
@@ -779,7 +782,8 @@ marionnet-get-images command which fetches the larger guest images, and the
 delivered documentation in /usr/share/doc/marionnet.
 
 The UML kernels and the guest images it boots are in the packages this one
-recommends, and the larger images are downloaded by marionnet-get-images.
+suggests -- install marionnet-kernels first, since nothing boots without it -- and
+the larger images are downloaded by marionnet-get-images.
 
 %install
 cp -a %{_sourcedir}/tree/. %{buildroot}/

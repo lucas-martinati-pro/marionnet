@@ -108,9 +108,16 @@ vous avez récupéré.
 
 ### Les paquets
 
-`apt install marionnet` installe **l'application seule** — les paquets de données sont des
-`Suggests:`, afin que cette commande veuille dire ici la même chose que `dnf install marionnet`
-au § 3. Ce ne sont pas des accessoires : **seule, l'application ne démarre rien.** Un invité a
+`apt install marionnet` installe l'application **et le noyau 64 bits** : `marionnet-kernels` est
+un `Recommends:`, qu'apt installe par défaut — sans noyau, rien ne démarre du tout.
+(`--no-install-recommends` est là pour qui n'en veut pas.) Les **images**, elles, restent des
+`Suggests:` : des gibioctets sont un choix, pas une implication. Au § 3, `dnf install marionnet`
+n'apporte que l'application, et c'est **mesuré, pas négligé** : dnf saute en silence la dépendance
+faible sur le noyau (qui tire `glibc.i686`), donc ce canal la laisse en `Suggests:` et le dit
+après l'installation. Dans les deux cas, le message d'après-installation **mesure** ce qui manque
+encore et le nomme.
+
+Ce ne sont pas des accessoires : **sans image, l'application ne démarre rien.** Un invité a
 besoin d'un système de fichiers *et* d'un noyau que ce système de fichiers déclare supporter, et
 Marionnet **ne propose pas** un système de fichiers dont aucun noyau supporté n'est installé.
 Rien n'échoue et rien n'est dit : le composant est simplement absent de la liste.

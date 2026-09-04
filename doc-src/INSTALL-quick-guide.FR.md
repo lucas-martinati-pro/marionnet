@@ -58,7 +58,7 @@ gpg --show-keys /etc/apt/keyrings/marionnet.asc     # doit afficher l'empreinte 
 ### 1.4 Paquets de données — seule, l'application ne démarre rien
 
 ```bash
-sudo apt install marionnet-kernels          # noyau 64 bits : sans lui, aucune image récente (trixie)
+sudo apt install marionnet-kernels          # noyau 64 bits — déjà venu avec apt (Recommends:) ; à demander sous dnf
 sudo apt install marionnet-fs-guignol       # le seul système de fichiers de ROUTEUR : sans lui, pas de routeur
 ```
 
