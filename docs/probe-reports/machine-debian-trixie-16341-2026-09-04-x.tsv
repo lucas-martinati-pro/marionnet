@@ -1,0 +1,86 @@
+# probe report -- machine-debian-trixie-16341
+# taken     : 2026-09-04T01:52:25+02:00
+# image     : /home/jean/.shared/DEVEL/repos/MARIONNET-dune-project/website-repo/download/marionnet-install.sh/1.0.x/machine-debian-trixie-16341
+# sum       : 16341
+# candidates: 2060 (BINARY_LIST of the .conf)
+# probes    : help-timeout=5s x-timeout=6s x-only=1
+# X server  : DISPLAY=:0 vendor string: The X.Org Foundation X.Org version: 21.1.11 
+#
+# name	verdict	rc	probe	first line of stderr
+apache2ctl	X_DIED	1	x	Usage: /usr/sbin/apache2ctl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+apachectl	X_DIED	1	x	Usage: /usr/sbin/apachectl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+appres	X_OK	0	x	
+bin	MISSING	-	none	not in PATH
+bitmap	X_ALIVE	124	x	
+compose	X_OK	0	x	
+edit	X_OK	0	x	
+editres	X_ALIVE	124	x	
+fixproc	X_DIED	10	x	/usr/bin/fixproc: no process specified
+hwloc-gather-topology	X_DIED	1	x	
+hwloc-ls	X_ALIVE	124	x	
+ico	X_ALIVE	124	x	
+koi8rxterm	X_ALIVE	124	x	koi8rxterm tried to use locale ru_RU.KOI8-R by setting $LANG
+links2	X_DIED	4	x	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+lstopo	X_ALIVE	124	x	
+lxterm	X_ALIVE	124	x	
+marionnet-relay	X_DIED	1	x	+ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+oclock	X_ALIVE	124	x	
+open	X_OK	0	x	
+print	X_OK	0	x	
+rendercheck	X_ALIVE	124	x	
+run-mailcap	X_OK	0	x	
+sbin	MISSING	-	none	not in PATH
+see	X_OK	0	x	
+sensible-browser	X_ALIVE	124	x	
+setxkbmap	X_OK	0	x	
+snmpcheck	X_DIED	2	x	Can't locate Tk.pm in @INC (you may need to install the Tk module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64-linux-gnu/p
+transset	X_ALIVE	124	x	
+uxterm	X_ALIVE	124	x	
+viewres	X_ALIVE	124	x	
+www-browser	X_DIED	4	x	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+X11	MISSING	-	none	not in PATH
+x11perf	X_DIED	1	x	usage: /usr/bin/x11perf [-options ...]
+x11perfcomp	X_OK	0	x	
+xauth	X_OK	0	x	
+xbiff	X_ALIVE	124	x	
+xcalc	X_ALIVE	124	x	
+xclip	X_OK	0	x	
+xclipboard	X_ALIVE	124	x	
+xclip-copyfile	X_DIED	1	x	Usage: [options] /usr/bin/xclip-copyfile file...
+xclip-cutfile	X_DIED	1	x	Usage: [options] /usr/bin/xclip-cutfile file...
+xclip-pastefile	X_DIED	2	x	Error: target STRING not available
+xclock	X_ALIVE	124	x	
+xconsole	X_ALIVE	124	x	
+xcursorgen	X_DIED	1	x	/usr/bin/xcursorgen: Error reading config file from stdin
+xcutsel	X_ALIVE	124	x	
+xditview	X_ALIVE	124	x	
+xdpyinfo	X_OK	0	x	
+xdriinfo	X_ALIVE	124	x	
+xedit	X_ALIVE	124	x	
+xev	X_ALIVE	124	x	
+xeyes	X_ALIVE	124	x	
+xfd	X_DIED	1	x	/usr/bin/xfd:  no font to display
+xfontsel	X_ALIVE	124	x	
+xgc	X_ALIVE	124	x	
+xkbbell	X_OK	0	x	
+xkbcomp	X_DIED	1	x	Error:            No input file specified
+xkbevd	X_ALIVE	124	x	Temporarily disabling the audible bell
+xkbprint	X_DIED	1	x	Error:            No input file specified
+xkbvleds	X_ALIVE	124	x	
+xkbwatch	X_ALIVE	124	x	
+xkill	X_ALIVE	124	x	
+xlinks2	X_ALIVE	124	x	
+xload	X_ALIVE	124	x	
+xlogo	X_ALIVE	124	x	
+xlsfonts	X_OK	0	x	
+xmag	X_ALIVE	124	x	
+xman	X_ALIVE	124	x	
+xmessage	X_DIED	1	x	Unknown argument(s):
+xprop	X_ALIVE	124	x	
+xterm	X_ALIVE	124	x	
+x-terminal-emulator	X_ALIVE	124	x	
+xvinfo	X_OK	0	x	
+xwd	X_ALIVE	124	x	
+xwud	X_DIED	1	x	xwud: Error => Unable to read dump file header.
+x-www-browser	X_ALIVE	124	x	
+#END	-	-	-	elapsed=3287s

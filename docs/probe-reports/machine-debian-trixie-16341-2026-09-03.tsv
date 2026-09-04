@@ -1,0 +1,2070 @@
+# probe report -- machine-debian-trixie-16341
+# taken     : 2026-09-03T23:46:30+02:00
+# image     : /home/jean/.shared/DEVEL/repos/MARIONNET-dune-project/website-repo/download/marionnet-install.sh/1.0.x/machine-debian-trixie-16341
+# sum       : 16341
+# candidates: 2060 (BINARY_LIST of the .conf)
+# probes    : help-timeout=5s x-timeout=6s x-only=0
+# X server  : DISPLAY=:0 vendor string: The X.Org Foundation X.Org version: 21.1.11 
+#
+# name	verdict	rc	probe	first line of stderr
+[	OK	0	help	
+7z	OK	0	help	
+7za	OK	0	help	
+7zr	OK	0	help	
+a2disconf	ERR	2	help	Unknown option: help
+a2dismod	ERR	2	help	Unknown option: help
+a2dissite	ERR	2	help	Unknown option: help
+a2enconf	ERR	2	help	Unknown option: help
+a2enmod	ERR	2	help	Unknown option: help
+a2ensite	ERR	2	help	Unknown option: help
+a2query	OK	0	help	/usr/sbin/a2query version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+ab	ERR	22	help	/usr/bin/ab: wrong number of arguments
+accessdb	OK	0	help	
+aclocal	OK	0	help	
+aclocal-1.17	OK	0	help	
+addgnupghome	OK	1	help	addgnupghome: skeleton directory `/etc/skel/.gnupg' does not exist
+addgroup	OK	0	help	
+addr2line	OK	0	help	
+add-shell	OK	0	help	
+adduser	OK	0	help	
+adjtimex	OK	0	help	
+adjtimexconfig	OK	0	help	adjtimex: unable to open /dev/port read/write: No such file or directory
+agentxtrap	OK	1	help	Unrecognized option: --
+agetty	OK	0	help	
+airbase-ng	OK	1	help	
+aircrack-ng	OK	0	help	
+airdecap-ng	OK	1	help	
+airdecloak-ng	OK	0	help	
+aireplay-ng	OK	1	help	
+airmon-ng	OK	0	help	
+airodump-ng	OK	0	help	
+airodump-ng-oui-update	OK	1	help	
+airolib-ng	OK	1	help	
+airserv-ng	OK	1	help	/usr/sbin/airserv-ng: invalid option -- '-'
+airtun-ng	OK	1	help	
+airventriloquist-ng	OK	0	help	
+amdgpu-arch-19	OK	0	help	
+amuFormat.sh	OK	1	help	Usage: amuFormat.sh <Card Type> <drive>
+analyze-build-19	OK	0	help	
+androiddeployqt6	OK	1	help	QDir::mkpath: Empty or null file name
+apache2	OK	1	help	[Thu Sep 03 22:44:26.798471 2026] [core:warn] [pid 11281:tid 11281] AH00111: Config variable ${APACHE_RUN_DIR} is not defined
+apache2ctl	X_DIED	1	x	Usage: /usr/sbin/apache2ctl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+apachectl	X_DIED	1	x	Usage: /usr/sbin/apachectl start|stop|restart|graceful|graceful-stop|configtest|status|fullstatus|help
+applygnupgdefaults	OK	1	help	usage: applygnupgdefaults
+appres	X_DIED	0	x	
+apropos	OK	0	help	
+apt	OK	0	help	
+apt-cache	OK	0	help	
+apt-cdrom	OK	0	help	
+apt-config	OK	0	help	
+apt-extracttemplates	OK	0	help	
+apt-ftparchive	OK	0	help	
+apt-get	OK	0	help	
+aptitude	OK	0	help	
+aptitude-changelog-parser	ERR	25	help	aptitude-changelog-parser: error: cannot open file --help: No such file or directory
+aptitude-create-state-bundle	OK	1	help	
+aptitude-curses	OK	0	help	
+aptitude-run-state-bundle	OK	1	help	
+apt-mark	OK	0	help	
+apt-sortpkgs	OK	0	help	
+ar	OK	0	help	
+arch	OK	0	help	
+aria2c	OK	0	help	
+arj	ERR	7	help	
+arjdisp	OK	1	help	
+arj-register	OK	1	help	
+arp	OK	0	help	    ash (Ash) ether (Ethernet) ax25 (AMPR AX.25) 
+arpaname	OK	1	help	
+arpd	OK	1	help	/usr/sbin/arpd: invalid option -- '-'
+arping	OK	0	help	
+arptables	OK	0	help	
+arptables-nft	OK	0	help	
+arptables-nft-restore	OK	0	help	
+arptables-nft-save	OK	1	help	/usr/sbin/arptables-nft-save: unrecognized option '--help'
+arptables-restore	OK	0	help	
+arptables-save	OK	1	help	/usr/sbin/arptables-save: unrecognized option '--help'
+arptables-translate	OK	0	help	
+as	OK	0	help	
+asan_symbolize-19	OK	0	help	/usr/bin/asan_symbolize-19:319: SyntaxWarning: invalid escape sequence '\('
+assistant	OK	1	help	assistant: could not exec '/usr/lib/qt5/bin/assistant': No such file or directory
+atftpd	OK	0	help	
+atobm	OK	1	help	/usr/bin/atobm: unrecognized option '--help'
+attr	OK	1	help	/usr/bin/attr: invalid option -- '-'
+autoconf	OK	0	help	
+autoheader	OK	0	help	
+autom4te	OK	0	help	
+automake	OK	0	help	
+automake-1.17	OK	0	help	
+autoreconf	OK	0	help	
+autoscan	OK	0	help	
+autoupdate	OK	0	help	
+avcstat	OK	0	help	
+awk	OK	0	help	
+b2sum	OK	0	help	
+babeld	OK	1	help	/usr/sbin/babeld: invalid option -- '-'
+badblocks	OK	1	help	/usr/sbin/badblocks: invalid option -- '-'
+base32	OK	0	help	
+base64	OK	0	help	
+basename	OK	0	help	
+basenc	OK	0	help	
+bash	OK	0	help	
+bashbug	OK	0	help	
+bdftopcf	OK	1	help	/usr/bin/bdftopcf: invalid option '--help'
+bdftruncate	OK	1	help	Illegal threshold --help
+besside-ng	OK	1	help	/usr/sbin/besside-ng: invalid option -- '-'
+besside-ng-crawler	OK	0	help	
+bin	MISSING	-	none	not in PATH
+binwalk	OK	0	help	
+biosdecode	OK	0	help	
+bitmap	X_ALIVE	124	x	
+blkcalc	OK	1	help	/usr/bin/blkcalc: invalid option -- '-'
+blkcat	OK	1	help	/usr/bin/blkcat: invalid option -- '-'
+blkdeactivate	OK	0	help	
+blkdiscard	OK	0	help	
+blkid	OK	0	help	
+blkls	OK	1	help	/usr/bin/blkls: invalid option -- '-'
+blkmapd	OK	1	help	/usr/sbin/blkmapd: invalid option -- '-'
+blkstat	OK	1	help	/usr/bin/blkstat: invalid option -- '-'
+blkzone	OK	0	help	
+blockdev	OK	0	help	
+bmtoa	OK	1	help	/usr/bin/bmtoa: unrecognized option '--help'
+brctl	OK	0	help	
+bridge	ERR	255	help	Usage: bridge [ OPTIONS ] OBJECT { COMMAND | help }
+broadwayd	OK	0	help	
+buddy-ng	OK	1	help	/usr/bin/buddy-ng: invalid option -- '-'
+bugpoint-19	OK	0	help	
+bundle3.3	OK	0	help	
+bundler3.3	OK	0	help	
+bunzip2	OK	0	help	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+busctl	OK	0	help	
+bzcat	OK	0	help	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+bzcmp	OK	1	help	
+bzdiff	OK	1	help	
+bzegrep	ERR	2	help	
+bzexe	OK	1	help	
+bzfgrep	ERR	2	help	
+bzgrep	ERR	2	help	
+bzip2	OK	0	help	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+bzip2recover	OK	1	help	bzip2recover 1.0.8: extracts blocks from damaged .bz2 files.
+bzless	OK	0	help	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+bzmore	OK	0	help	bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+c++	OK	0	help	
+c89	OK	0	help	
+c89-gcc	OK	0	help	
+c99	OK	0	help	
+c99-gcc	OK	0	help	
+capinfos	OK	0	help	
+capsh	OK	0	help	
+captoinfo	OK	1	help	/usr/bin/captoinfo: invalid option -- '-'
+captype	OK	0	help	
+cardos-tool	ERR	2	help	
+cargo	OK	0	help	
+cat	OK	0	help	
+catman	OK	0	help	
+cc	OK	0	help	
+cfdisk	OK	0	help	
+c++filt	OK	0	help	
+chacl	OK	1	help	/usr/bin/chacl: invalid option -- '-'
+chage	OK	0	help	
+chardet	OK	0	help	
+chardetect	OK	0	help	
+charon-systemd	ERR	66	help	
+chat	OK	1	help	Usage: /usr/sbin/chat [-e] [-E] [-v] [-V] [-t timeout] [-r report-file]
+chattr	OK	1	help	Usage: /usr/bin/chattr [-RVf] [-+=aAcCdDeijPsStTuFx] [-p project] [-v version] files...
+chcon	OK	0	help	
+chcpu	OK	0	help	
+check_forensic	OK	0	help	
+checkgid	ERR	255	help	/usr/bin/checkgid: group '--help' not found
+chfn	OK	0	help	
+chgpasswd	OK	0	help	
+chgrp	OK	0	help	
+chmem	OK	1	help	chmem: Failed to read /sys/devices/system/memory: No such file or directory
+chmod	OK	0	help	
+choom	OK	0	help	
+chown	OK	0	help	
+chpasswd	OK	0	help	
+chronyc	OK	0	help	
+chronyd	OK	0	help	
+chroot	OK	0	help	
+chrt	OK	0	help	
+chsh	OK	0	help	
+chsh.ldap	OK	0	help	
+chvt	OK	0	help	Usage: chvt [option...] N
+cifscreds	OK	1	help	/usr/bin/cifscreds: unrecognized option '--help'
+cifs.idmap	OK	0	help	Usage: cifs.idmap [-h] [-v] [-t timeout] key_serial
+cifsiostat	OK	1	help	Usage: /usr/bin/cifsiostat [ options ] [ <interval> [ <count> ] ]
+cifs.upcall	OK	1	help	/usr/sbin/cifs.upcall: unrecognized option '--help'
+c-index-test-19	OK	1	help	usage: c-index-test -code-completion-at=<site> <compiler arguments>
+ckbcomp	OK	0	help	
+cksum	OK	0	help	
+clang++-19	OK	0	help	
+clang-19	OK	0	help	
+clang-apply-replacements-19	OK	0	help	
+clang-change-namespace-19	OK	0	help	
+clang-check-19	OK	0	help	
+clang-cl-19	OK	1	help	clang-cl-19: warning: unknown argument ignored in clang-cl '--help'; did you mean '-help'? [-Wunknown-argument]
+clang-cpp-19	OK	0	help	
+clang-doc-19	OK	0	help	
+clang-extdef-mapping-19	OK	0	help	
+clang-include-cleaner-19	OK	0	help	
+clang-include-fixer-19	OK	0	help	
+clang-installapi-19	OK	1	help	error: no output file specified
+clang-linker-wrapper-19	OK	0	help	
+clang-move-19	OK	0	help	
+clang-nvlink-wrapper-19	OK	0	help	
+clang-offload-bundler-19	OK	0	help	
+clang-offload-packager-19	OK	0	help	
+clang-pseudo-19	OK	0	help	
+clang-query-19	OK	0	help	
+clang-refactor-19	OK	0	help	
+clang-rename-19	OK	0	help	
+clang-reorder-fields-19	OK	0	help	
+clang-repl-19	OK	0	help	
+clang-scan-deps-19	OK	0	help	
+clang-tblgen-19	OK	0	help	
+clear	OK	1	help	/usr/bin/clear: invalid option -- '-'
+clear_console	OK	0	help	Usage: clear_console [option]
+clockdiff	OK	0	help	
+cmp	OK	0	help	
+codepage	OK	0	help	
+col	OK	0	help	
+colcrt	OK	0	help	
+colrm	OK	0	help	
+column	OK	0	help	
+comm	OK	0	help	
+compose	X_DIED	0	x	
+compress	OK	1	help	Unknown flag: '-'; Usage: compress [-dfhvcVr] [-b maxbits] [--] [path ...]
+compute_av	OK	1	help	usage:  /usr/sbin/compute_av scontext tcontext tclass
+compute_create	OK	1	help	usage:  /usr/sbin/compute_create scontext tcontext tclass [objname]
+compute_member	OK	1	help	usage:  /usr/sbin/compute_member scontext tcontext tclass
+compute_relabel	OK	1	help	usage:  /usr/sbin/compute_relabel scontext tcontext tclass
+corelist	OK	1	help	
+count-19	OK	0	help	
+cp	OK	0	help	
+cpan	ERR	25	help	/usr/bin/cpan version 1.64 calling Getopt::Std::getopts (version 1.14 [paranoid]),
+cpan5.40-x86_64-linux-gnu	ERR	25	help	/usr/bin/cpan5.40-x86_64-linux-gnu version 1.64 calling Getopt::Std::getopts (version 1.14 [paranoid]),
+cpio	OK	0	help	
+cpp	OK	0	help	
+cpp-14	OK	0	help	
+Crack	OK	1	help	Crack: unrecognised argument --help
+cracklib-check	OK	0	help	
+cracklib-format	OK	0	help	
+cracklib-packer	OK	0	version	
+cracklib-unpacker	ERR	255	help	--help.pwd: No such file or directory
+Crack-Reporter	OK	0	help	cat: 'run/D*': No such file or directory
+cramfsswap	OK	1	help	Usage: /usr/bin/cramfsswap <in> <out>
+create-cracklib-dict	OK	0	help	
+c_rehash	OK	1	help	Usage error; try -h.
+cron	OK	1	help	/usr/sbin/cron: invalid option -- '-'
+crontab	OK	1	help	/usr/bin/crontab: invalid option -- '-'
+cryptoflex-tool	ERR	2	help	/usr/bin/cryptoflex-tool: unrecognized option '--help'
+csh	OK	0	help	
+csplit	OK	0	help	
+ctags	OK	0	help	
+ctags.emacs	OK	0	help	
+ctstat	OK	0	help	/usr/bin/ctstat Version 6.15.0
+curl	OK	0	help	
+curlftpfs	OK	1	help	usage: /usr/bin/curlftpfs <ftphost> <mountpoint>
+cut	OK	0	help	
+cvtsudoers	OK	0	help	
+dash	ERR	2	help	/usr/bin/dash: 0: Illegal option --
+date	OK	0	help	
+dbus-cleanup-sockets	OK	0	help	dbus-cleanup-sockets [--version] [--help] <socketdir>
+dbus-daemon	OK	1	help	dbus-daemon [--version] [--session] [--system] [--config-file=FILE] [--print-address[=DESCRIPTOR]] [--print-pid[=DESCRIPTOR]] [--introspect] [--address=ADDRESS] [--nopidfile] [--nosyslog] [--syslog] [
+dbus-monitor	OK	0	help	Usage: /usr/bin/dbus-monitor [--system | --session | --address ADDRESS] [--monitor | --profile | --pcap | --binary ] [watch expressions]
+dbus-run-session	OK	0	help	dbus-run-session [OPTIONS] [--] PROGRAM [ARGUMENTS]
+dbus-send	OK	1	help	Usage: /usr/bin/dbus-send [--help] [--system | --session | --bus=ADDRESS | --peer=ADDRESS] [--sender=NAME] [--dest=NAME] [--type=TYPE] [--print-reply[=literal]] [--reply-timeout=MSEC] <destination obj
+dbus-update-activation-environment	ERR	64	help	dbus-update-activation-environment: update environment variables that will be set for D-Bus
+dbus-uuidgen	OK	0	help	Usage: /usr/bin/dbus-uuidgen [--ensure[=FILENAME]] [--get[=FILENAME]]
+dbwrap_tool	OK	0	help	
+dcb	OK	0	help	Usage: dcb [ OPTIONS ] OBJECT { COMMAND | help }
+dcrack	OK	1	help	
+dd	OK	0	help	
+ddns-confgen	OK	1	help	ddns-confgen: invalid argument --
+deallocvt	OK	0	help	Usage: deallocvt [option...] [N ...]
+debconf	OK	1	help	Usage: debconf [options] command [args]
+debconf-apt-progress	ERR	255	help	Unknown option: help
+debconf-communicate	OK	1	help	Usage: debconf-communicate [options] [package]
+debconf-copydb	OK	1	help	Unknown option: help
+debconf-escape	OK	1	help	Unknown option: help
+debconf-set-selections	OK	1	help	Unknown option: help
+debconf-show	OK	1	help	Unknown option: help
+deb-systemd-helper	OK	0	help	Unknown option: help
+deb-systemd-invoke	OK	1	help	Syntax: /usr/bin/deb-systemd-invoke <action> [<unit file> [<unit file> ...]]
+debugfs	OK	1	help	debugfs 1.47.2 (1-Jan-2025)
+decodemail	OK	0	help	
+delgroup	OK	0	help	
+deluser	OK	0	help	
+delv	OK	1	help	Invalid option: --help
+depmod	OK	0	help	
+designer	OK	1	help	designer: could not exec '/usr/lib/qt5/bin/designer': No such file or directory
+devlink	OK	1	help	/usr/sbin/devlink: unrecognized option '--help'
+df	OK	0	help	
+dh_autotools-dev_restoreconfig	ERR	2	help	Can't locate Debian/Debhelper/Dh_Lib.pm in @INC (you may need to install the Debian::Debhelper::Dh_Lib module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/s
+dh_autotools-dev_updateconfig	ERR	2	help	Can't locate Debian/Debhelper/Dh_Lib.pm in @INC (you may need to install the Debian::Debhelper::Dh_Lib module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/s
+dh_bash-completion	ERR	2	help	Can't locate Debian/Debhelper/Dh_Lib.pm in @INC (you may need to install the Debian::Debhelper::Dh_Lib module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/s
+dhclient	OK	0	help	Usage: dhclient [-4|-6] [-SNTPRI1dvrxi] [-nw] [-p <port>] [-D LL|LLT]
+dhclient-script	OK	0	help	
+dhcpcd	OK	0	help	
+dhcpd	OK	0	help	Usage: dhcpd [-p <UDP port #>] [-f] [-d] [-q] [-t|-T]
+dhcp-lease-list	OK	0	help	
+dh_installxmlcatalogs	ERR	2	help	Can't locate Debian/Debhelper/Dh_Lib.pm in @INC (you may need to install the Debian::Debhelper::Dh_Lib module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/s
+dh_numpy3	ERR	2	help	Can't locate Debian/Debhelper/Dh_Lib.pm in @INC (you may need to install the Debian::Debhelper::Dh_Lib module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/s
+diagtool-19	OK	1	help	usage: diagtool <command> [<args>]
+diff	OK	0	help	
+diff3	OK	0	help	
+dig	OK	1	help	Invalid option: --help
+dir	OK	0	help	
+dircolors	OK	0	help	
+dirmngr	OK	0	help	
+dirmngr-client	OK	0	help	
+dirname	OK	0	help	
+dmesg	OK	0	help	
+dmidecode	OK	0	help	
+dmsetup	OK	0	help	Usage:
+dmstats	OK	0	help	Usage:
+dnie-tool	ERR	2	help	/usr/bin/dnie-tool: unrecognized option '--help'
+dnsdomainname	OK	0	version	
+dnsmasq	OK	0	help	
+dnssec-cds	OK	1	help	Usage:
+dnssec-dsfromkey	OK	1	help	dnssec-dsfromkey: invalid argument --
+dnssec-importkey	OK	1	help	dnssec-importkey: invalid argument --
+dnssec-keyfromlabel	OK	1	help	dnssec-keyfromlabel: invalid argument --
+dnssec-keygen	OK	1	help	dnssec-keygen: invalid argument --
+dnssec-ksr	OK	1	help	Usage:
+dnssec-revoke	OK	1	help	dnssec-revoke: invalid argument --
+dnssec-settime	OK	1	help	dnssec-settime: invalid argument --
+dnssec-signzone	OK	1	help	/usr/bin/dnssec-signzone: illegal option -- -
+dnssec-verify	OK	1	help	/usr/bin/dnssec-verify: illegal option -- -
+dnstap-read	OK	1	help	/usr/bin/dnstap-read: illegal option -- -
+docfdisk	OK	1	help	Open flash device: No such file or directory
+doc_loadbios	OK	1	help	You must specify a device, the source firmware file and the offset
+domainname	OK	0	version	
+dos2unix	OK	0	help	
+dosfsck	OK	0	help	Usage: /usr/sbin/dosfsck [OPTIONS] DEVICE
+dosfslabel	OK	0	help	
+dotlock	OK	0	help	
+dotlock.mailutils	OK	0	help	
+doveadm	OK	0	help	
+doveconf	ERR	89	help	/usr/bin/doveconf: invalid option -- '-'
+dovecot	OK	0	help	Usage: dovecot [-F] [-c <config file>] [-p] [-n] [-a] [--help] [--version]
+dovecot-sysreport	OK	0	help	
+dpkg	OK	0	help	
+dpkg-architecture	OK	0	help	
+dpkg-buildapi	OK	0	help	
+dpkg-buildflags	OK	0	help	
+dpkg-buildpackage	OK	0	help	
+dpkg-buildtree	OK	0	help	
+dpkg-checkbuilddeps	OK	0	help	
+dpkg-deb	OK	0	help	
+dpkg-distaddfile	OK	0	help	
+dpkg-divert	OK	0	help	
+dpkg-genbuildinfo	OK	0	help	
+dpkg-genchanges	OK	0	help	
+dpkg-gencontrol	OK	0	help	
+dpkg-gensymbols	OK	0	help	
+dpkg-maintscript-helper	OK	0	help	
+dpkg-mergechangelogs	OK	0	help	
+dpkg-name	OK	0	help	
+dpkg-parsechangelog	OK	0	help	
+dpkg-preconfigure	OK	1	help	Usage: dpkg-preconfigure [options] [debs]
+dpkg-query	OK	0	help	
+dpkg-realpath	OK	0	help	
+dpkg-reconfigure	OK	1	help	Usage: dpkg-reconfigure [options] packages
+dpkg-scanpackages	OK	0	help	
+dpkg-scansources	OK	0	help	
+dpkg-shlibdeps	OK	0	help	
+dpkg-source	OK	0	help	
+dpkg-split	OK	0	help	
+dpkg-statoverride	OK	0	help	
+dpkg-trigger	OK	0	help	
+dpkg-vendor	OK	0	help	
+dpl4hydra	OK	0	help	
+dsymutil-19	OK	0	help	
+dtd2vim	ERR	2	help	Can't locate SGML/DTD.pm in @INC (you may need to install the SGML::DTD module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_6
+dtrust-tool	ERR	2	help	
+du	OK	0	help	
+dumpcap	OK	0	help	
+dumpe2fs	OK	1	help	dumpe2fs 1.47.2 (1-Jan-2025)
+dumpkeys	OK	0	help	Usage: dumpkeys [option...]
+dumpmscat	ERR	127	help	/usr/bin/dumpmscat: error while loading shared libraries: libsamba-debug-private-samba.so.0: cannot open shared object file: No such file or directory
+e2freefrag	OK	1	help	/usr/sbin/e2freefrag: invalid option -- '-'
+e2fsck	ERR	16	help	/usr/sbin/e2fsck: invalid option -- '-'
+e2image	OK	1	help	e2image 1.47.2 (1-Jan-2025)
+e2label	OK	1	help	/usr/sbin/e2label: No such file or directory while trying to open --help
+e2mmpstatus	OK	1	help	/usr/sbin/e2mmpstatus: invalid option -- '-'
+e2scrub	ERR	2	help	/usr/sbin/e2scrub: illegal option -- -
+e2scrub_all	ERR	2	help	/usr/sbin/e2scrub_all: illegal option -- -
+e2undo	OK	1	help	/usr/sbin/e2undo: invalid option -- '-'
+e4crypt	OK	0	help	
+e4defrag	OK	1	help	/usr/sbin/e4defrag: invalid option -- '-'
+easside-ng	OK	0	help	/usr/sbin/easside-ng: invalid option -- '-'
+ebrowse	OK	0	help	
+ebrowse.emacs	OK	0	help	
+ebtables	OK	0	help	
+ebtables-nft	OK	0	help	
+ebtables-nft-restore	OK	1	help	/usr/sbin/ebtables-nft-restore: unrecognized option '--help'
+ebtables-nft-save	OK	1	help	/usr/sbin/ebtables-nft-save: unrecognized option '--help'
+ebtables-restore	OK	1	help	/usr/sbin/ebtables-restore: unrecognized option '--help'
+ebtables-save	OK	1	help	/usr/sbin/ebtables-save: unrecognized option '--help'
+ebtables-translate	OK	0	help	/usr/sbin/ebtables-translate: Translate ebtables command to nft syntax
+echo	OK	0	help	
+ed	OK	0	help	
+edit	X_DIED	0	x	
+editcap	OK	0	help	
+editor	OK	0	help	
+editres	X_ALIVE	124	x	
+egk-tool	OK	0	help	
+egrep	OK	0	help	
+eidenv	OK	0	help	eidenv - Belpic utility version 0.26.1
+elfedit	OK	0	help	
+emacs	OK	0	help	
+emacsclient	OK	0	help	
+emacsclient.emacs	OK	0	help	
+emacs-nox	OK	0	help	
+enc2xs	ERR	2	help	/usr/bin/enc2xs version 2.25 calling Getopt::Std::getopts (version 1.14 [paranoid]),
+encguess	OK	0	version	
+encode_keychange	OK	1	help	
+env	OK	0	help	
+envsubst	OK	0	help	
+eqn	OK	0	help	
+erb	OK	1	help	print this help
+erb3.3	OK	1	help	print this help
+etags	OK	0	help	
+etags.emacs	OK	0	help	
+ethtool	OK	0	help	
+ettercap	OK	0	help	
+etterfilter	OK	0	help	
+etterlog	OK	0	help	
+eventlogadm	OK	0	help	/usr/sbin/eventlogadm: invalid option -- '-'
+ex	OK	0	help	
+expand	OK	0	help	
+expiry	OK	0	help	
+exportfs	OK	1	help	/usr/sbin/exportfs: invalid option -- '-'
+expr	OK	0	help	
+f2py	OK	0	help	Unknown option '--help'
+f2py3	OK	0	help	Unknown option '--help'
+f2py3.13	OK	0	help	Unknown option '--help'
+factor	OK	0	help	
+faillock	OK	1	help	/usr/sbin/faillock: Unknown option: --help
+faked-sysv	OK	1	help	faked, daemon for fake root environment
+faked-tcp	OK	1	help	faked, daemon for fake root environment
+fakeroot	OK	1	help	fakeroot, create a fake root environment.
+fakeroot-sysv	OK	1	help	fakeroot, create a fake root environment.
+fakeroot-tcp	OK	1	help	fakeroot, create a fake root environment.
+fallocate	OK	0	help	
+false	OK	1	help	
+fatlabel	OK	0	help	
+fcat	OK	1	help	/usr/bin/fcat: invalid option -- '-'
+fc-cache	OK	0	help	
+fc-cat	OK	0	help	
+fc-conflist	OK	0	help	
+fcgistarter	OK	1	help	usage: fcgistarter -c <command> -p <port> [-i <interface> -N <num>]
+fc-list	OK	0	help	
+fc-match	OK	0	help	
+fc-pattern	OK	0	help	
+fc-query	OK	0	help	
+fc-scan	OK	0	help	
+fc-validate	OK	0	help	
+fdisk	OK	0	help	
+fectest	OK	0	help	
+ffind	OK	1	help	/usr/bin/ffind: invalid option -- '-'
+fgconsole	OK	0	help	Usage: fgconsole [option...]
+fgrep	OK	0	help	
+filan	OK	1	help	2026/09/03 22:59:19 filan[66696] E unknown option --help
+file	OK	0	help	
+FileCheck-19	OK	0	help	
+filefrag	OK	1	help	/usr/sbin/filefrag: invalid option -- '-'
+find	OK	0	help	
+find-all-symbols-19	OK	0	help	
+findfs	OK	0	help	
+findmnt	OK	0	help	
+finger	OK	1	help	/usr/bin/finger: invalid option -- '-'
+fiwalk	OK	1	help	/usr/bin/fiwalk: invalid option -- '-'
+fixfiles	OK	1	help	/usr/sbin/fixfiles: illegal option -- -
+fixproc	X_DIED	10	x	/usr/bin/fixproc: no process specified
+flashcp	OK	0	help	
+flash_erase	OK	0	help	
+flash_eraseall	OK	0	help	flash_eraseall has been replaced by `flash_erase <mtddev> 0 0`; please use it
+flash_lock	OK	0	help	
+flash_otp_dump	ERR	22	help	Usage: flash_otp_dump [ -f | -u ] <device> [<offset>]
+flash_otp_erase	ERR	22	help	Usage: flash_otp_erase -u <device> <offset> <size>
+flash_otp_info	ERR	22	help	Usage: flash_otp_info [ -f | -u ] <device>
+flash_otp_lock	ERR	22	help	Usage: flash_otp_lock -u <device> <offset> <size>
+flash_otp_write	ERR	22	help	Usage: flash_otp_write -u <device> <offset>
+flash_unlock	OK	0	help	
+flex	OK	0	help	
+flex++	OK	0	help	
+flock	OK	0	help	
+fls	OK	1	help	/usr/bin/fls: invalid option -- '-'
+fmt	OK	0	help	
+fold	OK	0	help	
+fonttosfnt	OK	1	help	Usage:
+free	OK	0	help	
+frm	OK	0	help	
+frm.mailutils	OK	0	help	
+from	OK	0	help	
+from.mailutils	OK	0	help	
+fsck	OK	0	help	
+fsck.ext2	ERR	16	help	/usr/sbin/fsck.ext2: invalid option -- '-'
+fsck.ext3	ERR	16	help	/usr/sbin/fsck.ext3: invalid option -- '-'
+fsck.ext4	ERR	16	help	/usr/sbin/fsck.ext4: invalid option -- '-'
+fsck.fat	OK	0	help	Usage: /usr/sbin/fsck.fat [OPTIONS] DEVICE
+fsck.msdos	OK	0	help	Usage: /usr/sbin/fsck.msdos [OPTIONS] DEVICE
+fsck.ubifs	OK	0	version	
+fsck.vfat	OK	0	help	Usage: /usr/sbin/fsck.vfat [OPTIONS] DEVICE
+fsfreeze	OK	0	help	
+fsidd	TIMEOUT	124	help	
+fsstat	OK	1	help	/usr/bin/fsstat: invalid option -- '-'
+fstab-decode	ERR	127	help	fstab-decode: --help: No such file or directory
+fstrim	OK	0	help	
+ftl_check	OK	0	help	usage: ftl_check device
+ftl_format	OK	0	help	usage: ftl_format [-q] [-i] [-s spare-blocks] [-r reserve-percent] [-b bootsize] device
+funzip	ERR	3	help	funzip error: input not a zip or gzip file
+fuser	OK	1	help	/usr/bin/fuser: Invalid option --help
+fusermount	OK	1	help	
+fusermount3	OK	1	help	
+g++	OK	0	help	
+g++-14	OK	0	help	
+gawk	OK	0	help	
+gawkbug	OK	0	help	
+gcc	OK	0	help	
+gcc-14	OK	0	help	
+gcc-ar	OK	0	help	
+gcc-ar-14	OK	0	help	
+gcc-nm	OK	0	help	
+gcc-nm-14	OK	0	help	
+gcc-ranlib	OK	0	help	
+gcc-ranlib-14	OK	0	help	
+gcore	ERR	2	help	
+gcov	OK	0	help	
+gcov-14	OK	0	help	
+gcov-dump	OK	0	help	
+gcov-dump-14	OK	0	help	
+gcov-tool	OK	0	help	
+gcov-tool-14	OK	0	help	
+gdb	OK	0	help	/usr/bin/gdb: warning: Couldn't determine a path for the index cache directory.
+gdb-add-index	OK	1	help	gdb-add-index: unable to access: --help
+gdbtui	OK	0	help	/usr/bin/gdb: warning: Couldn't determine a path for the index cache directory.
+gdk-pixbuf-csource	OK	0	help	Usage: gdk-pixbuf-csource-3.0 [options] [image]
+gdk-pixbuf-pixdata	OK	0	help	Usage: gdk-pixbuf-pixdata-3.0 [options] [input-file] [output-file]
+gdk-pixbuf-thumbnailer	OK	0	help	
+geany	OK	0	help	
+gem	OK	0	help	
+gem3.3	OK	0	help	
+gencat	OK	0	help	
+genhomedircon	OK	0	help	
+genl	ERR	255	help	Option "--help" is unknown, try "genl -help".
+geqn	OK	0	help	
+getcap	OK	1	help	/usr/sbin/getcap: invalid option -- '-'
+getcifsacl	OK	0	help	/usr/bin/getcifsacl: invalid option -- '-'
+getconf	OK	0	help	
+getconlist	OK	1	help	/usr/sbin/getconlist: invalid option -- '-'
+getdefaultcon	OK	1	help	/usr/sbin/getdefaultcon: invalid option -- '-'
+getenforce	OK	0	help	
+getent	OK	0	help	
+getent.ldap	OK	0	help	
+getfacl	OK	0	help	
+getfattr	OK	0	help	
+getfilecon	ERR	2	help	/usr/sbin/getfilecon:  getfilecon(--help) failed:  No such file or directory
+getkeycodes	OK	0	help	Usage: getkeycodes [option...]
+getopt	OK	0	help	
+getpcaps	OK	0	help	usage: getpcaps [opts] <pid> [<pid> ...]
+getpidcon	ERR	2	help	/usr/sbin/getpidcon:  invalid pid --help
+getpidprevcon	ERR	2	help	/usr/sbin/getpidprevcon:  invalid pid --help
+getpolicyload	OK	1	help	/usr/sbin/getpolicyload:  failed to open SELinux status map:  No such file or directory
+getsebool	OK	1	help	/usr/sbin/getsebool: invalid option -- '-'
+getseuser	OK	1	help	usage:  /usr/sbin/getseuser linuxuser fromcon
+gettext	OK	0	help	
+gettextize	OK	0	help	
+gettext.sh	OK	0	help	
+getty	OK	0	help	
+gids-tool	ERR	2	help	/usr/bin/gids-tool: unrecognized option '--help'
+ginstall-info	OK	0	help	
+git	OK	0	help	
+git-receive-pack	OK	0	help	
+git-shell	ERR	128	help	fatal: Run with no arguments or with -c cmd
+git-upload-archive	OK	0	help	
+git-upload-pack	OK	0	help	
+gmake	OK	0	help	
+goid-tool	OK	0	help	
+gp-archive	OK	1	help	
+gpasswd	OK	0	help	
+gp-collect-app	OK	0	help	Can not determine CPU clock frequency.
+gp-display-html	OK	0	help	
+gp-display-src	OK	0	help	
+gp-display-text	OK	0	help	
+gpg	OK	0	help	
+gpg-agent	OK	0	help	
+gpgconf	OK	0	help	
+gpg-connect-agent	OK	0	help	
+gpg-mail-tube	OK	0	help	
+gpgparsemail	OK	0	help	
+gpgsm	OK	0	help	
+gpgsplit	OK	0	help	
+gpgtar	OK	0	help	
+gpgv	OK	0	help	
+gpg-wks-client	OK	0	help	
+gpic	OK	0	help	
+gprof	OK	0	help	
+gprofng	OK	0	help	
+gprofng-archive	OK	1	help	
+gprofng-collect-app	OK	0	help	Can not determine CPU clock frequency.
+gprofng-display-html	OK	0	help	
+gprofng-display-src	OK	0	help	
+gprofng-display-text	OK	0	help	
+grep	OK	0	help	
+groff	OK	0	help	
+grog	OK	0	help	
+grops	OK	0	help	
+grotty	OK	0	help	
+groupadd	OK	0	help	
+groupdel	OK	0	help	
+groupmod	OK	0	help	
+groups	OK	0	help	
+grpck	OK	0	help	
+grpconv	OK	0	help	
+grpunconv	OK	0	help	
+gstack	OK	0	help	
+gtbl	OK	0	help	
+gtk4-update-icon-cache	OK	0	help	
+gtk-builder-tool	OK	1	help	
+gtk-encode-symbolic-svg	OK	0	help	
+gtk-launch	OK	0	help	
+gtk-query-settings	OK	0	help	
+gtk-update-icon-cache	OK	0	help	
+gunzip	OK	0	help	
+gzexe	OK	0	help	
+gzip	OK	0	help	
+h2ph	ERR	2	help	/usr/bin/h2ph version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+h2xs	ERR	255	help	h2xs [OPTIONS ... ] [headerfile [extra_libraries]]
+halt	OK	0	help	
+hardlink	OK	0	help	
+hd	OK	0	help	
+head	OK	0	help	
+helpztags	OK	0	help	
+hexdump	OK	0	help	
+hfind	OK	1	help	/usr/bin/hfind: invalid option -- '-'
+hmaptool-19	OK	1	help	Usage: hmaptool-19 command [options]
+host	OK	1	help	/usr/bin/host: illegal option -- -
+hostid	OK	0	help	
+hostname	OK	0	version	
+hostnamectl	OK	0	help	
+htcacheclean	OK	1	help	htcacheclean error: Option -p must be specified
+htdbm	ERR	2	help	htdbm -- program for manipulating DBM password databases.
+htdigest	OK	1	help	Usage: htdigest [-c] passwordfile realm username
+html2text	OK	1	help	Unrecognized command line option "--help", try "-help".
+htop	OK	0	help	
+htpasswd	ERR	2	help	Usage:
+httpx	OK	0	help	
+httxt2dbm	OK	1	help	Error: No input file specified.
+hwasan_symbolize-19	OK	0	help	
+hwloc-annotate	OK	0	help	
+hwloc-bind	OK	0	help	
+hwloc-calc	OK	0	help	
+hwloc-compress-dir	OK	0	help	
+hwloc-diff	OK	0	help	
+hwloc-distrib	OK	0	help	
+hwloc-dump-hwdata	OK	0	help	
+hwloc-gather-cpuid	OK	0	help	
+hwloc-gather-topology	X_DIED	1	x	
+hwloc-info	OK	0	help	
+hwloc-ls	X_ALIVE	124	x	
+hwloc-patch	OK	0	help	
+hwloc-ps	OK	0	help	
+hydra	ERR	255	help	/usr/bin/hydra: invalid option -- '-'
+hydra-wizard	OK	1	help	
+i386	OK	0	help	
+iasecc-tool	ERR	2	help	/usr/bin/iasecc-tool: unrecognized option '--help'
+icat	OK	1	help	/usr/bin/icat: invalid option -- '-'
+ico	X_ALIVE	124	x	
+iconv	OK	0	help	
+iconvconfig	OK	0	help	
+id	OK	0	help	
+ifconfig	OK	0	help	    loop (Local Loopback) slip (Serial Line IP) cslip (VJ Serial Line IP) 
+ifdown	OK	0	help	
+ifind	OK	1	help	/usr/bin/ifind: invalid option -- '-'
+ifmetric	OK	0	help	
+ifnames	OK	0	help	
+ifquery	OK	0	help	
+ifup	OK	0	help	
+ils	OK	1	help	/usr/bin/ils: invalid option -- '-'
+img_cat	OK	1	help	/usr/bin/img_cat: invalid option -- '-'
+img_stat	OK	1	help	/usr/bin/img_stat: invalid option -- '-'
+inetutils-dnsdomainname	OK	0	help	
+inetutils-hostname	OK	0	help	
+inetutils-ifconfig	OK	0	help	
+inetutils-inetd	OK	0	help	
+inetutils-logger	OK	0	help	
+inetutils-telnet	OK	0	help	
+infocmp	OK	1	help	/usr/bin/infocmp: invalid option -- '-'
+infotocap	OK	1	help	/usr/bin/infotocap: invalid option -- '-'
+init	OK	0	help	
+insmod	OK	0	help	
+install	OK	0	help	
+install-info	OK	0	help	
+installkernel	OK	1	help	
+install-sgmlcatalog	OK	1	help	Unknown option: help
+instmodsh	TIMEOUT	124	help	
+intercept-build-19	OK	0	help	
+in.tftpd	OK	0	help	
+invoke-rc.d	OK	0	help	
+ionice	OK	0	help	
+iostat	OK	1	help	Usage: /usr/bin/iostat [ options ] [ <interval> [ <count> ] ]
+ip	ERR	255	help	Usage: ip [ OPTIONS ] OBJECT { COMMAND | help }
+ip6tables	OK	0	help	
+ip6tables-apply	OK	0	help	ip6tables-apply 1.1 -- a safer way to update iptables remotely
+ip6tables-legacy	OK	0	help	
+ip6tables-legacy-restore	OK	0	help	Usage: ip6tables-restore [-c] [-v] [-V] [-t] [-h] [-n] [-w secs] [-W usecs] [-T table] [-M command] [file]
+ip6tables-legacy-save	OK	1	help	/usr/sbin/ip6tables-legacy-save: unrecognized option '--help'
+ip6tables-nft	OK	0	help	
+ip6tables-nft-restore	OK	0	help	Usage: ip6tables-nft-restore [-c] [-v] [-V] [-t] [-h] [-n] [-T table] [-M command] [-4] [-6] [file]
+ip6tables-nft-save	OK	1	help	/usr/sbin/ip6tables-nft-save: unrecognized option '--help'
+ip6tables-restore	OK	0	help	Usage: ip6tables-restore [-c] [-v] [-V] [-t] [-h] [-n] [-T table] [-M command] [-4] [-6] [file]
+ip6tables-restore-translate	OK	1	help	/usr/sbin/ip6tables-restore-translate 1.8.11 (c) 2014 by Pablo Neira Ayuso <pablo@netfilter.org>
+ip6tables-save	OK	1	help	/usr/sbin/ip6tables-save: unrecognized option '--help'
+ip6tables-translate	OK	0	help	
+ipcalc	OK	0	help	
+ipcmk	OK	0	help	
+ipcrm	OK	0	help	
+ipcs	OK	0	help	
+iperf3	OK	0	help	
+ipmaddr	OK	0	help	
+ipsvd-cdb	ERR	111	help	usage: /usr/bin/ipsvd-cdb cdb cdb.tmp dir
+iptables	OK	0	help	
+iptables-apply	OK	0	help	iptables-apply 1.1 -- a safer way to update iptables remotely
+iptables-legacy	OK	0	help	
+iptables-legacy-restore	OK	0	help	Usage: iptables-restore [-c] [-v] [-V] [-t] [-h] [-n] [-w secs] [-W usecs] [-T table] [-M command] [file]
+iptables-legacy-save	OK	1	help	/usr/sbin/iptables-legacy-save: unrecognized option '--help'
+iptables-nft	OK	0	help	
+iptables-nft-restore	OK	0	help	Usage: iptables-nft-restore [-c] [-v] [-V] [-t] [-h] [-n] [-T table] [-M command] [-4] [-6] [file]
+iptables-nft-save	OK	1	help	/usr/sbin/iptables-nft-save: unrecognized option '--help'
+iptables-restore	OK	0	help	Usage: iptables-restore [-c] [-v] [-V] [-t] [-h] [-n] [-T table] [-M command] [-4] [-6] [file]
+iptables-restore-translate	OK	1	help	/usr/sbin/iptables-restore-translate 1.8.11 (c) 2014 by Pablo Neira Ayuso <pablo@netfilter.org>
+iptables-save	OK	1	help	/usr/sbin/iptables-save: unrecognized option '--help'
+iptables-translate	OK	0	help	
+iptables-xml	OK	1	help	Usage: iptables-xml [-c] [-v] [-h]
+iptunnel	OK	0	help	
+ipython3	OK	0	help	
+irb	OK	0	help	
+irb3.3	OK	0	help	
+ischroot	OK	0	help	
+isosize	OK	0	help	
+istat	OK	1	help	/usr/bin/istat: invalid option -- '-'
+isympy	OK	0	help	
+isympy3	OK	0	help	
+ivstools	OK	1	help	
+iw	OK	1	help	nl80211 not found.
+iwconfig	OK	0	help	Usage: iwconfig [interface]
+iwevent	OK	0	help	
+iwgetid	OK	0	help	
+iwlist	OK	0	help	
+iwpriv	OK	0	help	Usage: iwpriv interface [private-command [private-arguments]]
+iwspy	OK	0	help	Usage: iwspy interface [+] [MAC address] [IP address]
+jcat	OK	1	help	/usr/bin/jcat: invalid option -- '-'
+jffs2dump	OK	0	help	
+jffs2reader	OK	0	help	Usage: jffs2reader <image> [-d|-f] < path >
+jls	OK	1	help	/usr/bin/jls: invalid option -- '-'
+jmacs	OK	0	help	
+joe	OK	0	help	
+john	OK	1	help	Created directory: /root/.john
+join	OK	0	help	
+journalctl	OK	0	help	
+jpeg_extract	OK	0	help	
+jpico	OK	0	help	
+jq	OK	0	help	
+json_pp	ERR	2	help	Unknown option: help
+jstar	OK	0	help	
+kbdinfo	OK	0	help	Usage: kbdinfo [option...] getmode [text|graphics]
+kbd_mode	OK	0	help	Usage: kbd_mode [option...]
+kbdrate	OK	0	help	Usage: kbdrate [option...]
+kbxutil	OK	0	help	
+kdig	OK	0	help	
+kea-admin	OK	0	help	
+kea-ctrl-agent	OK	1	help	Usage error: unsupported option: --
+kea-dhcp4	OK	1	help	/usr/sbin/kea-dhcp4: invalid option -- '-'
+kea-dhcp6	OK	1	help	/usr/sbin/kea-dhcp6: invalid option -- '-'
+kea-dhcp-ddns	OK	1	help	Usage error: unsupported option: --
+kea-lfc	OK	1	help	Usage error: Unknown argument
+kea-shell	OK	0	help	
+kernel-install	OK	0	help	
+keyctl	OK	0	version	
+key.dns_resolver	OK	0	version	
+kill	OK	0	help	
+killall	OK	1	help	Usage: killall [OPTION]... [--] NAME...
+killall5	OK	1	help	
+kmod	OK	0	help	
+knsupdate	OK	0	help	
+koi8rxterm	X_ALIVE	124	x	koi8rxterm tried to use locale ru_RU.KOI8-R by setting $LANG
+kstats	OK	1	help	
+kxdpgun	OK	0	help	
+lconvert	OK	1	help	lconvert: could not exec '/usr/lib/qt5/bin/lconvert': No such file or directory
+ld	OK	0	help	
+ld64.lld-19	OK	0	help	
+ldapadd	OK	1	help	/usr/bin/ldapadd: invalid option -- '-'
+ldapcompare	OK	1	help	/usr/bin/ldapcompare: invalid option -- '-'
+ldapdelete	OK	1	help	/usr/bin/ldapdelete: invalid option -- '-'
+ldapexop	OK	1	help	/usr/bin/ldapexop: invalid option -- '-'
+ldapmodify	OK	1	help	/usr/bin/ldapmodify: invalid option -- '-'
+ldapmodrdn	OK	1	help	/usr/bin/ldapmodrdn: invalid option -- '-'
+ldappasswd	OK	1	help	/usr/bin/ldappasswd: invalid option -- '-'
+ldapsearch	OK	1	help	/usr/bin/ldapsearch: invalid option -- '-'
+ldapurl	OK	1	help	/usr/bin/ldapurl: invalid option -- '-'
+ldapwhoami	OK	1	help	/usr/bin/ldapwhoami: invalid option -- '-'
+ldattach	OK	0	help	
+ld.bfd	OK	0	help	
+ldconfig	OK	0	help	
+ldd	OK	0	help	
+ld.lld-19	OK	0	help	
+less	OK	0	help	
+lessecho	OK	0	help	usage: lessecho [-ox] [-cx] [-pn] [-dn] [-mx] [-nn] [-ex] [-fn] [-a] file ...
+lessfile	OK	0	help	
+lesskey	OK	1	help	usage: lesskey [-o output] [input]
+lesspipe	OK	0	help	
+lex	OK	0	help	
+lexgrog	OK	0	help	
+lft	OK	0	help	Usage: /usr/bin/lft [-ACEFINRSTUVbehinpruvz] [-d dport] [-s sport]
+lft.db	OK	0	help	Usage: /usr/bin/lft.db [-ACEFINRSTUVbehinpruvz] [-d dport] [-s sport]
+libnetcfg	OK	0	help	/usr/bin/libnetcfg version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+lighttpd	ERR	255	help	/usr/sbin/lighttpd: invalid option -- '-'
+lighttpd-angel	OK	0	help	/usr/sbin/lighttpd: invalid option -- '-'
+lighttpd-disable-mod	ERR	2	help	
+lighttpd-enable-mod	ERR	2	help	
+lighty-disable-mod	ERR	2	help	
+lighty-enable-mod	ERR	2	help	
+linguist	OK	1	help	linguist: could not exec '/usr/lib/qt5/bin/linguist': No such file or directory
+link	OK	0	help	
+links	OK	0	help	
+links2	X_DIED	4	x	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+linux32	OK	0	help	
+linux64	OK	0	help	
+linux_logo	OK	1	help	
+linuxlogo	OK	1	help	
+listres	OK	0	help	usage:  /usr/bin/listres [-options...]
+llc-19	OK	0	help	
+lld-19	OK	1	help	lld is a generic driver.
+lld-link-19	OK	1	help	lld-link-19: warning: ignoring unknown argument '--help', did you mean '-help'
+lli-19	OK	0	help	
+lli-child-target-19	OK	1	help	Usage: /usr/bin/lli-child-target-19 <input fd> <output fd>
+llvm-addr2line-19	OK	0	help	
+llvm-ar-19	OK	0	help	
+llvm-as-19	OK	0	help	
+llvm-bcanalyzer-19	OK	0	help	
+llvm-bitcode-strip-19	OK	0	help	
+llvm-cat-19	OK	0	help	
+llvm-cfi-verify-19	OK	0	help	
+llvm-config-19	OK	0	help	usage: llvm-config <OPTION>... [<COMPONENT>...]
+llvm-cov-19	OK	0	help	Usage: llvm-cov {export|gcov|report|show} [OPTION]...
+llvm-c-test-19	OK	1	help	llvm-c-test command
+llvm-cvtres-19	OK	1	help	No input file specified.
+llvm-cxxdump-19	OK	0	help	
+llvm-cxxfilt-19	OK	0	help	
+llvm-cxxmap-19	OK	0	help	
+llvm-debuginfo-analyzer-19	OK	0	help	
+llvm-debuginfod-19	OK	0	help	
+llvm-debuginfod-find-19	OK	0	help	
+llvm-diff-19	OK	0	help	
+llvm-dis-19	OK	0	help	
+llvm-dlltool-19	OK	1	help	
+llvm-dwarfdump-19	OK	0	help	
+llvm-dwarfutil-19	OK	0	help	
+llvm-dwp-19	OK	0	help	
+llvm-exegesis-19	OK	0	help	
+llvm-extract-19	OK	0	help	
+llvm-gsymutil-19	OK	0	help	
+llvm-ifs-19	OK	0	help	
+llvm-install-name-tool-19	OK	0	help	
+llvm-jitlink-19	OK	0	help	
+llvm-jitlink-executor-19	OK	1	help	error: invalid specifier type "--help"
+llvm-lib-19	OK	0	help	ignoring unknown argument: --help
+llvm-libtool-darwin-19	OK	0	help	
+llvm-link-19	OK	0	help	
+llvm-lipo-19	OK	0	help	
+llvm-lto-19	OK	0	help	
+llvm-lto2-19	OK	1	help	Available subcommands: dump-symtab run
+llvm-mc-19	OK	0	help	
+llvm-mca-19	OK	0	help	
+llvm-ml-19	OK	0	help	
+llvm-modextract-19	OK	0	help	
+llvm-mt-19	OK	1	help	llvm-mt: error: no input file specified
+llvm-nm-19	OK	0	help	
+llvm-objcopy-19	OK	0	help	
+llvm-objdump-19	OK	0	help	
+llvm-opt-report-19	OK	0	help	
+llvm-otool-19	OK	0	help	
+llvm-pdbutil-19	OK	0	help	
+llvm-PerfectShuffle-19	TIMEOUT	124	help	Starting iteration #1 with 2 entries established.
+llvm-profdata-19	OK	0	help	
+llvm-profgen-19	OK	0	help	
+llvm-ranlib-19	OK	0	help	
+llvm-rc-19	OK	1	help	Exactly one input file should be provided.
+llvm-readelf-19	OK	0	help	
+llvm-readobj-19	OK	0	help	
+llvm-readtapi-19	OK	0	help	
+llvm-reduce-19	OK	0	help	
+llvm-remarkutil-19	OK	0	help	
+llvm-rtdyld-19	OK	0	help	
+llvm-sim-19	OK	0	help	
+llvm-size-19	OK	0	help	
+llvm-split-19	OK	0	help	
+llvm-stress-19	OK	0	help	
+llvm-strings-19	OK	0	help	
+llvm-strip-19	OK	0	help	
+llvm-symbolizer-19	OK	0	help	
+llvm-tblgen-19	OK	0	help	
+llvm-tli-checker-19	OK	0	help	
+llvm-undname-19	OK	0	help	
+llvm-windres-19	OK	0	help	
+llvm-xray-19	OK	0	help	
+ln	OK	0	help	
+lnstat	OK	0	help	/usr/bin/lnstat Version 6.15.0
+loadkeys	OK	0	help	Usage: loadkeys [option...] [mapfile...]
+load_policy	OK	1	help	/usr/sbin/load_policy: invalid option -- '-'
+loadunimap	OK	0	help	Usage: loadunimap [option...]
+locale	OK	0	help	
+localectl	OK	0	help	
+localedef	OK	0	help	
+locale-gen	OK	0	help	
+logger	OK	0	help	
+login	OK	0	help	
+loginctl	OK	0	help	
+logname	OK	0	help	
+logresolve	OK	0	help	
+logrotate	OK	0	help	
+logsave	OK	1	help	/usr/sbin/logsave: invalid option -- '-'
+look	OK	0	help	
+losetup	OK	0	help	
+lrelease	OK	1	help	lrelease: could not exec '/usr/lib/qt5/bin/lrelease': No such file or directory
+ls	OK	0	help	
+lsattr	OK	1	help	/usr/bin/lsattr: invalid option -- '-'
+lsblk	OK	0	help	
+lscpu	OK	0	help	
+lsipc	OK	0	help	
+lslocks	OK	0	help	
+lslogins	OK	0	help	
+lsmem	OK	0	help	
+lsmod	OK	0	help	
+lsmtd	OK	0	help	
+lsns	OK	0	help	
+lsof	OK	1	help	lsof: illegal option character: -
+lspgpot	OK	0	help	
+lstopo	X_ALIVE	124	x	
+lstopo-no-graphics	OK	0	help	
+lsusb	OK	0	help	Usage: lsusb [options]...
+lto-dump	OK	0	help	
+lto-dump-14	OK	0	help	
+luit	OK	1	help	Unknown option --help
+lupdate	OK	1	help	lupdate: could not exec '/usr/lib/qt5/bin/lupdate': No such file or directory
+lxterm	X_ALIVE	124	x	
+lynx	OK	0	help	
+lz	OK	0	help	
+lzcat	OK	0	help	
+lzcmp	OK	0	help	
+lzdiff	OK	0	help	
+lzegrep	OK	0	help	
+lzfgrep	OK	0	help	
+lzgrep	OK	0	help	
+lzless	OK	0	help	
+lzma	OK	0	help	
+lzma_alone	OK	1	help	
+lzmainfo	OK	0	help	
+lzmore	OK	0	help	
+lzop	OK	0	help	
+m4	OK	0	help	
+mac2unix	OK	0	help	
+mactime	OK	1	help	Old package separator "'" deprecated at /usr/bin/mactime line 154.
+mail	OK	0	help	
+maildirmake.dovecot	OK	1	help	mkdir: unrecognized option '--help/cur'
+mailer	OK	0	help	Unknown option: "--help"
+mail.mailutils	OK	0	help	
+mailq	ERR	75	help	mailq: invalid option -- '-'
+mailx	OK	0	help	
+make	OK	0	help	
+make-cadir	OK	1	help	cp: unrecognized option '--help/vars'
+make-first-existing-target	OK	1	help	usage: make-first-existing-target [-c cmd] target1 [target2 ...] -- [make-options]
+makeivs-ng	OK	0	help	
+make-ssl-cert	OK	0	help	Usage: make-ssl-cert [options] <template> <output>
+man	OK	0	help	
+man2html	OK	0	help	
+mandb	OK	0	help	
+manpath	OK	0	help	
+man-recode	OK	0	help	
+mapscrn	OK	0	help	Usage: mapscrn [option...] [map-file]
+marionnet-relay	X_DIED	1	x	+ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+markdown-it	OK	0	help	
+markdown_py	OK	0	help	
+matchpathcon	OK	1	help	/usr/sbin/matchpathcon: invalid option -- '-'
+mattrib	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mawk	OK	0	help	
+mbadblocks	OK	1	help	/usr/bin/mbadblocks: invalid option -- '-'
+mcat	OK	1	help	/usr/bin/mcat: invalid option -- '-'
+mcd	OK	1	help	/usr/bin/mcd: invalid option -- '-'
+mcheck	OK	1	help	mdir: invalid option -- '-'
+mcomp	OK	1	help	
+mcookie	OK	0	help	
+mcopy	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+md5sum	OK	0	help	
+mdel	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mdeltree	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mdig	OK	1	help	Invalid option: --help
+mdir	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mdoctorfat	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mdu	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mergecap	OK	0	help	
+mesa-overlay-control.py	OK	0	help	
+messages	OK	0	help	
+messages.mailutils	OK	0	help	
+mformat	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+migrate-pubring-from-classic-gpg	OK	0	help	
+mii-tool	OK	0	version	
+mimeview	OK	0	help	
+minfo	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mingetty	TIMEOUT	124	help	/usr/sbin/mingetty: unrecognized option '--help'
+mkdir	OK	0	help	
+mkdosfs	OK	0	help	Usage: /usr/sbin/mkdosfs [OPTIONS] TARGET [BLOCKS]
+mke2fs	OK	1	help	/usr/sbin/mke2fs: invalid option -- '-'
+mkfifo	OK	0	help	
+mkfontdir	OK	0	help	
+mkfontscale	OK	0	help	
+mkfs	OK	0	help	
+mkfs.ext2	OK	1	help	/usr/sbin/mkfs.ext2: invalid option -- '-'
+mkfs.ext3	OK	1	help	/usr/sbin/mkfs.ext3: invalid option -- '-'
+mkfs.ext4	OK	1	help	/usr/sbin/mkfs.ext4: invalid option -- '-'
+mkfs.fat	OK	0	help	Usage: /usr/sbin/mkfs.fat [OPTIONS] TARGET [BLOCKS]
+mkfs.jffs2	OK	0	help	
+mkfs.msdos	OK	0	help	Usage: /usr/sbin/mkfs.msdos [OPTIONS] TARGET [BLOCKS]
+mkfs.ubifs	OK	0	help	
+mkfs.vfat	OK	0	help	Usage: /usr/sbin/mkfs.vfat [OPTIONS] TARGET [BLOCKS]
+mkhomedir_helper	ERR	10	help	
+mklost+found	OK	1	help	mklost+found 1.47.2 (1-Jan-2025)
+mkmanifest	OK	0	help	
+mk_modmap	OK	0	help	awk: fatal: cannot open file `--help' for reading: No such file or directory
+mknod	OK	0	help	
+mkpasswd	OK	0	help	
+mksquashfs	OK	1	help	SYNTAX:/usr/bin/mksquashfs source1 source2 ...  FILESYSTEM [OPTIONS] [-e list of
+mkswap	OK	0	help	
+mktemp	OK	0	help	
+mlabel	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mmcat	OK	1	help	/usr/bin/mmcat: invalid option -- '-'
+mmd	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mmdbresolve	OK	1	help	Usage: mmdbresolve -f db_file [-f db_file ...]
+mmls	OK	1	help	/usr/bin/mmls: invalid option -- '-'
+mmount	OK	1	help	Usage: /usr/bin/mmount -V drive:
+mmove	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mmstat	OK	1	help	/usr/bin/mmstat: invalid option -- '-'
+moc	OK	0	help	
+modinfo	OK	0	help	
+modprobe	OK	0	help	
+modularize-19	OK	0	help	
+more	OK	0	help	
+mount	OK	0	help	
+mount.cifs	OK	0	help	
+mount.fuse	OK	1	help	usage: /usr/sbin/mount.fuse type#[source] destination [-t type] [-o opt[,opts...]]
+mount.fuse3	OK	1	help	usage: /usr/sbin/mount.fuse3 type#[source] destination [-t type] [-o opt[,opts...]]
+mount.fuse.sshfs	OK	0	help	
+mount.nfs	OK	1	help	
+mount.nfs4	OK	1	help	
+mountpoint	OK	0	help	
+mount.smb3	OK	0	help	
+mount.sshfs	OK	0	help	
+mountstats	OK	0	help	
+mount.ubifs	OK	0	help	
+movemail	OK	0	help	
+movemail.mailutils	OK	0	help	
+mpack	OK	1	help	/usr/bin/mpack: invalid option -- '-'
+mpartition	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mpstat	OK	1	help	Usage: /usr/bin/mpstat [ options ] [ <interval> [ <count> ] ]
+mrd	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mren	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+msgattrib	OK	0	help	
+msgcat	OK	0	help	
+msgcmp	OK	0	help	
+msgcomm	OK	0	help	
+msgconv	OK	0	help	
+msgen	OK	0	help	
+msgexec	OK	0	help	
+msgfilter	OK	0	help	
+msgfmt	OK	0	help	
+msggrep	OK	0	help	
+msginit	OK	0	help	
+msgmerge	OK	0	help	
+msgunfmt	OK	0	help	
+msguniq	OK	0	help	
+mshortname	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mshowfat	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+mt	OK	0	help	
+mtd_debug	OK	1	help	usage: mtd_debug info <device>
+mtdinfo	OK	0	help	
+mtdpart	OK	0	help	
+mt-gnu	OK	0	help	
+mtools	OK	1	help	Supported commands:
+mtoolstest	OK	0	help	
+mtr	OK	0	help	
+mtracebis	OK	0	help	Usage : /usr/bin/mtracebis <multicast source> [<multicast group>]
+mtr-packet	OK	0	help	
+mtype	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+munpack	OK	1	help	/usr/bin/munpack: invalid option -- '-'
+mv	OK	0	help	
+mvxattr	OK	0	help	
+mxtar	ERR	2	help	/usr/bin/mxtar: 22: shift: can't shift that many
+mzip	OK	0	help	Mtools version 4.0.48, dated February 22nd, 2025
+named	OK	1	help	usage: named [-4|-6] [-c conffile] [-d debuglevel] [-D comment] [-E engine]
+named-checkconf	OK	0	help	named-checkconf: invalid argument --
+named-checkzone	OK	1	help	named-checkzone: invalid argument --
+named-compilezone	OK	1	help	named-compilezone: invalid argument --
+named-journalprint	OK	1	help	/usr/bin/named-journalprint: illegal option -- -
+named-nzd2nzf	OK	0	help	
+named-rrchecker	OK	0	help	/usr/bin/named-rrchecker: illegal option -- -
+namei	OK	0	help	
+nameif	OK	0	help	
+nanddump	OK	0	help	
+nandflipbits	OK	0	help	
+nandtest	OK	0	help	
+nandwrite	OK	0	help	
+nano	OK	0	help	
+nast	OK	0	help	
+nawk	OK	0	help	
+nc	OK	1	help	/usr/bin/nc: invalid option -- '-'
+ncat	OK	0	help	
+ncftp	OK	0	help	
+ncftp3	OK	0	help	
+ncftpbatch	ERR	2	help	Usages:
+ncftpbookmarks	ERR	7	help	
+ncftpget	ERR	8	help	
+ncftpls	ERR	8	help	
+ncftpput	ERR	8	help	
+ncftpspooler	ERR	2	help	Usages:
+nc.openbsd	OK	1	help	/usr/bin/nc.openbsd: invalid option -- '-'
+ncurses6-config	OK	0	help	
+ncursesw6-config	OK	0	help	
+neqn	OK	0	help	
+net	OK	0	help	
+netcat	OK	1	help	/usr/bin/netcat: invalid option -- '-'
+netkey-tool	OK	1	help	This is netkey-tool V1.0, May 15 2005, Copyright Peter Koch <pk_opensc@web.de>
+net-snmp-create-v3-user	OK	0	help	
+netstat	OK	0	help	    inet (DARPA Internet) inet6 (IPv6) ax25 (AMPR AX.25) 
+networkctl	OK	0	help	
+newaliases	ERR	75	help	newaliases: invalid option -- '-'
+newgrp	OK	0	help	
+newusers	OK	0	help	
+nfnl_osf	ERR	255	help	/usr/sbin/nfnl_osf: invalid option -- '-'
+nfsconf	OK	1	help	/usr/sbin/nfsconf: unrecognized option '--help'
+nfsdcld	OK	0	help	
+nfsdclddb	OK	0	help	
+nfsdclnts	OK	0	help	
+nfsdctl	OK	0	help	
+nfsidmap	OK	1	help	/usr/sbin/nfsidmap: invalid option -- '-'
+nfsiostat	OK	0	help	
+nfsref	OK	1	help	Usage: nfsref [ -t type ] SUBCOMMAND [ ARGUMENTS ]
+nfsstat	OK	0	help	
+nft	OK	0	help	
+nftldump	OK	1	help	ioctl(MEMGETINFO): Inappropriate ioctl for device
+nftl_format	OK	0	help	Usage: nftl_format [-ib] <mtddevice> [<start offset> [<size>]]
+ngettext	OK	0	help	
+nginx	OK	1	help	nginx: invalid option: "-"
+nice	OK	0	help	
+nisdomainname	OK	0	version	
+nl	OK	0	help	
+nm	OK	0	help	
+nmap	OK	0	help	
+nmbd	OK	0	help	
+nmblookup	OK	0	help	
+nohup	OK	0	help	
+nologin	OK	1	help	
+normalizer	OK	0	help	
+not-19	OK	1	help	error: unable to find `--help' in PATH: No such file or directory
+npa-tool	OK	0	help	
+nping	OK	0	help	
+nproc	OK	0	help	
+nroff	OK	0	help	
+nscd	OK	0	help	
+nsec3hash	OK	1	help	Usage: nsec3hash salt algorithm iterations domain
+nsenter	OK	0	help	
+nslcd	OK	0	help	
+nslookup	OK	1	help	
+nstat	OK	0	version	
+nsupdate	OK	1	help	/usr/bin/nsupdate: illegal option -- -
+ntlm_auth	OK	0	help	
+numfmt	OK	0	help	
+numpy-config	OK	0	help	
+nvim	OK	0	help	
+nvptx-arch-19	OK	0	help	
+obj2yaml-19	OK	0	help	
+objcopy	OK	0	help	
+objdump	OK	0	help	
+oclock	X_ALIVE	124	x	
+od	OK	0	help	
+oLschema2ldif	OK	0	help	
+omshell	OK	1	help	Usage: omshell
+open	X_DIED	0	x	
+openpgp-tool	OK	0	version	openpgp-tool - OpenPGP card utility version 0.26.1
+opensc-asn1	OK	0	help	
+opensc-explorer	ERR	2	help	/usr/bin/opensc-explorer: unrecognized option '--help'
+opensc-notify	OK	0	help	
+opensc-tool	OK	0	version	
+openssl	OK	0	help	help:
+openvpn	OK	1	help	
+openvt	OK	0	help	Usage: openvt [option...] -- command
+opt-19	OK	0	help	
+ownership	OK	0	help	
+p7zip	OK	0	help	
+packetforge-ng	OK	1	help	
+pager	OK	0	help	
+pam-auth-update	ERR	255	help	Failed to open terminal.debconf: whiptail output the above errors, giving up!
+pam_getenv	OK	0	help	
+pam_namespace_helper	OK	0	help	
+pam_timestamp_check	OK	1	help	/usr/sbin/pam_timestamp_check: invalid option -- '-'
+partx	OK	0	help	
+passwd	OK	0	help	
+paste	OK	0	help	
+patch	OK	0	help	
+pathchk	OK	0	help	
+pcscd	OK	0	help	
+pdb3	OK	0	help	
+pdb3.13	OK	0	help	
+pdbedit	OK	0	help	
+peekfd	OK	1	help	Usage: peekfd [-8] [-n] [-c] [-d] [-V] [-h] <pid> [<fd> ..]
+perfdhcp	OK	1	help	
+perl	OK	0	help	
+perl5.40.1	OK	0	help	
+perl5.40-x86_64-linux-gnu	OK	0	help	
+perlbug	OK	0	help	
+perldoc	OK	1	help	You need to install the perl-doc package to use this program.
+perlivp	OK	0	help	unknown flag: '-'
+perlthanks	OK	0	help	
+pgrep	OK	0	help	
+pic	OK	0	help	
+pico	OK	0	help	
+piconv	OK	0	help	piconv [-f from_encoding] [-t to_encoding]
+pidof	OK	1	help	
+pidstat	OK	1	help	Usage: /usr/bin/pidstat [ options ] [ <interval> [ <count> ] ] [ -e <program> <args> ]
+pidwait	OK	0	help	
+pinentry	OK	0	help	Usage: pinentry-curses [options] (-h for help)
+pinentry-curses	OK	0	help	Usage: pinentry-curses [options] (-h for help)
+ping	ERR	2	help	/usr/bin/ping: invalid option -- '-'
+ping4	ERR	2	help	/usr/bin/ping4: invalid option -- '-'
+ping6	ERR	2	help	/usr/bin/ping6: invalid option -- '-'
+pinky	OK	0	help	
+pip	OK	0	help	
+pip3	OK	0	help	
+pivot_root	OK	0	help	
+piv-tool	ERR	2	help	/usr/bin/piv-tool: unrecognized option '--help'
+pixeltool	OK	1	help	pixeltool: could not exec '/usr/lib/qt5/bin/pixeltool': No such file or directory
+pkaction	OK	0	help	
+pkcheck	OK	0	help	
+pkcs11-register	OK	0	help	
+pkcs11-tool	ERR	2	help	/usr/bin/pkcs11-tool: unrecognized option '--help'
+pkcs15-crypt	ERR	2	help	/usr/bin/pkcs15-crypt: unrecognized option '--help'
+pkcs15-init	OK	1	version	No smart card readers found.
+pkcs15-tool	ERR	2	help	/usr/bin/pkcs15-tool: unrecognized option '--help'
+pkill	OK	0	help	
+pkttyagent	OK	0	help	
+pl2pm	OK	0	help	
+pldd	OK	0	help	
+plipconfig	OK	0	help	
+plog	OK	1	help	
+pmap	OK	0	help	
+pod2html	ERR	255	help	Usage:  /usr/bin/pod2html --help --htmldir=<name> --htmlroot=<URL>
+pod2man	OK	0	help	
+pod2text	OK	1	help	
+pod2usage	OK	1	help	
+podchecker	OK	1	help	
+poff	OK	1	help	Illegal option --
+policyvers	ERR	2	help	/usr/sbin/policyvers:  security_policyvers() failed:  No such file or directory
+pon	OK	0	help	
+postalias	OK	1	help	postalias: invalid option -- '-'
+postcat	OK	1	help	/usr/sbin/postcat: invalid option -- '-'
+postconf	OK	1	help	/usr/sbin/postconf: invalid option -- '-'
+postdrop	OK	1	help	postdrop: invalid option -- '-'
+postfix	OK	1	help	postfix: invalid option -- '-'
+postfix-add-filter	OK	0	help	
+postfix-add-policy	OK	0	help	
+postfix-collate	OK	0	help	
+postkick	OK	1	help	postkick: invalid option -- '-'
+postlock	ERR	75	help	/usr/sbin/postlock: invalid option -- '-'
+postlog	OK	1	help	postlog: invalid option -- '-'
+postmap	OK	1	help	postmap: invalid option -- '-'
+postmulti	OK	1	help	postmulti: invalid option -- '-'
+postqueue	ERR	69	help	postqueue: invalid option -- '-'
+postsuper	OK	1	help	postsuper: invalid option -- '-'
+posttls-finger	OK	1	help	/usr/sbin/posttls-finger: invalid option -- '-'
+poweroff	OK	0	help	
+pppd	OK	0	help	ppp v2.5.2
+pppdump	OK	1	help	/usr/sbin/pppdump: invalid option -- '-'
+pppoe-discovery	OK	1	help	/usr/sbin/pppoe-discovery: invalid option -- '-'
+pppstats	OK	1	help	/usr/sbin/pppstats: invalid option -- '-'
+pp-trace-19	OK	0	help	
+pr	OK	0	help	
+preconv	OK	0	help	
+print	X_DIED	0	x	
+printenv	OK	0	help	
+printf	OK	0	help	
+prlimit	OK	0	help	
+procan	OK	1	help	2026/09/03 23:21:00 procan[131601] E unknown option "--help"
+profiles	OK	0	help	
+prove	OK	1	help	
+prtstat	OK	1	help	/usr/bin/prtstat: unrecognized option '--help'
+ps	OK	0	help	
+psfaddtable	ERR	64	help	Usage: psfaddtable infont intable outfont
+psfgettable	ERR	65	help	psfgettable: Bad magic number on --help
+psfstriptable	ERR	64	help	Usage: psfstriptable infont outfont
+psfxtable	ERR	64	help	Usage: psfxtable [-i infont] [-o outfont] [-it intable] [-ot outtable] [-nt]
+pslog	OK	0	version	pslog (PSmisc) 23.7
+pstat	OK	1	help	/usr/bin/pstat: invalid option -- '-'
+pstree	OK	1	help	/usr/bin/pstree: unrecognized option '--help'
+pstree.x11	OK	1	help	/usr/bin/pstree.x11: unrecognized option '--help'
+ptar	ERR	25	help	/usr/bin/ptar version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+ptardiff	ERR	2	help	/usr/bin/ptardiff version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+ptargrep	OK	0	help	You need to install the perl-doc package to use this program.
+ptx	OK	0	help	
+pwck	OK	0	help	
+pwconv	OK	0	help	
+pwd	OK	0	help	
+pwdx	OK	0	help	
+pwhistory_helper	ERR	4	help	This binary is not designed for running in this way.
+pw-inspector	ERR	255	help	/usr/bin/pw-inspector: invalid option -- '-'
+pwunconv	OK	0	help	
+py3clean	OK	0	help	
+py3compile	OK	0	help	
+py3versions	OK	0	help	
+pydoc3	OK	0	help	
+pydoc3.13	OK	0	help	
+pygettext3	OK	0	help	pygettext -- Python equivalent of xgettext(1)
+pygettext3.13	OK	0	help	pygettext -- Python equivalent of xgettext(1)
+pygmentize	OK	0	help	
+pylupdate5	OK	0	help	pylupdate5 warning: File '--help' does not look like a project file
+pylupdate6	OK	0	help	
+pyrcc5	OK	1	help	PyQt5 resource compiler
+python3	OK	0	help	
+python3.13	OK	0	help	
+python3.13-config	OK	0	help	
+python3-config	OK	0	help	
+pyuic5	OK	0	help	
+pyuic6	OK	0	help	
+qcollectiongenerator	OK	1	help	qcollectiongenerator: could not exec '/usr/lib/qt5/bin/qcollectiongenerator': No such file or directory
+qdbus	OK	1	help	qdbus: could not find a Qt installation of ''
+qdbuscpp2xml	OK	0	help	
+qdbusviewer	OK	1	help	qdbusviewer: could not exec '/usr/lib/qt5/bin/qdbusviewer': No such file or directory
+qdbusxml2cpp	OK	0	help	
+qdoc	OK	1	help	qdoc: could not exec '/usr/lib/qt5/bin/qdoc': No such file or directory
+qdoc3	OK	1	help	qdoc3: could not exec '/usr/lib/qt5/bin/qdoc3': No such file or directory
+qgltf	OK	1	help	qgltf: could not exec '/usr/lib/qt5/bin/qgltf': No such file or directory
+qhelpconverter	OK	1	help	qhelpconverter: could not exec '/usr/lib/qt5/bin/qhelpconverter': No such file or directory
+qhelpgenerator	OK	1	help	qhelpgenerator: could not exec '/usr/lib/qt5/bin/qhelpgenerator': No such file or directory
+qlalr	OK	0	help	Usage: qlalr [options] [input file name]
+qmake	OK	1	help	qmake: could not exec '/usr/lib/qt5/bin/qmake': No such file or directory
+qml	OK	1	help	qml: could not find a Qt installation of ''
+qml1plugindump	OK	1	help	qml1plugindump: could not exec '/usr/lib/qt5/bin/qml1plugindump': No such file or directory
+qmlbundle	OK	1	help	qmlbundle: could not exec '/usr/lib/qt5/bin/qmlbundle': No such file or directory
+qmlcachegen	OK	1	help	qmlcachegen: could not exec '/usr/lib/qt5/bin/qmlcachegen': No such file or directory
+qmleasing	OK	1	help	qmleasing: could not exec '/usr/lib/qt5/bin/qmleasing': No such file or directory
+qmlimportscanner	OK	1	help	qmlimportscanner: could not find a Qt installation of ''
+qmljs	OK	1	help	qmljs: could not exec '/usr/lib/qt5/bin/qmljs': No such file or directory
+qmllint	OK	1	help	qmllint: could not exec '/usr/lib/qt5/bin/qmllint': No such file or directory
+qmlmin	OK	1	help	qmlmin: could not exec '/usr/lib/qt5/bin/qmlmin': No such file or directory
+qmlplugindump	OK	1	help	qmlplugindump: could not exec '/usr/lib/qt5/bin/qmlplugindump': No such file or directory
+qmlprofiler	OK	1	help	qmlprofiler: could not exec '/usr/lib/qt5/bin/qmlprofiler': No such file or directory
+qmlscene	OK	1	help	qmlscene: could not find a Qt installation of ''
+qmltestrunner	OK	1	help	qmltestrunner: could not exec '/usr/lib/qt5/bin/qmltestrunner': No such file or directory
+qmlviewer	OK	1	help	qmlviewer: could not exec '/usr/lib/qt5/bin/qmlviewer': No such file or directory
+qmqp-sink	OK	1	help	/usr/sbin/qmqp-sink: invalid option -- '-'
+qmqp-source	OK	1	help	/usr/sbin/qmqp-source: invalid option -- '-'
+qshape	OK	0	help	/usr/sbin/qshape version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+qtattributionsscanner	OK	1	help	qtattributionsscanner: could not exec '/usr/lib/qt5/bin/qtattributionsscanner': No such file or directory
+qtchooser	OK	0	help	
+qtconfig	OK	1	help	qtconfig: could not exec '/usr/lib/qt5/bin/qtconfig': No such file or directory
+qtdiag	OK	1	help	qtdiag: could not find a Qt installation of ''
+qtpaths	OK	1	help	qtpaths: could not find a Qt installation of ''
+qtpaths6	OK	0	help	
+qtplugininfo	OK	1	help	qtplugininfo: could not find a Qt installation of ''
+qvkgen	OK	1	help	Usage: qvkgen input_vk_xml input_license_header output_base
+racc3.3	OK	1	help	
+radvd	OK	1	help	usage: radvd 
+rake	OK	0	help	
+rake3.3	OK	0	help	
+randpkt	OK	0	help	
+ranlib	OK	0	help	
+rarp	OK	0	help	    ash (Ash) ether (Ethernet) ax25 (AMPR AX.25) 
+rawshark	OK	0	help	
+rbash	OK	0	help	
+rbs3.3	OK	0	help	
+rc	OK	1	help	Illegal flag --
+rcc	OK	0	help	
+rdate	OK	1	help	/usr/sbin/rdate: invalid option -- '-'
+rdbg	OK	0	help	
+rdbg3.3	OK	0	help	
+rdma	OK	0	help	
+rdoc	OK	0	help	
+rdoc3.3	OK	0	help	
+readelf	OK	0	help	
+readlink	OK	0	help	
+readmsg	OK	0	help	
+readmsg.mailutils	OK	0	help	
+readprofile	OK	0	help	
+realpath	OK	0	help	
+rearj	OK	1	help	
+reboot	OK	0	help	
+recode-sr-latin	OK	0	help	
+recv_image	OK	1	help	usage: recv_image <host> <port> <mtddev>
+red	OK	0	help	
+reduce-chunk-list-19	OK	0	help	
+remove-shell	OK	0	help	
+rename.ul	OK	0	help	
+rendercheck	X_ALIVE	124	x	
+renice	OK	0	help	
+reordercap	OK	0	help	
+repc	OK	1	help	repc: could not exec '/usr/lib/qt5/bin/repc': No such file or directory
+request-key	OK	1	help	/usr/sbin/request-key: invalid option -- '-'
+reset	OK	1	help	/usr/bin/reset: invalid option -- '-'
+resize	OK	1	help	Usage: resize [-v] [-u] [-c] [-s [rows cols]]
+resize2fs	OK	1	help	resize2fs 1.47.2 (1-Jan-2025)
+resizecons	OK	1	help	resizecons:
+resolvconf	OK	1	help	Illegal option --
+restorecon	OK	0	help	
+restorecon_xattr	ERR	255	help	SELinux must be enabled to perform this operation.
+rev	OK	0	help	
+rfddump	OK	0	help	
+rfdformat	OK	0	help	
+rfkill	OK	0	help	
+rgrep	OK	0	help	
+ri	OK	0	help	
+ri3.3	OK	0	help	
+rjoe	OK	0	help	
+rm	OK	0	help	
+rmail	ERR	64	help	/usr/sbin/rmail: invalid option -- '-'
+rmdir	OK	0	help	
+rmmod	OK	0	help	
+rmt	OK	0	help	
+rmt-tar	OK	0	help	
+rnano	OK	0	help	
+rndc	OK	1	help	rndc: invalid argument --
+rndc-confgen	OK	1	help	rndc-confgen: invalid argument --
+rotatelogs	OK	1	help	Incorrect number of arguments
+route	OK	0	help	    inet (DARPA Internet) inet6 (IPv6) ax25 (AMPR AX.25) 
+routel	ERR	64	help	
+rpcbind	OK	1	help	/usr/sbin/rpcbind: invalid option -- '-'
+rpcctl	OK	1	help	
+rpcdebug	OK	1	help	/usr/sbin/rpcdebug: invalid option -- '-'
+rpcgen	OK	0	help	
+rpc.gssd	OK	1	help	/usr/sbin/rpc.gssd: invalid option -- '-'
+rpc.idmapd	OK	1	help	rpc.idmapd: '--' is an invalid argument.
+rpcinfo	OK	1	help	/usr/sbin/rpcinfo: invalid option -- '-'
+rpc.mountd	OK	0	help	Usage: rpc.mountd [-F|--foreground] [-h|--help] [-v|--version] [-d kind|--debug kind]
+rpc.nfsd	ERR	2	help	Usage:
+rpc.statd	OK	0	help	usage: rpc.statd [options]
+rpc.svcgssd	OK	1	help	/usr/sbin/rpc.svcgssd: invalid option -- '-'
+rrsync	OK	1	help	/usr/bin/rrsync error: the following arguments are required: DIR
+rsync	OK	0	help	
+rsync-ssl	OK	0	help	
+rsyslogd	OK	1	help	/usr/sbin/rsyslogd: invalid option -- '-'
+rtacct	ERR	255	help	/usr/sbin/rtacct: invalid option -- '-'
+rtcwake	OK	0	help	
+rtmon	ERR	255	help	Argument "--help" is unknown, try "rtmon help".
+rtstat	OK	0	help	/usr/bin/rtstat Version 6.15.0
+ruby	OK	0	help	
+ruby3.3	OK	0	help	
+run0	OK	0	help	
+runcon	OK	0	help	
+runlevel	OK	0	help	
+run-mailcap	X_DIED	0	x	
+run-parts	OK	0	help	
+runuser	OK	0	help	
+rustc	OK	0	help	
+rust-clang	OK	0	help	
+rustdoc	OK	0	help	
+rust-lld	OK	1	help	lld is a generic driver.
+rust-llvm-dwp	OK	0	help	
+rview	OK	0	help	
+rvim	OK	0	help	
+sadf	OK	1	help	Usage: /usr/bin/sadf [ options ] [ <interval> [ <count> ] ] [ <datafile> | -[0-9]+ ]
+safe_finger	OK	1	help	finger: invalid option -- '-'
+samba	OK	0	help	
+samba_dnsupdate	OK	0	help	
+samba-gpupdate	OK	0	help	
+samba_kcc	OK	0	help	
+samba-log-parser	OK	0	help	
+samba-regedit	OK	0	help	
+samba_spnupdate	OK	0	help	
+samba-tool	OK	0	help	
+samba_upgradedns	OK	0	help	
+sancov-19	OK	0	help	
+sanstats-19	OK	0	help	
+sar	OK	0	help	
+sar.sysstat	OK	0	help	
+savelog	OK	1	help	Illegal option --
+sbin	MISSING	-	none	not in PATH
+scalar	ERR	129	help	usage: scalar [-C <directory>] [-c <key>=<value>] <command> [<options>]
+scan-build-19	OK	0	help	
+scan-build-py-19	OK	0	help	
+scan-view-19	OK	0	help	
+scapy	OK	1	help	[31m[1mERROR: option --help not recognized[0m[0m
+scapy3	OK	1	help	[31m[1mERROR: option --help not recognized[0m[0m
+sc-hsm-tool	ERR	2	help	/usr/bin/sc-hsm-tool: unrecognized option '--help'
+scp	OK	1	help	/usr/bin/scp: unknown option -- - 
+screendump	OK	0	help	Usage: screendump [option...] [N]
+script	OK	0	help	
+scriptlive	OK	0	help	
+scriptreplay	OK	0	help	
+sdiff	OK	0	help	
+secon	OK	0	help	
+sed	OK	0	help	
+see	X_DIED	0	x	
+sefcontext_compile	OK	1	help	/usr/sbin/sefcontext_compile: invalid option -- '-'
+selabel_compare	OK	1	help	usage: /usr/sbin/selabel_compare [-b backend] [-v] file1 file2
+selabel_digest	OK	1	help	usage: /usr/sbin/selabel_digest -b backend [-v] [-B] [-i] [-f file]
+selabel_get_digests_all_partial_matches	OK	1	help	/usr/sbin/selabel_get_digests_all_partial_matches: invalid option -- '-'
+selabel_lookup	OK	1	help	usage: /usr/sbin/selabel_lookup -b backend [-v] [-r] -k key [-t type] [-f file]
+selabel_lookup_best_match	OK	1	help	usage: /usr/sbin/selabel_lookup_best_match [-v] [-r] -p path [-m mode] [-f file] [link...]
+selabel_partial_match	OK	1	help	/usr/sbin/selabel_partial_match: invalid option -- '-'
+select-editor	OK	1	help	/usr/bin/select-editor: 12: cannot create ~/.selected_editor: Directory nonexistent
+selinux_check_access	OK	1	help	/usr/sbin/selinux_check_access: invalid option -- '-'
+selinux_check_securetty_context	OK	0	help	
+selinuxenabled	OK	1	help	
+selinuxexeccon	ERR	255	help	/usr/sbin/selinuxexeccon: No such file or directory
+semodule	OK	0	help	
+sendmail	ERR	75	help	sendmail: invalid option -- '-'
+sensible-browser	X_ALIVE	124	x	
+sensible-editor	OK	0	help	
+sensible-pager	OK	0	help	
+sensible-terminal	OK	1	help	xterm: bad command line option "--help" 
+seq	OK	0	help	
+serve_image	OK	1	help	usage: serve_image <host> <port> <image> <erasesize> [<tx_rate>]
+service	OK	0	help	Usage: service < option > | --status-all | [ service_name [ command | --full-restart ] ]
+sestatus	ERR	255	help	/usr/bin/sestatus: invalid option -- '-'
+setarch	OK	0	help	
+setcap	OK	1	help	fatal error: Invalid argument
+setcifsacl	ERR	255	help	/usr/bin/setcifsacl: invalid option -- '-'
+setenforce	OK	1	help	/usr/sbin/setenforce: SELinux is disabled
+setfacl	OK	0	help	
+setfattr	OK	0	help	
+setfilecon	OK	1	help	usage:  /usr/sbin/setfilecon context path...
+setfiles	ERR	255	help	/usr/sbin/setfiles: invalid option -- '-'
+setfont	OK	0	help	Usage: setfont [option...] [newfont...]
+setkeycodes	OK	0	help	Usage: setkeycodes [option...] scancode keycode ...
+setleds	OK	0	help	Usage: setleds [option...] [[+|-][ num | caps | scroll ]]
+setlogcons	OK	0	help	Usage: setlogcons [option...] [N]
+setmetamode	OK	0	help	Usage: setmetamode [option...] [argument]
+setpriv	OK	0	help	
+setsebool	OK	1	help	/usr/sbin/setsebool: invalid option -- '-'
+setserial	OK	1	help	/usr/bin/setserial: invalid option -- '-'
+setsid	OK	0	help	
+setterm	OK	0	help	
+setupcon	OK	0	help	Usage: setupcon [OPTION] [VARIANT]
+setvesablank	OK	1	help	Couldn't get a file descriptor referring to the console.
+setvtrgb	OK	0	help	Usage: setvtrgb [option...] [vga|FILE|-]
+setxkbmap	X_DIED	0	x	
+sfdisk	OK	0	help	
+sftp	OK	1	help	unknown option -- - 
+sg	OK	0	help	
+sh	ERR	2	help	/usr/bin/sh: 0: Illegal option --
+sha1sum	OK	0	help	
+sha224sum	OK	0	help	
+sha256sum	OK	0	help	
+sha384sum	OK	0	help	
+sha512sum	OK	0	help	
+shadowconfig	OK	0	help	
+shar	OK	0	help	
+sharesec	OK	0	help	
+sharkd	OK	0	help	Running as user "root" and group "root". This could be dangerous.
+shasum	OK	0	help	
+showconsolefont	OK	0	help	Usage: showconsolefont [option...]
+showkey	OK	0	help	Usage: showkey [option...]
+showmount	OK	0	help	
+shred	OK	0	help	
+shuf	OK	0	help	
+shutdown	OK	0	help	
+sieve	OK	0	help	
+sievec	ERR	64	help	/usr/bin/sievec: invalid option -- '-'
+sieve-dump	ERR	64	help	/usr/bin/sieve-dump: invalid option -- '-'
+sieve-filter	ERR	64	help	/usr/bin/sieve-filter: invalid option -- '-'
+sieve-test	ERR	64	help	/usr/bin/sieve-test: invalid option -- '-'
+sigfind	OK	1	help	/usr/bin/sigfind: invalid option -- '-'
+size	OK	0	help	
+skill	OK	0	help	
+slabtop	OK	0	help	
+slapacl	OK	1	help	/usr/sbin/slapacl: invalid option -- '-'
+slapadd	OK	1	help	/usr/sbin/slapadd: invalid option -- '-'
+slapauth	OK	1	help	/usr/sbin/slapauth: invalid option -- '-'
+slapcat	OK	1	help	/usr/sbin/slapcat: invalid option -- '-'
+slapd	OK	1	help	/usr/sbin/slapd: invalid option -- '-'
+slapdn	OK	1	help	/usr/sbin/slapdn: invalid option -- '-'
+slapindex	OK	1	help	
+slapmodify	OK	1	help	/usr/sbin/slapmodify: invalid option -- '-'
+slappasswd	OK	1	help	/usr/sbin/slappasswd: invalid option -- '-'
+slapschema	OK	1	help	/usr/sbin/slapschema: invalid option -- '-'
+slaptest	OK	1	help	/usr/sbin/slaptest: invalid option -- '-'
+slattach	OK	0	version	
+sleep	OK	0	help	
+smb2-quota	OK	0	help	
+smbcontrol	OK	1	help	Usage: smbcontrol [OPTION...] <destination> <message-type> <parameters>
+smbd	OK	0	help	
+smbinfo	OK	0	help	
+smbpasswd	OK	1	help	/usr/bin/smbpasswd: invalid option -- '-'
+smbstatus	OK	0	help	
+sm-notify	OK	1	help	/usr/sbin/sm-notify: invalid option -- '-'
+smtp-sink	OK	1	help	/usr/sbin/smtp-sink: invalid option -- '-'
+smtp-source	OK	1	help	/usr/sbin/smtp-source: invalid option -- '-'
+snice	OK	0	help	
+snmp-bridge-mib	ERR	2	help	Can't locate NetSNMP/OID.pm in @INC (you may need to install the NetSNMP::OID module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib
+snmpbulkget	OK	1	help	USAGE: snmpbulkget [OPTIONS] AGENT OID [OID]...
+snmpbulkwalk	OK	1	help	USAGE: snmpbulkwalk [OPTIONS] AGENT [OID]
+snmpcheck	X_DIED	2	x	Can't locate Tk.pm in @INC (you may need to install the Tk module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64-linux-gnu/p
+snmpconf	TIMEOUT	124	help	/usr/bin/snmpconf version [unknown] calling Getopt::Std::getopts (version 1.14 [paranoid]),
+snmpd	OK	1	help	
+snmpdelta	OK	1	help	Usage: snmpdelta [-Cf] [-CF commandFile] [-Cl] [-CL SumFileName]
+snmpdf	OK	1	help	Usage: snmpdf [-Cu] [OPTIONS] AGENT
+snmpget	OK	1	help	USAGE: snmpget [OPTIONS] AGENT OID [OID]...
+snmpgetnext	OK	1	help	USAGE: snmpgetnext [OPTIONS] AGENT OID [OID]...
+snmpinform	OK	1	help	USAGE: snmpinform [OPTIONS] AGENT TRAP-PARAMETERS
+snmpnetstat	OK	1	help	usage: snmpnetstat [snmp_opts] [-Canv] [-Cf address_family]
+snmpping	OK	1	help	Usage: snmpping [OPTIONS] AGENT DESTINATION
+snmpps	OK	1	help	Usage: snmpps [-Cp] [-Ca] [-C m | n | t] AGENT[OPTIONS] AGENT
+snmpset	OK	1	help	USAGE: snmpset [OPTIONS] AGENT OID TYPE VALUE [OID TYPE VALUE]...
+snmpstatus	OK	1	help	USAGE: snmpstatus [OPTIONS] AGENT
+snmptable	OK	1	help	USAGE: snmptable [OPTIONS] AGENT TABLE-OID
+snmptest	OK	1	help	USAGE: snmptest [OPTIONS] AGENT
+snmptls	OK	1	help	USAGE: snmptls [-Cm mapTypeOID] [-Cd data] [-Cs storageType] [OPTIONS] AGENT<command> [command options]
+snmptranslate	OK	1	help	/usr/bin/snmptranslate: invalid option -- '-'
+snmptrap	OK	1	help	USAGE: snmptrap [OPTIONS] AGENT TRAP-PARAMETERS
+snmpusm	OK	1	help	Usage: snmpusm [OPTIONS] AGENT COMMAND
+snmpvacm	OK	1	help	Usage: snmpvacm [OPTIONS] AGENT COMMAND
+snmpwalk	OK	1	help	USAGE: snmpwalk [OPTIONS] AGENT [OID]
+socat	OK	1	help	2026/09/03 23:32:13 socat[156639] E unknown option "--help"; use option "-h" for help
+socat1	OK	1	help	2026/09/03 23:32:13 socat1[156650] E unknown option "--help"; use option "-h" for help
+socat-broker.sh	OK	1	help	Unknown option "--help"
+socat-chain.sh	OK	1	help	/usr/bin/socat-chain.sh: Unknown option "--help"
+socat-mux.sh	OK	1	help	/usr/bin/socat-mux.sh: Unknown option "--help"
+soelim	OK	0	help	
+sort	OK	0	help	
+sorter	OK	1	help	
+splain	OK	0	help	/usr/bin/splain version 1.40 calling Getopt::Std::getopts (version 1.14 [paranoid]),
+split	OK	0	help	
+split-file-19	OK	0	help	
+splitfont	OK	1	help	call: splitfont fontfile 17,23-30,...
+split-logfile	OK	0	help	
+sq	OK	0	help	
+sqfscat	OK	1	help	SYNTAX: /usr/bin/sqfscat [OPTIONS] FILESYSTEM [list of files to cat to stdout]
+sqfstar	OK	1	help	SYNTAX:/usr/bin/sqfstar [OPTIONS] FILESYSTEM [list of exclude dirs/files]
+sqlmap	OK	0	help	
+sqlmapapi	OK	0	help	
+sqv	OK	0	help	
+srch_strings	OK	1	help	/usr/bin/srch_strings: invalid option -- '-'
+ss	OK	0	help	
+ssh	ERR	255	help	unknown option -- - 
+ssh-add	ERR	2	help	Could not open a connection to your authentication agent.
+ssh-agent	OK	1	help	unknown option -- - 
+ssh-argv0	OK	1	help	ssh-argv0: This script should not be run like this, see ssh-argv0(1) for details
+ssh-copy-id	OK	1	help	Illegal option --
+sshd	OK	1	help	unknown option -- - 
+sshfs	OK	0	help	
+ssh-keygen	OK	1	help	unknown option -- - 
+ssh-keyscan	OK	1	help	unknown option -- - 
+sssd	OK	0	help	
+sss_ssh_authorizedkeys	OK	0	help	
+sss_ssh_knownhosts	OK	0	help	
+sss_ssh_knownhostsproxy	OK	1	help	
+start-statd	OK	0	help	Created symlink '/run/systemd/system/remote-fs.target.wants/rpc-statd.service' → '/usr/lib/systemd/system/rpc-statd.service'.
+start-stop-daemon	OK	0	help	
+stat	OK	0	help	
+stdbuf	OK	0	help	
+strace	OK	0	help	
+strace-log-merge	OK	0	help	
+streamzip	OK	0	help	
+strings	OK	0	help	
+strip	OK	0	help	
+stty	OK	0	help	
+su	OK	0	help	
+sudo	OK	0	help	
+sudoedit	OK	0	help	
+sudo_logsrvd	OK	0	help	
+sudoreplay	OK	0	help	
+sudo_sendlog	OK	0	help	
+sulogin	OK	0	help	
+sum	OK	0	help	
+sumtool	OK	0	help	
+swanctl	OK	0	help	plugin 'test-vectors': failed to load - test_vectors_plugin_create not found and no plugin file available
+swaplabel	OK	0	help	
+swapoff	OK	0	help	
+swapon	OK	0	help	
+switch_root	OK	0	help	
+sync	OK	0	help	
+syntax_suggest3.3	OK	0	help	
+sysctl	OK	0	help	
+systemctl	OK	0	help	
+systemd-ac-power	OK	0	help	
+systemd-analyze	OK	0	help	
+systemd-ask-password	OK	0	help	
+systemd-cat	OK	0	help	
+systemd-cgls	OK	0	help	
+systemd-cgtop	OK	0	help	
+systemd-confext	OK	0	help	
+systemd-creds	OK	0	help	
+systemd-delta	OK	0	help	
+systemd-detect-virt	OK	0	help	
+systemd-escape	OK	0	help	
+systemd-firstboot	OK	0	help	
+systemd-id128	OK	0	help	
+systemd-inhibit	OK	0	help	
+systemd-machine-id-setup	OK	0	help	
+systemd-mount	OK	0	help	
+systemd-notify	OK	0	help	
+systemd-path	OK	0	help	
+systemd-run	OK	0	help	
+systemd-socket-activate	OK	0	help	
+systemd-stdio-bridge	OK	0	help	
+systemd-sysext	OK	0	help	
+systemd-sysusers	OK	0	help	
+systemd-tmpfiles	OK	0	help	
+systemd-tty-ask-password-agent	OK	0	help	
+systemd-umount	OK	0	help	
+systemd-vpick	OK	0	help	
+systool	OK	1	help	/usr/bin/systool: invalid option -- '-'
+tabs	OK	1	help	Usage: tabs [options] [tabstop-list]
+tac	OK	0	help	
+tail	OK	0	help	
+tapestat	OK	1	help	Usage: /usr/bin/tapestat [ options ] [ <interval> [ <count> ] ]
+tar	OK	0	help	
+tarcat	OK	0	help	
+taskset	OK	0	help	
+tbl	OK	0	help	
+tc	ERR	255	help	Option "--help" is unknown, try "tc -help".
+tcpd	OK	0	help	
+tcpdchk	OK	1	help	/usr/sbin/tcpdchk: invalid option -- '-'
+tcpdmatch	OK	1	help	/usr/sbin/tcpdmatch: invalid option -- '-'
+tcpdump	OK	0	help	
+tcpsvd	ERR	111	help	usage: /usr/bin/tcpsvd [-Ehpv] [-u user] [-c n] [-C n:msg] [-b n] [-l name] [-i dir|-x cdb] [-t sec] host port prog
+tcptraceroute	ERR	2	help	getopt: unrecognized option '--help'
+tcptraceroute.db	ERR	2	help	getopt: unrecognized option '--help'
+tcsh	OK	0	help	
+tdbbackup	OK	0	help	/usr/bin/tdbbackup: invalid option -- '-'
+tdbbackup.tdbtools	OK	0	help	/usr/bin/tdbbackup.tdbtools: invalid option -- '-'
+tdbdump	OK	1	help	/usr/bin/tdbdump: invalid option -- '-'
+tdbrestore	OK	1	help	tdb_open: File exists
+tdbtool	OK	0	help	
+tee	OK	0	help	
+telinit	OK	0	help	
+telnet	OK	0	help	
+telnetd	OK	0	help	
+tempfile	OK	0	help	WARNING: tempfile is deprecated; consider using mktemp instead.
+test	OK	0	help	
+testparm	OK	0	help	
+text2pcap	OK	0	help	
+tgz	TIMEOUT	124	help	Writing gzip'd tar archive to "--help.tgz".
+tic	OK	1	help	/usr/bin/tic: invalid option -- '-'
+time	OK	0	help	
+timedatectl	OK	0	help	
+timeout	OK	0	help	
+tipc	OK	1	version	/usr/sbin/tipc: unrecognized option '--version'
+tkiptun-ng	OK	1	help	
+tload	OK	0	help	
+tmux	OK	1	help	usage: tmux [-2CDlNuVv] [-c shell-command] [-f file] [-L socket-name]
+toe	OK	1	help	/usr/bin/toe: invalid option -- '-'
+togglesebool	OK	1	help	/usr/sbin/togglesebool:  SELinux is disabled
+top	OK	0	help	
+touch	OK	0	help	
+tput	ERR	2	help	/usr/bin/tput: invalid option -- '-'
+tqdm	OK	0	help	
+tr	OK	0	help	
+tracepath	ERR	255	help	/usr/bin/tracepath: invalid option -- '-'
+traceproto	ERR	2	help	getopt: unrecognized option '--help'
+traceproto.db	ERR	2	help	getopt: unrecognized option '--help'
+traceroute	OK	0	help	Usage:
+traceroute6	OK	0	help	Usage:
+traceroute6.db	OK	0	help	Usage:
+traceroute.db	OK	0	help	Usage:
+traceroute-nanog	ERR	2	help	getopt: unrecognized option '--help'
+transset	X_ALIVE	124	x	
+troff	OK	0	help	
+true	OK	0	help	
+truncate	OK	0	help	
+try-from	OK	0	help	
+tset	OK	1	help	/usr/bin/tset: invalid option -- '-'
+tshark	OK	0	help	Running as user "root" and group "root". This could be dangerous.
+tsig-keygen	OK	1	help	tsig-keygen: invalid argument --
+tsk_comparedir	OK	1	help	/usr/bin/tsk_comparedir: invalid option -- '-'
+tsk_gettimes	OK	1	help	/usr/bin/tsk_gettimes: invalid option -- '-'
+tsk_imageinfo	OK	1	help	/usr/bin/tsk_imageinfo: invalid option -- '-'
+tsk_loaddb	OK	1	help	/usr/bin/tsk_loaddb: invalid option -- '-'
+tsk_recover	OK	1	help	/usr/bin/tsk_recover: invalid option -- '-'
+tsort	OK	0	help	
+tty	OK	0	help	
+tune2fs	OK	1	help	/usr/sbin/tune2fs: invalid option -- '-'
+typeprof3.3	OK	0	help	
+tzselect	OK	0	help	
+ubiattach	OK	0	help	
+ubiblock	OK	0	help	
+ubicrc32	OK	0	help	
+ubidetach	OK	0	help	
+ubiformat	OK	0	help	
+ubihealthd	OK	1	help	Usage: /usr/sbin/ubihealthd [ -d UBI_DEVICE ] [-i INTERVAL_SEC ] [ -f ]
+ubimkvol	OK	0	help	
+ubinfo	OK	0	help	
+ubinize	OK	0	help	
+ubirename	ERR	255	help	ubirename: error!: too few arguments
+ubirmvol	OK	0	help	
+ubirsvol	OK	0	help	
+ubiscan	OK	0	help	
+ubiupdatevol	OK	0	help	
+ucf	OK	0	help	Debian GNU/Linux ucf 3.0052.
+ucfq	OK	0	help	
+ucfr	OK	0	help	Debian GNU/Linux ucfr 3.0052.
+uclampset	OK	0	help	
+ucs2any	OK	1	help	/usr/bin/ucs2any: No STARTFONT line found in '--help'!
+udpsvd	ERR	111	help	usage: /usr/bin/udpsvd [-hpv] [-u user] [-l name] [-i dir|-x cdb] [-t sec] host port prog
+uic	OK	0	help	
+uic3	OK	1	help	uic3: could not exec '/usr/lib/qt5/bin/uic3': No such file or directory
+ul	OK	0	help	
+umount	OK	0	help	
+umount.nfs	OK	1	help	
+umount.nfs4	OK	1	help	
+unafs	OK	1	help	
+uname	OK	0	help	
+uncompress	OK	0	help	
+uncompress.real	OK	1	help	Unknown flag: '-'; Usage: uncompress.real [-dfhvcVr] [-b maxbits] [--] [path ...]
+unexpand	OK	0	help	
+UnicodeNameMappingGenerator-19	OK	1	help	
+unicode_start	OK	0	help	unicode_start skipped on not a tty
+unicode_stop	OK	0	help	
+uniq	OK	0	help	
+unique	OK	1	help	malloc: Cannot allocate memory
+unix2dos	OK	0	help	
+unix2mac	OK	0	help	
+unix_chkpwd	TIMEOUT	124	help	This binary is not designed for running in this way
+unix_update	TIMEOUT	124	help	This binary is not designed for running in this way
+unlink	OK	0	help	
+unlzma	OK	0	help	
+unsetfiles	OK	1	help	/usr/sbin/unsetfiles: invalid option -- '-'
+unshadow	OK	1	help	
+unshar	OK	0	help	
+unshare	OK	0	help	
+unsquashfs	OK	1	help	SYNTAX: /usr/bin/unsquashfs [OPTIONS] FILESYSTEM [files to extract or exclude (with -excludes) or cat (with -cat )]
+unxz	OK	0	help	
+unzip	OK	0	help	
+unzipsfx	OK	0	help	
+update-alternatives	OK	0	help	
+update-ca-certificates	OK	0	help	
+update-catalog	ERR	255	help	Usage:
+update-cracklib	OK	0	help	
+update-fonts-alias	OK	0	help	
+update-fonts-dir	OK	0	help	
+update-fonts-scale	OK	0	help	
+update-icon-caches	OK	1	help	
+update-ieee-data	OK	1	help	Invalid option: --
+update-inetd	OK	0	help	Usage: update-inetd [<option>...] <command> <argument>
+update-info-dir	OK	0	help	
+update-locale	OK	0	help	Usage: update-locale [OPTIONS] [LANG=locale] [LC_NUMERIC=locale] ...
+update-mime	OK	0	help	
+update-mime-database	OK	1	help	/usr/bin/update-mime-database: invalid option -- '-'
+update-passwd	OK	0	help	
+update-rc.d	OK	1	help	usage: update-rc.d [-f] <basename> remove
+update_rubygems	OK	1	help	/usr/bin/update_rubygems:25:in `load': cannot load such file -- /usr/share/rubygems-integration/all/gems/rubygems-update-3.6.7/exe/update_rubygems (LoadError)
+update-shells	OK	0	help	
+update-sysfs	OK	0	help	
+update-xmlcatalog	OK	1	version	Unknown option: version
+uptime	OK	0	help	
+usb-devices	OK	0	help	find: ‘/sys/bus/usb/devices’: No such file or directory
+usbhid-dump	OK	0	help	
+usbreset	OK	1	help	No such device found
+useradd	OK	0	help	
+userdel	OK	0	help	
+usermod	OK	0	help	
+users	OK	0	help	
+usnjls	OK	1	help	/usr/bin/usnjls: invalid option -- '-'
+uudecode	OK	0	help	
+uuencode	OK	0	help	
+uxterm	X_ALIVE	124	x	
+uz	OK	0	version	
+validatetrans	OK	1	help	usage:  /usr/sbin/validatetrans scontext tcontext tclass newcontext
+validlocale	OK	1	help	locale '--help' not available
+vam	OK	0	help	
+varlinkctl	OK	0	help	
+vconfig	OK	1	help	
+vcstime	OK	1	help	/dev/vcsa: No such file or directory
+vdir	OK	0	help	
+vdpa	OK	0	help	Usage: vdpa [ OPTIONS ] OBJECT { COMMAND | help }
+verify-uselistorder-19	OK	0	help	
+vi	OK	0	help	
+view	OK	0	help	
+viewres	X_ALIVE	124	x	
+vigr	OK	0	help	Usage: vigr [options]
+vim	OK	0	help	
+vim-addon-manager	OK	0	help	
+vim-addons	OK	0	help	
+vim.basic	OK	0	help	
+vimdiff	OK	0	help	
+vimplate	OK	1	help	Can't locate Template.pm in @INC (you may need to install the Template module) (@INC entries checked: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.40.1 /usr/local/share/perl/5.40.1 /usr/lib/x86_64
+vim.tiny	OK	0	help	
+vimtutor	OK	0	help	
+vipw	OK	0	help	Usage: vipw [options]
+visudo	OK	0	help	
+vmstat	OK	0	help	
+vpddecode	OK	0	help	
+vsftpd	ERR	2	help	
+vsftpdwho	OK	1	help	
+vtysh	OK	0	help	
+w	OK	0	help	
+w3m	OK	1	help	w3m version w3m/0.5.3+git20230121, options lang=en,m17n,image,color,ansi-color,mouse,gpm,menu,cookie,ssl,ssl-verify,external-uri-loader,w3mmailer,nntp,gopher,ipv6,alarm,mark,migemo
+w3mman	OK	1	help	w3mman [-M <path>] [[<section>] <command>]
+wall	OK	0	help	
+wasm-ld-19	OK	0	help	
+watch	OK	0	help	
+watchgnupg	OK	0	help	
+wbinfo	OK	0	help	
+wc	OK	0	help	
+wcurl	OK	0	help	
+wdctl	OK	0	help	
+wesside-ng	OK	0	help	/usr/sbin/wesside-ng: invalid option -- '-'
+westcos-tool	ERR	2	help	
+wget	OK	0	help	
+whatis	OK	0	help	
+whereis	OK	0	help	
+which	ERR	2	help	Illegal option --
+which.debianutils	ERR	2	help	Illegal option --
+whiptail	OK	0	help	
+who	OK	0	help	
+whoami	OK	0	help	
+whois	OK	0	help	
+winbindd	OK	0	help	
+winexe	OK	0	help	
+wipefs	OK	0	help	
+wireshark	OK	0	help	
+wireshark.marionnet.sh	OK	0	help	
+wireshark.real	OK	0	help	
+wpaclean	OK	1	help	
+www-browser	X_DIED	4	x	[warn] Epoll ADD(1) on fd 0 failed. Old events were 0; read change was 1 (add); write change was 0 (none); close change was 0 (none): Operation not permitted
+X11	MISSING	-	none	not in PATH
+x11perf	X_DIED	1	x	usage: /usr/bin/x11perf [-options ...]
+x11perfcomp	X_DIED	0	x	
+x86_64	OK	0	help	
+x86_64-linux-gnu-addr2line	OK	0	help	
+x86_64-linux-gnu-ar	OK	0	help	
+x86_64-linux-gnu-as	OK	0	help	
+x86_64-linux-gnu-c++filt	OK	0	help	
+x86_64-linux-gnu-cpp	OK	0	help	
+x86_64-linux-gnu-cpp-14	OK	0	help	
+x86_64-linux-gnu-elfedit	OK	0	help	
+x86_64-linux-gnu-g++	OK	0	help	
+x86_64-linux-gnu-g++-14	OK	0	help	
+x86_64-linux-gnu-gcc	OK	0	help	
+x86_64-linux-gnu-gcc-14	OK	0	help	
+x86_64-linux-gnu-gcc-ar	OK	0	help	
+x86_64-linux-gnu-gcc-ar-14	OK	0	help	
+x86_64-linux-gnu-gcc-nm	OK	0	help	
+x86_64-linux-gnu-gcc-nm-14	OK	0	help	
+x86_64-linux-gnu-gcc-ranlib	OK	0	help	
+x86_64-linux-gnu-gcc-ranlib-14	OK	0	help	
+x86_64-linux-gnu-gcov	OK	0	help	
+x86_64-linux-gnu-gcov-14	OK	0	help	
+x86_64-linux-gnu-gcov-dump	OK	0	help	
+x86_64-linux-gnu-gcov-dump-14	OK	0	help	
+x86_64-linux-gnu-gcov-tool	OK	0	help	
+x86_64-linux-gnu-gcov-tool-14	OK	0	help	
+x86_64-linux-gnu-gprof	OK	0	help	
+x86_64-linux-gnu-ld	OK	0	help	
+x86_64-linux-gnu-ld.bfd	OK	0	help	
+x86_64-linux-gnu-lto-dump	OK	0	help	
+x86_64-linux-gnu-lto-dump-14	OK	0	help	
+x86_64-linux-gnu-nm	OK	0	help	
+x86_64-linux-gnu-objcopy	OK	0	help	
+x86_64-linux-gnu-objdump	OK	0	help	
+x86_64-linux-gnu-python3.13-config	OK	0	help	
+x86_64-linux-gnu-python3-config	OK	0	help	
+x86_64-linux-gnu-ranlib	OK	0	help	
+x86_64-linux-gnu-readelf	OK	0	help	
+x86_64-linux-gnu-size	OK	0	help	
+x86_64-linux-gnu-strings	OK	0	help	
+x86_64-linux-gnu-strip	OK	0	help	
+xargs	OK	0	help	
+xauth	X_DIED	0	x	
+xbiff	X_ALIVE	124	x	
+xcalc	X_ALIVE	124	x	
+xclip	X_DIED	0	x	
+xclipboard	X_ALIVE	124	x	
+xclip-copyfile	X_DIED	1	x	Usage: [options] /usr/bin/xclip-copyfile file...
+xclip-cutfile	X_DIED	1	x	Usage: [options] /usr/bin/xclip-cutfile file...
+xclip-pastefile	X_DIED	2	x	Error: target STRING not available
+xclock	X_ALIVE	124	x	
+xconsole	X_ALIVE	124	x	
+xcursorgen	X_DIED	1	x	/usr/bin/xcursorgen: Error reading config file from stdin
+xcutsel	X_ALIVE	124	x	
+xdg-user-dir	OK	0	help	
+xdg-user-dirs-update	OK	0	help	
+xditview	X_ALIVE	124	x	
+xdpyinfo	X_DIED	0	x	
+xdriinfo	X_ALIVE	124	x	
+xedit	X_ALIVE	124	x	
+xev	X_ALIVE	124	x	
+xeyes	X_ALIVE	124	x	
+xfd	X_DIED	1	x	/usr/bin/xfd:  no font to display
+xfontsel	X_ALIVE	124	x	
+xgc	X_ALIVE	124	x	
+xgettext	OK	0	help	
+xkbbell	X_DIED	0	x	
+xkbcomp	X_DIED	1	x	Error:            No input file specified
+xkbevd	X_ALIVE	124	x	Temporarily disabling the audible bell
+xkbprint	X_DIED	1	x	Error:            No input file specified
+xkbvleds	X_ALIVE	124	x	
+xkbwatch	X_ALIVE	124	x	
+xkill	X_ALIVE	124	x	
+xlinks2	X_ALIVE	124	x	
+xload	X_ALIVE	124	x	
+xlogo	X_ALIVE	124	x	
+xlsatoms	OK	1	help	/usr/bin/xlsatoms: unrecognized argument --help
+xlsclients	OK	1	help	/usr/bin/xlsclients: unrecognized argument --help
+xlsfonts	X_DIED	0	x	
+xmag	X_ALIVE	124	x	
+xman	X_ALIVE	124	x	
+xmessage	X_DIED	1	x	Unknown argument(s):
+xml2-config	OK	0	help	
+xmlpatterns	OK	1	help	xmlpatterns: could not exec '/usr/lib/qt5/bin/xmlpatterns': No such file or directory
+xmlpatternsvalidator	OK	1	help	xmlpatternsvalidator: could not exec '/usr/lib/qt5/bin/xmlpatternsvalidator': No such file or directory
+xmore	ERR	139	help	
+xprop	X_ALIVE	124	x	
+xsubpp	ERR	255	help	Unknown option: help
+xtables-legacy-multi	OK	1	help	ERROR: No valid subcommand given.
+xtables-monitor	OK	1	help	
+xtables-nft-multi	OK	1	help	ERROR: No valid subcommand given.
+xterm	X_ALIVE	124	x	
+xtermcontrol	OK	0	help	
+x-terminal-emulator	X_ALIVE	124	x	
+xtermset	OK	0	help	
+xvinfo	X_DIED	0	x	
+xwd	X_ALIVE	124	x	
+xwininfo	OK	1	help	/usr/bin/xwininfo: unrecognized argument --help
+xwud	X_DIED	1	x	xwud: Error => Unable to read dump file header.
+x-www-browser	X_ALIVE	124	x	
+xxd	OK	1	help	Usage:
+xz	OK	0	help	
+xzcat	OK	0	help	
+xzcmp	OK	0	help	
+xzdiff	OK	0	help	
+xzegrep	OK	0	help	
+xzfgrep	OK	0	help	
+xzgrep	OK	0	help	
+xzless	OK	0	help	
+xzmore	OK	0	help	
+yaml2obj-19	OK	0	help	
+yaml-bench-19	OK	0	help	
+yes	OK	0	help	
+ypdomainname	OK	0	version	
+zcat	OK	0	help	
+zcmp	OK	0	help	
+zdiff	OK	0	help	
+zdump	OK	0	help	
+zegrep	OK	0	help	
+zfgrep	OK	0	help	
+zforce	OK	0	help	
+zgrep	OK	0	help	
+zic	OK	0	help	
+zip	OK	0	help	
+zipcloak	OK	0	help	
+zipdetails	OK	0	help	
+zipgrep	OK	1	help	
+zipinfo	ERR	10	help	ZipInfo 3.00 of 20 April 2009, by Greg Roelofs and the Info-ZIP group.
+zipnote	ERR	16	help	zipnote error: Invalid command arguments (unknown option)
+zipsplit	ERR	16	help	
+zless	OK	0	help	
+zmore	OK	0	help	
+znew	OK	0	help	
+zramctl	OK	0	help	
+#END	-	-	-	elapsed=3880s

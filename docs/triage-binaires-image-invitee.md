@@ -95,18 +95,121 @@ L'échelle de sonde est **déterministe : aucun jugement, que des mesures**.
 | # | Question | Mesure | Verdict |
 |---|---|---|---|
 | 1 | le binaire est-il là ? | `command -v` | absent ⇒ `MISSING` |
-| 2 | **est-ce une application X ?** | `ldd $(command -v X) \| grep -q libX11` | oriente vers 3 ou 4 |
-| 3 | non-X : répond-elle ? | `--help` puis `--version`, sous timeout | rc + `stderr` |
-| 4 | X : survit-elle à l'écran ? | lancement avec `DISPLAY`, timeout court, puis mise à mort | vivante ⇒ `OK` ; morte + `stderr` ⇒ `FAIL` |
+| 2 | **est-ce une application X ?** | `grep -a libX11` sur le fichier, **puis un saut** à travers le wrapper (cf. § 3.3) | oriente vers 3 ou 4 |
+| 3 | non-X : répond-elle ? | `--help` puis, en repli, `--version`, sous timeout | rc + `stderr` |
+| 4 | X : survit-elle à l'écran ? | lancement avec `DISPLAY`, timeout court | vivante ⇒ `X_ALIVE` ; morte + `stderr` ⇒ `X_DIED` |
 
-**À ne pas défaire** : « est-ce une application X ? » est **mesuré par `ldd`**, jamais lu
-dans une liste écrite à la main — leçon de l'ép. 39 de
-`modernisation-installation-marionnet` (*une liste blanche se périme ; on mesure*). Et la
-sonde enregistre **le texte de l'erreur**, pas un booléen : c'est lui qui porte la décision
-de l'étage 2.
+**À ne pas défaire** : « est-ce une application X ? » se **mesure**, jamais ne se lit dans une
+liste écrite à la main — leçon de l'ép. 39 de `modernisation-installation-marionnet` (*une
+liste blanche se périme ; on mesure*). Le § 3.3 dit **pourquoi la mesure n'est pas `ldd`** :
+l'esprit de la règle tient, l'instrument a changé. Et la sonde enregistre **le texte de
+l'erreur**, pas un booléen : c'est lui qui porte la décision de l'étage 2.
+
+### 3.3 Ce que l'épisode 1 a mesuré, et qui a redessiné l'étage 1
+
+Quatre mesures, prises sur `machine-debian-trixie-16341`, chacune contredisant quelque chose
+que l'épisode 0 supposait. Elles sont la raison d'être de la forme actuelle du script.
+
+**(a) Le crux : `exec` ne donne pas de `DISPLAY`, et il n'en a pas besoin.** L'environnement
+d'un `exec m1 …` est **nu** — `PATH`, et pas même `HOME` : le guetteur tourne sous une unité
+systemd sans `Environment=` (`bin/scripts/marionnet-relay.zz-journal.sh`). Mais le relais a
+écrit `export DISPLAY=:0` et `export XAUTHORITY=/etc/X11/Xauthority` dans `/etc/profile`
+(`uml/guest/marionnet-relay`), qu'un shell non interactif ne lit pas. Un `. /etc/profile` en
+tête suffit donc, et `xdpyinfo` répond ensuite. **Conséquence** : le dépôt par
+`--in-guest-script` n'est **pas** nécessaire pour l'écran — il l'est pour le volume (c).
+
+**(b) Le symptôme fondateur ne se reproduit pas sur cette plateforme.** `xlinks2` ne rend
+**aucun** `BadMatch` ici, ni sans terminal ni sous `script` : il vit jusqu'au `timeout`. Le
+serveur X de cette machine (X.Org 21.1.11) annonce sept profondeurs ; celui de la salle,
+non. La réserve du § 8 est donc **confirmée par la mesure** : ce que le chantier a pris pour
+un défaut de l'image est un désaccord avec le **relais X de l'hôte**, ce que le § 6 déclare
+hors périmètre. **Conséquence de conception, à ne pas défaire** : *un verdict X n'est pas une
+propriété de l'image seule*, mais du couple (image, serveur X) — d'où l'en-tête du rapport,
+qui **enregistre le serveur** contre lequel il a été pris. Deux rapports qui divergent ne sont
+pas nécessairement deux images qui divergent.
+
+**(c) `ldd` est faux *et* trop lent.** Faux : `/usr/bin/xlinks2` est un `#!/bin/sh` qui fait
+`exec links2 -g "$@"` — `ldd` n'y voit aucun `libX11`, qui est porté par `links2` ; et
+**417 des 2057 candidats ne sont pas des ELF**. Le binaire même pour lequel le chantier a été
+ouvert était donc classé *non-X* par le classificateur de l'épisode 0. Trop lent : `ldd` forke
+le chargeur dynamique par binaire et **n'a pas fini le catalogue en 300 s**. D'où la mesure
+actuelle : `grep -a libX11` **sur le fichier** (une lecture, pas un `exec`), plus **un seul
+saut** à travers le wrapper — un script est une application X quand ce qu'il lance en est
+une. Un saut et pas un point fixe : c'est ce que le cas mesuré demande, au-delà on écrit un
+analyseur de shell.
+
+**(d) Le canal ne peut pas porter la boucle.** Un aller-retour `exec` coûte ~1 s ; 2061 en
+feraient ~35 min d'attente pour une boucle que l'invité joue en une fraction de seconde. D'où
+**un seul script**, déposé dans le hostfs et lancé en arrière-plan, et **un rapport que l'hôte
+regarde grandir** dans le répertoire partagé. Ce qui donne le quatrième invariant : le rapport
+est écrit **ligne à ligne**, si bien qu'un binaire qui tue l'invité (`reboot`, `halt`) est
+**nommé par la dernière ligne écrite** au lieu d'être deviné après avoir tout perdu.
+
+**Et ce qui rend la sonde sûre** n'est pas une liste de binaires dangereux — elle se périmerait
+— mais le fait qu'elle travaille **dans un COW jetable** : un `--help` qui se révèle être un
+`mkfs` écrit dans une image que personne ne garde.
 
 **Sortie** : un rapport TSV daté et **versionné** (c'est une preuve) —
-`binaire · verdict · rc · première ligne de stderr · sonde employée`.
+`binaire · verdict · rc · sonde employée · première ligne de stderr`, précédé des
+**conditions de la mesure** (image, `sum`, nombre de candidats, délais, **serveur X**).
+
+### 3.4 Le premier rapport, et ce qu'il a corrigé dans la sonde
+
+`docs/probe-reports/machine-debian-trixie-16341-2026-09-03.tsv` — **2060 candidats, un seul
+boot** :
+
+| verdict | n | ce que ça veut dire |
+|---|---|---|
+| `OK` | 1834 | a répondu à `--help` (ou, en repli, à `--version`) avec 0 ou 1 |
+| `ERR` | 142 | a répondu autre chose |
+| `X_ALIVE` | 40 | application X toujours vivante au bout du délai : elle a ouvert sa fenêtre |
+| `X_DIED` | 33 | application X partie avant le délai |
+| `TIMEOUT` | 8 | n'a pas rendu la main à `--help` |
+| `MISSING` | 3 | annoncée par `BINARY_LIST`, absente du `PATH` |
+
+**Ce que ces chiffres valident** : l'étage 2 ne voit que **186 cas sur 2060** (9 %) — la
+décision fondatrice « l'agent ne voit que les échecs, jamais le catalogue » est chiffrée, et
+ce ratio ne dépend pas du nombre d'entrées.
+
+**Ce qu'un passage coûte** : ~3,7 s par candidat, soit **environ deux heures** pour le
+catalogue, dans un seul boot. Et ce coût est celui de la **classification**, pas des sondes —
+mesuré : un run `--x-only`, qui n'exécute que 73 binaires, avance à la même vitesse, parce
+qu'il classe quand même les 2060. L'option sert donc à **ne pas exécuter** deux mille
+binaires, pas à aller plus vite.
+
+**Ce qu'ils ont corrigé, une fois lus** — deux défauts de la sonde, tous deux du genre *juger
+par autre chose que ce qu'on mesure*, la famille que ce dépôt collectionne :
+
+1. **`X_DIED` avec `rc` 0 n'est pas une mort.** **Quinze** des trente-trois étaient `xdpyinfo`,
+   `xlsfonts`, `xauth`, `appres`, `xvinfo`, `setxkbmap`, `xclip`, `see`, `open`… — des outils X
+   **en ligne de commande** qui ont fait leur travail et sont partis avec 0. Le verdict aurait
+   donné quinze échecs imaginaires à juger. Trois issues désormais, et non deux : `X_ALIVE`
+   (le délai), `X_OK` (**rc 0**), `X_DIED` (le reste).
+2. **Le garde-fou de progression comptait les lignes écrites.** Sous `--x-only`, la sonde
+   n'écrit rien pour les deux mille candidats qu'elle saute : l'hôte a lu ce silence comme un
+   blocage et **a arrêté une sonde qui marchait**, après six lignes sur soixante-treize. Le
+   guest compte donc les **candidats** (`probe-progress`), et c'est ce compteur que l'hôte
+   surveille.
+
+**Ce qu'ils ont prouvé, aussi** : `tgz` a écrit une archive nommée `--help.tgz`, et
+`unix_chkpwd`, `unix_update`, `pwhistory_helper` répondent *« This binary is not designed for
+running in this way »*. Une sonde `--help` **fait agir** certains binaires. La garde n'est pas
+une liste de dangereux — elle se périmerait — c'est le **COW jetable**.
+
+### 3.5 Une limite mesurée, laissée ouverte : le faux négatif indirect
+
+**`wireshark` est classé non-X** : il n'a pas `libX11` en dépendance directe (il passe par Qt),
+et le classificateur lit le fichier. Son verdict `OK` (par `--help`) reste vrai, mais il n'a
+pas été éprouvé **à l'écran** — or c'est la grosse application graphique de l'image.
+
+Les deux issues évidentes sont fermées : élargir le motif à `libgtk`/`libQt` serait écrire la
+liste blanche que ce chantier refuse (§ 3.2), et `ldd` transitif est **mesuré trop lent**
+(§ 3.3 c). La question est nette, elle est donc une **prochaine étape**, pas une improvisation.
+
+Deuxième limite du même ordre : **`links2` est lancé sans `-g`**, donc en mode texte, et
+échoue sur `Epoll ADD(1) on fd 0` — c'est le `</dev/null` de la sonde, pas le binaire. Un
+binaire dont le mode par défaut n'est pas graphique n'est pas jugeable par « survit-il à
+l'écran ? ».
 
 ## 4. La politique — le seul fichier que l'agent écrit
 
@@ -207,3 +310,40 @@ sans lequel `BINARY_LIST` n'est pas lisible et l'ampleur pas chiffrable.
 **Le crux de l'épisode 1**, à mesurer avant d'écrire la sonde : `exec m1 …` donne-t-il un
 `DISPLAY` utilisable dans l'invité ? Si non, la sonde des applications X doit passer par
 `--in-guest-script` (hostfs) en posant `DISPLAY` elle-même.
+
+### 2026-09-03/04 — épisode 1 : la sonde, et quatre suppositions démenties par la mesure
+
+Le crux a été mesuré **avant** d'écrire une ligne (§ 3.3 a) : `exec` livre un environnement nu,
+mais `/etc/profile` porte le `DISPLAY` que le relais y a écrit, et un `.` suffit.
+
+Livrable : **`Makefile.d/filesystem.probe-image-binaries.sh`**, sixième de la famille et,
+comme ses cinq frères, sans rien de sourcé. Il boote l'image dans un COW jetable, dépose une
+sonde dans le hostfs, la lance en arrière-plan et **regarde le rapport grandir** ; il
+n'exporte aucune variante et **ne publie rien**.
+
+Premier rapport réel : `docs/probe-reports/machine-debian-trixie-16341-2026-09-03.tsv`,
+**2060 candidats en un seul boot** (§ 3.4).
+
+Ce que l'épisode a **démenti** de la conception d'ouverture, chaque fois par une mesure :
+
+1. le classificateur `ldd` était **faux** (`xlinks2`, le binaire du constat d'origine, est un
+   `#!/bin/sh` — donc classé *non-X* ; et 417 des 2057 candidats ne sont pas des ELF) **et
+   trop lent** (catalogue non fini en 300 s) ;
+2. la boucle ne peut pas passer par le canal (~1 s l'aller-retour, ~35 min de pure attente) ;
+3. **le symptôme fondateur ne se reproduit pas ici** — `xlinks2` est `X_ALIVE` sur cette
+   plateforme. La réserve du § 8 est confirmée : c'est le serveur X de l'hôte, ce que le § 6
+   met hors périmètre. D'où l'invariant neuf : *un verdict X est une propriété du couple
+   (image, serveur X)*, et le rapport enregistre le serveur ;
+4. deux défauts de la sonde elle-même, trouvés **en lisant son propre rapport** : `X_DIED`
+   avec `rc` 0 (quinze morts imaginaires) et un garde-fou qui comptait les lignes écrites au
+   lieu des candidats traités (il a arrêté une sonde qui marchait).
+
+**La preuve des deux correctifs**, prise en rejouant `--x-only` —
+`docs/probe-reports/machine-debian-trixie-16341-2026-09-04-x.tsv` : **15 bascules
+`X_DIED` → `X_OK`** (les seules lignes qui changent entre les deux rapports), et un run qui
+traverse **2059 candidats** là où le précédent s'arrêtait à **6**. Le rapport X final :
+`X_ALIVE` 40, `X_DIED` 18, `X_OK` 15, `MISSING` 3.
+
+**Reste ouvert, et nettement formulé** (§ 3.5) : le faux négatif du classificateur sur les
+applications qui lient X **indirectement** (`wireshark` via Qt), les deux issues évidentes
+étant fermées — une liste se périme, `ldd` transitif est trop lent.

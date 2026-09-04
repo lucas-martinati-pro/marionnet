@@ -282,8 +282,36 @@ Reprise : appliquer le skill `chantier-long`.
   (COW jetable — le nom d'une image *est* son `sum`) ; `/loop` est refusé (un boot par
   itération). Livrable de clôture : **`make` pour la mécanique, un skill pour le jugement et le
   rituel** — pas un skill coordinateur (motif : l'ép. 26 de
-  `modernisation-installation-marionnet`). **Ép. 1 bloqué sur un prérequis** : le chemin du
-  répertoire de release (`--from`).
+  `modernisation-installation-marionnet`).
+  **Ép. 1 : l'étage 1 existe et a tourné** — `Makefile.d/filesystem.probe-image-binaries.sh`
+  (6ᵉ de la famille, rien de sourcé) et le premier rapport, **2060 candidats en un boot**
+  (`OK` 1834, `ERR` 142, `X_ALIVE` 40, `X_DIED` 33, `TIMEOUT` 8, `MISSING` 3) — donc **186 cas,
+  9 %**, pour l'étage 2 : la décision « l'agent ne voit que les échecs » est chiffrée.
+  **Quatre suppositions de l'ép. 0 démenties par la mesure** : (1) le crux — `exec` livre un
+  environnement **nu** (`PATH` seul, guetteur sous une unité systemd sans `Environment=`), mais
+  le relais a écrit `DISPLAY` dans `/etc/profile`, qu'un shell non interactif ne lit pas : un
+  `. /etc/profile` suffit, le dépôt hostfs n'est pas requis **pour l'écran** ; (2) `ldd` est
+  **faux** — `xlinks2` est un `#!/bin/sh` faisant `exec links2 -g`, donc classé *non-X*, et
+  **417 des 2057 candidats ne sont pas des ELF** — **et trop lent** (catalogue non fini en
+  300 s), d'où `grep -a libX11` sur le fichier **plus un saut** à travers le wrapper ; (3) le
+  canal ne peut pas porter la boucle (~1 s l'aller-retour ⇒ ~35 min de pure attente), d'où
+  **un** script déposé, lancé en arrière-plan, et un rapport que l'hôte **regarde grandir** —
+  écrit **ligne à ligne**, si bien qu'un binaire qui tue l'invité est *nommé* ; (4) **le
+  symptôme fondateur ne se reproduit pas** — `xlinks2` est `X_ALIVE` ici, le serveur X local
+  offrant 7 profondeurs : la cause est le **relais X de l'hôte**, que le § 6 met hors
+  périmètre. **À ne pas défaire** : *un verdict X est une propriété du couple (image, serveur
+  X)* — l'en-tête du rapport **nomme le serveur** ; et la garde contre une sonde qui *fait
+  agir* un binaire (mesuré : `tgz` écrit `--help.tgz`) n'est pas une liste de dangereux — elle
+  se périmerait — c'est le **COW jetable**. **2 défauts de la sonde trouvés en lisant son
+  propre rapport** (famille « juger par autre chose que ce qu'on mesure ») : `X_DIED` à **rc
+  0** — **15** morts imaginaires, `xdpyinfo`/`xauth`/`appres`/`xclip`… ayant fait leur travail —
+  d'où 3 issues (`X_ALIVE`/`X_OK`/`X_DIED`) ; et un garde-fou **comptant les lignes écrites**,
+  qui a arrêté à **6** candidats une sonde `--x-only` qui marchait (elle n'écrit rien pour ce
+  qu'elle saute) — le guest compte désormais les **candidats**. **Discriminance mesurée** en
+  rejouant `--x-only` : **15 bascules `X_DIED` → `X_OK`**, seules lignes qui changent entre les
+  2 rapports, et **2059** candidats traversés contre 6. **Reste ouvert** : le faux négatif du
+  classificateur sur les applications liant X **indirectement** (`wireshark` via Qt), les
+  2 issues évidentes étant fermées (une liste se périme ; `ldd` transitif est trop lent).
 - **vwifi** (OCaml, BLOQUÉ par le kernel) : `docs/vwifi-integration.md` ; mémoire `marionnet-vwifi` ;
   `git log --grep="marionnet-vwifi"`. Analyse commune : `docs/analyse-dave-appadoo-20260708.md`.
 - **rétro-compat vieux couples kernel/image** (wheezy/guignol/mandriva, userlands i386, morts
