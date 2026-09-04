@@ -283,7 +283,15 @@ ask_ok "wait m1 --state=on" "waiting for the machine" >/dev/null
 # an image changed by halves must not become a published artefact.
 function run_in_guest {   # run_in_guest COMMAND
   local answer status output
-  answer=$(ask "exec m1 $1")
+  # THE SEPARATOR IS NOT OPTIONAL (measured, episode 5 of `triage-binaires-image-invitee').
+  # `exec' recognises an option WHEREVER it stands in the line and refuses the ones it does not
+  # know (bin/control_server.ml, the `exec' branch of the dispatch): without the bare `--', a
+  # perfectly ordinary command of ours -- `for f in ...; do $f --help; done' -- is answered with
+  # `no option --help here', and the whole run dies on a command the guest never saw. The channel
+  # says so itself, and says the remedy; there is no reason to make every caller of --in-guest
+  # discover it. Everything after `--' is the command, joined back into one free tail, so nothing
+  # else changes for the commands which had no option in them.
+  answer=$(ask "exec m1 -- $1")
   test -n "$answer" || die "in-guest \`$1': the channel did not answer"
   if test "$(jq -r '.ok' <<<"$answer")" != "true"; then
     die "in-guest \`$1': $(jq -r '.detail // .error' <<<"$answer")"

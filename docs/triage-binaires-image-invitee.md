@@ -309,6 +309,71 @@ retirer un fichier que `dpkg` possède laisse le paquet « modifié » aux yeux 
 acceptable pour une image livrée — elle est un artefact, pas un système administré — et ça l'est
 d'autant plus que l'alternative propre (purger) est exactement ce qui casse le reste.
 
+### 3.8 L'étage 3a existe, et le canal a corrigé sa traduction — épisode 5
+
+L'épisode 4 avait laissé une action **relue mais jamais jouée**. La jouer demandait ce qui
+n'existait pas encore : le **traducteur**, `Makefile.d/filesystem.apply-binary-policy.sh`. Il lit
+la politique, en tire un `--in-guest` par ligne dont le verdict est joué, et appelle son frère
+`filesystem.update-published-image.sh`. **Il ne décide rien** : chaque commande vient, mot pour
+mot, de la colonne `action` d'une ligne du fichier.
+
+**Ce qu'il refuse, plutôt que de le sauter.** Une ligne qui ne dit pas clairement quoi faire —
+verdict inconnu, `drop`/`fix` sans action, action portée par une ligne dont le verdict n'en veut
+pas, nombre de colonnes autre que 4, raison vide — fait échouer **tout le fichier**, en nommant
+son numéro de ligne. Sauter une telle ligne avec un avertissement laisserait une action
+**silencieusement non jouée**, ce qui est exactement la famille de défaut que ce chantier a déjà
+payée deux fois. Les six refus ont été éprouvés (rc 2 chacun) sur des politiques jetables ; s'y
+ajoutent le refus d'une image *router* et celui d'une distribution **sans politique** — la
+politique est par distribution (§ 6), et appliquer les verdicts de trixie à une image wheezy
+retirerait des noms que personne n'y a jamais sondés.
+
+**Trois profondeurs, et une seule qui produit.** `--dry-run` imprime la ligne de commande et ne
+boote rien ; `--measure` relaie le `--no-export` de l'épisode 4 (les commandes jouent, **rien**
+n'est exporté) ; sans option, le run écrit une image neuve dans le répertoire de release.
+
+**Le défaut que la mesure a trouvé, et qui n'était pas dans la politique.** Le premier run de
+mesure a joué les 39 `rm -f` puis est **mort** sur la première vérification, avec ce message du
+canal :
+
+    no option --help here: exec takes only --timeout=<s>. An option meant for the command
+    itself must come after a bare --, as in `exec m1 -- ls --all'
+
+`exec` reconnaît une option **où qu'elle se trouve dans la ligne** et refuse celles qu'il ne
+connaît pas — c'est délibéré (`bin/control_server.ml`, branche `exec` du dispatch : sans cela
+`exec m1 ls --all` lancerait `ls` en avalant le `--all` **en silence**). La conséquence, elle, ne
+l'était pas : **`filesystem.update-published-image.sh` construisait `exec m1 $1` sans séparateur**,
+si bien qu'une commande `--in-guest` parfaitement ordinaire portant une option longue était
+refusée, et le run tué sur une commande que l'invité n'a jamais vue. Le canal dit lui-même le
+remède ; il n'y a aucune raison de le faire découvrir à chaque appelant. `run_in_guest` construit
+désormais `exec m1 -- $1`. Rien ne change pour les commandes sans option : tout ce qui suit `--`
+est rejoint en une *free tail*, celle-là même que le parseur assemblait déjà.
+
+**Ce que l'invité a répondu**, une fois le séparateur en place (un boot, 39 retraits, 5
+vérifications, **rien d'exporté**) :
+
+| vérification | réponse mesurée |
+|---|---|
+| les 39 noms dans `/usr/bin` | **`still-there=0 of 39`** |
+| les 7 lanceurs sains (`--help`) | tous **exécutent leur cible** : `Usage: /usr/lib/qt5/bin/moc …`, idem `rcc`, `uic`, `qlalr`, `qvkgen`, `qdbuscpp2xml`, `qdbusxml2cpp` |
+| `/usr/lib/qt5/bin` | **10 outils**, intacts — donc `qtbase5-dev-tools` n'a pas bougé |
+| entrées `/usr/bin` possédées par `qtchooser` et absentes | **39**, exactement les 39 retirées |
+
+La dernière ligne **referme l'arithmétique de l'épisode 4** : `dpkg -L qtchooser` possède 46
+entrées de `/usr/bin`, 39 sont les liens pendants qu'on retire, et les **7** qui restent sont
+celles qui résolvent — les sept que la purge collective aurait emportées. Le geste ne touche donc
+ni un paquet, ni un lien qui marche.
+
+**Deux précisions d'honnêteté sur cette mesure.** `qvkgen` sort avec `rc` 1 en imprimant son
+propre `Usage:` — il a **démarré**, et c'est le **message** qui le dit, jamais le `rc` (leçon de
+l'épisode 3, appliquée ici à la lecture d'un résultat favorable). Et la vérification par
+`dpkg-query -W -f=…` n'a **rien** rapporté : le `${binary:Package}` de son format est aussi de la
+syntaxe bash, que le shell de l'invité a mangée avant `dpkg-query`. Ce n'est pas l'outil qui a
+manqué, c'est la vérification qui était mal écrite ; l'inventaire de `/usr/lib/qt5/bin` répond de
+toute façon à la même question.
+
+**Rien n'a été appliqué.** L'épisode s'arrête sur la mesure : produire l'image neuve demande le
+feu vert de l'auteur.
+
 ## 4. La politique — le seul fichier que l'agent écrit
 
 `uml/pupisto.debian/pupisto.debian.sh.files/binary_policy.trixie.tsv` — un TSV versionné, **là
@@ -365,8 +430,13 @@ l'image ni aux scripts ; l'humain valide, ça se commite.
 
 ## 5. L'étage 3 — appliquer, aux deux endroits
 
-- **3a, l'image publiée** : la politique se traduit mécaniquement en `--in-guest` passés à
-  `filesystem.update-published-image.sh` (`fix` → sa commande, `drop` → la sienne).
+- **3a, l'image publiée** : `Makefile.d/filesystem.apply-binary-policy.sh` (épisode 5, § 3.8)
+  traduit la politique en `--in-guest` passés à `filesystem.update-published-image.sh` (`fix` →
+  sa commande, `drop` → la sienne). Il **refuse le fichier entier**, en nommant la ligne, dès
+  qu'une ligne ne dit pas clairement quoi faire, et il **dérive** le nom de la politique de celui
+  de l'image plutôt que d'appliquer les verdicts d'une distribution à une autre.
+  `--only-verdict` joue une famille de verdicts à la fois, parce qu'un épisode applique et
+  re-sonde par tranches.
 - **3a bis, mesurer avant d'appliquer** : `filesystem.update-published-image.sh` a gagné à
   l'épisode 4 une option **`--no-export`** — *joue les commandes dans l'invité, n'exporte rien,
   ne publie rien*. Le cow part avec la session, comme celui de la sonde : **une mesure ne
@@ -670,3 +740,34 @@ sur laquelle l'épisode devait s'appuyer n'existe plus ; appliquer maintenant, c
 la version corrigée sans l'avoir relue. L'épisode 5 la joue — et il a désormais **39** noms à
 faire disparaître, ce qui rend la re-sonde plus discriminante encore.
 
+### 2026-09-04 — épisode 5 : le traducteur, et le séparateur que le canal réclamait
+
+**Ce que l'épisode devait faire** : appliquer de bout en bout les 39 `drop` que l'épisode 4 avait
+relus. Il livre le **traducteur** (l'étage 3a, § 3.8) et la **mesure** qui montre que le geste est
+juste — et il s'arrête là : produire l'image neuve est une décision de l'auteur.
+
+**Ce qui est neuf** : `Makefile.d/filesystem.apply-binary-policy.sh`, 7ᵉ de la famille. Il ne
+décide rien (chaque commande vient verbatim de la colonne `action`), refuse le fichier entier en
+nommant la ligne dès qu'une ligne ne dit pas clairement quoi faire — 6 refus éprouvés, rc 2 —,
+dérive le nom de la politique de celui de l'image et **refuse plutôt que de deviner** quand cette
+distribution n'en a pas. Trois profondeurs : `--dry-run` (rien ne boote), `--measure` (rien n'est
+exporté), le run réel.
+
+**Le défaut trouvé en s'en servant, et qui n'était pas dans la politique** : `exec` reconnaît une
+option **où qu'elle soit** dans la ligne et refuse celles qu'il ne connaît pas ; or
+`filesystem.update-published-image.sh` construisait `exec m1 $1` **sans le séparateur**. Une
+commande `--in-guest` portant une option longue était donc refusée par le canal et tuait le run,
+sur une commande que l'invité n'a jamais vue. `run_in_guest` construit désormais `exec m1 -- $1`.
+Le canal disait le remède dans son propre message de refus ; c'est l'appelant qui ne l'appliquait
+pas.
+
+**Ce que l'invité a répondu** (un boot, 39 retraits, 5 vérifications, rien d'exporté) :
+`still-there=0 of 39` ; les **7 lanceurs sains exécutent toujours leur cible** ; `/usr/lib/qt5/bin`
+porte toujours ses **10 outils** ; et les entrées de `/usr/bin` possédées par `qtchooser` qui
+n'existent plus sont **exactement 39** — 46 − 39 = **7**, l'arithmétique de l'épisode 4, refermée.
+
+**Deux réserves énoncées, pas tues** : `qvkgen` sort `rc` 1 en imprimant son propre `Usage:` — il
+a démarré, et c'est le message qui le dit ; et la vérification par `dpkg-query -W -f=…` n'a rien
+rapporté, son `${binary:Package}` étant aussi de la syntaxe bash, mangée par le shell de l'invité
+avant `dpkg-query` — vérification mal écrite, à laquelle l'inventaire de `/usr/lib/qt5/bin` répond
+de toute façon.
