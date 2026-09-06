@@ -152,6 +152,37 @@ let dry_run () =
   check "a missing sudo command is not read as a missing rule"
     (Tap_provider.unavailability_of_error "sh: 1: sudo: not found"
      = Tap_provider.Unclear "sh: 1: sudo: not found");
+  (* --- Episode 48. The two halves of the classroom defect of 2026-09-06. *)
+  printf "\n-- The language of the tools is frozen, and an unnamed cause is shown:\n";
+  (* A diagnosis made by READING what a tool writes is only as good as the
+     language it wrote in. LANGUAGE is cleared too: for gettext it OVERRIDES
+     LC_ALL, so freezing the latter alone leaves a French sudo French. *)
+  check "a privileged probe is run with the locale frozen"
+    (Tap_provider.privileged_command_line "sudo -n ip tuntap del dev mtapprobe mode tap"
+     = "LC_ALL=C LANGUAGE= sudo -n ip tuntap del dev mtapprobe mode tap 2>&1");
+  (* What actually happened: sudo refused the door in French, no needle matched,
+     and the user was told the machine had no device. The machine's state was
+     true; it was not what had just happened. *)
+  let french_refusal =
+    "`sudo -n marionnet-tun-device.sh create' failed: \
+     sudo: il est necessaire de saisir un mot de passe"
+  in
+  check "a refusal nobody could classify is SHOWN, not replaced by the state of the machine"
+    (Tap_provider.door_verdict ~message:french_refusal
+       ~remaining:(Some Tap_provider.No_tun_device)
+     = Some (Tap_provider.Unclear french_refusal));
+  check "a refusal that IS recognised is still named as the missing rule"
+    (Tap_provider.door_verdict
+       ~message:"`sudo -n marionnet-tun-device.sh create' failed: sudo: a password is required"
+       ~remaining:(Some Tap_provider.No_tun_device)
+     = Some Tap_provider.No_sudoers_rule);
+  check "a door which failed while the machine reports another cause does not hide it"
+    (Tap_provider.door_verdict ~message:"whatever the door said"
+       ~remaining:(Some Tap_provider.No_permission)
+     = Some Tap_provider.No_permission);
+  check "a door which failed while the taps now work reports nothing"
+    (Tap_provider.door_verdict ~message:"whatever the door said" ~remaining:None
+     = None);
   (* --- *)
   printf "\n-- Reading a route back to its tap:\n";
   check "the device of a route line is found"

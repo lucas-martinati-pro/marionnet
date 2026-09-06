@@ -56,8 +56,23 @@ let tun_device_script () =
 
 (* Run a command line capturing both channels: an error message is useless
    without the tool's own diagnostic. *)
+(* The command line a privileged probe is really given. The locale is FROZEN here,
+   and it is not a detail of style: every diagnosis of this module is made by
+   READING what sudo, ip and the doors write, and those write in the language of
+   the session. Measured in a MarioNUM classroom (2026-09-06): sudo answered
+   `sudo: il est necessaire de saisir un mot de passe', no English needle matched,
+   and a refusal of the sudoers rule was reported to the user as `this machine
+   does not provide /dev/net/tun' -- sending them to `docker run --device' while
+   the true sentence was in hand. It is the rule this repository already imposes
+   on its own benches (driven-sessions/README.md: a bench which matches a text
+   freezes the language), owed here to the application itself.
+   LANGUAGE is cleared as well: it OVERRIDES LC_ALL for gettext, so setting the
+   latter alone leaves a French sudo French. Pure, and exposed for the test. *)
+let privileged_command_line (command : string) : string =
+  "LC_ALL=C LANGUAGE= " ^ command ^ " 2>&1"
+
 let run (command : string) : (string, string) result =
-  let (output, status) = UnixExtra.run (command ^ " 2>&1") in
+  let (output, status) = UnixExtra.run (privileged_command_line command) in
   match status with
   | Unix.WEXITED 0 -> Ok output
   | _ ->
@@ -422,22 +437,38 @@ let is_usable () : bool = (unavailability () = None)
    The caller is expected to have found [Some No_tun_device] first: nothing else
    is repaired by a mknod, and a machine whose node is already there must not pay
    a sudo call to be told so. *)
+(* What to report once the privileged door has FAILED, given what the machine
+   still says ([remaining], measured again -- the door's exit status is not the
+   answer, see below). Pure, and exposed for the test.
+
+   The door's own failure is classified by the function that classifies every
+   other one. A sudo REFUSAL is the interesting case, and it is not "no device":
+   it means this account was granted the socle before this door existed, so the
+   remedy is to run marionnet-sudoers.sh install again -- which is exactly what
+   the No_sudoers_rule message already says.
+
+   And when the classification recognises NOTHING, the door's words are what is
+   reported, instead of the state of the machine. Measured in a classroom
+   (2026-09-06): the door was refused by sudo, the refusal was not recognised,
+   and the user was told `this machine does not provide /dev/net/tun' -- true
+   about the machine, and false about what had just happened. A cause we cannot
+   name is not a cause we may replace by a comfortable one: we show the words. *)
+let door_verdict ~(message : string) ~(remaining : unavailability option)
+  : unavailability option =
+  match unavailability_of_error message with
+  | No_sudoers_rule -> Some No_sudoers_rule
+  | _ ->
+      (match remaining with
+       | Some No_tun_device when String.trim message <> "" -> Some (Unclear message)
+       | other -> other)
+
 let ensure_tun_device () : unavailability option =
   let command = Printf.sprintf "sudo -n %s create" (Filename.quote (tun_device_script ())) in
   match run command with
   | Ok _ -> verdict := None; unavailability ()
   | Error message ->
       verdict := None;
-      (* The door's own failure is classified by the function that classifies every
-         other one. A sudo REFUSAL is the interesting case, and it is not "no
-         device": it means this account was granted the socle before this door
-         existed, so the remedy is to run marionnet-sudoers.sh install again --
-         which is exactly what the No_sudoers_rule message already says. Anything
-         else (no sudo at all, no CAP_MKNOD, a node of the wrong kind) is not
-         guesswork either: we simply ask the machine again and report what is. *)
-      (match unavailability_of_error message with
-       | No_sudoers_rule -> Some No_sudoers_rule
-       | _ -> unavailability ())
+      door_verdict ~message ~remaining:(unavailability ())
 
 let sudoers_rule ?user () : (string, string) result =
   match (match user with Some u -> Ok u | None -> current_user_name ()) with

@@ -745,6 +745,69 @@ function block_content {
 # rather than guessed by the caller. The old contract -- 0 versus non-0 -- is
 # untouched for everybody who only ever asked "is it granted?".
 CHECK_STALE=4
+# A FOURTH state, and the classroom paid for it (2026-09-06). `check' above reads
+# the FILE: it answers "does /etc/sudoers.d/marionnet say what we would write?".
+# That question is worth asking and it is not the one that decides. In sudoers the
+# LAST matching rule wins, so a broader entry parsed AFTER ours -- a plain
+# `student ALL=(ALL:ALL) ALL' dropped in /etc/sudoers.d/student, which sorts after
+# `marionnet' -- silently cancels every NOPASSWD line of a file that is perfect.
+# Measured: the file granted, `install' answered "already up to date", and sudo
+# asked for a password on every privileged gesture of the application.
+#
+# The only authority is sudo, and it has to be ASKED THE REAL QUESTION: `sudo -l'
+# will not do -- measured, it answers "may this user run it", not "without a
+# password" (`sudo -n -l /bin/true' exits 0 on a machine where running it prompts).
+# So the probe is the one the runtime itself uses (Tap_provider.unavailability):
+# `sudo -n ip tuntap del' of a tap that does not exist -- a successful no-op when
+# the grant works, and covered by the very rule we are checking.
+#
+# The needles are sudo's REFUSALS, and they are the same four as
+# bin/tap_provider.ml (unavailability_of_error): the two sides read the same
+# sentences and must keep agreeing. LC_ALL/LANGUAGE are frozen for the same reason
+# as there -- a French sudo says `il est necessaire de saisir un mot de passe', and
+# that is exactly how this defect stayed invisible.
+CHECK_REFUSED=5
+function sudo_refusal_for {
+ local u=$1 out ip
+ ip=$(ip_binary) || return 1
+ local -a probe=(env LC_ALL=C LANGUAGE= sudo -n "$ip" tuntap del dev "${TAP_PREFIX}probe" mode tap)
+ if [[ $EUID -eq 0 && $u != root ]]; then
+   command -v runuser >/dev/null || return 1   # cannot ask on someone else's behalf
+   out=$(runuser -u "$u" -- "${probe[@]}" 2>&1)
+ elif [[ $EUID -ne 0 && $u != "$(id -un)" ]]; then
+   return 1                                    # only root may ask for another account
+ else
+   out=$("${probe[@]}" 2>&1)
+ fi
+ case $out in
+   *"a password is required"*|*"not allowed to execute"*|*"may not run"*|*"no tty present"*)
+     printf '%s\n' "$out"; return 0 ;;
+ esac
+ return 1
+}
+
+# report_refusal BLOCK USER...: says, for the accounts it can ask about, that the
+# file grants them and sudo refuses anyway -- and names the mechanism, because
+# "sudo refuses" without "a later rule wins" sends an administrator to re-install
+# a file which is already right. Group principals (%name) are skipped: one cannot
+# run a command on behalf of a group.
+function report_refusal {
+ local b=$1; shift
+ local u out found=1
+ for u in "$@"; do
+   [[ $u == %* ]] && continue
+   out=$(sudo_refusal_for "$u") || continue
+   found=0
+   echo "$TOOL: $(block_file "$b") grants $u, but sudo REFUSES it:" 1>&2
+   echo "$TOOL:   $(head -1 <<<"$out")" 1>&2
+   echo "$TOOL: in sudoers the LAST matching rule wins, so a broader entry parsed" 1>&2
+   echo "$TOOL: after this file cancels it. Look for one, and make it parse FIRST:" 1>&2
+   echo "$TOOL:   sudo -ll ; ls /etc/sudoers.d/" 1>&2
+   echo "$TOOL: (files are read in lexical order; renaming the broad one 00-<name>" 1>&2
+   echo "$TOOL:  puts it before this one, without changing what it grants)." 1>&2
+ done
+ return $found
+}
 function check_block {
  local b=$1; shift
  local f u
@@ -827,6 +890,9 @@ function install_block {
    # `teacher' on a file granting `teacher student', it answered "already up to
    # date for: teacher", which reads as though student had been dropped.
    echo "$TOOL: $f is already up to date for: $(file_principals "$f")." 1>&2
+   # ... which is a statement about the FILE. Whether sudo honours it is another
+   # question, and the one the user actually asked (episode 48).
+   report_refusal "$b" $(file_principals "$f") || true
    return 0
  fi
  local -a users=()
@@ -1118,6 +1184,11 @@ case "$COMMAND" in
            if ((${#BLOCKS[@]} > 1)); then echo "# >>> $(block_file "$b")"; fi
            explain_block "$b"
          fi
+       # The file is right; ask the only authority whether it is EFFECTIVE. Worse
+       # than "stale" and better than "not granted": the grant exists, something
+       # else cancels it, and re-installing would change nothing.
+       elif report_refusal "$b" $(file_principals "$(block_file "$b")"); then
+         if [[ $rc -eq 0 ]]; then rc=$CHECK_REFUSED; fi
        fi
      done
      exit $rc

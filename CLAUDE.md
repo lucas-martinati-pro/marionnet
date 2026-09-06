@@ -156,11 +156,11 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
 
 - **modernisation-installation-marionnet** (chantier PARENT : diffusion moderne — installeur,
   tarball, `.deb`+apt, `.rpm`+dnf, Docker) : `docs/modernisation-installation-marionnet.md`
-  (48 épisodes) ; mémoire `modernisation-installation-marionnet` ;
+  (49 épisodes) ; mémoire `modernisation-installation-marionnet` ;
   `git log --grep="modernisation-installation-marionnet"`.
   **État** : feuille de route SOLDÉE — release `1.0.369+r943` signée et en ligne sur les 3 canaux,
   **6 publieurs** + déposeur + rétention, **4 bancs** rejouables contre le vrai serveur.
-  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→47).
+  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→48).
   **Consigne active : AUCUNE release avant la fin de la campagne** — d'où des cas de banc *rouges
   par construction* (le paquet publié porte l'installeur d'avant), et la règle qui en découle :
   *une preuve qui dépend de ce que la boîte contient se prend après le commit*.
@@ -212,6 +212,17 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     boutons d'actions collectives perdus). La politique verticale est `` `EXTERNAL ``, jamais
     `` `NEVER `` (qui laisse le contenu décider) ; l'horizontale **reste** `` `NEVER ``, c'est elle
     qui donne sa largeur à la fenêtre (ép. 47) ;
+  - **un diagnostic qui LIT un outil se prend en langue figée** (`LC_ALL=C` **et** `LANGUAGE=`,
+    la seconde primant sur la première pour gettext) : les aiguilles anglaises de
+    `Tap_provider.unavailability_of_error` ne matchaient pas un sudo français, et un refus de
+    sudo était annoncé comme « pas de `/dev/net/tun` ». Corollaire : **une cause non reconnue se
+    montre** (les mots de l'outil), elle ne se remplace jamais par une cause voisine qu'on sait
+    formuler (ép. 48) ;
+  - **le fichier sudoers n'est pas le verdict, sudo l'est** : la **dernière** règle qui matche
+    gagne, donc un voisin trié après `marionnet` dans `sudoers.d` annule tous ses `NOPASSWD`
+    sans que le fichier change d'un octet. Et `sudo -l` ne répond pas à la question (« a-t-il le
+    droit », pas « sans mot de passe ») : la sonde est `sudo -n` sur un no-op réellement couvert
+    par la règle (ép. 48) ;
   - **ne pas éditer un script bash pendant qu'il tourne** (bash lit par offsets d'octets) ; il n'y
     a **qu'un** gestionnaire `EXIT` (ép. 24, 25) ;
   - famille de défauts revenue **10 fois** : *juger par autre chose que ce qu'on mesure* — un

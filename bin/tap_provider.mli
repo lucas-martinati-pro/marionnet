@@ -128,6 +128,23 @@ val unavailability : unit -> unavailability option
     without a privilege and without a device. *)
 val unavailability_of_error : string -> unavailability
 
+(** [privileged_command_line command] is the shell line a privileged probe is
+    really given. It FREEZES the locale ([LC_ALL=C LANGUAGE=]), because every
+    diagnosis of this module is made by reading what [sudo], [ip] and the doors
+    write, and those write in the language of the session: a French refusal of
+    [sudo] matched no needle and was reported as a missing [/dev/net/tun]
+    (measured in a classroom, 2026-09-06). Pure, and exposed for the test. *)
+val privileged_command_line : string -> string
+
+(** [door_verdict ~message ~remaining] is what to report once the privileged door
+    has failed with [message], [remaining] being what the machine still says. A
+    [sudo] refusal is named as such; otherwise, when nothing was recognised and
+    the machine still reports [No_tun_device], the door's own words are shown
+    ([Unclear]) rather than a cause we did not measure. Pure, and exposed for the
+    test. *)
+val door_verdict :
+  message:string -> remaining:unavailability option -> unavailability option
+
 (** [unavailability () = None]. A [false] here is the hook for the degraded mode
     (formerly Daemon_client.disable_daemon_support, with the late daemon). *)
 val is_usable : unit -> bool

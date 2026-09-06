@@ -6083,3 +6083,101 @@ tous verts.
   pourquoi le minimum retombe à 361 px.
 - La sonde `[size-allocate]` de l'ép. 43 bis **reste** : c'est elle qui a nommé l'instant, et
   c'est par elle qu'un prochain rapport de salle sera lisible.
+
+## Épisode 48 (2026-09-06) — la langue des outils, et la seule autorité en matière de sudo
+
+### Le constat
+
+Salle MarioNUM, conteneur `ubuntu:24.04`, paquet `1.0.421+r995`. Marionnet affiche
+« **cette machine ne fournit pas `/dev/net/tun`** » et envoie l'utilisateur vers
+`docker run --device` et `modprobe tun`. Or le conteneur n'était pas en cause :
+
+```
+$ sudo -n marionnet-tun-device.sh create
+sudo: il est nécessaire de saisir un mot de passe        rc=1
+```
+
+La porte privilégiée avait été **refusée par sudo**, et le message montré parlait d'autre chose.
+
+### Deux défauts, indépendants, et aucun n'était celui qu'on cherchait
+
+Trois hypothèses ont été formées et **réfutées par la mesure** avant d'arriver aux vraies :
+`CAP_MKNOD` manquant (la porte n'avait jamais été atteinte), un chemin qui ne correspond pas
+(le chemin absolu de la règle est refusé lui aussi), et une règle absente
+(`/etc/sudoers.d/marionnet:36` la porte exactement).
+
+**(1) La langue.** `unavailability_of_error` (`bin/tap_provider.ml`) classe les diagnostics en
+cherchant des aiguilles **anglaises** — `password is required`, `not allowed to execute`… — dans
+un message que `run` laissait sortir **dans la langue de la session**. La phrase française n'a
+matché aucune aiguille, la classification est tombée dans `Unclear`, et `ensure_tun_device`
+renvoyait alors tout ce qui n'est pas `No_sudoers_rule` vers l'état de la machine — laquelle,
+n'ayant effectivement pas de nœud, répondait `No_tun_device`. **Vrai sur la machine, faux sur ce
+qui venait de se passer.**
+
+C'est la règle que ce dépôt s'impose déjà à lui-même — *« un banc qui matche un texte fige la
+langue »* (`driven-sessions/README.md`) — jamais appliquée à l'application. Le commentaire du
+type `unavailability` listait pourtant fièrement trois messages « measured, in containers » :
+mesurés en anglais sur une machine de développement, puis servis à une salle en français.
+
+**(2) L'autorité.** `marionnet-sudoers.sh install` avait répondu « already up to date for:
+%student %teacher student teacher », et c'était **exact** : `check_block` régénère le contenu et
+le compare au fichier, octet pour octet. Mais le fichier n'est pas le verdict. La cause réelle
+était un **voisin** :
+
+```
+/etc/sudoers.d/student :  student  ALL=(ALL:ALL) ALL
+```
+
+une règle large **sans `NOPASSWD`**, triée **après** `marionnet` — et dans sudoers **la dernière
+règle qui matche gagne**. Elle annulait chaque ligne `!authenticate` d'un fichier parfait, pour
+*tous* les gestes privilégiés (`marionnet-natbridge` compris). Aucun de nos outils ne pouvait le
+voir : tous jugeaient le fichier.
+
+### Les correctifs
+
+**`bin/tap_provider.ml`** — la locale est **figée** à la source, dans une fonction pure exposée
+pour le test :
+
+```ocaml
+let privileged_command_line command = "LC_ALL=C LANGUAGE= " ^ command ^ " 2>&1"
+```
+
+`LANGUAGE` est vidée aussi : pour gettext elle **prime** sur `LC_ALL`, et la figer seule laisse
+un sudo français en français. Et la décision d'après-porte devient pure et testable
+(`door_verdict`) : un refus reconnu reste nommé, mais **une cause qu'on ne sait pas nommer est
+montrée** (`Unclear`, les mots de la porte) au lieu d'être remplacée par l'état de la machine.
+
+**`bin/scripts/marionnet-sudoers.sh`** — un **quatrième état**, `CHECK_REFUSED=5` : *« accordé
+dans le fichier, refusé par sudo »*. Il se mesure en demandant à la seule autorité, et en lui
+posant **la vraie question** : `sudo -l` ne convient pas — mesuré, `sudo -n -l /bin/true` sort 0
+sur une machine où l'exécuter demanderait un mot de passe ; il répond « a-t-il le droit », pas
+« sans mot de passe ». La sonde est donc celle du runtime lui-même : `sudo -n ip tuntap del`
+d'un tap inexistant, no-op réussi quand tout va bien. Le diagnostic **nomme le mécanisme**
+(dernière règle gagnante, ordre lexical de `sudoers.d`) plutôt que de conseiller une
+réinstallation qui ne changerait rien.
+
+### Mesuré
+
+| | avant | après |
+|---|---|---|
+| `bin/tap_provider_test.exe` (5 cas neufs) | **2 FAIL** | **5 OK** |
+| `driven-sessions/sudoers-check-asks-sudo.sh` | **3 FAIL** / 2 PASS | **5 PASS** |
+
+`dune build` rc 0, `make check` rc 0, `nat-bridge-warning-names-its-cause.sh` 11/11 vert.
+
+### À ne pas défaire
+
+- **Une décision prise en lisant un outil se prend en langue figée.** `LC_ALL` **et** `LANGUAGE`
+  — la seconde prime sur la première pour gettext.
+- **Le fichier sudoers n'est pas le verdict ; sudo l'est.** Un fichier parfait peut être annulé
+  par un voisin trié après lui. Et `sudo -l` ne répond pas à la question posée.
+- **Une cause non reconnue se montre, elle ne se remplace pas** par une cause voisine qu'on sait
+  formuler : c'est ce qui a envoyé une salle chercher un `--device` pendant une heure.
+
+### Reste
+
+Ce que l'épisode **n'a pas** prouvé : le chemin de bout en bout sur une machine sans
+`/dev/net/tun`. Cet hôte a le nœud, et `tun_device` est un chemin en dur — la porte n'y est
+jamais appelée. Les deux correctifs sont prouvés par des fonctions pures et par un banc à `sudo`
+substitué ; la traversée réelle reste à confirmer au prochain démarrage en salle, où la sonde
+`Tap_provider` doit désormais dire *« sudo refuse »* et non *« pas de périphérique »*.
