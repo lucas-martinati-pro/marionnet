@@ -589,10 +589,38 @@ let hbox =
     ~spacing:0
     ()
 in
+(* Outside a GtkScrolledWindow a GtkTreeView answers `minimum = natural = the height of every
+   row' (gtk_tree_view_get_preferred_height), and it starts answering it the first time its page
+   is SHOWN -- before that the rows are not validated and it asks for nothing, which is why the
+   defect looks sudden. The demand then climbs the plain GtkHBox pages of gui_glade3.xml up to
+   the GtkNotebook -- which requests the maximum over ALL its pages, the ones nobody is looking
+   at included -- and becomes the MINIMUM size of the main window. An already mapped window is
+   grown to its new minimum and can never be shrunk back below it, so one visit to `Interfaces'
+   is enough to push the window past the bottom of the screen FOR GOOD, taking the collective
+   action buttons with it.
+   Measured here (2026-09-06, 40 machines, screen 1050): the minimum height jumps from 364 to
+   1804 px the instant that tab is visited, and the window follows -- the very numbers reported
+   from the classroom.
+   `EXTERNAL' is the policy that scrolls the child without drawing a scrollbar of its own AND,
+   unlike `NEVER', without letting the content determine the size (gtkscrolledwindow.h). The two
+   scrollbars below -- the ones the user sees -- keep driving it: gtk_scrolled_window_add hands
+   the child its own adjustments, and they are built after the view.
+   The HORIZONTAL policy stays `NEVER' on purpose, which is what propagates the width: the width
+   of the columns is what has always decided how wide the main window opens (measured: 1130 px
+   here, 814 px in the classroom), and `EXTERNAL' on both axes drops it to 595 px -- a change
+   nobody asked for. Only the height was broken; only the height is changed. *)
+let scrolled =
+  GBin.scrolled_window
+    ~hpolicy:`NEVER
+    ~vpolicy:`EXTERNAL
+    ~shadow_type:`NONE
+    ~packing:(hbox#pack ~expand:true ~padding:0)
+    ()
+in
 (* The most important widget here: *)
 let view =
   GTree.view
-    ~packing:(hbox#pack ~expand:true ~padding:0)
+    ~packing:(scrolled#add)
     ~reorderable:false (* Drag 'n drop for lines would be very cool, but here we need *)
                        (* to keep our internal forest data structure consistent with the UI *)
     ~enable_search:false

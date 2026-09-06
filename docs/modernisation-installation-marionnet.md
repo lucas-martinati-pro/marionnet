@@ -5971,3 +5971,115 @@ donc une release — interdite jusqu'à la fin de la campagne. Ce qui est vérif
 noyau. Le cas à jouer au prochain tour de release : `apt install marionnet` dans une `debian:12`
 nue **amène `marionnet-kernels`** (et `apt install --no-install-recommends marionnet` ne l'amène
 pas), tandis que `dnf install marionnet` ne l'amène toujours pas et **le dit**.
+
+## Épisode 47 (2026-09-06) — un treeview ne pousse plus la fenêtre principale hors de l'écran
+
+### Le constat
+
+Deuxième rapport de la salle MarioNUM (conteneur `ubuntu:24.04`, paquet
+`marionnet_1.0.419+r993_amd64.deb`) : la fenêtre principale **s'allonge d'un coup** jusque sous
+le bord bas de l'écran **et ne se redimensionne plus**. L'utilisateur perd les boutons d'actions
+collectives (« Tout démarrer », « Suspendre », « Éteindre tout », « Débrancher tout ») et ne
+garde que les menus et la palette. Rien ne le rattrape : le geste est irréversible dans la
+session.
+
+La sonde posée à l'ép. 43 bis a fait son travail — elle a nommé l'instant :
+
+```
+Main window: height 781 -> 929 px  … at t+278.7 s … [size-allocate]
+Main window: height 929 -> 1804 px … at t+326.2 s … [size-allocate]   (screen 1050)
+```
+
+Deux bonds, **sans ligne `growing from` entre eux** : ce n'est donc pas l'ajustement de l'ép. 43,
+qui s'était arrêté 320 s plus tôt (20 ticks de 300 ms) et qui se plafonne de toute façon à
+`Gdk.Screen.height ()`. `xdpyinfo` et `xrandr --listmonitors` confirment un écran unique de
+1680×1050 : le plafond était juste, et il n'a pas été franchi par lui. **Personne dans Marionnet
+n'a demandé cette hauteur — la fenêtre la subit.**
+
+### La cause : un contrat de widget, pas un calcul
+
+`gtk_tree_view_get_preferred_height` répond **`minimum = natural = la hauteur de toutes les
+lignes`**. Un `GtkTreeView` hors d'une `GtkScrolledWindow` **exige** donc de quoi montrer tout
+son contenu. Or `bin/treeview.ml` empaquetait le `GTree.view` **directement** dans une `GtkHBox`,
+avec deux `GRange.scrollbar` branchées à la main sur ses ajustements — sans aucune
+`GtkScrolledWindow`. Et les quatre réceptacles de `bin/gui/gui_glade3.xml`
+(`ifconfig_viewport`, `defects_viewport`, `filesystem_history_viewport`, `documents_viewport`)
+sont des `GtkHBox` nues.
+
+L'exigence remonte alors : `HBox` → page de `notebook_INTERNAL` → `GtkNotebook`, qui demande le
+**maximum sur toutes ses pages**, y compris celles que personne ne regarde → **taille minimale du
+toplevel**. Une fenêtre déjà mappée est agrandie jusqu'à son nouveau minimum et **ne peut plus
+jamais** redescendre en dessous.
+
+Ce qui rend le défaut *soudain* est la dernière pièce : tant que la page n'a pas été **affichée
+une première fois**, le treeview n'a pas validé ses lignes et ne demande rien. **Une seule
+visite** à l'onglet « Interfaces » suffit — et elle est définitive.
+
+C'est **la même loi** que l'ép. 13 de `marionnet-todo-transverse`
+(`driven-sessions/message-window-geometry.sh`), dont l'en-tête l'écrivait déjà : *« In Gtk+ 3 an
+already mapped RESIZABLE window is grown to its new MINIMUM size »*. Là c'était le label d'un
+dialogue, ici c'est un treeview.
+
+### Deux fausses pistes, tuées par la mesure
+
+Elles méritent d'être écrites, parce qu'elles coûtent cher à retrouver.
+
+1. **« Les lignes suffisent. »** Non : 30 machines ajoutées par le canal, 30 câbles, deux
+   machines UML **démarrées**, 48 s d'observation — le minimum annoncé n'a pas bougé d'un pixel
+   (1130×364). Tant que l'onglet n'est pas visité, le treeview ne demande rien. Un premier banc
+   écrit sur cette hypothèse **passait des deux côtés du correctif** : il ne prouvait rien, et il
+   a été jeté.
+2. **« Le plafond de l'ép. 43 est calculé sur le mauvais écran. »** Hypothèse séduisante —
+   `Gdk.Screen.height ()` mesure l'écran X entier, et `1804 − 929 = 875` a exactement la forme de
+   `min (current + missing) screen`. Le journal de la salle l'a réfutée : `screen 1050`, un seul
+   moniteur de 1050, et pas de `growing from` au moment du bond.
+
+**La leçon d'outillage** : la grandeur qui décide n'est ni la hauteur courante ni ce que le code
+croit, c'est le **minimum que la fenêtre annonce** dans `WM_NORMAL_HINTS` — lisible de l'extérieur
+par `xprop`, sans gestionnaire de fenêtres, et sans le *binding* `gdk_widget_get_preferred_height`
+que lablgtk3 n'a pas.
+
+### Le correctif
+
+`bin/treeview.ml` : le `GTree.view` est empaqueté dans une `GBin.scrolled_window` de politique
+**`` `EXTERNAL ``** en vertical. C'est la politique qui fait défiler l'enfant **sans dessiner de
+barre** et — contrairement à `` `NEVER `` — **sans laisser le contenu décider de la taille**
+(`gtkscrolledwindow.h`, vérifié sur le GTK installé, 3.24.41). Les deux `GRange.scrollbar`
+existantes restent celles que l'utilisateur voit et continuent de piloter : `gtk_scrolled_window_add`
+donne à l'enfant les ajustements de la `scrolled_window`, et elles sont construites **après** le
+`view`. Un seul site à corriger dans tout le dépôt, et les quatre treeviews sont couverts.
+
+La politique **horizontale reste `` `NEVER ``**, délibérément : c'est elle qui propage la
+**largeur**, et la largeur des colonnes est ce qui a toujours décidé de la largeur d'ouverture de
+la fenêtre. Mesuré : `` `EXTERNAL `` sur les deux axes la fait tomber de 1130 px à 595 px — une
+fenêtre étriquée que personne n'a demandée. **Seule la hauteur était cassée, seule la hauteur
+change.**
+
+### Mesuré (Xvfb 1680×1050, sans gestionnaire de fenêtres, 40 machines)
+
+| | avant | après |
+|---|---|---|
+| minimum annoncé, avant toute visite | 1130×**364** | 1130×**361** |
+| minimum annoncé, après visite des 4 onglets | 1130×**1804** | 1130×**361** |
+| hauteur de la fenêtre | 845 → **1804** (écran 1050) | **845**, inchangée |
+| largeur de la fenêtre | 1130 | **1130**, inchangée |
+
+Le **1804** est le nombre même du rapport de la salle. Le banc
+`driven-sessions/main-window-height-bounded.sh` rejoue tout cela : **2 FAIL** sur le code de
+l'ép. 46, **2 PASS** après. Non-régression : `add-ports-bounds`,
+`import-warning-outside-import`, `set-variant-unknown` et `message-window-geometry` — 29 cas,
+tous verts.
+
+### À ne pas défaire
+
+- **Un `GtkTreeView` hors `GtkScrolledWindow` impose sa hauteur au toplevel**, et il ne le fait
+  qu'à partir de la **première fois où sa page est affichée**. Ne jamais empaqueter un
+  `GTree.view` directement dans une boîte.
+- La politique horizontale `` `NEVER `` **est** le mécanisme qui donne sa largeur à la fenêtre
+  principale : la passer à `` `EXTERNAL `` rétrécit la fenêtre de moitié.
+- **Plafonner la hauteur ne pouvait pas suffire** comme contournement : `set_size_request` ne
+  fait qu'un `MAX` en Gtk+ 3, et un `resize` sous le minimum est ré-annulé au `check_resize`
+  suivant. Il fallait couper la propagation à la source — ce que ce correctif fait, et c'est
+  pourquoi le minimum retombe à 361 px.
+- La sonde `[size-allocate]` de l'ép. 43 bis **reste** : c'est elle qui a nommé l'instant, et
+  c'est par elle qu'un prochain rapport de salle sera lisible.

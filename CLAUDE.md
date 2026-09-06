@@ -156,11 +156,11 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
 
 - **modernisation-installation-marionnet** (chantier PARENT : diffusion moderne — installeur,
   tarball, `.deb`+apt, `.rpm`+dnf, Docker) : `docs/modernisation-installation-marionnet.md`
-  (47 épisodes) ; mémoire `modernisation-installation-marionnet` ;
+  (48 épisodes) ; mémoire `modernisation-installation-marionnet` ;
   `git log --grep="modernisation-installation-marionnet"`.
   **État** : feuille de route SOLDÉE — release `1.0.369+r943` signée et en ligne sur les 3 canaux,
   **6 publieurs** + déposeur + rétention, **4 bancs** rejouables contre le vrai serveur.
-  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→46).
+  **Campagne de bugs « usage réel » OUVERTE** depuis le 2026-09-02 (salle MarioNUM, ép. 35→47).
   **Consigne active : AUCUNE release avant la fin de la campagne** — d'où des cas de banc *rouges
   par construction* (le paquet publié porte l'installeur d'avant), et la règle qui en découle :
   *une preuve qui dépend de ce que la boîte contient se prend après le commit*.
@@ -204,7 +204,14 @@ pourquoi. Ne pas remettre de narration d'épisode dans ce fichier : il est relu 
     `show-arrow=False`, sans quoi la palette **déborde** au lieu de réclamer) — et l'ajustement
     n'agit que sur une mesure **stable**, deux réveils qui s'accordent : lue au premier layout
     venu, elle voit une palette qui n'a pas encore demandé sa hauteur et laisse la fenêtre trop
-    courte *une fois sur trois* (ép. 43, 43 bis) ;
+    courte *une fois sur trois* (ép. 43, 43 bis) ; et un `GTree.view` ne se packe **jamais**
+    directement dans une boîte : hors `GtkScrolledWindow` un `GtkTreeView` répond
+    `minimum = natural = la hauteur de toutes ses lignes` — dès la **première fois où sa page est
+    affichée** —, le `GtkNotebook` en prend le maximum sur **toutes** ses pages, et la fenêtre,
+    agrandie à ce minimum, ne redescend plus (mesuré : 364 → 1804 px sur un écran de 1050, les
+    boutons d'actions collectives perdus). La politique verticale est `` `EXTERNAL ``, jamais
+    `` `NEVER `` (qui laisse le contenu décider) ; l'horizontale **reste** `` `NEVER ``, c'est elle
+    qui donne sa largeur à la fenêtre (ép. 47) ;
   - **ne pas éditer un script bash pendant qu'il tourne** (bash lit par offsets d'octets) ; il n'y
     a **qu'un** gestionnaire `EXIT` (ép. 24, 25) ;
   - famille de défauts revenue **10 fois** : *juger par autre chose que ce qu'on mesure* — un
