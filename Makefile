@@ -729,21 +729,66 @@ release-retention:
 	     $(if $(KEEP),--keep $(KEEP)) $(if $(DRY_RUN),--dry-run) \
 	     $(sign_flag)
 
+# The third pre-flight check of `release-and-upload' (below), and a target of its own so that
+# it can be run alone -- ten seconds, before deciding to spend twenty minutes. It asks exactly
+# what release.rpm.sh and release.apt.sh will ask, from the same file and in the same order:
+# the fingerprint comes from the key the SOURCES publish (marionnet-archive-keyring.asc), which
+# is what keeps the archive's identity single. `SIGN=no' skips it, as it skips the signature.
+release-check-signing-key:
+	@if test "$(RELEASE_SIGN)" = no; then \
+	   echo "$@: SIGN=no -- nothing will be signed, so there is nothing to check."; exit 0; \
+	 fi; \
+	 command -v gpg >/dev/null || { \
+	   echo "$@: signing is asked (SIGN=$(RELEASE_SIGN)) but \`gpg' is not installed." >&2; \
+	   exit 2; }; \
+	 command -v rpmsign >/dev/null || { \
+	   echo "$@: \`rpmsign' not found, and \`release-rpm' signs: install it with" >&2; \
+	   echo "$@: \`make apt-release-dependencies' (package \`rpm')." >&2; \
+	   exit 2; }; \
+	 key='$(RELEASE_SIGN)'; \
+	 if test "$$key" = yes; then \
+	   test -f marionnet-archive-keyring.asc || { \
+	     echo "$@: marionnet-archive-keyring.asc does not exist: nothing says who this" >&2; \
+	     echo "$@: archive is, and \`SIGN=yes' means \`the key the sources publish'." >&2; \
+	     exit 2; }; \
+	   key=$$(gpg --with-colons --show-keys -- marionnet-archive-keyring.asc 2>/dev/null \
+	          | awk -F: '$$1=="fpr"{print $$10; exit}'); \
+	   test -n "$$key" || { \
+	     echo "$@: cannot read a fingerprint out of marionnet-archive-keyring.asc." >&2; \
+	     exit 2; }; \
+	 fi; \
+	 gpg --list-secret-keys -- "$$key" >/dev/null 2>&1 || { \
+	   echo "$@: no secret key '$$key' in this keyring." >&2; \
+	   echo "$@: every index of this chain is signed, so the release would die AFTER the" >&2; \
+	   echo "$@: build box and leave the directory half published. Stopping here instead." >&2; \
+	   echo "$@: look at GNUPGHOME, and at whether ~/.gnupg is the keyring holding the" >&2; \
+	   echo "$@: archive key (on a machine sharing a home, it may be a link that is missing)." >&2; \
+	   exit 2; }; \
+	 echo "$@: secret key $$key is available."
+
 # THE WHOLE CHAIN, from this working copy to www.marionnet.org, for the current revision:
 # compile in the floor box (tarball + the four .deb), unpack that published tarball into the
 # .rpm, tidy the superseded revisions, deposit and prune. This is the one target meant to be
 # typed by hand for a release; everything it does is a target above, and nothing new happens
 # here -- which is why there is no grouping script in Makefile.d/: it would only re-wrap make.
 #
-# TWO PRE-FLIGHT CHECKS, both paid for by measurement:
+# THREE PRE-FLIGHT CHECKS, all paid for by measurement:
 #   - the working tree must be clean, because release.build-box.sh clones HEAD (episode 20).
 #     Uncommitted work does not fail the build, it silently does not ship -- and the release
 #     is then named after a revision whose content it does not carry.
 #   - CONFIGME.choice must not point at the testing configuration, or release.binary.sh
 #     refuses half way through (the compiled prefix would be the opam switch, episode 9a).
 #     Better to say so in the first second than after ten minutes of compiling.
-# Neither is overridable here on purpose: both have an explicit escape hatch on the script
-# which owns them, and reaching for it should be a deliberate act, not a variable on a chain.
+#   - the key this chain signs with must be in the keyring, and rpmsign must be installed.
+#     Measured 2026-09-06: the chain compiled in the build box, assembled the four .deb and
+#     rewrote the apt index, and only THEN did release-rpm find no secret key -- twenty
+#     minutes for nothing, and a release directory left saying r994 on the apt side while the
+#     rpm side still said r993. Signing being the default here (see RELEASE_SIGN), what it
+#     signs with is knowable in the first second. `SIGN=no' skips the check, as it skips the
+#     signature. The cause that day was not the release chain at all: on that machine ~/.gnupg
+#     was a real directory instead of the link into the shared home the other machine has.
+# None is overridable here on purpose: each has an explicit escape hatch on the script
+# which owns it, and reaching for it should be a deliberate act, not a variable on a chain.
 release-and-upload:
 	@test -z "$$(git status --porcelain --untracked-files=no)" || { \
 	  echo "$@: the working tree has uncommitted changes, and the build box clones HEAD."; \
@@ -753,6 +798,7 @@ release-and-upload:
 	  echo "$@: CONFIGME.choice points at the testing configuration, which"; \
 	  echo "$@: Makefile.d/release.binary.sh refuses: the compiled prefix would be the"; \
 	  echo "$@: opam switch. Run \`make rebuild-for-final' first."; exit 2; } >&2
+	$(MAKE) release-check-signing-key
 	@echo "==> releasing r$$(bash bin/meta.ml.maker.sh --print-revision) of series $(PUBLICATION_SERIES)"
 	$(MAKE) release-build-box WITH_DEB=1
 	$(MAKE) release-rpm SIGN=$(RELEASE_SIGN)
@@ -773,7 +819,7 @@ release-and-upload:
 # ---
 .PHONY: filesystem.prepare-snapshot-to-publish kernel.prepare-to-publish release.sha256sums
 .PHONY: filesystem.probe-image-binaries filesystem.apply-binary-policy
-.PHONY: release-retention release-and-upload release-install-pages
+.PHONY: release-retention release-and-upload release-install-pages release-check-signing-key
 .PHONY: release-binary release-deb release-apt print-required-packages-runtime
 .PHONY: release-rpm release-rpm-deps release-dnf release-build-box release-upload
 .PHONY: print-required-packages-build print-opam-switch print-opam-packages revno version
