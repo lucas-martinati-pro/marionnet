@@ -136,7 +136,8 @@ function usage {
 Usage: $TOOL print     [BLOCKS] [USER...]  # write the expected sudoers rules on stdout
        $TOOL check     [BLOCKS] [USER...]  # exit 0 iff every selected block is up to date and
                                            #   grants every USER (root only: the files are 0440);
-                                           #   4 if granted but STALE, 1 if not granted.
+                                           #   4 if granted but STALE, 5 if granted and sudo
+                                           #   REFUSES it anyway, 1 if not granted.
                                            #   Bare, it is a question about the FILE: no account
                                            #   is implied. --explain names what is out of date.
        $TOOL install   [BLOCKS] [USER...]  # grant them; needs root (re-execs with sudo)
@@ -173,9 +174,14 @@ therefore never takes the first one's grant away -- \`uninstall USER...' is the
 only way to do that. An account or a group that does not exist is REFUSED:
 sudoers would happily name it, and grant it the day somebody creates it.
 
-\`check' answers about the principals a file NAMES, not about effective rights: a
-member of a granted group is not a principal. \`sudo -l -U <login>' is the question
-about effective rights.
+\`check' answers about the principals a file NAMES -- a member of a granted group
+is not a principal -- and, since episode 48, about whether sudo HONOURS what the
+file says: it exits 5 when the grant is there and sudo refuses it anyway, which a
+broader rule parsed after this file does silently. Do NOT use \`sudo -l -U <login>'
+for that: measured, it answers "may this user run it", not "without a password"
+(\`sudo -n -l /bin/true' exits 0 on a machine where running it would prompt). The
+question about effective rights is asked by running one of the granted commands
+under \`sudo -n', which is what \`check' now does.
 
 THE VETO. \`deny --lanbridge' (or --natbridge, or --bridges) forbids that block on
 this machine: it is then refused to everybody, the grant already in place is taken
