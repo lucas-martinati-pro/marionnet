@@ -98,3 +98,7 @@ _bugs/
 # Episode 37 of `modernisation-installation-marionnet` learnt it the hard way --
 # a `git add bin/po` took twelve of them in, 41 000 lines of backup.
 *.po~
+
+# Release packages in dist/
+dist/*.deb
+
