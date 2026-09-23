@@ -1738,18 +1738,19 @@ class uml_process =
           ("marionnet-watch",
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-watch.sh") ]
     in
-    (* Autologin root on guest virtual console (tty0): *)
+    (* Autologin root on guest virtual console (tty0):
+       Always deploy the controller script so that switching autologin off
+       actively restores /sbin/getty on inittab even if the machine's COW disk
+       had already been modified by a previous boot with autologin. *)
     let () =
       let dest = Filename.concat (hostfs_directory) "marionnet-relay.05-autologin" in
-      if autologin then
-        try
-          UnixExtra.rewrite dest
-            (INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.05-autologin.sh")
-        with e ->
-          Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
-            dest (Printexc.to_string e)
-      else
-        (try Sys.remove dest with _ -> ())
+      let header = Printf.sprintf "AUTOLOGIN=%d\n" (if autologin then 1 else 0) in
+      let script = header ^ (INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.05-autologin.sh") in
+      try
+        UnixExtra.rewrite dest script
+      with e ->
+        Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
+          dest (Printexc.to_string e)
     in
 
     (* Episode 23: the deadline the guest gives to its report travels WITH the scripts, so

@@ -526,7 +526,15 @@ let options_autologin_root =
   ~active:Global_options.autologin_root_default
   ~callback:(fun active ->
          Log.printf1 ~force:true "You toggled the option (autologin_root) to %b\n" active;
-         Global_options.set_autologin_root active)
+         Global_options.set_autologin_root active;
+         if st#active_project then
+           List.iter (fun node ->
+             match node#string_of_devkind with
+             | "machine" | "router" ->
+                 (try (Obj.magic node : < set_autologin : bool -> unit >)#set_autologin active
+                  with _ -> ())
+             | _ -> ()
+           ) st#network#get_node_list)
  ()
 
 
