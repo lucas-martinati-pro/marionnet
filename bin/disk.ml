@@ -308,9 +308,12 @@ class ['a] epithet_manager
   method get_default_epithet : 'a epithet option =
     if self#epithet_exists default_epithet then (Some default_epithet) else
     let xs = self#get_epithet_list in
-    match xs with
-    | []   -> None
-    | x::_ -> Some x (* We get the first as default... *)
+    match List.find_opt (fun e -> String.starts_with ~prefix:"guignol" e) xs with
+    | Some e -> Some e
+    | None ->
+        (match xs with
+        | []   -> None
+        | x::_ -> Some x (* We get the first as default... *))
 
 end (* class epithet_manager *)
 
