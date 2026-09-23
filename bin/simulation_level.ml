@@ -1737,6 +1737,18 @@ class uml_process =
           ("marionnet-watch",
            INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-watch.sh") ]
     in
+    (* Autologin root on guest virtual console (tty0): *)
+    let () =
+      if Global_options.get_autologin_root () then
+        let dest = Filename.concat (hostfs_directory) "marionnet-relay.05-autologin" in
+        try
+          UnixExtra.rewrite dest
+            (INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.05-autologin.sh")
+        with e ->
+          Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
+            dest (Printexc.to_string e)
+    in
+
     (* Episode 23: the deadline the guest gives to its report travels WITH the scripts, so
        that the two sides cannot disagree (see [guest_report_deadline]). Rewritten at every
        start, like everything else here; never fatal, the relay has a default of its own. *)

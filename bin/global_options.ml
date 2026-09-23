@@ -57,6 +57,18 @@ let get_workaround_wirefilter_problem () =
     (fun () ->
       !workaround_wirefilter_problem);;
 
+(** Automatically login as root on virtual machines and routers without password: *)
+let autologin_root_default = true;;
+let autologin_root = ref autologin_root_default;;
+let set_autologin_root value =
+  with_mutex
+    (fun () ->
+      autologin_root := value);;
+let get_autologin_root () =
+  with_mutex
+    (fun () ->
+      !autologin_root);;
+
 (** The name of the host bridge device used to implement the "world bridge" component: *)
 let ethernet_world_bridge_name =
   let default = "br0" in

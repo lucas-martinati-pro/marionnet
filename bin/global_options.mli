@@ -46,6 +46,14 @@ val workaround_wirefilter_problem_default : bool
 val get_workaround_wirefilter_problem : unit -> bool
 val set_workaround_wirefilter_problem : bool -> unit
 
+(** Compile-time default of [get_autologin_root] (currently [true]). *)
+val autologin_root_default : bool
+
+(** Should virtual machines and routers automatically login as root without prompt? *)
+val get_autologin_root : unit -> bool
+val set_autologin_root : bool -> unit
+
+
 (** Name of the PRE-EXISTING host bridge the LAN bridge component attaches its tap to
     (variable [MARIONNET_BRIDGE], default ["br0"]). Read once at initialization: changing the
     configuration file requires restarting Marionnet. *)

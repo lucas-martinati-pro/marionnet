@@ -521,6 +521,16 @@ let options_keep_all_snapshots_when_saving =
  ()
 
 (* --- *)
+let options_autologin_root =
+ add_check_item (s_ "Auto-login as root (no password)")
+  ~active:Global_options.autologin_root_default
+  ~callback:(fun active ->
+         Log.printf1 ~force:true "You toggled the option (autologin_root) to %b\n" active;
+         Global_options.set_autologin_root active)
+ ()
+
+
+(* --- *)
 (* Hidden to user in this version. *)
 let workaround_wirefilter_problem =
  add_check_item "Workaround wirefilter problem"

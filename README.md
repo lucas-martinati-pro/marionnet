@@ -19,8 +19,13 @@ Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad
    - Plus besoin de compiler, ni d'ajouter de clés GPG externes ou de dépôts APT tiers.
    - Embarque l'application, les noyaux UML 64-bit et 32-bit (6.12.95) et le système invité Guignol de base.
    - Configure automatiquement les droits réseau (sudoers), même sous les versions d'Ubuntu récentes avec `sudo-rs`.
+3. **Connexion automatique en root (Autologin immédiat)** :
+   - Plus besoin de saisir `root` et `root` à chaque ouverture de terminal de machine ou routeur.
+   - Le shell s'ouvre directement sur le prompt `root@nom:~#`.
+   - Option activée par défaut, désactivable en 1 clic dans le menu *Options > Auto-login as root (no password)*.
 
 ---
+
 
 ## 📦 Installation ultra simple (Ubuntu 22.04 / 24.04 / 25.04+)
 
