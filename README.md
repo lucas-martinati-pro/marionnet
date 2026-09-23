@@ -22,7 +22,7 @@ Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad
 3. **Connexion automatique en root (Autologin immédiat)** :
    - Plus besoin de saisir `root` et `root` à chaque ouverture de terminal de machine ou routeur.
    - Le shell s'ouvre directement sur le prompt `root@nom:~#`.
-   - Option activée par défaut, désactivable en 1 clic dans le menu *Options > Auto-login as root (no password)*.
+   - Option activée par défaut, configurable directement dans la fenêtre de création ou de modification de chaque machine et routeur (section *Accès* -> *Connexion auto (root)*), ainsi que globalement dans le menu *Options*.
 
 ---
 

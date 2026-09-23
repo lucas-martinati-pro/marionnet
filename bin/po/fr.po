@@ -3597,3 +3597,12 @@ msgstr ""
 
 #~ msgid "world bridge"
 #~ msgstr "bridge vers l'extérieur"
+
+msgid "Auto-login (root)"
+msgstr "Connexion auto (root)"
+
+msgid "Log in automatically as root (no password required)"
+msgstr "Connexion automatique en root (aucun mot de passe requis)"
+
+msgid "Auto-login as root (no password)"
+msgstr "Connexion automatique en tant que root (sans mot de passe)"

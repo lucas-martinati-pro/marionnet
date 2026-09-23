@@ -252,6 +252,7 @@ class uml_process :
   ?show_unix_terminal:bool ->
   ?xnest_display_number:string ->
   ?guestkind:string ->
+  ?autologin:bool ->
   working_directory:string ->
   unexpected_death_callback:(int -> process_name -> unit) ->
   unit ->
@@ -380,6 +381,7 @@ class virtual ['parent] machine_or_router :
   ?umid:string ->
   id:int ->
   ?show_unix_terminal:bool ->
+  ?autologin:bool ->
   working_directory:string ->
   unexpected_death_callback:(unit -> unit) ->
   unit ->
@@ -427,6 +429,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes :
   ?umid:string ->
   id:int ->
   ?show_unix_terminal:bool ->
+  ?autologin:bool ->
   working_directory:string ->
   unexpected_death_callback:(unit -> unit) ->
   unit ->

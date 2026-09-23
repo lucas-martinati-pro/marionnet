@@ -1093,6 +1093,7 @@ class uml_process =
       ?(show_unix_terminal=false)
       ?xnest_display_number
       ?(guestkind="machine") (* or "router" *)
+      ?(autologin=Global_options.get_autologin_root ())
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -1739,14 +1740,16 @@ class uml_process =
     in
     (* Autologin root on guest virtual console (tty0): *)
     let () =
-      if Global_options.get_autologin_root () then
-        let dest = Filename.concat (hostfs_directory) "marionnet-relay.05-autologin" in
+      let dest = Filename.concat (hostfs_directory) "marionnet-relay.05-autologin" in
+      if autologin then
         try
           UnixExtra.rewrite dest
             (INCLUDE_AS_STRING "../../../../bin/scripts/marionnet-relay.05-autologin.sh")
         with e ->
           Log.printf2 "Simulation_level: make_hostfs_content: cannot write %s: %s\n"
             dest (Printexc.to_string e)
+      else
+        (try Sys.remove dest with _ -> ())
     in
 
     (* Episode 23: the deadline the guest gives to its report travels WITH the scripts, so
@@ -2265,6 +2268,7 @@ class virtual ['parent] machine_or_router =
       ?umid:(umid="uml-" ^ (string_of_int (gensym ())))
       ~id
       ?show_unix_terminal
+      ?autologin
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -2333,6 +2337,7 @@ object(self)
               ~console
               ~id
               ?show_unix_terminal
+              ?autologin
               ?xnest_display_number:(if xnest then Some self#get_xnest_process#display_number_as_server else None)
               ~working_directory
               ~unexpected_death_callback:self#execute_the_unexpected_death_callback
@@ -2425,6 +2430,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ?umid
       ~id
       ?show_unix_terminal
+      ?autologin
       ~working_directory
       ~unexpected_death_callback
       () ->
@@ -2441,7 +2447,7 @@ class virtual ['parent] machine_or_router_with_accessory_processes =
       ~cow_file_name ~states_directory ~hostfs_directory
       ~ethernet_interface_no
       ~memory ~console_no ~console ~xnest
-      ?umid ~id ?show_unix_terminal ~working_directory
+      ?umid ~id ?show_unix_terminal ?autologin ~working_directory
       ~unexpected_death_callback
       ()
       as super

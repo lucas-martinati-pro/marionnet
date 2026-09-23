@@ -419,6 +419,7 @@ type t = {
   kernel               : string;          (* epithet *)
   (* --- *)
   show_unix_terminal   : bool;
+  autologin            : bool;
   rc_config_unix       : bool * string;   (* run commands (rc) file configuration *)
   (* --- *)
   quagga_selected_srvs : (Const.quagga_lowercase_acronym list);
@@ -466,6 +467,7 @@ module Make_menus (Params : sig
          variant = variant;
 	 kernel = kernel;
          show_unix_terminal = show_unix_terminal;
+         autologin = autologin;
          rc_config_unix = rc_config_unix;
          quagga_selected_srvs = quagga_selected_srvs;
          show_quagga_terminal = show_quagga_terminal;
@@ -485,6 +487,7 @@ module Make_menus (Params : sig
           ~kernel
           ~port_no
           ~show_unix_terminal
+          ~autologin
           ~rc_config_unix
           ~quagga_selected_srvs
           ~show_quagga_terminal
@@ -508,6 +511,7 @@ module Make_menus (Params : sig
      let variant = r#get_variant in
      let kernel = r#get_kernel in
      let show_unix_terminal = r#get_show_unix_terminal in
+     let autologin = r#get_autologin in
      let rc_config_unix = r#get_rc_config_unix in
      let quagga_selected_srvs = r#get_quagga_selected_srvs in
      let show_quagga_terminal = r#get_show_quagga_terminal in
@@ -520,7 +524,7 @@ module Make_menus (Params : sig
      in
      Dialog_add_or_update.make
        ~title ~name ~label ~distribution ?variant
-       ~show_unix_terminal ~rc_config_unix
+       ~show_unix_terminal ~autologin ~rc_config_unix
        ~quagga_selected_srvs ~show_quagga_terminal ~rc_config_quagga
        ~port_no ~port_no_min
        ~port_0_ipv4_config
@@ -537,6 +541,7 @@ module Make_menus (Params : sig
          port_no = port_no;
 	 kernel = kernel;
          show_unix_terminal = show_unix_terminal;
+         autologin = autologin;
          rc_config_unix = rc_config_unix;
          quagga_selected_srvs = quagga_selected_srvs;
          show_quagga_terminal = show_quagga_terminal;
@@ -550,7 +555,7 @@ module Make_menus (Params : sig
       let action () =
         r#update_router_with
           ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel
-          ~show_unix_terminal ~rc_config_unix
+          ~show_unix_terminal ~autologin ~rc_config_unix
           ~quagga_selected_srvs ~show_quagga_terminal ~rc_config_quagga
           ()
       in
@@ -648,6 +653,7 @@ let make
  ?(updating:unit option)
  (* --- *)
  ?(show_unix_terminal=false)
+ ?(autologin=Global_options.get_autologin_root ())
  ?(rc_config_unix=(false, Const.initial_content_for_rcfiles_UNIX))
  (* --- *)
  ?(quagga_selected_srvs=Const.quagga_alternatives#lowercase_acronym_list)
@@ -676,7 +682,7 @@ let make
       ?label
       ()
   in
-  let ((s1,s2,s3,s4,s5), port_0_ipv6_config_obj, port_no, distribution_variant_kernel, rc_config_unix, show_unix_terminal, quagga_widgets) =
+  let ((s1,s2,s3,s4,s5), port_0_ipv6_config_obj, port_no, distribution_variant_kernel, rc_config_unix, show_unix_terminal, autologin, quagga_widgets) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_router#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
@@ -689,6 +695,7 @@ let make
          (s_ "Kernel");
          (s_ "Startup configuration");
          (s_ "Show Unix terminal");
+         (s_ "Auto-login (root)");
          (s_ "Services");
          ]
     in
@@ -776,6 +783,12 @@ let make
       GButton.check_button
         ~active:show_unix_terminal
         ~packing:(form#add_with_tooltip (s_ "Do you want access the router also by a Unix terminal?" ))
+        ()
+    in
+    let autologin =
+      GButton.check_button
+        ~active:autologin
+        ~packing:(form#add_with_tooltip (s_ "Log in automatically as root (no password required)"))
         ()
     in
     (* --- *)
@@ -884,7 +897,7 @@ let make
     (* --- *)
     let quagga_widgets = (quagga_notebook, quagga_rc_config_widgets, quagga_terminal_widgets) in
     (* --- *)
-    (port_0_ipv4_config, port_0_ipv6_config_obj, port_no, distribution_variant_kernel, rc_config_unix, show_unix_terminal, quagga_widgets)
+    (port_0_ipv4_config, port_0_ipv6_config_obj, port_no, distribution_variant_kernel, rc_config_unix, show_unix_terminal, autologin, quagga_widgets)
   in
   (* --- *)
   let get_widget_data () :'result =
@@ -933,6 +946,7 @@ let make
     in
     (* --- *)
     let show_unix_terminal = show_unix_terminal#active in
+    let autologin = autologin#active in
     (* --- *)
     { Data.name = name;
       Data.label = label;
@@ -943,6 +957,7 @@ let make
       Data.variant = variant;
       Data.kernel = kernel;
       Data.show_unix_terminal = show_unix_terminal;
+      Data.autologin = autologin;
       Data.rc_config_unix = rc_config_unix;
       Data.quagga_selected_srvs = quagga_selected_srvs;
       Data.rc_config_quagga = rc_config_quagga;
@@ -1059,6 +1074,7 @@ class router
   ?kernel
   (* --- *)
   ?(show_unix_terminal=false)
+  ?(autologin=Global_options.get_autologin_root ())
   ?(rc_config_unix=(false,""))
   (* --- *)
   ?(quagga_selected_srvs=Const.quagga_alternatives#lowercase_acronym_list)
@@ -1152,6 +1168,10 @@ class router
   val mutable show_unix_terminal : bool = show_unix_terminal
   method get_show_unix_terminal = show_unix_terminal
   method set_show_unix_terminal x = show_unix_terminal <- x
+
+  val mutable autologin : bool = autologin
+  method get_autologin = autologin
+  method set_autologin x = autologin <- x
 
   val mutable rc_config_unix : bool * string  = rc_config_unix
   method get_rc_config_unix = rc_config_unix
@@ -1318,6 +1338,7 @@ class router
         ~umid:self#get_name
         ~id
         ~show_unix_terminal:self#get_show_unix_terminal
+        ~autologin:self#get_autologin
         ?rcfile_unix_content
         ~quagga_selected_srvs:self#get_quagga_selected_srvs
         ~show_quagga_terminal:self#get_show_quagga_terminal
@@ -1392,6 +1413,7 @@ class router
         ("variant"  ,  self#get_variant_as_string);
         ("kernel"   ,  self#get_kernel   );
         ("show_unix_terminal"  , string_of_bool (self#get_show_unix_terminal));
+        ("autologin"           , string_of_bool (self#get_autologin));
         ("rc_config_unix_active", string_of_bool (fst self#get_rc_config_unix));
         ("rc_config_unix_file"  , rc_config_unix_file);
         ("terminal" ,  self#get_terminal );
@@ -1412,6 +1434,7 @@ class router
   | ("variant"  , x ) -> self#set_variant (self#remap_absent_variant_at_import x)
   | ("kernel"   , x ) -> self#set_kernel (self#remap_obsolete_kernel_at_import x)
   | ("show_unix_terminal", x )   -> self#set_show_unix_terminal   (bool_of_string x)
+  | ("autologin"         , x )   -> (try self#set_autologin (bool_of_string x) with _ -> ())
   (* `v0/`v1/`v2: the four fields, marshalled into their attribute. Kept, and kept first. *)
   | ("show_quagga_terminal", x ) -> self#set_show_quagga_terminal (Marshal.from_string x 0)
   | ("rc_config_unix", x )       -> self#set_rc_config_unix (Marshal.from_string x 0)
@@ -1490,7 +1513,7 @@ class router
 
  method update_router_with
    ~name ~label ~port_0_ipv4_config ?port_0_ipv6_config ~port_no ~kernel
-   ~show_unix_terminal ~show_quagga_terminal ~rc_config_unix ~rc_config_quagga ~quagga_selected_srvs
+   ~show_unix_terminal ~autologin ~show_quagga_terminal ~rc_config_unix ~rc_config_quagga ~quagga_selected_srvs
    () =
    (* first action: *)
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;
@@ -1500,6 +1523,7 @@ class router
    self#set_port_0_ipv6_config (port_0_ipv6_config);
    self#set_show_quagga_terminal (show_quagga_terminal);
    self#set_show_unix_terminal (show_unix_terminal);
+   self#set_autologin (autologin);
    self#set_rc_config_unix (rc_config_unix);
    self#set_rc_config_quagga (rc_config_quagga);
    self#set_quagga_selected_srvs (quagga_selected_srvs);
@@ -1533,6 +1557,7 @@ class ['parent] router =
       ?umid
       ~id
       ~show_unix_terminal
+      ?(autologin=Global_options.get_autologin_root ())
       ?rcfile_unix_content
       ~quagga_selected_srvs
       ~show_quagga_terminal
@@ -1587,6 +1612,7 @@ class ['parent] router =
       ~console:"none" (* To do: this should be "none" for releases and "xterm" for debugging *)
       ~id
       ~show_unix_terminal
+      ?autologin:(Some autologin)
       ~xnest:false
       ~working_directory
       ~unexpected_death_callback

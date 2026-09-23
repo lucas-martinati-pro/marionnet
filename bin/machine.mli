@@ -42,6 +42,7 @@ module Data : sig
     kernel             : string;          (* epithet *)
     rc_config          : bool * string;   (* run commands (rc) file configuration *)
     console_no         : int;
+    autologin          : bool;
     terminal           : string;
     old_name           : string;
     }
@@ -69,6 +70,7 @@ module User_level_machine : sig
     ?kernel     : [ `kernel ] Disk.epithet ->
     ?rc_config  : bool * string ->
     ?console_no : int ->
+    ?autologin  : bool ->
     ?terminal   : string ->
     port_no     : int ->
     unit ->
@@ -153,6 +155,9 @@ module User_level_machine : sig
       method get_console_no                  : int
       method set_console_no                  : int -> unit
       (* --- *)
+      method get_autologin                   : bool
+      method set_autologin                   : bool -> unit
+      (* --- *)
       method make_simulated_device           : User_level.node_with_ports_card Simulation_level.device
       (* --- *)
       method state_as_string       : string
@@ -236,7 +241,7 @@ module User_level_machine : sig
       (* --- *)
       method update_machine_with :
         name:string -> label:string -> memory:int -> port_no:int -> kernel:[ `kernel ] Disk.epithet ->
-        rc_config:bool * string ->  console_no:int -> terminal:string -> unit
+        rc_config:bool * string ->  console_no:int -> autologin:bool -> terminal:string -> unit
       (* --- *)
       method update_virtual_machine_with     : name:string -> port_no:int -> [ `kernel ] Disk.epithet -> unit
       method update_with                     : name:string -> label:string -> port_no:int -> unit
@@ -266,6 +271,7 @@ module (*Machine.*)Simulation_level : sig
     ?umid                     : string ->
     ?xnest                    : bool ->
     ?console_no               : int ->
+    ?autologin                : bool ->
     id                        : int ->
     working_directory         : string ->
     unexpected_death_callback : (unit -> unit) ->

@@ -107,6 +107,7 @@ type t = {
   kernel             : string;          (* epithet *)
   rc_config          : bool * string;   (* run commands (rc) file configuration *)
   console_no         : int;
+  autologin          : bool;
   terminal           : string;
   old_name           : string;
   }
@@ -149,6 +150,7 @@ module Make_menus (Params : sig
 	 kernel = kernel;
          rc_config = rc_config;
 	 console_no = console_no;
+         autologin = autologin;
          terminal = terminal;
          old_name = _ ;
          }
@@ -165,6 +167,7 @@ module Make_menus (Params : sig
           ~kernel
           ~rc_config
           ~console_no
+          ~autologin
  	  ~terminal
           ())
       in
@@ -188,6 +191,7 @@ module Make_menus (Params : sig
      let kernel = m#get_kernel in
      let rc_config = m#get_rc_config in
      let console_no = m#get_console_no in
+     let autologin = m#get_autologin in
      let terminal = m#get_terminal in
      (* The user cannot remove receptacles used by a cable. *)
      let port_no_min = st#network#port_no_lower_of (m :> User_level.node)
@@ -199,6 +203,7 @@ module Make_menus (Params : sig
        ~kernel
        ~rc_config
        ~console_no
+       ~autologin
        ~terminal
        ~updating:() (* the user cannot change the distrib & variant *)
        ~ok_callback:Add.ok_callback  ()
@@ -214,6 +219,7 @@ module Make_menus (Params : sig
 	 kernel = kernel;
          rc_config = rc_config;
 	 console_no = console_no;
+         autologin = autologin;
          terminal = terminal;
          old_name = old_name;
          }
@@ -226,7 +232,7 @@ module Make_menus (Params : sig
           ~memory ~port_no
 	  ~kernel
           ~rc_config
-	  ~console_no ~terminal
+	  ~console_no ~autologin ~terminal
       in
       st#network_change action ();
 
@@ -322,6 +328,7 @@ let make
  ?(rc_config=(false, Const.initial_content_for_rcfiles))
  ?(updating:unit option)
  ?(console_no=1)
+ ?(autologin=Global_options.get_autologin_root ())
  ?terminal
  ?(help_callback=help_callback) (* defined backward with "WHERE" *)
  ?(ok_callback=(fun data -> Some data))
@@ -339,7 +346,7 @@ let make
       ?label
       ()
   in
-  let (memory, port_no, distribution_variant_kernel, rc_config, console_no, terminal) =
+  let (memory, port_no, distribution_variant_kernel, rc_config, console_no, autologin, terminal) =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:dialog_machine#vbox#add () in
     let form =
       Gui_bricks.make_form_with_labels
@@ -351,6 +358,7 @@ let make
          (s_ "Kernel");
          (s_ "Startup configuration");
          (s_ "Consoles");
+         (s_ "Auto-login (root)");
          (* (s_ "Terminal"); *)
          ]
     in
@@ -420,6 +428,12 @@ let make
       Gui_bricks.spin_byte ~lower:1 ~upper:8 ~step_incr:1
       ~packing:(form#add_with_tooltip (s_ "Number of consoles (tty0, tty1 ...) of the virtual machine")) console_no
     in
+    let autologin =
+      GButton.check_button
+        ~active:autologin
+        ~packing:(form#add_with_tooltip (s_ "Log in automatically as root (no password required)"))
+        ()
+    in
     (* Register and call the "Consoles" callback and set it according to current distribution:  *)
     let () =
       let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
@@ -464,7 +478,7 @@ let make
     let () = form#add_section ~no_line:() "" in (* Just leave an empty row in place of the `terminal' widget *)
     (* terminal#box#misc#set_sensitive false; *)
     (* --- *)
-    (memory, port_no, distribution_variant_kernel, rc_config, console_no, _terminal)
+    (memory, port_no, distribution_variant_kernel, rc_config, console_no, autologin, _terminal)
   in
   (* --- *)
   let get_widget_data () :'result =
@@ -481,6 +495,7 @@ let make
     | x      -> Some x
     in
     let console_no = int_of_float console_no#value in
+    let autologin = autologin#active in
     let terminal = terminal#selected in
       { Data.name = name;
         Data.label = label;
@@ -491,6 +506,7 @@ let make
         Data.kernel = kernel;
         Data.rc_config = rc_config;
         Data.console_no = console_no;
+        Data.autologin = autologin;
         Data.terminal = terminal;
         Data.old_name = old_name;
         }
@@ -589,6 +605,7 @@ class machine
   ?kernel
   ?(rc_config=(false,""))
   ?(console_no=1)
+  ?(autologin=Global_options.get_autologin_root ())
   ?terminal
   ~port_no
   ()
@@ -698,6 +715,10 @@ class machine
     | false ->
         self#logged_failwith "%s" (spr "value %d not in the console no. range [%d,%d]" x 1 8)
 
+  val mutable autologin : bool = autologin
+  method get_autologin = autologin
+  method set_autologin x = autologin <- x
+
   (** Show for debugging *)
   method show = name
 
@@ -720,6 +741,7 @@ class machine
       ("rc_config_active", string_of_bool (fst self#get_rc_config));
       ("rc_config_file",   rc_config_file);
       ("console_no", (string_of_int self#get_console_no));
+      ("autologin" , (string_of_bool self#get_autologin));
       ("terminal" ,  self#get_terminal );
       ("port_no"  ,  (string_of_int self#get_port_no))  ;
       ])
@@ -745,6 +767,7 @@ class machine
       in
       self#set_rc_config ((fst rc_config), content)
   | ("console_no" , x ) -> self#set_console_no (int_of_string x)
+  | ("autologin"  , x ) -> (try self#set_autologin (bool_of_string x) with _ -> ())
   | ("terminal" , x ) -> self#set_terminal x
   | ("eth"      , x ) (* backward-compatibility *)
   | ("port_no"  , x ) -> self#set_port_no  (int_of_string x)
@@ -798,6 +821,7 @@ class machine
         ~ethernet_interface_no:self#get_port_no
         ~memory:self#get_memory
         ~console_no:self#get_console_no
+        ~autologin:self#get_autologin
         ~umid:self#get_name
         ~id
         ~xnest:self#is_xnest_enabled
@@ -851,7 +875,7 @@ class machine
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no self#get_kernel;
    self_as_node_with_defects#update_structural_with ~name ~port_no
 
- method update_machine_with ~name ~label ~memory ~port_no ~kernel ~rc_config ~console_no ~terminal =
+ method update_machine_with ~name ~label ~memory ~port_no ~kernel ~rc_config ~console_no ~autologin ~terminal =
    (* first action: *)
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;
    (* then we can set the object property "name" (read by #get_name): *)
@@ -859,6 +883,7 @@ class machine
    self#set_memory memory;
    self#set_rc_config (rc_config);
    self#set_console_no console_no;
+   self#set_autologin autologin;
    self#set_terminal terminal;
 
  (* ---------------------------------------------------------------------
@@ -1073,6 +1098,7 @@ class ['parent] machine =
       ?umid
       ?(xnest=false)
       ?(console_no=1)
+      ?(autologin=Global_options.get_autologin_root ())
       ~id
       ~working_directory
       ~unexpected_death_callback
@@ -1098,6 +1124,7 @@ object(self)
       ?umid
       ~console:"xterm"
       ~console_no
+      ?autologin:(Some autologin)
       ~id
       ~xnest
       ~working_directory
