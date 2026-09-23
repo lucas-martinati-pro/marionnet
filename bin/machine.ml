@@ -496,6 +496,22 @@ let make
         }
 
   in
+  (* A kernel unusable on this host only loops on "can't run '/sbin/getty'":
+     silently auto-switch to the best bootable kernel so the user is never interrupted by errors. *)
+  let ok_callback =
+    let super_callback = ok_callback in
+    (fun data ->
+       if not (Initialization.uml_kernel_broken_on_this_host data.Data.kernel) then
+         super_callback data
+       else
+         match vm_installations#bootable_supported_kernels_of data.Data.distribution with
+         | (best, _) :: _ ->
+             Log.printf2 "Kernel \"%s\" unusable on this host; silently switched to \"%s\"\n"
+               data.Data.kernel best;
+             super_callback { data with Data.kernel = best }
+         | [] ->
+             super_callback data)
+  in
   (* The result of make is the result of the dialog loop (of type 'result option): *)
   Gui_bricks.Dialog_run.ok_or_cancel (dialog_machine) ~ok_callback ~help_callback ~get_widget_data ()
 
@@ -617,7 +633,7 @@ class machine
   (* Redefinition (User_level.component answers None): the kernels this machine's filesystem
      declares as supported, in the same order as the GUI combo (gui_bricks.ml:540-541). *)
   method! supported_kernels_if_any =
-    Some (List.map fst (vm_installations#supported_kernels_of self#get_epithet))
+    Some (List.map fst (vm_installations#bootable_supported_kernels_of self#get_epithet))
 
   (* Redefinition (User_level.component answers None): the filesystems installed on this host,
      in the order the GUI combo offers them. Read by the control server to refuse an explicit
@@ -745,6 +761,16 @@ class machine
       match self#get_rc_config with
       | false, _ -> None
       | true, content -> Some content
+    in
+    (* Runtime auto-heal: ensure the kernel can actually boot on this host *)
+    let () =
+      if Initialization.uml_kernel_broken_on_this_host self#get_kernel then
+        match vm_installations#bootable_supported_kernels_of self#get_epithet with
+        | (best, _) :: _ when not (Initialization.uml_kernel_broken_on_this_host best) ->
+            Log.printf3 "Runtime auto-heal: machine %S kernel %S unusable on this host, automatically switching to %S\n"
+              self#name self#get_kernel best;
+            self#set_kernel best
+        | _ -> ()
     in
     let () =
      Log.printf5

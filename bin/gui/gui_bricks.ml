@@ -520,11 +520,17 @@ let make_combo_boxes_of_vm_installations
    | None   -> "none"
    | Some x -> x
   in
-  (* Resolve the initial choice for kernel: *)
-  let kernel = match kernel with
-   | None -> fst (List.hd (vm_installations#supported_kernels_of distribution))
-   | Some x -> x
-  in
+   (* Resolve the initial choice for kernel: the first *bootable* one, so a stale .conf
+      listing only host-broken kernels does not couple every new machine to a getty loop
+      (see Disk.bootable_supported_kernels_of). If an explicitly passed kernel is unusable
+      on this host, it is cleanly replaced by the bootable one. *)
+   let kernel = match kernel with
+    | None -> fst (List.hd (vm_installations#bootable_supported_kernels_of distribution))
+    | Some x ->
+        if Initialization.uml_kernel_broken_on_this_host x then
+          fst (List.hd (vm_installations#bootable_supported_kernels_of distribution))
+        else x
+   in
   let (packing_distribution, packing_variant, packing_kernel) = packing in
   (* The user can't change filesystem and variant any more once the device has been created.
      TODO: release this constraint. *)
@@ -541,8 +547,9 @@ let make_combo_boxes_of_vm_installations
             "none"::(vm_installations#variants_of epithet)#get_epithet_list
          | true -> [variant]
      in
+     (* Only propose bootable kernels so the user never encounters broken kernels or getty loops: *)
      let kernel_choices =
-       fun epithet -> List.map fst (vm_installations#supported_kernels_of epithet)
+       fun epithet -> List.map fst (vm_installations#only_bootable_supported_kernels_of epithet)
      in
      Widget.ComboTextTree.fromListWithTwoSlaves
        ~masterCallback:on_distrib_change

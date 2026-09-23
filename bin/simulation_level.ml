@@ -1183,6 +1183,7 @@ class uml_process =
        "umid=" ^ umid;
        "mem=" ^ (string_of_int memory) ^ "M";
        "root=98:0";
+       "rootflags=errors=continue";
        "hostfs=" ^ (Shell.escaped_filename hostfs_directory);
        "hostname="^umid;
        "guestkind="^guestkind;

@@ -541,10 +541,70 @@ class virtual_machine_installations
       | None    -> List.map (fun k -> (k,None)) kernels#get_epithet_list
       | Some ks -> ks
 
+  (* Same list with the kernels unusable on this host demoted last (stable order).
+     Rationale: the first supported kernel is the default of every creation path (GUI
+     dialog, User_level constructor, control server); on a modern host a stale .conf
+     listing only the 3.2.x series would otherwise couple every new machine to a kernel
+     that segfaults, and the guest then loops on "can't run '/sbin/getty': Input/output
+     error" with no hint. If all declared kernels are host-broken, we automatically
+     supplement with installed bootable kernels (preferring i386 for legacy images)
+     so creation/booting never fails. Callers wanting the raw declaration order use
+     supported_kernels_of. *)
+  method bootable_supported_kernels_of : [`distrib] epithet -> ([`kernel] epithet * (string option)) list =
+    fun filesystem_epithet ->
+      let ks = self#supported_kernels_of filesystem_epithet in
+      let ok, broken =
+        List.partition
+          (fun (k, _) -> not (Initialization.uml_kernel_broken_on_this_host k))
+          ks
+      in
+      if ok <> [] then ok @ broken else
+      let installed_bootable =
+        List.filter
+          (fun k -> not (Initialization.uml_kernel_broken_on_this_host k))
+          kernels#get_epithet_list
+      in
+      let i386_bootable =
+        List.filter (fun k -> Filename.check_suffix k "-i386") installed_bootable
+      in
+      let fallback_kernels =
+        if i386_bootable <> [] then i386_bootable else installed_bootable
+      in
+      (List.map (fun k -> (k, None)) fallback_kernels) @ broken
+
+  (* Only the kernels that can boot on this host: *)
+  method only_bootable_supported_kernels_of : [`distrib] epithet -> ([`kernel] epithet * (string option)) list =
+    fun filesystem_epithet ->
+      List.filter
+        (fun (k, _) -> not (Initialization.uml_kernel_broken_on_this_host k))
+        (self#bootable_supported_kernels_of filesystem_epithet)
+
   (* Do not propose any filesystems which haven't at least one compatible installed kernel: *)
   initializer
     filesystems#filter
       (fun e -> (self#supported_kernels_of e)<>[])
+
+  (* Speak up at startup for the filesystems no declared kernel can boot on this host
+     (typically a stale .conf predating the modern i386 UML kernels): automatically
+     supplemented above with modern kernels so machines never loop on getty. *)
+  initializer
+    List.iter
+      (fun e ->
+         let ks = List.map fst (self#supported_kernels_of e) in
+         if ks <> [] &&
+            List.for_all Initialization.uml_kernel_broken_on_this_host ks
+         then
+           let bootable = List.map fst (self#only_bootable_supported_kernels_of e) in
+           match bootable with
+           | b :: _ ->
+               Log.printf3
+                 "INFO: filesystem \"%s\" declares only legacy kernels (%s); automatically supplementing with bootable kernel \"%s\".\n"
+                 e (String.concat " " ks) b
+           | [] ->
+               Log.printf2
+                 "WARNING: filesystem \"%s\" declares no kernel bootable on this host (supported: %s). Machines using it will fail to boot.\n"
+                 e (String.concat " " ks))
+      filesystems#get_epithet_list
 
   method get_kernel_console_arguments : [`distrib] epithet -> [`kernel] epithet -> string option =
     fun filesystem_epithet kernel_epithet ->

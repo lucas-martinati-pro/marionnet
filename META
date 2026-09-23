@@ -4,7 +4,7 @@ description="A virtual network laboratory"
 # --- it is derived from the VCS as (revision - series_base_revision), by the single
 # --- implementation of that rule, `bin/meta.ml.maker.sh --print-version'. So `1.0.x' is the
 # --- series and `1.0.368' is what a build of revision 942 calls itself.
-version="1.0.x"
+version="1.0.456"
 # --- The last revision BEFORE this series (r574 = the last commit before the dune port,
 # --- whose first commit is therefore 1.0.1). It moves the day a new series opens, and it is
 # --- what makes the patch level count the revisions OF THE SERIES rather than the 574

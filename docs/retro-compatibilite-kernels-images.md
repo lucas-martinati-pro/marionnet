@@ -275,3 +275,21 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
     guignol-18474 same-family). Branches `router-default→guignol`, `RAM≥96→trixie`,
     `pinocchio→guignol`, `lenny→wheezy` : logique en place, **non exercées** faute de `.mar`
     d'exemple les portant.
+- **2026-09-23 — épisode 8 (création : plus aucun couple voué à la boucle getty)** : le remap
+  ne couvrait que le **chargement** de `.mar` ; une machine **créée** (GUI ou `add`) avec un
+  `.conf` périmé (SUPPORTED_KERNELS ne listant que du 3.2.x) recevait le noyau cassé sans un
+  mot, puis bouclait côté invité sur `can't run '/sbin/getty': Input/output error` — mesuré
+  sur wheezy-08367 + hôte 7.0. Correctifs :
+  - `Initialization.uml_kernel_broken_on_this_host` (prédicat unique, dédupliqué de
+    `remap_obsolete_kernel_at_import`) ;
+  - `Disk.bootable_supported_kernels_of` (supportés, cassés-hôte relégués en fin, ordre
+    stable) + warning de démarrage par filesystem sans aucun noyau démarrable (nomme le
+    remède : étendre SUPPORTED_KERNELS, e.g. `/-i386$/`) ; `.mli` synchronisé ;
+  - défaut de création (GUI `gui_bricks.ml`, constructeur `User_level`, `add`) = premier
+    **démarrable** ;
+  - dialogue machine/routeur : bascule automatique et transparente vers le meilleur noyau démarrable (aucun pop-up intempestif) ;
+  - interface graphique (`gui_bricks.ml`) : la liste déroulante ne propose que des noyaux démarrables sur l'hôte ;
+  - auto-réparation au lancement (`make_simulated_device` dans `machine.ml` et `router.ml`) : avant le démarrage d'UML, tout noyau cassé sur l'hôte est automatiquement substitué par un noyau démarrable ;
+  - canal script : `set`/`add --kernel=` cassé-hôte → refus explicite avec alternatives ;
+  - `machine-template.conf` et fichiers `.conf` installés : `/-i386$/` en tête de `SUPPORTED_KERNELS`.
+  - Preuve : `dune build @check` rc=0, tests driven-sessions validés, test de démarrage réel d'invités UML réussi.

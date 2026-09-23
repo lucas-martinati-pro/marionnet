@@ -1418,19 +1418,20 @@ class virtual virtual_machine_with_history_and_ifconfig
    | Some x -> x
    | None   -> Option.extract vm_installations#filesystems#get_default_epithet
   in
-  (* The kernel default follows the *filesystem*, exactly as the GUI dialog does
-     (Gui_bricks.make_combo_boxes_of_vm_installations, gui_bricks.ml:520-522): the first kernel
-     declared by the filesystem's .conf (SUPPORTED_KERNELS). The global default epithet ignores
-     the distribution, so it used to build unbootable couples — a machine created without an
-     explicit kernel (the control server's `add', control_server.ml) got "3.2.64-ghost" whatever
-     its filesystem, and the guest never booted. The fallback keeps the old behaviour for a
-     filesystem declaring no supported kernel at all. *)
-  let kernel = match kernel with
-   | Some x -> x
-   | None   ->
-       (match vm_installations#supported_kernels_of epithet with
-        | (k, _) :: _ -> k
-        | []          -> Option.extract vm_installations#kernels#get_default_epithet)
+   (* The kernel default follows the *filesystem*, exactly as the GUI dialog does
+      (Gui_bricks.make_combo_boxes_of_vm_installations, gui_bricks.ml:520-522): the first
+      *bootable* kernel declared by the filesystem's .conf (SUPPORTED_KERNELS, host-broken
+      kernels demoted last by Disk.bootable_supported_kernels_of). The global default epithet ignores
+      the distribution, so it used to build unbootable couples — a machine created without an
+      explicit kernel (the control server's `add', control_server.ml) got "3.2.64-ghost" whatever
+      its filesystem, and the guest never booted. The fallback keeps the old behaviour for a
+      filesystem declaring no supported kernel at all. *)
+   let kernel = match kernel with
+    | Some x -> x
+    | None   ->
+        (match vm_installations#bootable_supported_kernels_of epithet with
+         | (k, _) :: _ -> k
+         | []          -> Option.extract vm_installations#kernels#get_default_epithet)
   in
   let terminal = match terminal with
    | Some x -> x
@@ -1696,14 +1697,9 @@ class virtual virtual_machine_with_history_and_ifconfig
      old images are i386 userlands): e.g. "3.2.64-ghost" -> "6.12.95-i386" for wheezy or
      guignol, "2.6.18-ghost" -> "6.12.95" for a filesystem remapped to a modern distrib. *)
   method remap_obsolete_kernel_at_import (k:string) : string =
-    let is_broken_old_series =
-      (Initialization.host_kernel_breaks_old_uml_stubs) &&
-      (match String.split_on_char '.' k with
-       | s :: _ -> (match int_of_string_opt s with Some major -> major < 4 | None -> false)
-       | []     -> false)
-    in
+    let is_broken_old_series = Initialization.uml_kernel_broken_on_this_host k in
     if (vm_installations#kernels#epithet_exists k) && (not is_broken_old_series) then k else (* continue: *)
-    let supported_kernels = List.map fst (vm_installations#supported_kernels_of self#get_epithet) in
+    let supported_kernels = List.map fst (vm_installations#bootable_supported_kernels_of self#get_epithet) in
     let candidate =
       match List.find_opt (fun e -> Filename.check_suffix e "-i386") supported_kernels with
       | Some e -> Some e

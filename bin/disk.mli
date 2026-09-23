@@ -110,6 +110,8 @@ class virtual_machine_installations :
     method variants_of           : [`distrib] epithet -> [`variant] epithet_manager
     method relay_script_of       : [`distrib] epithet -> filename option
     method supported_kernels_of  : [`distrib] epithet -> ([`kernel] epithet * (string option)) list
+    method bootable_supported_kernels_of : [`distrib] epithet -> ([`kernel] epithet * (string option)) list
+    method only_bootable_supported_kernels_of : [`distrib] epithet -> ([`kernel] epithet * (string option)) list
     method get_kernel_console_arguments : [`distrib] epithet -> [`kernel] epithet -> string option
 
 

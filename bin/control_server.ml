@@ -1143,11 +1143,41 @@ let supported_kernels_and_distrib (c : editable) : (string list * string) option
       in
       Some (ks, distrib)
 
-(* [Some detail] when the value is a kernel this component's filesystem does not declare. *)
+(* [Some detail] when the value is a kernel this component's filesystem does not declare,
+   or declares but that cannot boot on this host (it would only loop on
+   "can't run '/sbin/getty'"). The second case used to pass the guard and be remapped in
+   silence by eval_forest_attribute (the remap exists for imports); an explicit write now
+   fails loudly instead, naming the bootable alternatives. *)
 let unsupported_kernel (c : editable) (value : string) : string option =
   match supported_kernels_and_distrib c with
   | None -> None
-  | Some (ks, _) when List.mem value ks -> None
+  | Some (ks, _) when List.mem value ks ->
+      if not (Initialization.uml_kernel_broken_on_this_host value) then None else
+      let bootable =
+        List.filter
+          (fun k -> not (Initialization.uml_kernel_broken_on_this_host k))
+          ks
+      in
+      (match bootable with
+       | b :: _ ->
+           Some (Printf.sprintf
+                   "the kernel %S cannot boot on this host (host kernel %s); the guest would \
+                    only loop on \"can't run '/sbin/getty'\". Bootable kernels for this \
+                    filesystem: %s"
+                   value
+                   (match Initialization.host_kernel_version with
+                    | Some (a, b) -> Printf.sprintf "%d.%d" a b
+                    | None -> "unknown")
+                   (String.concat ", " bootable))
+       | [] ->
+           Some (Printf.sprintf
+                   "the kernel %S cannot boot on this host (host kernel %s), and the filesystem \
+                    declares no bootable alternative. Update its .conf SUPPORTED_KERNELS to also \
+                    accept a modern i386 UML kernel (e.g. '/-i386$/'), or install a matching kernel"
+                   value
+                   (match Initialization.host_kernel_version with
+                    | Some (a, b) -> Printf.sprintf "%d.%d" a b
+                    | None -> "unknown")))
   | Some (ks, distrib) ->
       Some (Printf.sprintf
               "the filesystem %S does not support the kernel %S; supported kernels: %s. The GUI \

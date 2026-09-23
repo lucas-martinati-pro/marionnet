@@ -359,6 +359,18 @@ let host_kernel_breaks_old_uml_stubs : bool =
   | Some v -> (v >= old_uml_breaking_host_version)
   | None   -> false
 
+(* Whether the UML kernel named by the given epithet can boot on this host: the 2.6.x/3.2.x
+   "-ghost" series segfaults (SKAS0 stub) on hosts >= old_uml_breaking_host_version, and a
+   machine coupled to one only loops on "can't run '/sbin/getty': Input/output error", with
+   no hint about the cause. Every creation path must therefore prefer a bootable kernel
+   (Disk.bootable_supported_kernels_of) and speak up when none is available (GUI dialog,
+   control server) instead of building an unbootable component: *)
+let uml_kernel_broken_on_this_host (k:string) : bool =
+  host_kernel_breaks_old_uml_stubs &&
+  (match String.split_on_char '.' k with
+   | s :: _ -> (match int_of_string_opt s with Some major -> major < 4 | None -> false)
+   | []     -> false)
+
 let () = Log.printf2
   "Host kernel version: %s (obsolete UML kernels remapped at project loading: %b)\n"
   (match host_kernel_version with Some (a,b) -> Printf.sprintf "%d.%d" a b | None -> "unknown")
