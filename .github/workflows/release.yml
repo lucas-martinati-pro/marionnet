@@ -71,7 +71,7 @@ jobs:
             jq
           opam init -y --bare --disable-sandboxing
           opam switch create default ocaml-system || true
-          opam install -y cmarkit
+          opam install -y camlp-streams cmarkit
 
       - name: Synchronisation du numéro de version dans META
         run: |
@@ -82,12 +82,14 @@ jobs:
       - name: Compilation de Marionnet avec Dune
         run: |
           eval $(opam env)
+          export OCAMLPATH="/usr/lib/ocaml:${OCAMLPATH:-}"
           dune build bin/marionnet.exe
           ./_build/default/bin/marionnet.exe -v
 
       - name: Construction du paquet Tout-en-un (marionnet-all-in-one)
         run: |
           eval $(opam env)
+          export OCAMLPATH="/usr/lib/ocaml:${OCAMLPATH:-}"
           chmod +x dist/build-all-in-one.sh
           ./dist/build-all-in-one.sh "$VERSION"
           ls -lh dist/*.deb
