@@ -46,32 +46,32 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version sélectionnée : $VERSION"
 
-      - name: Installation des dépendances système et OCaml
+      - name: Installation des dépendances système C/GTK
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ocaml \
-            ocaml-dune \
-            ocaml-findlib \
-            camlp4 \
-            libcamlp4-ocaml-dev \
-            libcamlp-streams-ocaml-dev \
-            liblablgtk3-ocaml-dev \
-            liblablgtksourceview3-ocaml-dev \
+            libgtk-3-dev \
             libgtksourceview-3.0-dev \
-            libinotify-ocaml-dev \
-            libyojson-ocaml-dev \
-            libgettext-ocaml-dev \
-            gettext \
-            opam \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
             fakeroot \
             dpkg-dev \
             curl \
-            jq
-          opam init -y --bare --disable-sandboxing
-          opam switch create default ocaml-system || true
-          opam install -y camlp-streams cmarkit
+            jq \
+            gettext
+
+      - name: Configuration de l'environnement OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.4.0
+          dune-cache: true
+
+      - name: Installation des paquets OPAM
+        run: |
+          opam install -y dune dune-site camlp4 camlp-streams inotify lablgtk3 lablgtk3-sourceview3 conf-gtksourceview3 yojson base64 cmarkit
 
       - name: Synchronisation du numéro de version dans META
         run: |
@@ -81,15 +81,11 @@ jobs:
 
       - name: Compilation de Marionnet avec Dune
         run: |
-          eval $(opam env)
-          export OCAMLPATH="/usr/lib/ocaml:${OCAMLPATH:-}"
           dune build bin/marionnet.exe
           ./_build/default/bin/marionnet.exe -v
 
       - name: Construction du paquet Tout-en-un (marionnet-all-in-one)
         run: |
-          eval $(opam env)
-          export OCAMLPATH="/usr/lib/ocaml:${OCAMLPATH:-}"
           chmod +x dist/build-all-in-one.sh
           ./dist/build-all-in-one.sh "$VERSION"
           ls -lh dist/*.deb
