@@ -1,0 +1,117 @@
+name: Release Marionnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version de Marionnet à publier (ex: 1.0.456, 1.0.457)'
+        required: true
+        default: '1.0.456'
+      release_title:
+        description: 'Titre de la release (optionnel)'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Notes de version (optionnel)'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Détermination de la version
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [ -f META ]; then
+            VERSION="$(grep -Po '(?<=version=")[^"]*' META || echo "1.0.456")"
+          else
+            VERSION="1.0.456"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version sélectionnée : $VERSION"
+
+      - name: Installation des dépendances système et OCaml
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ocaml \
+            ocaml-dune \
+            camlp4 \
+            liblablgtk3-ocaml-dev \
+            libgtksourceview-3.0-dev \
+            libinotify-ocaml-dev \
+            libgettext-ocaml-dev \
+            gettext \
+            fakeroot \
+            dpkg-dev \
+            curl \
+            jq
+
+      - name: Synchronisation du numéro de version dans META
+        run: |
+          sed -i "s/^version=\".*\"/version=\"$VERSION\"/" META
+          echo "Contenu de META :"
+          grep '^version=' META
+
+      - name: Compilation de Marionnet avec Dune
+        run: |
+          dune build bin/marionnet.exe
+          ./_build/default/bin/marionnet.exe -v
+
+      - name: Construction du paquet Tout-en-un (marionnet-all-in-one)
+        run: |
+          chmod +x dist/build-all-in-one.sh
+          ./dist/build-all-in-one.sh "$VERSION"
+          ls -lh dist/*.deb
+
+      - name: Publication de la Release GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${VERSION}"
+          TITLE="${{ github.event.inputs.release_title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="Marionnet ${VERSION} (Édition Linux Moderne)"
+          fi
+
+          NOTES="${{ github.event.inputs.release_notes }}"
+          if [ -z "$NOTES" ]; then
+            NOTES="## Marionnet ${VERSION} — Laboratoire Réseau Virtuel
+
+Paquet tout-en-un et paquets modulaires autonomes précompilés pour Ubuntu / Debian.
+
+### 📦 Installation en une ligne :
+\`\`\`bash
+git clone https://github.com/${{ github.repository }}.git
+cd marionnet/dist
+./install.sh
+\`\`\`
+"
+          fi
+
+          echo "Publication de la release $TAG..."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "La release $TAG existe déjà, mise à jour des assets..."
+            gh release upload "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb --clobber
+          else
+            gh release create "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb \
+              --title "$TITLE" \
+              --notes "$NOTES"
+          fi

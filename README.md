@@ -45,9 +45,12 @@ Le script s'occupe de tout automatiquement :
 
 ### Installation manuelle (alternative) :
 ```bash
+# Téléchargement direct du paquet All-in-One depuis les Releases GitHub
+wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-all-in-one_1.0.456_amd64.deb
+
 sudo dpkg --add-architecture i386
 sudo apt update
-sudo apt install -y ./dist/marionnet-all-in-one_1.0.456_amd64.deb
+sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb
 ```
 
 ---
