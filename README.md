@@ -45,7 +45,9 @@ Le script s'occupe de tout automatiquement :
 - Configure les droits sudoers pour votre utilisateur
 - Valide l'installation (`marionnet version 1.0.456`)
 
-*(Pour une installation légère sans l'image Debian Wheezy, utilisez `./install.sh --without-wheezy`)*.
+#### ⚙️ Options du script `install.sh` :
+- `./install.sh --clean` : Force la suppression des paquets `.deb` locaux en cache et retélécharge les versions officielles propres depuis GitHub Releases (recommandé en cas de mise à jour ou de cache corrompu).
+- `./install.sh --without-wheezy` : Installation allégée sans l'image Debian Wheezy (uniquement le système invité minimal Guignol).
 
 ### Installation manuelle (alternative) :
 ```bash

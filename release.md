@@ -44,8 +44,9 @@ Le script `install.sh` s'occupe de tout automatiquement :
 - Installe toutes les dépendances requises (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `socat`, etc.).
 - Configure les règles réseau sudoers pour votre utilisateur.
 - Valide immédiatement l'installation (`marionnet version 1.0.456`).
-
-*(Note : pour une installation légère sans l'image Debian Wheezy, passez l'option `./install.sh --without-wheezy`)*.
+- **Options utiles** :
+  - `./install.sh --clean` : Force la suppression des paquets locaux et le retéléchargement propre depuis GitHub Releases.
+  - `./install.sh --without-wheezy` : Installation légère sans l'image Debian Wheezy.
 
 ---
 
