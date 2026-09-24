@@ -91,27 +91,21 @@ jobs:
             TITLE="Marionnet ${VERSION} (Édition Linux Moderne)"
           fi
 
-          NOTES="${{ github.event.inputs.release_notes }}"
-          if [ -z "$NOTES" ]; then
-            NOTES="## Marionnet ${VERSION} — Laboratoire Réseau Virtuel
-
-Paquet tout-en-un et paquets modulaires autonomes précompilés pour Ubuntu / Debian.
-
-### 📦 Installation en une ligne :
-\`\`\`bash
-git clone https://github.com/${{ github.repository }}.git
-cd marionnet/dist
-./install.sh
-\`\`\`
-"
+          if [ -n "${{ github.event.inputs.release_notes }}" ]; then
+            NOTES_ARG=(--notes "${{ github.event.inputs.release_notes }}")
+          elif [ -f release.md ]; then
+            NOTES_ARG=(--notes-file release.md)
+          else
+            NOTES_ARG=(--notes "Release automatique de Marionnet ${VERSION}.")
           fi
 
           echo "Publication de la release $TAG..."
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG existe déjà, mise à jour des assets..."
+            gh release edit "$TAG" "${NOTES_ARG[@]}" --title "$TITLE"
             gh release upload "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb --clobber
           else
             gh release create "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb \
               --title "$TITLE" \
-              --notes "$NOTES"
+              "${NOTES_ARG[@]}"
           fi
