@@ -53,16 +53,25 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ocaml \
             ocaml-dune \
+            ocaml-findlib \
             camlp4 \
+            libcamlp4-ocaml-dev \
+            libcamlp-streams-ocaml-dev \
             liblablgtk3-ocaml-dev \
+            liblablgtksourceview3-ocaml-dev \
             libgtksourceview-3.0-dev \
             libinotify-ocaml-dev \
+            libyojson-ocaml-dev \
             libgettext-ocaml-dev \
             gettext \
+            opam \
             fakeroot \
             dpkg-dev \
             curl \
             jq
+          opam init -y --bare --disable-sandboxing
+          opam switch create default ocaml-system || true
+          opam install -y cmarkit
 
       - name: Synchronisation du numéro de version dans META
         run: |
@@ -72,11 +81,13 @@ jobs:
 
       - name: Compilation de Marionnet avec Dune
         run: |
+          eval $(opam env)
           dune build bin/marionnet.exe
           ./_build/default/bin/marionnet.exe -v
 
       - name: Construction du paquet Tout-en-un (marionnet-all-in-one)
         run: |
+          eval $(opam env)
           chmod +x dist/build-all-in-one.sh
           ./dist/build-all-in-one.sh "$VERSION"
           ls -lh dist/*.deb
