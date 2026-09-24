@@ -520,23 +520,6 @@ let options_keep_all_snapshots_when_saving =
          Global_options.Keep_all_snapshots_when_saving.set active)
  ()
 
-(* --- *)
-let options_autologin_root =
- add_check_item (s_ "Auto-login as root (no password)")
-  ~active:Global_options.autologin_root_default
-  ~callback:(fun active ->
-         Log.printf1 ~force:true "You toggled the option (autologin_root) to %b\n" active;
-         Global_options.set_autologin_root active;
-         if st#active_project then
-           List.iter (fun node ->
-             match node#string_of_devkind with
-             | "machine" | "router" ->
-                 (try (Obj.magic node : < set_autologin : bool -> unit >)#set_autologin active
-                  with _ -> ())
-             | _ -> ()
-           ) st#network#get_node_list)
- ()
-
 
 (* --- *)
 (* Hidden to user in this version. *)

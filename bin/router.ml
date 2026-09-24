@@ -1338,7 +1338,7 @@ class router
         ~umid:self#get_name
         ~id
         ~show_unix_terminal:self#get_show_unix_terminal
-        ~autologin:(self#get_autologin && Global_options.get_autologin_root ())
+        ~autologin:self#get_autologin
         ?rcfile_unix_content
         ~quagga_selected_srvs:self#get_quagga_selected_srvs
         ~show_quagga_terminal:self#get_show_quagga_terminal

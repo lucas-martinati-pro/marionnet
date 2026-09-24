@@ -331,7 +331,7 @@ let () =
         (splash.ml:112, a GMain.Timeout) — the parameter just had never been used. *)
      (if Script_mode.enabled ()
         then Splash.show_splash ~timeout:(Script_mode.auto_dismiss_ms ()) ()
-        else Splash.show_splash (* ~timeout:15000 *) ())
+        else Splash.show_splash ~timeout:2500 ())
    else ()
 
 (* --- *)

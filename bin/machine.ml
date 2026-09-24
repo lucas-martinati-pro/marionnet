@@ -821,7 +821,7 @@ class machine
         ~ethernet_interface_no:self#get_port_no
         ~memory:self#get_memory
         ~console_no:self#get_console_no
-        ~autologin:(self#get_autologin && Global_options.get_autologin_root ())
+        ~autologin:self#get_autologin
         ~umid:self#get_name
         ~id
         ~xnest:self#is_xnest_enabled

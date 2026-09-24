@@ -24,7 +24,7 @@ fi
 # 3. Installation du paquet tout-en-un et de toutes ses dépendances
 echo "--> [3/4] Installation du paquet tout-en-un et des dépendances..."
 sudo apt update
-sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb
+sudo apt install --reinstall -y ./marionnet-all-in-one_1.0.456_amd64.deb
 
 # 4. Configuration des droits réseau (sudoers)
 echo "--> [4/4] Configuration des droits réseau (sudoers)..."

@@ -970,40 +970,73 @@ class globalState = fun () ->
       with e -> (raise e)
     end
 
-  method private really_refresh_sketch =
-    GMain_actor.delegate (fun () -> begin
-    let () = Log.printf "About to refresh the sketch\n" in
-    let fs = self#project_paths#dotSketchFile in
-    let ft = self#project_paths#pngSketchFile in
-    try begin
-      let ch = open_out fs in
-      output_string ch (self#network#dotTrad ());
-      close_out ch;
-      let cmdline =
-        let splines = string_of_bool (Cortex.get self#network#dotoptions#curved_lines) in (* Appel de methode Cortex !!!!!!!!!!!!!!! *)
-        Printf.sprintf "dot -Gsplines=%s -Efontname=FreeSans -Nfontname=FreeSans -Tpng -o '%s' '%s' 2>/dev/null" splines ft fs
-      in
-      let exit_code = Sys.command cmdline in
-      (* --- *)
-      self#mainwin#sketch#set_file (self#project_paths#pngSketchFile);
-      (* --- *)
-      (if not (exit_code = 0) then
-        Simple_dialogs.error
-          (s_ "dot failed")
-          (Printf.sprintf
-              (f_ "Invoking dot failed. Did you install graphviz?\n\
-    The command line is\n%s\nand the exit code is %i.\n\
-    Marionnet will work, but you will not see the network graph picture until you fix the problem.\n\
-    There is no need to restart the application.")
-              cmdline
-              exit_code)
-          ());
-        end
+  val sketch_render_mutex = Mutex.create ()
+  val mutable sketch_render_in_progress = false
+  val mutable sketch_render_pending = false
+
+  method private schedule_sketch_render =
+    Mutex.lock sketch_render_mutex;
+    if sketch_render_in_progress then begin
+      sketch_render_pending <- true;
+      Mutex.unlock sketch_render_mutex
+    end else begin
+      sketch_render_in_progress <- true;
+      Mutex.unlock sketch_render_mutex;
+      self#do_async_sketch_render ()
+    end
+
+  method private do_async_sketch_render () =
+    ignore (Thread.create (fun () ->
+      let () = Log.printf "About to refresh the sketch\n" in
+      begin try
+        let fs = self#project_paths#dotSketchFile in
+        let ft = self#project_paths#pngSketchFile in
+        let dot_content = self#network#dotTrad () in
+        let splines = string_of_bool (Cortex.get self#network#dotoptions#curved_lines) in
+        let ch = open_out fs in
+        output_string ch dot_content;
+        close_out ch;
+        let cmdline =
+          Printf.sprintf "dot -Gsplines=%s -Efontname=FreeSans -Nfontname=FreeSans -Tpng -o '%s' '%s' 2>/dev/null" splines ft fs
+        in
+        let exit_code = Sys.command cmdline in
+        GMain_actor.delegate ~async:() (fun () ->
+          try
+            self#mainwin#sketch#set_file (self#project_paths#pngSketchFile);
+            if exit_code <> 0 then
+              Simple_dialogs.error
+                (s_ "dot failed")
+                (Printf.sprintf
+                    (f_ "Invoking dot failed. Did you install graphviz?\n\
+The command line is\n%s\nand the exit code is %i.\n\
+Marionnet will work, but you will not see the network graph picture until you fix the problem.\n\
+There is no need to restart the application.")
+                    cmdline
+                    exit_code)
+                ()
+          with e ->
+            Log.printf1
+              "Warning: exception updating sketch widget:\n%s\nIgnoring.\n"
+              (Printexc.to_string e)
+        ) ()
       with e ->
-        (Log.printf1
+        Log.printf1
            "Warning: exception raised in really_refresh_sketch:\n%s\nIgnoring.\n"
-           (Printexc.to_string e))
-    end) ()
+           (Printexc.to_string e)
+      end;
+      Mutex.lock sketch_render_mutex;
+      if sketch_render_pending then begin
+        sketch_render_pending <- false;
+        Mutex.unlock sketch_render_mutex;
+        self#do_async_sketch_render ()
+      end else begin
+        sketch_render_in_progress <- false;
+        Mutex.unlock sketch_render_mutex
+      end
+    ) ())
+
+  method private really_refresh_sketch =
+    self#schedule_sketch_render
 
   (* The structure (counter) for the reactive sketch refreshing. It is purely internal:
      nothing but the rendering depends on it (in particular, not `project_already_saved'). *)
