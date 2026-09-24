@@ -5,10 +5,15 @@ set -euo pipefail
 VERSION="${MARIONNET_VERSION:-1.0.456}"
 INSTALL_WHEEZY=true
 
+FORCE_DOWNLOAD=false
+
 for arg in "$@"; do
   case "$arg" in
     --no-wheezy|--without-wheezy)
       INSTALL_WHEEZY=false
+      ;;
+    --force-download|--clean|--re-download)
+      FORCE_DOWNLOAD=true
       ;;
     -*)
       echo "[-] Option inconnue : $arg" >&2
@@ -71,6 +76,20 @@ download_file() {
 }
 
 # 1. Vérification / Téléchargement du paquet All-in-One
+if [ "$FORCE_DOWNLOAD" = true ]; then
+  echo "--> Option --force-download : purge des paquets locaux..."
+  rm -f "$DEB_NAME" "$WHEEZY_DEB"
+fi
+
+if [ -f "$DEB_NAME" ]; then
+  # Détection et purge automatique d'un ancien build incompatible lié à GLIBC 2.42
+  if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.42"; then
+    echo "--> Ancien paquet local détecté (compilé avec GLIBC 2.42 incompatible)."
+    echo "    Purge automatique et téléchargement du paquet officiel compatible..."
+    rm -f "$DEB_NAME"
+  fi
+fi
+
 if [ ! -f "$DEB_NAME" ]; then
   RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${DEB_NAME}"
   download_file "$DEB_NAME" "$RELEASE_URL" "Paquet All-in-One Marionnet (v$VERSION)" || {
@@ -78,7 +97,7 @@ if [ ! -f "$DEB_NAME" ]; then
     exit 1
   }
 else
-  echo "--> Paquet '$DEB_NAME' trouvé localement."
+  echo "--> Paquet '$DEB_NAME' trouvé localement (compatible)."
 fi
 
 # 2. Vérification / Téléchargement de la distribution Debian Wheezy
