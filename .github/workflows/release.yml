@@ -100,12 +100,17 @@ jobs:
           fi
 
           echo "Publication de la release $TAG..."
+          ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb )
+          if [ -f dist/marionnet-fs-debian-wheezy_08367_all.deb ]; then
+            ASSETS+=( dist/marionnet-fs-debian-wheezy_08367_all.deb )
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG existe déjà, mise à jour des assets..."
             gh release edit "$TAG" "${NOTES_ARG[@]}" --title "$TITLE"
-            gh release upload "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb --clobber
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
-            gh release create "$TAG" dist/marionnet-all-in-one_"${VERSION}"_amd64.deb \
+            gh release create "$TAG" "${ASSETS[@]}" \
               --title "$TITLE" \
               "${NOTES_ARG[@]}"
           fi

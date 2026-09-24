@@ -2,9 +2,27 @@
 set -euo pipefail
 
 # Configuration par défaut (surchargable via argument ou variables d'environnement)
-VERSION="${1:-${MARIONNET_VERSION:-1.0.456}}"
+VERSION="${MARIONNET_VERSION:-1.0.456}"
+INSTALL_WHEEZY=true
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-wheezy|--without-wheezy)
+      INSTALL_WHEEZY=false
+      ;;
+    -*)
+      echo "[-] Option inconnue : $arg" >&2
+      ;;
+    *)
+      VERSION="$arg"
+      ;;
+  esac
+done
+
 GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
 DEB_NAME="marionnet-all-in-one_${VERSION}_amd64.deb"
+WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
+BASE_RELEASE_TAG="v1.0.456"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -25,50 +43,89 @@ if [ "$ARCH" != "x86_64" ]; then
   exit 1
 fi
 
-# 1. Vérification / Téléchargement du paquet All-in-One
-if [ ! -f "$DEB_NAME" ]; then
-  RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${DEB_NAME}"
-  echo "--> Paquet '$DEB_NAME' non trouvé localement."
-  echo "--> Téléchargement depuis GitHub Releases (v${VERSION})..."
-  echo "    Source : $RELEASE_URL"
+# Fonction utilitaire de téléchargement avec curl ou wget
+download_file() {
+  local target_file="$1"
+  local url="$2"
+  local desc="$3"
+
+  echo "--> Téléchargement : $desc..."
+  echo "    Source : $url"
 
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --progress-bar "$RELEASE_URL" -o "$DEB_NAME"
+    curl -fL --progress-bar "$url" -o "$target_file"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --show-progress -O "$DEB_NAME" "$RELEASE_URL"
+    wget -q --show-progress -O "$target_file" "$url"
   else
     echo "    curl ou wget non trouvé. Installation de curl via apt..."
     sudo apt update && sudo apt install -y curl
-    curl -fL --progress-bar "$RELEASE_URL" -o "$DEB_NAME"
+    curl -fL --progress-bar "$url" -o "$target_file"
   fi
 
-  if [ ! -s "$DEB_NAME" ]; then
-    echo "[-] ERREUR : Le téléchargement de $DEB_NAME a échoué ou le fichier est vide." >&2
-    echo "    Vérifiez que la release v${VERSION} existe bien sur https://github.com/${GITHUB_REPO}/releases" >&2
-    rm -f "$DEB_NAME"
-    exit 1
+  if [ ! -s "$target_file" ]; then
+    echo "[-] ERREUR : Le téléchargement de $target_file a échoué ou le fichier est vide." >&2
+    rm -f "$target_file"
+    return 1
   fi
   echo "    Téléchargement terminé avec succès."
+}
+
+# 1. Vérification / Téléchargement du paquet All-in-One
+if [ ! -f "$DEB_NAME" ]; then
+  RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${DEB_NAME}"
+  download_file "$DEB_NAME" "$RELEASE_URL" "Paquet All-in-One Marionnet (v$VERSION)" || {
+    echo "    Vérifiez que la release v${VERSION} existe bien sur https://github.com/${GITHUB_REPO}/releases" >&2
+    exit 1
+  }
 else
   echo "--> Paquet '$DEB_NAME' trouvé localement."
 fi
 
-# 2. Activation de l'architecture i386 (pour les noyaux UML 32-bit et rétrocompatibilité)
+# 2. Vérification / Téléchargement de la distribution Debian Wheezy
+WHEEZY_INSTALLED=false
+if [ -f /usr/share/marionnet/filesystems/machine-debian-wheezy-08367 ] || dpkg -s marionnet-fs-debian-wheezy >/dev/null 2>&1; then
+  echo "--> Système Debian Wheezy déjà installé dans /usr/share/marionnet/filesystems."
+  WHEEZY_INSTALLED=true
+fi
+
+if [ "$INSTALL_WHEEZY" = true ] && [ "$WHEEZY_INSTALLED" = false ]; then
+  if [ ! -f "$WHEEZY_DEB" ]; then
+    WHEEZY_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${WHEEZY_DEB}"
+    if ! download_file "$WHEEZY_DEB" "$WHEEZY_URL" "Distribution Debian Wheezy (Apache2, navigateurs web, etc.)"; then
+      WHEEZY_FALLBACK="https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/${WHEEZY_DEB}"
+      echo "--> Téléchargement depuis la release de base ($BASE_RELEASE_TAG)..."
+      download_file "$WHEEZY_DEB" "$WHEEZY_FALLBACK" "Distribution Debian Wheezy (fallback)" || {
+        echo "[-] Avertissement : Impossible de récupérer $WHEEZY_DEB. L'installation continuera sans Debian Wheezy." >&2
+        INSTALL_WHEEZY=false
+      }
+    fi
+  else
+    echo "--> Paquet '$WHEEZY_DEB' trouvé localement."
+  fi
+fi
+
+# 3. Activation de l'architecture i386 (pour les noyaux UML 32-bit et rétrocompatibilité)
 echo "--> [1/4] Activation de l'architecture i386..."
 sudo dpkg --add-architecture i386 || true
 
-# 3. Nettoyage des éventuels anciens binaires résiduels
+# 4. Nettoyage des éventuels anciens binaires résiduels
 echo "--> [2/4] Nettoyage des anciens binaires résiduels..."
 if [ -f /usr/local/bin/marionnet ] || [ -f /usr/local/bin/marionnet.native ]; then
   sudo rm -f /usr/local/bin/marionnet*
 fi
 
-# 4. Installation du paquet tout-en-un et de toutes ses dépendances
-echo "--> [3/4] Installation du paquet tout-en-un et des dépendances système..."
-sudo apt update
-sudo apt install --reinstall -y ./"$DEB_NAME"
+# 5. Installation des paquets et de toutes les dépendances
+echo "--> [3/4] Installation des paquets et des dépendances système..."
+DEBS_TO_INSTALL=( "./$DEB_NAME" )
+if [ "$INSTALL_WHEEZY" = true ] && [ -f "$WHEEZY_DEB" ]; then
+  echo "    Inclusion de la distribution Debian Wheezy..."
+  DEBS_TO_INSTALL+=( "./$WHEEZY_DEB" )
+fi
 
-# 5. Configuration des droits réseau (sudoers)
+sudo apt update
+sudo apt install --reinstall -y "${DEBS_TO_INSTALL[@]}"
+
+# 6. Configuration des droits réseau (sudoers)
 echo "--> [4/4] Configuration des droits réseau (sudoers)..."
 if ! sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then
   # Fallback compatible avec sudo-rs (Ubuntu 24.10+) et sudo classique

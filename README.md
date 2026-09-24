@@ -15,9 +15,10 @@ Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad
 1. **Élimination définitive de l'erreur `/sbin/getty: Input/output error`** :
    - **Remappage automatique du noyau invité** : Les projets demandant l'ancien noyau `3.2.64-ghost` (incompatible avec les hôtes Linux $\ge$ 5.15 en raison d'un crash du stub SKAS0) sont automatiquement remappés vers le noyau moderne `linux-6.12.95-i386`.
    - **Protection contre le verrouillage en lecture seule d'ext4** : Ajout automatique de `rootflags=errors=continue` sur la ligne de commande UML pour empêcher les images non journalisées (Guignol) de monter en lecture seule suite à un arrêt impromptu.
-2. **Paquet Debian « Tout-en-un » (`marionnet-all-in-one`)** :
+2. **Paquet Debian « Tout-en-un » (`marionnet-all-in-one`) & Distribution Debian complète** :
    - Plus besoin de compiler, ni d'ajouter de clés GPG externes ou de dépôts APT tiers.
    - Embarque l'application, les noyaux UML 64-bit et 32-bit (6.12.95) et le système invité Guignol de base.
+   - **Distribution invitée Debian Wheezy complète** (`marionnet-fs-debian-wheezy`) incluse pour les machines : Apache2, Lighttpd, BIND9, ISC-DHCP, Python, compilateurs C/C++, navigateurs en mode texte (`links`, `lynx`), et support X11.
    - Configure automatiquement les droits réseau (sudoers), même sous les versions d'Ubuntu récentes avec `sudo-rs`.
 3. **Connexion automatique en root (Autologin immédiat)** :
    - Plus besoin de saisir `root` et `root` à chaque ouverture de terminal de machine ou routeur.
@@ -39,18 +40,22 @@ cd marionnet/dist
 
 Le script s'occupe de tout automatiquement :
 - Active l'architecture 32-bit `i386` si nécessaire
-- Installe le paquet tout-en-un ainsi que toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, etc.)
+- Télécharge et installe le paquet tout-en-un ainsi que l'image système Debian Wheezy
+- Installe toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, etc.)
 - Configure les droits sudoers pour votre utilisateur
 - Valide l'installation (`marionnet version 1.0.456`)
 
+*(Pour une installation légère sans l'image Debian Wheezy, utilisez `./install.sh --without-wheezy`)*.
+
 ### Installation manuelle (alternative) :
 ```bash
-# Téléchargement direct du paquet All-in-One depuis les Releases GitHub
+# Téléchargement des paquets depuis les Releases GitHub
 wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-all-in-one_1.0.456_amd64.deb
+wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-fs-debian-wheezy_08367_all.deb
 
 sudo dpkg --add-architecture i386
 sudo apt update
-sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb
+sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
 ```
 
 ---
