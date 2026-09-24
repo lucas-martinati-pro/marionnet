@@ -81,13 +81,13 @@ jobs:
 
       - name: Compilation de Marionnet avec Dune
         run: |
-          dune build bin/marionnet.exe
+          opam exec -- dune build bin/marionnet.exe
           ./_build/default/bin/marionnet.exe -v
 
       - name: Construction du paquet Tout-en-un (marionnet-all-in-one)
         run: |
           chmod +x dist/build-all-in-one.sh
-          ./dist/build-all-in-one.sh "$VERSION"
+          opam exec -- ./dist/build-all-in-one.sh "$VERSION"
           ls -lh dist/*.deb
 
       - name: Publication de la Release GitHub
