@@ -104,18 +104,22 @@ if [ "$INSTALL_WHEEZY" = true ] && [ "$WHEEZY_INSTALLED" = false ]; then
   fi
 fi
 
-# 3. Activation de l'architecture i386 (pour les noyaux UML 32-bit et rétrocompatibilité)
-echo "--> [1/4] Activation de l'architecture i386..."
+# 3. Réparation préventive d'éventuels paquets interrompus ou mal configurés
+echo "--> [1/5] Vérification de l'état du gestionnaire de paquets (dpkg)..."
+sudo dpkg --configure -a 2>/dev/null || true
+
+# 4. Activation de l'architecture i386 (pour les noyaux UML 32-bit et rétrocompatibilité)
+echo "--> [2/5] Activation de l'architecture i386..."
 sudo dpkg --add-architecture i386 || true
 
-# 4. Nettoyage des éventuels anciens binaires résiduels
-echo "--> [2/4] Nettoyage des anciens binaires résiduels..."
+# 5. Nettoyage des éventuels anciens binaires résiduels
+echo "--> [3/5] Nettoyage des anciens binaires résiduels..."
 if [ -f /usr/local/bin/marionnet ] || [ -f /usr/local/bin/marionnet.native ]; then
   sudo rm -f /usr/local/bin/marionnet*
 fi
 
-# 5. Installation des paquets et de toutes les dépendances
-echo "--> [3/4] Installation des paquets et des dépendances système..."
+# 6. Installation des paquets et de toutes les dépendances
+echo "--> [4/5] Installation des paquets et des dépendances système..."
 DEBS_TO_INSTALL=( "./$DEB_NAME" )
 if [ "$INSTALL_WHEEZY" = true ] && [ -f "$WHEEZY_DEB" ]; then
   echo "    Inclusion de la distribution Debian Wheezy..."
@@ -123,10 +127,10 @@ if [ "$INSTALL_WHEEZY" = true ] && [ -f "$WHEEZY_DEB" ]; then
 fi
 
 sudo apt update
-sudo apt install --reinstall -y "${DEBS_TO_INSTALL[@]}"
+sudo apt install -o Dpkg::Options::="--force-overwrite" --reinstall -y "${DEBS_TO_INSTALL[@]}"
 
-# 6. Configuration des droits réseau (sudoers)
-echo "--> [4/4] Configuration des droits réseau (sudoers)..."
+# 7. Configuration des droits réseau (sudoers)
+echo "--> [5/5] Configuration des droits réseau (sudoers)..."
 if ! sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then
   # Fallback compatible avec sudo-rs (Ubuntu 24.10+) et sudo classique
   echo "    Application de la règle sudoers compatible..."

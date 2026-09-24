@@ -45,11 +45,6 @@ mkdir -p "$FS_DEST" "$DEBIAN_DEST"
 echo "--> Copie des fichiers système..."
 cp -p "$SOURCE_DIR/machine-debian-wheezy-08367" "$FS_DEST/"
 cp -p "$SOURCE_DIR/machine-debian-wheezy-08367.conf" "$FS_DEST/" 2>/dev/null || true
-if [ -f "$SOURCE_DIR/machine-debian-wheezy-08367.relay" ]; then
-  cp -p "$SOURCE_DIR/machine-debian-wheezy-08367.relay" "$FS_DEST/"
-elif [ -f "$REPO_ROOT/bin/filesystems/machine-debian-wheezy-08367.relay" ]; then
-  cp -p "$REPO_ROOT/bin/filesystems/machine-debian-wheezy-08367.relay" "$FS_DEST/"
-fi
 mkdir -p "$FS_DEST/machine-debian-wheezy-08367_variants"
 
 # Règle impérative UML : préserver le MTIME exact de l'image (1404061349)
@@ -68,6 +63,7 @@ Architecture: all
 Maintainer: Lucas Martinati <lucasm54800@gmail.com>
 Homepage: https://www.marionnet.org
 Depends: marionnet, marionnet-kernels-i386
+Replaces: marionnet-all-in-one, marionnet
 Description: Debian Wheezy guest image for Marionnet virtual network laboratory
  Complete Debian 7 (Wheezy) guest filesystem image for Marionnet.
  Includes networking tools, Apache2, Lighttpd, DNS (bind9), DHCP, Python,
