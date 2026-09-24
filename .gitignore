@@ -83,7 +83,6 @@ lib/modules.lst
 #     elles ont survécu au ménage du 2026-08-23, retirées le même jour).
 useful-scripts/*
 !useful-scripts/make_marionnet_bytecode_revno
-!useful-scripts/marionnet_from_scratch
 
 # --- website-repo/ : copie de travail du site marionnet.org — le répertoire que
 #     `make {filesystem,kernel}.prepare-to-publish' alimente et que

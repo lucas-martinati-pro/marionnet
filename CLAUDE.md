@@ -56,7 +56,7 @@ l'**install** et le **RPM**.
 | `bashbricks/` | **bashbricks vendored** (bibliothèque Bash sourcée, mono-fichier) | `bashbricks/CLAUDE.md` |
 | `uml/` | construction des systèmes invités (scripts pupisto, patches noyau, ethghost) | `uml/CLAUDE.md` |
 | `doc-src/` | sources de documentation | — |
-| `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré). Depuis l'ép. 16 de `modernisation-installation-marionnet`, il n'y reste que `marionnet_from_scratch` (mort) et `make_marionnet_bytecode_revno` | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
+| `useful-scripts/` | scripts de **gestion / installation du projet** et guides développeurs — **rien qui accompagne le binaire** (liste blanche du `.gitignore`, le reste ignoré). Seul subsiste `make_marionnet_bytecode_revno` (`marionnet_from_scratch` purgé) | `docs/move-and-rename-useful-scripts-to-bin-scripts.md` |
 | `etc/`, `Makefile.d/`, `CONFIGME*`, `META` | config hôte, outillage build historique, packaging (dont les 6 publieurs de release : images, noyaux, binaire, `.deb`+apt, `.rpm`) | `docs/ARCHITECTURE.md` § Build |
 
 ## Fichiers générés — ne jamais éditer
@@ -127,9 +127,9 @@ l'**install** et le **RPM**.
 3. `.bzr/` coexiste avec `.git/` (conversion 2026-07) : ne pas y toucher ;
    `bin/meta.ml.maker.sh` extrait la révision via **git** (`rev-list --count`, `log`) depuis
    l'épisode 2, avec repli bzr tant que `.bzr` est présent.
-4. Vestiges apparents (non confirmés par l'auteur) : `bin/gui/gui.xml` (glade-2),
-   `bin/gui/*.ml-template`, `uml/startup.old/`, une partie de `Makefile.d/`,
-   `bin/po/POTFILES.in` — ne pas les prendre comme référence sans vérifier.
+4. Vestiges purgés : les anciens fichiers Glade-2 (`bin/gui/gui.xml`, `glade-2.0.dtd`),
+   les gabarits `.ml-template`, `uml/startup.old/`, `Makefile.d/Makefile.luca`, et
+   `bin/po/POTFILES.in` ont été définitivement nettoyés.
 5. Répertoires vides attendus par le build (`bin/kernels/`) non suivis par git.
 6. **Aucun enfant n'est forké « en direct ».** Le seul site de spawn du dépôt vit dans
    `bin/simulation_level.ml` et passe par un **thread spawner dédié et pérenne**, qui appelle

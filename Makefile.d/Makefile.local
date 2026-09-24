@@ -177,7 +177,7 @@ pot: _build/marionnet.pot
 MANUALLY_POST_MAKE_IN_build = marionnet.pot
 
 # Useful to discover widgets containing translatable strings
-gui.po: gui/gui.xml
+gui.po: gui/gui_glade3.xml
 	xml2po $< > /tmp/$@
 	@echo "Generated file: /tmp/$@"
 
