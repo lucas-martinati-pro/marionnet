@@ -2089,18 +2089,20 @@ class network
    Log.printf "destroy_process_before_quitting: BEGIN\n";
    (* Failures are tolerated (we are quitting anyway) but must be traced: see
       docs/refonte-automate-composants.md § C5 and docs/bug-critique-crash-host.md. *)
-   (List.iter
-      (fun cable ->
-         try cable#destroy_right_now with e ->
-           Log.printf2 "destroy_process_before_quitting: WARNING: cable %s failed to be destroyed (%s)\n"
-             cable#get_name (Printexc.to_string e))
-      (self#get_cable_list));
-   (List.iter
-      (fun device ->
-         try device#destroy_right_now with e ->
-           Log.printf2 "destroy_process_before_quitting: WARNING: node %s failed to be destroyed (%s)\n"
-             device#get_name (Printexc.to_string e))
-      (self#get_node_list));
+   Task_runner.do_in_parallel
+     (List.map
+        (fun cable -> fun () ->
+           try cable#destroy_right_now with e ->
+             Log.printf2 "destroy_process_before_quitting: WARNING: cable %s failed to be destroyed (%s)\n"
+               cable#get_name (Printexc.to_string e))
+        (self#get_cable_list));
+   Task_runner.do_in_parallel
+     (List.map
+        (fun device -> fun () ->
+           try device#destroy_right_now with e ->
+             Log.printf2 "destroy_process_before_quitting: WARNING: node %s failed to be destroyed (%s)\n"
+               device#get_name (Printexc.to_string e))
+        (self#get_node_list));
    Log.printf "destroy_process_before_quitting: END (success)\n";
   end
 
