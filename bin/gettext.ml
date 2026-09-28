@@ -36,7 +36,6 @@ let get_active_language () = !active_lang
 
 (* Retained directory from which the locale was loaded *)
 let retained_locales_dir = ref ""
-let localeprefix = ""
 
 let detect_language () : string =
   let candidates = [

@@ -112,7 +112,7 @@ type t = {
   old_name           : string;
   }
 
-let to_string t = "<obj>" (* TODO? *)
+let to_string t = Printf.sprintf "Machine {name=%s; label=%s; memory=%d; ports=%d}" t.name t.label t.memory t.port_no
 end (* Data *)
 
 module Make_menus (Params : sig

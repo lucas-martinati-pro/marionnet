@@ -45,7 +45,7 @@ type t = {
   old_name            : string;
   }
 
-let to_string t = "<obj>" (* TODO? *)
+let to_string t = Printf.sprintf "Cable {name=%s; label=%s}" t.name t.label
 end (* Data *)
 
 module Make_menus

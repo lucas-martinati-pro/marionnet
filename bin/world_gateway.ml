@@ -53,7 +53,7 @@ type t = {
   old_name         : string;
   }
 
-let to_string t = "<obj>" (* TODO? *)
+let to_string t = Printf.sprintf "Gateway {name=%s; label=%s; port_no=%d}" t.name t.label t.port_no
 end (* Data *)
 
 module Tool = struct

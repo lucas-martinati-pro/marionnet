@@ -20,7 +20,6 @@ val f_ : ('a, 'b, 'c) format -> ('a, 'b, 'c) format
 
 val get_active_language : unit -> string
 
-val localeprefix : string
 
 (** Print diagnosis messages about detected language and loaded locale JSON file. *)
 val log_diagnosis : unit -> unit
