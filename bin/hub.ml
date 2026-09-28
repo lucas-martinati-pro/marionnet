@@ -101,7 +101,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Hub
-    let kind_name = s_ "hub"
+    let kind_name () = s_ "hub"
   end)
 
  module Create_entries =

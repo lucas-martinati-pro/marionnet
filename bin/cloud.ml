@@ -103,7 +103,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Cloud
-    let kind_name = s_ "cloud"
+    let kind_name () = s_ "cloud"
   end)
 
  module Create_entries =

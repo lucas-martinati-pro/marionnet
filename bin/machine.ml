@@ -264,7 +264,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Machine
-    let kind_name = s_ "machine"
+    let kind_name () = s_ "machine"
   end)
 
  module Create_entries =

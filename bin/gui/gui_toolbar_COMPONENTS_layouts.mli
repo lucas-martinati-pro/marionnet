@@ -31,7 +31,7 @@ module type State = sig val st:State.globalState end
 
 module Lifecycle :
  functor (State : State) ->
- functor (Dev : sig val devkind : User_level.devkind val kind_name : string end) ->
+ functor (Dev : sig val devkind : User_level.devkind val kind_name : unit -> string end) ->
  sig
    module Remove : Menu_factory.Entry_with_children_callbacks
    module Startup : Menu_factory.Entry_with_children_callbacks

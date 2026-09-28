@@ -110,7 +110,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `World_bridge
-    let kind_name = s_ "LAN bridge"
+    let kind_name () = s_ "LAN bridge"
   end)
 
  module Create_entries =

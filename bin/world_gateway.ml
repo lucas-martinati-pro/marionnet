@@ -153,7 +153,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `World_gateway
-    let kind_name = s_ "gateway"
+    let kind_name () = s_ "gateway"
   end)
 
  module Create_entries =

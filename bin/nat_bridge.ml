@@ -104,7 +104,7 @@ type t = {
   old_name       : string;
   }
 
-let to_string _t = "<obj>" (* TODO? *)
+let to_string t = Printf.sprintf "Nat_bridge {name=%s; label=%s; port_no=%d}" t.name t.label t.port_no
 end (* Data *)
 
 module Tool = struct
@@ -321,7 +321,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Nat_bridge
-    let kind_name = s_ "NAT bridge"
+    let kind_name () = s_ "NAT bridge"
   end)
 
  module Create_entries =

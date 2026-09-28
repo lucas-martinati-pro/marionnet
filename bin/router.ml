@@ -565,7 +565,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Router
-    let kind_name = s_ "router"
+    let kind_name () = s_ "router"
   end)
 
  module Create_entries =

@@ -164,7 +164,7 @@ end
 
 module Lifecycle
  (State : State)
- (Dev : sig val devkind : User_level.devkind val kind_name : string end)
+ (Dev : sig val devkind : User_level.devkind val kind_name : unit -> string end)
  = struct
 
   let st = State.st
@@ -176,7 +176,7 @@ module Lifecycle
     let dialog name () =
       Gui_bricks.Dialog.yes_or_cancel_question
         ~title:(s_ "Remove")
-        ~markup:(Printf.sprintf (f_ "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name Dev.kind_name)
+        ~markup:(Printf.sprintf (f_ "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name (Dev.kind_name ()))
         ~context:name
         ()
     let reaction name =
