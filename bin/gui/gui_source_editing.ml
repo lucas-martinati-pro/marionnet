@@ -81,6 +81,7 @@ let window
   ?(height=500)
   ?(width=660)
   ?(draw_spaces=[`SPACE; `NEWLINE])
+  ?(highlight_current_line=false)
   (* Deep logging, episode 12: a viewer rather than an editor. The buffer cannot be modified and
      there is no way to commit anything -- the only button closes, and the egg is released with
      [None], like a cancellation. Its caller is the documents treeview in exam mode: a student
@@ -157,7 +158,7 @@ let window
       ~right_margin_position
       ~show_right_margin:true
       ~packing:(scrolled_win#add)
-      ~highlight_current_line:true
+      ~highlight_current_line
       (* ~height ~width *)
       ()
   in
