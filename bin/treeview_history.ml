@@ -420,13 +420,13 @@ object(self)
        can't loop waiting for the user without giving control back to Gtk+: *)
     Simple_dialogs.ask_text_dialog
       ~title:(s_ "Choose the variant name")
-      ~label:(s_ "Enter the new variant name; this name must begin with a letter and can contain letters, numbers, dashes and underscores.")
+      ~label:(s_ "variant.prompt.new_name")
       ~initial_text:("snapshot-"^(self#get_row_date row_id))
       ~constraint_predicate:
 	  (fun s ->
 	    (String.length s > 0) &&
 	    (StrExtra.Class.identifierp ~allow_dash:() s))
-      ~invalid_text_message:(s_ "The name must begin with a letter and can contain letters, numbers, dashes and underscores.")
+      ~invalid_text_message:(s_ "variant.tooltip.name_rules")
       ~enable_cancel:true
       ~ok_callback:(fun variant_name ->
 	self#actually_export_as_variant ~row_id ~variant_name ())

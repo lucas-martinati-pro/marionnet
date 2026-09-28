@@ -701,7 +701,7 @@ class virtual_machine_installations
  		 prefix filesystem_epithet actual_mtime expected_mtime
 	     in
 	     let cmd = Printf.sprintf "\n\n<tt><small>sudo touch -d @%d %s</small></tt>\n\n" expected_mtime realpath in
-	     let part2 = s_ "in order to fix this inconsistency. Otherwise, machines or routers with this filesystem defined in a project created elsewhere can not be restarted." in
+	     let part2 = s_ "state.info.fix_inconsistency" in
 	     let message = part1 ^ cmd ^ part2 in
 
              Simple_dialogs.warning title message ())

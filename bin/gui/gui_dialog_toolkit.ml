@@ -55,10 +55,10 @@ module Make (Toplevel : sig val toplevel : GWindow.dialog_any end) = struct
    let component_label = (s_ "Label to be written in the network sketch, next to the element icon." )
 
    let component_label_with_suggestion =
-    component_label^" "^(s_ "It is advisable to use as label the IP address of the element (for example \"192.168.1.0/24\")." )
+    component_label^" "^(s_ "cable.tooltip.label_hint" )
 
    let append_label_suggestion_to msg =
-     msg^" "^(s_ "It is advisable to use as label the IP address of the element (for example \"192.168.1.0/24\")." )
+     msg^" "^(s_ "cable.tooltip.label_hint" )
 
   end (* Tooltip.Text *)
 
@@ -98,7 +98,7 @@ module Make (Toplevel : sig val toplevel : GWindow.dialog_any end) = struct
                  | (Talking.EDialog.StrangeDialog (title,msg,r)) -> (*(Msg.warning title msg ()); *)
                        begin
                        match Talking.EDialog.ask_question ~gen_id:"answer" ~title:(s_ "CONFIRM")
-                       ~question:(msg^(s_ "\nDo you confirm this connection?" )) ~help:None ~cancel:false ()
+                       ~question:(msg^(s_ "warning.confirm_connection" )) ~help:None ~cancel:false ()
                        with
                        | Some e -> if (e#get("answer")="yes")
                                    then (result := Some r ; cont := false)

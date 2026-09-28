@@ -191,7 +191,7 @@ let make
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Hub")
       ~name
-      ~name_tooltip:(s_ "Hub name. This name must be unique in the virtual network. Suggested: H1, H2, ... ")
+      ~name_tooltip:(s_ "hub.tooltip.name")
       ?label
       ()
   in
@@ -230,16 +230,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A HUB") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of an Ethernet HUB \
-and set parameters for it:\n\
-- Label: a string appearing near the hub icon in the network graph; it may \
-allow, for example, to know at a glance the Ethernet network realized by the device; \
-this field is exclusively for graphic purposes, is not taken in consideration \
-for the configuration.\n\
-- Nb of Ports: the number of ports of the hub (default 4); this number must \
-not be increased without a reason, because the number of processes needed for the \
-device emulation is proportional to his ports number.")
+   let msg   = (s_ "help.dialog.hub")
    in Simple_dialogs.help title msg
 
 end

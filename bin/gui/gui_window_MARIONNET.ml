@@ -101,7 +101,7 @@ let () = begin
 
 let button_BASE_STARTUP_EVERYTHING =
   Gui_bricks.button_image ~label:(s_ "Start all") ~stock:`MEDIA_PLAY
-    ~tooltip:(s_ "Start the virtual network (machines, switch, hub, etc) locally on this machine")
+    ~tooltip:(s_ "gui.tooltip.start_network")
     ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOMETHING) =
@@ -146,12 +146,12 @@ let button_BASE_POWEROFF_EVERYTHING =
   let allowed = Initialization.are_we_allowed_to_poweroff in
   let tooltip =
     if allowed
-    then (s_ "(Ungracefully) shutdown every element of the network, as in a power-off")
+    then (s_ "gui.tooltip.poweroff_all")
     (* One physical line, deliberately: a `\' continuation inside a translatable string is a trap.
        OCaml strips the newline and the leading blanks, the POT extractor does not — the catalogue
        would then hold a msgid nothing ever looks up, and the string would stay in English in the
        twelve languages, silently. *)
-    else (s_ "Disabled in exam mode: a power cut would throw the exam copy away. Use \"Shutdown all\".")
+    else (s_ "gui.toolbar.exam_mode_poweroff_disabled")
   in
   let button =
     Gui_bricks.button_image ~label:(s_ "Power-off all")
@@ -183,7 +183,7 @@ let () =
          is not reachable that way today (the server calls the model, never a GUI callback),
          so this is a net, not a feature. *)
       match Simple_dialogs.confirm_dialog
-          ~question:(s_ "Are you sure that you want to stop\nall the running components?")
+          ~question:(s_ "warning.stop_confirm")
           ~script_answer:true
           () with
         Some true  -> st#shutdown_everything ()
@@ -193,7 +193,7 @@ let () =
   let _ = button_BASE_POWEROFF_EVERYTHING#connect#clicked
     ~callback:(fun () ->
       match Simple_dialogs.confirm_dialog
-          ~question:(s_ "Are you sure that you want to power off\nall the running components? It is also possible to shut them down graciously...")
+          ~question:(s_ "warning.power_off_confirm")
           ~script_answer:true
           () with
         Some true -> st#poweroff_everything ()

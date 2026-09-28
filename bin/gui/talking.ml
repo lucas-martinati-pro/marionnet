@@ -85,26 +85,18 @@ module Msg = struct
  (** Why you have to choose a folder to work *)
  let help_repertoire_de_travail =
    let title = (s_ "CHOOSE A TEMPORARY WORKING DIRECTORY") in
-   let msg   = (s_ "Marionnet can use a directory of your choice for its temporary files. \
-Every file created in the directory will be deleted at exit time. \
-If the program is run from the Marionnet live DVD, you are advised to \
-use a persistent directory (in /mnt/hd*), in order to not waste \
-your system physical memory.") in Simple_dialogs.help title msg ;;
+   let msg   = (s_ "talking.dialog.tmpdir_choice") in Simple_dialogs.help title msg ;;
 
  let error_saving_while_something_up =
   Simple_dialogs.error
     (s_ "Warning")
-   (s_ "The project can't be saved right now. \
-One or more network components are still running. \
-Please stop them before saving.")
+   (s_ "error.project_save_running")
  ;;
 
  (** Why you have to choose a name for your project *)
  let help_nom_pour_le_projet =
    let title = (s_ "CHOOSE A NAME FOR THE PROJECT") in
-   let msg   = (s_ "\
-Marionnet saves every files belonging to a project in a file with extension .mar. \
-It is a standard gzipped tarball which can also be opened with standard tools.")
+   let msg   = (s_ "state.info.save_extension_info")
    in Simple_dialogs.help title msg ;;
 end;; (* module Msg *)
 
@@ -330,7 +322,7 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
 	let () =
 	  Simple_dialogs.error
 	    (s_ "Invalid directory")
-	    (s_ "The directory doesn't exists!\nYou must choose an exiting directory name.")
+	    (s_ "error.dir_not_found")
 	    ()
 	in
 	false
@@ -359,7 +351,7 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
           let () =
 	    Simple_dialogs.error
 	      (s_ "Invalid directory")
-	      (s_ "Choose a directory which is existing, modifiable and hosted on a filesystem supporting sparse files (ext2, ext3, ext4, reiserfs, NTFS, ...)")
+	      (s_ "talking.dialog.tmpdir_recommendation")
 	      ()
 	  in
           false
@@ -383,7 +375,7 @@ let ask_for_fresh_writable_filename
     if (Sys.file_exists x)
     then ((Simple_dialogs.error
              (s_ "Name choice")
-             (s_ "A file with the same name already exists!\n\nChoose another name for your file.")
+             (s_ "error.file_already_exists")
              ()); false)
     else (UnixExtra.viable_freshname x)
   in
@@ -394,7 +386,7 @@ let ask_for_fresh_writable_filename
 let dialog_error_choosed_file_doesnt_exist () =
   Simple_dialogs.error
     (s_ "File choice")
-    (s_ "The file doesn't exist!\nYou must choose an existing file name.")
+    (s_ "error.file_not_found")
     ()
 
 let dialog_error_choosed_file_is_not_a_text_file () =

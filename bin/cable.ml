@@ -278,9 +278,9 @@ let make
   let name_tooltip =
     match crossover with
     | false ->
-       (s_ "Straight cable name. This name must be unique in the virtual network. Suggested: d1, d2, ... ")
+       (s_ "cable.tooltip.straight_name")
     | true  ->
-       (s_ "Crossover cable name. This name must be unique in the virtual network. Suggested: c1, c2, ... ")
+       (s_ "cable.tooltip.crossover_name")
   in
   let old_name = name in
   let (w,_,name,label) =
@@ -356,30 +356,12 @@ let make
 
  let rec help_callback_straight () =
    let title = (s_ "ADD OR MODIFY A STRAIGHT CABLE") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of a straight Ethernet cable \
-and set its parameters:\n\n\
-- Label: a string appearing near the edge representing the cable in the \
-network graph\n\n\
-- Devices: the two network devices (machine, hub, ...) linked by the cable and \
-their two connected interfaces\n\n\
-WARNING: this dialog allows the user to define straight cables even in contexts where \
-they won't work (for example between two machines); allowing users to define 'wrong' \
-connections may be of some pedagogical interest.")
+   let msg   = (s_ "help.dialog.cable_straight")
    in Simple_dialogs.help title msg
 
  and help_callback_crossover () =
    let title = (s_ "ADD OR MODIFY A CROSSOVER CABLE") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of a crossover Ethernet cable \
-and set its parameters:\n\n\
-- Label: a string appearing near the edge representing the cable in the \
-network graph\n\n\
-- Devices: the two network devices (machine, hub, ...) linked by the cable and \
-their two connected interfaces\n\n\
-WARNING: this dialog allows the user to define crossover cables even in contexts where \
-they won't work (for example between two machines); allowing users to define 'wrong' \
-connections may be of some pedagogical interest.")
+   let msg   = (s_ "help.dialog.cable_crossover")
    in Simple_dialogs.help title msg
 
  and help_callback ~crossover =

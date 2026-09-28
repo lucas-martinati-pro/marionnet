@@ -284,9 +284,9 @@ let () =
             (f_ "The sudo rule allowing Marionnet to create its taps is not installed: some features (graphics on virtual machines, router terminals) won't be available.\nTo enable them, run in a terminal:\n\n    %s install\n\nthen restart Marionnet.")
             "marionnet-sudoers.sh"
       | Tap_provider.No_tun_device ->
-          (s_ "This machine does not provide /dev/net/tun, so no network interface (tap) can be created on it at all: some features (graphics on virtual machines, router terminals) won't be available.\n\nThe sudo rule is not in question here: it was not even reached.\n\nIf Marionnet runs inside a container, that container must be started with:\n\n    docker run --device /dev/net/tun --cap-add NET_ADMIN ...\n\nOn a machine of its own, the tun module may simply not be loaded: sudo modprobe tun")
+          (s_ "warning.dev_net_tun_missing")
       | Tap_provider.No_permission ->
-          (s_ "The kernel refuses the creation of network interfaces (taps) on this machine: the capability CAP_NET_ADMIN is missing. Some features (graphics on virtual machines, router terminals) won't be available.\n\nThe sudo rule is not in question here.\n\nIf Marionnet runs inside a container, that container must be started with:\n\n    docker run --device /dev/net/tun --cap-add NET_ADMIN ...")
+          (s_ "warning.kernel_refuses_taps")
       | Tap_provider.Unclear diagnostic ->
           Printf.sprintf
             (f_ "Marionnet cannot create its network interfaces (taps), and the reason is not one it knows how to name:\n\n%s\n\nSome features (graphics on virtual machines, router terminals) won't be available.")
@@ -392,7 +392,7 @@ let () =
     begin
       Simple_dialogs.warning
 	(s_ "Sparse files not supported!")
-	(s_ "You should probably create one of /tmp, ~/tmp and ~/ into a modern filesystem supporting sparse files (ext2, ext3, ext4, reiserfs, NTFS, ...), or set another suitable temporary working directory (menu Options). Marionnet will work with the current settings, but performance will be low and disk usage very high.")
+	(s_ "warning.tmp_dir_recommendation")
 	();
       (* Set anyway the value to "/tmp": *)
       (st#project_paths#set_temporary_directory "/tmp")
@@ -582,7 +582,7 @@ let () = begin
 **********************************************\n\n";
     Simple_dialogs.warning
       (s_ "You should not be root!")
-      (s_ "Marionnet is running with UID 0; this is bad from a security point of view... Continuing anyway.")
+      (s_ "warning.root_user")
       ();
   end
 end
@@ -598,7 +598,7 @@ let check_call ~action ~arg ~error_message =
     flush_all ();
     Simple_dialogs.error
       (s_ "Unsatisfied dependency")
-      (error_message ^ (s_ "\nContinuing anyway, but *some important features will be missing*."))
+      (error_message ^ (s_ "warning.missing_features"))
       ())
 
 let check_dependency command_line error_message =

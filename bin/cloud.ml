@@ -190,7 +190,7 @@ let make
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Unknown layer 2 sub-network")
       ~name
-      ~name_tooltip:(s_ "Sub-network name. This name must be unique in the virtual network. Suggested: N1, N2, ... ")
+      ~name_tooltip:(s_ "cloud.tooltip.name")
       ?label
       ()
   in
@@ -212,12 +212,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A CLOUD" ) in
-   let msg   = (s_ "In this dialog window you can define the name of a cloud. \
-This component is an Ethernet network with an unknown internal \
-structure introducing delays and other anomalies when packets \
-pass through.\n\
-Once the cloud is defined, use the tab 'Anomalies' to control delays, \
-frame loss and the other anomalies.")
+   let msg   = (s_ "help.dialog.cloud")
    in Simple_dialogs.help title msg
 
 end

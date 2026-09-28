@@ -56,7 +56,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.lan_bridge.palette.png"
-   let tooltip   = (s_ "LAN bridge (put the virtual machines directly on the real local network of this computer: real addresses, the network's own DHCP and services; it can also link Marionnet instances running on different machines)")
+   let tooltip   = (s_ "lan_bridge.tooltip")
    let packing   = Params.packing
   end
 
@@ -198,9 +198,9 @@ let make
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "LAN bridge: put the virtual machines on the real local network of this computer, through a bridge built on its network card (see the help button)")
+      ~image_tooltip:(s_ "lan_bridge.image_tooltip")
       ~name
-      ~name_tooltip:(s_ "LAN bridge name. This name must be unique in the virtual network. Suggested: B1, B2, ...")
+      ~name_tooltip:(s_ "lan_bridge.tooltip.name")
       ?label
       ()
   in
@@ -232,9 +232,9 @@ let make
     if Global_options.explicit_world_bridge_name = None then
       let notice =
         if Lan_bridge_host.is_usable () then
-          (s_ "Note: when this component starts, Marionnet puts this computer's network card into a bridge, so that the virtual machines appear on your real local network. The host connection is interrupted for a fraction of a second. A Wi-Fi card cannot be used this way: prefer a NAT bridge.")
+          (s_ "lan_bridge.warning.network_card")
         else
-          (s_ "Note: when this component starts, Marionnet asks for your password, once, in order to put this computer's network card into a bridge, so that the virtual machines appear on your real local network. The host connection is interrupted for a fraction of a second. A Wi-Fi card cannot be used this way: prefer a NAT bridge.")
+          (s_ "lan_bridge.warning.password")
       in
       let note =
         GMisc.label
@@ -268,41 +268,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A LAN BRIDGE") in
-   let msg   = (s_ "\
-A LAN bridge connects your virtual network to the REAL local network of this \
-computer. The virtual machines attached to it are then on the SAME physical \
-network as the host itself, with real addresses (static, or from the LAN's own \
-DHCP server), the real DNS, the real gateway, and the other machines of the \
-room as neighbours. It also enables team-work across computers: two Marionnet \
-instances running on different real machines, each with a LAN bridge, form a \
-single virtual network.\n\n\
-Marionnet builds that bridge ITSELF, when the component starts: it puts the \
-network card of this computer into a bridge and moves the host address and \
-default route onto it, then gives everything back when the component stops. \
-Nothing has to be prepared beforehand. Two things follow from touching the \
-host's own card, and both matter:\n\n\
-- the connection of THIS COMPUTER is interrupted for a fraction of a second \
-each time the bridge is built or taken down, and Marionnet asks for your \
-password, once, in order to be allowed to do it;\n\
-- a Wi-Fi card CANNOT be used this way (an access point refuses several \
-machines behind one association): on a laptop connected over Wi-Fi, use a NAT \
-bridge instead.\n\n\
-There is one such bridge per computer, shared: several Marionnet instances, and \
-several LAN bridge components, use the same one, and it is given back when the \
-last of them has finished with it.\n\n\
-- Integrated switch ports: the number of virtual machines that may be plugged \
-DIRECTLY into this component. They are all on the real local network, each with \
-its own address, exactly as if they were plugged into a switch of the room.\n\n\
-LAN bridge, NAT bridge or gateway? Use a LAN BRIDGE when the virtual machines \
-must appear directly on the real network of this computer, or to link \
-Marionnet instances running on different machines. Use a NAT BRIDGE to reach \
-the Internet without touching this computer's configuration at all — it is also \
-the only one that works over Wi-Fi. Use a WORLD GATEWAY for a self-contained \
-NAT router that needs no privilege whatsoever.\n\n\
-Advanced use: if the variable MARIONNET_BRIDGE (in marionnet.conf or on the \
-command line) names a bridge, Marionnet builds nothing and simply attaches to \
-that one — the behaviour of Marionnet before it learned to build bridges by \
-itself, for hosts where an administrator prepared one.")
+   let msg   = (s_ "help.dialog.lan_bridge")
    in Simple_dialogs.help title msg ;;
 
 end

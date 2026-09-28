@@ -49,7 +49,7 @@ let () = begin
  (* let set w text = (GData.tooltips ())#set_tip w ~text in *)
  let set w text = GtkBase.Widget.Tooltip.set_text w text in
  set w#label_DOT_TUNING_NODES#as_widget          (s_ "Tuning of graph nodes")      ;
- set w#vscale_DOT_TUNING_ICONSIZE#as_widget      (s_ "Tuning of icon size (machines, switch, hub, etc), without changing the icon arrangement") ;
+ set w#vscale_DOT_TUNING_ICONSIZE#as_widget      (s_ "gui.tuning.icon_size") ;
  set w#button_DOT_TUNING_SHUFFLE#as_widget       (s_ "Randomly arrange nodes") ;
  set w#button_DOT_TUNING_UNSHUFFLE#as_widget     (s_ "Go back to the standard node arrangement (not random)") ;
  set w#label_DOT_TUNING_EDGES#as_widget          (s_ "Tuning of graph edges") ;
@@ -61,7 +61,7 @@ let () = begin
  set w#label_DOT_TUNING_LABELS#as_widget         (s_ "Tuning edge endpoint labels") ;
  set w#vscale_DOT_TUNING_LABELDISTANCE#as_widget (s_ "Distance between labels and icons") ;
  set w#vscale_DOT_TUNING_EXTRASIZE#as_widget     (s_ "Canvas size");
- set w#label_DOT_TUNING_AREA#as_widget           (s_ "Tuning of the graph size. The surface may increase up to double (100%) the original, in which case case elements are arranged to completely fill the available space.") ;
+ set w#label_DOT_TUNING_AREA#as_widget           (s_ "gui.tuning.graph_size") ;
  end
 
 (* Appearance of the "reverse an edge" control.

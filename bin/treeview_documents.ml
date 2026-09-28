@@ -471,7 +471,7 @@ object(self)
       ())
 
   val error_message =
-    (s_ "You should select an existing document in PDF, Postscript, DVI, HTML or text format.")
+    (s_ "dialog.doc_selection_hint")
 
   (** Ask the user to choose a file, and return its pathname. Fail if the user doesn't
       choose a file or cancels: *)

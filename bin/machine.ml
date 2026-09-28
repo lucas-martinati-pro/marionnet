@@ -408,7 +408,7 @@ let make
       in
       let packing_variant =
         form#add_with_tooltip
-          (s_ "Initial hard disk state. The virtual machine will start by default with this variant of the chosen distribution.")
+          (s_ "machine.tooltip.variant")
       in
       let packing_kernel =
         form#add_with_tooltip
@@ -494,7 +494,7 @@ let make
     in
     (* Terminal type: *)
     let _terminal =
-      let _tooltip = (s_ "Type of terminal to use to control the virtual machine. Possible choices are: X HOST terminal (providing the possibility to launch graphical applications on the host X server) and X NEST (an independent graphic server displaying all the X windows of a virtual machines).")
+      let _tooltip = (s_ "machine.tooltip.terminal")
       in
       let result =
         Widget.ComboTextTree.fromList
@@ -571,29 +571,7 @@ let make
 
 let help_callback =
    let title = (s_ "ADD OR MODIFY A VIRTUAL MACHINE") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of the virtual \
-machine and set several hardware and software parameters.\n\n\
-SECTION 'Hardware'\n\
-- Memory: amount of memory (RAM) that will be reserved on \
-the host for this virtual machine (default 48 Mb)\n\n\
-- Ethernet Card: number of Ethernet cards (defalut 1)\n\n\
-SECTION 'Software':\n\n\
-- Distribution: the GNU/Linux distribution (Debian, Mandriva, Gentoo,..), \
-chosen among those available in the filesystem directory\n\n\
-- Variant: a variant (or patch) of the given distribution; a variant is a \
-COW (Copy On Write) file that represents a small update of the used distribution.\
-Available variants are in the variants/ subdirectory of the filesystem directory. \
-You can make your own variants by exporting any virtual machine state in the 'Disks' \
-tab.\n\n\
-- Kernel: the Linux kernel version, chosen among the ones available in the kernels/ \
-subdirectory\n\n\
-SECTION 'UML':\n\n\
-- Terminal: the possible choices are 'X HOST' and 'X NEST'; the first one \
-allows the user to run graphic applications from a text terminal where the user \
-can operate the virtual machine (with user 'root' and password 'root'); \
-the second allows the user to have a real graphic server reserved for the virtual \
-machine, with independent windows manager and desktops environments.")
+   let msg   = (s_ "help.dialog.machine")
    in Simple_dialogs.help title msg ;;
 
 end

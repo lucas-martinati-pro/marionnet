@@ -83,7 +83,7 @@ module Common_dialogs = struct
      let question = (s_ "Do you want to save the current project?") in
      if not (something_has_run ()) then question else
      question ^ "\n\n" ^
-     (s_ "Careful: some components have run in this session. Answering \"no\" discards their disk states, and every document archived into the project.")
+     (s_ "warning.quit_session_discard")
    in
    EDialog.ask_question ~help:None ~cancel:true ~gen_id ~title ~question ?script_answer ()
 

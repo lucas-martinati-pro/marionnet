@@ -522,7 +522,7 @@ class globalState = fun () ->
         if project_version <> self#closing_project_version then
         Simple_dialogs.warning
           (s_ "Project in old file format")
-          (s_ "This project will be automatically converted in a format not compatible with previous versions of this software. If you want to preserve compatibility, don't save it or save it with another name.")
+          (s_ "error.state_format_incompatible")
          ()
       in
       (* --- *)
@@ -597,7 +597,7 @@ class globalState = fun () ->
                 Printf.sprintf (f_ "%d automatic adjustment(s) were applied") (List.length ws)
               in
               let preamble =
-                s_ "To make this old project loadable on the current system, Marionnet adapted it as shown below.\nClick an item to see the details."
+                s_ "state.info.old_project_adapt"
               in
               Simple_dialogs.recapitulative
                 ~title:(s_ "Project adapted at loading")
@@ -653,10 +653,10 @@ class globalState = fun () ->
 		  match tag with
 		  | Some _ ->
 		      (s_ "Project format not supported"),
-		      (s_ "This project has been written by a more recent version of Marionnet. Please upgrade Marionnet in order to open it.")
+		      (s_ "error.project_newer_version")
 		  | None ->
 		      (s_ "Project format not recognized"),
-		      (s_ "The format of this project could not be identified. The file may be damaged, or it may not be a Marionnet project at all.")
+		      (s_ "error.project_unknown_format")
 		in
 		let error_msg =
 		  Printf.sprintf "<tt><small>%s</small></tt>\n\n%s%s"

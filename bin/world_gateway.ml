@@ -246,7 +246,7 @@ let make
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "World gateway")
       ~name
-      ~name_tooltip:(s_ "World gateway name. This name must be unique in the virtual network. Suggested: G1, G2, ...")
+      ~name_tooltip:(s_ "world_gateway.tooltip.name")
       ?label
       ()
   in
@@ -308,24 +308,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A WORLD GATEWAY") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of a gateway \
-to the real world (i.e. the world of the host machine) \
-and set many parameters for it:\n\n\
-- Label: a string appearing near the router icon in the network graph; \
-this field is exclusively for graphic purposes, is not taken in consideration \
-for the configuration.\n\n\
-- Ipv4 address: the address of the gateway that will be used by the virtual \
-machines connected to it.\n\n\
-- DHCP service: enabling this option, machines will be able to use the world gateway \
-as DHCP server, receiving leases in the range defined by the Ipv4 address. \
-This service also provides a DNS proxy\n\n\
-- Integrated switch ports: \
-the number of ports of the integrated switch (default 4); this number must \
-not be increased without a good reason, because the number of processes needed for the \
-device emulation is proportional to its ports number.\n\n\
-The emulation of this device is realised with the program 'slirpvde' derived from \
-the project VDE.\n")
+   let msg   = (s_ "help.dialog.world_gateway")
    in Simple_dialogs.help title msg ;;
 
 end

@@ -241,7 +241,7 @@ let make
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Switch")
       ~name
-      ~name_tooltip:(s_ "Switch name. This name must be unique in the virtual network. Suggested: S1, S2, ...")
+      ~name_tooltip:(s_ "switch.tooltip.name")
       ?label
       ()
   in
@@ -270,7 +270,7 @@ let make
       GButton.check_button
         ~active:auto_mdix
         ~packing:(form#add_with_tooltip
-                    (s_ "Check to let the switch accept, on all its ports, any kind of cable, straight or crossover"))
+                    (s_ "switch.tooltip.accept_any_cable"))
         ()
     in
     let show_vde_terminal =
@@ -326,16 +326,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A SWITCH") in
-   let msg   = (s_ "\
-In this dialog window you can define the name of an Ethernet switch \
-and set parameters for it:\n\n\
-- Label: a string appearing near the switch icon in the network graph; it may \
-allow, for example, to know at a glance the Ethernet network realized by the device; \
-this field is exclusively for graphic purposes, is not taken in consideration \
-for the configuration.\n\n\
-- Nb of Ports: the number of ports of the switch (default 4); this number must \
-not be increased without a reason, because the number of processes needed for the \
-device emulation is proportional to his ports number.")
+   let msg   = (s_ "help.dialog.switch")
    in Simple_dialogs.help title msg
 
 end

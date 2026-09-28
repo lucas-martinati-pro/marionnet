@@ -218,7 +218,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.nat_bridge.palette.png"
-   let tooltip   = (s_ "NAT bridge (give the virtual machines access to the Internet through a private bridge that Marionnet builds by itself: no host configuration, and it also works when the host is on Wi-Fi)")
+   let tooltip   = (s_ "nat_bridge.tooltip")
    let packing   = Params.packing
   end
 
@@ -425,9 +425,9 @@ let make
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "NAT bridge: a private bridge that Marionnet builds on the host, with its own network, from which the virtual machines reach the Internet (see the help button)")
+      ~image_tooltip:(s_ "nat_bridge.image_tooltip")
       ~name
-      ~name_tooltip:(s_ "NAT bridge name. This name must be unique in the virtual network. Suggested: N1, N2, ...")
+      ~name_tooltip:(s_ "nat_bridge.tooltip.name")
       ?label
       ()
   in
@@ -451,7 +451,7 @@ let make
     let network_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
         ~packing:(form#add_with_tooltip ~just_for_label:()
-                    (s_ "IPv4 address of the bridge, which is the default gateway of the virtual machines connected to it"))
+                    (s_ "nat_bridge.tooltip.ipv4_address"))
         b1 b2 b3 b4 b5
     in
     (* The DHCP server is left on the bridge by the host script (episode 10c.1); the
@@ -461,7 +461,7 @@ let make
       GButton.check_button
         ~active:dhcp_enabled
         ~packing:(form#add_with_tooltip
-                    (s_ "Should the bridge provide a DHCP service to the virtual machines connected to it?")) ()
+                    (s_ "nat_bridge.tooltip.dhcp_service")) ()
     in
     (* The IPv6 half (episode 11). ONE widget carries two things, and that is the
        existing idiom of this program (Gui_bricks.activable_entry, as the router
@@ -473,7 +473,7 @@ let make
                  check_button : GButton.toggle_button;  entry : GEdit.entry > =
       Gui_bricks.activable_entry
         ~packing:(form#add_with_tooltip
-                    (s_ "Should the virtual machines connected to the bridge also get an IPv6 address by themselves? The address is the one of the bridge, of the shape <prefix>::1/64: its /64 is announced to the guests, and translated (NAT66) on the way out. This needs the host itself to have IPv6."))
+                    (s_ "nat_bridge.tooltip.ipv6_address"))
         ~active:ipv6_enabled
         ~text:ipv6_address
         ~red_text_condition:(fun x -> not (Tool.is_valid_ipv6_address x))
@@ -493,7 +493,7 @@ let make
       GButton.check_button
         ~active:radvd_enabled
         ~packing:(form#add_with_tooltip
-                    (s_ "Should the bridge announce its IPv6 network (Router Advertisements), so that the virtual machines configure themselves without any DHCP? Without it they have an IPv6 network but must be numbered by hand.")) ()
+                    (s_ "nat_bridge.tooltip.radvd")) ()
     in
     (* The labels of this form are the ones a world gateway already uses, word
        for word, hence already translated: the same thing must be called by the same
@@ -536,7 +536,7 @@ let make
       let note =
         GMisc.label
           ~markup:("<i>" ^ Glib.Markup.escape_text
-                     (s_ "Note: the IPv6 fields are disabled because this host has no IPv6 address and no IPv6 route of its own. A bridge cannot give the virtual machines an IPv6 access it does not have itself.")
+                     (s_ "nat_bridge.tooltip.ipv6_disabled")
                    ^ "</i>")
           ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
           ~packing:w#vbox#add ()
@@ -580,7 +580,7 @@ let make
       let note =
         GMisc.label
           ~markup:("<i>" ^ Glib.Markup.escape_text
-                     (s_ "Note: the first time this component is started, Marionnet will ask for your password, once, in order to grant itself the right to build its own private bridge.")
+                     (s_ "nat_bridge.tooltip.password")
                    ^ "</i>")
           ~xalign:0.0 ~line_wrap:true ~width:420 ~xpad:20 ~ypad:5
           ~packing:w#vbox#add ()
@@ -630,58 +630,7 @@ let make
 
  let help_callback =
    let title = (s_ "ADD OR MODIFY A NAT BRIDGE") in
-   let msg   = (s_ "\
-A NAT bridge gives the virtual machines access to the real network of the host, \
-and through it to the Internet, WITHOUT touching the host configuration in any \
-way. Marionnet builds, on the host, a bridge of its own, gives it a private \
-network (a /24 of addresses free of the host routes) and translates the \
-addresses (NAT) of everything leaving it. When the component is stopped, or \
-when Marionnet exits, that bridge and its rules are removed: the host is left \
-exactly as it was found.\n\n\
-Each NAT bridge of the project has its OWN private network: two of these \
-components are two separate networks, not two doors onto the same one.\n\n\
-- IPv4 address: the address of the bridge itself, which is the default gateway \
-of the virtual machines connected to it. Only the first three bytes can be \
-chosen: the network is a /24, the bridge takes its first address, and the \
-guests may use the rest of it (from .2 to .254). A network the host already \
-routes is refused rather than stolen -- the proposed value is one Marionnet \
-knows to be free.\n\n\
-- DHCP service: when it is enabled, the bridge also hands out addresses, from \
-.100 to .200 of its own network, together with itself as default gateway and as \
-DNS server -- so a virtual machine configured for DHCP needs nothing else. The \
-addresses below .100 are left free for the machines a teacher wants to number by \
-hand. Disable it to give every guest a static address, or when the host has no \
-dnsmasq installed (the package is dnsmasq-base on Debian and Ubuntu): without it \
-the bridge refuses to be built at all.\n\n\
-- IPv6 address: when the check button beside it is enabled, the bridge also gets \
-an IPv6 network -- a private (ULA) /64 whose first address it takes, just as it \
-takes the first address of its /24 -- and translates it (NAT66) on the way out. \
-The proposed prefix is derived from the IPv4 network, so that the two read alike, \
-but any /64 may be written instead, for instance the documentation prefix of a \
-lab handout. This requires the HOST to have IPv6 itself: without a global IPv6 \
-address and an IPv6 route of its own, these two fields are disabled, because a \
-bridge cannot hand out an access it does not have.\n\n\
-- RADVD service: when it is enabled, the bridge announces its IPv6 network \
-(Router Advertisements), and the virtual machines configure themselves from it -- \
-address, default route and DNS server -- with no DHCP involved at all. This is \
-stateless autoconfiguration (SLAAC), and it is why a /64 is imposed: nothing \
-else works. Disable it to number the guests by hand while keeping the IPv6 \
-network.\n\n\
-- Integrated switch ports: the number of virtual machines that may be plugged \
-DIRECTLY into this component. They are all in the same network, they see each \
-other, and they all reach the Internet through the bridge.\n\n\
-NAT bridge, LAN bridge or gateway? Use a NAT BRIDGE to reach the Internet with \
-real network performance and no host configuration -- it is also the only one \
-of the three bridges that works when the host is connected over Wi-Fi. Use a \
-LAN BRIDGE when the virtual machines must appear DIRECTLY on the physical \
-network of the host (its DHCP, its DNS, its other machines), or to link \
-Marionnet instances running on different computers: that one needs a Linux \
-bridge on the host side. Use a WORLD GATEWAY for a self-contained NAT router \
-that needs no privilege at all.\n\n\
-The first time a NAT bridge is started, Marionnet asks for your password, once, \
-in order to grant itself a narrow and permanent right: to build and take down \
-bridges named after its own process, and the translation rules that go with \
-them. Nothing else.")
+   let msg   = (s_ "help.dialog.nat_bridge")
    in Simple_dialogs.help title msg ;;
 
 end
@@ -971,7 +920,7 @@ let advice_of_error (e : Nat_bridge_host.error) : string option =
       in
       Some (Printf.sprintf (f_ "The administrator rights needed by the NAT bridge are not granted on this host: the sudoers rule is missing, or it was written by an older version of Marionnet and no longer covers every command. To grant them, run in a terminal:\n\n    %s") (Glib.Markup.escape_text command))
   | "E_SUBNET_IN_USE" | "E_NO_FREE_SUBNET" | "E_BAD_SUBNET" | "E_ADDRESS6_IN_USE" | "E_BAD_ADDRESS6" ->
-      Some (s_ "The network of this component is already used by the host itself (or by another NAT bridge). Stop the component and choose another IPv4 address in its dialog.")
+      Some (s_ "nat_bridge.error.network_already_used")
   | "E_NO_IPROUTE2" -> missing "ip"
   | "E_NO_IPTABLES" -> missing "iptables"
   | "E_NO_IP6TABLES" -> missing "ip6tables"

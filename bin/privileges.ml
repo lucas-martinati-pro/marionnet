@@ -268,7 +268,7 @@ let ensure_natbridge () : (unit, string) result =
        Printf.sprintf
          (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-natbridge")
          message (Filename.basename script))
-    ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the NAT bridge needs")
+    ~installed_but_refused:(s_ "privilege.error.nat_installed_but_refused")
     ~cancelled:(s_ "no administrator rights were granted: the NAT bridge cannot be built")
     ~denied_by_administrator:(fun ~command ->
        Printf.sprintf
@@ -297,7 +297,7 @@ let ensure_lanbridge () : (unit, string) result =
        Printf.sprintf
          (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-lanbridge")
          message (Filename.basename script))
-    ~installed_but_refused:(s_ "the sudoers rule was installed, but the host still refuses the commands the LAN bridge needs")
+    ~installed_but_refused:(s_ "privilege.error.lan_installed_but_refused")
     ~cancelled:(s_ "no administrator rights were granted: the LAN bridge cannot be built")
     ~denied_by_administrator:(fun ~command ->
        Printf.sprintf

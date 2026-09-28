@@ -24,6 +24,9 @@ let diagnosis_say fmt = Printf.ksprintf (fun s -> diagnosis_lines := s :: !diagn
 let log_diagnosis () =
   List.iter (fun line -> Log.printf1 "%s\n" line) (List.rev !diagnosis_lines)
 
+(* Table storing fallback translations (English): string -> string *)
+let en_table : (string, string) Hashtbl.t = Hashtbl.create 512
+
 (* Table storing translations for the active language: string -> string *)
 let table : (string, string) Hashtbl.t = Hashtbl.create 512
 
@@ -50,19 +53,19 @@ let detect_language () : string =
         if s = "C" || s = "POSIX" then "en"
         else
           let base = match String.split_on_char '.' s with h :: _ -> h | [] -> s in
-          let lang = match String.split_on_char '_' base with h :: _ -> h | [] -> base in
-          String.lowercase_ascii lang
+          let base = match String.split_on_char '@' base with h :: _ -> h | [] -> base in
+          base
     | _ :: rest -> loop rest
   in
   loop candidates
 
-let load_json_file path =
+let load_json_into tbl path =
   try
     let json = Yojson.Safe.from_file path in
     match json with
     | `Assoc pairs ->
         List.iter (function
-          | (k, `String v) -> Hashtbl.replace table k v
+          | (k, `String v) -> Hashtbl.replace tbl k v
           | _ -> ()
         ) pairs;
         true
@@ -72,56 +75,88 @@ let load_json_file path =
     false
 
 let init () =
-  let lang = detect_language () in
-  active_lang := lang;
-  diagnosis_say "I18n: detected language '%s'" lang;
-  if lang = "c" then begin
-    diagnosis_say "I18n: language is C/POSIX, using in-code default strings"
-  end else begin
-    let filename = lang ^ ".json" in
-    let candidate_dirs =
-      (Option.to_list (Configuration.get_string_variable "MARIONNET_LOCALES_PATH"))
-      @ (match Development_tree.share_directory () with
-         | Some share -> [Filename.concat share "locales"]
-         | None -> [])
-      @ [
-          Filename.concat (Sys.getcwd ()) "bin/locales";
-          Filename.concat (Filename.dirname (Filename.dirname Sys.executable_name))
-            (Filename.concat "share" (Filename.concat Meta.name "locales"));
-          Printf.sprintf "%s/share/%s/locales" Meta.prefix Meta.name;
-          "/usr/share/marionnet/locales";
-          "/usr/local/share/marionnet/locales";
-        ]
-    in
-    let rec try_dirs = function
-      | [] ->
-          diagnosis_say "I18n: WARNING: no translation file '%s' found in candidate directories; falling back to English" filename
-      | dir :: rest ->
-          let file_path = Filename.concat dir filename in
-          if Sys.file_exists file_path then begin
-            if load_json_file file_path then begin
-              retained_locales_dir := dir;
-              diagnosis_say "I18n: successfully loaded %d translations for '%s' from %s"
-                (Hashtbl.length table) lang file_path
-            end else
-              try_dirs rest
-          end else
-            try_dirs rest
-    in
-    try_dirs candidate_dirs
-  end
+  let raw_lang = detect_language () in
+  diagnosis_say "I18n: detected language string '%s'" raw_lang;
+  let candidate_dirs =
+    (Option.to_list (Configuration.get_string_variable "MARIONNET_LOCALES_PATH"))
+    @ (match Development_tree.share_directory () with
+       | Some share -> [Filename.concat share "locales"]
+       | None -> [])
+    @ [
+        Filename.concat (Filename.dirname Sys.executable_name) "locales";
+        Filename.concat (Filename.dirname (Filename.dirname Sys.executable_name)) "bin/locales";
+        Filename.concat (Sys.getcwd ()) "bin/locales";
+        Filename.concat (Filename.dirname (Filename.dirname Sys.executable_name))
+          (Filename.concat "share" (Filename.concat Meta.name "locales"));
+        Printf.sprintf "%s/share/%s/locales" Meta.prefix Meta.name;
+        "/usr/share/marionnet/locales";
+        "/usr/local/share/marionnet/locales";
+      ]
+  in
+  let locales_dir_opt =
+    List.find_opt (fun dir -> Sys.file_exists (Filename.concat dir "en.json")) candidate_dirs
+  in
+  match locales_dir_opt with
+  | None ->
+      diagnosis_say "I18n: WARNING: locales directory not found in candidate directories"
+  | Some dir ->
+      retained_locales_dir := dir;
+      (* Always load en.json into en_table as universal fallback *)
+      let en_path = Filename.concat dir "en.json" in
+      if load_json_into en_table en_path then
+        diagnosis_say "I18n: successfully loaded %d English fallback translations from %s"
+          (Hashtbl.length en_table) en_path;
+
+      let lang_candidates =
+        let l = raw_lang in
+        let lower = String.lowercase_ascii l in
+        let base = match String.split_on_char '_' l with h :: _ -> h | [] -> l in
+        let base_lower = String.lowercase_ascii base in
+        [l; lower; base; base_lower]
+      in
+      let chosen_lang =
+        let rec find_file = function
+          | [] -> None
+          | c :: rest ->
+              let p = Filename.concat dir (c ^ ".json") in
+              if Sys.file_exists p then Some (c, p) else find_file rest
+        in
+        find_file lang_candidates
+      in
+      (match chosen_lang with
+       | Some (code, path) ->
+           active_lang := code;
+           if load_json_into table path then
+             diagnosis_say "I18n: successfully loaded %d translations for '%s' from %s"
+               (Hashtbl.length table) code path
+       | None ->
+           active_lang := "en";
+           diagnosis_say "I18n: no specific locale file found for '%s', using English" raw_lang)
 
 let () = init ()
 
 let s_ msg =
   match Hashtbl.find_opt table msg with
   | Some trans when trans <> "" -> trans
-  | _ -> msg
+  | _ -> (
+      match Hashtbl.find_opt en_table msg with
+      | Some trans when trans <> "" -> trans
+      | _ -> msg
+    )
 
 let f_ fmt =
   let s = string_of_format fmt in
-  match Hashtbl.find_opt table s with
-  | Some trans when trans <> "" ->
-      (try Scanf.format_from_string trans fmt
-       with _ -> fmt)
-  | _ -> fmt
+  let trans_opt =
+    match Hashtbl.find_opt table s with
+    | Some trans when trans <> "" -> Some trans
+    | _ -> (
+        match Hashtbl.find_opt en_table s with
+        | Some trans when trans <> "" -> Some trans
+        | _ -> None
+      )
+  in
+  match trans_opt with
+  | Some trans ->
+      (try Scanf.format_from_string trans fmt with _ -> fmt)
+  | None -> fmt
+

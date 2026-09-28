@@ -500,7 +500,7 @@ object(self)
       let warning =
         if header = flipped_bits_header && (float_or_zero new_content) > 1.0 then
           Some ((s_ "This value may be too high"),
-                (s_ "Please consider that a flipped bits percentage greater than 1% implies *many* transmission errors.\n\nAnyway you are free to experiment with any percentage."))
+                (s_ "cloud.tooltip.flipped_bits"))
         else None
       in
       (None, warning)
