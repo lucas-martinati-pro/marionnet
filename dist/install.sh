@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration par défaut (surchargable via argument ou variables d'environnement)
-VERSION="${MARIONNET_VERSION:-1.0.456}"
+VERSION="${MARIONNET_VERSION:-1.0.457}"
 INSTALL_WHEEZY=true
 FORCE_DOWNLOAD=false
 BUILD_LOCAL=false
