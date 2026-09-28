@@ -115,6 +115,8 @@ let configuration =
                 "MARIONNET_TIMEZONE";
                 "MARIONNET_SHOW_SPLASH";
                 "MARIONNET_NO_AUTO_UPDATE";
+                "MARIONNET_LANG";
+                "MARIONNET_LOCALES_PATH";
                 (* Deep logging, episode 10: an alternative Markdown -> HTML converter (a command
                    reading the Markdown on its standard input). Unset, the conversion is done
                    in-process by cmarkit: see treeview_documents.ml and etc/marionnet.conf. *)

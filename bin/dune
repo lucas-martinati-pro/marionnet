@@ -215,13 +215,15 @@
   ;; __OPTIMIZE__, glib 2.74 (the debian:12 build box) keeps it, hence the GLib-GObject-CRITICAL
   ;; that only the boxed binary printed. Dropping the library removes the call altogether.
   ;; Measured, episode 21 of `modernisation-installation-marionnet'.
-  (libraries str unix threads inotify lablgtk3 lablgtk3-sourceview3 cmarkit yojson ocamlbricks marionnet_base marionnet_tap marionnet_sites))
+  (libraries str unix threads inotify lablgtk3 lablgtk3-sourceview3 cmarkit yojson ocamlbricks marionnet_base marionnet_tap))
 
 ;;; ---
 (install
   (files
      ;; ---
      (glob_files "gui/gui_glade3.xml*")
+     ;; ---
+     (glob_files "locales/*.json")
      ;; ---
      (glob_files "scripts/marionnet_telnet.sh")
      ;; --- Tap_provider calls it by name (it lands in $PREFIX/bin/, see the Makefile):
@@ -271,58 +273,26 @@
      ;; --- The real file carries the .sh extension of this directory; the names the user
      ;; --- types are SYMLINKS beside it, which is what keeps `marionnet-cleanup' -- a name
      ;; --- frozen inside the msgid of the 12 gettext catalogues -- valid for free.
-     (glob_files "scripts/marionnet-cleanup.sh")
+     ;; ---
      (glob_files "scripts/marionnet-cleanup")
      (glob_files "scripts/mrn-cleanup")
-     ;; --- The declarative verifier of a RUNNING lab (work-stream `journalisation-profonde'):
-     ;; --- it reads a .mrv of assertions and asks the control channel, which makes it a
-     ;; --- companion of the binary, not a tool to manage the project -- hence its move out of
-     ;; --- useful-scripts/. Same form as above: the real file carries the .sh extension, the
-     ;; --- names the user types are SYMLINKS beside it. `mrn-verify' is the one the delivered
-     ;; --- documentation and the example scripts call by its bare name.
-     (glob_files "scripts/marionnet-verify.sh")
+     ;; ---
      (glob_files "scripts/marionnet-verify")
      (glob_files "scripts/mrn-verify")
-     ;; --- The static checker of a .mrn lab description (work-stream `pilotage-par-script'):
-     ;; --- it validates a file against the grammar PUBLISHED BY THE SERVER, and translates it
-     ;; --- to the shell script it is the declarative half of. Companion of the binary, hence
-     ;; --- its move out of useful-scripts/. Same form again -- but here the symlinks are not
-     ;; --- mere aliases: the script reads `${0##*/}' (PROGNAME) and the name `mrn2sh' IMPLIES
-     ;; --- --to-bash, so removing that link would silently change what the tool does.
-     (glob_files "scripts/marionnet-check.sh")
+     ;; ---
      (glob_files "scripts/marionnet-check")
      (glob_files "scripts/mrn-check")
      (glob_files "scripts/mrnck")
      (glob_files "scripts/mrn2sh")
-     ;; --- The client of the control channel itself (work-stream `pilotage-par-script'): one
-     ;; --- line of text in, one line of JSON out, over `socat - UNIX-CONNECT:<socket>'. It is
-     ;; --- the companion of --control-socket, so it belongs beside the binary and no longer in
-     ;; --- useful-scripts/. Same form: the real file carries the .sh extension, the names the
-     ;; --- user types are SYMLINKS beside it. `mrnctl' is the one the delivered documentation
-     ;; --- (doc-src/scripting/) calls by its bare name, in prose and in its example scripts.
-     ;; --- The client holds NO copy of the grammar: it is the server which publishes it, so
-     ;; --- these names never have to follow a change of vocabulary.
-     (glob_files "scripts/marionnet-ctl.sh")
+     ;; ---
      (glob_files "scripts/marionnet-ctl")
      (glob_files "scripts/mrnctl")
      (glob_files "scripts/mrn-control")
-     ;; --- The guest-image CHOOSER (work-stream `modernisation-installation-marionnet',
-     ;; --- episode 16), and it is the SAME FILE as the installer published on the website:
-     ;; --- marionnet-install.sh, which dispatches on $0 -- exactly the form mrn2sh already
-     ;; --- uses above. Called `marionnet-get-images', it offers the images and kernels of
-     ;; --- the series as a checkbox list, marks as already installed the ones whose mtime
-     ;; --- matches their .conf (the field UML checks), and fetches what was ticked through
-     ;; --- the streaming, digest-verified path -- and it REFUSES --binary under that name.
-     ;; --- Why the installer itself lands in $(PREFIX)/bin/ at all: the chooser needs the
-     ;; --- catalogue, the `xz -dc -T0' extraction and the digest checked WHILE extracting,
-     ;; --- which is that file entire; a second implementation of it is what episode 8
-     ;; --- removed. It cannot be a sourced library either -- it is downloaded ALONE by a
-     ;; --- machine which has nothing, so it sources nothing.
+     ;; ---
      (glob_files "scripts/marionnet-install.sh")
      (glob_files "scripts/marionnet-get-images")
      (glob_files "scripts/mrn-get-images")
      ;; --- Marionnet auto-updater:
-     (glob_files "scripts/marionnet-update.sh")
      (glob_files "scripts/marionnet-update")
      ;; --- Not listed here, and deliberately so: scripts/marionnet-completion.bash is not a
      ;; --- command, it is SOURCED -- its place on an installed system is a completion
@@ -374,16 +344,13 @@
 ;;; ---
 (install
   (files
-     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-ctl.sh)
      (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-ctl)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrnctl)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrn-control)
-     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-check.sh)
      (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-check)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrn-check)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrnck)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrn2sh)
-     (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-verify.sh)
      (scripts/marionnet-completion.bash as bash-completion/completions/marionnet-verify)
      (scripts/marionnet-completion.bash as bash-completion/completions/mrn-verify)
      )

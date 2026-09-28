@@ -35,6 +35,11 @@ Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad
    - Options CLI `--welcome` et `--no-welcome`.
 6. **Modification des distributions des machines à l'arrêt** :
    - Possibilité de changer la distribution (`Guignol`, `Debian Wheezy`, etc.) ou la variante d'une machine arrêtée sans devoir la détruire et la recréer, avec confirmation de réinitialisation du disque COW.
+7. **Nouveau système d'internationalisation moderne (i18n JSON)** :
+   - Remplacement de l'ancien système GNU gettext et de ses 14 fichiers `.po` lourds (>3,4 Mo) par des dictionnaires JSON propres et légers (`bin/locales/*.json`).
+   - Détection automatique de la langue d'affichage (`fr`, `en`, `de`, `es`, `it`, `pt`, `pt_BR`, `ro`, `ru`, `sk`, `tr`, `el`, `eo`) avec fallback transparent vers l'anglais.
+   - Sélection personnalisable via la variable d'environnement `MARIONNET_LANG` ou dans `~/.marionnet/marionnet.conf`.
+   - Zéro dépendance C gettext ou `msgfmt` : moteur de traduction OCaml pur ultra rapide basé sur `Yojson`.
 
 ---
 

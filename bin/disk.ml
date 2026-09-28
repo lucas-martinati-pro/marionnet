@@ -695,11 +695,15 @@ class virtual_machine_installations
              in
              if actual_mtime = expected_mtime then () else (* warning: *)
 	     let title = (s_ "Modification time (MTIME) inconsistency") in
-	     let message =
+	     let part1 =
 	       Printf.sprintf
-		 (f_ "The filesystem `%s%s' has the mtime %d, but the expected value was %d.\nPlease run the command:\n\n<tt><small>sudo touch -d @%d %s</small></tt>\n\nin order to fix this inconsistency. Otherwise, machines or routers with this filesystem defined in a project created elsewhere can not be restarted.")
- 		 (prefix) (filesystem_epithet) (actual_mtime) (expected_mtime) (expected_mtime) (realpath)
+		 (f_ "The filesystem '%s%s' has the mtime %d, but the expected value was %d.\nPlease run the command:")
+ 		 prefix filesystem_epithet actual_mtime expected_mtime
 	     in
+	     let cmd = Printf.sprintf "\n\n<tt><small>sudo touch -d @%d %s</small></tt>\n\n" expected_mtime realpath in
+	     let part2 = s_ "in order to fix this inconsistency. Otherwise, machines or routers with this filesystem defined in a project created elsewhere can not be restarted." in
+	     let message = part1 ^ cmd ^ part2 in
+
              Simple_dialogs.warning title message ())
           mtime
     in

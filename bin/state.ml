@@ -468,7 +468,7 @@ class globalState = fun () ->
           ~modal:true
           ~title:(s_ "Work in progress")
           ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "Opening"))
-          ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
+          ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" filename)
           ())
         ()
     in
@@ -845,7 +845,7 @@ class globalState = fun () ->
         ~title:(s_ "Work in progress")
         ~kind:(Progress_bar.Fill fill)
         ~text_on_label
-        ~text_on_sub_label:(Printf.sprintf (f_ "<tt><small>%s</small></tt>") filename)
+        ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" filename)
         ()
       (* --- *)
       end) ()

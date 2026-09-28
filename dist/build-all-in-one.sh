@@ -128,7 +128,11 @@ cat << 'EOF' > "$BUILD_DIR/root/DEBIAN/prerm"
 set -e
 case "$1" in
   remove|upgrade|deconfigure)
-    [ -x /usr/bin/marionnet-cleanup.sh ] && /usr/bin/marionnet-cleanup.sh || true
+    if [ -x /usr/bin/marionnet-cleanup ]; then
+      /usr/bin/marionnet-cleanup || true
+    elif [ -x /usr/bin/marionnet-cleanup.sh ]; then
+      /usr/bin/marionnet-cleanup.sh || true
+    fi
     ;;
 esac
 exit 0

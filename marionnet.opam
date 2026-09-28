@@ -24,7 +24,6 @@ doc: "https://www.marionnet.org"
 depends: [
   "ocaml"
   "dune" {>= "3.7"}
-  "dune-site"
   "odoc" {with-doc}
 ]
 build: [

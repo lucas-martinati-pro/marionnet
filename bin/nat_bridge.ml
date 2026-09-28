@@ -1066,9 +1066,10 @@ class ['parent] nat_bridge =
                   measured, that is why this very message was shown in English
                   to a French user (bug of 2026-09-02). *)
                let message =
-                 Printf.sprintf
-                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has no network at all: the virtual machines connected to it will reach nothing.\n\n<tt><small>%s</small></tt>")
-                   (parent#get_name) (Glib.Markup.escape_text (Nat_bridge_host.string_of_error e))
+                 (Printf.sprintf
+                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has no network at all: the virtual machines connected to it will reach nothing.")
+                   (parent#get_name))
+                 ^ "\n\n<tt><small>" ^ (Glib.Markup.escape_text (Nat_bridge_host.string_of_error e)) ^ "</small></tt>"
                in
                let message =
                  match advice_of_error e with

@@ -69,7 +69,9 @@ module Make (State:sig val st:State.globalState end) = struct
    let title = Printf.sprintf "\n%s\n<small>%s</small>\n" text_title text_subtitle in
    set d#label_dialog_A_PROPOS_title title;
 
-   set d#label_dialog_A_PROPOS_a_propos_content (s_ "<b>Marionnet</b> is an environment for the simulation of a network composed of GNU/Linux machines. This software was thought for students to experiment with bulding and configuring networks, and for teachers to prepare excercises and tests.\n\nMarionnet is based on the UML features of the Linux kernel.\n<tt><u><span color=\"blue\">http://www.marionnet.org</span></u></tt>\n");
+   set d#label_dialog_A_PROPOS_a_propos_content
+     ((s_ "<b>Marionnet</b> is an environment for the simulation of a network composed of GNU/Linux machines. This software was thought for students to experiment with bulding and configuring networks, and for teachers to prepare excercises and tests.\n\nMarionnet is based on the UML features of the Linux kernel.")
+      ^ "\n<tt><u><span color=\"blue\">http://www.marionnet.org</span></u></tt>\n");
 
    set d#label_dialog_A_PROPOS_authors (s_ "Authors");
    set d#label_dialog_A_PROPOS_authors_content "
@@ -102,7 +104,9 @@ You should have received a copy of the GNU General Public License along with thi
       copies the string lexeme as it stands in the source, so a *literal* newline
       inside the literal would end up unescaped in the msgid -- which msgcat then
       rejects. Line breaks must therefore be written `\n', never typed: *)
-   set d#label_dialog_A_PROPOS_thanks_content (s_ "We wish to thank Jeff Dike and the other authors of UML for their nice work, which made Marionnet possible; Renzo Davoli for VDE, the powerful communication infrastructure that we used and modified; the authors of OCaml for their nice language; and of course the whole free software community, of which the GNU and Linux projects remain the foremost contributors.\n\nThis beautiful logo was designed by Silviu Barsanu:\n<tt><u><span color=\"blue\">https://uapcraiova.ro/silviu-barsanu/</span></u></tt>");
+   set d#label_dialog_A_PROPOS_thanks_content
+     ((s_ "We wish to thank Jeff Dike and the other authors of UML for their nice work, which made Marionnet possible; Renzo Davoli for VDE, the powerful communication infrastructure that we used and modified; the authors of OCaml for their nice language; and of course the whole free software community, of which the GNU and Linux projects remain the foremost contributors.\n\nThis beautiful logo was designed by Silviu Barsanu:")
+      ^ "\n<tt><u><span color=\"blue\">https://uapcraiova.ro/silviu-barsanu/</span></u></tt>");
    (* The line break is deliberate (the label does not wrap): it balances the two
       lines instead of letting the width of the dialog decide. The second one then
       carries both institutions in parallel. Translations are expected to keep a

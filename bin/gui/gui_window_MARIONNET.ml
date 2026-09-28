@@ -64,8 +64,8 @@ let () = begin
  let labels = get_tab_labels_of w#notebook_CENTRAL in
  let (l1,l2) = tuple2_of_list labels in
  List.iter (fun l -> l#set_use_markup true) labels ;
- l1#set_label (s_ "<i>Components</i>");
- l2#set_label (s_ "<i>Documents</i>");
+ l1#set_label (Printf.sprintf "<i>%s</i>" (s_ "Components"));
+ l2#set_label (Printf.sprintf "<i>%s</i>" (s_ "Documents"));
 end
 
 (* ***************************************** *

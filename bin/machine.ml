@@ -375,7 +375,7 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(s_ "Memory <tt>(Mb)</tt>");
+        [(Printf.sprintf "%s <tt>(%s)</tt>" (s_ "Memory") (s_ "MB"));
          (s_ "Ethernet cards");
          (s_ "Distribution");
          (s_ "Variant");
