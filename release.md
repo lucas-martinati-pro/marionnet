@@ -1,30 +1,41 @@
-## Marionnet 1.0.456 — Laboratoire Réseau Virtuel (Édition Linux Moderne)
+## Marionnet 1.0.457 — Laboratoire Réseau Virtuel (Édition Linux Moderne)
 
-Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian avec support des noyaux Linux récents (Linux >= 5.15).
+Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian avec support des noyaux Linux récents (Linux >= 5.15) et environnement OCaml modernisé.
 
 ---
 
-### 🚀 Nouveautés et Correctifs majeurs (v1.0.456)
+### 🚀 Nouveautés et Améliorations majeures (v1.0.457)
 
-1. **Élimination définitive de l'erreur `/sbin/getty: Input/output error`** :
-   - **Remappage automatique du noyau invité** : Les projets demandant l'ancien noyau `3.2.64-ghost` (incompatible avec les hôtes Linux récents en raison du crash du stub SKAS0) sont automatiquement remappés vers le noyau moderne `linux-6.12.95-i386`.
-   - **Protection contre le verrouillage en lecture seule d'ext4** : Ajout automatique de `rootflags=errors=continue` sur la ligne de commande UML pour empêcher les images non journalisées (Guignol) de monter en lecture seule suite à un arrêt impromptu.
+#### 1. 🌐 Refonte complète du système d'internationalisation (i18n moderne en JSON)
+- **Migration des catalogues de traduction** : Remplacement des anciens fichiers binaires `.mo` / `.po` par des fichiers JSON structurés et éditables pour 14 langues (français, anglais, espagnol, allemand, italien, portugais, etc.).
+- **Identifiants sémantiques** : Remplacement des textes en anglais brut utilisés comme clés par des identifiants sémantiques normalisés (`hub.tooltip.name`, `router.tooltip.name`, `machine.tooltip.name`, etc.).
+- **Mécanisme de secours à double table (Dual-Table Fallback)** : Si une clé de traduction est absente ou partielle dans une langue donnée, l'affichage bascule automatiquement et de manière transparente sur le texte anglais (`en.json`), évitant tout texte manquant ou brisé.
+- **Évaluation dynamique à chaud** : Les noms de composants dans les dialogues (`kind_name : unit -> string`) sont désormais évalués dynamiquement pour refléter immédiatement un changement de langue à l'exécution.
+- **Nettoyage typographique** : Élimination des balises Pango/HTML superflues des chaînes à traduire pour une meilleure lisibilité.
 
-2. **Paquet Debian « Tout-en-un » (`marionnet-all-in-one`) & Distribution Debian complète** :
-   - Plus besoin de compiler, ni d'ajouter de clés GPG externes ou de dépôts APT tiers.
-   - Embarque l'application Marionnet 1.0.456, les noyaux UML 64-bit et 32-bit (6.12.95) et le système invité Guignol de base.
-   - **Distribution Debian Wheezy complète** (`marionnet-fs-debian-wheezy`) : intègre désormais Apache2, Lighttpd, BIND9, ISC-DHCP, Python, compilateurs C/C++, navigateurs web (`links`, `lynx`), outils de diagnostic et support graphique X11.
-   - Configuration automatique des droits réseau (sudoers), compatible avec `sudo` classique et `sudo-rs` (Ubuntu 24.10+).
+#### 2. 🛡️ Sécurisation des types OCaml & Refactorisation architecturale
+- **Élimination de 11 casts non-typés `Obj.magic`** :
+  - Sécurisation complète des actions de suppression (`Remove.reaction`) sur les 8 composants réseau (`hub`, `switch`, `router`, `machine`, `cloud`, `world_gateway`, `nat_bridge`, `lan_bridge`) en s'appuyant directement sur la méthode virtuelle `#destroy` de la classe de base `User_level.node`.
+  - Élimination des casts non-sécurisés lors de la création et manipulation des câbles réseau (`cable.ml`).
+- **Factorisation du code de cycle de vie (`Make_menus`)** :
+  - Création du foncteur centralisé `Lifecycle` dans `Gui_toolbar_COMPONENTS_layouts`, éliminant plus de **350 lignes de code dupliqué** pour les opérations `Remove`, `Startup`, `Stop`, `Suspend` et `Resume`.
+- **Harmonisation des stubs `Data.to_string`** :
+  - Remplacement de tous les stubs temporaires `"<obj>"` par des implémentations de diagnostic complètes et formatées (`Printf.sprintf`) sur l'ensemble des 9 modules de composants réseau (y compris `bridge_common` et `nat_bridge`).
+- **Fiabilisation de la gestion des exceptions** :
+  - Ciblage explicite de l'exception `Not_found` dans les méthodes de recherche du réseau (`get_node_by_name`, `get_cable_by_name`, `get_component_by_name`) afin de ne plus masquer silencieusement les erreurs système ou d'allocation mémoire.
 
-3. **Connexion automatique en root (Autologin immédiat)** :
-   - Plus besoin de saisir `root` et `root` à chaque ouverture de terminal de machine ou routeur.
-   - Le shell s'ouvre directement sur le prompt `root@nom:~#`.
-   - Option activée par défaut, configurable directement dans la fenêtre de création ou de modification de chaque machine et routeur (*Accès* -> *Connexion auto (root)*).
+#### 3. 🔄 Changement dynamique de distribution invitée (Filesystem VM)
+- Possibilité de modifier à chaud la distribution d'une machine virtuelle arrêtée (ex. basculer entre **Guignol** et **Debian Wheezy**) directement depuis la fenêtre de dialogue des propriétés de la machine.
+- Dialogue de confirmation préalable avec avertissement clair de perte des modifications locales, et réinitialisation automatique et propre du disque différentiel (COW).
 
-4. **Optimisation des performances et réactivité de l'interface** :
-   - Exécution de Graphviz `dot` déportée en tâche d'arrière-plan avec temporisation (debounce) pour éviter tout gel de l'interface GTK lors de l'édition de topologie.
-   - Écran de démarrage (splash screen) avec fermeture automatique au bout de 2,5 secondes.
-   - Fermeture propre et parallélisée de la topologie réseau lors de la fermeture de l'application.
+#### 4. ⚡ Système d'auto-mise à jour & Amélioration de l'interface
+- Détection et notification automatique de la disponibilité des nouvelles versions de Marionnet.
+- Fenêtre d'accueil (Welcome Popup) enrichie d'une option mémorisée « Ne plus afficher au démarrage ».
+- Correction visuelle dans l'éditeur de configuration (désactivation du surlignage perturbateur de la ligne courante).
+
+#### 5. 🐧 Standardisation des scripts Unix
+- Normalisation des exécutables sous leur nom de commande Unix standard (`marionnet-check`, `marionnet-cleanup`, `marionnet-ctl`, `marionnet-verify`, `marionnet-update`).
+- Conservation de liens symboliques pour tous les alias raccourcis usuels (`mrnctl`, `mrn-check`, etc.).
 
 ---
 
@@ -43,7 +54,7 @@ Le script `install.sh` s'occupe de tout automatiquement :
 - Télécharge automatiquement le paquet Debian tout-en-un et la distribution invitée **Debian Wheezy** depuis GitHub Releases s'ils ne sont pas présents localement.
 - Installe toutes les dépendances requises (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `socat`, etc.).
 - Configure les règles réseau sudoers pour votre utilisateur.
-- Valide immédiatement l'installation (`marionnet version 1.0.456`).
+- Valide immédiatement l'installation (`marionnet version 1.0.457`).
 - **Options utiles** :
   - `./install.sh --clean` : Force la suppression des paquets locaux et le retéléchargement propre depuis GitHub Releases.
   - `./install.sh --without-wheezy` : Installation légère sans l'image Debian Wheezy.
@@ -54,13 +65,13 @@ Le script `install.sh` s'occupe de tout automatiquement :
 
 ```bash
 # 1. Télécharger les paquets
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-all-in-one_1.0.456_amd64.deb
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-fs-debian-wheezy_08367_all.deb
+wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-all-in-one_1.0.457_amd64.deb
+wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-fs-debian-wheezy_08367_all.deb
 
 # 2. Activer l'architecture i386 et mettre à jour APT
 sudo dpkg --add-architecture i386
 sudo apt update
 
 # 3. Installer les paquets et leurs dépendances
-sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
+sudo apt install -y ./marionnet-all-in-one_1.0.457_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
 ```
