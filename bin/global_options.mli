@@ -105,3 +105,18 @@ module Keep_all_snapshots_when_saving : sig
   val lazy_set : t Lazy.t -> unit
   val content  : t Lazy.t option ref
 end
+
+(** Should the welcome splash window be shown when starting Marionnet? Initialized from
+    [Initialization.show_welcome_popup] and then settable from the GUI (menu "Options"). *)
+module Show_welcome_popup : sig
+  type t = bool
+  val get      : unit -> t option
+  val extract  : unit -> t
+  val set      : t -> unit
+  val unset    : unit -> unit
+  val lazy_set : t Lazy.t -> unit
+  val content  : t Lazy.t option ref
+end
+
+val set_show_welcome_popup : bool -> unit
+

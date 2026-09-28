@@ -49,10 +49,9 @@ This is free software, covered by the GNU GPL.
 You are welcome to redistribute it under certain
 conditions; see the file `COPYING' for details.</i></small>";;
 
-let handle_click window _ =
-  Log.printf "handle_click: the splash screen was closed\n";
+let handle_close window =
+  Log.printf "handle_close: the splash screen was closed\n";
   window#misc#hide ();
-  window#destroy ();
   true;;
 
 (*let splash_image =
@@ -79,7 +78,7 @@ splash#set_title (s_ "Welcome to Marionnet");;
 let event_box = GBin.event_box ~packing:splash#add () in
 (* The spacing separates the four blocks of the splash (image and title, copyright,
    warranty, logos) with one and the same vertical gap: *)
-let box = GPack.vbox ~spacing:32 ~border_width:2 ~packing:event_box#add () in
+let box = GPack.vbox ~spacing:24 ~border_width:2 ~packing:event_box#add () in
 (*let _image = GMisc.pixmap splash_image ~packing:(box#pack ~padding:3) () in*)
 let _image = GMisc.image ~pixbuf:(splash_pixbuf) ~packing:(box#pack ~padding:3) ~show:true () in
 (* --- *)
@@ -125,17 +124,25 @@ let _logo_unif =
    ~file:(Initialization.Path.images^"logo.unif.png")
    ~xalign:0.5 ~packing:(attach ~left:3) ()
 in
-let _ = event_box#event#connect#button_press ~callback:(handle_click splash) in
-let _ = splash#event#connect#key_press       ~callback:(fun ev -> handle_click splash ()) in ()
+let bbox = GPack.button_box `HORIZONTAL ~layout:`END ~packing:(box#pack ~expand:false) () in
+let button_close = GButton.button ~stock:`CLOSE ~packing:bbox#add () in
+let _ = button_close#connect#clicked         ~callback:(fun () -> ignore (handle_close splash)) in
+let _ = event_box#event#connect#button_press ~callback:(fun _ -> handle_close splash) in
+let _ = splash#event#connect#key_press       ~callback:(fun _ -> handle_close splash) in
+let _ = splash#event#connect#delete          ~callback:(fun _ -> handle_close splash) in
+()
 ;;
 
 let show_splash ?timeout () =
+  Log.printf "Splash.show_splash: showing splash window\n";
   (match timeout with
     Some timeout ->
       ignore
         (GMain.Timeout.add
            ~ms:timeout
-           ~callback:(fun () -> ignore (handle_click splash ()); false))
+           ~callback:(fun () -> ignore (handle_close splash); false))
   | None ->
       ());
+  splash#present ();
   splash#show ();;
+

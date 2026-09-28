@@ -520,6 +520,14 @@ let options_keep_all_snapshots_when_saving =
          Global_options.Keep_all_snapshots_when_saving.set active)
  ()
 
+(* --- *)
+let options_show_welcome =
+ add_check_item (s_ "Show welcome popup at startup")
+  ~active:(Global_options.Show_welcome_popup.extract ())
+  ~callback:(fun active ->
+         Log.printf1 "You toggled the option (show welcome popup): %b\n" active;
+         Global_options.set_show_welcome_popup active)
+  ()
 
 (* --- *)
 (* Hidden to user in this version. *)
@@ -538,12 +546,19 @@ let () = workaround_wirefilter_problem#coerce#misc#hide ()
  * **************************************** *)
 
 let help         = add_menu (s_ "_Help")
+let help_welcome =
+  let callback () = Splash.show_splash () in
+  add_stock_item (s_ "Welcome to Marionnet") ~stock:`INFO ~callback ()
+let help_update  =
+  let callback () = Updater.prompt_manual_update_check () in
+  add_stock_item (s_ "Check for updates...") ~stock:`REFRESH ~callback ()
 let help_apropos =
  let module D = Gui_dialog_A_PROPOS.Make (State) in
  let callback () =
    let dialog = D.dialog () in
    let _ = dialog#closebutton_A_PROPOS#connect#clicked ~callback:(dialog#toplevel#destroy) in ()
  in add_stock_item (s_ "Help") ~stock:`ABOUT ~callback ()
+
 
 
 (* **************************************** *

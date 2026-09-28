@@ -4,19 +4,51 @@ set -euo pipefail
 # Configuration par défaut (surchargable via argument ou variables d'environnement)
 VERSION="${MARIONNET_VERSION:-1.0.456}"
 INSTALL_WHEEZY=true
-
 FORCE_DOWNLOAD=false
+BUILD_LOCAL=false
+RELEASE_MODE=false
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+usage() {
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS] [VERSION]
+
+Options:
+  -b, --local, --build     Construire et installer le paquet à partir des sources locales
+  -r, --release            Installer la version officielle publiée sur GitHub Releases
+  --no-wheezy              Ne pas installer l'image système Debian Wheezy
+  --force-download         Supprimer les paquets de cache locaux et forcer le téléchargement
+  -h, --help               Afficher cette aide et quitter
+
+Si exécuté dans le dépôt git et qu'un binaire fraîchement compilé existe
+(_build/default/bin/marionnet.exe), l'installation locale est automatiquement activée.
+EOF
+}
 
 for arg in "$@"; do
   case "$arg" in
+    -b|--local|--build)
+      BUILD_LOCAL=true
+      ;;
+    -r|--release)
+      RELEASE_MODE=true
+      ;;
     --no-wheezy|--without-wheezy)
       INSTALL_WHEEZY=false
       ;;
     --force-download|--clean|--re-download)
       FORCE_DOWNLOAD=true
       ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
     -*)
       echo "[-] Option inconnue : $arg" >&2
+      usage >&2
+      exit 1
       ;;
     *)
       VERSION="$arg"
@@ -24,12 +56,40 @@ for arg in "$@"; do
   esac
 done
 
+# Détection automatique : si on est dans le dépôt git et qu'un binaire local existe
+if [ "$RELEASE_MODE" = false ] && [ "$BUILD_LOCAL" = false ]; then
+  if [ -f "$REPO_ROOT/dune-project" ] && [ -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
+    echo "--> Binaire compilé local détecté (_build/default/bin/marionnet.exe)."
+    echo "    Mode local activé automatiquement."
+    BUILD_LOCAL=true
+  fi
+fi
+
+# Si le mode local est demandé explicitement mais que le binaire n'est pas encore compilé
+if [ "$BUILD_LOCAL" = true ] && [ ! -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
+  echo "--> Binaire non trouvé. Compilation avec dune..."
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    su - "$SUDO_USER" -c "cd '$REPO_ROOT' && if command -v opam >/dev/null 2>&1; then opam exec -- dune build; else dune build; fi"
+  elif command -v opam >/dev/null 2>&1; then
+    (cd "$REPO_ROOT" && opam exec -- dune build)
+  else
+    (cd "$REPO_ROOT" && dune build)
+  fi
+fi
+
+# Récupération de la version depuis META si en mode local
+if [ "$BUILD_LOCAL" = true ] && [ -f "$REPO_ROOT/META" ]; then
+  META_VER="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" || true)"
+  if [ -n "$META_VER" ]; then
+    VERSION="$META_VER"
+  fi
+fi
+
 GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
 DEB_NAME="marionnet-all-in-one_${VERSION}_amd64.deb"
 WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
 BASE_RELEASE_TAG="v1.0.456"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 TARGET_USER="${SUDO_USER:-$USER}"
@@ -37,6 +97,7 @@ TARGET_USER="${SUDO_USER:-$USER}"
 echo "=========================================================="
 echo "    Installation de Marionnet $VERSION (All-in-One)"
 echo "=========================================================="
+echo "Mode : $([ "$BUILD_LOCAL" = true ] && echo "Local (sources du dépôt)" || echo "Release GitHub")"
 echo "Utilisateur cible pour les droits réseau : $TARGET_USER"
 
 # 0. Vérification de l'architecture du système hôte
@@ -75,13 +136,16 @@ download_file() {
   echo "    Téléchargement terminé avec succès."
 }
 
-# 1. Vérification / Téléchargement du paquet All-in-One
+# 1. Vérification / Construction / Téléchargement du paquet All-in-One
 if [ "$FORCE_DOWNLOAD" = true ]; then
   echo "--> Option --force-download : purge des paquets locaux..."
   rm -f "$DEB_NAME" "$WHEEZY_DEB"
 fi
 
-if [ -f "$DEB_NAME" ]; then
+if [ "$BUILD_LOCAL" = true ]; then
+  echo "--> Génération du paquet All-in-One avec les sources locales..."
+  "$SCRIPT_DIR/build-all-in-one.sh" "$VERSION"
+elif [ -f "$DEB_NAME" ]; then
   # Détection et purge automatique d'un ancien build incompatible lié à GLIBC 2.42
   if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.42"; then
     echo "--> Ancien paquet local détecté (compilé avec GLIBC 2.42 incompatible)."
@@ -97,7 +161,7 @@ if [ ! -f "$DEB_NAME" ]; then
     exit 1
   }
 else
-  echo "--> Paquet '$DEB_NAME' trouvé localement (compatible)."
+  echo "--> Paquet '$DEB_NAME' prêt."
 fi
 
 # 2. Vérification / Téléchargement de la distribution Debian Wheezy
@@ -162,7 +226,7 @@ fi
 
 echo "=========================================================="
 echo "--> Vérification de l'installation :"
-marionnet -v
+marionnet -v || true
 echo "=========================================================="
 echo "Marionnet $VERSION est installé et prêt à l'emploi !"
 echo "Lancez simplement 'marionnet' dans votre terminal ou via vos applications."

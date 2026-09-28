@@ -321,6 +321,9 @@
      (glob_files "scripts/marionnet-install.sh")
      (glob_files "scripts/marionnet-get-images")
      (glob_files "scripts/mrn-get-images")
+     ;; --- Marionnet auto-updater:
+     (glob_files "scripts/marionnet-update.sh")
+     (glob_files "scripts/marionnet-update")
      ;; --- Not listed here, and deliberately so: scripts/marionnet-completion.bash is not a
      ;; --- command, it is SOURCED -- its place on an installed system is a completion
      ;; --- directory, not $(PREFIX)/bin/. It is installed by the stanza just below, which

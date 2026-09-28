@@ -97,7 +97,7 @@ Homepage: https://www.marionnet.org
 Provides: marionnet (= $VERSION), marionnet-kernels (= $KERNEL_VER), marionnet-kernels-i386 (= $KERNEL_VER), marionnet-fs-guignol (= $FS_VER)
 Replaces: marionnet, marionnet-kernels, marionnet-kernels-i386, marionnet-fs-guignol
 Conflicts: marionnet (<< $VERSION)
-Depends: libc6 (>= 2.38), libcairo2, libfontconfig1, libfreetype6, libgdk-pixbuf-2.0-0, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libgtksourceview-3.0-1, libpango-1.0-0, libpangocairo-1.0-0, vde2, graphviz, uml-utilities, xterm, iproute2, sudo, x11-xserver-utils, xauth, jq, socat, dnsmasq-base, xz-utils
+Depends: libc6 (>= 2.38), libcairo2, libfontconfig1, libfreetype6, libgdk-pixbuf-2.0-0, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libgtksourceview-3.0-1, libpango-1.0-0, libpangocairo-1.0-0, vde2, graphviz, uml-utilities, xterm, iproute2, sudo, x11-xserver-utils, xauth, jq, socat, dnsmasq-base, xz-utils, curl
 Description: Complete standalone distribution of Marionnet (Virtual Network Laboratory)
  Marionnet lets a student define, configure and run a complete computer network
  -- machines, routers, switches, hubs, cables, gateways -- on a single host, with

@@ -67,6 +67,14 @@ let () =
    still single-threaded, before GTK and the global state. *)
 let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
+(* Early check for -u / --update: update Marionnet in CLI mode and exit *)
+let () =
+  if !Initialization.option_u = Some () then begin
+    let code = Updater.run_cli_update () in
+    exit code
+  end
+;;
+
 (* --- *)
 (* Arm script mode, if a control channel was requested. This has to happen here, before
    anything is allowed to show a window: the tap provider probe below already pops up a
@@ -321,18 +329,20 @@ let () =
         ()
 
 (* --- *)
-(** Show the splash (only when there is no project to open): *)
-let () = Log.printf "Loading module bin/marionnet.ml: about to show the splash screen\n"
+(** Show the splash (only when there is no project to open and requested by options): *)
+let () = Log.printf "Loading module bin/marionnet.ml: checking splash screen display\n"
 let () =
- if !Initialization.optional_file_to_open = None
-   then
-     (* The splash waits for a click or a keypress, and it is modal: in a driven session
-        nobody is there to dismiss it. show_splash already knows how to close itself
-        (splash.ml:112, a GMain.Timeout) — the parameter just had never been used. *)
-     (if Script_mode.enabled ()
-        then Splash.show_splash ~timeout:(Script_mode.auto_dismiss_ms ()) ()
-        else Splash.show_splash ~timeout:2500 ())
-   else ()
+  let should_show =
+    !Initialization.optional_file_to_open = None
+    && (Global_options.Show_welcome_popup.extract ()
+        || !Initialization.option_welcome = Some ())
+    && !Initialization.option_no_welcome = None
+  in
+  if should_show then
+    (if Script_mode.enabled ()
+       then Splash.show_splash ~timeout:(Script_mode.auto_dismiss_ms ()) ()
+       else Splash.show_splash ())
+  else ()
 
 (* --- *)
 (** Choose a reasonable temporary working directory: *)
@@ -757,6 +767,18 @@ let () = Log.printf "Loading module bin/marionnet.ml: about to starting the appl
    after the global state (st) and after the main window has been built, but before the
    GTK main loop, so that the first client finds a complete application. *)
 let () = Control_server.start_if_requested (st) in
+(* --- *)
+(* Auto-update background check:
+   Polls GitHub releases after window realization in a separate thread.
+   Skipped in exam mode, script mode, or if disabled. *)
+let () =
+  if !Initialization.option_exam = None
+     && not (Script_mode.enabled ())
+     && !Initialization.option_no_update_check = None
+     && not Initialization.no_auto_update
+  then
+    Updater.start_background_check_on_startup ()
+in
 (* --- *)
 main_loop ()
 

@@ -58,8 +58,12 @@ let () =
 
 (* Registering options: *)
 let option_v      = Argv.register_unit_option "v" ~aliases:["-version"] ~doc:"print version and exit" () ;;
+let option_u      = Argv.register_unit_option "u" ~aliases:["-update"]   ~doc:"check for updates, update Marionnet and exit" () ;;
+let option_no_update_check = Argv.register_unit_option "-no-update-check" ~doc:"disable automatic update check at startup" () ;;
 let option_debug  = Argv.register_unit_option "d" ~aliases:["-debug"]   ~doc:"activate messages for debugging" () ;;
 let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash message and exit" () ;;
+let option_welcome = Argv.register_unit_option "-welcome" ~aliases:["-show-welcome"] ~doc:"show the welcome window at startup" () ;;
+let option_no_welcome = Argv.register_unit_option "-no-welcome" ~aliases:["-no-splash"] ~doc:"do not show the welcome window at startup" () ;;
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
 (* Exam locks (journalisation-profonde, episode 22): in exam mode a component which has already
    run cannot be removed, because removing it throws away its states, its hostfs and its
@@ -172,7 +176,7 @@ let () = if !option_v = Some () then begin
  end;;
 
 let do_not_print_splash_message =
-  (!option_paths = Some ())
+  (!option_paths = Some () || !option_u = Some ())
 ;;
 
 (* else continue: *)
@@ -558,4 +562,14 @@ let keep_all_snapshots_when_saving =
   Configuration.extract_bool_variable_or
     ~default:false
     "MARIONNET_KEEP_ALL_SNAPSHOTS_WHEN_SAVING"
+
+let show_welcome_popup =
+  Configuration.extract_bool_variable_or
+    ~default:false
+    "MARIONNET_SHOW_SPLASH"
+
+let no_auto_update =
+  Configuration.extract_bool_variable_or
+    ~default:false
+    "MARIONNET_NO_AUTO_UPDATE"
 

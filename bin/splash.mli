@@ -21,8 +21,8 @@
    ---
    The whole window is BUILT AT MODULE INITIALIZATION, not by `show_splash': the widget
    tree, its labels and its click/key handlers are top-level side effects of splash.ml.
-   `show_splash' only maps the already existing window. There is therefore exactly ONE
-   splash window per process, and closing it destroys it for good.
+   `show_splash' maps and presents the already existing window. Closing it
+   hides the window without destroying it, so it can be reshown on demand.
    ---
    Not here: the "About" dialog, which is a different window entirely
    (bin/gui/gui_dialog_A_PROPOS.ml). *)
@@ -30,6 +30,6 @@
 (** Show the splash window. Being a Gtk+ call, it must run in the GTK main thread — from any
     other thread, go through [GMain_actor] (see docs/ARCHITECTURE.md, § Concurrence).
     @param timeout milliseconds after which the window closes by itself (a [GMain.Timeout]);
-    without it the window stays until the user clicks it or presses a key.
-    Calling it again after the window has been closed is a no-op on a destroyed widget. *)
+    without it the window stays until the user clicks it, presses a key, or clicks Close. *)
 val show_splash : ?timeout:int -> unit -> unit
+

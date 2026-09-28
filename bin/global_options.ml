@@ -138,3 +138,63 @@ module Keep_all_snapshots_when_saving =
   end);;
 let () = Keep_all_snapshots_when_saving.set Initialization.keep_all_snapshots_when_saving
 ;;
+
+module Show_welcome_popup =
+  Stateful_modules.Variable (struct
+    type t = bool
+    let name = Some "show_welcome_popup"
+  end);;
+let () = Show_welcome_popup.set Initialization.show_welcome_popup
+;;
+
+let set_show_welcome_popup value =
+  with_mutex (fun () ->
+    Show_welcome_popup.set value;
+    try
+      let home =
+        try Sys.getenv "HOME" with Not_found ->
+        try "/home/" ^ (Sys.getenv "USER") with Not_found -> "."
+      in
+      let dot_marionnet = Filename.concat home ".marionnet" in
+      let conf_file = Filename.concat dot_marionnet "marionnet.conf" in
+      if not (Sys.file_exists dot_marionnet) then Unix.mkdir dot_marionnet 0o755;
+      let lines =
+        if Sys.file_exists conf_file then begin
+          let ic = open_in conf_file in
+          let rec loop acc =
+            try
+              let l = input_line ic in
+              loop (l :: acc)
+            with End_of_file ->
+              close_in ic;
+              List.rev acc
+          in
+          loop []
+        end else []
+      in
+      let var_line = Printf.sprintf "MARIONNET_SHOW_SPLASH=%b" value in
+      let prefix = "MARIONNET_SHOW_SPLASH=" in
+      let found = ref false in
+      let updated_lines =
+        List.map (fun l ->
+          let trimmed = String.trim l in
+          if String.length trimmed >= String.length prefix
+             && String.sub trimmed 0 (String.length prefix) = prefix
+          then begin
+            found := true;
+            var_line
+          end else l
+        ) lines
+      in
+      let final_lines =
+        if !found then updated_lines
+        else updated_lines @ [var_line]
+      in
+      let oc = open_out conf_file in
+      List.iter (fun l -> output_string oc (l ^ "\n")) final_lines;
+      close_out oc
+    with e ->
+      Marionnet_log.printf1 "Cannot persist MARIONNET_SHOW_SPLASH preference: %s\n" (Printexc.to_string e)
+  )
+;;
+
