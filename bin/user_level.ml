@@ -2180,14 +2180,14 @@ class network
      end in tip prefix 1
 
  method get_node_by_name n =
-   try List.find (fun x->x#get_name=n) (self#get_node_list)  with _ -> failwith ("get_node_by_name "^n)
+   try List.find (fun x->x#get_name=n) (self#get_node_list) with Not_found -> failwith ("get_node_by_name "^n)
 
  method get_cable_by_name n =
-   try List.find (fun x->x#get_name=n) self#get_cable_list with _ -> failwith ("get_cable_by_name "^n)
+   try List.find (fun x->x#get_name=n) self#get_cable_list with Not_found -> failwith ("get_cable_by_name "^n)
 
  method get_component_by_name ?kind n =
    let components = self#components_of_kind ?kind () in
-   try List.find (fun x->x#get_name=n) components with _ -> failwith ("get_component_by_name "^n)
+   try List.find (fun x->x#get_name=n) components with Not_found -> failwith ("get_component_by_name "^n)
 
  method involved_node_and_port_index_list =
    List.flatten (List.map (fun c->c#involved_node_and_port_index_list) self#get_cable_list)
