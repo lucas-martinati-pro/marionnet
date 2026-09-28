@@ -166,8 +166,7 @@ module Make_menus (Params : sig
 
     let reaction name =
       let d = (st#network#get_node_by_name name) in
-      let g = ((Obj.magic d):> User_level_world_gateway.world_gateway) in
-      let action () = g#destroy in
+      let action () = d#destroy in
       st#network_change action ();
 
   end

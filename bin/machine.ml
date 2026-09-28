@@ -277,8 +277,7 @@ module Make_menus (Params : sig
 
     let reaction name =
       let d = (st#network#get_node_by_name name) in
-      let m = ((Obj.magic d):> User_level_machine.machine) in
-      let action () = m#destroy in
+      let action () = d#destroy in
       st#network_change action ();
 
   end

@@ -132,7 +132,6 @@ module Make_menus
 
     let dialog name () =
      let c = (st#network#get_cable_by_name name) in
-     let c = ((Obj.magic c):> User_level_cable.cable) in
      let title = match crossover with
       | false -> ((s_ "Modify straight cable")^" "^name)
       | true  -> ((s_ "Modify crossover cable")^" "^name)
@@ -157,7 +156,6 @@ module Make_menus
 
     let reaction r =
       let c = (st#network#get_cable_by_name r.old_name) in
-      let c = ((Obj.magic c):> User_level_cable.cable) in
       (* Make a new cable; it should have a different identity from the old one, and it's
          important that it's initialized anew, to get the reference counter right: *)
       (* B5(c) (episode 12, docs/refonte-automate-composants.md): [c#destroy] only *schedules*
@@ -197,7 +195,6 @@ module Make_menus
 
     let reaction name =
       let c = (st#network#get_cable_by_name name) in
-      let c = ((Obj.magic c):> User_level_cable.cable) in
       let action () = c#destroy in
       st#network_change action ();
 

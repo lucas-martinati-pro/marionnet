@@ -116,8 +116,7 @@ module Make_menus (Params : sig
 
     let reaction name =
       let d = (st#network#get_node_by_name name) in
-      let h = ((Obj.magic d):> User_level_cloud.cloud) in
-      let action () = h#destroy in
+      let action () = d#destroy in
       st#network_change action ();
 
   end
