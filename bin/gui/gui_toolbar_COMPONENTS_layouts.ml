@@ -162,6 +162,63 @@ module Layout_for_network_node
 
 end
 
+module Lifecycle
+ (State : State)
+ (Dev : sig val devkind : User_level.devkind val kind_name : string end)
+ = struct
+
+  let st = State.st
+
+  module Remove = struct
+    type t = string
+    let to_string = (Printf.sprintf "name = %s\n")
+    let dynlist () = st#network#get_node_names_that_can_destroy ~devkind:Dev.devkind ()
+    let dialog name () =
+      Gui_bricks.Dialog.yes_or_cancel_question
+        ~title:(s_ "Remove")
+        ~markup:(Printf.sprintf (f_ "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name Dev.kind_name)
+        ~context:name
+        ()
+    let reaction name =
+      let d = (st#network#get_node_by_name name) in
+      let action () = d#destroy in
+      st#network_change action ()
+  end
+
+  module Startup = struct
+    type t = string
+    let to_string = (Printf.sprintf "name = %s\n")
+    let dynlist () = st#network#get_node_names_that_can_startup ~devkind:Dev.devkind ()
+    let dialog     = Menu_factory.no_dialog_but_simply_return_name
+    let reaction name = (st#network#get_node_by_name name)#startup
+  end
+
+  module Stop = struct
+    type t = string
+    let to_string = (Printf.sprintf "name = %s\n")
+    let dynlist () = st#network#get_node_names_that_can_gracefully_shutdown ~devkind:Dev.devkind ()
+    let dialog = Menu_factory.no_dialog_but_simply_return_name
+    let reaction name = (st#network#get_node_by_name name)#gracefully_shutdown
+  end
+
+  module Suspend = struct
+    type t = string
+    let to_string = (Printf.sprintf "name = %s\n")
+    let dynlist () = st#network#get_node_names_that_can_suspend ~devkind:Dev.devkind ()
+    let dialog = Menu_factory.no_dialog_but_simply_return_name
+    let reaction name = (st#network#get_node_by_name name)#suspend
+  end
+
+  module Resume = struct
+    type t = string
+    let to_string = (Printf.sprintf "name = %s\n")
+    let dynlist () = st#network#get_node_names_that_can_resume ~devkind:Dev.devkind ()
+    let dialog = Menu_factory.no_dialog_but_simply_return_name
+    let reaction name = (st#network#get_node_by_name name)#resume
+  end
+
+end
+
 module Layout_for_network_node_with_state
  (State             : sig val st:State.globalState end)
  (Toolbar_entry     : Toolbar_entry)

@@ -563,63 +563,10 @@ module Make_menus (Params : sig
 
   end (* Properties *)
 
-  module Remove = struct
-    type t = string (* just the name *)
-    let to_string = (Printf.sprintf "name = %s\n")
-
-    let dynlist () = st#network#get_node_names_that_can_destroy ~devkind:`Router ()
-
-    let dialog name () =
-      Gui_bricks.Dialog.yes_or_cancel_question
-        ~title:(s_ "Remove")
-        ~markup:(Printf.sprintf (f_ "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name (s_ "router"))
-        ~context:name
-        ()
-
-    let reaction name =
-      let d = (st#network#get_node_by_name name) in
-      let action () = d#destroy in
-      st#network_change action ();
-
-  end
-
-  module Startup = struct
-    type t = string (* just the name *)
-    let to_string = (Printf.sprintf "name = %s\n")
-    (* Not an alias of Properties.dynlist: each menu reads its own guard (user_level.ml). *)
-    let dynlist () = st#network#get_node_names_that_can_startup ~devkind:`Router ()
-    let dialog     = Menu_factory.no_dialog_but_simply_return_name
-    let reaction name = (st#network#get_node_by_name name)#startup
-
-  end
-
-  module Stop = struct
-    type t = string (* just the name *)
-    let to_string = (Printf.sprintf "name = %s\n")
-    let dynlist () = st#network#get_node_names_that_can_gracefully_shutdown ~devkind:`Router ()
-    let dialog = Menu_factory.no_dialog_but_simply_return_name
-    let reaction name = (st#network#get_node_by_name name)#gracefully_shutdown
-
-  end
-
-  module Suspend = struct
-    type t = string (* just the name *)
-    let to_string = (Printf.sprintf "name = %s\n")
-    let dynlist () = st#network#get_node_names_that_can_suspend ~devkind:`Router ()
-    let dialog = Menu_factory.no_dialog_but_simply_return_name
-    let reaction name = (st#network#get_node_by_name name)#suspend
-
-  end
-
-  module Resume = struct
-    type t = string (* just the name *)
-
-    let to_string = (Printf.sprintf "name = %s\n")
-    let dynlist () = st#network#get_node_names_that_can_resume ~devkind:`Router ()
-    let dialog = Menu_factory.no_dialog_but_simply_return_name
-    let reaction name = (st#network#get_node_by_name name)#resume
-
-  end
+  include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
+    let devkind = `Router
+    let kind_name = s_ "router"
+  end)
 
  module Create_entries =
   Gui_toolbar_COMPONENTS_layouts.Layout_for_network_node (Params) (Toolbar_entry) (Add) (Properties) (Remove) (Startup) (Stop) (Suspend) (Resume)
