@@ -99,6 +99,8 @@ module User_level_machine : sig
       (* --- *)
       method get_epithet                     : [ `distrib ] Disk.epithet
       method set_epithet                     : [ `distrib ] Disk.epithet -> unit
+      method set_distribution_and_variant   : distribution:[ `distrib ] Disk.epithet ->
+                                               variant:string option -> unit
       (* --- *)
       method get_filesystem_file_name        : Disk.realpath
       method get_filesystem_relay_script     : Disk.filename option
@@ -240,8 +242,18 @@ module User_level_machine : sig
       method is_xnest_enabled                : bool
       (* --- *)
       method update_machine_with :
-        name:string -> label:string -> memory:int -> port_no:int -> kernel:[ `kernel ] Disk.epithet ->
-        rc_config:bool * string ->  console_no:int -> autologin:bool -> terminal:string -> unit
+        name:string ->
+        label:string ->
+        memory:int ->
+        port_no:int ->
+        distribution:[ `distrib ] Disk.epithet ->
+        variant:string option ->
+        kernel:[ `kernel ] Disk.epithet ->
+        rc_config:bool * string ->
+        console_no:int ->
+        autologin:bool ->
+        terminal:string ->
+        unit
       (* --- *)
       method update_virtual_machine_with     : name:string -> port_no:int -> [ `kernel ] Disk.epithet -> unit
       method update_with                     : name:string -> label:string -> port_no:int -> unit

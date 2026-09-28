@@ -179,6 +179,29 @@ module Make_menus (Params : sig
     include Data
     let dynlist () = st#network#get_node_names_that_can_modify ~devkind:`Machine ()
 
+    let ok_callback m t =
+      match Add.ok_callback t with
+      | None -> None
+      | Some data ->
+          let distrib_or_variant_changed =
+            (data.distribution <> m#get_epithet) || (data.variant <> m#get_variant)
+          in
+          if distrib_or_variant_changed then begin
+            let machine_name = Glib.Markup.escape_text m#get_name in
+            let question =
+              Printf.sprintf
+                (f_ "Changing the distribution or variant will reset the disk and history of machine \"%s\".\nAre you sure you want to proceed?")
+                machine_name
+            in
+            match Gui_bricks.Dialog.yes_or_cancel_question
+                    ~title:(s_ "Warning: disk reset")
+                    ~markup:question
+                    ~context:() () with
+            | Some () -> Some data
+            | None -> None
+          end else
+            Some data
+
     let dialog name () =
      let m = (st#network#get_node_by_name name) in
      let m = ((Obj.magic m):> User_level_machine.machine) in
@@ -205,8 +228,8 @@ module Make_menus (Params : sig
        ~console_no
        ~autologin
        ~terminal
-       ~updating:() (* the user cannot change the distrib & variant *)
-       ~ok_callback:Add.ok_callback  ()
+       ~updating:()
+       ~ok_callback:(ok_callback m) ()
 
 
     let reaction {
@@ -230,6 +253,7 @@ module Make_menus (Params : sig
         m#update_machine_with
           ~name ~label
           ~memory ~port_no
+          ~distribution ~variant
 	  ~kernel
           ~rc_config
 	  ~console_no ~autologin ~terminal
@@ -393,7 +417,7 @@ let make
       let packing = (packing_distribution, packing_variant, packing_kernel) in
       Gui_bricks.make_combo_boxes_of_vm_installations
         ~on_distrib_change:(fun distrib -> List.iter (fun f -> f distrib) !on_distrib_change)
-        ?distribution ?variant ?kernel ?updating
+        ?distribution ?variant ?kernel
         ~packing
         vm_installations
     in
@@ -449,10 +473,19 @@ let make
     (* Register `memory' callback and set it according to current distribution:  *)
     let () =
       let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
+        let current_mem = memory#value in
         let memory_min = (vm_installations#memory_min_size_of d) in
         let () = Option.iter (fun x -> memory#adjustment#set_bounds ~lower:(float_of_int x) ()) memory_min in
         let memory_suggested = (vm_installations#memory_suggested_size_of d) in
-        let () = Option.iter (fun x -> memory#set_value (float_of_int x)) memory_suggested in
+        let () =
+          match updating, memory_min with
+          | None, _ ->
+              Option.iter (fun sug -> memory#set_value (float_of_int sug)) memory_suggested
+          | Some (), Some min_val when current_mem < float_of_int min_val ->
+              let target = match memory_suggested with Some s -> max s min_val | None -> min_val in
+              memory#set_value (float_of_int target)
+          | _ -> ()
+        in
         ()
       in
       on_distrib_change := (callback)::!on_distrib_change;
@@ -875,16 +908,39 @@ class machine
    self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no self#get_kernel;
    self_as_node_with_defects#update_structural_with ~name ~port_no
 
- method update_machine_with ~name ~label ~memory ~port_no ~kernel ~rc_config ~console_no ~autologin ~terminal =
-   (* first action: *)
-   self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no kernel;
-   (* then we can set the object property "name" (read by #get_name): *)
+ method update_machine_with
+   ~name
+   ~label
+   ~memory
+   ~port_no
+   ~distribution
+   ~variant
+   ~kernel
+   ~rc_config
+   ~console_no
+   ~autologin
+   ~terminal
+   =
+   if not self#can_modify then
+     self#logged_failwith "Cannot modify machine %s while it is running" self#get_name;
+   (* Pre-validate distribution, variant, and kernel before applying any changes
+      so that any validation error fails atomically before mutating state.
+      (Note: set_distribution_and_variant also validates independently as a public method.) *)
+   let checked_distrib = self#check_epithet distribution in
+   let checked_variant = Option.map (self#check_variant_of checked_distrib) variant in
+   let checked_kernel = self#check_kernel kernel in
+   (* First action: update structural properties and rename *)
+   self_as_virtual_machine_with_history_and_ifconfig#update_virtual_machine_with ~name ~port_no checked_kernel;
+   (* Then set object properties: *)
    self_as_node_with_defects#update_with ~name ~label ~port_no;
    self#set_memory memory;
    self#set_rc_config (rc_config);
    self#set_console_no console_no;
    self#set_autologin autologin;
    self#set_terminal terminal;
+   (* Finally, apply distribution and variant change; if changed, history is safely reset
+      under the already-migrated new name: *)
+   self#set_distribution_and_variant ~distribution:checked_distrib ~variant:checked_variant
 
  (* ---------------------------------------------------------------------
         Code section about X11-forwarding based on pseudo-terminals:

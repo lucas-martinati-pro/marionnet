@@ -532,8 +532,7 @@ let make_combo_boxes_of_vm_installations
         else x
    in
   let (packing_distribution, packing_variant, packing_kernel) = packing in
-  (* The user can't change filesystem and variant any more once the device has been created.
-     TODO: release this constraint. *)
+  (* For devices that pass [?updating] (such as routers), the filesystem and variant remain locked after creation. *)
   let distribution_widget =
      let distribution_choices =
        match updating with

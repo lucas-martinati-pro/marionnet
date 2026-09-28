@@ -616,7 +616,8 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method private check_epithet  : [ `distrib ] Disk.epithet -> [ `distrib ] Disk.epithet
     method private check_kernel   : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
     method private check_terminal : string -> string
-    method private check_variant  : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet
+    method private check_variant_of : [ `distrib ] Disk.epithet -> [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet
+    method private check_variant    : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet
     method create_cow_file_name_and_thunk_to_get_the_source : string * (unit -> Disk.realpath option)
     method destroy_my_history : unit
     method destroy_my_ifconfig : unit
@@ -656,6 +657,7 @@ class virtual virtual_machine_with_history_and_ifconfig :
     method remap_absent_variant_at_import : [ `variant ] Disk.epithet -> [ `variant ] Disk.epithet option
     method remap_obsolete_kernel_at_import : [ `kernel ] Disk.epithet -> [ `kernel ] Disk.epithet
     (* --- *)
+    method set_distribution_and_variant : distribution:[ `distrib ] Disk.epithet -> variant:string option -> unit
     method set_epithet : [ `distrib ] Disk.epithet -> unit
     method set_kernel : [ `kernel ] Disk.epithet -> unit
     method set_terminal : string -> unit

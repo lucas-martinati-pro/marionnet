@@ -1504,12 +1504,25 @@ class virtual virtual_machine_with_history_and_ifconfig
   initializer ignore (Option.map (self#check_variant) variant)
   method get_variant = variant
   method get_variant_as_string = match variant with None -> "" | Some x -> x
+  method set_distribution_and_variant ~distribution ~variant:new_variant =
+    let new_distrib = self#check_epithet distribution in
+    let checked_variant = Option.map (self#check_variant_of new_distrib) new_variant in
+    let distrib_changed = (new_distrib <> epithet) in
+    let variant_changed = (checked_variant <> variant) in
+    if distrib_changed || variant_changed then begin
+      self#destroy_my_history;
+      epithet <- new_distrib;
+      variant <- checked_variant;
+      self#add_my_history;
+    end
+
   method set_variant (x:string option) = variant <- (Option.map (self#check_variant) x)
-  method private check_variant x =
-   let v = vm_installations#variants_of epithet in
+  method private check_variant_of distrib x =
+   let v = vm_installations#variants_of distrib in
    match v#epithet_exists x with
    | true -> x
    | false -> self#logged_failwith "the variant \"%s\" is not available" x
+  method private check_variant x = self#check_variant_of epithet x
 
  method get_variant_realpath : string option =
    Option.map (vm_installations#variants_of self#get_epithet)#realpath_of_epithet self#get_variant
