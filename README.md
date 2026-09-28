@@ -24,30 +24,56 @@ Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad
    - Plus besoin de saisir `root` et `root` à chaque ouverture de terminal de machine ou routeur.
    - Le shell s'ouvre directement sur le prompt `root@nom:~#`.
    - Option activée par défaut, configurable directement dans la fenêtre de création ou de modification de chaque machine et routeur (section *Accès* -> *Connexion auto (root)*).
+4. **Système de mise à jour automatique intégré (Auto-Update)** :
+   - **Mise à jour en un clic ou en CLI** : Mettez à jour Marionnet d'une simple commande `marionnet -u` (ou `marionnet --update`), ou via l'utilitaire `marionnet-update`.
+   - **Vérification en arrière-plan** : À l'ouverture de l'application graphique, une vérification non bloquante contacte GitHub Releases et propose la mise à jour immédiate si une nouvelle version existe.
+   - **Menu Aide** : Entrée *« Rechercher des mises à jour... »* accessible à tout moment dans le menu supérieur.
+5. **Démarrage instantané & Fenêtre de bienvenue configurable** :
+   - **Démarrage instantané** : Suppression du délai bloquant de 2500 ms de la popup de bienvenue. Marionnet s'ouvre désormais immédiatement.
+   - **Option au menu** : Case à cocher persistante dans le menu *Options* -> *« Afficher la fenêtre de bienvenue au démarrage »* (mémorisée dans `~/.marionnet/marionnet.conf`).
+   - **Fenêtre de bienvenue à la demande** : Consultable à tout moment depuis *Aide* -> *« Bienvenue dans Marionnet »*, dotée d'un bouton Fermer explicite.
+   - Options CLI `--welcome` et `--no-welcome`.
+6. **Modification des distributions des machines à l'arrêt** :
+   - Possibilité de changer la distribution (`Guignol`, `Debian Wheezy`, etc.) ou la variante d'une machine arrêtée sans devoir la détruire et la recréer, avec confirmation de réinitialisation du disque COW.
 
 ---
 
-
 ## 📦 Installation ultra simple (Ubuntu 22.04 / 24.04 / 25.04+)
 
-Clonez le dépôt (ou téléchargez le dossier `dist/`), puis lancez le script d'installation :
+Clonez le dépôt, puis lancez le script d'installation (depuis la racine ou depuis `dist/`) :
 
 ```bash
 git clone https://github.com/lucas-martinati-pro/marionnet.git
-cd marionnet/dist
+cd marionnet
 ./install.sh
 ```
 
 Le script s'occupe de tout automatiquement :
 - Active l'architecture 32-bit `i386` si nécessaire
 - Télécharge et installe le paquet tout-en-un ainsi que l'image système Debian Wheezy
-- Installe toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, etc.)
+- Installe toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `curl`, etc.)
 - Configure les droits sudoers pour votre utilisateur
 - Valide l'installation (`marionnet version 1.0.456`)
 
 #### ⚙️ Options du script `install.sh` :
-- `./install.sh --clean` : Force la suppression des paquets `.deb` locaux en cache et retélécharge les versions officielles propres depuis GitHub Releases (recommandé en cas de mise à jour ou de cache corrompu).
+- `./install.sh` : Installation standard via les paquets pré-compilés GitHub Releases.
+- `./install.sh -b` (ou `--build`) : Installe directement le binaire compilé localement dans le dépôt (pratique pour tester des modifications locales sans attendre de release).
+- `./install.sh --clean` : Force la suppression des paquets `.deb` locaux en cache et retélécharge les versions officielles propres.
 - `./install.sh --without-wheezy` : Installation allégée sans l'image Debian Wheezy (uniquement le système invité minimal Guignol).
+
+---
+
+## 🆙 Mises à jour
+
+Pour mettre à jour Marionnet vers la dernière version :
+
+```bash
+marionnet -u
+# ou directement :
+marionnet --update
+```
+
+L'utilitaire télécharge la dernière version depuis GitHub, met à jour le paquet tout-en-un et relance la configuration en conservant vos réglages et vos projets.
 
 ### Installation manuelle (alternative) :
 ```bash
