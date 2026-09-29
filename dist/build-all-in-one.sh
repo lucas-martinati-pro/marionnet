@@ -5,13 +5,18 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-# 1. Détermination de la version cible
+# 1. Détermination dynamique de la version cible (depuis bin/meta.ml.maker.sh ou META)
 if [ -n "${1:-}" ]; then
   VERSION="$1"
-elif [ -f "$REPO_ROOT/META" ]; then
-  VERSION="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" || echo "1.0.456")"
-else
-  VERSION="1.0.456"
+elif [ -x "$REPO_ROOT/bin/meta.ml.maker.sh" ] || [ -f "$REPO_ROOT/bin/meta.ml.maker.sh" ]; then
+  VERSION="$(bash "$REPO_ROOT/bin/meta.ml.maker.sh" --print-version 2>/dev/null || true)"
+fi
+if [ -z "${VERSION:-}" ] && [ -f "$REPO_ROOT/META" ]; then
+  VERSION="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" 2>/dev/null || true)"
+fi
+if [ -z "${VERSION:-}" ] || [ "$VERSION" = "1.0.x" ]; then
+  echo "[-] ERREUR : Impossible de déterminer automatiquement la version du projet depuis META/VCS." >&2
+  exit 1
 fi
 
 KERNEL_VER="6.12.95"
@@ -147,3 +152,11 @@ echo "--> Construction du paquet $AIO_DEB..."
 dpkg-deb --root-owner-group --build -Zxz "$BUILD_DIR/root" "$AIO_DEB" >/dev/null
 
 echo "--> Paquet créé avec succès : $SCRIPT_DIR/$AIO_DEB ($(ls -lh "$AIO_DEB" | awk '{print $5}'))"
+
+# 4. Génération automatique du fichier de sommes de contrôle SHA256SUMS
+echo "--> Génération des sommes de contrôle SHA256 (SHA256SUMS)..."
+sha256sum "$AIO_DEB" > "$SCRIPT_DIR/SHA256SUMS"
+if [ -f "$SCRIPT_DIR/marionnet-fs-debian-wheezy_08367_all.deb" ]; then
+  sha256sum "$SCRIPT_DIR/marionnet-fs-debian-wheezy_08367_all.deb" >> "$SCRIPT_DIR/SHA256SUMS"
+fi
+echo "--> Fichier SHA256SUMS généré dans : $SCRIPT_DIR/SHA256SUMS"

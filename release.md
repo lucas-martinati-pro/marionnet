@@ -45,13 +45,14 @@ Clonez le dépôt, puis lancez le script d'installation :
 
 ```bash
 git clone https://github.com/lucas-martinati-pro/marionnet.git
-cd marionnet/dist
+cd marionnet
 ./install.sh
 ```
 
 Le script `install.sh` s'occupe de tout automatiquement :
 - Active l'architecture 32-bit (`i386`) si nécessaire.
-- Télécharge automatiquement le paquet Debian tout-en-un et la distribution invitée **Debian Wheezy** depuis GitHub Releases s'ils ne sont pas présents localement.
+- Télécharge automatiquement les paquets Debian depuis GitHub Releases s'ils ne sont pas présents localement.
+- **Vérifie l'intégrité cryptographique SHA256** des paquets via `SHA256SUMS`.
 - Installe toutes les dépendances requises (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `socat`, etc.).
 - Configure les règles réseau sudoers pour votre utilisateur.
 - Valide immédiatement l'installation (`marionnet version 1.0.457`).
@@ -64,14 +65,18 @@ Le script `install.sh` s'occupe de tout automatiquement :
 ### 💻 Alternative : Installation manuelle
 
 ```bash
-# 1. Télécharger les paquets
+# 1. Télécharger les paquets et les sommes de contrôle
+wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/SHA256SUMS
 wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-all-in-one_1.0.457_amd64.deb
 wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-fs-debian-wheezy_08367_all.deb
 
-# 2. Activer l'architecture i386 et mettre à jour APT
+# 2. Vérifier l'intégrité SHA256
+sha256sum -c SHA256SUMS --ignore-missing
+
+# 3. Activer l'architecture i386 et mettre à jour APT
 sudo dpkg --add-architecture i386
 sudo apt update
 
-# 3. Installer les paquets et leurs dépendances
+# 4. Installer les paquets et leurs dépendances
 sudo apt install -y ./marionnet-all-in-one_1.0.457_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
 ```

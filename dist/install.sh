@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration par défaut (surchargable via argument ou variables d'environnement)
-VERSION="${MARIONNET_VERSION:-1.0.457}"
+VERSION="${MARIONNET_VERSION:-}"
 INSTALL_WHEEZY=true
 FORCE_DOWNLOAD=false
 BUILD_LOCAL=false
@@ -77,15 +77,44 @@ if [ "$BUILD_LOCAL" = true ] && [ ! -f "$REPO_ROOT/_build/default/bin/marionnet.
   fi
 fi
 
-# Récupération de la version depuis META si en mode local
-if [ "$BUILD_LOCAL" = true ] && [ -f "$REPO_ROOT/META" ]; then
-  META_VER="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" || true)"
-  if [ -n "$META_VER" ]; then
-    VERSION="$META_VER"
-  fi
-fi
-
 GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
+
+# Résolution dynamique de la version
+resolve_version() {
+  if [ -n "${VERSION:-}" ]; then
+    return 0
+  fi
+  # 1. Via le script maker du dépôt si présent
+  if [ -f "$REPO_ROOT/bin/meta.ml.maker.sh" ]; then
+    local v
+    v="$(bash "$REPO_ROOT/bin/meta.ml.maker.sh" --print-version 2>/dev/null || true)"
+    if [ -n "$v" ] && [ "$v" != "1.0.x" ] && [ "$v" != "trunk" ]; then
+      VERSION="$v"
+      return 0
+    fi
+  fi
+  # 2. Via META si présent
+  if [ -f "$REPO_ROOT/META" ]; then
+    local v
+    v="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" 2>/dev/null || true)"
+    if [ -n "$v" ] && [ "$v" != "1.0.x" ] && [ "$v" != "trunk" ]; then
+      VERSION="$v"
+      return 0
+    fi
+  fi
+  # 3. Via la dernière release GitHub
+  local latest_tag
+  latest_tag="$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null | grep -Po '(?<="tag_name":\s*")[^"]*' || true)"
+  if [ -n "$latest_tag" ]; then
+    VERSION="${latest_tag#v}"
+    return 0
+  fi
+  # 4. Fallback
+  VERSION="1.0.457"
+}
+
+resolve_version
+
 DEB_NAME="marionnet-all-in-one_${VERSION}_amd64.deb"
 WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
 BASE_RELEASE_TAG="v1.0.456"
@@ -114,32 +143,86 @@ download_file() {
   local target_file="$1"
   local url="$2"
   local desc="$3"
+  local fail_on_error="${4:-true}"
 
   echo "--> Téléchargement : $desc..."
   echo "    Source : $url"
 
+  local dl_ok=false
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --progress-bar "$url" -o "$target_file"
+    if curl -fL --progress-bar "$url" -o "$target_file"; then
+      dl_ok=true
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    wget -q --show-progress -O "$target_file" "$url"
+    if wget -q --show-progress -O "$target_file" "$url"; then
+      dl_ok=true
+    fi
   else
     echo "    curl ou wget non trouvé. Installation de curl via apt..."
     sudo apt update && sudo apt install -y curl
-    curl -fL --progress-bar "$url" -o "$target_file"
+    if curl -fL --progress-bar "$url" -o "$target_file"; then
+      dl_ok=true
+    fi
   fi
 
-  if [ ! -s "$target_file" ]; then
-    echo "[-] ERREUR : Le téléchargement de $target_file a échoué ou le fichier est vide." >&2
+  if [ "$dl_ok" = false ] || [ ! -s "$target_file" ]; then
     rm -f "$target_file"
-    return 1
+    if [ "$fail_on_error" = true ]; then
+      echo "[-] ERREUR : Le téléchargement de $target_file a échoué ou le fichier est vide." >&2
+      return 1
+    else
+      return 1
+    fi
   fi
   echo "    Téléchargement terminé avec succès."
+  return 0
+}
+
+# Fonction de vérification des sommes de contrôle SHA256
+verify_checksum() {
+  local target_file="$1"
+  local sha_file="$SCRIPT_DIR/SHA256SUMS"
+  local base_name
+  base_name="$(basename "$target_file")"
+
+  if [ ! -f "$target_file" ]; then
+    return 1
+  fi
+
+  # Télécharger SHA256SUMS depuis GitHub Releases si absent
+  if [ ! -f "$sha_file" ]; then
+    local sha_url="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/SHA256SUMS"
+    download_file "$sha_file" "$sha_url" "Sommes de contrôle SHA256" false || true
+  fi
+
+  if [ -f "$sha_file" ]; then
+    local expected_hash
+    expected_hash="$(grep -E "[[:space:]]${base_name}\$" "$sha_file" | awk '{print $1}' || true)"
+    if [ -n "$expected_hash" ]; then
+      echo "--> Vérification de l'intégrité SHA256 ($base_name)..."
+      local actual_hash
+      actual_hash="$(sha256sum "$target_file" | awk '{print $1}')"
+      if [ "$actual_hash" = "$expected_hash" ]; then
+        echo "    ✓ Checksum SHA256 valide : $actual_hash"
+        return 0
+      else
+        echo "[-] ERREUR : L'intégrité de $base_name a échoué (checksum SHA256 invalide) !" >&2
+        echo "    Attendu : $expected_hash" >&2
+        echo "    Obtenu  : $actual_hash" >&2
+        rm -f "$target_file"
+        return 1
+      fi
+    else
+      echo "    [i] Note : $base_name non présent dans SHA256SUMS (vérification ignorée)."
+    fi
+  fi
+  return 0
 }
 
 # 1. Vérification / Construction / Téléchargement du paquet All-in-One
 if [ "$FORCE_DOWNLOAD" = true ]; then
   echo "--> Option --force-download : purge des paquets locaux..."
-  rm -f "$DEB_NAME" "$WHEEZY_DEB"
+  rm -f "$DEB_NAME" "$WHEEZY_DEB" "$SCRIPT_DIR/SHA256SUMS"
 fi
 
 if [ "$BUILD_LOCAL" = true ]; then
@@ -151,6 +234,9 @@ elif [ -f "$DEB_NAME" ]; then
     echo "--> Ancien paquet local détecté (compilé avec GLIBC 2.42 incompatible)."
     echo "    Purge automatique et téléchargement du paquet officiel compatible..."
     rm -f "$DEB_NAME"
+  elif ! verify_checksum "$DEB_NAME"; then
+    echo "--> Paquet local $DEB_NAME invalide ou corrompu. Retéléchargement..."
+    rm -f "$DEB_NAME"
   fi
 fi
 
@@ -158,6 +244,10 @@ if [ ! -f "$DEB_NAME" ]; then
   RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${DEB_NAME}"
   download_file "$DEB_NAME" "$RELEASE_URL" "Paquet All-in-One Marionnet (v$VERSION)" || {
     echo "    Vérifiez que la release v${VERSION} existe bien sur https://github.com/${GITHUB_REPO}/releases" >&2
+    exit 1
+  }
+  verify_checksum "$DEB_NAME" || {
+    echo "[-] ERREUR : Le paquet téléchargé est corrompu." >&2
     exit 1
   }
 else
@@ -172,18 +262,31 @@ if [ -f /usr/share/marionnet/filesystems/machine-debian-wheezy-08367 ] || dpkg -
 fi
 
 if [ "$INSTALL_WHEEZY" = true ] && [ "$WHEEZY_INSTALLED" = false ]; then
+  if [ -f "$WHEEZY_DEB" ]; then
+    if ! verify_checksum "$WHEEZY_DEB"; then
+      echo "--> Paquet Wheezy local $WHEEZY_DEB corrompu. Retéléchargement..."
+      rm -f "$WHEEZY_DEB"
+    fi
+  fi
   if [ ! -f "$WHEEZY_DEB" ]; then
     WHEEZY_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${WHEEZY_DEB}"
-    if ! download_file "$WHEEZY_DEB" "$WHEEZY_URL" "Distribution Debian Wheezy (Apache2, navigateurs web, etc.)"; then
+    if ! download_file "$WHEEZY_DEB" "$WHEEZY_URL" "Distribution Debian Wheezy (Apache2, navigateurs web, etc.)" false; then
       WHEEZY_FALLBACK="https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/${WHEEZY_DEB}"
       echo "--> Téléchargement depuis la release de base ($BASE_RELEASE_TAG)..."
-      download_file "$WHEEZY_DEB" "$WHEEZY_FALLBACK" "Distribution Debian Wheezy (fallback)" || {
+      download_file "$WHEEZY_DEB" "$WHEEZY_FALLBACK" "Distribution Debian Wheezy (fallback)" false || {
         echo "[-] Avertissement : Impossible de récupérer $WHEEZY_DEB. L'installation continuera sans Debian Wheezy." >&2
         INSTALL_WHEEZY=false
       }
     fi
+    if [ -f "$WHEEZY_DEB" ]; then
+      verify_checksum "$WHEEZY_DEB" || {
+        echo "[-] Avertissement : Le fichier $WHEEZY_DEB téléchargé est invalide. Ignoré." >&2
+        rm -f "$WHEEZY_DEB"
+        INSTALL_WHEEZY=false
+      }
+    fi
   else
-    echo "--> Paquet '$WHEEZY_DEB' trouvé localement."
+    echo "--> Paquet '$WHEEZY_DEB' vérifié et prêt localement."
   fi
 fi
 

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version de Marionnet à publier (ex: 1.0.456, 1.0.457)'
-        required: true
-        default: '1.0.456'
+        description: 'Version de Marionnet à publier (laisser vide pour auto-détection depuis META/VCS)'
+        required: false
+        default: ''
       release_title:
         description: 'Titre de la release (optionnel)'
         required: false
@@ -38,10 +38,14 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          elif [ -f bin/meta.ml.maker.sh ]; then
+            VERSION="$(bash bin/meta.ml.maker.sh --print-version 2>/dev/null || true)"
           elif [ -f META ]; then
-            VERSION="$(grep -Po '(?<=version=")[^"]*' META || echo "1.0.456")"
-          else
-            VERSION="1.0.456"
+            VERSION="$(grep -Po '(?<=version=")[^"]*' META 2>/dev/null || true)"
+          fi
+          if [ -z "$VERSION" ] || [ "$VERSION" = "1.0.x" ]; then
+            echo "[-] Erreur : version introuvable ou invalide ($VERSION)" >&2
+            exit 1
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version sélectionnée : $VERSION"
@@ -112,6 +116,9 @@ jobs:
           ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb )
           if [ -f dist/marionnet-fs-debian-wheezy_08367_all.deb ]; then
             ASSETS+=( dist/marionnet-fs-debian-wheezy_08367_all.deb )
+          fi
+          if [ -f dist/SHA256SUMS ]; then
+            ASSETS+=( dist/SHA256SUMS )
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then

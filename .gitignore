@@ -98,6 +98,8 @@ _bugs/
 # a `git add bin/po` took twelve of them in, 41 000 lines of backup.
 *.po~
 
-# Release packages in dist/
+# Release packages and checksums
+*.deb
 dist/*.deb
+dist/SHA256SUMS
 

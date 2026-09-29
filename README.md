@@ -1,23 +1,30 @@
-# Marionnet 1.0.456 — Laboratoire Réseau Virtuel (Édition Linux Moderne)
+# Marionnet — Laboratoire Réseau Virtuel (Édition Linux Moderne)
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04%20%7C%2025.04+-orange.svg)](https://ubuntu.com)
-[![Version](https://img.shields.io/badge/version-1.0.456-blue.svg)](https://github.com/lucas-martinati-pro/marionnet)
+[![Dernière version](https://img.shields.io/github/v/release/lucas-martinati-pro/marionnet?color=blue&label=version)](https://github.com/lucas-martinati-pro/marionnet/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL--2.0-green.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 
 **Marionnet** est un laboratoire réseau virtuel permettant de définir, configurer et exécuter un réseau informatique complet (machines virtuelles Linux sous User-Mode Linux, routeurs, switchs VDE, concentrateurs, passerelles...) sur une seule machine sans matériel physique dédié.
 
-Ce dépôt est un fork maintenu de [Marionnet (Launchpad)](https://git.launchpad.net/marionnet), spécialement corrigé pour fonctionner nativement et sans plantage sur les distributions Linux et noyaux récents.
+> [!NOTE]
+> **Base amont (Upstream) & Historique du dépôt :**
+> Ce dépôt est un fork indépendant du projet officiel **Marionnet** initié par Jean-Vincent Loddo (LIPN — Université Sorbonne Paris Nord / Paris 13). Le dépôt amont originel étant hébergé sur **Launchpad** ([git.launchpad.net/marionnet](https://git.launchpad.net/marionnet)) et non sur GitHub, GitHub n'affiche pas la mention native *« forked from »*.
+>
+> **Base upstream utilisée :**
+> - **Dépôt officiel amont :** `https://git.launchpad.net/marionnet` (branche `main`)
+> - **Commit amont de référence :** [`a4147013b824bcdc1f59f3ae97aa9cafdb757f71`](https://git.launchpad.net/marionnet/commit/?id=a4147013b824bcdc1f59f3ae97aa9cafdb757f71) (*docs: the help no longer sends an administrator to `sudo -l`*, 7 septembre 2026, révision 997 / v1.0.423).
+> - **Remote git configuré :** `upstream` pointe vers ce dépôt amont officiel pour faciliter la synchronisation continue avec les évolutions officielles.
 
 ---
 
-## 🚀 Correctifs majeurs inclus (v1.0.456)
+## 🚀 Correctifs et améliorations majeures
 
 1. **Élimination définitive de l'erreur `/sbin/getty: Input/output error`** :
    - **Remappage automatique du noyau invité** : Les projets demandant l'ancien noyau `3.2.64-ghost` (incompatible avec les hôtes Linux $\ge$ 5.15 en raison d'un crash du stub SKAS0) sont automatiquement remappés vers le noyau moderne `linux-6.12.95-i386`.
    - **Protection contre le verrouillage en lecture seule d'ext4** : Ajout automatique de `rootflags=errors=continue` sur la ligne de commande UML pour empêcher les images non journalisées (Guignol) de monter en lecture seule suite à un arrêt impromptu.
 2. **Paquet Debian « Tout-en-un » (`marionnet-all-in-one`) & Distribution Debian complète** :
    - Plus besoin de compiler, ni d'ajouter de clés GPG externes ou de dépôts APT tiers.
-   - Embarque l'application, les noyaux UML 64-bit et 32-bit (6.12.95) et le système invité Guignol de base.
+   - Embarque l'application Marionnet, les noyaux UML 64-bit et 32-bit (6.12.95) et le système invité Guignol de base.
    - **Distribution invitée Debian Wheezy complète** (`marionnet-fs-debian-wheezy`) incluse pour les machines : Apache2, Lighttpd, BIND9, ISC-DHCP, Python, compilateurs C/C++, navigateurs en mode texte (`links`, `lynx`), et support X11.
    - Configure automatiquement les droits réseau (sudoers), même sous les versions d'Ubuntu récentes avec `sudo-rs`.
 3. **Connexion automatique en root (Autologin immédiat)** :
@@ -55,10 +62,11 @@ cd marionnet
 
 Le script s'occupe de tout automatiquement :
 - Active l'architecture 32-bit `i386` si nécessaire
-- Télécharge et installe le paquet tout-en-un ainsi que l'image système Debian Wheezy
+- Télécharge automatiquement les paquets depuis [GitHub Releases (latest)](https://github.com/lucas-martinati-pro/marionnet/releases/latest)
+- **Vérifie l'intégrité cryptographique (SHA256)** des paquets téléchargés via le fichier `SHA256SUMS`
 - Installe toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `curl`, etc.)
 - Configure les droits sudoers pour votre utilisateur
-- Valide l'installation (`marionnet version 1.0.456`)
+- Valide immédiatement l'installation
 
 #### ⚙️ Options du script `install.sh` :
 - `./install.sh` : Installation standard via les paquets pré-compilés GitHub Releases.
@@ -80,15 +88,27 @@ marionnet --update
 
 L'utilitaire télécharge la dernière version depuis GitHub, met à jour le paquet tout-en-un et relance la configuration en conservant vos réglages et vos projets.
 
-### Installation manuelle (alternative) :
-```bash
-# Téléchargement des paquets depuis les Releases GitHub
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-all-in-one_1.0.456_amd64.deb
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.456/marionnet-fs-debian-wheezy_08367_all.deb
+### Installation manuelle (alternative via GitHub Releases) :
+Les paquets `.deb` pré-compilés et leurs empreintes SHA256 sont publiés sur [GitHub Releases](https://github.com/lucas-martinati-pro/marionnet/releases/latest) :
 
+```bash
+# 1. Télécharger la dernière version et les sommes de contrôle depuis GitHub Releases
+wget https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/SHA256SUMS
+curl -s https://api.github.com/repos/lucas-martinati-pro/marionnet/releases/latest \
+  | grep "browser_download_url.*deb" \
+  | cut -d : -f 2,3 \
+  | tr -d \" \
+  | wget -qi -
+
+# 2. Vérifier l'intégrité SHA256 des paquets téléchargés
+sha256sum -c SHA256SUMS --ignore-missing
+
+# 3. Activer l'architecture i386 et mettre à jour APT
 sudo dpkg --add-architecture i386
 sudo apt update
-sudo apt install -y ./marionnet-all-in-one_1.0.456_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
+
+# 4. Installer les paquets Debian et leurs dépendances
+sudo apt install -y ./marionnet-all-in-one_*_amd64.deb ./marionnet-fs-debian-wheezy_*_all.deb
 ```
 
 ---
