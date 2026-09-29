@@ -111,6 +111,9 @@ sudo apt update
 
 # 4. Installer les paquets Debian
 sudo apt install -y "./${AIO_DEB}" "./${WHEEZY_DEB}"
+
+# 5. Configurer les droits réseau (sudoers) pour votre utilisateur
+sudo marionnet-sudoers.sh install "$USER"
 ```
 
 ---
