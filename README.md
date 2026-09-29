@@ -10,10 +10,9 @@
 > **Base amont (Upstream) & Historique du dépôt :**
 > Ce dépôt est un fork indépendant du projet officiel **Marionnet** initié par Jean-Vincent Loddo (LIPN — Université Sorbonne Paris Nord / Paris 13). Le dépôt amont originel étant hébergé sur **Launchpad** ([git.launchpad.net/marionnet](https://git.launchpad.net/marionnet)) et non sur GitHub, GitHub n'affiche pas la mention native *« forked from »*.
 >
-> **Base upstream utilisée :**
+> **Base upstream de référence :**
 > - **Dépôt officiel amont :** `https://git.launchpad.net/marionnet` (branche `main`)
-> - **Commit amont de référence :** [`a4147013b824bcdc1f59f3ae97aa9cafdb757f71`](https://git.launchpad.net/marionnet/commit/?id=a4147013b824bcdc1f59f3ae97aa9cafdb757f71) (*docs: the help no longer sends an administrator to `sudo -l`*, 7 septembre 2026, révision 997 / v1.0.423).
-> - **Remote git configuré :** `upstream` pointe vers ce dépôt amont officiel pour faciliter la synchronisation continue avec les évolutions officielles.
+> - **Commit amont de base :** [`a4147013b824bcdc1f59f3ae97aa9cafdb757f71`](https://git.launchpad.net/marionnet/commit/?id=a4147013b824bcdc1f59f3ae97aa9cafdb757f71) (*docs: the help no longer sends an administrator to `sudo -l`*, 7 septembre 2026, révision 997 / v1.0.423).
 
 ---
 
@@ -63,7 +62,7 @@ cd marionnet
 Le script s'occupe de tout automatiquement :
 - Active l'architecture 32-bit `i386` si nécessaire
 - Télécharge automatiquement les paquets depuis [GitHub Releases (latest)](https://github.com/lucas-martinati-pro/marionnet/releases/latest)
-- **Vérifie l'intégrité cryptographique (SHA256)** des paquets téléchargés via le fichier `SHA256SUMS`
+- **Vérifie l'intégrité (SHA256)** des paquets téléchargés contre toute corruption de transfert via le fichier `SHA256SUMS`
 - Installe toutes les dépendances Ubuntu (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `curl`, etc.)
 - Configure les droits sudoers pour votre utilisateur
 - Valide immédiatement l'installation
@@ -89,26 +88,29 @@ marionnet --update
 L'utilitaire télécharge la dernière version depuis GitHub, met à jour le paquet tout-en-un et relance la configuration en conservant vos réglages et vos projets.
 
 ### Installation manuelle (alternative via GitHub Releases) :
-Les paquets `.deb` pré-compilés et leurs empreintes SHA256 sont publiés sur [GitHub Releases](https://github.com/lucas-martinati-pro/marionnet/releases/latest) :
+Les paquets `.deb` pré-compilés et leurs sommes de contrôle SHA256 sont publiés sur [GitHub Releases](https://github.com/lucas-martinati-pro/marionnet/releases/latest) :
 
 ```bash
-# 1. Télécharger la dernière version et les sommes de contrôle depuis GitHub Releases
+# 1. Télécharger le fichier de sommes de contrôle de la dernière release
 wget https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/SHA256SUMS
-curl -s https://api.github.com/repos/lucas-martinati-pro/marionnet/releases/latest \
-  | grep "browser_download_url.*deb" \
-  | cut -d : -f 2,3 \
-  | tr -d \" \
-  | wget -qi -
 
-# 2. Vérifier l'intégrité SHA256 des paquets téléchargés
-sha256sum -c SHA256SUMS --ignore-missing
+# Identifier les paquets exacts répertoriés
+AIO_DEB="$(awk '$2 ~ /^marionnet-all-in-one_.*\.deb$/ {print $2; exit}' SHA256SUMS)"
+WHEEZY_DEB="$(awk '$2 ~ /^marionnet-fs-debian-wheezy_.*\.deb$/ {print $2; exit}' SHA256SUMS)"
+
+# Télécharger les paquets Debian correspondants
+wget "https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/${AIO_DEB}"
+wget "https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/${WHEEZY_DEB}"
+
+# 2. Vérifier l'intégrité SHA256 des fichiers téléchargés
+sha256sum -c SHA256SUMS
 
 # 3. Activer l'architecture i386 et mettre à jour APT
 sudo dpkg --add-architecture i386
 sudo apt update
 
-# 4. Installer les paquets Debian et leurs dépendances
-sudo apt install -y ./marionnet-all-in-one_*_amd64.deb ./marionnet-fs-debian-wheezy_*_all.deb
+# 4. Installer les paquets Debian
+sudo apt install -y "./${AIO_DEB}" "./${WHEEZY_DEB}"
 ```
 
 ---

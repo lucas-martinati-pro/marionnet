@@ -100,6 +100,5 @@ _bugs/
 
 # Release packages and checksums
 *.deb
-dist/*.deb
 dist/SHA256SUMS
 

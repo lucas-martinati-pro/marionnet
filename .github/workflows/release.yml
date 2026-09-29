@@ -33,17 +33,22 @@ jobs:
 
       - name: Détermination de la version
         id: get_version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          VERSION=""
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
-          elif [ -f bin/meta.ml.maker.sh ]; then
+          fi
+          if [ -z "$VERSION" ] && [ -f bin/meta.ml.maker.sh ]; then
             VERSION="$(bash bin/meta.ml.maker.sh --print-version 2>/dev/null || true)"
-          elif [ -f META ]; then
+          fi
+          if [ -z "$VERSION" ] && [ -f META ]; then
             VERSION="$(grep -Po '(?<=version=")[^"]*' META 2>/dev/null || true)"
           fi
-          if [ -z "$VERSION" ] || [ "$VERSION" = "1.0.x" ]; then
+          if [[ ! $VERSION =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
             echo "[-] Erreur : version introuvable ou invalide ($VERSION)" >&2
             exit 1
           fi
@@ -107,7 +112,8 @@ jobs:
           if [ -n "${{ github.event.inputs.release_notes }}" ]; then
             NOTES_ARG=(--notes "${{ github.event.inputs.release_notes }}")
           elif [ -f release.md ]; then
-            NOTES_ARG=(--notes-file release.md)
+            sed "s/@VERSION@/${VERSION}/g" release.md > /tmp/release_notes.md
+            NOTES_ARG=(--notes-file /tmp/release_notes.md)
           else
             NOTES_ARG=(--notes "Release automatique de Marionnet ${VERSION}.")
           fi
