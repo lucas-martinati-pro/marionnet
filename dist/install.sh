@@ -237,9 +237,9 @@ if [ "$BUILD_LOCAL" = true ]; then
   "$SCRIPT_DIR/build-all-in-one.sh" "$VERSION"
   SUMS_FILE="$SCRIPT_DIR/SHA256SUMS"
 elif [ -f "$DEB_NAME" ]; then
-  # Détection et purge automatique d'un ancien build incompatible lié à GLIBC 2.42
-  if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.42"; then
-    echo "--> Ancien paquet local détecté (compilé avec GLIBC 2.42 incompatible)."
+  # Détection et purge automatique d'un ancien build incompatible lié à GLIBC >= 2.42
+  if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.4[2-9]"; then
+    echo "--> Ancien paquet local détecté (compilé avec GLIBC >= 2.42 incompatible)."
     echo "    Purge automatique et téléchargement du paquet officiel compatible..."
     rm -f "$DEB_NAME"
   elif ! verify_checksum "$DEB_NAME" 2>/dev/null; then
@@ -257,6 +257,12 @@ if [ ! -f "$DEB_NAME" ]; then
     echo "[-] ERREUR CRITIQUE : L'intégrité de $DEB_NAME a échoué. Installation annulée." >&2
     exit 1
   }
+  if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.4[2-9]"; then
+    echo "[-] ERREUR : Le paquet téléchargé contient un binaire incompatible (GLIBC >= 2.42)." >&2
+    echo "    Veuillez patienter pendant la republication du paquet officiel ou utiliser './install.sh 1.0.456'." >&2
+    rm -f "$DEB_NAME"
+    exit 1
+  fi
 else
   echo "--> Paquet '$DEB_NAME' vérifié et prêt."
 fi
