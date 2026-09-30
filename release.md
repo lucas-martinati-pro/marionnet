@@ -37,6 +37,14 @@ Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian 
 - Normalisation des exécutables sous leur nom de commande Unix standard (`marionnet-check`, `marionnet-cleanup`, `marionnet-ctl`, `marionnet-verify`, `marionnet-update`).
 - Conservation de liens symboliques pour tous les alias raccourcis usuels (`mrnctl`, `mrn-check`, etc.).
 
+#### 6. 📋 Copier-coller entre le PC hôte et les terminaux invités
+- Tous les terminaux ouverts par Marionnet (consoles des machines, terminaux telnet des routeurs, unixterm des switchs) passent par le wrapper `marionnet-xterm.sh`, qui apporte les raccourcis de tous les émulateurs modernes :
+  - **Ctrl+Shift+V** (ou Shift+Insert) : colle dans l'invité le texte copié sur le PC (navigateur, éditeur, lecteur PDF).
+  - **Ctrl+Shift+C** : copie vers le PC la sélection faite dans le terminal invité.
+- La copie reste **explicite**, comme dans gnome-terminal : sélectionner du texte dans le terminal n'écrase jamais ce qui avait été copié sur l'hôte, et le clic milieu conserve son comportement historique.
+- **Ctrl+C seul reste SIGINT** dans l'invité : aucun programme en cours d'exécution n'est perturbé.
+- Un `MARIONNET_TERMINAL` personnalisé (`gnome-terminal`, …) est respecté tel quel ; `uxterm` et les variantes `xterm-*` conservent leur binaire d'origine.
+
 ---
 
 ### 📦 Installation ultra simple
@@ -79,4 +87,7 @@ sudo apt update
 
 # 4. Installer les paquets et leurs dépendances
 sudo apt install -y ./marionnet-all-in-one_1.0.457_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
+
+# 5. Configurer les règles réseau sudoers pour votre utilisateur
+sudo marionnet-sudoers.sh install "$USER"
 ```
