@@ -4,6 +4,22 @@ Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian 
 
 ---
 
+### 🔄 Mise à jour depuis une version précédente
+
+Vos projets (`.mar`), vos images et vos variantes d'invités sont conservés : seule l'application est remplacée. Choisissez votre canal :
+
+- **Dépôt APT** (recommandé si Marionnet a été installé par apt) :
+  ```bash
+  sudo apt update && sudo apt upgrade marionnet
+  ```
+- **Mise à jour intégrée** : dans un terminal, lancez `marionnet-update` (ou acceptez la notification proposée par l'application) — la dernière release GitHub est vérifiée, téléchargée et installée. `marionnet-update --check` vérifie sans rien modifier.
+- **Script d'installation** : relancez `./install.sh` depuis un clone à jour (répare et met à niveau) ; `./install.sh --clean` force le retéléchargement propre des paquets.
+- **Manuelle** : téléchargez les `.deb` et `SHA256SUMS` depuis les assets de la release (ci-dessous) et suivez la section « Installation manuelle ».
+
+Vérifiez ensuite que la nouvelle version tourne : `marionnet -v`.
+
+---
+
 ### 🚀 Nouveautés et Améliorations majeures
 
 #### 1. 🌐 Refonte complète du système d'internationalisation (i18n moderne en JSON)
@@ -36,14 +52,6 @@ Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian 
 #### 5. 🐧 Standardisation des scripts Unix
 - Normalisation des exécutables sous leur nom de commande Unix standard (`marionnet-check`, `marionnet-cleanup`, `marionnet-ctl`, `marionnet-verify`, `marionnet-update`).
 - Conservation de liens symboliques pour tous les alias raccourcis usuels (`mrnctl`, `mrn-check`, etc.).
-
-#### 6. 📋 Copier-coller entre le PC hôte et les terminaux invités
-- Tous les terminaux ouverts par Marionnet (consoles des machines, terminaux telnet des routeurs, unixterm des switchs) passent par le wrapper `marionnet-xterm.sh`, qui apporte les raccourcis de tous les émulateurs modernes :
-  - **Ctrl+Shift+V** (ou Shift+Insert) : colle dans l'invité le texte copié sur le PC (navigateur, éditeur, lecteur PDF).
-  - **Ctrl+Shift+C** : copie vers le PC la sélection faite dans le terminal invité.
-- La copie reste **explicite**, comme dans gnome-terminal : sélectionner du texte dans le terminal n'écrase jamais ce qui avait été copié sur l'hôte, et le clic milieu conserve son comportement historique.
-- **Ctrl+C seul reste SIGINT** dans l'invité : aucun programme en cours d'exécution n'est perturbé.
-- Un `MARIONNET_TERMINAL` personnalisé (`gnome-terminal`, …) est respecté tel quel ; `uxterm` et les variantes `xterm-*` conservent leur binaire d'origine.
 
 #### 6. 📋 Copier-coller entre le PC hôte et les terminaux invités
 - Tous les terminaux ouverts par Marionnet (consoles des machines, terminaux telnet des routeurs, unixterm des switchs) passent par le wrapper `marionnet-xterm.sh`, qui apporte les raccourcis de tous les émulateurs modernes :
