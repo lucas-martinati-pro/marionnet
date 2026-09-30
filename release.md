@@ -1,10 +1,10 @@
-## Marionnet 1.0.457 — Laboratoire Réseau Virtuel (Édition Linux Moderne)
+## Marionnet — Laboratoire Réseau Virtuel (Édition Linux Moderne)
 
 Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian avec support des noyaux Linux récents (Linux >= 5.15) et environnement OCaml modernisé.
 
 ---
 
-### 🚀 Nouveautés et Améliorations majeures (v1.0.457)
+### 🚀 Nouveautés et Améliorations majeures
 
 #### 1. 🌐 Refonte complète du système d'internationalisation (i18n moderne en JSON)
 - **Migration des catalogues de traduction** : Remplacement des anciens fichiers binaires `.mo` / `.po` par des fichiers JSON structurés et éditables pour 14 langues (français, anglais, espagnol, allemand, italien, portugais, etc.).
@@ -45,6 +45,14 @@ Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian 
 - **Ctrl+C seul reste SIGINT** dans l'invité : aucun programme en cours d'exécution n'est perturbé.
 - Un `MARIONNET_TERMINAL` personnalisé (`gnome-terminal`, …) est respecté tel quel ; `uxterm` et les variantes `xterm-*` conservent leur binaire d'origine.
 
+#### 6. 📋 Copier-coller entre le PC hôte et les terminaux invités
+- Tous les terminaux ouverts par Marionnet (consoles des machines, terminaux telnet des routeurs, unixterm des switchs) passent par le wrapper `marionnet-xterm.sh`, qui apporte les raccourcis de tous les émulateurs modernes :
+  - **Ctrl+Shift+V** (ou Shift+Insert) : colle dans l'invité le texte copié sur le PC (navigateur, éditeur, lecteur PDF).
+  - **Ctrl+Shift+C** : copie vers le PC la sélection faite dans le terminal invité.
+- La copie reste **explicite**, comme dans gnome-terminal : sélectionner du texte dans le terminal n'écrase jamais ce qui avait été copié sur l'hôte, et le clic milieu conserve son comportement historique.
+- **Ctrl+C seul reste SIGINT** dans l'invité : aucun programme en cours d'exécution n'est perturbé.
+- Un `MARIONNET_TERMINAL` personnalisé (`gnome-terminal`, …) est respecté tel quel ; `uxterm` et les variantes `xterm-*` conservent leur binaire d'origine.
+
 ---
 
 ### 📦 Installation ultra simple
@@ -63,7 +71,7 @@ Le script `install.sh` s'occupe de tout automatiquement :
 - **Vérifie l'intégrité cryptographique SHA256** des paquets via `SHA256SUMS`.
 - Installe toutes les dépendances requises (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `socat`, etc.).
 - Configure les règles réseau sudoers pour votre utilisateur.
-- Valide immédiatement l'installation (`marionnet version 1.0.457`).
+- Valide immédiatement l'installation (`marionnet -v`).
 - **Options utiles** :
   - `./install.sh --clean` : Force la suppression des paquets locaux et le retéléchargement propre depuis GitHub Releases.
   - `./install.sh --without-wheezy` : Installation légère sans l'image Debian Wheezy.
@@ -73,10 +81,8 @@ Le script `install.sh` s'occupe de tout automatiquement :
 ### 💻 Alternative : Installation manuelle
 
 ```bash
-# 1. Télécharger les paquets et les sommes de contrôle
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/SHA256SUMS
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-all-in-one_1.0.457_amd64.deb
-wget https://github.com/lucas-martinati-pro/marionnet/releases/download/v1.0.457/marionnet-fs-debian-wheezy_08367_all.deb
+# 1. Télécharger depuis les assets de la release (ci-dessous) : les deux
+#    paquets .deb et le fichier SHA256SUMS
 
 # 2. Vérifier l'intégrité SHA256
 sha256sum -c SHA256SUMS --ignore-missing
@@ -86,7 +92,7 @@ sudo dpkg --add-architecture i386
 sudo apt update
 
 # 4. Installer les paquets et leurs dépendances
-sudo apt install -y ./marionnet-all-in-one_1.0.457_amd64.deb ./marionnet-fs-debian-wheezy_08367_all.deb
+sudo apt install -y ./marionnet-all-in-one_*_amd64.deb ./marionnet-fs-debian-wheezy_*_all.deb
 
 # 5. Configurer les règles réseau sudoers pour votre utilisateur
 sudo marionnet-sudoers.sh install "$USER"
