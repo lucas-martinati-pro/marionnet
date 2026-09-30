@@ -226,6 +226,12 @@
      (glob_files "locales/*.json")
      ;; ---
      (glob_files "scripts/marionnet_telnet.sh")
+     ;; --- xterm with host clipboard support (Ctrl+Shift+C/V): every terminal
+     ;; --- Marionnet opens goes through this wrapper instead of xterm directly
+     ;; --- (simulation_level.ml). Like its neighbour above it lands in
+     ;; --- $PREFIX/bin/, so the UML kernel finds it on PATH as an xterm=
+     ;; --- emulator, and the two hardcoded xterm spawns resolve it there too.
+     (glob_files "scripts/marionnet-xterm.sh")
      ;; --- Tap_provider calls it by name (it lands in $PREFIX/bin/, see the Makefile):
      (glob_files "scripts/marionnet-sudoers.sh")
      ;; --- Same treatment for the private NAT bridge of `modernisation-world-bridge':

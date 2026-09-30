@@ -354,6 +354,86 @@ let split_terminal_specification specification =
   | _ -> None
 ;;
 
+(* --- Copy-paste between the PC and the guests --------------------------------------
+
+   Out of the box xterm only knows the PRIMARY selection (mouse select, middle-button
+   paste): what is copied with Ctrl+C in a host application lands on CLIPBOARD, which a
+   stock xterm neither reads nor writes, so pasting it into a guest console was
+   impossible. `bin/scripts/marionnet-xterm.sh' is xterm plus one X resource giving it
+   the bindings everybody already knows — Ctrl+Shift+C to copy, Ctrl+Shift+V (or
+   Shift+Insert) to paste, the middle-button habit preserved; copying stays explicit,
+   so a selection in the guest never clobbers what was copied on the host.
+   Every terminal Marionnet opens on the host goes through it instead of xterm directly.
+
+   A custom MARIONNET_TERMINAL (say gnome-terminal) already pastes natively and is left
+   alone: only a binary spelling xterm is rewritten, and only when the wrapper is found
+   where an installation puts it. The wrapper then execs the ORIGINAL spelling, handed
+   over in MARIONNET_XTERM_BINARY (uxterm stays uxterm) — see `uml_process' below for
+   the UML path; the two direct spawns use the literal "xterm", which is the
+   wrapper's default. Otherwise the behaviour is exactly the old one. *)
+
+(** The installed name of the clipboard wrapper (it lands beside the binary: every file
+    of share/marionnet/scripts/ is hardlinked into bin/ at installation time). *)
+let xterm_clipboard_wrapper_basename = "marionnet-xterm.sh"
+
+(** True of the xterm spellings (plain, unicode, ...), false of anything else — notably
+    false of the wrapper itself, so rewriting is idempotent. *)
+let is_xterm_binary (binary:string) : bool =
+  let base = Filename.basename binary in
+  base = "xterm" || base = "uxterm" || String.starts_with ~prefix:"xterm-" base
+
+(** Where the clipboard wrapper lives, resolved once: beside the running executable
+    (installed layout), under the compiled-in prefix, in the development tree
+    (_build/install, when running from _build), or on PATH. [None] when it is nowhere,
+    in which case terminals open exactly as before. *)
+let xterm_clipboard_wrapper : string option Lazy.t = lazy (
+  let basename = xterm_clipboard_wrapper_basename in
+  let beside_executable =
+    Filename.concat (Filename.dirname Sys.executable_name) basename in
+  let under_prefix =
+    Filename.concat (Filename.concat Meta.prefix "bin") basename in
+  let in_development_tree =
+    match Development_tree.share_directory () with
+    | None     -> []
+    | Some dir -> [ Filename.concat (Filename.concat dir "scripts") basename ]
+  in
+  let on_path =
+    match UnixExtra.path_of_implicit basename with
+    | None   -> []
+    | Some p -> [p]
+  in
+  match List.find_opt Sys.file_exists
+    (beside_executable :: under_prefix :: (in_development_tree @ on_path))
+  with
+  | None ->
+      Log.printf1
+        "Simulation_level: %s not found: xterms will open without host clipboard support\n"
+        basename;
+      None
+  | Some path ->
+      Log.printf1 ~v:2
+        "Simulation_level: xterm clipboard wrapper: %s\n"
+        path;
+      Some path
+)
+
+(** [emulator_with_clipboard binary] is the program to run instead of [binary]: the
+    clipboard wrapper when [binary] spells xterm, [binary] itself otherwise. On the UML
+    path the caller additionally exports [binary] as MARIONNET_XTERM_BINARY (see
+    `uml_process' below), so the wrapper execs the configured spelling; the two
+    direct spawns use the literal "xterm", which is the wrapper's default. *)
+let emulator_with_clipboard (binary:string) : string =
+  if not (is_xterm_binary binary) then binary else
+  match Lazy.force xterm_clipboard_wrapper with
+  | None -> binary
+  | Some wrapper when wrapper = binary -> binary
+  | Some wrapper ->
+      Log.printf2 ~v:2
+        "Simulation_level: terminal emulator %s -> %s (host clipboard)\n"
+        binary wrapper;
+      wrapper
+;;
+
 (** {2 Example of low-level interaction} *)
 
 (* Play with xeyes for ten seconds, then terminate it:
@@ -738,7 +818,7 @@ class unixterm_process =
   in
   object(self)
    inherit process
-      "xterm"
+      (emulator_with_clipboard "xterm")
       arguments
       ~stdin:an_input_descriptor_never_sending_anything
       ~stdout:dev_null_out
@@ -770,7 +850,7 @@ class telnet_process =
   let () = Thread.delay delay in
   object(self)
    inherit process
-      "xterm"
+      (emulator_with_clipboard "xterm")
       arguments
       ~stdin:an_input_descriptor_never_sending_anything
       ~stdout:dev_null_out
@@ -1121,17 +1201,33 @@ class uml_process =
      honest. The hook is the FIRST field of `xterm=' — the emulator itself — because the kernel
      offers no other: UML_PORT_HELPER, measured twice, is read by the `port:' channel only, and
      the `xterm' one runs /usr/lib//uml/port-helper hardcoded. *)
+  (* The <emulator>,<title switch>,<exec switch> triple of MARIONNET_TERMINAL, with the
+     emulator already swapped for the clipboard wrapper when it spells xterm: the recording
+     hook below, the specification handed to the kernel and the exported environment all
+     derive from it, so the rewrite — and its v:2 log line — happens exactly once.
+     [None] when the configuration is not a triple, in which case its string goes to the
+     kernel untouched. Each element reads (configured binary, emulator to run, title
+     switch, exec switch). *)
+  let terminal_emulator : (string * string * string * string) option =
+    match split_terminal_specification Initialization.marionnet_terminal with
+    | None -> None
+    | Some (binary, title_switch, exec_switch) ->
+        Some (binary, emulator_with_clipboard binary, title_switch, exec_switch)
+  in
   let terminal_recording =
     if not Initialization.are_we_recording_terminals then None else
     if console <> "xterm" then None else
-    match split_terminal_specification Initialization.marionnet_terminal with
+    match terminal_emulator with
     | None ->
         Log.printf1
           "Simulation_level: uml_process: no terminal recording: MARIONNET_TERMINAL is %S, which \
            is not a triple <emulator>,<title switch>,<exec switch>\n"
           Initialization.marionnet_terminal;
         None
-    | Some (binary, title_switch, exec_switch) ->
+    | Some (_, binary, title_switch, exec_switch) ->
+        (* The recorder relaunches this emulator with the head arguments the kernel prepared:
+           pointing it at the clipboard wrapper is what pastes the host CLIPBOARD inside a
+           recorded terminal too. *)
         (match deposit_terminal_recorder ~working_directory with
          | None -> None
          | Some recorder ->
@@ -1146,14 +1242,36 @@ class uml_process =
      recorder relaunches the real emulator with them. *)
   let terminal_specification =
     match terminal_recording with
-    | None -> Initialization.marionnet_terminal
+    | None ->
+        (match terminal_emulator with
+         | None -> Initialization.marionnet_terminal
+         | Some (_, binary, title_switch, exec_switch) ->
+             (* The kernel offers no room for extra arguments, so clipboard support rides the
+                FIRST field alone — the wrapper then execs the configured spelling with its
+                clipboard bindings. *)
+             String.concat "," [ binary; title_switch; exec_switch ])
     | Some (recorder, title_switch, exec_switch, _) ->
         String.concat "," [ recorder; title_switch; exec_switch ]
   in
   let terminal_environment =
+    (* The configured binary, for the clipboard wrapper to exec (MARIONNET_XTERM_BINARY):
+       it must run uxterm — or any xterm spelling the user configured — rather than a
+       plain xterm. Exported only when the specification above was actually rewritten to
+       the wrapper; a custom emulator never meets the wrapper and gets nothing. *)
+    let wrapper_binding =
+      match terminal_emulator with
+      | Some (original, emulator, _, _) when emulator <> original ->
+          [ "MARIONNET_XTERM_BINARY=" ^ original ]
+      | _ -> []
+    in
+    let extra = Array.of_list wrapper_binding in
     match terminal_recording with
-    | None -> None
-    | Some (_, _, _, bindings) -> Some (Array.append (Unix.environment ()) bindings)
+    | None ->
+        (match wrapper_binding with
+         | [] -> None
+         | _  -> Some (Array.append (Unix.environment ()) extra))
+    | Some (_, _, _, bindings) ->
+        Some (Array.append (Unix.environment ()) (Array.append extra bindings))
   in
   let boot_parameters_pathname =
     Printf.sprintf "%s/boot_parameters" hostfs_directory

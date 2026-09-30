@@ -440,7 +440,7 @@ n=$(in_box "rpm -ql marionnet 2>/dev/null | grep -c '^/usr/bin/'")
 # The binary, its bare name (staged beside marionnet.native, episode 38) and the
 # companions of bin/scripts/ (see the twin case of the .deb bench for why this
 # number is written and not derived).
-test "$n" = 30 && pass "the 30 commands of bin/ are installed" || fail "expected 30 commands in /usr/bin, found $n"
+test "$n" = 31 && pass "the 31 commands of bin/ are installed" || fail "expected 31 commands in /usr/bin, found $n"
 
 n=$(in_box "ls /usr/share/bash-completion/completions/ 2>/dev/null | grep -cE 'mrn|marionnet'")
 test "$n" = 12 && pass "the twelve completion files are installed (episode 11a)" || \

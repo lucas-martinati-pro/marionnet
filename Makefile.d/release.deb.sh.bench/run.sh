@@ -580,10 +580,10 @@ else
   # here and not derived: unlike the tarball bench -- which compares the installed
   # prefix with the artefact's own bin/ -- what this case measures IS the package's
   # file list, so deriving it from the package would be a tautology.
-  if [[ $names -eq 30 ]]; then
-    pass "30 names in /usr/bin (the binary, its bare name, and the 28 companions of bin/scripts/)"
+  if [[ $names -eq 31 ]]; then
+    pass "31 names in /usr/bin (the binary, its bare name, and the 29 companions of bin/scripts/)"
   else
-    fail "the package owns $names names in /usr/bin, expected 30"
+    fail "the package owns $names names in /usr/bin, expected 31"
   fi
 
   compl=$(in_box "dpkg -L marionnet | grep -c '/share/bash-completion/completions/.'")
