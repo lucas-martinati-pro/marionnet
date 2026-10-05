@@ -113,9 +113,32 @@ if [ "$RELEASE_MODE" = false ] && [ "$BUILD_LOCAL" = false ]; then
   fi
 fi
 
-# Si le mode local est demandé explicitement mais que le binaire n'est pas encore compilé
-if [ "$BUILD_LOCAL" = true ] && [ ! -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
+# Si le mode local est demandé mais que le binaire est absent ou périmé, on
+# (re)construit : dune ne reconstruit que quand on le lui demande, et sans cela
+# on empaquetterait en silence l'ancienne version (vécu : binaire 1.0.457
+# installé sous une 1.0.459). La version attendue vient de la règle unique
+# (meta.ml.maker.sh, repli META) ; la version du binaire de son `-v' headless.
+LOCAL_BIN="$REPO_ROOT/_build/default/bin/marionnet.exe"
+EXPECTED_VERSION=""
+if [ -f "$REPO_ROOT/bin/meta.ml.maker.sh" ]; then
+  EXPECTED_VERSION="$(bash "$REPO_ROOT/bin/meta.ml.maker.sh" --print-version 2>/dev/null || true)"
+fi
+if [ -z "$EXPECTED_VERSION" ] && [ -f "$REPO_ROOT/META" ]; then
+  EXPECTED_VERSION="$(grep -Po '(?<=version=")[^"]*' "$REPO_ROOT/META" 2>/dev/null || true)"
+fi
+LOCAL_VER=""
+if [ -f "$LOCAL_BIN" ]; then
+  LOCAL_VER="$("$LOCAL_BIN" -v 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true)"
+fi
+NEED_BUILD=false
+if [ ! -f "$LOCAL_BIN" ]; then
   echo "--> Binaire non trouvé. Compilation avec dune..."
+  NEED_BUILD=true
+elif [ -n "$EXPECTED_VERSION" ] && [ "$LOCAL_VER" != "$EXPECTED_VERSION" ]; then
+  echo "--> Binaire local périmé ($LOCAL_VER contre $EXPECTED_VERSION). Reconstruction avec dune..."
+  NEED_BUILD=true
+fi
+if [ "$BUILD_LOCAL" = true ] && [ "$NEED_BUILD" = true ]; then
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     su - "$SUDO_USER" -c "cd '$REPO_ROOT' && if command -v opam >/dev/null 2>&1; then opam exec -- dune build; else dune build; fi"
   elif command -v opam >/dev/null 2>&1; then
@@ -151,9 +174,12 @@ download_file() {
 
   local ok=false
   if [ "$HTTP_CLIENT" = "curl" ]; then
-    if curl -fL --progress-bar "$url" -o "$target_file"; then ok=true; fi
+    # Reprise du partiel + réessais : une connexion coupée laisse sinon un
+    # .deb tronqué (vécu : 2486272 o. reçus sur 2802624), détecté plus loin
+    # seulement par la vérification d'intégrité.
+    if curl -fL --retry 5 --retry-all-errors --retry-delay 5 -C - --progress-bar "$url" -o "$target_file"; then ok=true; fi
   else
-    if wget -q --show-progress -O "$target_file" "$url"; then ok=true; fi
+    if wget -c --tries=5 -q --show-progress -O "$target_file" "$url"; then ok=true; fi
   fi
 
   if [ "$ok" = false ] || [ ! -s "$target_file" ]; then
@@ -394,11 +420,19 @@ if [ -f /usr/local/bin/marionnet ] || [ -f /usr/local/bin/marionnet.native ]; th
   sudo rm -f /usr/local/bin/marionnet*
 fi
 # Doublons `.sh` morts depuis 2b2fc87 (les 4 familles vivent sous leur nom nu :
-# check, cleanup, ctl, verify) : les installations d'avant les posaient aussi
-# sous `*.sh` dans /usr/bin, ce qui doublait la complétion. Hors paquets dpkg
-# récents, donc retrait explicite et sans danger.
+# check, cleanup, ctl, verify) et fichiers jamais exécutés depuis un PATH
+# (scripts déposés dans les invités + complétion, voir build-all-in-one.sh) :
+# les installations d'avant les posaient dans /usr/bin, ce qui polluait la
+# complétion. Retrait explicite et sans danger (rien ne les appelle par là).
 sudo rm -f /usr/bin/marionnet-check.sh /usr/bin/marionnet-cleanup.sh \
-            /usr/bin/marionnet-ctl.sh /usr/bin/marionnet-verify.sh 2>/dev/null || true
+            /usr/bin/marionnet-ctl.sh /usr/bin/marionnet-verify.sh \
+            /usr/bin/marionnet-relay.00-journal.sh \
+            /usr/bin/marionnet-relay.05-autologin.sh \
+            /usr/bin/marionnet-relay.zz-journal.sh \
+            /usr/bin/marionnet-report.sh /usr/bin/marionnet-watch.sh \
+            /usr/bin/marionnet-terminal-record.sh \
+            /usr/bin/can-directory-host-sparse-files.sh \
+            /usr/bin/marionnet-completion.bash 2>/dev/null || true
 
 # 6. Installation des paquets et de toutes les dépendances
 echo "--> [4/6] Installation des paquets et des dépendances système..."

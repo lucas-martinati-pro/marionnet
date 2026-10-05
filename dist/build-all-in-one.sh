@@ -36,23 +36,44 @@ WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
 APP_DEB="marionnet_${VERSION}_amd64.deb"
 AIO_DEB="marionnet-all-in-one_${VERSION}_amd64.deb"
 
-for deb in "$KERNELS_DEB" "$KERNELS_I386_DEB" "$FS_DEB" "$WHEEZY_DEB"; do
-  if [ ! -f "$deb" ]; then
-    echo "--> Téléchargement du composant de base $deb depuis GitHub Releases ($BASE_RELEASE_TAG)..."
-    curl -fsSL "https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/$deb" -o "$deb" || {
-      echo "[-] Avertissement : impossible de récupérer $deb depuis les releases." >&2
-    }
-  fi
+# Un fichier partiel (curl interrompu par Ctrl-C, connexion coupée) existe et
+# semble valide au premier regard : --info ne lit que l'en-tête, --fsys-tarfile
+# traverse TOUTE l'archive et coince les troncations (2802624 attendus, 2486272
+# reçus : mesuré). curl reprend (--continue-at) avec réessais, et une couche
+# toujours invalide après téléchargement est FATALE -- un AIO partiel est pire
+# que pas d'AIO, et le crash dpkg-deb plus loin serait incompréhensible.
+deb_ok() { [ -f "$1" ] && dpkg-deb --fsys-tarfile "$1" >/dev/null 2>&1; }
+fetch_layer() {  # <deb> : reprend le partiel (-C -), réessaie, puis échoue dur
+  local deb="$1"
+  echo "--> Téléchargement du composant de base $deb depuis GitHub Releases ($BASE_RELEASE_TAG)..."
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -C - \
+    "https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/$deb" -o "$deb" || true
+  deb_ok "$deb" || {
+    echo "[-] ERREUR : impossible de récupérer un $deb valide après réessais." >&2
+    rm -f "$deb"
+    exit 1
+  }
+}
+for deb in "$KERNELS_DEB" "$KERNELS_I386_DEB" "$FS_DEB"; do
+  deb_ok "$deb" || fetch_layer "$deb"
 done
+# Wheezy volontairement EXCLU : 403 Mo jamais dépaquetés dans l'AIO (seul son
+# hash partait dans SHA256SUMS du temps des uploads par release). Il est
+# épinglé sur la release de base et servi par install.sh, pas reconstruit ici.
 
 # 3. Vérification du paquet applicatif marionnet
-if [ ! -f "$APP_DEB" ]; then
+if ! deb_ok "$APP_DEB"; then
+  rm -f "$APP_DEB"
   # Si une version antérieure existe (ex: 1.0.456), on peut s'en servir de base
   BASE_APP_DEB="$(ls marionnet_*_amd64.deb 2>/dev/null | grep -v all-in-one | head -n 1 || true)"
+  if [ -n "$BASE_APP_DEB" ] && ! deb_ok "$BASE_APP_DEB"; then
+    echo "--> Paquet applicatif local $BASE_APP_DEB corrompu, ignoré." >&2
+    rm -f "$BASE_APP_DEB"
+    BASE_APP_DEB=""
+  fi
   if [ -z "$BASE_APP_DEB" ]; then
-    echo "--> Téléchargement du paquet application de référence..."
-    curl -fsSL "https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/marionnet_1.0.456_amd64.deb" -o "marionnet_1.0.456_amd64.deb"
     BASE_APP_DEB="marionnet_1.0.456_amd64.deb"
+    fetch_layer "$BASE_APP_DEB"
   fi
 else
   BASE_APP_DEB="$APP_DEB"
@@ -85,6 +106,21 @@ if [ -d "$REPO_ROOT/bin/scripts" ]; then
     fi
   done
 fi
+
+# Pas d'extension ni de scripts d'invités sur le PATH : les 4 doublons `.sh`
+# (morts depuis 2b2fc87 : check, cleanup, ctl, verify) et les 8 fichiers qui ne
+# sont jamais exécutés depuis un PATH -- contenus embarqués par INCLUDE_AS_STRING
+# et déposés dans les invités (relay.*, report, watch, terminal-record,
+# can-directory-*) ou sourcés depuis le répertoire de complétion (completion).
+# Rien ne les appelle par leur chemin installé (vérifié par grep) ; la couche
+# applicative de base les ramène, d'où ce retrait explicite après dépaquetage.
+for noise in marionnet-check.sh marionnet-cleanup.sh marionnet-ctl.sh marionnet-verify.sh \
+             marionnet-relay.00-journal.sh marionnet-relay.05-autologin.sh \
+             marionnet-relay.zz-journal.sh marionnet-report.sh marionnet-watch.sh \
+             marionnet-terminal-record.sh can-directory-host-sparse-files.sh \
+             marionnet-completion.bash; do
+  rm -f "$BUILD_DIR/root/usr/bin/$noise"
+done
 
 mkdir -p "$BUILD_DIR/root/DEBIAN"
 
