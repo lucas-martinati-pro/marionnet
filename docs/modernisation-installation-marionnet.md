@@ -180,8 +180,8 @@ fraîche incapable de démarrer un bridge ou d'utiliser un client du canal. Corr
 
 | Paquet | Site d'appel mesuré | Chantier d'origine |
 |---|---|---|
-| `jq` | `bashbricks/bashbricks.sh` (module `Json_*`, **fichier installé**, sourcé par `bin/scripts/marionnet-{nat,lan}bridge.sh`) ; `bin/scripts/marionnet-check.sh` et `marionnet-verify.sh` (alias `mrn-check`, `mrn-verify`), qui **refusent de démarrer** sans lui (`command -v jq \|\| die`) | `modernisation-world-bridge`, `pilotage-par-script` |
-| `socat` | `bin/scripts/marionnet-ctl.sh` (alias `marionnet-ctl`, `mrnctl`) (`socat - UNIX-CONNECT:<socket>`, garde `command -v socat \|\| die`) | `pilotage-par-script` |
+| `jq` | `bashbricks/bashbricks.sh` (module `Json_*`, **fichier installé**, sourcé par `bin/scripts/marionnet-{nat,lan}bridge.sh`) ; `bin/scripts/marionnet-check` et `marionnet-verify` (alias `mrn-check`, `mrn-verify`), qui **refusent de démarrer** sans lui (`command -v jq \|\| die`) | `modernisation-world-bridge`, `pilotage-par-script` |
+| `socat` | `bin/scripts/marionnet-ctl` (alias `mrnctl`) (`socat - UNIX-CONNECT:<socket>`, garde `command -v socat \|\| die`) | `pilotage-par-script` |
 | `dnsmasq-base` | `bin/scripts/marionnet-dnsmasq.sh` (service DHCP/DNS lié au seul bridge d'un `nat_bridge`, et RA IPv6 via `--enable-ra`) | `modernisation-world-bridge` (ép. 10c, 11) |
 
 ⚠️ **`dnsmasq-base`, jamais `dnsmasq`** : le second ajoute un service système qui dispute le
@@ -272,13 +272,13 @@ fichier non nommé n'est pas installé — c'est ainsi que la complétion reste 
 
 | Fichier | Destination | Remarque |
 |---|---|---|
-| `bin/scripts/marionnet-ctl.sh` | `$(PREFIX)/bin/` | le client |
-| `bin/scripts/marionnet-ctl`, `mrnctl`, `mrn-control` | `$(PREFIX)/bin/` | **liens** vers le précédent — dont le nom court historique |
-| `bin/scripts/marionnet-check.sh` | `$(PREFIX)/bin/` | vérificateur d'un `.mrn` |
-| `bin/scripts/marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh` | `$(PREFIX)/bin/` | **liens** vers le précédent ; `mrn2sh` : le **nom implique `--to-bash`** |
-| `bin/scripts/marionnet-verify.sh` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
-| `bin/scripts/marionnet-verify`, `mrn-verify` | `$(PREFIX)/bin/` | **liens** vers le précédent |
-| `bin/scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert les **12** noms ci-dessus (`.sh` compris) |
+| `bin/scripts/marionnet-ctl` | `$(PREFIX)/bin/` | le client (nom nu depuis 2b2fc87, qui a supprimé les doublons `.sh`) |
+| `bin/scripts/mrnctl`, `mrn-control` | `$(PREFIX)/bin/` | **liens** vers le précédent — dont le nom court historique |
+| `bin/scripts/marionnet-check` | `$(PREFIX)/bin/` | vérificateur d'un `.mrn` |
+| `bin/scripts/mrn-check`, `mrnck`, `mrn2sh` | `$(PREFIX)/bin/` | **liens** vers le précédent ; `mrn2sh` : le **nom implique `--to-bash`** |
+| `bin/scripts/marionnet-verify` | `$(PREFIX)/bin/` | vérificateur déclaratif d'un labo qui tourne (`.mrv`) |
+| `bin/scripts/mrn-verify` | `$(PREFIX)/bin/` | **liens** vers le précédent |
+| `bin/scripts/marionnet-completion.bash` | `/usr/share/bash-completion/completions/` (ou `$(PREFIX)/share/…`) | dessert les **9** noms ci-dessus |
 
 > **RÉSOLU (partiellement) le 2026-08-21 — par une stanza `install` de dune.** Tous les
 > exécutables du tableau ci-dessus, **plus `marionnet-cleanup`** (et ses liens), sont désormais
@@ -1517,7 +1517,7 @@ silence à la place de l'utilisateur — c'est ce que le cas (e bis) du banc ré
 l'épisode 6, sans rapport l'une avec l'autre sinon qu'elles se jouent **sans serveur** :
 la complétion bash n'était installée nulle part, et l'installeur **exigeait `wget`**.
 
-### 11a — la complétion bash trouve sa place, et c'est douze fichiers
+### 11a — la complétion bash trouve sa place, et c'est neuf fichiers
 
 `bin/dune` portait, depuis le chantier `move-and-rename-useful-scripts-to-bin-scripts`, un
 commentaire disant que `scripts/marionnet-completion.bash` n'était **délibérément pas**
@@ -1530,14 +1530,15 @@ mécanisme *legacy*, tout y est sourcé par **chaque** shell, et il est cloué �
 il ne suivrait pas un préfixe relogé, ce qui est exactement ce que le tarball de l'ép. 9a a
 rendu possible.
 
-**Combien** : **douze**, et la répétition est le fond de l'affaire, pas une maladresse.
+**Combien** : **neuf** (douze à l'épisode, avant que `2b2fc87` ne supprime les doublons
+`.sh`), et la répétition est le fond de l'affaire, pas une maladresse.
 `bash-completion` charge **à la demande**, en cherchant un fichier *portant le nom de la
 commande tapée*. Les trois `complete -F` du pied de `marionnet-completion.bash` couvrent
-douze noms (`marionnet-ctl.sh`, `marionnet-ctl`, `mrnctl`, `mrn-control`,
-`marionnet-check.sh`, `marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh`,
-`marionnet-verify.sh`, `marionnet-verify`, `mrn-verify`) : installé sous un seul, il
+neuf noms (`marionnet-ctl`, `mrnctl`, `mrn-control`,
+`marionnet-check`, `mrn-check`, `mrnck`, `mrn2sh`,
+`marionnet-verify`, `mrn-verify`) : installé sous un seul, il
 complèterait `marionnet-ctl` et laisserait tous les autres **muets** tant que le premier
-n'aurait pas été tapé dans le même shell. Douze destinations pour une source unique
+n'aurait pas été tapé dans le même shell. Neuf destinations pour une source unique
 (`(… as bash-completion/completions/<nom>)`) : déclaratif, sans logique, et valable pour
 **tous** les canaux — `dune install`, le tarball, le futur `.deb` — au lieu d'une étape de
 liens que chacun aurait à refaire. Coût : ~180 Kio.
@@ -1645,7 +1646,7 @@ n'est pas pour cette boîte-là.
 
 ### Le cas neuf, et le piège qu'il a fallu payer pour qu'il vaille quelque chose
 
-L'épisode 11a avait prouvé que **sourcer** un des douze fichiers de complétion arme
+L'épisode 11a avait prouvé que **sourcer** un des neuf fichiers de complétion arme
 `complete` pour ce nom-là. Il n'avait pas prouvé le geste que l'utilisateur fait vraiment :
 taper `mrnctl <TAB>` dans un shell qui n'a rien sourcé. `bash-completion` charge **à la
 demande**, en cherchant un fichier portant le nom de la commande sous

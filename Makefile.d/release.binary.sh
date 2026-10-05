@@ -28,7 +28,7 @@
 #
 #   <name>/bin/          marionnet.native, and the 18 names of bin/scripts/
 #   <name>/share/        share/marionnet/{share,images,scripts,locale,filesystems,kernels},
-#                        share/bash-completion/completions/ (twelve names) and
+#                        share/bash-completion/completions/ (nine names) and
 #                        share/doc/marionnet/ (the delivered documentation, episode 14)
 #   <name>/install.sh    lays that down under a prefix, and asks for the sudoers rule
 #   <name>/README        what this is, what it needs, how to remove it

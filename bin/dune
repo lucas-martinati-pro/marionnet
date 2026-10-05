@@ -274,11 +274,11 @@
      ;; --- The sweeper of what a session killed brutally leaves behind (work-stream
      ;; --- `marionnet-todo-transverse'). It lives here, and no longer in useful-scripts/,
      ;; --- because that directory was meant for the scripts which manage or install the
-     ;; --- PROJECT, not for those which complement the binary -- and this one is named ON
-     ;; --- SCREEN by bin/marionnet.ml and RUN from the two buttons of its startup warning.
-     ;; --- The real file carries the .sh extension of this directory; the names the user
-     ;; --- types are SYMLINKS beside it, which is what keeps `marionnet-cleanup' -- a name
-     ;; --- frozen inside the msgid of the 12 gettext catalogues -- valid for free.
+      ;; --- PROJECT, not for those which complement the binary -- and this one is named ON
+      ;; --- SCREEN by bin/marionnet.ml and RUN from the two buttons of its startup warning.
+      ;; --- The file carries the bare usage name; `mrn-cleanup' beside it is a symlink,
+      ;; --- which is what keeps `marionnet-cleanup' -- a name
+      ;; --- frozen inside the msgid of the 12 gettext catalogues -- valid for free.
      ;; ---
      (glob_files "scripts/marionnet-cleanup")
      (glob_files "scripts/mrn-cleanup")
@@ -331,10 +331,10 @@
 ;;; ---
 ;;; --- bash-completion loads on demand: typing `mrnctl<TAB>' makes it look for a file CALLED
 ;;; --- mrnctl in the completions directory, and nowhere else. The `complete -F' lines at the
-;;; --- foot of scripts/marionnet-completion.bash cover twelve names; installing the file
+;;; --- foot of scripts/marionnet-completion.bash cover nine names; installing the file
 ;;; --- under only one of them would complete `marionnet-ctl' and leave `mrnctl', `mrn2sh',
 ;;; --- `mrn-verify'... silent until the first name had been typed in the same shell. Hence
-;;; --- twelve destinations for a single source: declarative, no logic, and it holds for every
+;;; --- nine destinations for a single source: declarative, no logic, and it holds for every
 ;;; --- channel (dune install, the release tarball, the future .deb) instead of a link-making
 ;;; --- step each of them would have to repeat.
 ;;; ---

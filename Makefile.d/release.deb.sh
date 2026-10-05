@@ -26,7 +26,7 @@
 # of docs/modernisation-installation-marionnet.md), and their split is not the one of the
 # 2009 RPM:
 #
-#   marionnet              amd64  the binary, the 18 names of bin/scripts/, the twelve
+#   marionnet              amd64  the binary, the 18 names of bin/scripts/, the nine
 #                                 completion files, share/marionnet/{share,images,scripts,
 #                                 locale}, share/doc/marionnet/ (the delivered guides), and
 #                                 /etc/marionnet/marionnet.conf as a CONFFILE

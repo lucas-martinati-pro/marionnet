@@ -58,7 +58,7 @@ dans un conteneur jeté ensuite.
   `--with-deps` avec réseau installe, fait démarrer le binaire et pose la règle sudoers
   dans la foulée (seul cas de ce banc qui ait besoin de l'extérieur : sauté à voix haute
   s'il n'y a pas de réseau).
-- la **complétion bash** des clients du canal (épisode 11a) : les **12 noms** sont posés
+- la **complétion bash** des clients du canal (épisode 11a) : les **9 noms** sont posés
   dans `<prefix>/share/bash-completion/completions/`, `root:root` comme le reste, et
   **sourcer l'un d'eux arme réellement `complete` pour ce nom-là**. Ce dernier cas est
   celui qui compte : `bash-completion` charge **à la demande**, en cherchant un fichier

@@ -16,8 +16,8 @@
 
 # Bash completion for the three clients of the control channel, under every name they answer
 # to: marionnet-ctl (mrnctl, mrn-control), marionnet-check (mrn-check, mrnck, mrn2sh) and
-# marionnet-verify (mrn-verify) -- the real .sh files and their symlinks, all in this very
-# directory.
+# marionnet-verify (mrn-verify) -- the bare usage names and their symlinks, all in this very
+# directory (since 2b2fc87 the .sh doubles are gone: no extension on the PATH).
 #
 #   . /path/to/marionnet-completion.bash      # or drop it in /etc/bash_completion.d/
 #
@@ -402,9 +402,10 @@ _mrn_verify_completion() {
   return 0
 }
 
-# Every name the three tools answer to, real file and symlinks alike (work-stream
-# `move-and-rename-useful-scripts-to-bin-scripts'): a name nothing declares here is a name which
+# Every name the three tools answer to (work-stream
+# `move-and-rename-useful-scripts-to-bin-scripts', finished by 2b2fc87 which
+# dropped the .sh doubles): a name nothing declares here is a name which
 # completes nothing, which is exactly how `mrnck' and `mrn-control' went unannounced until now.
-complete -F _marionnet_ctl_completion marionnet-ctl.sh marionnet-ctl mrnctl mrn-control
-complete -F _mrn_check_completion marionnet-check.sh marionnet-check mrn-check mrnck mrn2sh
-complete -F _mrn_verify_completion marionnet-verify.sh marionnet-verify mrn-verify
+complete -F _marionnet_ctl_completion marionnet-ctl mrnctl mrn-control
+complete -F _mrn_check_completion marionnet-check mrn-check mrnck mrn2sh
+complete -F _mrn_verify_completion marionnet-verify mrn-verify

@@ -587,10 +587,10 @@ else
   fi
 
   compl=$(in_box "dpkg -L marionnet | grep -c '/share/bash-completion/completions/.'")
-  if [[ $compl -eq 12 ]]; then
-    pass "the twelve completion files are under the prefix (episode 11a, through apt)"
+  if [[ $compl -eq 9 ]]; then
+    pass "the nine completion files are under the prefix (episode 11a, through apt)"
   else
-    fail "the package owns $compl completion files, expected 12"
+    fail "the package owns $compl completion files, expected 9"
   fi
 
   if in_box "test -f /usr/share/doc/marionnet/teacher-guide.md && test -d /usr/share/doc/marionnet/scripting"; then

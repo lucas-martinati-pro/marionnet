@@ -59,7 +59,7 @@ prouverait que nos fichiers se posent ; elle ne prouverait pas que `dnf` sait le
    `rpm -q`, jamais dans le statut de sortie.
 5. **`bash-completion` n'est pas une dépendance du paquet** — Marionnet marche sans. La boîte ne
    l'a donc pas, et un cas naïf échoue en croyant que la complétion est mal installée. Le banc
-   l'installe *dans ce cas-là*, ce qui est justement ce qui prouve que nos douze fichiers sont
+   l'installe *dans ce cas-là*, ce qui est justement ce qui prouve que nos neuf fichiers sont
    là où le **chargeur** les cherche.
 
 ## Résultats mesurés (2026-08-31, après l'épisode 19)

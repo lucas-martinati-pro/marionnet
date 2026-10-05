@@ -203,6 +203,9 @@ else
     exit 1
   fi
   VERSION="$(echo "$DEB_NAME" | sed -nE 's/^marionnet-all-in-one_(.*)_amd64\.deb$/\1/p')"
+  # Wheezy épinglé : les releases courantes ne le listent plus, on tombe donc
+  # sur le nom invariant par défaut -- voulu, le téléchargement se fait
+  # depuis la release de base (voir § 2 ci-dessous).
   WHEEZY_DEB="$(awk '$2 ~ /^marionnet-fs-debian-wheezy_.*\.deb$/ {print $2; exit}' "$SUMS_FILE")"
   if [ -z "$WHEEZY_DEB" ]; then
     WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
@@ -274,30 +277,51 @@ else
   echo "--> Paquet '$DEB_NAME' vérifié et prêt."
 fi
 
-# 2. Vérification / Téléchargement de la distribution Debian Wheezy
+# 2. Wheezy : artefact INVARIANT (08367) épinglé sur la release de base
+# (BASE_RELEASE_TAG) et jamais dupliqué dans les releases courantes. On le
+# télécharge donc TOUJOURS de là. Vérification en deux temps : la ligne du
+# SHA256SUMS courant quand elle existe (releases <= 1.0.459 le listent), sinon
+# l'empreinte épinglée -- le fichier ne change jamais, son nom EST sa version.
+# Provenance de l'empreinte : SHA256SUMS publiés des releases 1.0.457/458/459
+# (fichier identique de 423478976 octets sur les 4 releases) + téléchargement
+# local vérifié par `sha256sum -c`.
+WHEEZY_PINNED_SHA256="7972fa3cc8a6c9389c29a8173c574781ac14d07783fbaa4b954c98a71d8653fd"
 WHEEZY_INSTALLED=false
 if [ -f /usr/share/marionnet/filesystems/machine-debian-wheezy-08367 ] || dpkg -s marionnet-fs-debian-wheezy >/dev/null 2>&1; then
   echo "--> Système Debian Wheezy déjà installé dans /usr/share/marionnet/filesystems."
   WHEEZY_INSTALLED=true
 fi
 
+verify_wheezy_checksum() {
+  local file="$1" name line
+  name="$(basename "$file")"
+  if [ -s "${SUMS_FILE:-}" ]; then
+    line="$(awk -v n="$name" '$2==n {print; exit}' "$SUMS_FILE")"
+  fi
+  if [ -z "${line:-}" ]; then
+    line="$WHEEZY_PINNED_SHA256  $name"
+  fi
+  ( cd "$(dirname "$file")" && printf '%s\n' "$line" | sha256sum -c --status - ) \
+    || { echo "[-] Checksum SHA256 invalide pour $name" >&2; rm -f "$file"; return 1; }
+  echo "    ✓ Checksum SHA256 validé : $name"
+  return 0
+}
+
 if [ "$INSTALL_WHEEZY" = true ] && [ "$WHEEZY_INSTALLED" = false ]; then
   if [ -f "$WHEEZY_DEB" ]; then
-    if ! verify_checksum "$WHEEZY_DEB" 2>/dev/null; then
+    if ! verify_wheezy_checksum "$WHEEZY_DEB" 2>/dev/null; then
       echo "--> Paquet Wheezy local $WHEEZY_DEB corrompu. Retéléchargement..."
       rm -f "$WHEEZY_DEB"
     fi
   fi
   if [ ! -f "$WHEEZY_DEB" ]; then
-    if ! download_file "$WHEEZY_DEB" "${DOWNLOAD_BASE_URL}/${WHEEZY_DEB}" "Distribution Debian Wheezy (Apache2, navigateurs web, etc.)" true; then
-      echo "--> Téléchargement depuis la release de base ($BASE_RELEASE_TAG)..."
-      download_file "$WHEEZY_DEB" "https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/${WHEEZY_DEB}" "Distribution Debian Wheezy (fallback)" true || {
-        echo "[-] Avertissement : Impossible de récupérer $WHEEZY_DEB. L'installation continuera sans Debian Wheezy." >&2
-        INSTALL_WHEEZY=false
-      }
-    fi
+    echo "--> Téléchargement depuis la release épinglée ($BASE_RELEASE_TAG)..."
+    download_file "$WHEEZY_DEB" "https://github.com/${GITHUB_REPO}/releases/download/${BASE_RELEASE_TAG}/${WHEEZY_DEB}" "Distribution Debian Wheezy (Apache2, navigateurs web, etc.)" true || {
+      echo "[-] Avertissement : Impossible de récupérer $WHEEZY_DEB. L'installation continuera sans Debian Wheezy." >&2
+      INSTALL_WHEEZY=false
+    }
     if [ -f "$WHEEZY_DEB" ]; then
-      verify_checksum "$WHEEZY_DEB" || {
+      verify_wheezy_checksum "$WHEEZY_DEB" || {
         echo "[-] Avertissement : Le fichier $WHEEZY_DEB ne correspond pas à l'empreinte de contrôle. Ignoré." >&2
         rm -f "$WHEEZY_DEB"
         INSTALL_WHEEZY=false
@@ -321,6 +345,12 @@ echo "--> [3/6] Nettoyage des anciens binaires résiduels..."
 if [ -f /usr/local/bin/marionnet ] || [ -f /usr/local/bin/marionnet.native ]; then
   sudo rm -f /usr/local/bin/marionnet*
 fi
+# Doublons `.sh` morts depuis 2b2fc87 (les 4 familles vivent sous leur nom nu :
+# check, cleanup, ctl, verify) : les installations d'avant les posaient aussi
+# sous `*.sh` dans /usr/bin, ce qui doublait la complétion. Hors paquets dpkg
+# récents, donc retrait explicite et sans danger.
+sudo rm -f /usr/bin/marionnet-check.sh /usr/bin/marionnet-cleanup.sh \
+            /usr/bin/marionnet-ctl.sh /usr/bin/marionnet-verify.sh 2>/dev/null || true
 
 # 6. Installation des paquets et de toutes les dépendances
 echo "--> [4/6] Installation des paquets et des dépendances système..."

@@ -37,4 +37,4 @@ and stops rather than collecting nothing.
 repository, which is otherwise the rule for new scripts here. An example is meant to be copied
 out of the source tree and edited; a dependency on the tree's layout would be the first thing
 to break, and would hide behind helpers what the reader came to see. Same reasoning, and same
-precedent, as `bin/scripts/marionnet-ctl.sh`.
+precedent, as `bin/scripts/marionnet-ctl`.

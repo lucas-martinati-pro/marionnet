@@ -443,8 +443,8 @@ n=$(in_box "rpm -ql marionnet 2>/dev/null | grep -c '^/usr/bin/'")
 test "$n" = 31 && pass "the 31 commands of bin/ are installed" || fail "expected 31 commands in /usr/bin, found $n"
 
 n=$(in_box "ls /usr/share/bash-completion/completions/ 2>/dev/null | grep -cE 'mrn|marionnet'")
-test "$n" = 12 && pass "the twelve completion files are installed (episode 11a)" || \
-  fail "expected 12 completion files, found $n"
+test "$n" = 9 && pass "the nine completion files are installed (episode 11a)" || \
+  fail "expected 9 completion files, found $n"
 
 if in_box 'test -f /etc/marionnet/marionnet.conf'; then pass "the configuration file is installed"
 else fail "no /etc/marionnet/marionnet.conf"; fi
@@ -633,7 +633,7 @@ else
 fi
 
 # bash-completion loads on demand, by looking for a file named after the command being typed
-# -- which is why episode 11a had to install twelve files rather than one. Checking that the
+# -- which is why episode 11a had to install nine files rather than one. Checking that the
 # loader ARMS a function of ours, rather than falling back to _minimal, is what tells the two
 # apart (a naive check passes on a box where nothing is installed at all).
 #

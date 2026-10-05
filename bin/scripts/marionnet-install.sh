@@ -142,7 +142,7 @@ PROGNAME="${0##*/}"
 # --- ONE FILE, SEVERAL NAMES (episode 16).
 # ---
 # Invoked as `marionnet-get-images' (or `mrn-get-images'), this script is the guest-image
-# CHOOSER an installed Marionnet offers its user -- the same form as marionnet-check.sh,
+# CHOOSER an installed Marionnet offers its user -- the same form as marionnet-check,
 # which is `mrn2sh' when called by that name: one real implementation, several usage names,
 # the choice made by $0.
 #

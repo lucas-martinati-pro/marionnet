@@ -409,17 +409,17 @@ fi
 # --- The Bash completion of the channel clients (episode 11a). It is NOT in bin/: it is
 # --- sourced, not run, and bash-completion loads it ON DEMAND -- by looking for a file
 # --- CALLED like the command being typed. Hence one file per name, which is what these
-# --- three cases measure: the twelve names, the fact that sourcing one really arms the
+# --- three cases measure: the nine names, the fact that sourcing one really arms the
 # --- completion OF THAT NAME, and that they are root-owned like everything else.
 COMPL=/usr/local/share/bash-completion/completions
 missing=""
-for n in marionnet-ctl.sh marionnet-ctl mrnctl mrn-control \
-         marionnet-check.sh marionnet-check mrn-check mrnck mrn2sh \
-         marionnet-verify.sh marionnet-verify mrn-verify; do
+for n in marionnet-ctl mrnctl mrn-control \
+         marionnet-check mrn-check mrnck mrn2sh \
+         marionnet-verify mrn-verify; do
   in_box "test -s $COMPL/$n" || missing="$missing $n"
 done
 if [[ -z $missing ]]; then
-  pass "the Bash completion is installed under the 12 names the clients answer to"
+  pass "the Bash completion is installed under the 9 names the clients answer to"
 else
   fail "missing in $COMPL:$missing"
 fi
@@ -789,7 +789,7 @@ fi
 # ---------------------------------------------------------------- 11. the completion,
 # ---                                                                  LOADED ON DEMAND
 #
-# Episode 11a installed twelve files, and the cases of section 4 prove that SOURCING one of
+# Episode 11a installed nine files, and the cases of section 4 prove that SOURCING one of
 # them arms the completion of that very name. What they cannot prove is the gesture a user
 # actually makes: typing `mrnctl <TAB>' in a shell which sourced nothing. bash-completion
 # loads on demand, by looking for a file CALLED like the command being typed, under

@@ -121,10 +121,10 @@ jobs:
           fi
 
           echo "Publication de la release $TAG..."
-          ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb )
-          if [ -f dist/marionnet-fs-debian-wheezy_08367_all.deb ]; then
-            ASSETS+=( dist/marionnet-fs-debian-wheezy_08367_all.deb )
-          fi
+           ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb )
+           # Wheezy ÉPINGLÉ sur la release de base, jamais dupliqué ici : fichier
+           # invariant (08367), dist/install.sh le télécharge et le vérifie contre
+           # le SHA256SUMS de la release épinglée (BASE_RELEASE_TAG).
           if [ -f dist/SHA256SUMS ]; then
             ASSETS+=( dist/SHA256SUMS )
           fi

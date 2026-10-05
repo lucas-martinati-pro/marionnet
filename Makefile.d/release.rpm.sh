@@ -25,7 +25,7 @@
 # FOUR MARIONNET PACKAGES -- the same split as the Debian channel, and not the four of the
 # 2009 RPM:
 #
-#   marionnet              x86_64  the binary, the 26 names of bin/, the twelve completion
+#   marionnet              x86_64  the binary, the 26 names of bin/, the nine completion
 #                                  files, share/marionnet/{share,images,scripts,locale,gui},
 #                                  share/doc/marionnet/ (the delivered guides) and
 #                                  /etc/marionnet/marionnet.conf as a %config(noreplace)
