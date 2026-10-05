@@ -58,7 +58,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.hub.palette.png"
-   let tooltip   = (s_ "Hub")
+   let tooltip   = (s_ "label.hub")
    let packing   = Params.packing
   end
 
@@ -71,7 +71,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "H" in
-      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add hub") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "action.add_hub") ~name ~ok_callback ()
 
     let reaction { name = name; label = label; port_no = port_no; _ } =
       let action () = ignore (new User_level_hub.hub ~network:st#network ~name ~label ~port_no ()) in
@@ -85,7 +85,7 @@ module Make_menus (Params : sig
 
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
-     let title = (s_ "Modify hub")^" "^name in
+     let title = (s_ "action.modify_hub")^" "^name in
      let label = d#get_label in
      let port_no = d#get_port_no in
      let port_no_min = st#network#port_no_lower_of (d :> User_level.node) in
@@ -101,7 +101,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Hub
-    let kind_name () = s_ "hub"
+    let kind_name () = s_ "component.hub_kind"
   end)
 
  module Create_entries =
@@ -139,7 +139,7 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "Hub")
+      ~image_tooltip:(s_ "label.hub")
       ~name
       ~name_tooltip:(s_ "hub.tooltip.name")
       ?label
@@ -150,11 +150,11 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(s_ "Ports number")]
+        [(s_ "label.ports_number")]
     in
     let port_no =
       Gui_bricks.spin_byte
-        ~packing:(form#add_with_tooltip (s_ "Hub ports number"))
+        ~packing:(form#add_with_tooltip (s_ "label.hub_ports_number"))
         ~lower:port_no_min ~upper:port_no_max ~step_incr:2
         port_no
     in
@@ -179,7 +179,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A HUB") in
+   let title = (s_ "dialog.add_modify_hub") in
    let msg   = (s_ "help.dialog.hub")
    in Simple_dialogs.help title msg
 

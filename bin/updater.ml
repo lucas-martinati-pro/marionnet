@@ -69,7 +69,7 @@ let find_update_script () : string option =
 let check_update ?(current = Version.version) () : update_status =
   match find_update_script () with
   | None ->
-      Check_error (s_ "Update script (marionnet-update.sh) not found.")
+      Check_error (s_ "label.update_script_marionnet_update_sh_not_found")
   | Some script ->
       let cmd = Printf.sprintf "%s --check --current %s 2>&1" (Filename.quote script) (Filename.quote current) in
       let (output, status) = UnixExtra.run cmd in
@@ -113,8 +113,8 @@ let run_gui_update ?(force = false) () : unit =
   match find_update_script () with
   | None ->
       Simple_dialogs.error
-        (s_ "Software Update")
-        (s_ "Update script (marionnet-update.sh) not found.")
+        (s_ "label.software_update")
+        (s_ "label.update_script_marionnet_update_sh_not_found")
         ()
   | Some script ->
       let cmd =
@@ -127,7 +127,7 @@ let run_gui_update ?(force = false) () : unit =
 
 let format_update_question ~current ~latest =
   Printf.sprintf
-    (f_ "A new version of Marionnet is available!\n\nCurrent version: %s\nLatest version: %s\n\nDo you want to update Marionnet now?")
+    (f_key "update.confirm_install" "A new version of Marionnet is available!\n\nCurrent version: %s\nLatest version: %s\n\nDo you want to update Marionnet now?")
     current latest
 
 let prompt_manual_update_check () : unit =
@@ -142,13 +142,13 @@ let prompt_manual_update_check () : unit =
            | _ -> ())
       | Up_to_date cur ->
           Simple_dialogs.info
-            (s_ "Software Update")
-            (Printf.sprintf (f_ "Marionnet is up to date (version %s).") cur)
+            (s_ "label.software_update")
+            (Printf.sprintf (f_key "message.marionnet_up_date_version" "Marionnet is up to date (version %s).") cur)
             ()
       | Check_error err ->
           Simple_dialogs.warning
-            (s_ "Software Update")
-            (Printf.sprintf (f_ "Unable to check for updates.\nPlease check your Internet connection.\n\nDetail: %s") err)
+            (s_ "label.software_update")
+            (Printf.sprintf (f_key "update.check_failed_details" "Unable to check for updates.\nPlease check your Internet connection.\n\nDetail: %s") err)
             ()
     ) ()
   ) () in

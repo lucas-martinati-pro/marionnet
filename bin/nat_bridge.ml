@@ -240,14 +240,14 @@ module Make_menus (Params : sig
           if (not t.ipv6_enabled) || Tool.is_valid_ipv6_address t.ipv6_address then Some t else
           let () =
             Simple_dialogs.error
-              (s_ "Ill-formed IPv6 address")
+              (s_ "label.ill_formed_ipv6_address")
               (* The message body of Simple_dialogs.* is a Pango markup label
                  (`use-markup' on `content', gui_glade3.xml): no angle brackets in the
                  sentence (an <prefix> would be an unknown tag, and the whole markup
                  would fail to parse), and the address, which the user typed, is escaped
                  -- as the sibling message of `no private network' already does. *)
               (Printf.sprintf
-                 (f_ "\"%s\" is not an address of the expected shape. The bridge takes the first address of a /64, so it must be written prefix::1/64 -- for instance fd00:192:168:101::1/64.")
+                 (f_key "network.nat.ipv6_address_invalid" "\"%s\" is not an address of the expected shape. The bridge takes the first address of a /64, so it must be written prefix::1/64 -- for instance fd00:192:168:101::1/64.")
                  (Glib.Markup.escape_text t.ipv6_address))
               ()
           in
@@ -258,7 +258,7 @@ module Make_menus (Params : sig
       let network_config =
         Tool.network_config_of_network_address (Tool.first_free_network_address st#network)
       in
-      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "action.add_nat_bridge") ~name ~network_config ~ok_callback ()
 
     let reaction { name = name; label = label; network_config = network_config;
                    dhcp_enabled = dhcp_enabled; ipv6_enabled = ipv6_enabled;
@@ -288,7 +288,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
      let h = ((Obj.magic d):> User_level_nat_bridge.nat_bridge) in
-     let title = (s_ "Modify NAT bridge")^" "^name in
+     let title = (s_ "action.modify_nat_bridge")^" "^name in
      let label = d#get_label in
      let network_config = Tool.network_config_of_network_address h#get_network_address in
      let dhcp_enabled = h#get_dhcp_enabled in
@@ -322,7 +322,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Nat_bridge
-    let kind_name () = s_ "NAT bridge"
+    let kind_name () = s_ "label.nat_bridge"
   end)
 
  module Create_entries =
@@ -391,13 +391,13 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [ (s_ "IPv4 address"); (s_ "DHCP service");
+        [ (s_ "label.ipv4_address"); (s_ "label.dhcp_service");
           (* Episode 11. Four of these five labels cost nothing: they are the ones a
              world gateway and a router already use, word for word -- "IPv6 address"
              comes from the router dialog and is translated in all fourteen
              catalogues. The same thing must be called by the same name anyway. *)
-          (s_ "IPv6 address"); (s_ "RADVD service");
-          (s_ "Integrated switch ports") ]
+          (s_ "label.ipv6_address"); (s_ "label.radvd_service");
+          (s_ "label.integrated_switch_ports") ]
     in
     let network_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
@@ -452,7 +452,7 @@ let make
        minimum here is 1, so a step of 2 would only ever offer odd numbers. *)
     let port_no =
       Gui_bricks.spin_byte
-        ~packing:(form#add_with_tooltip (s_ "The number of ports of the integrated switch"))
+        ~packing:(form#add_with_tooltip (s_ "label.number_ports_integrated_switch"))
         ~lower:port_no_min ~upper:port_no_max ~step_incr:1
         port_no
     in
@@ -580,7 +580,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A NAT BRIDGE") in
+   let title = (s_ "dialog.add_modify_nat_bridge") in
    let msg   = (s_ "help.dialog.nat_bridge")
    in Simple_dialogs.help title msg ;;
 
@@ -858,7 +858,7 @@ let smallest_free (taken : int list) : int =
    invented. Inventing one is precisely the defect being fixed. *)
 let advice_of_error (e : Nat_bridge_host.error) : string option =
   let missing (command : string) =
-    Some (Printf.sprintf (f_ "The command `%s' is missing on this host: install the package that provides it (the installation page of Marionnet lists what Marionnet needs).") command)
+    Some (Printf.sprintf (f_key "error.command_missing" "The command `%s' is missing on this host: install the package that provides it (the installation page of Marionnet lists what Marionnet needs).") command)
   in
   match e.Nat_bridge_host.code with
   | "E_SUDO_DENIED" ->
@@ -869,7 +869,7 @@ let advice_of_error (e : Nat_bridge_host.error) : string option =
         Printf.sprintf "%s install --only --enable-natbridge"
           (Filename.basename (Tap_provider.sudoers_script ()))
       in
-      Some (Printf.sprintf (f_ "The administrator rights needed by the NAT bridge are not granted on this host: the sudoers rule is missing, or it was written by an older version of Marionnet and no longer covers every command. To grant them, run in a terminal:\n\n    %s") (Glib.Markup.escape_text command))
+      Some (Printf.sprintf (f_key "network.nat.permissions_missing" "The administrator rights needed by the NAT bridge are not granted on this host: the sudoers rule is missing, or it was written by an older version of Marionnet and no longer covers every command. To grant them, run in a terminal:\n\n    %s") (Glib.Markup.escape_text command))
   | "E_SUBNET_IN_USE" | "E_NO_FREE_SUBNET" | "E_BAD_SUBNET" | "E_ADDRESS6_IN_USE" | "E_BAD_ADDRESS6" ->
       Some (s_ "nat_bridge.error.network_already_used")
   | "E_NO_IPROUTE2" -> missing "ip"
@@ -958,7 +958,7 @@ class ['parent] nat_bridge =
              let () =
                if !already_warned then () else
                let () = already_warned := true in
-               let title = Printf.sprintf (f_ "NAT bridge \"%s\": no private network") (parent#get_name) in
+               let title = Printf.sprintf (f_key "message.nat_bridge_no_private_network" "NAT bridge \"%s\": no private network") (parent#get_name) in
                (* One line per translatable literal, and no `\'-continuation
                   inside one: OCaml eats the newline AND the leading blanks, the
                   camlp4 POT extractor does not, so an indented continuation
@@ -967,7 +967,7 @@ class ['parent] nat_bridge =
                   to a French user (bug of 2026-09-02). *)
                let message =
                  (Printf.sprintf
-                   (f_ "Marionnet could not build the private bridge of \"%s\", which therefore has no network at all: the virtual machines connected to it will reach nothing.")
+                   (f_key "network.nat.creation_failed" "Marionnet could not build the private bridge of \"%s\", which therefore has no network at all: the virtual machines connected to it will reach nothing.")
                    (parent#get_name))
                  ^ "\n\n<tt><small>" ^ (Glib.Markup.escape_text (Nat_bridge_host.string_of_error e)) ^ "</small></tt>"
                in

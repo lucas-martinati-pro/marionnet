@@ -118,16 +118,16 @@ let check_bridge_existence_and_warning () : unit =
   let bridge_name = ethernet_world_bridge_name in
   let sysfs_bridge_directory = Printf.sprintf "/sys/class/net/%s/bridge" (bridge_name) in
   if (Sys.file_exists sysfs_bridge_directory) then () else (* warning: *)
-    let title = Printf.sprintf (Gettext.f_ "Ethernet bridge \"%s\" not found") bridge_name in
+    let title = Printf.sprintf (Gettext.f_key "message.ethernet_bridge_not_found" "Ethernet bridge \"%s\" not found") bridge_name in
     let source = make_understandable_source_of_world_bridge_configuration () in
     let intro =
       Printf.sprintf
-        (Gettext.f_ "The Ethernet bridge \"%s\" named in the file:")
+        (Gettext.f_key "message.ethernet_bridge_named_in_file" "The Ethernet bridge \"%s\" named in the file:")
         bridge_name
     in
     let source_block = "\n\n<tt><small>" ^ source ^ "</small></tt>\n\n" in
     let explanation =
-      Gettext.s_ "was not found on this computer. Naming a bridge in that file is now merely a way to OVERRIDE the automatic behaviour: if you comment out (or empty) that line, Marionnet builds its own bridge when a LAN bridge component starts, and takes it down when it stops. Nothing has to be prepared by hand any more.\n\nIf you do prefer to keep using a bridge of your own, ask your administrator to create it, with commands like:"
+      Gettext.s_ "network.lan.bridge_not_found"
     in
     let commands =
       Printf.sprintf

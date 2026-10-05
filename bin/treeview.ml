@@ -1769,13 +1769,13 @@ object(self)
     if self#rows_may_have_children then begin
 
       self#add_menu_item
-        (s_ "Expand all")
+        (s_ "label.expand_all")
         (fun _ -> true)
         (fun selected_rowid_if_any ->
           self#expand_everything);
 
       self#add_menu_item
-        (s_ "Collapse all")
+        (s_ "label.collapse_all")
         (fun _ -> true)
         (fun selected_rowid_if_any ->
           self#collapse_everything);
@@ -1830,7 +1830,7 @@ class virtual treeview_with_a_Name_column = fun
     let _ =
       self#add_string_column
         ~header:name_header
-        ~shown_header:(s_ "Name")
+        ~shown_header:(s_ "label.name")
         ()
      in ()
 
@@ -1923,8 +1923,8 @@ let add_expand_and_collapse_button ~(window:GWindow.window) ~(hbox:GPack.box) (t
         (* (* (* let set = (GData.tooltips ())#set_tip in *) *) *)
         (* val GtkBase.Widget.Tooltip.set_text : [> `widget ] Gtk.obj -> string -> unit *)
         let set widget ~text = GtkBase.Widget.Tooltip.set_text widget text in
-        set b1#as_widget ~text:(s_ "Expand all");
-        set b2#as_widget ~text:(s_ "Collapse all")
+        set b1#as_widget ~text:(s_ "label.expand_all");
+        set b2#as_widget ~text:(s_ "label.collapse_all")
       in
       let () =
         let set (b:GButton.button) callback = ignore (b#connect#clicked ~callback) in

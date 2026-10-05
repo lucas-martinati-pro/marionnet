@@ -418,7 +418,7 @@ object(self)
     let _ =
       self#add_icon_column
         ~header:type_header
-        ~shown_header:(s_ "Type")
+        ~shown_header:(s_ "label.type")
         ~strings_and_pixbufs:[
            "machine", Initialization.Path.images^"treeview-icons/machine.xpm";
            "router",  Initialization.Path.images^"treeview-icons/router.xpm";
@@ -431,7 +431,7 @@ object(self)
     let _ =
       self#add_editable_string_column
         ~header:mac_address_header
-        ~shown_header:(s_ "MAC address")
+        ~shown_header:(s_ "label.mac_address")
         ~default:(fun () -> Row_item.String self#generate_mac_address)
         ~constraint_predicate:(fun i -> let s = Row_item.extract_String i in
                                           (self#is_a_valid_mac_address s) || s = "")
@@ -448,7 +448,7 @@ object(self)
     let _ =
       self#add_editable_string_column
         ~header:ipv4_address_header
-        ~shown_header:(s_ "IPv4 address")
+        ~shown_header:(s_ "label.ipv4_address")
         ~default:(fun () ->
                     if Global_options.get_autogenerate_ip_addresses () then
                       Row_item.String self#generate_ipv4_address
@@ -461,7 +461,7 @@ object(self)
     let _ =
       self#add_editable_string_column
         ~header:ipv4_gateway_header
-        ~shown_header:(s_ "IPv4 gateway")
+        ~shown_header:(s_ "label.ipv4_gateway")
         ~default:(fun () ->
                     if Global_options.get_autogenerate_ip_addresses () then
                       Row_item.String "10.10.0.254"
@@ -474,7 +474,7 @@ object(self)
     let _ =
       self#add_editable_string_column
         ~header:ipv6_address_header
-        ~shown_header:(s_ "IPv6 address")
+        ~shown_header:(s_ "label.ipv6_address")
         ~default:(fun () ->
                     if Global_options.get_autogenerate_ip_addresses () then
                       Row_item.String self#generate_ipv6_address
@@ -487,7 +487,7 @@ object(self)
     let _ =
       self#add_editable_string_column
         ~header:ipv6_gateway_header
-        ~shown_header:(s_ "IPv6 gateway")
+        ~shown_header:(s_ "label.ipv6_gateway")
         ~default:(fun () ->
                     if Global_options.get_autogenerate_ip_addresses () then
                       Row_item.String self#generate_ipv6_address
@@ -499,7 +499,7 @@ object(self)
     in
 
     self#add_row_constraint
-      ~name:(s_ "you should choose a port to define this parameter")
+      ~name:(s_ "label.choose_port_define_parameter")
       (fun row ->
 	let uneditable = Row.CheckBox_field.get ~field:uneditable_header row in
 	(not uneditable) ||
@@ -512,7 +512,7 @@ object(self)
 		      row));
 
     self#add_row_constraint
-      ~name:(s_ "the router first port must always have a valid configuration address")
+      ~name:(s_ "message.router_first_port_must_always_have_valid")
       (fun row ->
 	let port_name = (Row.get_name row) in
 	let port_type = (Row.Icon_field.get ~field:type_header row) in

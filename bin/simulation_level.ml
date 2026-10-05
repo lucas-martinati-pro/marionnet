@@ -1113,9 +1113,9 @@ let report_eth42_tap_failure ~(umid:string) ~(ip42:string) (msg:string) : unit =
       if Initialization.Disable_warnings.other_marionnet_sessions then () else
       if not (first_collision_report ()) then () else
       Simple_dialogs.warning
-        (s_ "Another Marionnet session is running")
+        (s_ "label.another_marionnet_session_running")
         (Printf.sprintf
-           (f_ "The virtual machine %s could not get its network address (%s): another Marionnet session, the process %d, already routes that address to one of its own taps. This machine is starting anyway, but without network. This message is shown only once per session.")
+           (f_key "network.taps.address_conflict" "The virtual machine %s could not get its network address (%s): another Marionnet session, the process %d, already routes that address to one of its own taps. This machine is starting anyway, but without network. This message is shown only once per session.")
            (Glib.Markup.escape_text umid) ip42 pid)
         ()
 
@@ -2109,15 +2109,15 @@ class virtual ['parent] device
 
   method (* protected *) execute_the_unexpected_death_callback pid process_name =
     let process_name = Filename.basename process_name in
-    let title = (s_ "A process died unexpectedly") in
+    let title = (s_ "label.process_died_unexpectedly") in
     let message =
       Printf.sprintf
-        (f_ "The process %s with pid %i allowing the simulation of %s %s died unexpectedly. It was necessary %s \"%s\" to maintain a consistent state.")
+        (f_key "simulation.process_died" "The process %s with pid %i allowing the simulation of %s %s died unexpectedly. It was necessary %s \"%s\" to maintain a consistent state.")
         process_name
         pid
         self#device_type
         parent#get_name
-        (if self#device_type = "Ethernet cable" then (s_ "to restart") else (s_ "to stop"))
+        (if self#device_type = "Ethernet cable" then (s_ "label.restart") else (s_ "action.stop_infinitive"))
         parent#get_name
     in
     (* Run the actual callback, and warn the user: *)
@@ -2432,7 +2432,7 @@ object(self)
     (if xnest then
       xnest_process :=
         Some (new xnest_process
-                ~title:(Printf.sprintf (f_ "Virtual X display of \"%s\"") umid)
+                ~title:(Printf.sprintf (f_key "message.virtual_x_display" "Virtual X display of \"%s\"") umid)
                 ~unexpected_death_callback:self#execute_the_unexpected_death_callback
                 ()));
     uml_process :=

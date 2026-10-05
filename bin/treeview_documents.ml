@@ -426,7 +426,7 @@ object(self)
     let pathname = Filename.concat (self#directory) (self#get_row_filename row_id) in
     (* Concatenation rather than a format string, like the [import_*] methods below: a translated
        format string with a wrong arity breaks at run time, in silence (work-stream i18n). *)
-    let title = (s_ "Source of ") ^ (self#get_row_title row_id) in
+    let title = (s_ "label.source") ^ (self#get_row_title row_id) in
     let content = try UnixExtra.cat pathname with _ -> "" in
     let result : (string option) Egg.t = Egg.create () in
     (* Deep logging, episode 12: WHO is in front of the screen decides whether this is a viewer or
@@ -479,7 +479,7 @@ object(self)
     let dialog = GWindow.file_chooser_dialog
         ~icon:Icon.icon_pixbuf
         ~action:`OPEN
-        ~title:((*utf8*)(s_ "Choose the document to import"))
+        ~title:((*utf8*)(s_ "label.choose_document_import"))
         ~modal:true ()
     in
     dialog#add_button_stock `CANCEL `CANCEL;
@@ -487,9 +487,9 @@ object(self)
     dialog#unselect_all;
     dialog#add_filter
       (GFile.filter
-         ~name:(s_ "Texts (PDF, PostScript, DVI, HTML, text)")
+         ~name:(s_ "label.texts_pdf_postscript_dvi_html_text")
          ~patterns:["*.pdf"; "*.ps"; "*.dvi"; "*.text"; "*.txt"; "*.html"; "*.htm"; "README";
-                    (s_ "README") (* it's nice to also support something like LISEZMOI... *)]
+                    (s_ "label.readme") (* it's nice to also support something like LISEZMOI... *)]
          ());
     dialog#set_default_response `OK;
     (* --- *)
@@ -652,44 +652,44 @@ object(self)
      READABLE version of the session. The raw typescript, and the timing file beside it, stay in
      the project directory for scriptreplay(1). *)
   method import_terminal ~machine_or_router_name ~pathname () =
-    let title = (s_ "Terminal of ") ^ machine_or_router_name in
+    let title = (s_ "label.component_terminal") ^ machine_or_router_name in
     let readable = Terminal_recording.readable_copy_of ~pathname in
     let row_id = self#import_document ~move:true readable in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
-    self#set_row_type    row_id (s_ "Terminal");
-    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+    self#set_row_type    row_id (s_ "label.terminal");
+    self#set_row_comment row_id ((s_ "label.created_on") ^ (UnixExtra.date ~dot:" " ()));
 
   (* COPIED, not moved (episode 8, once [move] started working): the file lives in a hostfs the
      next boot recreates anyway, and taking it away would make `log <c> rc_config' — or, below,
      `log <c> commands' — answer nothing at all after a graceful shutdown in exam mode. *)
   method import_report ~machine_or_router_name ~pathname () =
-    let title = (s_ "Report on ") ^ machine_or_router_name in
+    let title = (s_ "label.report_on") ^ machine_or_router_name in
     let row_id = self#import_document ~move:false pathname in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
-    self#set_row_type    row_id (s_ "Report");
-    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+    self#set_row_type    row_id (s_ "label.report");
+    self#set_row_comment row_id ((s_ "label.created_on") ^ (UnixExtra.date ~dot:" " ()));
 
   method import_history ~machine_or_router_name ~pathname () =
-    let title = (s_ "History of ") ^ machine_or_router_name in
+    let title = (s_ "label.component_history") ^ machine_or_router_name in
     let row_id = self#import_document ~move:false pathname in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
-    self#set_row_type    row_id (s_ "History");
-    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+    self#set_row_type    row_id (s_ "label.history");
+    self#set_row_comment row_id ((s_ "label.created_on") ^ (UnixExtra.date ~dot:" " ()));
 
   (* Deep logging, episode 7. COPIED, not moved, unlike its two siblings: the console journal is
      a file of the HOST (<project>/<name>-console.log, simulation_level.ml), and the channel keeps
      serving it under `log <c> console' after the machine is off (episode 6). The other two live
      in the hostfs, which the next boot overwrites anyway. *)
   method import_console ~machine_or_router_name ~pathname () =
-    let title = (s_ "Console of ") ^ machine_or_router_name in
+    let title = (s_ "label.component_console") ^ machine_or_router_name in
     let row_id = self#import_document ~move:false pathname in
     self#set_row_title   row_id title;
     self#set_row_author  row_id "-";
-    self#set_row_type    row_id (s_ "Console");
-    self#set_row_comment row_id ((s_ "created on ") ^ (UnixExtra.date ~dot:" " ()));
+    self#set_row_type    row_id (s_ "label.console");
+    self#set_row_comment row_id ((s_ "label.created_on") ^ (UnixExtra.date ~dot:" " ()));
 
   (* THE single gesture of the exam mode, called by machine.ml AND router.ml (deep logging,
      episode 7). Before this episode each of them spelled its own imports out, and they disagreed:
@@ -769,34 +769,34 @@ object(self)
     let _ =
       self#add_icon_column
         ~header:icon_header
-        ~shown_header:(s_ "Icon")
+        ~shown_header:(s_ "label.icon")
         ~strings_and_pixbufs:[ "text", Initialization.Path.images^"treeview-icons/text.xpm"; ]
         ~default:(fun () -> Row_item.Icon "text")
         () in
     let _ =
       self#add_editable_string_column
         ~header:title_header
-        ~shown_header:(s_ "Title")
+        ~shown_header:(s_ "label.title")
         ~italic:true
         ~default:(fun () -> Row_item.String "Please edit this")
         () in
     let _ =
       self#add_editable_string_column
         ~header:author_header
-        ~shown_header:(s_ "Author")
+        ~shown_header:(s_ "label.author")
         ~italic:false
         ~default:(fun () -> Row_item.String "Please edit this")
         () in
     let _ =
       self#add_editable_string_column
         ~header:type_header
-        ~shown_header:(s_ "Type")
+        ~shown_header:(s_ "label.type")
         ~italic:false
         ~default:(fun () -> Row_item.String "Please edit this")
         () in
     let _ =
       self#add_editable_string_column
-        ~shown_header:(s_ "Comment")
+        ~shown_header:(s_ "label.comment")
         ~header:"Comment"
         ~italic:true
         ~default:(fun () -> Row_item.String "Please edit this")
@@ -820,13 +820,13 @@ object(self)
     (* Setup the contextual menu: *)
     self#set_contextual_menu_title "Texts operations";
     self#add_menu_item
-      (s_ "Import a document")
+      (s_ "label.import_document")
       (fun _ -> true)
       (fun _ ->
         ignore (Option.map self#import_document self#ask_file));
 
     self#add_menu_item
-      (s_ "Display this document")
+      (s_ "label.display_document")
       Option.to_bool
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
@@ -842,8 +842,8 @@ object(self)
       (* Episode 12: the label says what the gesture does here, and it does not do the same thing
          for a student sitting an exam and for whoever reopens the project afterwards. *)
       (if Initialization.are_we_in_exam_mode
-         then (s_ "Show the source of this document")
-         else (s_ "Show and edit the source of this document"))
+         then (s_ "label.show_source_document")
+         else (s_ "label.show_edit_source_document"))
       (function
        | Some row_id -> Markdown_rendering.is_markdown (self#get_row_filename row_id)
        | None        -> false)
@@ -852,7 +852,7 @@ object(self)
         self#edit_source row_id);
 
     self#add_menu_item
-      (s_ "Remove this document")
+      (s_ "action.remove_document")
       Option.to_bool
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
@@ -880,7 +880,7 @@ let add_import_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GButt
   (*let packing = toolbar#add in*)
   let packing = Gui_bricks.make_toolbar_packing_function (toolbar) in
   (* --- *)
-  let b = Gui_bricks.button_image (*~window*) ~packing ~stock:`ADD ~stock_size:`SMALL_TOOLBAR ~tooltip:(s_ "Import a document") () in
+  let b = Gui_bricks.button_image (*~window*) ~packing ~stock:`ADD ~stock_size:`SMALL_TOOLBAR ~tooltip:(s_ "label.import_document") () in
   (* --- *)
   (* Behaviour on click: *)
   let callback () = ignore (Option.map treeview#import_document treeview#ask_file) in

@@ -71,10 +71,10 @@ let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
   let _image = GMisc.image ~pixbuf ~width:32 ~height:32 ~show:true
     ~packing:(row#pack ~expand:false) () in
   let label = match filename with
-    | "ico.machine.palette.png" -> s_ "Machine"
+    | "ico.machine.palette.png" -> s_ "label.machine"
     | "ico.hub.palette.png" -> s_ "workspace.palette.hub"
     | "ico.switch.palette.png" -> s_ "workspace.palette.switch"
-    | "ico.router.palette.png" -> s_ "Router"
+    | "ico.router.palette.png" -> s_ "label.router"
     | "ico.cloud.palette.png" -> s_ "workspace.palette.cloud"
     | "ico.world.palette.png" -> s_ "workspace.palette.world"
     | "ico.cable.direct.palette.png" -> s_ "workspace.palette.cable"
@@ -129,19 +129,19 @@ module Layout_for_network_component
 
  module Add' = struct
    include Add
-   let text  = (s_ "Add")
+   let text  = (s_ "label.add")
    let stock = `ADD
    end
 
  module Properties' = struct
    include Properties
-   let text  = (s_ "Modify")
+   let text  = (s_ "label.modify")
    let stock = `PROPERTIES
    end
 
  module Remove' = struct
    include Remove
-   let text  = (s_ "Remove")
+   let text  = (s_ "label.remove")
    let stock= `REMOVE
    end
 
@@ -187,25 +187,25 @@ module Layout_for_network_node
 
  module Startup' = struct
    include Startup
-   let text  = (s_ "Start")
+   let text  = (s_ "label.start")
    let stock = `EXECUTE
    end
 
  module Stop' = struct
    include Stop
-   let text  = (s_ "Stop")
+   let text  = (s_ "label.stop")
    let stock = `MEDIA_STOP
    end
 
  module Suspend' = struct
    include Suspend
-   let text  = (s_ "Suspend")
+   let text  = (s_ "label.suspend")
    let stock = `MEDIA_PAUSE
    end
 
  module Resume' = struct
    include Resume
-   let text  = (s_ "Resume")
+   let text  = (s_ "label.resume")
    let stock = `MEDIA_PLAY
    end
 
@@ -245,8 +245,8 @@ module Lifecycle
     let dynlist () = st#network#get_node_names_that_can_destroy ~devkind:Dev.devkind ()
     let dialog name () =
       Gui_bricks.Dialog.yes_or_cancel_question
-        ~title:(s_ "Remove")
-        ~markup:(Printf.sprintf (f_ "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name (Dev.kind_name ()))
+        ~title:(s_ "label.remove")
+        ~markup:(Printf.sprintf (f_key "message.sure_want_remove_all_cables_connected" "Are you sure that you want to remove %s\nand all the cables connected to this %s?") name (Dev.kind_name ()))
         ~context:name
         ()
     let reaction name =
@@ -304,7 +304,7 @@ module Layout_for_network_node_with_state
 
  module Ungracefully_stop' = struct
    include Ungracefully_stop
-   let text  = (s_ "Power-off")
+   let text  = (s_ "label.power_off")
    let stock = `DISCONNECT
    end
 
@@ -334,13 +334,13 @@ module Layout_for_network_edge
 
  module Disconnect' = struct
    include Disconnect
-   let text  = (s_ "Disconnect")
+   let text  = (s_ "label.disconnect")
    let stock = `DISCONNECT
    end
 
  module Reconnect' = struct
    include Reconnect
-   let text  = (s_ "Re-connect")
+   let text  = (s_ "label.re_connect")
    let stock = `CONNECT
    end
 

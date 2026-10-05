@@ -52,7 +52,7 @@ include F
                 Menu "Project"
  * **************************************** *)
 
-let project = add_menu (s_ "_Project" )
+let project = add_menu (s_ "menu.project" )
 
 module Common_dialogs = struct
 
@@ -76,11 +76,11 @@ module Common_dialogs = struct
     New and Open, which chain this dialog with a file chooser). [script_answer] keeps the contract
     of a driven session: a question raised while the control server serves a command is answered
     by default instead of freezing it (talking.ml). *)
- let ask_to_save_current_project ?(gen_id="answer") ?(title=(s_ "Close")) ?script_answer () =
+ let ask_to_save_current_project ?(gen_id="answer") ?(title=(s_ "label.close")) ?script_answer () =
    if not st#active_project then (Some (mkenv [(gen_id, "no")])) else
    if Initialization.are_we_in_exam_mode then (Some (mkenv [(gen_id, "yes")])) else
    let question =
-     let question = (s_ "Do you want to save the current project?") in
+     let question = (s_ "label.do_want_save_current_project") in
      if not (something_has_run ()) then question else
      question ^ "\n\n" ^
      (s_ "warning.quit_session_discard")
@@ -119,14 +119,14 @@ let env_to_string (t:env) = t#to_string (fun s->s)
 module Created_entry_project_new = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "New" )
+   let text  = (s_ "label.new" )
    let stock = `NEW
    let key   = (Some _N)
 
    let dialog =
      let filename () =
        EDialog.ask_for_fresh_writable_filename
-         ~title:(s_ "Name of the new project" )
+         ~title:(s_ "label.name_new_project" )
          ~filter_names:[`MAR;`ALL]
          ~help:(Some Msg.help_nom_pour_le_projet) ()
      in
@@ -159,14 +159,14 @@ let project_new = Created_entry_project_new.item
 module Created_entry_project_open = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Open" )
+   let text  = (s_ "label.open" )
    let stock = `OPEN
    let key   = (Some _O)
 
    let dialog =
      let filename_dialog () =
        EDialog.ask_for_existing_rw_filename
-         ~title:(s_ "Open an existing Marionnet project" )
+         ~title:(s_ "label.open_existing_marionnet_project" )
          ~filter_names:[`MAR; `ALL]
          ~help:(Some Msg.help_nom_pour_le_projet) ()
      in
@@ -184,7 +184,7 @@ module Created_entry_project_open = Menu_factory.Make_entry(struct
            let () = if (active_project) then st#close_project in
            (* --- *)
            try ignore (st#open_project_async filename)
-           with e -> ((Simple_dialogs.error (s_ "Open a project") ((s_ "Failed to open the file ")^filename) ()); raise e)
+           with e -> ((Simple_dialogs.error (s_ "label.open_project") ((s_ "label.failed_open_file")^filename) ()); raise e)
            end
       in
       (* --- *)
@@ -200,7 +200,7 @@ let project_open = Created_entry_project_open.item
 
 (* --- *)
 let project_save =
-  add_stock_item (s_ "Save" )
+  add_stock_item (s_ "label.save" )
     ~stock:`SAVE
     ~key:_S
     ~callback:(fun () ->
@@ -213,14 +213,14 @@ let project_save =
 module Created_entry_project_save_as = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Save as" )
+   let text  = (s_ "label.save_as" )
    let stock = `SAVE_AS
    let key   = None
 
    (* --- *)
    let dialog () =
      EDialog.ask_for_fresh_writable_filename
-       ~title:(s_ "Save as" )
+       ~title:(s_ "label.save_as" )
        ~filter_names:[`MAR; `ALL]
        ~help:(Some Msg.help_nom_pour_le_projet) ()
 
@@ -237,7 +237,7 @@ module Created_entry_project_save_as = Menu_factory.Make_entry(struct
        let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.save_as_project\n" in
          try st#save_project_as ~filename ()
-         with _ -> (Simple_dialogs.error (s_ "Save project as") ((s_ "Failed to save the project into the file ")^filename) ())
+         with _ -> (Simple_dialogs.error (s_ "label.save_project_as") ((s_ "label.failed_save_project_into_file")^filename) ())
        in
        (* --- *)
        (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.save_as_project" actions *)
@@ -254,14 +254,14 @@ let project_save_as = Created_entry_project_save_as.item
 module Created_entry_project_copy_to = Menu_factory.Make_entry(struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Copy to" )
+   let text  = (s_ "label.copy" )
    let stock = `SAVE_AS
    let key   = None
 
    (* --- *)
    let dialog () =
      EDialog.ask_for_fresh_writable_filename
-       ~title:(s_ "Copy to" )
+       ~title:(s_ "label.copy" )
        ~filter_names:[`MAR; `ALL]
        ~help:(Some Msg.help_nom_pour_le_projet) ()
 
@@ -277,7 +277,7 @@ module Created_entry_project_copy_to = Menu_factory.Make_entry(struct
        let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.copy_to_project\n" in
          try st#copy_project_into ~filename ()
-         with _ -> (Simple_dialogs.error (s_ "Project copy to" ) ((s_ "Failed to copy the project into the file ")^filename) ())
+         with _ -> (Simple_dialogs.error (s_ "label.project_copy" ) ((s_ "label.failed_copy_project_into_file")^filename) ())
        in
        (* --- *)
        (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.copy_to_project" actions *)
@@ -295,13 +295,13 @@ module Created_entry_project_close = Menu_factory.Make_entry
  (struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Close" )
+   let text  = (s_ "label.close" )
    let stock = `CLOSE
    let key   = (Some _W)
 
    (* --- *)
    (* Episode 23: the same dialog as New and Open — and in exam mode, no dialog at all. *)
-   let dialog () = Common_dialogs.ask_to_save_current_project ~title:(s_ "Close") ()
+   let dialog () = Common_dialogs.ask_to_save_current_project ~title:(s_ "label.close") ()
 
    (* --- *)
    let reaction r =
@@ -330,7 +330,7 @@ module Created_entry_project_export = Menu_factory.Make_entry
  (struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Export image" )
+   let text  = (s_ "label.export_image" )
    let stock = `CONVERT
    let key   = None
 
@@ -344,14 +344,14 @@ module Created_entry_project_export = Menu_factory.Make_entry
        let table = GPack.table ~rows:2 ~columns:1 ~row_spacings:10 ~homogeneous:false () in
        let _ = GMisc.label
          ~xalign:0.5
-         ~markup:("<b>"^(s_ "Output format")^"</b>")
+         ~markup:("<b>"^(s_ "label.output_format")^"</b>")
          ~packing:(table#attach ~left:0 ~top:0) ()
        in
        (table#attach ~left:0 ~top:1 combo_box#coerce);
        (table#coerce, widget_reader)
      in
      EDialog.ask_for_fresh_writable_filename
-       ~title:(s_ "Export network image" )
+       ~title:(s_ "label.export_network_image" )
        ~filters:(Dot_widget.make_all_working_filters ())
        ~filter_names:[`ALL]
        ~extra_widget
@@ -364,12 +364,12 @@ module Created_entry_project_export = Menu_factory.Make_entry
      let on_error () =
 	Simple_dialogs.error
 	  "Export network image"
-	  ((s_ "Failed to export network image to the file ")^filename^" (format "^output_format^")")
+	  ((s_ "label.failed_export_network_image_file")^filename^" (format "^output_format^")")
 	  ()
      in
      try
        Log.system_or_fail command;
-       st#flash ~delay:8000 ((s_ "Network image correctly exported to the file ")^filename)
+       st#flash ~delay:8000 ((s_ "label.network_image_correctly_exported_file")^filename)
      with _ -> on_error ()
 
   end) (F)
@@ -380,7 +380,7 @@ module Created_entry_project_quit = Menu_factory.Make_entry
  (struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Quit")
+   let text  = (s_ "label.quit")
    let stock = `QUIT
    let key   = (Some _Q)
 
@@ -403,7 +403,7 @@ module Created_entry_project_quit = Menu_factory.Make_entry
      then (Some (mkenv [("answer","no")]))
      else
        Common_dialogs.ask_to_save_current_project
-         ~title:(s_ "Quit")
+         ~title:(s_ "label.quit")
          (* A driven session quits without saving behind the script's back. A script that wants
             its project saved says so. *)
          ~script_answer:"no"
@@ -481,19 +481,19 @@ let () =
   ignore (Ocamlbricks.Cortex.on_commit_append st#project_paths#filename (fun _ _ -> update ()));
   update ()
 
-let options = add_menu (s_ "_Options")
+let options = add_menu (s_ "menu.options")
 
 (* --- *)
 module Created_entry_options_cwd = Menu_factory.Make_entry
  (struct
    type t = env
    let to_string = env_to_string
-   let text  = (s_ "Change the temporary working directory")
+   let text  = (s_ "label.change_temporary_working_directory")
    let stock = `DIRECTORY
    let key   = None
    let dialog () =
     Talking.EDialog.ask_for_existing_writable_folder_pathname_supporting_sparse_files
-       ~title:(s_ "Choose the temporary working directory")
+       ~title:(s_ "label.choose_temporary_working_directory")
        ~help:(Some Msg.help_repertoire_de_travail) ()
    let reaction r =
      let pathname = (r#get "foldername") in
@@ -506,7 +506,7 @@ let options_cwd = Created_entry_options_cwd.item
 (* --- *)
 (* Hidden to user in this version. *)
 let options_autogenerate_ip_addresses =
- add_check_item (s_ "Auto-generation of IP address" )
+ add_check_item (s_ "label.auto_generation_ip_address" )
   ~active:Global_options.autogenerate_ip_addresses_default
   ~callback:(fun active ->
          Log.printf "You toggled the option (IP)\n";
@@ -517,7 +517,7 @@ let () = options_autogenerate_ip_addresses#coerce#misc#hide ()
 
 (* --- *)
 let options_debug_mode =
- add_check_item (s_ "Debug mode")
+ add_check_item (s_ "label.debug_mode")
   ~active:(Global_options.Debug_level.are_we_debugging ())
   ~callback:(fun active ->
          Log.printf1 ~force:true "You toggled the option (debug), now to %b\n" active;
@@ -534,7 +534,7 @@ let options_debug_mode =
    the one the model reads ([can_destroy], user_level.ml); the option which flips it is
    --exam-allow-delete, on the command line. *)
 let options_exam_delete_lock =
- add_check_item (s_ "Exam mode: forbid removing components which have run")
+ add_check_item (s_ "label.exam_mode_forbid_removing_components_which_have")
   ~active:(not Initialization.are_we_allowed_to_delete)
   ~callback:(fun _ -> ())
  ()
@@ -546,7 +546,7 @@ let () =
 
 (* --- *)
 let options_keep_all_snapshots_when_saving =
- add_check_item (s_ "Keep all snapshots when saving (not only the most recent ones)")
+ add_check_item (s_ "message.keep_all_snapshots_when_saving_not_only")
   ~active:(Global_options.Keep_all_snapshots_when_saving.extract ())
   ~callback:(fun active ->
          Log.printf "You toggled the option (keep al snapshots)\n";
@@ -555,7 +555,7 @@ let options_keep_all_snapshots_when_saving =
 
 (* --- *)
 let options_show_welcome =
- add_check_item (s_ "Show welcome popup at startup")
+ add_check_item (s_ "label.show_welcome_popup_at_startup")
   ~active:(Global_options.Show_welcome_popup.extract ())
   ~callback:(fun active ->
          Log.printf1 "You toggled the option (show welcome popup): %b\n" active;
@@ -578,19 +578,19 @@ let () = workaround_wirefilter_problem#coerce#misc#hide ()
                 Menu "Help"
  * **************************************** *)
 
-let help         = add_menu (s_ "_Help")
+let help         = add_menu (s_ "menu.help")
 let help_welcome =
   let callback () = Splash.show_splash () in
-  add_stock_item (s_ "Welcome to Marionnet") ~stock:`INFO ~callback ()
+  add_stock_item (s_ "label.welcome_marionnet") ~stock:`INFO ~callback ()
 let help_update  =
   let callback () = Updater.prompt_manual_update_check () in
-  add_stock_item (s_ "Check for updates...") ~stock:`REFRESH ~callback ()
+  add_stock_item (s_ "label.check_updates") ~stock:`REFRESH ~callback ()
 let help_apropos =
  let module D = Gui_dialog_A_PROPOS.Make (State) in
  let callback () =
    let dialog = D.dialog () in
    let _ = dialog#closebutton_A_PROPOS#connect#clicked ~callback:(dialog#toplevel#destroy) in ()
- in add_stock_item (s_ "Help") ~stock:`ABOUT ~callback ()
+ in add_stock_item (s_ "label.help") ~stock:`ABOUT ~callback ()
 
 
 

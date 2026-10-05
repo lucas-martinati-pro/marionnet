@@ -18,9 +18,16 @@
 val s_ : string -> string
 val f_ : ('a, 'b, 'c) format -> ('a, 'b, 'c) format
 
+(** Look up a stable identifier. Missing/empty translations fall back to the
+    English catalog, then to the supplied text if neither catalog has it. *)
+val s_key : string -> string -> string
+
+(** Look up a stable identifier while keeping the argument types of the supplied
+    English format. An incompatible translated format falls back to that format. *)
+val f_key : string -> ('a, 'b, 'c) format -> ('a, 'b, 'c) format
+
 val get_active_language : unit -> string
 
 
 (** Print diagnosis messages about detected language and loaded locale JSON file. *)
 val log_diagnosis : unit -> unit
-

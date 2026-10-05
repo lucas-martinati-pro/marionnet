@@ -74,6 +74,9 @@ passerelles Internet.
   complétées dans les **13 catalogues de langue** : français, anglais, allemand,
   espagnol, italien, portugais, portugais brésilien, grec, espéranto, roumain,
   russe, slovaque et turc. Le repli anglais reste disponible pour les clés manquantes.
+- Les 386 clés de traduction basées sur des phrases anglaises sont remplacées
+  par des identifiants stables dans les 13 langues. Les textes simples utilisent
+  la clé seule ; les messages à paramètres conservent la vérification des types.
 
 ## Une interface plus réactive
 

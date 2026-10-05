@@ -73,7 +73,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.world_gateway.palette.png"
-   let tooltip   = (s_ "World gateway (router)")
+   let tooltip   = (s_ "label.world_gateway_router")
    let packing   = Params.packing
   end
 
@@ -87,7 +87,7 @@ module Make_menus (Params : sig
     let dialog () =
       let name = st#network#suggestedName "G" in
       Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
-        ~title:(s_ "Add world gateway") ~name ~ok_callback ()
+        ~title:(s_ "action.add_world_gateway") ~name ~ok_callback ()
 
     let reaction {
          name = name;
@@ -119,7 +119,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
      let g = ((Obj.magic d):> User_level_world_gateway.world_gateway) in
-     let title = (s_ "Modify world gateway")^" "^name in
+     let title = (s_ "action.modify_world_gateway")^" "^name in
      let label = g#get_label in
      (* With the current version of slirpvde i4 is always 1 and cidr is 24 *)
      let network_config =
@@ -153,7 +153,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `World_gateway
-    let kind_name () = s_ "gateway"
+    let kind_name () = s_ "label.gateway"
   end)
 
  module Create_entries =
@@ -194,7 +194,7 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "World gateway")
+      ~image_tooltip:(s_ "label.world_gateway")
       ~name
       ~name_tooltip:(s_ "world_gateway.tooltip.name")
       ?label
@@ -205,7 +205,7 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(s_ "IPv4 address"); (s_ "DHCP service"); (s_ "Integrated switch ports")]
+        [(s_ "label.ipv4_address"); (s_ "label.dhcp_service"); (s_ "label.integrated_switch_ports")]
     in
     let network_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
@@ -215,11 +215,11 @@ let make
     let dhcp_enabled =
       GButton.check_button
         ~active:dhcp_enabled
-        ~packing:(form#add_with_tooltip (s_ "Should the gateway provide a DHCP service?" )) ()
+        ~packing:(form#add_with_tooltip (s_ "label.gateway_provide_dhcp_service" )) ()
     in
     let port_no =
       Gui_bricks.spin_byte
-        ~packing:(form#add_with_tooltip (s_ "The number of ports of the integrated switch" ))
+        ~packing:(form#add_with_tooltip (s_ "label.number_ports_integrated_switch" ))
         ~lower:port_no_min ~upper:port_no_max ~step_incr:2
         port_no
     in
@@ -257,7 +257,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A WORLD GATEWAY") in
+   let title = (s_ "dialog.add_modify_world_gateway") in
    let msg   = (s_ "help.dialog.world_gateway")
    in Simple_dialogs.help title msg ;;
 

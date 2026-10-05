@@ -694,10 +694,10 @@ class virtual_machine_installations
                int_of_float ((Unix.stat realpath).Unix.st_mtime)
              in
              if actual_mtime = expected_mtime then () else (* warning: *)
-	     let title = (s_ "Modification time (MTIME) inconsistency") in
+	     let title = (s_ "label.modification_time_mtime_inconsistency") in
 	     let part1 =
 	       Printf.sprintf
-		 (f_ "The filesystem '%s%s' has the mtime %d, but the expected value was %d.\nPlease run the command:")
+		 (f_key "machine.filesystem_timestamp_mismatch" "The filesystem '%s%s' has the mtime %d, but the expected value was %d.\nPlease run the command:")
  		 prefix filesystem_epithet actual_mtime expected_mtime
 	     in
 	     let cmd = Printf.sprintf "\n\n<tt><small>sudo touch -d @%d %s</small></tt>\n\n" expected_mtime realpath in

@@ -70,7 +70,7 @@ module Make_menus (Params : sig
     let dialog () =
       let () = Global_options.check_bridge_existence_and_warning () in
       let name = st#network#suggestedName "B" in
-      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add LAN bridge") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "action.add_lan_bridge") ~name ~ok_callback ()
 
     let reaction { name = name; label = label; port_no = port_no; _ } =
       let action () = ignore (
@@ -92,7 +92,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
      let h = ((Obj.magic d):> User_level_lan_bridge.lan_bridge) in
-     let title = (s_ "Modify LAN bridge")^" "^name in
+     let title = (s_ "action.modify_lan_bridge")^" "^name in
      let label = d#get_label in
      let port_no = h#get_port_no in
      (* Not Const.port_no_min: the smallest number of ports which still holds every
@@ -110,7 +110,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `World_bridge
-    let kind_name () = s_ "LAN bridge"
+    let kind_name () = s_ "label.lan_bridge"
   end)
 
  module Create_entries =
@@ -165,10 +165,10 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [ (s_ "Integrated switch ports") ]
+        [ (s_ "label.integrated_switch_ports") ]
     in
     Gui_bricks.spin_byte
-      ~packing:(form#add_with_tooltip (s_ "The number of ports of the integrated switch"))
+      ~packing:(form#add_with_tooltip (s_ "label.number_ports_integrated_switch"))
       ~lower:port_no_min ~upper:port_no_max ~step_incr:1
       port_no
   in
@@ -217,7 +217,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A LAN BRIDGE") in
+   let title = (s_ "dialog.add_modify_lan_bridge") in
    let msg   = (s_ "help.dialog.lan_bridge")
    in Simple_dialogs.help title msg ;;
 

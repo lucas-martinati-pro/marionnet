@@ -82,7 +82,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.switch.palette.png"
-   let tooltip   = (s_ "Switch")
+   let tooltip   = (s_ "label.switch")
    let packing   = Params.packing
   end
 
@@ -96,7 +96,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "S" in
-      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add switch") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "action.add_switch") ~name ~ok_callback ()
 
     let reaction
        { name = name; label = label; port_no = port_no; auto_mdix = auto_mdix;
@@ -119,7 +119,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
      let s = ((Obj.magic d):> User_level_switch.switch) in
-     let title = (s_ "Modify switch")^" "^name in
+     let title = (s_ "action.modify_switch")^" "^name in
      let label = s#get_label in
      let port_no = s#get_port_no in
      let port_no_min = st#network#port_no_lower_of (s :> User_level.node) in
@@ -148,7 +148,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Switch
-    let kind_name () = s_ "switch"
+    let kind_name () = s_ "component.switch_kind"
   end)
 
  module Create_entries =
@@ -190,7 +190,7 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "Switch")
+      ~image_tooltip:(s_ "label.switch")
       ~name
       ~name_tooltip:(s_ "switch.tooltip.name")
       ?label
@@ -201,19 +201,19 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(s_ "Ports number");
+        [(s_ "label.ports_number");
          (* Not translated on purpose: "Auto MDI-X" is the IEEE acronym printed as such on
             real hardware and in datasheets, in every language we support. The meaning is
             carried by the tooltip, which *is* translated. *)
          ("Auto MDI-X");
-         (s_ "Show VDE terminal");
-         (s_ "Activate FSTP");
-         (s_ "Startup configuration");
+         (s_ "label.show_vde_terminal");
+         (s_ "label.activate_fstp");
+         (s_ "label.startup_configuration");
          ]
     in
     let port_no =
       Gui_bricks.spin_byte
-        ~packing:(form#add_with_tooltip (s_ "Switch ports number"))
+        ~packing:(form#add_with_tooltip (s_ "label.switch_ports_number"))
         ~lower:port_no_min ~upper:port_no_max ~step_incr:2
         port_no
     in
@@ -227,20 +227,20 @@ let make
     let show_vde_terminal =
       GButton.check_button
         ~active:show_vde_terminal
-        ~packing:(form#add_with_tooltip (s_ "Check to access the switch through a terminal" ))
+        ~packing:(form#add_with_tooltip (s_ "label.check_access_switch_through_terminal" ))
         ()
     in
     let activate_fstp =
       GButton.check_button
         ~active:activate_fstp
-        ~packing:(form#add_with_tooltip (s_ "Check to activate the FSTP (Fast Spanning Tree Protocol)" ))
+        ~packing:(form#add_with_tooltip (s_ "label.check_activate_fstp_fast_spanning_tree_protocol" ))
         ()
     in
     let rc_config =
        Gui_bricks.make_rc_config_widget
          ~filter_names:[`CONF; `RC; `ALL]
          ~parent:(dialog_switch :> GWindow.window_skel)
-         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
+         ~packing:(form#add_with_tooltip (s_ "label.check_activate_startup_configuration" ))
          ~active:(fst rc_config)
          ~content:(snd rc_config)
          ~device_name:(old_name)
@@ -276,7 +276,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A SWITCH") in
+   let title = (s_ "dialog.add_modify_switch") in
    let msg   = (s_ "help.dialog.switch")
    in Simple_dialogs.help title msg
 

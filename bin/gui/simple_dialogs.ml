@@ -108,21 +108,21 @@ let message win_title ?modal ?(kind=`Info) ?(actions : (string * (unit -> unit))
 
 (** Specific constructor for help messages *)
 let help ?modal title msg () =
-  message ?modal ~kind:`Help (s_ "Help") title msg "ico.help.orig.png" ();;
+  message ?modal ~kind:`Help (s_ "label.help") title msg "ico.help.orig.png" ();;
 
 (** Specific constructor for error messages *)
 let error ?modal title msg () =
-  message ?modal ~kind:`Error (s_ "Error") title msg "ico.error.orig.png" ();;
+  message ?modal ~kind:`Error (s_ "label.error") title msg "ico.error.orig.png" ();;
 
 (** Specific constructor for warning messages. [actions] (see [message]) is what makes a
     warning actionable: the startup notice about the run directories left behind offers to
     recover and to clean, instead of only naming the tool. *)
 let warning ?modal ?actions title msg () =
-  message ?modal ?actions ~kind:`Warning (s_ "Warning") title msg "ico.warning.orig.png" ();;
+  message ?modal ?actions ~kind:`Warning (s_ "label.warning") title msg "ico.warning.orig.png" ();;
 
 (** Specific constructor for info messages *)
 let info ?modal title msg () =
-  message ?modal ~kind:`Info (s_ "Information") title msg "ico.info.orig.png" ();;
+  message ?modal ~kind:`Info (s_ "label.information") title msg "ico.info.orig.png" ();;
 
 (** Recapitulative dialog for a list of adjustments applied while loading an old project.
     Unlike the generic [message] dialog (a single label that grows without bound and no
@@ -358,7 +358,7 @@ let ask_password ?(again=false) ~title ~header () : string option =
     if again then
       let _ =
         GMisc.label
-          ~markup:("<b>" ^ Glib.Markup.escape_text (s_ "Sorry, try again.") ^ "</b>")
+          ~markup:("<b>" ^ Glib.Markup.escape_text (s_ "label.sorry_try_again") ^ "</b>")
           ~xalign:0.0 ~line_wrap:true
           ~packing:(vbox#pack ~expand:false) ()
       in ()
@@ -402,7 +402,7 @@ let ask_text_dialog
     ~label
     ?(initial_text="")
     ?(constraint_predicate=(fun _ -> true))
-    ?(invalid_text_message=(s_ "Sorry, the size is invalid."))
+    ?(invalid_text_message=(s_ "label.sorry_size_invalid"))
     ?(changed_callback=(fun _ -> ()))
     ?max_length
     ?(enable_cancel=false)
@@ -447,7 +447,7 @@ let ask_text_dialog
       ok_callback text
     end
     else begin
-      error (s_ "Invalid size") invalid_text_message ()
+      error (s_ "label.invalid_size") invalid_text_message ()
     end
   in
   ignore (button_ok#connect#clicked ~callback:(ok_callback window entry));

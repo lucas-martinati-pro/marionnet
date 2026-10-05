@@ -490,8 +490,8 @@ class globalState = fun () ->
       GMain_actor.apply_extract (fun () ->
         Progress_bar.make_progress_bar_dialog
           ~modal:true
-          ~title:(s_ "Work in progress")
-          ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "Opening"))
+          ~title:(s_ "label.work_in_progress")
+          ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "label.opening"))
           ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" (Glib.Markup.escape_text filename))
           ())
         ()
@@ -545,7 +545,7 @@ class globalState = fun () ->
       let () =
         if project_version <> self#closing_project_version then
         Simple_dialogs.warning
-          (s_ "Project in old file format")
+          (s_ "label.project_in_old_file_format")
           (s_ "error.state_format_incompatible")
          ()
       in
@@ -589,7 +589,7 @@ class globalState = fun () ->
       with e -> begin
         Log.printf1 "state#open_project_async: load_treeviews failed: %s\n" (Printexc.to_string e);
         Simple_dialogs.error
-          (s_ "Failed loading the project")
+          (s_ "label.failed_loading_project")
           (Printexc.to_string e)
           ()
         end);
@@ -618,13 +618,13 @@ class globalState = fun () ->
                   ws
               in
               let header =
-                Printf.sprintf (f_ "%d automatic adjustment(s) were applied") (List.length ws)
+                Printf.sprintf (f_key "message.automatic_adjustment_s_were_applied" "%d automatic adjustment(s) were applied") (List.length ws)
               in
               let preamble =
                 s_ "state.info.old_project_adapt"
               in
               Simple_dialogs.recapitulative
-                ~title:(s_ "Project adapted at loading")
+                ~title:(s_ "label.project_adapted_at_loading")
                 ~header
                 ~preamble
                 items
@@ -636,7 +636,7 @@ class globalState = fun () ->
              explain it (e.g. an abandoned distribution with saved disk states): *)
           let ws = List.map User_level.string_of_import_warning self#network#get_and_reset_import_warnings in
           Simple_dialogs.error
-            (s_ "Failed loading the project")
+            (s_ "label.failed_loading_project")
             (String.concat "\n\n" (ws @ [Printexc.to_string e]))
             ()
         end
@@ -676,10 +676,10 @@ class globalState = fun () ->
 		let title, explanation =
 		  match tag with
 		  | Some _ ->
-		      (s_ "Project format not supported"),
+		      (s_ "label.project_format_not_supported"),
 		      (s_ "error.project_newer_version")
 		  | None ->
-		      (s_ "Project format not recognized"),
+		      (s_ "label.project_format_not_recognized"),
 		      (s_ "error.project_unknown_format")
 		in
 		let error_msg =
@@ -697,9 +697,9 @@ class globalState = fun () ->
 		let error_msg =
 		  Printf.sprintf "<tt><small>%s</small></tt>\n\n%s"
 		    filename
-		    (s_ "Please ensure that the file be well-formed.")
+		    (s_ "label.please_ensure_file_well_formed")
 		in
-		Simple_dialogs.error (s_ "Failed loading the project") error_msg ();
+		Simple_dialogs.error (s_ "label.failed_loading_project") error_msg ();
 		raise e;
 	      end)) ()
     in
@@ -866,18 +866,18 @@ class globalState = fun () ->
       (* --- *)
       let text_about_saved_snapshots =
         match Global_options.Keep_all_snapshots_when_saving.extract () with
-        | true  -> s_ "Project with all snapshots"
-        | false -> s_ "Project with the most recent snapshots"
+        | true  -> s_ "label.project_all_snapshots"
+        | false -> s_ "label.project_most_recent_snapshots"
       in
       (* --- *)
-      let saving_word = (s_ "Saving") in
+      let saving_word = (s_ "label.saving") in
       let text_on_label =
         Printf.sprintf "<big><b>%s</b></big>\n<small>%s</small>" (saving_word) (text_about_saved_snapshots)
       in
       (* --- *)
       Progress_bar.make_progress_bar_dialog
         ~modal:true
-        ~title:(s_ "Work in progress")
+        ~title:(s_ "label.work_in_progress")
         ~kind:(Progress_bar.Fill fill)
         ~text_on_label
         ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" (Glib.Markup.escape_text filename))
@@ -950,8 +950,8 @@ class globalState = fun () ->
       Log.printf1 "state#save_project END. FAILED: %s\n" (Printexc.to_string e);
       self#set_project_not_already_saved;
       Simple_dialogs.error
-        (s_ "Save")
-        ((s_ "Failed to save the project into the file ") ^ (Glib.Markup.escape_text filename)
+        (s_ "label.save")
+        ((s_ "label.failed_save_project_into_file") ^ (Glib.Markup.escape_text filename)
          ^ "\n\n" ^ (Glib.Markup.escape_text (Printexc.to_string e)))
         ()
       end
@@ -1044,7 +1044,7 @@ class globalState = fun () ->
                   | Ok rendered -> Sketch_renderer.discard rendered
                   | Error details when current ->
                       Log.printf1 "Sketch rendering failed: %s\n" details;
-                      Simple_dialogs.error (s_ "dot failed")
+                      Simple_dialogs.error (s_ "label.dot_failed")
                         (s_ "workspace.render_failed" ^ "\n\n" ^ Glib.Markup.escape_text details) ()
                   | Error _ -> ()
                 with e ->
@@ -1266,7 +1266,7 @@ class globalState = fun () ->
           GMain_actor.apply_extract (fun () -> begin
             Simple_dialogs.make_progress_bar_dialog
               ~title:(verb ^ " " ^ node#get_name)
-              ~text_on_bar:(s_ "Wait please...")
+              ~text_on_bar:(s_ "label.wait_please")
               ()
 	    end) ()
 	in

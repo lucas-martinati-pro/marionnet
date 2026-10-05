@@ -111,7 +111,7 @@ let () = Argv.register_h_option_as_help () ;;
 let optional_file_to_open =
   let error_msg =
     Printf.sprintf
-      (f_ "%s: expected a readable regular file containing the marionnet project (.mar)")
+      (f_key "error.project_file_unreadable" "%s: expected a readable regular file containing the marionnet project (.mar)")
       Sys.argv.(0)
   in
   Argv.register_filename_optional_argument ~r:() ~f:() ~error_msg () ;;
@@ -201,7 +201,7 @@ let () = if do_not_print_splash_message = false then begin
   if !option_splash = Some () || debug_requested then begin
     List.iter
       (fun (label, value) -> Log.printf2 ~v:0 ~banner:false "  %s : %s\n" label value)
-      [s_ "Version", Meta.version;
+      [s_ "label.version", Meta.version;
        s_ "startup.revision", Meta.revision;
        s_ "startup.source_date", Meta.source_date;
        "OCaml", Meta.ocaml_version;

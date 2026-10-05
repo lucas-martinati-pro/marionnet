@@ -27,7 +27,7 @@ open Gettext;;
 let text_title =
   Printf.sprintf
     "<small><b>%s</b></small>"
-    (s_ "Marionnet, a virtual network laboratory")
+    (s_ "label.marionnet_virtual_network_laboratory")
 ;;
 
 let text_subtitle = match Initialization.released with
@@ -74,7 +74,7 @@ let splash =
     ~icon:Icon.icon_pixbuf
     ();;
 
-splash#set_title (s_ "Welcome to Marionnet");;
+splash#set_title (s_ "label.welcome_marionnet");;
 let event_box = GBin.event_box ~packing:splash#add () in
 (* The spacing separates the four blocks of the splash (image and title, copyright,
    warranty, logos) with one and the same vertical gap: *)

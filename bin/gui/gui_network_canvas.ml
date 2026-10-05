@@ -39,8 +39,8 @@ module Make (State : sig val st : State.globalState end)
     let text = match !selected with
       | Some target -> (match component target with
           | Some (_, c) -> c#get_name ^ (if c#get_label = "" then "" else " · " ^ c#get_label)
-          | None -> selected := None; s_ "Virtual network")
-      | None -> s_ "Virtual network" in
+          | None -> selected := None; s_ "label.virtual_network")
+      | None -> s_ "label.virtual_network" in
     w#label_VIRTUAL_NETWORK#set_text text;
     box#misc#queue_draw ()
 

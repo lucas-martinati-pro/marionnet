@@ -441,7 +441,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.router.palette.png"
-   let tooltip   = (s_ "Router")
+   let tooltip   = (s_ "label.router")
    let packing   = Params.packing
   end
 
@@ -455,7 +455,7 @@ module Make_menus (Params : sig
     let dialog () =
       let name = st#network#suggestedName "R" in
       Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
-        ~title:(s_ "Add router") ~name ~ok_callback ()
+        ~title:(s_ "action.add_router") ~name ~ok_callback ()
 
     let reaction {
          name = name;
@@ -505,7 +505,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let r = (st#network#get_node_by_name name) in
      let r = ((Obj.magic r):> User_level_router.router) in
-     let title = (s_ "Modify router")^" "^name in
+     let title = (s_ "action.modify_router")^" "^name in
      let label = r#get_label in
      let distribution = r#get_epithet in
      let variant = r#get_variant in
@@ -565,7 +565,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Router
-    let kind_name () = s_ "router"
+    let kind_name () = s_ "component.router_kind"
   end)
 
  module Create_entries =
@@ -625,7 +625,7 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "Router")
+      ~image_tooltip:(s_ "label.router")
       ~name
       ~name_tooltip:(s_ "router.tooltip.name")
       ?label
@@ -636,32 +636,32 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(s_ "Ports number");
-         (s_ "Port 0 IPv4 address");
-         (s_ "Port 0 Ipv6 address");
-         (s_ "Distribution");
-         (s_ "Variant");
-         (s_ "Kernel");
-         (s_ "Startup configuration");
-         (s_ "Show Unix terminal");
-         (s_ "Auto-login (root)");
-         (s_ "Services");
+        [(s_ "label.ports_number");
+         (s_ "label.port_0_ipv4_address");
+         (s_ "label.port_0_ipv6_address");
+         (s_ "label.distribution");
+         (s_ "label.variant");
+         (s_ "label.kernel");
+         (s_ "label.startup_configuration");
+         (s_ "label.show_unix_terminal");
+         (s_ "label.auto_login_root");
+         (s_ "label.services");
          ]
     in
-    form#add_section ~no_line:() (s_ "Hardware");
+    form#add_section ~no_line:() (s_ "label.hardware");
     (* --- *)
     let on_distrib_change = ref [] (* a list of callbacks *) in
     (* --- *)
     let port_no =
       Gui_bricks.spin_byte ~lower:port_no_min ~upper:port_no_max ~step_incr:2
-      ~packing:(form#add_with_tooltip (s_ "Number of router ports" )) port_no
+      ~packing:(form#add_with_tooltip (s_ "label.number_router_ports" )) port_no
     in
     (* --- *)
     let port_0_ipv4_config =
       Gui_bricks.spin_ipv4_address_with_cidr_netmask
         ~packing:(form#add_with_tooltip
                     ~just_for_label:()
-                    (s_ "IPv4 configuration of the first router port (0)"))
+                    (s_ "label.ipv4_configuration_first_router_port_0"))
         b1 b2 b3 b4 b5
     in
     (* --- *)
@@ -675,12 +675,12 @@ let make
         ()
     in
     (* --- *)
-    form#add_section (s_ "Software");
+    form#add_section (s_ "label.software");
     (* --- *)
     let distribution_variant_kernel =
       let packing_distribution =
         form#add_with_tooltip
-          (s_ "GNU/Linux distribution installed on the router." )
+          (s_ "label.gnu_linux_distribution_installed_on_router" )
       in
       let packing_variant      =
         form#add_with_tooltip
@@ -688,7 +688,7 @@ let make
       in
       let packing_kernel =
         form#add_with_tooltip
-          (s_ "Linux kernel version used for this router." )
+          (s_ "label.linux_kernel_version_used_router" )
       in
       let packing = (packing_distribution, packing_variant, packing_kernel) in
       Gui_bricks.make_combo_boxes_of_vm_installations
@@ -703,7 +703,7 @@ let make
          ~width:800
          ~filter_names:[`BASH; `RC; `ALL]
          ~parent:(dialog_router :> GWindow.window_skel)
-         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
+         ~packing:(form#add_with_tooltip (s_ "label.check_activate_startup_configuration" ))
          ~active:(fst rc_config_unix)
          ~content:(snd rc_config_unix)
          ~device_name:(old_name)
@@ -716,8 +716,8 @@ let make
     let () =
       let callback d =
         let sensitive = (vm_installations#marionnet_relay_supported_by d) in begin
-        form#set_sensitive ~label_text:(s_ "Port 0 Ipv6 address") (sensitive);
-        form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive);
+        form#set_sensitive ~label_text:(s_ "label.port_0_ipv6_address") (sensitive);
+        form#set_sensitive ~label_text:(s_ "label.startup_configuration") (sensitive);
         end
       in
       (* --- *)
@@ -726,24 +726,24 @@ let make
       callback (current)
     in
     (* --- *)
-    form#add_section (s_ "Access");
+    form#add_section (s_ "label.access");
     (* --- *)
     let show_unix_terminal =
       GButton.check_button
         ~active:show_unix_terminal
-        ~packing:(form#add_with_tooltip (s_ "Do you want access the router also by a Unix terminal?" ))
+        ~packing:(form#add_with_tooltip (s_ "label.do_want_access_router_also_by_unix" ))
         ()
     in
     let autologin =
       GButton.check_button
         ~active:autologin
-        ~packing:(form#add_with_tooltip (s_ "Log in automatically as root (no password required)"))
+        ~packing:(form#add_with_tooltip (s_ "label.log_in_automatically_as_root_no_password"))
         ()
     in
     (* --- *)
     let _services_label =
       GMisc.label
-        ~packing:(form#add_with_tooltip (s_ "Configure Quagga's services" ))
+        ~packing:(form#add_with_tooltip (s_ "label.configure_quagga_s_services" ))
         ()
     in
     (* --- *)
@@ -752,8 +752,8 @@ let make
         (* --- *)
         (fun acronym ->
           let u = (uppercase acronym) in
-          let text_startup_config : string = Printf.sprintf (f_ "%s startup config.") u in (* dynamically sensitive *)
-          let text_show_terminal  : string = Printf.sprintf (f_ "Show %s terminal")   u in
+          let text_startup_config : string = Printf.sprintf (f_key "message.startup_config" "%s startup config.") u in (* dynamically sensitive *)
+          let text_show_terminal  : string = Printf.sprintf (f_key "message.show_terminal" "Show %s terminal")   u in
           let form =
             Gui_bricks.make_form_with_labels
               [ text_startup_config;
@@ -776,7 +776,7 @@ let make
               ~width:800 ~height:600 (* 800x600 *)
               ~filter_names:[`CONF; `RC; `TXT; `ALL]
               ~parent:(dialog_router :> GWindow.window_skel)
-              ~packing:(subform#add_with_tooltip (s_ "Check to activate a startup configuration" ))
+              ~packing:(subform#add_with_tooltip (s_ "label.check_activate_startup_configuration" ))
               ~active:(fst rc_config)
               ~content:(snd rc_config)
               ~device_name:(Printf.sprintf "%s (%s)" old_name (uppercase acronym))
@@ -940,7 +940,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A ROUTER") in
+   let title = (s_ "dialog.add_modify_router") in
    let msg   = (s_ "help.dialog.router")
    in Simple_dialogs.help title msg ;;
 

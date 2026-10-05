@@ -156,12 +156,12 @@ let () =
 
 let dialog_confirm_device_restart ~(devkind:string) ~(device_name:string) =
   let question =
-    Printf.sprintf (f_ "Your changes will be applied after the reboot of %s.\nDo you want to restart this %s now?")
+    Printf.sprintf (f_key "component.confirm_restart" "Your changes will be applied after the reboot of %s.\nDo you want to restart this %s now?")
       device_name
       devkind
   in
   Gui_bricks.Dialog.yes_or_cancel_question
-    ~title:(s_ "Reboot")
+    ~title:(s_ "label.reboot")
     ~markup:question
     ~context:()
     ()
@@ -281,7 +281,7 @@ let () =
       match cause with
       | Tap_provider.No_sudoers_rule ->
           Printf.sprintf
-            (f_ "The sudo rule allowing Marionnet to create its taps is not installed: some features (graphics on virtual machines, router terminals) won't be available.\nTo enable them, run in a terminal:\n\n    %s install\n\nthen restart Marionnet.")
+            (f_key "network.taps.rule_missing" "The sudo rule allowing Marionnet to create its taps is not installed: some features (graphics on virtual machines, router terminals) won't be available.\nTo enable them, run in a terminal:\n\n    %s install\n\nthen restart Marionnet.")
             "marionnet-sudoers.sh"
       | Tap_provider.No_tun_device ->
           (s_ "warning.dev_net_tun_missing")
@@ -289,12 +289,12 @@ let () =
           (s_ "warning.kernel_refuses_taps")
       | Tap_provider.Unclear diagnostic ->
           Printf.sprintf
-            (f_ "Marionnet cannot create its network interfaces (taps), and the reason is not one it knows how to name:\n\n%s\n\nSome features (graphics on virtual machines, router terminals) won't be available.")
+            (f_key "network.taps.creation_failed" "Marionnet cannot create its network interfaces (taps), and the reason is not one it knows how to name:\n\n%s\n\nSome features (graphics on virtual machines, router terminals) won't be available.")
             (* The body of a dialog is a Pango markup label: a diagnostic coming
                from a tool must be escaped, or a single `<' loses the message. *)
             (Glib.Markup.escape_text diagnostic)
     in
-    Simple_dialogs.warning (s_ "Cannot create network interfaces (taps)") message ()
+    Simple_dialogs.warning (s_ "label.cannot_create_network_interfaces_taps") message ()
 
 (* --- *)
 (** Two Marionnet sessions running at the same time are allowed, and nobody used to say a word
@@ -322,9 +322,9 @@ let () =
          Only the explicit flag turns it off. *)
       if Initialization.Disable_warnings.other_marionnet_sessions then () else
       Simple_dialogs.warning
-        (s_ "Another Marionnet session is running")
+        (s_ "label.another_marionnet_session_running")
         (Printf.sprintf
-           (f_ "Marionnet is already running on this machine, in one or more other sessions. Number of other sessions: %d (processes: %s). All the sessions give their taps the same host address (%s) and number their virtual machines independently, so two machines belonging to two sessions can claim the same address: the second one to start is then left without network, although it boots normally. If a virtual machine has no network, this is the first thing to check.")
+           (f_key "network.session.address_conflict" "Marionnet is already running on this machine, in one or more other sessions. Number of other sessions: %d (processes: %s). All the sessions give their taps the same host address (%s) and number their virtual machines independently, so two machines belonging to two sessions can claim the same address: the second one to start is then left without network, although it boots normally. If a virtual machine has no network, this is the first thing to check.")
            session_no pids Tap_provider.eth42_host_address)
         ()
 
@@ -360,8 +360,8 @@ let () =
    if not (Initialization.Disable_warnings.temporary_working_directory_automatically_set)
    then
     Simple_dialogs.warning
-      (s_ "Temporary working directory automatically set")
-      (Printf.sprintf (f_ "We chose %s as the temporary working directory, because the default candidates were not suitable (file rights and sparse files support).") dir)
+      (s_ "label.temporary_working_directory_automatically_set")
+      (Printf.sprintf (f_key "project.temporary_directory_selected" "We chose %s as the temporary working directory, because the default candidates were not suitable (file rights and sparse files support).") dir)
       ()
    else () (* do nothing *)
  in
@@ -391,7 +391,7 @@ let () =
   if defined_and_suitable_tmp d7 then set_but_warning (Option.extract d7) else
     begin
       Simple_dialogs.warning
-	(s_ "Sparse files not supported!")
+	(s_ "label.sparse_files_not_supported")
 	(s_ "warning.tmp_dir_recommendation")
 	();
       (* Set anyway the value to "/tmp": *)
@@ -517,7 +517,7 @@ let () =
   in
   (* A failure is shown whole: the reason may well be in a line the filter would drop. *)
   let failed (output : string) =
-    Simple_dialogs.error (s_ "The cleanup tool failed") (Glib.Markup.escape_text output) ()
+    Simple_dialogs.error (s_ "label.cleanup_tool_failed") (Glib.Markup.escape_text output) ()
   in
   (* Recovering: one .mar per abandoned run directory, and then the directories that were really
      saved are removed -- the whole point being to end with the work kept and the disk clean. No
@@ -532,7 +532,7 @@ let () =
     if ok
       then show ~script
              ~title:(Printf.sprintf
-                       (f_ "Projects recovered into %s, and their run directories removed")
+                       (f_key "message.projects_recovered_into_their_run_directories_removed" "Projects recovered into %s, and their run directories removed")
                        (Glib.Markup.escape_text destination))
              output
       else failed output
@@ -543,30 +543,30 @@ let () =
     let (report, _) = run_cleanup script [] in
     let question =
       Printf.sprintf
-        (f_ "About to remove the run directories that no live session is using. THE UNSAVED WORK THEY HOLD WILL BE LOST -- recover it first if you have not. This is what the cleanup tool sees:\n\n%s\n\nRemove them?")
+        (f_key "cleanup.confirm_discard" "About to remove the run directories that no live session is using. THE UNSAVED WORK THEY HOLD WILL BE LOST -- recover it first if you have not. This is what the cleanup tool sees:\n\n%s\n\nRemove them?")
         (Glib.Markup.escape_text (directories_section report))
     in
     match Simple_dialogs.confirm_dialog ~question ~script_answer:false () with
     | Some true ->
         let (output, ok) = run_cleanup script ["--purge-dirs"] in
-        if ok then show ~script ~title:(s_ "Run directories removed") output else failed output
+        if ok then show ~script ~title:(s_ "label.run_directories_removed") output else failed output
     | _ -> ()
   in
   let actions =
     match cleanup_command () with
     | None -> []
     | Some script ->
-        [ ((s_ "Recover and clean up"), in_a_thread (recover script));
-          ((s_ "Remove the directories"), in_a_thread (clean script)) ]
+        [ ((s_ "label.recover_clean_up"), in_a_thread (recover script));
+          ((s_ "action.remove_directories"), in_a_thread (clean script)) ]
   in
   Simple_dialogs.warning
     ~actions
-    (s_ "Run directories left behind")
+    (s_ "label.run_directories_left_behind")
     (Printf.sprintf
-       (f_ "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. You may sort them out whenever you like, with the command:\n\nmarionnet-cleanup --archive-dirs DIRECTORY --purge-dirs\n\nwhich first saves each of those projects as a .mar file into DIRECTORY, then removes the directories it could save.%s")
+       (f_key "cleanup.directories_remaining" "Run directories left in %s by past sessions: %d. Each holds the working copy of a project that was not saved, which is why Marionnet never removes any of them by itself; some may even belong to another Marionnet running right now. You may sort them out whenever you like, with the command:\n\nmarionnet-cleanup --archive-dirs DIRECTORY --purge-dirs\n\nwhich first saves each of those projects as a .mar file into DIRECTORY, then removes the directories it could save.%s")
        (Glib.Markup.escape_text dir) n
        (if actions = [] then "" else
-          "\n\n" ^ (s_ "The buttons below do exactly that, right now.")))
+          "\n\n" ^ (s_ "label.buttons_below_do_exactly_right_now")))
     ()
 
 (* Check that we're *not* running as root. Yes, this has been reversed
@@ -581,7 +581,7 @@ let () = begin
 * Continuing anyway...                       *
 **********************************************\n\n";
     Simple_dialogs.warning
-      (s_ "You should not be root!")
+      (s_ "label.not_root")
       (s_ "warning.root_user")
       ();
   end
@@ -597,7 +597,7 @@ let check_call ~action ~arg ~error_message =
   with e -> (
     flush_all ();
     Simple_dialogs.error
-      (s_ "Unsatisfied dependency")
+      (s_ "label.unsatisfied_dependency")
       (error_message ^ (s_ "warning.missing_features"))
       ())
 
@@ -609,19 +609,19 @@ let router_installations  = Lazy_perishable.force (Disk.get_router_installations
 
 (** Check whether we have UML computer filesystems: *)
 let () =
-  let error_message = (s_ "You don't have a default filesystem for virtual computers") in
+  let error_message = (s_ "label.don_t_have_default_filesystem_virtual_computers") in
   let action () = Option.extract machine_installations#filesystems#get_default_epithet  in
   check_call ~action ~arg:() ~error_message
 
 (** Check whether we have UML router filesystems: *)
 let () =
-  let error_message = (s_ "You don't have a default filesystem for virtual routers") in
+  let error_message = (s_ "label.don_t_have_default_filesystem_virtual_routers") in
   let action () = Option.extract router_installations#filesystems#get_default_epithet in
   check_call ~action ~arg:() ~error_message
 
 (** Check whether we have UML kernels: *)
 let () =
-  let error_message = (s_ "You don't have a default UML kernel for virtual computers") in
+  let error_message = (s_ "label.don_t_have_default_uml_kernel_virtual") in
   let action () = Option.extract machine_installations#kernels#get_default_epithet  in
   check_call ~action ~arg:() ~error_message
 
@@ -629,19 +629,19 @@ let () =
 let () =
   check_dependency
     ("which `basename " ^ Initialization.Path.vde_prefix ^ "vde_switch`")
-    (s_ "You don't have the VDE tool vde_switch")
+    (s_ "label.don_t_have_vde_tool_vde_switch")
 
 (** Check whether we have (our patched) VDE: *)
 let () =
   check_dependency
     ("which `basename " ^ Initialization.Path.vde_prefix ^ "slirpvde`")
-    (s_ "You don't have the VDE tool slirpvde")
+    (s_ "label.don_t_have_vde_tool_slirpvde")
 
 (** Check whether we have Graphviz: *)
 let () =
   check_dependency
     "which dot"
-    (s_ "You don't have Graphviz")
+    (s_ "label.don_t_have_graphviz")
 
 
 (** Read and check filesystem's installations. Warning dialogs
@@ -692,7 +692,7 @@ let () =
 	with
 	  _ ->
 	  begin
-	    Printf.kfprintf flush stderr (f_ "Error: something goes wrong opening the file %s\nExiting.\n") filename;
+	    Printf.kfprintf flush stderr (f_key "message.error_something_goes_wrong_opening_file_exiting" "Error: something goes wrong opening the file %s\nExiting.\n") filename;
 	    exit 2
 	  end
       end

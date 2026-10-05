@@ -199,11 +199,11 @@ let spin_byte ?tooltip ?label ?labelpos ?(lower=0) ?(upper=255) ?(step_incr=1) ?
 
 let byte_tooltips_default_array =
   Array.of_list [
-    (s_ "First byte of the IPv4 address" );
-    (s_ "Second byte of the IPv4 address" );
-    (s_ "Third byte of the IPv4 address" );
-    (s_ "Fourth byte of the IPv4 address" );
-    (s_ "Netmask (CIDR notation)" );
+    (s_ "label.first_byte_ipv4_address" );
+    (s_ "label.second_byte_ipv4_address" );
+    (s_ "label.third_byte_ipv4_address" );
+    (s_ "label.fourth_byte_ipv4_address" );
+    (s_ "label.netmask_cidr_notation" );
     ]
 
 (** Four spins for asking for an ipv4 address. *)
@@ -320,15 +320,15 @@ let check_name name old_name name_exists t =
   if not (StrExtra.Class.identifierp name)
   then begin
     Simple_dialogs.error
-      (s_ "Ill-formed name" )
+      (s_ "label.ill_formed_name" )
       ("Admissible characters are letters, digits and underscores." ) ();
     None   (* refused *)
   end else
   if (name <> old_name) && name_exists name
   then begin
     Simple_dialogs.error
-      (s_ "Name conflict" )
-      (Printf.sprintf(f_ "The name '%s' is already used in the virtual network. The names of virtual network elements must be unique." ) name)
+      (s_ "label.name_conflict" )
+      (Printf.sprintf(f_key "error.component_name_exists" "The name '%s' is already used in the virtual network. The names of virtual network elements must be unique." ) name)
       ();
     None   (* refused *)
   end else
@@ -360,7 +360,7 @@ let ok_or_cancel
   let hooks = Hashtbl.find_opt component_dialogs (Gobject.get_oid w#as_widget) in
   let valid () = match hooks with None -> true | Some hooks -> hooks.valid () in
   let help_callback = match hooks, help_callback with
-    | Some _, Some callback -> w#add_button (s_ "Help") `HELP; callback
+    | Some _, Some callback -> w#add_button (s_ "label.help") `HELP; callback
     | _ -> add_help_button_if_necessary w help_callback in
   (match hooks with
    | None -> w#add_button_stock `CANCEL `CANCEL; w#add_button_stock `OK `OK
@@ -610,10 +610,10 @@ let make_window_image_name_and_label
     let entry = GEdit.entry ?text ~packing:fields#add () in
     tooltips entry#coerce tooltip;
     entry in
-  let name = field (s_ "Name") name_tooltip (Some name) in
-  let label = field (s_ "Label")
+  let name = field (s_ "label.name") name_tooltip (Some name) in
+  let label = field (s_ "label.label")
     (Stdlib.Option.value label_tooltip
-      ~default:(s_ "Label to be written in the network sketch, next to the element icon.")) label in
+      ~default:(s_ "message.label_written_in_network_sketch_next_element")) label in
   let error = GMisc.label ~markup:"" ~xalign:0. ~line_wrap:true ~packing:fields#add () in
   let separator = GMisc.separator `HORIZONTAL ~packing:w#vbox#add () in
   let valid () =
@@ -1030,11 +1030,11 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
   let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
   (* --- *)
   let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
-  let () = set_tooltip (edit_button) (s_ "Edit the configuration file") in
+  let () = set_tooltip (edit_button) (s_ "label.edit_configuration_file") in
   (* --- *)
   let open_button : GButton.button = button_image
-    ~label:(s_ "Import" )
-    ~tooltip:(s_ "Import a configuration file")
+    ~label:(s_ "label.import" )
+    ~tooltip:(s_ "label.import_configuration_file")
     ~packing:hbox#add
     ~stock:`ADD
     ~stock_size:`SMALL_TOOLBAR  (* [ `BUTTON | `DIALOG | `DND | `INVALID | `LARGE_TOOLBAR | `MENU | `SMALL_TOOLBAR ] *)
@@ -1051,7 +1051,7 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
     let () =
       Gui_source_editing.window
         ?height ?width
-        ~title:(Printf.sprintf (f_ "%s configuration file") device_name)
+        ~title:(Printf.sprintf (f_key "message.configuration_file" "%s configuration file") device_name)
         ~language:(`id language)
         ~modal:()
         ~content:(!content)
@@ -1078,7 +1078,7 @@ let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCR
       Talking.EDialog.ask_for_existing_importable_text_filename
         ~parent (* <= relevant to close and destroy this dialog if the user close the parent dialog;
                       NOTE: the behaviour is not the expected (but is not disturbing) probably because the window is modal. *)
-        ~title:(Printf.sprintf (f_ "Import a configuration file for %s") device_name)
+        ~title:(Printf.sprintf (f_key "message.import_configuration_file" "Import a configuration file for %s") device_name)
         (* ~title:(s_ "Import a configuration file" ) *)
         ~filter_names
         (* ~help:(Some Msg.help_nom_pour_le_projet)  *)
@@ -1143,7 +1143,7 @@ let make_notebook_of_assoc_list (*?homogeneous_tabs*) ~packing (tws: (string * G
   notebook
 
 let make_notebook_of_assoc_array_with_check_buttons
-  ?(tooltip=(s_ "Check to activate"))
+  ?(tooltip=(s_ "label.check_activate"))
   (*?homogeneous_tabs*)
   ~packing
   (tbws: (string * bool * GObj.widget) array)

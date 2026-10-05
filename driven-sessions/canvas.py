@@ -194,7 +194,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         assert ask('status')['saved'], 'selection must not modify the project'
         capture(window, 'selection')
         click(p, double=True)
-        hub_title = locales['Modify hub'] + ' h1'
+        hub_title = locales['action.modify_hub'] + ' h1'
         hub_window = dialog(hub_title)
         assert fits(hub_window)
         capture(hub_window, 'hub-properties')
@@ -216,7 +216,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         check_popup_parent()
         capture(window, 'cable-menu')
         keys('Home'); keys('Return')
-        cable_title = locales['Modify straight cable'] + ' c1'
+        cable_title = locales['action.modify_straight_cable'] + ' c1'
         cable_window = dialog(cable_title)
         assert fits(cable_window)
         capture(cable_window, 'cable-properties')
@@ -229,7 +229,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         keys('Return'); dialog(hub_title); close_dialog(hub_title)
         p, _, _, _ = point('c1')
         click(p); keys('Delete')
-        remove_title = locales['Remove']
+        remove_title = locales['label.remove']
         dialog(remove_title); close_dialog(remove_title)
         assert field('c1', 'leftnodename') == 'h1', 'cancelled removal must retain the cable'
         print('PASS: Delete preserves the existing removal confirmation', flush=True)
@@ -263,7 +263,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         # Exercise the longest shared form on the available screen as well.
         xdo('windowfocus', '--sync', window)
         keys('ctrl+m')
-        add_title = locales['Add machine']
+        add_title = locales['action.add_machine']
         add_window = dialog(add_title)
         assert fits(add_window)
         keys('Return')
@@ -275,7 +275,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         wait(lambda: not ask('status')['editing'] and ask('status')['nodes'] == 3, 'Ctrl+Y restores that machine')
         p, _, _, _ = point('m1')
         click(p, double=True)
-        machine_title = locales['Modify machine'] + ' m1'
+        machine_title = locales['action.modify_machine'] + ' m1'
         machine_window = dialog(machine_title)
         assert fits(machine_window), geometry(machine_window)
         capture(machine_window, 'machine-properties')
@@ -301,9 +301,9 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
             capture(window, name)
         xdo('mousemove', '--window', window, 134, tab_y)
         xdo('click', 1)
-        for kind, title_key in [('switch', 'Modify switch'), ('router', 'Modify router'),
-                                ('cloud', 'Modify cloud'), ('world_bridge', 'Modify LAN bridge'),
-                                ('nat_bridge', 'Modify NAT bridge'), ('world_gateway', 'Modify world gateway')]:
+        for kind, title_key in [('switch', 'action.modify_switch'), ('router', 'action.modify_router'),
+                                ('cloud', 'action.modify_cloud'), ('world_bridge', 'action.modify_lan_bridge'),
+                                ('nat_bridge', 'action.modify_nat_bridge'), ('world_gateway', 'action.modify_world_gateway')]:
             ask('close --no-save --timeout=30')
             ask('new --timeout=30 ' + str(fixture / (kind + '.mar')))
             ask('add ' + kind + ' n1')

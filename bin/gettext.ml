@@ -134,28 +134,39 @@ let init () =
 
 let () = init ()
 
-let s_ msg =
-  match Hashtbl.find_opt table msg with
+(* Older projects and dynamic captions still carry English labels. Resolve those
+   from the English values, without storing paragraphs as JSON keys again.
+   Choose deterministically if two identifiers share the same English text. *)
+let legacy_keys : (string, string) Hashtbl.t = Hashtbl.create 512
+let () =
+  Hashtbl.iter
+    (fun key english ->
+      match Hashtbl.find_opt legacy_keys english with
+      | Some previous when String.compare previous key <= 0 -> ()
+      | _ -> Hashtbl.replace legacy_keys english key)
+    en_table
+
+let canonical_key key =
+  if Hashtbl.mem en_table key || Hashtbl.mem table key then key
+  else match Hashtbl.find_opt legacy_keys key with Some id -> id | None -> key
+
+(** [s_key key fallback] looks up a stable identifier. An empty or missing
+    translation uses English, then [fallback] if no catalog is available. *)
+let s_key key fallback =
+  match Hashtbl.find_opt table key with
   | Some trans when trans <> "" -> trans
   | _ -> (
-      match Hashtbl.find_opt en_table msg with
+      match Hashtbl.find_opt en_table key with
       | Some trans when trans <> "" -> trans
-      | _ -> msg
+      | _ -> fallback
     )
 
-let f_ fmt =
-  let s = string_of_format fmt in
-  let trans_opt =
-    match Hashtbl.find_opt table s with
-    | Some trans when trans <> "" -> Some trans
-    | _ -> (
-        match Hashtbl.find_opt en_table s with
-        | Some trans when trans <> "" -> Some trans
-        | _ -> None
-      )
-  in
-  match trans_opt with
-  | Some trans ->
-      (try Scanf.format_from_string trans fmt with _ -> fmt)
-  | None -> fmt
+(** [f_key key fallback] retains the argument types of [fallback]. A translated
+    format with incompatible placeholders uses the original typed format. *)
+let f_key key fmt =
+  let translated = s_key key (string_of_format fmt) in
+  try Scanf.format_from_string translated fmt with _ -> fmt
 
+(* Keep the unary API for existing semantic keys and dynamic captions. *)
+let s_ msg = s_key (canonical_key msg) msg
+let f_ fmt = f_key (canonical_key (string_of_format fmt)) fmt

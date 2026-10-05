@@ -409,8 +409,8 @@ object(self)
     (* We can only export the cow file if we are not running the device: *)
     if not (can_startup device_name) then
       Simple_dialogs.error
-        (Printf.sprintf (f_ "The device %s is running") device_name)
-        (s_ "You have to shut it down first.") (* TODO *)
+        (Printf.sprintf (f_key "message.device_running" "The device %s is running") device_name)
+        (s_ "label.have_shut_it_down_first") (* TODO *)
         ()
     else
     (* Where the file goes and which file it is are no longer computed here: they belong to
@@ -419,7 +419,7 @@ object(self)
        'Ok' button. This continuation-based logic is the best we can do here, because we
        can't loop waiting for the user without giving control back to Gtk+: *)
     Simple_dialogs.ask_text_dialog
-      ~title:(s_ "Choose the variant name")
+      ~title:(s_ "label.choose_variant_name")
       ~label:(s_ "variant.prompt.new_name")
       ~initial_text:("snapshot-"^(self#get_row_date row_id))
       ~constraint_predicate:
@@ -492,8 +492,8 @@ object(self)
     match self#export_row_as_variant ~force:true ~row_id ~variant_name () with
     | Ok pathname ->
         Simple_dialogs.info
-          (s_ "Success")
-          ((s_ "The variant has been exported to the file") ^ "\n\n<tt><small>" ^ pathname ^ "</small></tt>\n")
+          (s_ "label.success")
+          ((s_ "label.variant_has_been_exported_file") ^ "\n\n<tt><small>" ^ pathname ^ "</small></tt>\n")
           ()
     | Error _ ->
         let pathname =
@@ -502,7 +502,7 @@ object(self)
             variant_name
         in
         Simple_dialogs.error
-          (s_ "Error")
+          (s_ "label.error")
           (Printf.sprintf (f_ "\
 The variant couldn't be exported to the file \"%s\".\n\n\
 Many reasons are possible:\n - you don't have write access to this directory\n\
@@ -515,14 +515,14 @@ the machine itself (you should expand the tree).") pathname)
     let _ =
       self#add_icon_column
         ~header:type_header
-        ~shown_header:(s_ "Type")
+        ~shown_header:(s_ "label.type")
         ~strings_and_pixbufs:[ "router",  Initialization.Path.images^"treeview-icons/router.xpm";
                                "machine", Initialization.Path.images^"treeview-icons/machine.xpm"; ]
         () in
     let _ =
       self#add_string_column
         ~header:activation_scenario_header
-        ~shown_header:(s_ "Activation scenario")
+        ~shown_header:(s_ "label.activation_scenario")
         ~default:(fun () -> Row_item.String "[No scenario]")
         ~hidden:true
         ~italic:true
@@ -530,13 +530,13 @@ the machine itself (you should expand the tree).") pathname)
     let _ =
       self#add_string_column
         ~header:timestamp_header
-        ~shown_header:(s_ "Timestamp")
+        ~shown_header:(s_ "label.timestamp")
         ~default:(fun () -> Row_item.String (UnixExtra.date ~dot:" " ()))
         () in
     let _ =
       self#add_editable_string_column
         ~header:comment_header
-        ~shown_header:(s_ "Comment")
+        ~shown_header:(s_ "label.comment")
         ~italic:true
         ~default:(fun () -> Row_item.String "[no comment]")
         () in
@@ -565,7 +565,7 @@ the machine itself (you should expand the tree).") pathname)
 
     self#add_menu_item
       (* --- *)
-      (s_  "Export as machine variant")
+      (s_ "label.export_as_machine_variant")
       (* --- *)
       (fun selected_rowid_if_any ->
         (Option.to_bool selected_rowid_if_any) &&
@@ -579,7 +579,7 @@ the machine itself (you should expand the tree).") pathname)
 
     self#add_menu_item
       (* --- *)
-      (s_ "Export as router variant")
+      (s_ "label.export_as_router_variant")
       (* --- *)
       (fun selected_rowid_if_any ->
         (Option.to_bool selected_rowid_if_any) &&
@@ -594,7 +594,7 @@ the machine itself (you should expand the tree).") pathname)
  (* self#add_separator_menu_item; *)
 
     self#add_menu_item
-      (s_ "Start in this state")
+      (s_ "label.start_in_state")
       (fun selected_rowid_if_any ->
         (Option.to_bool selected_rowid_if_any) &&
         (let row_id = Option.extract selected_rowid_if_any in
@@ -620,14 +620,14 @@ the machine itself (you should expand the tree).") pathname)
     in
 
     self#add_menu_item
-      (s_ "Delete this state")
+      (s_ "label.delete_state")
       number_of_states_with_name_gt_1
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
         self#delete_state row_id);
 
     self#add_menu_item
-      (s_ "Delete all states except this")
+      (s_ "label.delete_all_states_except")
       number_of_states_with_name_gt_1
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
@@ -636,7 +636,7 @@ the machine itself (you should expand the tree).") pathname)
     self#add_separator_menu_item;
 
     self#add_menu_item
-      (s_ "Delete all states of this machine except the most recent")
+      (s_ "label.delete_all_states_machine_except_most_recent")
       number_of_states_with_name_gt_1
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
@@ -644,7 +644,7 @@ the machine itself (you should expand the tree).") pathname)
         self#remove_all_states_except_the_most_recent_of_name name);
 
     self#add_menu_item
-      (s_ "Delete all states of this machine")
+      (s_ "label.delete_all_states_machine")
       number_of_states_with_name_gt_1
       (fun selected_rowid_if_any ->
         let row_id = Option.extract selected_rowid_if_any in
@@ -654,13 +654,13 @@ the machine itself (you should expand the tree).") pathname)
     self#add_separator_menu_item;
 
     self#add_menu_item
-      (s_ "Delete all states except the most recent ones")
+      (s_ "label.delete_all_states_except_most_recent_ones")
       number_of_states_gt_1
       (fun selected_rowid_if_any ->
         self#remove_all_states_except_the_most_recent_ones);
 
     self#add_menu_item
-      (s_ "Delete all states")
+      (s_ "label.delete_all_states")
       number_of_states_gt_1
       (fun selected_rowid_if_any ->
         self#remove_all_states);
@@ -689,7 +689,7 @@ let add_snapshot_button ~(window:GWindow.window) ~(hbox:GPack.box) ~(toolbar:GBu
     (* !!!VERIFY TRANSITION (lablgtk2->lablgtk3): *)
     (* (* (* let set_tip = (GData.tooltips ())#set_tip in *) *) *)
     let set_tip widget ~text = GtkBase.Widget.Tooltip.set_text widget text in
-    set_tip b#as_widget ~text:(s_ "Export the selected snapshot as a variant");
+    set_tip b#as_widget ~text:(s_ "label.export_selected_snapshot_as_variant");
   in
   (* Sensitiveness: *)
   let () =

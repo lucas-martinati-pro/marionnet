@@ -74,7 +74,7 @@ module Make (State : sig val st : State.globalState end) = struct
       previous_title := title; w#window_MARIONNET#set_title title
     end;
     let text = if not active then s_ "workspace.shortcuts" else
-      Printf.sprintf (f_ "%d nodes · %d cables · %d active")
+      Printf.sprintf (f_key "message.nodes_cables_active" "%d nodes · %d cables · %d active")
         (List.length nodes) (List.length cables)
         (List.length (List.filter (fun n -> n#can_gracefully_shutdown) nodes)) in
     if text <> !previous_summary then begin

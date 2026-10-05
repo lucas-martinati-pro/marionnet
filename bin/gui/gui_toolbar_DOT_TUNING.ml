@@ -58,29 +58,29 @@ let () = begin
   label#set_use_markup true;
   label#set_label ("<small>"^text^"</small>")
  in
- set w#label_DOT_TUNING_NODES  (s_ "Nodes")   ;
- set w#label_DOT_TUNING_EDGES  (s_ "Edges" )  ;
- set w#label_DOT_TUNING_LABELS (s_ "Labels")  ;
- set w#label_DOT_TUNING_AREA   (s_ "Surface") ;
+ set w#label_DOT_TUNING_NODES  (s_ "label.nodes")   ;
+ set w#label_DOT_TUNING_EDGES  (s_ "label.edges" )  ;
+ set w#label_DOT_TUNING_LABELS (s_ "label.labels")  ;
+ set w#label_DOT_TUNING_AREA   (s_ "label.surface") ;
 end
 
 (* Tooltips *)
 let () = begin
  (* let set w text = (GData.tooltips ())#set_tip w ~text in *)
  let set w text = GtkBase.Widget.Tooltip.set_text w text in
- set w#label_DOT_TUNING_NODES#as_widget          (s_ "Tuning of graph nodes")      ;
+ set w#label_DOT_TUNING_NODES#as_widget          (s_ "label.tuning_graph_nodes")      ;
  set w#vscale_DOT_TUNING_ICONSIZE#as_widget      (s_ "gui.tuning.icon_size") ;
- set w#button_DOT_TUNING_SHUFFLE#as_widget       (s_ "Randomly arrange nodes") ;
- set w#button_DOT_TUNING_UNSHUFFLE#as_widget     (s_ "Go back to the standard node arrangement (not random)") ;
- set w#label_DOT_TUNING_EDGES#as_widget          (s_ "Tuning of graph edges") ;
- set w#button_DOT_TUNING_RANKDIR_TB#as_widget    (s_ "Arrange edges top-to-bottom") ;
- set w#button_DOT_TUNING_RANKDIR_LR#as_widget    (s_ "Arrange edges left-to-right") ;
- set w#vscale_DOT_TUNING_NODESEP#as_widget       (s_ "Minimun edge size") ;
- set w#menubar_DOT_TUNING_INVERT#as_widget       (s_ "Reverse an edge") ;
- set w#button_DOT_TUNING_CURVED_LINES#as_widget  (s_ "Switch between straight and curved lines") ;
- set w#label_DOT_TUNING_LABELS#as_widget         (s_ "Tuning edge endpoint labels") ;
- set w#vscale_DOT_TUNING_LABELDISTANCE#as_widget (s_ "Distance between labels and icons") ;
- set w#vscale_DOT_TUNING_EXTRASIZE#as_widget     (s_ "Canvas size");
+ set w#button_DOT_TUNING_SHUFFLE#as_widget       (s_ "label.randomly_arrange_nodes") ;
+ set w#button_DOT_TUNING_UNSHUFFLE#as_widget     (s_ "label.go_back_standard_node_arrangement_not_random") ;
+ set w#label_DOT_TUNING_EDGES#as_widget          (s_ "label.tuning_graph_edges") ;
+ set w#button_DOT_TUNING_RANKDIR_TB#as_widget    (s_ "label.arrange_edges_top_bottom") ;
+ set w#button_DOT_TUNING_RANKDIR_LR#as_widget    (s_ "label.arrange_edges_left_right") ;
+ set w#vscale_DOT_TUNING_NODESEP#as_widget       (s_ "label.minimun_edge_size") ;
+ set w#menubar_DOT_TUNING_INVERT#as_widget       (s_ "label.reverse_edge") ;
+ set w#button_DOT_TUNING_CURVED_LINES#as_widget  (s_ "label.switch_between_straight_curved_lines") ;
+ set w#label_DOT_TUNING_LABELS#as_widget         (s_ "label.tuning_edge_endpoint_labels") ;
+ set w#vscale_DOT_TUNING_LABELDISTANCE#as_widget (s_ "label.distance_between_labels_icons") ;
+ set w#vscale_DOT_TUNING_EXTRASIZE#as_widget     (s_ "label.canvas_size");
  set w#label_DOT_TUNING_AREA#as_widget           (s_ "gui.tuning.graph_size") ;
  end
 
@@ -236,7 +236,7 @@ let iconsize_react () = if opt#gui_callbacks_disable then () else
   begin
    let size = opt#toolbar_driver#get_iconsize in
    Cortex.set opt#iconsize size;
-   st#flash ~delay:4000 (Printf.sprintf (f_ "The icon size is fixed to value %s (default=large)") size);
+   st#flash ~delay:4000 (Printf.sprintf (f_key "message.icon_size_fixed_value_default_large" "The icon size is fixed to value %s (default=large)") size);
   end
 
 (** Reaction for the shuffle tuning *)
@@ -244,7 +244,7 @@ let shuffle_react () =
   begin
    Cortex.set (opt#shuffler) (ListExtra.shuffleIndexes (net#get_node_list));
    let namelist = net#get_node_names |> (ListExtra.permute opt#shuffler_as_function) |> fold_lines in
-   st#flash ~delay:4000 ((s_ "Icons randomly arranged: ")^namelist);
+   st#flash ~delay:4000 ((s_ "label.icons_randomly_arranged")^namelist);
   end
 
 (** Reaction for the unshuffle tuning *)
@@ -252,7 +252,7 @@ let unshuffle_react () =
   begin
    opt#shuffler_reset;
    let namelist = (net#get_node_names |> fold_lines) in
-   st#flash ~delay:4000 ((s_ "Default icon arrangement: ")^namelist);
+   st#flash ~delay:4000 ((s_ "label.default_icon_arrangement")^namelist);
   end
 
 (** Reaction for the rankdir tunings *)
@@ -260,8 +260,8 @@ let rankdir_react x () =
   begin
    Cortex.set (st#dotoptions#rankdir) x;
    let msg = match x with
-    | "TB" -> (s_ "Arrange edges top-to-bottom (default)")
-    | "LR" -> (s_ "Arrange edges left-to-right")
+    | "TB" -> (s_ "label.arrange_edges_top_bottom_default")
+    | "LR" -> (s_ "label.arrange_edges_left_right")
     | _    -> "Not valid Rankdir" in
    st#flash ~delay:4000 msg;
   end
@@ -271,7 +271,7 @@ let nodesep_react () = if opt#gui_callbacks_disable then () else
   begin
    let y = opt#toolbar_driver#get_nodesep in
    Cortex.set (opt#nodesep) y;
-   st#flash (Printf.sprintf (f_ "The minimum edge size (distance between nodes) is fixed to the value %s (default=0.5)") (string_of_float y));
+   st#flash (Printf.sprintf (f_key "sketch.edge_size_hint" "The minimum edge size (distance between nodes) is fixed to the value %s (default=0.5)") (string_of_float y));
   end
 
 (** Reaction for the labeldistance tuning *)
@@ -279,7 +279,7 @@ let labeldistance_react () = if opt#gui_callbacks_disable then () else
   begin
    let y = opt#toolbar_driver#get_labeldistance in
    Cortex.set (opt#labeldistance) y;
-   st#flash (Printf.sprintf (f_ "The distance between labels and icons is fixed to the value %s (default=1.6)") (string_of_float y));
+   st#flash (Printf.sprintf (f_key "message.distance_between_labels_icons_fixed_value_default" "The distance between labels and icons is fixed to the value %s (default=1.6)") (string_of_float y));
   end
 
 (** Reaction for the extrasize_x tuning *)
@@ -287,7 +287,7 @@ let extrasize_react () = if opt#gui_callbacks_disable then () else
   begin
    let y = opt#toolbar_driver#get_extrasize in
    Cortex.set (opt#extrasize) y;
-   st#flash (Printf.sprintf (f_ "The canvas size is fixed to %s%% of the minimun value to contain the graph (default=0%%)") (string_of_int (int_of_float y)) );
+   st#flash (Printf.sprintf (f_key "sketch.canvas_size_hint" "The canvas size is fixed to %s%% of the minimun value to contain the graph (default=0%%)") (string_of_int (int_of_float y)) );
   end
 
 (** Reaction for a rotate tuning.
@@ -297,7 +297,7 @@ let reverse_edge_callback x () =
   begin
    let c = (st#network#get_cable_by_name x) in
    c#set_reversed (not c#is_reversed);
-   st#flash (Printf.sprintf (f_ "Cable %s reversed") x);
+   st#flash (Printf.sprintf (f_key "message.cable_reversed" "Cable %s reversed") x);
   end
 
 (** Reaction for the spline's (straight/curved) tuning *)
@@ -305,8 +305,8 @@ let curved_lines_react () = if opt#gui_callbacks_disable then () else
   begin
    let msg =
      match (st#dotoptions#curved_lines_commute) with
-     | true  -> (s_ "Switched to curved lines")
-     | false -> (s_ "Switched to straight lines")
+     | true  -> (s_ "label.switched_curved_lines")
+     | false -> (s_ "label.switched_straight_lines")
    in
    st#flash ~delay:4000 msg;
   end

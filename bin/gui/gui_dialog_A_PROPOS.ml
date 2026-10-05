@@ -36,7 +36,7 @@ module Make (State:sig val st:State.globalState end) = struct
   let dialog () =
 
    let d = new Gui.dialog_A_PROPOS (*~width:800 ~height:600*) () in
-   d#toplevel#set_title (s_ "About");
+   d#toplevel#set_title (s_ "label.about");
    (* No #resize here on purpose. A pixel size was fighting a symptom: since the
       labels of this dialog wrap, their natural width used to be the whole text
       unwrapped (measured: 4978 px), so the dialog opened as wide as the screen and
@@ -58,10 +58,10 @@ module Make (State:sig val st:State.globalState end) = struct
       label#set_label text
     in
 
-   set d#label_dialog_A_PROPOS_a_propos (s_ "About");
+   set d#label_dialog_A_PROPOS_a_propos (s_ "label.about");
 
    let text_title =
-     Printf.sprintf "<b>%s</b>" (s_ "Marionnet, a virtual network laboratory")
+     Printf.sprintf "<b>%s</b>" (s_ "label.marionnet_virtual_network_laboratory")
    in
    let text_subtitle =
      Printf.sprintf "<i>Version %s </i> revno %s - %s" Version.version Meta.revision Meta.source_date
@@ -73,7 +73,7 @@ module Make (State:sig val st:State.globalState end) = struct
      ((s_ "dialog.about.description")
       ^ "\n<tt><u><span color=\"blue\">http://www.marionnet.org</span></u></tt>\n");
 
-   set d#label_dialog_A_PROPOS_authors (s_ "Authors");
+   set d#label_dialog_A_PROPOS_authors (s_ "label.authors");
    set d#label_dialog_A_PROPOS_authors_content "
 <b><span color=\"dimgray\">Jean-Vincent Loddo</span></b>
 Département R&amp;T - IUT de Villetaneuse
@@ -84,7 +84,7 @@ Université numérique Île-de-France (UNIF) 2024-2026\n
 Laboratoire d'Informatique de Paris Nord (LIPN)
 Université Sorbonne Paris Nord (USPN) 2007-2012\n\n";
 
-   set d#label_dialog_A_PROPOS_license (s_ "License");
+   set d#label_dialog_A_PROPOS_license (s_ "label.license");
    (* Own label, which does not wrap: each copyright line is then guaranteed to fit
       on a single line whatever the width of the dialog, the font and the theme: *)
    set d#label_dialog_A_PROPOS_license_copyright "
@@ -99,7 +99,7 @@ You should have received a copy of the GNU General Public License along with thi
 <tt><u><span color=\"blue\">http://www.gnu.org/licenses/</span></u></tt>.\n
 <b>Logos.</b> The emblems of USPN, of the IUT de Villetaneuse, of the LIPN and of UNIF displayed by this program are the trademarks of these institutions. They are <b>not</b> covered by the GNU GPL and remain the property of their owners: they are reproduced here for the sole purpose of crediting the institutions that support Marionnet, and may not be reused or modified independently of this program. Their origin is recorded in the file <tt>images/LOGOS.md</tt> of the distribution.\n\n";
 
-   set d#label_dialog_A_PROPOS_thanks (s_ "Thanks");
+   set d#label_dialog_A_PROPOS_thanks (s_ "label.thanks");
    (* Single source line on purpose: the POT extractor (gettext_extract_pot_p4)
       copies the string lexeme as it stands in the source, so a *literal* newline
       inside the literal would end up unescaped in the msgid -- which msgcat then

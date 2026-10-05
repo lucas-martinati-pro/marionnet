@@ -50,10 +50,10 @@ let destroy_progress_bar_dialog (window) =
 +----------------------------------------------+
 *)
 let make_progress_bar_dialog
-    ?(title=(s_ "A slow operation is in progress"))
-    ?(text_on_label=(s_ "A slow operation is in progress"))
+    ?(title=(s_ "label.slow_operation_in_progress"))
+    ?(text_on_label=(s_ "label.slow_operation_in_progress"))
     ?(text_on_sub_label="")
-    ?text_on_bar:(text_on_bar=(s_ "Please wait..."))
+    ?text_on_bar:(text_on_bar=(s_ "label.please_wait"))
     ?(kind=Pulse)
     ?(modal=false)
     ?(position=(if modal then `CENTER else `NONE))

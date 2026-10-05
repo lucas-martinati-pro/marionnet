@@ -124,7 +124,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.machine.palette.png"
-   let tooltip   = (s_ "Machine")
+   let tooltip   = (s_ "label.machine")
    let packing   = Params.packing
   end
 
@@ -138,7 +138,7 @@ module Make_menus (Params : sig
     let dialog () =
       let name = st#network#suggestedName "m" in
       Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
-        ~title:(s_ "Add machine") ~name ~ok_callback ()
+        ~title:(s_ "action.add_machine") ~name ~ok_callback ()
 
     let reaction {
          name = name;
@@ -190,11 +190,11 @@ module Make_menus (Params : sig
             let machine_name = Glib.Markup.escape_text m#get_name in
             let question =
               Printf.sprintf
-                (f_ "Changing the distribution or variant will reset the disk and history of machine \"%s\".\nAre you sure you want to proceed?")
+                (f_key "machine.confirm_disk_reset" "Changing the distribution or variant will reset the disk and history of machine \"%s\".\nAre you sure you want to proceed?")
                 machine_name
             in
             match Gui_bricks.Dialog.yes_or_cancel_question
-                    ~title:(s_ "Warning: disk reset")
+                    ~title:(s_ "label.warning_disk_reset")
                     ~markup:question
                     ~context:() () with
             | Some () -> Some data
@@ -205,7 +205,7 @@ module Make_menus (Params : sig
     let dialog name () =
      let m = (st#network#get_node_by_name name) in
      let m = ((Obj.magic m):> User_level_machine.machine) in
-     let title = (s_ "Modify machine")^" "^name in
+     let title = (s_ "action.modify_machine")^" "^name in
      let label = m#get_label in
      let memory = m#get_memory in
      let port_no = m#get_port_no in
@@ -264,7 +264,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Machine
-    let kind_name () = s_ "machine"
+    let kind_name () = s_ "component.machine_kind"
   end)
 
  module Create_entries =
@@ -314,9 +314,9 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "Virtual machine")
+      ~image_tooltip:(s_ "label.virtual_machine")
       ~name
-      ~name_tooltip:(s_ "Virtual machine name. This name must be unique in the virtual network.")
+      ~name_tooltip:(s_ "message.virtual_machine_name_name_must_unique_in")
       ?label
       ()
   in
@@ -325,36 +325,36 @@ let make
     let form =
       Gui_bricks.make_form_with_labels
         ~packing:vbox#add
-        [(Printf.sprintf "%s <tt>(%s)</tt>" (s_ "Memory") (s_ "MB"));
-         (s_ "Ethernet cards");
-         (s_ "Distribution");
-         (s_ "Variant");
-         (s_ "Kernel");
-         (s_ "Startup configuration");
-         (s_ "Consoles");
-         (s_ "Auto-login (root)");
+        [(Printf.sprintf "%s <tt>(%s)</tt>" (s_ "label.memory") (s_ "label.mb"));
+         (s_ "label.ethernet_cards");
+         (s_ "label.distribution");
+         (s_ "label.variant");
+         (s_ "label.kernel");
+         (s_ "label.startup_configuration");
+         (s_ "label.consoles");
+         (s_ "label.auto_login_root");
          (* (s_ "Terminal"); *)
          ]
     in
-    form#add_section ~no_line:() (s_ "Hardware");
+    form#add_section ~no_line:() (s_ "label.hardware");
     (* --- *)
     let on_distrib_change = ref [] (* a list of callbacks *) in
     (* --- *)
     (* memory widget: *)
     let memory =
       Gui_bricks.spin_byte ~lower:memory_min ~upper:memory_max ~step_incr:8
-      ~packing:(form#add_with_tooltip (s_ "Amount of RAM to be reserved for this machine.")) memory
+      ~packing:(form#add_with_tooltip (s_ "label.amount_ram_reserved_machine")) memory
     in
     (* port_no widget: *)
     let port_no =
       Gui_bricks.spin_byte ~lower:port_no_min ~upper:port_no_max ~step_incr:1
-      ~packing:(form#add_with_tooltip (s_ "Number of ethernet cards (eth0, eth1 ...) of the virtual machine")) port_no
+      ~packing:(form#add_with_tooltip (s_ "message.number_ethernet_cards_eth0_eth1_virtual_machine")) port_no
     in
-    form#add_section (s_ "Software");
+    form#add_section (s_ "label.software");
     let (distribution_variant_kernel) =
       let packing_distribution =
         form#add_with_tooltip
-          (s_ "GNU/Linux distribution installed on the virtual machine.")
+          (s_ "label.gnu_linux_distribution_installed_on_virtual_machine")
       in
       let packing_variant =
         form#add_with_tooltip
@@ -362,7 +362,7 @@ let make
       in
       let packing_kernel =
         form#add_with_tooltip
-          (s_ "Linux kernel version used for this virtual machine.")
+          (s_ "label.linux_kernel_version_used_virtual_machine")
       in
       let packing = (packing_distribution, packing_variant, packing_kernel) in
       Gui_bricks.make_combo_boxes_of_vm_installations
@@ -377,7 +377,7 @@ let make
          ~width:800
          ~filter_names:[`BASH; `RC; `ALL]
          ~parent:(dialog_machine :> GWindow.window_skel)
-         ~packing:(form#add_with_tooltip (s_ "Check to activate a startup configuration" ))
+         ~packing:(form#add_with_tooltip (s_ "label.check_activate_startup_configuration" ))
          ~active:(fst rc_config)
          ~content:(snd rc_config)
          ~device_name:(old_name)
@@ -389,30 +389,30 @@ let make
     let () =
       let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
         let sensitive = (vm_installations#marionnet_relay_supported_by d) in
-        form#set_sensitive ~label_text:(s_ "Startup configuration") (sensitive)
+        form#set_sensitive ~label_text:(s_ "label.startup_configuration") (sensitive)
       in
       on_distrib_change := (callback)::!on_distrib_change;
       let current = distribution_variant_kernel#selected in
       callback (current)
     in
     (* --- *)
-    form#add_section (s_ "Access");
+    form#add_section (s_ "label.access");
     (* console_no widget and callback: *)
     let console_no =
       Gui_bricks.spin_byte ~lower:1 ~upper:8 ~step_incr:1
-      ~packing:(form#add_with_tooltip (s_ "Number of consoles (tty0, tty1 ...) of the virtual machine")) console_no
+      ~packing:(form#add_with_tooltip (s_ "label.number_consoles_tty0_tty1_virtual_machine")) console_no
     in
     let autologin =
       GButton.check_button
         ~active:autologin
-        ~packing:(form#add_with_tooltip (s_ "Log in automatically as root (no password required)"))
+        ~packing:(form#add_with_tooltip (s_ "label.log_in_automatically_as_root_no_password"))
         ()
     in
     (* Register and call the "Consoles" callback and set it according to current distribution:  *)
     let () =
       let callback (d: [`distrib] Disk.epithet (* i.e. string *)) =
         let sensitive = (vm_installations#multiple_consoles_supported_by d) in
-        form#set_sensitive ~label_text:(s_ "Consoles") (sensitive);
+        form#set_sensitive ~label_text:(s_ "label.consoles") (sensitive);
         (* console_no#misc#set_sensitive (sensitive); *)
         (if not sensitive then console_no#set_value 1.);
       in
@@ -520,7 +520,7 @@ let make
 (*-----*)
 
 let help_callback =
-   let title = (s_ "ADD OR MODIFY A VIRTUAL MACHINE") in
+   let title = (s_ "dialog.add_modify_virtual_machine") in
    let msg   = (s_ "help.dialog.machine")
    in Simple_dialogs.help title msg ;;
 

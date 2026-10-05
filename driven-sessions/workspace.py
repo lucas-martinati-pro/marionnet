@@ -175,8 +175,8 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         check(geometry_fits(), "the workspace fits the available screen")
         screenshot("welcome")
         locales = json.loads(locales_path.read_text())
-        new_title = locales["Name of the new project"]
-        open_title = locales["Open an existing Marionnet project"]
+        new_title = locales["label.name_new_project"]
+        open_title = locales["label.open_existing_marionnet_project"]
         xdo("windowfocus", "--sync", window())
         chooser(new_title, lambda: xdo("key", "--clearmodifiers", "ctrl+n"))
         check(True, "Ctrl+N opens New project rather than Add NAT bridge")
@@ -245,9 +245,9 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         screenshot("palette-labels")
         toggle_labels()
         screenshot("palette-icons")
-        chooser(locales["Add hub"], lambda: hub_menu("38"))
+        chooser(locales["action.add_hub"], lambda: hub_menu("38"))
         toggle_labels()
-        chooser(locales["Add hub"], lambda: hub_menu("75"))
+        chooser(locales["action.add_hub"], lambda: hub_menu("75"))
         toggle_labels()
         palette_states = [line.rsplit(": ", 1)[-1] for line in log_path.read_text().splitlines()
                           if "Palette labels visible:" in line]

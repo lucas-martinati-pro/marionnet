@@ -57,7 +57,7 @@ module Make_menus (Params : sig
 
   module Toolbar_entry = struct
    let imagefile = "ico.cloud.palette.png"
-   let tooltip   = s_ "Unknown layer 2 sub-network"
+   let tooltip   = s_ "label.unknown_layer_2_sub_network"
    let packing   = Params.packing
   end
 
@@ -70,7 +70,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "N" in
-      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add cloud") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "action.add_cloud") ~name ~ok_callback ()
 
     let reaction { name = name; label = label; _ } =
       let action () = ignore (
@@ -89,7 +89,7 @@ module Make_menus (Params : sig
 
     let dialog name () =
      let d = (st#network#get_node_by_name name) in
-     let title = (s_ "Modify cloud")^" "^name in
+     let title = (s_ "action.modify_cloud")^" "^name in
      let label = d#get_label in
      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title ~name ~label ~ok_callback:Add.ok_callback ()
 
@@ -103,7 +103,7 @@ module Make_menus (Params : sig
 
   include Gui_toolbar_COMPONENTS_layouts.Lifecycle (Params) (struct
     let devkind = `Cloud
-    let kind_name () = s_ "cloud"
+    let kind_name () = s_ "label.cloud"
   end)
 
  module Create_entries =
@@ -138,7 +138,7 @@ let make
       ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
-      ~image_tooltip:(s_ "Unknown layer 2 sub-network")
+      ~image_tooltip:(s_ "label.unknown_layer_2_sub_network")
       ~name
       ~name_tooltip:(s_ "cloud.tooltip.name")
       ?label
@@ -161,7 +161,7 @@ let make
 (*-----*)
 
  let help_callback =
-   let title = (s_ "ADD OR MODIFY A CLOUD" ) in
+   let title = (s_ "dialog.add_modify_cloud" ) in
    let msg   = (s_ "help.dialog.cloud")
    in Simple_dialogs.help title msg
 

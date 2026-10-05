@@ -30,8 +30,8 @@ let w = st#mainwin
 
 (* Labels in main window *)
 let () = begin
- w#label_VIRTUAL_NETWORK#set_label (s_ "Virtual network");
- w#label_TAB_DOCUMENTS#set_label   (s_ "Project documents")
+ w#label_VIRTUAL_NETWORK#set_label (s_ "label.virtual_network");
+ w#label_TAB_DOCUMENTS#set_label   (s_ "label.project_documents")
 end
 
 (* ***************************************** *
@@ -67,8 +67,8 @@ let () = begin
  let labels = get_tab_labels_of w#notebook_CENTRAL in
  let (l1,l2) = tuple2_of_list labels in
  List.iter (fun l -> l#set_use_markup true) labels ;
- l1#set_text (s_ "Components");
- l2#set_text (s_ "Documents");
+ l1#set_text (s_ "label.components");
+ l2#set_text (s_ "label.documents");
 end
 
 (* ***************************************** *
@@ -80,10 +80,10 @@ let () = begin
  let (l1,l2,l3,l4) = tuple4_of_list labels in
  List.iter (fun l -> l#set_use_markup true) labels ;
  let set l text = l#set_text text in
- set l1 (s_ "Image")       ;
- set l2 (s_ "Interfaces")  ;
- set l3 (s_ "Defects")     ;
- set l4 (s_ "Disks")       ;
+ set l1 (s_ "label.image")       ;
+ set l2 (s_ "label.interfaces")  ;
+ set l3 (s_ "label.defects")     ;
+ set l4 (s_ "label.disks")       ;
 end
 
 (* ***************************************** *
@@ -103,7 +103,7 @@ let () = begin
   end
 
 let button_BASE_STARTUP_EVERYTHING =
-  Gui_bricks.button_image ~label:(s_ "Start all") ~stock:`MEDIA_PLAY
+  Gui_bricks.button_image ~label:(s_ "label.start_all") ~stock:`MEDIA_PLAY
     ~tooltip:(s_ "gui.tooltip.start_network")
     ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
@@ -128,14 +128,14 @@ let (menu_BASE_PAUSE_SOMETHING, button_BASE_PAUSE_SOMETHING, box_BASE_PAUSE_SOME
     Gui_bricks.make_check_items_renewer_v1 ~get_label_active_callback_list ()
     (* end of renewer () *)
   in
-  Gui_bricks.button_image_popuping_a_menu ~label:(s_ "Suspend") ~stock:`MEDIA_PAUSE
+  Gui_bricks.button_image_popuping_a_menu ~label:(s_ "label.suspend") ~stock:`MEDIA_PAUSE
     ~renewer
-    ~tooltip:(s_ "Suspend the activity of a network component")
+    ~tooltip:(s_ "label.suspend_activity_network_component")
     ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 let button_BASE_SHUTDOWN_EVERYTHING =
-  Gui_bricks.button_image ~label:(s_ "Shutdown all") ~stock:`MEDIA_STOP
-    ~tooltip:(s_ "Gracefully stop every element of the network")
+  Gui_bricks.button_image ~label:(s_ "label.shutdown_all") ~stock:`MEDIA_STOP
+    ~tooltip:(s_ "label.gracefully_stop_every_element_network")
     ~label_position:`BOTTOM ~stock_size:`LARGE_TOOLBAR ~packing:w#hbox_BASE#add ()
 
 (* Exam locks (journalisation-profonde, episode 22). This button sits right next to "Shutdown
@@ -157,7 +157,7 @@ let button_BASE_POWEROFF_EVERYTHING =
     else (s_ "gui.toolbar.exam_mode_poweroff_disabled")
   in
   let button =
-    Gui_bricks.button_image ~label:(s_ "Power-off all")
+    Gui_bricks.button_image ~label:(s_ "label.power_off_all")
       ~file:"ico.poweroff.24x24.png"
       ~tooltip
       ~label_position:`BOTTOM ~packing:w#hbox_BASE#add ()
@@ -192,8 +192,8 @@ let () =
    in order to not remove the gettext key associated to this `tooltip'
    and this `label': *)
 let button_BASE_BROADCAST () =
-  Gui_bricks.button_image ~label:(s_ "Broadcast")
-    ~tooltip:(s_ "Broadcast the specification of the virtual network on a real network")
+  Gui_bricks.button_image ~label:(s_ "label.broadcast")
+    ~tooltip:(s_ "message.broadcast_specification_virtual_network_on_real_networ")
     ~file:"ico.diffuser.orig.png"
     ~label_position:`BOTTOM ~packing:w#hbox_BASE#add ()
 

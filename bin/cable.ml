@@ -68,8 +68,8 @@ module Make_menus
       | true  -> "ico.cable.crossed.palette.png"
 
    let tooltip = match crossover with
-      | false -> (s_ "Straight cable")
-      | true  -> (s_ "Crossover cable")
+      | false -> (s_ "label.straight_cable")
+      | true  -> (s_ "label.crossover_cable")
 
    let packing   = Params.packing
 
@@ -87,8 +87,8 @@ module Make_menus
 
     let dialog () =
       let (name, title) = match crossover with
-      | false -> (st#network#suggestedName "d" , (s_ "Add straight cable"))
-      | true  -> (st#network#suggestedName "c" , (s_ "Add crossover cable"))
+      | false -> (st#network#suggestedName "d" , (s_ "action.add_straight_cable"))
+      | true  -> (st#network#suggestedName "c" , (s_ "action.add_crossover_cable"))
       in
     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~network:st#network ~title ~name ~crossover ~ok_callback ()
 
@@ -133,8 +133,8 @@ module Make_menus
     let dialog name () =
      let c = (st#network#get_cable_by_name name) in
      let title = match crossover with
-      | false -> ((s_ "Modify straight cable")^" "^name)
-      | true  -> ((s_ "Modify crossover cable")^" "^name)
+      | false -> ((s_ "action.modify_straight_cable")^" "^name)
+      | true  -> ((s_ "action.modify_crossover_cable")^" "^name)
      in
      let label = c#get_label in
      let left_user_endpoint  = (c#get_left#node#get_name,  c#get_left#user_port_name) in
@@ -184,11 +184,11 @@ module Make_menus
 
     let dialog name () =
       let question = match crossover with
-       | false -> Printf.sprintf (f_ "Are you sure that you want to remove the straight cable %s?") name
-       | true  -> Printf.sprintf (f_ "Are you sure that you want to remove the crossover cable %s?") name
+       | false -> Printf.sprintf (f_key "message.sure_want_remove_straight_cable" "Are you sure that you want to remove the straight cable %s?") name
+       | true  -> Printf.sprintf (f_key "message.sure_want_remove_crossover_cable" "Are you sure that you want to remove the crossover cable %s?") name
       in
       Gui_bricks.Dialog.yes_or_cancel_question
-        ~title:(s_ "Remove")
+        ~title:(s_ "label.remove")
         ~markup:question
         ~context:name
         ()
@@ -271,8 +271,8 @@ let make
   in
   let image_tooltip =
     match crossover with
-    | false -> (s_ "Straight cable")
-    | true  -> (s_ "Crossover cable")
+    | false -> (s_ "label.straight_cable")
+    | true  -> (s_ "label.crossover_cable")
   in
   let name_tooltip =
     match crossover with
@@ -296,17 +296,17 @@ let make
   let cable_input_widget =
     let vbox = GPack.vbox ~homogeneous:false ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
     let table = GPack.table ~rows:3 ~columns:4 ~row_spacings:10 ~col_spacings:20 ~homogeneous:false ~packing:vbox#add (*why not w#vbox#add *)() in
-    let lname = GMisc.label ~xalign:0. ~text:(s_ "Name") ~packing:(table#attach ~left:0 ~top:1) () in
-    let lport = GMisc.label ~xalign:0. ~text:(s_ "Port") ~packing:(table#attach ~left:0 ~top:2) () in
-    let lfrom = GMisc.label ~xalign:0. ~text:(s_ "From") ~packing:(table#attach ~left:1 ~top:0) () in
-    let lto   = GMisc.label ~xalign:0. ~text:(s_ "To")   ~packing:(table#attach ~left:3 ~top:0) () in
+    let lname = GMisc.label ~xalign:0. ~text:(s_ "label.name") ~packing:(table#attach ~left:0 ~top:1) () in
+    let lport = GMisc.label ~xalign:0. ~text:(s_ "label.port") ~packing:(table#attach ~left:0 ~top:2) () in
+    let lfrom = GMisc.label ~xalign:0. ~text:(s_ "label.from") ~packing:(table#attach ~left:1 ~top:0) () in
+    let lto   = GMisc.label ~xalign:0. ~text:(s_ "label.text")   ~packing:(table#attach ~left:3 ~top:0) () in
     let _link = GMisc.image ~file:link_image_file ~xalign:0.5 ~packing:(table#attach ~left:2 ~top:2) () in
     let _ = GMisc.image ~stock:`GO_FORWARD ~packing:(table#attach ~left:2 ~top:1) () in
     let tooltips = Gui_bricks.make_tooltips_for_container table in
-    tooltips lname#coerce (s_ "Node name");
-    tooltips lport#coerce (s_ "Ethernet port");
-    tooltips lfrom#coerce (s_ "The first network node connected to the cable");
-    tooltips lto#coerce   (s_ "The second network node connected to the cable");
+    tooltips lname#coerce (s_ "label.node_name");
+    tooltips lport#coerce (s_ "label.ethernet_port");
+    tooltips lfrom#coerce (s_ "label.first_network_node_connected_cable");
+    tooltips lto#coerce   (s_ "label.second_network_node_connected_cable");
     let decompose = function None -> (None,None) | Some (x,y) -> (Some x, Some y) in
     let (n0,p0) = decompose left_user_endpoint in
     let (n1,p1) = decompose right_user_endpoint in
@@ -355,12 +355,12 @@ let make
 (*-----*)
 
  let rec help_callback_straight () =
-   let title = (s_ "ADD OR MODIFY A STRAIGHT CABLE") in
+   let title = (s_ "dialog.add_modify_straight_cable") in
    let msg   = (s_ "help.dialog.cable_straight")
    in Simple_dialogs.help title msg
 
  and help_callback_crossover () =
-   let title = (s_ "ADD OR MODIFY A CROSSOVER CABLE") in
+   let title = (s_ "dialog.add_modify_crossover_cable") in
    let msg   = (s_ "help.dialog.cable_crossover")
    in Simple_dialogs.help title msg
 

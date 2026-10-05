@@ -239,16 +239,16 @@ class virtual ['parent] simulated_device () = object(self)
     Task_runner.the_task_runner#schedule ~name:("destroy "^self#get_name)(fun () -> self#destroy_right_now)
 
   method startup =
-    self#enqueue_task_with_progress_bar (s_ "Starting") (fun () -> if self#can_startup then    self#startup_right_now)
+    self#enqueue_task_with_progress_bar (s_ "label.starting") (fun () -> if self#can_startup then    self#startup_right_now)
 
   method suspend =
-    self#enqueue_task_with_progress_bar (s_ "Suspending") (fun () -> if self#can_suspend then self#suspend_right_now)
+    self#enqueue_task_with_progress_bar (s_ "label.suspending") (fun () -> if self#can_suspend then self#suspend_right_now)
 
   method resume =
-    self#enqueue_task_with_progress_bar (s_ "Resuming") (fun () -> if self#can_resume then self#resume_right_now)
+    self#enqueue_task_with_progress_bar (s_ "label.resuming") (fun () -> if self#can_resume then self#resume_right_now)
 
   method gracefully_shutdown =
-    self#enqueue_task_with_progress_bar (s_ "Stopping") (fun () -> if self#can_gracefully_shutdown then self#gracefully_shutdown_right_now)
+    self#enqueue_task_with_progress_bar (s_ "label.stopping") (fun () -> if self#can_gracefully_shutdown then self#gracefully_shutdown_right_now)
 
   method gracefully_restart =
     (* The [begin…end] is required: [;] binds less tightly than [if/then/else], so without
@@ -257,14 +257,14 @@ class virtual ['parent] simulated_device () = object(self)
     if not self#can_gracefully_shutdown then () else begin (* continue *)
     self#gracefully_shutdown;
     self#enqueue_task_with_progress_bar
-      (s_ "Restarting")
+      (s_ "label.restarting")
       (fun () ->
          Thread.delay 7.; (* Ugly: to prevent a killer signal (all this part must be rewritten with Cortex_lib as soon as possible!!) *)
          if self#can_startup then self#startup_right_now)
     end
 
   method poweroff =
-    self#enqueue_task_with_progress_bar (s_ "Shutting down") (fun () -> if self#can_poweroff then self#poweroff_right_now)
+    self#enqueue_task_with_progress_bar (s_ "label.shutting_down") (fun () -> if self#can_poweroff then self#poweroff_right_now)
 
   method (*private*) create_right_now =
     Recursive_mutex.with_mutex mutex
@@ -1675,7 +1675,7 @@ class virtual virtual_machine_with_history_and_ifconfig
         let () = self#add_import_warning_and_log ~severity:`Info
           ~summary:(Printf.sprintf (f_ "%s \"%s\": filesystem \"%s\" \xE2\x86\x92 \"%s\"")
              (self#ifconfig_device_type) (self#get_name) (x) (e))
-          ~detail:(Printf.sprintf (f_ "The filesystem \"%s\" is not installed; switched to \"%s\". This is safe because the project carries no saved disk state for this component.")
+          ~detail:(Printf.sprintf (f_key "machine.filesystem_fallback" "The filesystem \"%s\" is not installed; switched to \"%s\". This is safe because the project carries no saved disk state for this component.")
              (x) (e))
           ()
         in
@@ -1685,7 +1685,7 @@ class virtual virtual_machine_with_history_and_ifconfig
         let () = self#add_import_warning_and_log ~severity:`Warning
           ~summary:(Printf.sprintf (f_ "%s \"%s\": filesystem \"%s\" not installed \xE2\x80\x94 component dropped")
              (self#ifconfig_device_type) (self#get_name) (x))
-          ~detail:(Printf.sprintf (f_ "Cannot switch to \"%s\" because the project carries saved disk states bound to \"%s\". The component is dropped from the loaded project. Do not save this project on this system, or the component will be lost permanently.")
+          ~detail:(Printf.sprintf (f_key "machine.filesystem_saved_states_conflict" "Cannot switch to \"%s\" because the project carries saved disk states bound to \"%s\". The component is dropped from the loaded project. Do not save this project on this system, or the component will be lost permanently.")
              (e) (x))
           ()
         in
@@ -1699,9 +1699,9 @@ class virtual virtual_machine_with_history_and_ifconfig
     let v = vm_installations#variants_of self#get_epithet in
     if v#epithet_exists x then Some x else
     let () = self#add_import_warning_and_log ~severity:`Info
-      ~summary:(Printf.sprintf (f_ "%s \"%s\": variant \"%s\" removed")
+      ~summary:(Printf.sprintf (f_key "message.variant_removed" "%s \"%s\": variant \"%s\" removed")
          (self#ifconfig_device_type) (self#get_name) (x))
-      ~detail:(Printf.sprintf (f_ "The variant \"%s\" is not available for the filesystem \"%s\"; the component boots the pristine filesystem.")
+      ~detail:(Printf.sprintf (f_key "machine.variant_unavailable" "The variant \"%s\" is not available for the filesystem \"%s\"; the component boots the pristine filesystem.")
          (x) (self#get_epithet))
       ()
     in
@@ -1725,8 +1725,8 @@ class virtual virtual_machine_with_history_and_ifconfig
     | Some e when e <> k ->
         let detail_fmt =
           if is_broken_old_series
-          then (f_ "The kernel \"%s\" is unusable on this host; switched to \"%s\".")
-          else (f_ "The kernel \"%s\" is not installed; switched to \"%s\".")
+          then (f_key "machine.kernel_fallback" "The kernel \"%s\" is unusable on this host; switched to \"%s\".")
+          else (f_key "message.kernel_not_installed_switched" "The kernel \"%s\" is not installed; switched to \"%s\".")
         in
         let () = self#add_import_warning_and_log ~severity:`Info
           ~summary:(Printf.sprintf (f_ "%s \"%s\": kernel \"%s\" \xE2\x86\x92 \"%s\"")
@@ -1738,7 +1738,7 @@ class virtual virtual_machine_with_history_and_ifconfig
         let () = self#add_import_warning_and_log ~severity:`Warning
           ~summary:(Printf.sprintf (f_ "%s \"%s\": kernel \"%s\" kept \xE2\x80\x94 no replacement")
              (self#ifconfig_device_type) (self#get_name) (k))
-          ~detail:(Printf.sprintf (f_ "The kernel \"%s\" is unusable on this host or not installed, and no replacement is available for the filesystem \"%s\". The component may fail to boot.")
+          ~detail:(Printf.sprintf (f_key "machine.kernel_unavailable" "The kernel \"%s\" is unusable on this host or not installed, and no replacement is available for the filesystem \"%s\". The component may fail to boot.")
              (k) (self#get_epithet))
           ()
         in k

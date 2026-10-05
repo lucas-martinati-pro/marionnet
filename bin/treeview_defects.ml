@@ -499,7 +499,7 @@ object(self)
       let () = self#show_defectiveness row_id in
       let warning =
         if header = flipped_bits_header && (float_or_zero new_content) > 1.0 then
-          Some ((s_ "This value may be too high"),
+          Some ((s_ "label.value_may_too_high"),
                 (s_ "cloud.tooltip.flipped_bits"))
         else None
       in
@@ -520,7 +520,7 @@ object(self)
     let _ =
       self#add_icon_column
         ~header:type_header
-        ~shown_header:(s_ "Type")
+        ~shown_header:(s_ "label.type")
         ~strings_and_pixbufs:[
 	    "machine", Initialization.Path.images^"treeview-icons/machine.xpm";
 	    "hub",     Initialization.Path.images^"treeview-icons/hub.xpm";
@@ -545,35 +545,35 @@ object(self)
     let loss =
       self#add_editable_string_column
         ~header:loss_header
-        ~shown_header:(s_ "Loss %")
+        ~shown_header:(s_ "message.loss")
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_percentage i)
         () in
     let duplication =
       self#add_editable_string_column
         ~header:duplication_header
-        ~shown_header:(s_ "Duplication %")
+        ~shown_header:(s_ "message.duplication")
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_non_100_percentage i)
         () in
     let flipped_bits =
       self#add_editable_string_column
         ~header:flipped_bits_header
-        ~shown_header:(s_ "Flipped bits %")
+        ~shown_header:(s_ "message.flipped_bits")
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_percentage i)
         () in
     let minimum_delay =
       self#add_editable_string_column
         ~header:minimum_delay_header
-        ~shown_header:(s_ "Minimum delay (ms)")
+        ~shown_header:(s_ "label.minimum_delay_ms")
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_delay i)
         () in
     let maximum_delay =
       self#add_editable_string_column
         ~header:maximum_delay_header
-        ~shown_header:(s_ "Maximum delay (ms)")
+        ~shown_header:(s_ "label.maximum_delay_ms")
         ~default:(fun () -> Row_item.String "")
         ~constraint_predicate:(fun i -> let i = Row_item.extract_String i in self#is_a_valid_delay i)
         () in
@@ -592,7 +592,7 @@ object(self)
       [ loss; duplication; flipped_bits; minimum_delay; maximum_delay ];
 
   self#add_row_constraint
-    ~name:(s_ "you should choose a direction to define this parameter")
+    ~name:(s_ "label.choose_direction_define_parameter")
     (fun row ->
       let uneditable = Row.CheckBox_field.get ~field:uneditable_header row in
       (not uneditable) ||

@@ -41,7 +41,7 @@ let script_path () : (string, string) result =
     match UnixExtra.run (Printf.sprintf "command -v %s" (Filename.quote name)) with
     | (output, Unix.WEXITED 0) when String.trim output <> "" -> Ok (String.trim output)
     | _ ->
-        Error (Printf.sprintf (f_ "the command `%s' cannot be found") name)
+        Error (Printf.sprintf (f_key "message.command_cannot_found" "the command `%s' cannot be found") name)
 
 (* --- Running it as root
    ---
@@ -185,7 +185,7 @@ let ensure_block
       (* What we run, said plainly and in advance: a password dialog that does not
          say what it unlocks is how one teaches users to type it anywhere. *)
       let header = header ~script in
-      let title = (s_ "Administrator rights required") in
+      let title = (s_ "label.administrator_rights_required") in
       (* The verdict is memoised, and we are about to change what it answers. *)
       let succeeded () =
         forget_probe ();
@@ -199,7 +199,7 @@ let ensure_block
       let conclude_after_failure ~(code : int) ~(output : string) : (unit, string) result =
         if succeeded () then Ok () else
         Error
-          (Printf.sprintf (f_ "the sudoers rule could not be installed (exit code %d)%s")
+          (Printf.sprintf (f_key "message.sudoers_rule_could_not_installed_exit_code" "the sudoers rule could not be installed (exit code %d)%s")
              code
              (if output = "" then "" else Printf.sprintf ":\n%s" output))
       in
@@ -261,18 +261,18 @@ let ensure_natbridge () : (unit, string) result =
     ~what:"the NAT bridge"
     ~header:(fun ~script ->
        Printf.sprintf
-         (f_ "Marionnet needs administrator rights to build the private NAT bridge that connects this component to the Internet.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
+         (f_key "network.nat.permission_request" "Marionnet needs administrator rights to build the private NAT bridge that connects this component to the Internet.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
          (Filename.basename script) (String.concat " " natbridge_arguments))
-    ~failure_title:(s_ "Cannot build the private NAT bridge")
+    ~failure_title:(s_ "label.cannot_build_private_nat_bridge")
     ~failure_message:(fun ~message ~script ->
        Printf.sprintf
-         (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-natbridge")
+         (f_key "network.permission_denied.nat" "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-natbridge")
          message (Filename.basename script))
     ~installed_but_refused:(s_ "privilege.error.nat_installed_but_refused")
-    ~cancelled:(s_ "no administrator rights were granted: the NAT bridge cannot be built")
+    ~cancelled:(s_ "message.no_administrator_rights_were_granted_nat_bridge")
     ~denied_by_administrator:(fun ~command ->
        Printf.sprintf
-         (f_ "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
+         (f_key "network.feature_disabled" "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
          command)
     ()
 
@@ -290,17 +290,17 @@ let ensure_lanbridge () : (unit, string) result =
     ~what:"the LAN bridge"
     ~header:(fun ~script ->
        Printf.sprintf
-         (f_ "Marionnet needs administrator rights to put this computer's network card into a bridge, so that the virtual machines appear directly on your real local network.\n\nThis grants Marionnet the right to reconfigure the network addressing of this host, and the host loses its network connection for a fraction of a second whenever the bridge is built or taken down.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
+         (f_key "network.lan.permission_request" "Marionnet needs administrator rights to put this computer's network card into a bridge, so that the virtual machines appear directly on your real local network.\n\nThis grants Marionnet the right to reconfigure the network addressing of this host, and the host loses its network connection for a fraction of a second whenever the bridge is built or taken down.\n\nThe following command will be run, once:\n\n    %s %s\n\nPlease type your own password (the one you use with `sudo'):")
          (Filename.basename script) (String.concat " " lanbridge_arguments))
-    ~failure_title:(s_ "Cannot build the LAN bridge")
+    ~failure_title:(s_ "label.cannot_build_lan_bridge")
     ~failure_message:(fun ~message ~script ->
        Printf.sprintf
-         (f_ "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-lanbridge")
+         (f_key "network.permission_denied.lan" "Marionnet could not obtain the administrator rights it needs: %s.\n\nThe components attached to this bridge will start all the same, but with no access to the real network. To grant those rights later, run in a terminal:\n\n    %s install --only --enable-lanbridge")
          message (Filename.basename script))
     ~installed_but_refused:(s_ "privilege.error.lan_installed_but_refused")
-    ~cancelled:(s_ "no administrator rights were granted: the LAN bridge cannot be built")
+    ~cancelled:(s_ "message.no_administrator_rights_were_granted_lan_bridge")
     ~denied_by_administrator:(fun ~command ->
        Printf.sprintf
-         (f_ "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
+         (f_key "network.feature_disabled" "The administrator of this machine has disabled this feature.\n\nTo turn it back on, an administrator must run in a terminal:\n\n    %s")
          command)
     ()

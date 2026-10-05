@@ -49,7 +49,7 @@ module Make (State : sig val st:State.globalState end) = struct
        Gui_toolbar_COMPONENTS_layouts.Toolbar.append_image_menu
          toolbar
          "ico.world.palette.png"
-         (s_ "Real world access")
+         (s_ "label.real_world_access")
     let parent = Menu_factory.Menuitem (image_menu_item :> GMenu.menu_item_skel)
     let window = State.st#mainwin#window_MARIONNET
    end)

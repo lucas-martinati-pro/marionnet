@@ -84,18 +84,18 @@ module Msg = struct
 
  (** Why you have to choose a folder to work *)
  let help_repertoire_de_travail =
-   let title = (s_ "CHOOSE A TEMPORARY WORKING DIRECTORY") in
+   let title = (s_ "dialog.choose_working_directory") in
    let msg   = (s_ "talking.dialog.tmpdir_choice") in Simple_dialogs.help title msg ;;
 
  let error_saving_while_something_up =
   Simple_dialogs.error
-    (s_ "Warning")
+    (s_ "label.warning")
    (s_ "error.project_save_running")
  ;;
 
  (** Why you have to choose a name for your project *)
  let help_nom_pour_le_projet =
-   let title = (s_ "CHOOSE A NAME FOR THE PROJECT") in
+   let title = (s_ "label.choose_name_project") in
    let msg   = (s_ "state.info.save_extension_info")
    in Simple_dialogs.help title msg ;;
 end;; (* module Msg *)
@@ -117,7 +117,7 @@ let check_filename_validity_and_add_extension_if_needed ?identifier ?(extension=
       chopped_basename
     else begin
       Simple_dialogs.error
-        (s_ "Invalid file name")
+        (s_ "label.invalid_file_name")
         (Printf.sprintf (f_ "The name \"%s\" is not a valid file name.\n\nA valid file \
 name must start with a letter and can contain letters, numbers, dashes ('-') and underscores ('_').") chopped_basename)
         ();
@@ -136,9 +136,9 @@ name must start with a letter and can contain letters, numbers, dashes ('-') and
       let _ = Filename.chop_extension path_name in
       (* There is an extension but it's not the correct one; fail: *)
       Simple_dialogs.error
-        (s_ "Invalid file extension")
+        (s_ "label.invalid_file_extension")
         (Printf.sprintf
-           (f_ "The file \"%s\" must have an extension \"%s\", or no extension at all (in which case the extension \"%s\" will be added automatically).")
+           (f_key "error.file_extension_required" "The file \"%s\" must have an extension \"%s\", or no extension at all (in which case the extension \"%s\" will be added automatically).")
            path_name
            correct_extension
            correct_extension)
@@ -321,7 +321,7 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
       begin
 	let () =
 	  Simple_dialogs.error
-	    (s_ "Invalid directory")
+	    (s_ "label.invalid_directory")
 	    (s_ "error.dir_not_found")
 	    ()
 	in
@@ -336,9 +336,9 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
       begin
 	let () =
 	  Simple_dialogs.error
-	    (s_ "Invalid directory name")
+	    (s_ "label.invalid_directory_name")
             (* (Printf.sprintf (f_ "The name \"%s\" is not a valid directory.\n\nDirectory names must contain only letters, numbers, dots, dashes ('-') and underscores ('_').") pathname) *)
-	    (Printf.sprintf (f_ "The name \"%s\" contains some shell special chars (blanks, parenthesis,..) which are not allowed.") pathname)
+	    (Printf.sprintf (f_key "error.name_shell_characters" "The name \"%s\" contains some shell special chars (blanks, parenthesis,..) which are not allowed.") pathname)
 	    ()
 	in
 	false
@@ -350,7 +350,7 @@ let ask_for_existing_writable_folder_pathname_supporting_sparse_files
         begin
           let () =
 	    Simple_dialogs.error
-	      (s_ "Invalid directory")
+	      (s_ "label.invalid_directory")
 	      (s_ "talking.dialog.tmpdir_recommendation")
 	      ()
 	  in
@@ -374,7 +374,7 @@ let ask_for_fresh_writable_filename
   let valid x =
     if (Sys.file_exists x)
     then ((Simple_dialogs.error
-             (s_ "Name choice")
+             (s_ "label.name_choice")
              (s_ "error.file_already_exists")
              ()); false)
     else (UnixExtra.viable_freshname x)
@@ -385,17 +385,17 @@ let ask_for_fresh_writable_filename
 
 let dialog_error_choosed_file_doesnt_exist () =
   Simple_dialogs.error
-    (s_ "File choice")
+    (s_ "label.file_choice")
     (s_ "error.file_not_found")
     ()
 
 let dialog_error_choosed_file_is_not_a_text_file () =
-  Simple_dialogs.error (s_ "File choice") (s_ "The file is not a text file") ()
+  Simple_dialogs.error (s_ "label.file_choice") (s_ "label.file_not_text_file") ()
 
 let dialog_error_choosed_file_is_too_big_to_be_imported (limit:string) =
   Simple_dialogs.error
-    (s_ "File choice")
-    (Printf.sprintf (f_ "The file is too big to be imported\nYou must choose a file smaller than %s.") limit)
+    (s_ "label.file_choice")
+    (Printf.sprintf (f_key "message.file_too_big_imported_must_choose_file" "The file is too big to be imported\nYou must choose a file smaller than %s.") limit)
     ()
 
 let file_size_kb (filename) =
