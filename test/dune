@@ -14,3 +14,9 @@
  (modules marionnet xforest_json treeview_json utf_8_reference project_archive_test sketch_renderer_test sketch_hit_map_test edit_files_test)
  (libraries ocamlbricks marionnet_base)
  )
+
+;; Installer presentation exercised with stand-ins for every privileged command.
+(rule
+ (alias runtest)
+ (deps install_presentation_test.py ../install.sh ../dist/install.sh)
+ (action (run python3 %{dep:install_presentation_test.py})))

@@ -72,6 +72,13 @@ Le script s'occupe de tout automatiquement :
 - `./install.sh -b` (ou `--build`) : Installe directement le binaire compilé localement dans le dépôt (pratique pour tester des modifications locales sans attendre de release).
 - `./install.sh --clean` : Force la suppression des paquets `.deb` locaux en cache et retélécharge les versions officielles propres.
 - `./install.sh --without-wheezy` : Installation allégée sans l'image Debian Wheezy (uniquement le système invité minimal Guignol).
+- `./install.sh --verbose` : Affiche en direct toutes les sorties de compilation et d’APT.
+
+L’installation via les paquets `.deb` affiche neuf étapes avec leurs durées. Les détails des commandes sont
+conservés dans un journal privé dont le chemin est indiqué au début et à la fin. Les
+avertissements, les erreurs et les invites de saisie restent visibles. En cas d’échec,
+le script affiche les dernières lignes de la commande et conserve son code de sortie.
+Les couleurs sont désactivées dans les sorties redirigées ou avec `NO_COLOR=1`.
 
 ---
 
