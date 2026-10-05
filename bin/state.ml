@@ -199,7 +199,7 @@ class project_paths
       let   () = self#unset_filename in
       let   () = self#unset_root_pathname in
       (* --- *)
-      let ocmd = Option.map (Printf.sprintf "rm -rf '%s'") (opwd) in
+      let ocmd = Option.map (fun path -> "rm -rf -- " ^ Filename.quote path) (opwd) in
       let   () = Option.iter (Log.printf1 "project_paths#reset_and_remove_the_project_working_directory: %s\n") ocmd in
       let   () = Option.iter (Log.system_or_ignore) (ocmd) in
       ()
@@ -468,7 +468,7 @@ class globalState = fun () ->
           ~modal:true
           ~title:(s_ "Work in progress")
           ~text_on_label:(Printf.sprintf "<big><b>%s</b></big>" (s_ "Opening"))
-          ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" filename)
+          ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" (Glib.Markup.escape_text filename))
           ())
         ()
     in
@@ -479,9 +479,9 @@ class globalState = fun () ->
       (* Extract the mar file into the pwdir *)
       let () =
         let command_line =
-          Printf.sprintf "tar -xSvzf '%s' -C '%s'"
-            (Option.extract (self#project_paths#get_filename))
-            pwd
+          Printf.sprintf "tar -xSvzf %s -C %s"
+            (Filename.quote (Option.extract (self#project_paths#get_filename)))
+            (Filename.quote pwd)
         in
         (* --- *)
         Log.system_or_fail command_line
@@ -802,16 +802,21 @@ class globalState = fun () ->
     (* --- *)
     if self#active_project then begin
     Log.printf "state#save_project BEGIN\n";
+    (* A failed attempt must remain observable even when the model was clean before
+       Save / Save as. The channel and the leave-project menus use this flag. *)
+    self#set_project_not_already_saved;
     (* --- *)
     let filename = Option.extract (self#project_paths#get_filename) in
     let project_working_directory, project_root_basename =
       (self#project_paths#extract_working_directory_and_root_basename)
     in
     (* --- *)
+    (* The destination stays untouched until commit: follow the temporary archive instead. *)
+    let staging_filename = ref None in
     (* Progress bar periodic callback. *)
     let fill =
       (* disk usage (in kb) with the unix command *)
-      let du x = match UnixExtra.run (Printf.sprintf "du -sk '%s'" x) with
+      let du x = match UnixExtra.run (Printf.sprintf "du -sk -- %s" (Filename.quote x)) with
        | kb, (Unix.WEXITED 0) -> (try Some (float_of_string (List.hd (StringExtra.split ~d:'\t' kb))) with _ -> None)
        | _,_                  -> None
       in
@@ -820,7 +825,8 @@ class globalState = fun () ->
       let round x = float_of_string (Printf.sprintf "%.2f" (if x<1. then x else 1.)) (* workaround strange lablgtk behaviour *) in
       match (du project_working_directory) with
       | Some kb_flatten ->
-         fun () -> (match du_file_in_kb filename with
+         fun () -> (match (match !staging_filename with
+                          | None -> None | Some path -> du_file_in_kb path) with
                     | Some kb_compressed -> round (0.05 +. (kb_compressed *. 8.) /. kb_flatten)
                     | None -> 0.5)
       | None -> fun () -> 0.5
@@ -845,7 +851,7 @@ class globalState = fun () ->
         ~title:(s_ "Work in progress")
         ~kind:(Progress_bar.Fill fill)
         ~text_on_label
-        ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" filename)
+        ~text_on_sub_label:(Printf.sprintf "<tt><small>%s</small></tt>" (Glib.Markup.escape_text filename))
         ()
       (* --- *)
       end) ()
@@ -897,27 +903,14 @@ class globalState = fun () ->
                  end)
             (self#project_paths#legacy_data_files);
           (* --- *)
-          (* (Re)write the .mar file *)
-          let cmd =
-            let exclude_command_section =
-              let excluded_cows = self#treeview#history#get_files_may_not_be_saved in
-              let excluded_items = List.map (Printf.sprintf "--exclude states/%s") excluded_cows in
-              String.concat " " ("--exclude tmp"::excluded_items)
-            in
-            Printf.sprintf "tar -cSvzf '%s' -C '%s' %s '%s'"
-              filename
-              project_working_directory
-              exclude_command_section
-              project_root_basename
-          in
-          (* --- *)
-          let _ =
-            (*Task_runner.the_task_runner#schedule
-              ~name:"tar"*)
-              ((*fun () ->*) Log.system_or_ignore cmd)
-          in
-          (* --- *)
-          ()
+          let excluded_cows = self#treeview#history#get_files_may_not_be_saved in
+          Project_archive.save
+            ~on_staging_file:(fun path -> staging_filename := Some path)
+            ~filename
+            ~working_directory:project_working_directory
+            ~root_basename:project_root_basename
+            ~excluded_paths:("tmp" :: List.map (Filename.concat "states") excluded_cows)
+            ()
         end);
       (* --- *)
 (*     let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in (*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*) *)
@@ -926,10 +919,11 @@ class globalState = fun () ->
       (* --- *)
     with e -> begin
       Log.printf1 "state#save_project END. FAILED: %s\n" (Printexc.to_string e);
-      (* The project is deliberately left marked as modified. *)
+      self#set_project_not_already_saved;
       Simple_dialogs.error
         (s_ "Save")
-        ((s_ "Failed to save the project into the file ") ^ filename)
+        ((s_ "Failed to save the project into the file ") ^ (Glib.Markup.escape_text filename)
+         ^ "\n\n" ^ (Glib.Markup.escape_text (Printexc.to_string e)))
         ()
       end
   end

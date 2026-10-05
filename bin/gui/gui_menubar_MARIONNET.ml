@@ -100,10 +100,15 @@ module Common_dialogs = struct
     GMain_actor.apply_extract since episode 12, so blocking that thread would deadlock).
     Every caller below therefore runs this in a thread of its own. *)
  let shutdown_then_save ~(must_be_saved:bool) () =
-   if st#active_project then begin
+   if not st#active_project then true else begin
      let () = st#shutdown_everything () in
      let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
-     if must_be_saved then st#save_project
+     if not must_be_saved then true else begin
+       st#save_project;
+       (* The save catches failures to show their cause. Never discard the working
+          directory merely because the call returned without an exception. *)
+       GMain_actor.apply_extract (fun () -> st#project_already_saved) ()
+       end
      end
 
 end
@@ -135,9 +140,10 @@ module Created_entry_project_new = Menu_factory.Make_entry(struct
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.new_project\n" in
          let active_project = st#active_project in
-         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
-         let () = if (active_project) then st#close_project in
-         st#new_project filename
+         if Common_dialogs.shutdown_then_save ~must_be_saved () then begin
+           let () = if (active_project) then st#close_project in
+           st#new_project filename
+           end
       in
       (* --- *)
       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.new_project" actions *)
@@ -174,11 +180,12 @@ module Created_entry_project_open = Menu_factory.Make_entry(struct
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.open_project\n" in
          let active_project = st#active_project in
-         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
-         let () = if (active_project) then st#close_project in
-         (* --- *)
-         try st#open_project_async filename
-         with e -> ((Simple_dialogs.error (s_ "Open a project") ((s_ "Failed to open the file ")^filename) ()); raise e)
+         if Common_dialogs.shutdown_then_save ~must_be_saved () then begin
+           let () = if (active_project) then st#close_project in
+           (* --- *)
+           try ignore (st#open_project_async filename)
+           with e -> ((Simple_dialogs.error (s_ "Open a project") ((s_ "Failed to open the file ")^filename) ()); raise e)
+           end
       in
       (* --- *)
       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.open_project" actions *)
@@ -302,8 +309,7 @@ module Created_entry_project_close = Menu_factory.Make_entry
       (* --- *)
       let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.close_project\n" in
-         let () = Common_dialogs.shutdown_then_save ~must_be_saved () in
-         st#close_project
+         if Common_dialogs.shutdown_then_save ~must_be_saved () then st#close_project
       in
       (* --- *)
       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.close_project" actions *)
@@ -416,7 +422,7 @@ module Created_entry_project_quit = Menu_factory.Make_entry
     let must_be_saved = (st#active_project) && ((r#get "answer") = "yes") in
     (* --- *)
     let actions () =
-      let () =
+      let may_quit =
         match st#is_there_something_on_or_sleeping (), must_be_saved with
         | true,  true  -> Common_dialogs.shutdown_then_save ~must_be_saved:true ()
         | true,  false ->
@@ -424,16 +430,20 @@ module Created_entry_project_quit = Menu_factory.Make_entry
                refuse this anyway (state.ml, [poweroff_everything], episode 22). Outside an exam
                it is the right gesture and it is kept: nothing is going to be saved, so waiting
                for a graceful shutdown would make someone who wants to leave wait for nothing. *)
-            st#poweroff_everything ()
-        | false, true  -> st#save_project
-        | false, false -> ()
+            st#poweroff_everything (); true
+        | false, true  ->
+            st#save_project;
+            GMain_actor.apply_extract (fun () -> st#project_already_saved) ()
+        | false, false -> true
       in
       (* --- *)
-      Log.printf "Killing the death monitor thread...\n";
-      Death_monitor.stop_polling_loop ();
-      st#network#destroy_process_before_quitting ();
-      st#close_project;
-      st#quit_async ()
+      if may_quit then begin
+        Log.printf "Killing the death monitor thread...\n";
+        Death_monitor.stop_polling_loop ();
+        st#network#destroy_process_before_quitting ();
+        st#close_project;
+        st#quit_async ()
+        end
     in
     (* --- *)
     let _ = Thread.create (actions) () in

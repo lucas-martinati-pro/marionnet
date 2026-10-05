@@ -3604,7 +3604,7 @@ let leave_current_project (st : State.globalState) ~(timeout:float)
   (* --save means "save, *then* close": private_save_project catches its own failures and
      reports them by a dialog (state.ml:800-810), so a plain "no exception" proves nothing. If
      the saving failed, closing would destroy exactly what the client asked to keep — we stop
-     instead. Deliberately stricter than the menu, which closes anyway. *)
+     instead. The menu applies the same rule. *)
   if not saved then
     Error (reply_error_with ~extra:(extra ()) ~code:"internal"
              ~detail:"saving the project failed: nothing was closed (see the log and the notifications)")

@@ -1,5 +1,11 @@
 # `driven-sessions/` — bancs rejouables, versionnés
 
+Le banc `atomic-save.sh` vérifie la conservation du dernier `.mar` et du projet ouvert
+après une écriture partielle, puis la reprise et la réouverture. L'option `--gui` joue
+aussi les menus Fermer et Quitter avec réponse Oui (xdotool requis). Voir
+[`docs/fiabilisation-sauvegardes.md`](../docs/fiabilisation-sauvegardes.md) pour les
+commandes et le contrôle négatif sur l'ancien code.
+
 Un *driven session* est une session de Marionnet **pilotée** plutôt que cliquée : le mot est
 celui du dépôt (`bin/gui/gui_menubar_MARIONNET.ml`, `bin/script_mode.ml`), et c'est ce que fait
 l'option `--control-socket`. Les scripts rassemblés ici en jouent une, ou en refusent une, pour
