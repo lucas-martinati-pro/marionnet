@@ -237,8 +237,15 @@ if [ "$BUILD_LOCAL" = true ]; then
   "$SCRIPT_DIR/build-all-in-one.sh" "$VERSION"
   SUMS_FILE="$SCRIPT_DIR/SHA256SUMS"
 elif [ -f "$DEB_NAME" ]; then
+  # Détection et purge d'un paquet antérieur au Depends libc6:i386 : sans lui,
+  # le noyau linux-6.12.95-i386 embarqué est inexécutable (/lib/ld-linux.so.2
+  # manquant) et la première machine meurt avec "died unexpectedly".
+  if ! dpkg-deb -f "$DEB_NAME" Depends 2>/dev/null | grep -q "libc6:i386"; then
+    echo "--> Ancien paquet local détecté (Depends sans libc6:i386)."
+    echo "    Purge automatique et reconstruction/retéléchargement..."
+    rm -f "$DEB_NAME"
   # Détection et purge automatique d'un ancien build incompatible lié à GLIBC >= 2.42
-  if dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.4[2-9]"; then
+  elif dpkg-deb --fsys-tarfile "$DEB_NAME" 2>/dev/null | tar -x -O ./usr/bin/marionnet.native 2>/dev/null | grep -qa "GLIBC_2.4[2-9]"; then
     echo "--> Ancien paquet local détecté (compilé avec GLIBC >= 2.42 incompatible)."
     echo "    Purge automatique et téléchargement du paquet officiel compatible..."
     rm -f "$DEB_NAME"
@@ -302,21 +309,21 @@ if [ "$INSTALL_WHEEZY" = true ] && [ "$WHEEZY_INSTALLED" = false ]; then
 fi
 
 # 3. Réparation préventive d'éventuels paquets interrompus ou mal configurés
-echo "--> [1/5] Vérification de l'état du gestionnaire de paquets (dpkg)..."
+echo "--> [1/6] Vérification de l'état du gestionnaire de paquets (dpkg)..."
 sudo dpkg --configure -a 2>/dev/null || true
 
 # 4. Activation de l'architecture i386 (pour les noyaux UML 32-bit et rétrocompatibilité)
-echo "--> [2/5] Activation de l'architecture i386..."
+echo "--> [2/6] Activation de l'architecture i386..."
 sudo dpkg --add-architecture i386 || true
 
 # 5. Nettoyage des éventuels anciens binaires résiduels
-echo "--> [3/5] Nettoyage des anciens binaires résiduels..."
+echo "--> [3/6] Nettoyage des anciens binaires résiduels..."
 if [ -f /usr/local/bin/marionnet ] || [ -f /usr/local/bin/marionnet.native ]; then
   sudo rm -f /usr/local/bin/marionnet*
 fi
 
 # 6. Installation des paquets et de toutes les dépendances
-echo "--> [4/5] Installation des paquets et des dépendances système..."
+echo "--> [4/6] Installation des paquets et des dépendances système..."
 DEBS_TO_INSTALL=( "./$DEB_NAME" )
 if [ "$INSTALL_WHEEZY" = true ] && [ -f "$WHEEZY_DEB" ]; then
   echo "    Inclusion de la distribution Debian Wheezy..."
@@ -324,10 +331,20 @@ if [ "$INSTALL_WHEEZY" = true ] && [ -f "$WHEEZY_DEB" ]; then
 fi
 
 sudo apt update
+# Runtime 32-bit du noyau linux-6.12.95-i386 (interpréteur /lib/ld-linux.so.2,
+# fourni uniquement par libc6:i386) : installé explicitement car les paquets
+# All-in-One publiés avant le Depends libc6:i386 ne le tirent pas, et sans lui
+# la première machine meurt avec "died unexpectedly". --clean seul ne suffit pas.
+echo "--> [5/6] Installation du runtime 32-bit (libc6:i386)..."
+if ! sudo apt install -y libc6:i386; then
+  echo "[-] ERREUR : impossible d'installer libc6:i386." >&2
+  echo "    Le noyau 32-bit linux-6.12.95-i386 restera inexécutable." >&2
+  exit 1
+fi
 sudo apt install -o Dpkg::Options::="--force-overwrite" --reinstall -y "${DEBS_TO_INSTALL[@]}"
 
 # 7. Configuration des droits réseau (sudoers)
-echo "--> [5/5] Configuration des droits réseau (sudoers)..."
+echo "--> [6/6] Configuration des droits réseau (sudoers)..."
 if ! sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then
   # Fallback compatible avec sudo-rs (Ubuntu 24.10+) et sudo classique
   echo "    Application de la règle sudoers compatible..."
@@ -341,6 +358,30 @@ fi
 echo "=========================================================="
 echo "--> Vérification de l'installation :"
 marionnet -v || true
+# Vérification fail-hard : le noyau 32-bit doit être exécutable ICI et
+# MAINTENANT, pas à la première machine. On mesure l'interpréteur et ldd,
+# jamais un libellé de paquet.
+I386_KERNEL=""
+if command -v marionnet.native >/dev/null 2>&1; then
+  KERNELS_DIR="$(marionnet.native --paths 2>/dev/null | sed -n 's|^kernels[[:space:]]*:[[:space:]]*||p' | head -n 1)"
+  [ -n "${KERNELS_DIR:-}" ] && I386_KERNEL="$KERNELS_DIR/linux-6.12.95-i386"
+fi
+[ -n "$I386_KERNEL" ] || I386_KERNEL="/usr/share/marionnet/kernels/linux-6.12.95-i386"
+if [ ! -x "$I386_KERNEL" ]; then
+  echo "[-] ERREUR : noyau 32-bit absent ou non exécutable : $I386_KERNEL" >&2
+  exit 1
+fi
+if [ ! -e /lib/ld-linux.so.2 ]; then
+  echo "[-] ERREUR : /lib/ld-linux.so.2 manquant (libc6:i386 non installé)." >&2
+  echo "    Le noyau $I386_KERNEL ne peut pas s'exécuter." >&2
+  exit 1
+fi
+if ldd "$I386_KERNEL" 2>/dev/null | grep -q "not found"; then
+  echo "[-] ERREUR : dépendances 32-bit manquantes pour $I386_KERNEL :" >&2
+  ldd "$I386_KERNEL" 2>&1 | grep "not found" >&2 || true
+  exit 1
+fi
+echo "    ✓ Noyau 32-bit exécutable : $I386_KERNEL (ldd OK, /lib/ld-linux.so.2 présent)"
 echo "=========================================================="
 echo "Marionnet $VERSION est installé et prêt à l'emploi !"
 echo "Lancez simplement 'marionnet' dans votre terminal ou via vos applications."
