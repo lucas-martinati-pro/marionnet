@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("binary", nargs="?", default=str(ROOT / "_build/default/bin/marionnet.exe"))
 parser.add_argument("--screenshots", type=Path)
+parser.add_argument("--installed-prefix", type=Path,
+                    help="use an extracted installation, including resources, outside the source tree")
 args = parser.parse_args()
 if not os.environ.get("DISPLAY") or not all(shutil.which(t) for t in ("dot", "xdotool")):
     print("SKIP: DISPLAY, dot and xdotool required (use xvfb-run -a)")
@@ -76,10 +78,19 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
     env = dict(os.environ, PATH=str(tools) + ":" + os.environ["PATH"],
                MARIONNET_WORKSPACE_BENCH=str(fixture), MARIONNET_WORKSPACE_REAL_DOT=real_dot,
                MARIONNET_TMPDIR=str(run), MARIONNET_LANG="fr", LC_ALL="C", LANGUAGE="C")
+    cwd = ROOT
+    locales_path = ROOT / "bin/locales/fr.json"
+    if args.installed_prefix:
+        prefix = args.installed_prefix.resolve()
+        env["MARIONNET_PREFIX"] = str(prefix / "share/marionnet")
+        env.pop("MARIONNET_LOCALES_PATH", None)
+        env["PATH"] = str(tools) + ":" + str(prefix / "bin") + ":" + os.environ["PATH"]
+        cwd = prefix
+        locales_path = prefix / "share/marionnet/locales/fr.json"
     log_path = fixture / "application.log"
     with log_path.open("w") as log:
         app = subprocess.Popen([str(Path(args.binary).resolve()), "--debug", "--no-welcome",
-                                "--control-socket", str(sock)], cwd=ROOT, env=env,
+                                "--control-socket", str(sock)], cwd=cwd, env=env,
                                stdout=log, stderr=log)
 
     def ask(command):
@@ -163,7 +174,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         time.sleep(6.5)
         check(geometry_fits(), "the workspace fits the available screen")
         screenshot("welcome")
-        locales = json.loads((ROOT / "bin/locales/fr.json").read_text())
+        locales = json.loads(locales_path.read_text())
         new_title = locales["Name of the new project"]
         open_title = locales["Open a project"]
         xdo("windowfocus", "--sync", window())

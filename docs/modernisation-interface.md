@@ -88,3 +88,37 @@ Pour lancer la version construite sans installation système :
 ```sh
 _build/default/bin/marionnet.exe
 ```
+
+## Correction du paquet installé — 5 octobre 2026
+
+Le lancement après `./install.sh` échouait avec `Gpointer.Null` dans
+`Gui.window_MARIONNET` : le paquet All-in-One remplaçait le binaire de sa couche
+applicative historique, mais conservait son ancien Glade. Le nouveau binaire
+cherchait donc des widgets absents. Les traductions JSON étaient également
+absentes du paquet installé ; un essai depuis le dépôt masquait ces défauts.
+
+La construction locale passe maintenant par `dune build @install` puis par une
+installation Dune temporaire sous `/usr`. Elle fusionne l'exécutable et ses
+ressources déclarées avec les couches d'images invitées et de noyaux. Le build
+est actualisé même si le numéro de version n'a pas changé. L'installeur vérifie
+ensuite le Glade réellement sélectionné par `marionnet --paths` : un ancien
+`MARIONNET_PREFIX` conservé dans une configuration personnalisée entraîne un
+diagnostic explicite plutôt qu'une fausse annonce de réussite. Les droits réseau
+ne sont pas modifiés par cette correction.
+
+Le nouveau banc extrait le vrai paquet, compare ses ressources à celles du
+dépôt et joue les menus, les raccourcis, la palette, les titres et le rendu avec
+le binaire extrait, depuis un répertoire extérieur au dépôt. Il n'installe rien
+sur le système et ne démarre aucun invité :
+
+```sh
+bash dist/build-all-in-one.sh
+python3 driven-sessions/installed-workspace.py dist/marionnet-all-in-one_1.0.459_amd64.deb
+```
+
+Sur la machine ayant signalé le défaut, le préfixe effectif pointait encore
+vers `/usr/local/share/marionnet`. La réparation utilise les ressources
+du paquet sous `/usr/share/marionnet`, tout en conservant explicitement les
+chemins existants des images et noyaux sous `/usr/local/share/marionnet`. Une
+copie des configurations système et utilisateur originales est gardée avant
+cette adaptation ; le préfixe effectif est contrôlé avec `marionnet --paths`.

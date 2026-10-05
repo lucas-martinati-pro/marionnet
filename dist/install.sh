@@ -458,6 +458,29 @@ if ! sudo apt install -y libc6:i386; then
 fi
 sudo apt install -o Dpkg::Options::="--force-overwrite" --reinstall -y "${DEBS_TO_INSTALL[@]}"
 
+# Un -v réussi ne charge aucun widget et ne détecte pas une ancienne interface.
+# En mode local, le fichier installé doit correspondre aux sources empaquetées.
+# Signaler les préfixes conservés par dpkg plutôt que modifier une configuration
+# personnalisée ou annoncer une application prête alors qu'elle ne démarre pas.
+if [ "$BUILD_LOCAL" = true ]; then
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+    INSTALLED_PATHS="$(su -s /bin/bash - "$SUDO_USER" -c '/usr/bin/marionnet --paths')"
+  else
+    INSTALLED_PATHS="$(/usr/bin/marionnet --paths)"
+  fi
+  GUI_DIR="$(printf '%s\n' "$INSTALLED_PATHS" | sed -n 's|^gui[[:space:]]*:[[:space:]]*||p' | head -n 1)"
+  if [ -z "$GUI_DIR" ] || ! cmp -s "$REPO_ROOT/bin/gui/gui_glade3.xml" "$GUI_DIR/gui_glade3.xml"; then
+    echo "[-] ERREUR : l'interface chargée ne correspond pas au binaire local installé." >&2
+    echo "    Interface configurée : ${GUI_DIR:-introuvable}/gui_glade3.xml" >&2
+    echo "    Interface du paquet : /usr/share/marionnet/gui/gui_glade3.xml" >&2
+    echo "    Vérifiez MARIONNET_PREFIX dans /etc/marionnet/marionnet.conf," >&2
+    echo "    ~/.marionnet/marionnet.conf et l'environnement ; conservez vos chemins" >&2
+    echo "    d'images et de noyaux dans MARIONNET_FILESYSTEMS_PATH et MARIONNET_KERNELS_PATH." >&2
+    exit 1
+  fi
+  echo "    ✓ Interface installée identique à celle du binaire local"
+fi
+
 # 7. Configuration des droits réseau (sudoers)
 echo "--> [6/6] Configuration des droits réseau (sudoers)..."
 if ! sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then

@@ -7,6 +7,11 @@ un délai et une écriture partielle uniquement dans Graphviz. Commande :
 `xvfb-run -a python3 driven-sessions/workspace.py`. Détails dans
 [`docs/modernisation-interface.md`](../docs/modernisation-interface.md).
 
+Le banc `installed-workspace.py` extrait le vrai paquet `.deb`, vérifie ses
+ressources et rejoue `workspace.py` avec son binaire installé, hors du dépôt :
+`python3 driven-sessions/installed-workspace.py dist/marionnet-all-in-one_1.0.459_amd64.deb`.
+Il utilise son propre Xvfb et ne modifie pas l'installation système.
+
 Le banc `atomic-save.sh` vérifie la conservation du dernier `.mar` et du projet ouvert
 après une écriture partielle, puis la reprise et la réouverture. L'option `--gui` joue
 aussi les menus Fermer et Quitter avec réponse Oui (xdotool requis). Voir

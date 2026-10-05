@@ -5,6 +5,28 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$SCRIPT_DIR"
 
+# Dune remains the source of truth for BOTH the executable and its resources.
+# Run as the compiling user when install.sh itself was invoked with sudo.
+run_dune() {
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+    su -s /bin/bash - "$SUDO_USER" -c '
+      cd -- "$1"
+      shift
+      if command -v opam >/dev/null 2>&1; then opam exec -- dune "$@"; else dune "$@"; fi
+    ' -- marionnet-package "$REPO_ROOT" "$@"
+  elif command -v opam >/dev/null 2>&1; then
+    (cd "$REPO_ROOT" && opam exec -- dune "$@")
+  else
+    (cd "$REPO_ROOT" && dune "$@")
+  fi
+}
+
+USE_LOCAL_APP=false
+if [ -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
+  USE_LOCAL_APP=true
+  run_dune build @install
+fi
+
 # 1. Détermination dynamique de la version cible (depuis bin/meta.ml.maker.sh ou META)
 if [ -n "${1:-}" ]; then
   VERSION="$1"
@@ -81,6 +103,9 @@ fi
 
 BUILD_DIR="$(mktemp -d /tmp/marionnet-aio-build.XXXXXX)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+  chown "$SUDO_USER" "$BUILD_DIR"
+fi
 
 echo "--> Décompression des couches dans l'arborescence cible..."
 mkdir -p "$BUILD_DIR/root"
@@ -89,11 +114,15 @@ dpkg-deb -x "$KERNELS_DEB" "$BUILD_DIR/root"
 dpkg-deb -x "$KERNELS_I386_DEB" "$BUILD_DIR/root"
 dpkg-deb -x "$FS_DEB" "$BUILD_DIR/root"
 
-# Si un binaire local fraîchement compilé existe, on l'utilise pour garantir la fraîcheur
-if [ -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
-  echo "--> Intégration du binaire local compilé (_build/default/bin/marionnet.exe)..."
-  cp "$REPO_ROOT/_build/default/bin/marionnet.exe" "$BUILD_DIR/root/usr/bin/marionnet.native"
-  chmod 755 "$BUILD_DIR/root/usr/bin/marionnet.native"
+# Installer le binaire seul laissait le Glade, les traductions et les images
+# de la couche applicative de septembre : GBuilder cherchait alors des widgets
+# inexistants. Stager l'installation Dune complète garde ces fichiers ensemble.
+# La fusion conserve les noyaux et les images invitées des couches de base.
+if [ "$USE_LOCAL_APP" = true ]; then
+  echo "--> Intégration de l'application locale et de ses ressources via Dune..."
+  run_dune install marionnet --prefix /usr --destdir "$BUILD_DIR/current-app" \
+    --sections bin,share,share_root --display quiet
+  cp -a "$BUILD_DIR/current-app/usr/." "$BUILD_DIR/root/usr/"
   ln -sf marionnet.native "$BUILD_DIR/root/usr/bin/marionnet"
 fi
 
