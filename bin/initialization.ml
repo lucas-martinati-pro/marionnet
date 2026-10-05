@@ -61,7 +61,7 @@ let option_v      = Argv.register_unit_option "v" ~aliases:["-version"] ~doc:"pr
 let option_u      = Argv.register_unit_option "u" ~aliases:["-update"]   ~doc:"check for updates, update Marionnet and exit" () ;;
 let option_no_update_check = Argv.register_unit_option "-no-update-check" ~doc:"disable automatic update check at startup" () ;;
 let option_debug  = Argv.register_unit_option "d" ~aliases:["-debug"]   ~doc:"activate messages for debugging" () ;;
-let option_splash = Argv.register_unit_option "-splash" ~doc:"print splash message and exit" () ;;
+let option_splash = Argv.register_unit_option "-splash" ~doc:"print build and system diagnostics and exit" () ;;
 let option_welcome = Argv.register_unit_option "-welcome" ~aliases:["-show-welcome"] ~doc:"show the welcome window at startup" () ;;
 let option_no_welcome = Argv.register_unit_option "-no-welcome" ~aliases:["-no-splash"] ~doc:"do not show the welcome window at startup" () ;;
 let option_exam   = Argv.register_unit_option "-exam"   ~doc:"switch to student exam mode" () ;;
@@ -179,33 +179,41 @@ let do_not_print_splash_message =
   (!option_paths = Some () || !option_u = Some ())
 ;;
 
-(* else continue: *)
-let () = if do_not_print_splash_message = false then
-Log.printf6 ~v:0 ~banner:false
-  "=======================================================
- Welcome to %s
- Version              : %s
- Source revision      : %s
- Ocaml version        : %s
+(* Share the initial debugging decision with the log tuning below. The banner
+   itself precedes that tuning so --splash can still exit without creating GTK. *)
+let debug_requested =
+  (!option_debug = Some ()) ||
+  (Configuration.extract_bool_variable_or ~default:false "MARIONNET_DEBUG")
+;;
 
- Built in date %s on system:
-
-%s
-
- For bug reporting, please get a launchpad account and
- either:
-  - report bugs at https://bugs.launchpad.net/marionnet
- or do *all* the following:
-  - add yourself to the marionnet-dev team
-  - add yourself to the marionnet-dev mailing list
-  - write to marionnet-dev@lists.launchpad.net
-=======================================================\n"
-  Meta.name
-  Meta.version
-  (Printf.sprintf "%s - %s" Meta.revision Meta.source_date)
-  Meta.ocaml_version
-  Meta.build_date
-  (StringExtra.fmt ~tab:8 ~width:40 Meta.uname)
+(* Startup uses the log's stderr channel. Keep redirected diagnostics plain and
+   respect NO_COLOR, including an empty value, just like the installer. *)
+let () = if do_not_print_splash_message = false then begin
+  let color =
+    try
+      Unix.isatty Unix.stderr && Sys.getenv_opt "NO_COLOR" = None &&
+      (match Sys.getenv_opt "TERM" with Some term -> term <> "dumb" | None -> false)
+    with Unix.Unix_error _ -> false
+  in
+  let bold, reset = if color then "\027[1;36m", "\027[0m" else "", "" in
+  Log.printf4 ~v:0 ~banner:false "\n  %s%s  %s%s\n"
+    bold (String.uppercase_ascii Meta.name) user_intelligible_version reset;
+  if !option_splash = Some () || debug_requested then begin
+    List.iter
+      (fun (label, value) -> Log.printf2 ~v:0 ~banner:false "  %s : %s\n" label value)
+      [s_ "Version", Meta.version;
+       s_ "startup.revision", Meta.revision;
+       s_ "startup.source_date", Meta.source_date;
+       "OCaml", Meta.ocaml_version;
+       s_ "startup.build_date", Meta.build_date];
+    Log.printf2 ~v:0 ~banner:false "\n  %s\n%s\n"
+      (s_ "startup.system") (StringExtra.fmt ~tab:4 ~width:76 Meta.uname);
+    Log.printf1 ~v:0 ~banner:false "  %s : https://bugs.launchpad.net/marionnet\n\n"
+      (s_ "startup.bugs")
+  end else
+    Log.printf1 ~v:0 ~banner:false "  %s : marionnet --splash\n\n"
+      (s_ "startup.diagnostics")
+end
 ;;
 
 (* Behaviour for option --splash *)
@@ -234,8 +242,7 @@ module Debug_level = struct
     | true  -> 1
 
   let default_level =
-    of_bool ((!option_debug=Some()) ||
-             (Configuration.extract_bool_variable_or ~default:false "MARIONNET_DEBUG"))
+    of_bool debug_requested
 
   let current = ref default_level
   let set x = (current := x)

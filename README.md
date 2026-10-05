@@ -80,6 +80,11 @@ avertissements, les erreurs et les invites de saisie restent visibles. En cas d�
 le script affiche les dernières lignes de la commande et conserve son code de sortie.
 Les couleurs sont désactivées dans les sorties redirigées ou avec `NO_COLOR=1`.
 
+Le lancement de l’application affiche une bannière compacte. Pour obtenir la version,
+la révision, les dates de compilation et le système de construction, utilisez
+`marionnet --splash` (sans ouvrir l’interface) ; `marionnet --debug` affiche aussi ces
+informations au démarrage. `marionnet --version` conserve sa sortie courte.
+
 ---
 
 ## 🆙 Mises à jour

@@ -46,10 +46,19 @@ def sums():
 if name == 'sudo':
     if args[0] == 'tee':
         rule = sys.stdin.read()
+        if scenario == 'fallback-write-failure':
+            print('Fixture compatibility rule could not be written', file=sys.stderr)
+            sys.exit(73)
         (root / 'rule.txt').write_text(rule)
         print(rule, end='')
     elif args[0] == 'marionnet-sudoers.sh':
-        sys.exit(1 if scenario == 'sudoers-fallback' else 0)
+        if scenario in ('sudoers-fallback', 'fallback-write-failure', 'fallback-chmod-failure'):
+            for line in range(10, 16):
+                print('/tmp/marionnet-sudoers.fixture:%d:32: syntax error: wildcards are not allowed in command arguments' % line, file=sys.stderr)
+            sys.exit(1)
+    elif args[0] == 'chmod' and scenario == 'fallback-chmod-failure':
+        print('Fixture compatibility rule permissions failed', file=sys.stderr)
+        sys.exit(74)
     elif args[:3] == ['dpkg', '--configure', '-a']:
         if scenario in ('prompt', 'prompt-newline'):
             print('Fixture confirmation [yes/no]: ', end='\n' if scenario == 'prompt-newline' else '', flush=True)
@@ -237,6 +246,7 @@ def main():
         ('checksum-failure', release, 1), ('wheezy', ['--release', '1.0.459'], 0),
         ('wheezy-unavailable', ['--release', '1.0.459'], 0),
         ('wheezy-installed', ['--local'], 0), ('sudoers-fallback', local, 0),
+        ('fallback-write-failure', local, 73), ('fallback-chmod-failure', local, 74),
         ('dpkg-ignored', local, 0), ('apt-update-failure', local, 100),
         ('runtime-failure', local, 1), ('package-failure', local, 51),
         ('gui-mismatch', local, 1), ('missing-kernel', local, 1),
@@ -264,6 +274,13 @@ def main():
                 assert 'Installation interrompue' in output and 'est prêt' not in output, (scenario, output)
             if scenario in ('apt-update-failure', 'package-failure'):
                 assert 'Dernières lignes' in output and 'Fixture' in output
+            if scenario in ('sudoers-fallback', 'fallback-write-failure', 'fallback-chmod-failure'):
+                assert 'syntax error: wildcards' not in output and 'syntax error: wildcards' in log
+                assert 'Application de la règle sudoers compatible' in output
+            if scenario == 'sudoers-fallback':
+                assert 'Règle réseau compatible appliquée' in output
+            elif scenario.startswith('fallback-'):
+                assert 'Règle réseau compatible appliquée' not in output and 'Fixture compatibility rule' in output
             if scenario == 'local':
                 assert 'APT ordinary output' not in output and 'APT ordinary output' in log
                 assert 'Builder ordinary output' not in output and 'Builder ordinary output' in log
@@ -276,6 +293,10 @@ def main():
                                 '--reinstall', '-y', './' + AIO]], apt
                 if options.preview: options.preview.write_text(output)
             print('PASS', scenario, '(same commands and status)' if baseline else '')
+        code, output, _, log = run_case(root / 'fallback-verbose', source, 'sudoers-fallback', local, verbose=True)
+        assert code == 0 and 'syntax error: wildcards' in output and 'syntax error: wildcards' in log
+        assert 'Règle réseau compatible appliquée' in output
+        print('PASS fallback-verbose')
         for mode in ('verbose', 'tty-color', 'tty-no-color'):
             code, output, _, log = run_case(root / mode, source, 'local', local,
                                            verbose=mode == 'verbose', tty=mode != 'verbose',

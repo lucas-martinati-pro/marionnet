@@ -161,7 +161,7 @@ trap 'exit 143' TERM
 # Ne pas remplacer cette lecture par grep/une capture intégrale : une invite
 # pourrait alors rester invisible pendant que la commande attend une réponse.
 ui_command_output() {
-  local line status partial=false
+  local line status partial=false recoverable="${1:-false}"
   local alerts="(^|[[:space:][:punct:]])([Ww][Aa][Rr][Nn][Ii][Nn][Gg]|[Ee][Rr][Rr][Oo][Rr]|[Ee][Rr][Rr][Ee][Uu][Rr]|[Aa][Vv][Ee][Rr][Tt][Ii][Ss][Ss][Ee][Mm][Ee][Nn][Tt]|[Aa][Tt][Tt][Ee][Nn][Tt][Ii][Oo][Nn]|[Nn][Oo][Tt][Ii][Cc][Ee])([[:space:][:punct:]]|$)|^E:|^W:|^debconf:"
   local prompts="\?|\[[YyOoNn]/|[Pp]assword|[Mm]ot de passe|[Cc]onfirm|[Pp]ress.*([Ee]nter|[Rr]eturn)|[Aa]ppuyez"
   while true; do
@@ -172,7 +172,7 @@ ui_command_output() {
         printf '%s\n' "$line"
       elif [[ "$line" =~ $prompts ]]; then
         printf '%s\n' "$line"
-      elif [[ "$line" =~ $alerts ]]; then
+      elif [ "$recoverable" = false ] && [[ "$line" =~ $alerts ]]; then
         # Ce rappel générique d’APT apparaît à chaque invocation du CLI.
         if [[ "$line" != *"apt does not have a stable CLI interface"* ]]; then
           printf '    %s! %s%s\n' "$UI_YELLOW" "$line" "$UI_RESET"
@@ -197,6 +197,8 @@ ui_command_output() {
 # Appeler seulement des commandes externes ici, pas une fonction métier Bash :
 # le contexte conditionnel d’un pipeline modifierait son comportement set -e.
 run_task() {
+  local recoverable=false
+  if [ "${1:-}" = --recoverable ]; then recoverable=true; shift; fi
   local title="$1" started=$SECONDS status first_line=1
   shift
   ui_info "$title…"
@@ -208,13 +210,20 @@ run_task() {
   fi
   # La commande conserve stdin (et sudo son /dev/tty). PIPESTATUS[0] conserve
   # son code exact, y compris lorsque l’appelant ignore volontairement l’échec.
-  if "$@" 2>&1 | ui_command_output; then
+  if "$@" 2>&1 | ui_command_output "$recoverable"; then
     status=0
   else
     status=${PIPESTATUS[0]}
   fi
   if [ "$status" -eq 0 ]; then
     ui_ok "$title ($((SECONDS - started)) s)"
+  elif [ "$recoverable" = true ]; then
+    # L'appelant annonce et applique le repli. Garder les diagnostics de cette
+    # tentative dans le journal ; --verbose les affiche toujours en direct.
+    if [ -n "$INSTALL_LOG" ]; then
+      printf '\n%s : repli nécessaire (code %s).\n' "$title" "$status" >> "$INSTALL_LOG" || true
+    fi
+    if [ "$VERBOSE" = true ]; then ui_warn "$title : repli nécessaire (code $status)."; fi
   else
     ui_error "$title : échec (code $status)."
     if [ -n "$INSTALL_LOG" ] && [ "$VERBOSE" = false ]; then
@@ -604,7 +613,7 @@ fi
 
 # 7. Configuration des droits réseau (sudoers)
 ui_step 8 "Configuration réseau"
-if ! run_task "Droits réseau · $TARGET_USER" sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then
+if ! run_task --recoverable "Droits réseau · $TARGET_USER" sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null; then
   # Fallback compatible avec sudo-rs (Ubuntu 24.10+) et sudo classique
   ui_info "Application de la règle sudoers compatible"
   cat << EOF | sudo tee /etc/sudoers.d/marionnet > /dev/null

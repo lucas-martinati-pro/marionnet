@@ -487,5 +487,11 @@
   "dialog.confirm": "Valider",
   "Hardware": "Matériel",
   "Software": "Logiciel",
-  "Access": "Accès"
+  "Access": "Accès",
+  "startup.revision": "Révision",
+  "startup.source_date": "Date des sources",
+  "startup.build_date": "Compilation",
+  "startup.system": "Système de compilation",
+  "startup.bugs": "Signaler un bug",
+  "startup.diagnostics": "Diagnostic"
 }

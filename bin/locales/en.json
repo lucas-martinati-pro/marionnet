@@ -487,5 +487,11 @@
   "dialog.confirm": "Confirm",
   "Hardware": "Hardware",
   "Software": "Software",
-  "Access": "Access"
+  "Access": "Access",
+  "startup.revision": "Source revision",
+  "startup.source_date": "Source date",
+  "startup.build_date": "Built on",
+  "startup.system": "Build system",
+  "startup.bugs": "Bug reports",
+  "startup.diagnostics": "Diagnostics"
 }
