@@ -1,107 +1,163 @@
-## Marionnet — Laboratoire Réseau Virtuel (Édition Linux Moderne)
+# Marionnet 1.0.460 — Interface modernisée et utilisation plus fluide
 
-Paquets d'installation autonomes pour Ubuntu (22.04 / 24.04 / 25.04+) et Debian avec support des noyaux Linux récents (Linux >= 5.15) et environnement OCaml modernisé.
+Cette version améliore l’espace de travail, rend le dessin du réseau interactif
+et ajoute l’annulation des modifications. Elle fiabilise aussi les sauvegardes
+et l’installation, avec des messages plus lisibles dans le terminal.
 
----
+## Une interface plus compacte
 
-### 🔄 Mise à jour depuis une version précédente
+- Les menus sont réunis dans la barre de titre GTK. Les boutons redondants
+  Nouveau, Ouvrir et Enregistrer sont retirés ; ces actions restent accessibles
+  dans le menu **Projet**, avec `Ctrl+N`, `Ctrl+O` et `Ctrl+S`.
+- La palette affiche par défaut les icônes des composants avec leurs infobulles.
+  Le bouton **Aa** permet d’afficher ou de masquer leurs libellés.
+- Une pastille **•** indique les modifications non enregistrées. Le titre devient
+  `• Marionnet - fichier.mar`, puis `Marionnet - fichier.mar` après sauvegarde.
+- La fenêtre s’adapte à la taille de l’écran. Les tableaux et les réglages du
+  dessin défilent lorsque leur contenu dépasse l’espace disponible.
+- Des compteurs indiquent le nombre de composants, de câbles et de composants
+  actifs. L’espace de travail vide explique comment commencer un projet.
 
-Vos projets (`.mar`), vos images et vos variantes d'invités sont conservés : seule l'application est remplacée. Choisissez votre canal :
+## Annuler et rétablir les modifications
 
-- **Dépôt APT** (recommandé si Marionnet a été installé par apt) :
-  ```bash
-  sudo apt update && sudo apt upgrade marionnet
-  ```
-- **Mise à jour intégrée** : dans un terminal, lancez `marionnet-update` (ou acceptez la notification proposée par l'application) — la dernière release GitHub est vérifiée, téléchargée et installée. `marionnet-update --check` vérifie sans rien modifier.
-- **Script d'installation** : relancez `./install.sh` depuis un clone à jour (répare et met à niveau) ; `./install.sh --clean` force le retéléchargement propre des paquets.
-- **Manuelle** : téléchargez les `.deb` et `SHA256SUMS` depuis les assets de la release (ci-dessous) et suivez la section « Installation manuelle ».
+Le menu **Édition** propose désormais **Annuler** (`Ctrl+Z`) et **Rétablir**
+(`Ctrl+Y` ou `Ctrl+Maj+Z`). L’historique conserve jusqu’à **30 modifications** :
+ajout, suppression et changement des propriétés des composants ou des câbles.
 
-Vérifiez ensuite que la nouvelle version tourne : `marionnet -v`.
+La restauration comprend la topologie, les paramètres associés et les scripts
+de démarrage. Les fichiers nécessaires à un composant supprimé sont retenus
+sans recopier ses gros disques différentiels. Les raccourcis respectent aussi
+l’édition de texte dans les champs qui ont le focus.
 
----
+Cette fonction s’utilise sur un **réseau arrêté**. L’historique est réinitialisé
+au changement de projet ; une nouvelle modification abandonne les opérations
+encore rétablissables. Il ne rembobine pas le contenu des disques, les opérations
+de démarrage/arrêt ni les modifications directes des cellules des tableaux.
+Les restrictions du mode examen restent appliquées.
 
-### 🚀 Nouveautés et Améliorations majeures
+## Un dessin du réseau interactif
 
-#### 1. 🌐 Refonte complète du système d'internationalisation (i18n moderne en JSON)
-- **Migration des catalogues de traduction** : Remplacement des anciens fichiers binaires `.mo` / `.po` par des fichiers JSON structurés et éditables pour 14 langues (français, anglais, espagnol, allemand, italien, portugais, etc.).
-- **Identifiants sémantiques** : Remplacement des textes en anglais brut utilisés comme clés par des identifiants sémantiques normalisés (`hub.tooltip.name`, `router.tooltip.name`, `machine.tooltip.name`, etc.).
-- **Mécanisme de secours à double table (Dual-Table Fallback)** : Si une clé de traduction est absente ou partielle dans une langue donnée, l'affichage bascule automatiquement et de manière transparente sur le texte anglais (`en.json`), évitant tout texte manquant ou brisé.
-- **Évaluation dynamique à chaud** : Les noms de composants dans les dialogues (`kind_name : unit -> string`) sont désormais évalués dynamiquement pour refléter immédiatement un changement de langue à l'exécution.
-- **Nettoyage typographique** : Élimination des balises Pango/HTML superflues des chaînes à traduire pour une meilleure lisibilité.
+Les équipements et les câbles peuvent être manipulés directement depuis le
+dessin, avec des actions adaptées à leur état :
 
-#### 2. 🛡️ Sécurisation des types OCaml & Refactorisation architecturale
-- **Élimination de 11 casts non-typés `Obj.magic`** :
-  - Sécurisation complète des actions de suppression (`Remove.reaction`) sur les 8 composants réseau (`hub`, `switch`, `router`, `machine`, `cloud`, `world_gateway`, `nat_bridge`, `lan_bridge`) en s'appuyant directement sur la méthode virtuelle `#destroy` de la classe de base `User_level.node`.
-  - Élimination des casts non-sécurisés lors de la création et manipulation des câbles réseau (`cable.ml`).
-- **Factorisation du code de cycle de vie (`Make_menus`)** :
-  - Création du foncteur centralisé `Lifecycle` dans `Gui_toolbar_COMPONENTS_layouts`, éliminant plus de **350 lignes de code dupliqué** pour les opérations `Remove`, `Startup`, `Stop`, `Suspend` et `Resume`.
-- **Harmonisation des stubs `Data.to_string`** :
-  - Remplacement de tous les stubs temporaires `"<obj>"` par des implémentations de diagnostic complètes et formatées (`Printf.sprintf`) sur l'ensemble des 9 modules de composants réseau (y compris `bridge_common` et `nat_bridge`).
-- **Fiabilisation de la gestion des exceptions** :
-  - Ciblage explicite de l'exception `Not_found` dans les méthodes de recherche du réseau (`get_node_by_name`, `get_cable_by_name`, `get_component_by_name`) afin de ne plus masquer silencieusement les erreurs système ou d'allocation mémoire.
+- **Clic** : sélectionner un composant, afficher son contour et son nom.
+- **Double-clic** ou **Entrée** : ouvrir ses propriétés.
+- **Clic droit**, touche **Menu** ou **Maj+F10** : ouvrir les actions contextuelles,
+  notamment les propriétés, la suppression et les actions de fonctionnement
+  disponibles.
+- **Suppr** : demander la suppression avec confirmation.
+- **Échap** : désélectionner.
+- **Ctrl+molette** : zoomer de **25 % à 300 %**, sans relancer Graphviz ni marquer
+  le projet comme modifié.
 
-#### 3. 🔄 Changement dynamique de distribution invitée (Filesystem VM)
-- Possibilité de modifier à chaud la distribution d'une machine virtuelle arrêtée (ex. basculer entre **Guignol** et **Debian Wheezy**) directement depuis la fenêtre de dialogue des propriétés de la machine.
-- Dialogue de confirmation préalable avec avertissement clair de perte des modifications locales, et réinitialisation automatique et propre du disque différentiel (COW).
+Les zones cliquables suivent le rendu courant, y compris après un changement
+de projet. Le menu contextuel est rattaché à sa fenêtre parente pour permettre
+son positionnement sous Wayland. Le placement des composants reste automatique ;
+le déplacement manuel et la création de câbles par glisser-déposer ne font pas
+partie de cette version.
 
-#### 4. ⚡ Système d'auto-mise à jour & Amélioration de l'interface
-- Détection et notification automatique de la disponibilité des nouvelles versions de Marionnet.
-- Fenêtre d'accueil (Welcome Popup) enrichie d'une option mémorisée « Ne plus afficher au démarrage ».
-- Correction visuelle dans l'éditeur de configuration (désactivation du surlignage perturbateur de la ligne courante).
+## Des dialogues de configuration cohérents
 
-#### 5. 🐧 Standardisation des scripts Unix
-- Normalisation des exécutables sous leur nom de commande Unix standard (`marionnet-check`, `marionnet-cleanup`, `marionnet-ctl`, `marionnet-verify`, `marionnet-update`).
-- Conservation de liens symboliques pour tous les alias raccourcis usuels (`mrnctl`, `mrn-check`, etc.).
+Les neuf types de composants partagent une présentation commune : machines,
+routeurs, concentrateurs, commutateurs, câbles, nuages, ponts LAN, ponts NAT et
+passerelles Internet.
 
-#### 6. 📋 Copier-coller entre le PC hôte et les terminaux invités
-- Tous les terminaux ouverts par Marionnet (consoles des machines, terminaux telnet des routeurs, unixterm des switchs) passent par le wrapper `marionnet-xterm.sh`, qui apporte les raccourcis de tous les émulateurs modernes :
-  - **Ctrl+Shift+V** (ou Shift+Insert) : colle dans l'invité le texte copié sur le PC (navigateur, éditeur, lecteur PDF).
-  - **Ctrl+Shift+C** : copie vers le PC la sélection faite dans le terminal invité.
-- La copie reste **explicite**, comme dans gnome-terminal : sélectionner du texte dans le terminal n'écrase jamais ce qui avait été copié sur l'hôte, et le clic milieu conserve son comportement historique.
-- **Ctrl+C seul reste SIGINT** dans l'invité : aucun programme en cours d'exécution n'est perturbé.
-- Un `MARIONNET_TERMINAL` personnalisé (`gnome-terminal`, …) est respecté tel quel ; `uxterm` et les variantes `xterm-*` conservent leur binaire d'origine.
+- En-tête avec icône, champs **Nom** et **Étiquette**, et boutons
+  **Aide / Annuler / Valider** homogènes.
+- Validation immédiate des noms : un nom invalide ou déjà utilisé désactive
+  le bouton de confirmation et affiche une indication dans le formulaire.
+- Les fenêtres utilisent la hauteur disponible sur l’écran. Les paramètres
+  défilent uniquement lorsque cela est nécessaire ; les boutons restent visibles.
+- Les tableaux **Interfaces**, **Anomalies** et **Disques** affichent le
+  **Type avant le Nom**, pour identifier plus facilement les composants.
+- Les traductions des nouveaux textes d’interface et de démarrage sont
+  complétées dans les **13 catalogues de langue** : français, anglais, allemand,
+  espagnol, italien, portugais, portugais brésilien, grec, espéranto, roumain,
+  russe, slovaque et turc. Le repli anglais reste disponible pour les clés manquantes.
 
----
+## Une interface plus réactive
 
-### 📦 Installation ultra simple
+Le rendu Graphviz travaille en arrière-plan. Les demandes rapprochées sont
+regroupées et un rendu identique réutilise l’image et sa carte de zones cliquables.
+Une ancienne demande ne peut plus remplacer le dessin d’un nouveau projet.
+En cas d’échec, la dernière image valide est conservée et le diagnostic est affiché.
 
-Clonez le dépôt, puis lancez le script d'installation :
+Ces améliorations portent sur la réactivité de l’interface et le nombre de rendus,
+sans changer le fonctionnement des machines invitées.
 
-```bash
-git clone https://github.com/lucas-martinati-pro/marionnet.git
-cd marionnet
-./install.sh
+## Des sauvegardes plus fiables
+
+La nouvelle archive est écrite et vérifiée avant de remplacer le fichier `.mar`
+précédent. Un échec avant ce remplacement conserve la dernière sauvegarde valide
+et laisse le projet ouvert et marqué comme modifié.
+
+Lorsqu’une sauvegarde est demandée avant de créer, ouvrir ou fermer un projet,
+ou de quitter Marionnet, son échec bloque l’action pour préserver le travail en
+cours. Les erreurs sont signalées avec leur diagnostic. Les chemins contenant
+des espaces, des apostrophes ou des caractères spéciaux sont mieux pris en charge.
+
+## Une installation fiabilisée et plus lisible
+
+- Point d’entrée unique **`./install.sh`**, utilisable depuis la racine ou `dist/`,
+  avec le moteur `.deb` par défaut et le moteur tarball via `--tarball`.
+- Mode local détecté lorsqu’un binaire compilé existe dans le dépôt ;
+  reconstruction lorsqu’il est absent ou périmé, et actualisation des ressources
+  lors de la création du paquet local.
+- Le paquet embarque ensemble l’exécutable, l’interface GTK, les icônes et les
+  traductions. Cela corrige le crash **`Gpointer.Null`** causé par une ancienne
+  interface conservée après installation.
+- Vérification de l’interface réellement sélectionnée après installation, avec
+  un diagnostic explicite si une configuration personnalisée pointe vers un
+  ancien préfixe.
+- Reprise et réessais des téléchargements, contrôle SHA256 et vérification des
+  archives des composants de base pour détecter les fichiers tronqués.
+- Dépendances du paquet All-in-One calculées à partir de ses composants,
+  avec contrôle de la présence de **`libc6:i386`**. Le noyau 32 bits et ses
+  bibliothèques sont vérifiés à la fin de l’installation.
+- Debian Wheezy reste optionnelle et est téléchargée depuis sa version épinglée
+  lorsqu’elle est nécessaire, sans téléchargement superflu pendant la construction.
+- Nettoyage des anciens doublons et des scripts qui encombraient les commandes
+  proposées dans le terminal.
+- Affichage en **neuf étapes**, avec couleurs, durées et journal détaillé privé.
+  **`--verbose`** affiche toutes les sorties en direct ; **`NO_COLOR=1`** désactive
+  les couleurs. Les erreurs bloquantes et les invites de saisie restent visibles.
+- Les diagnostics de la tentative réseau suivie d’un repli compatible avec
+  **sudo-rs** restent dans le journal et le mode détaillé. L’affichage normal
+  annonce le repli et son résultat. Les règles de droits réseau existantes
+  sont conservées.
+
+## Un démarrage plus discret
+
+La longue bannière technique est remplacée par un message compact :
+
+```text
+MARIONNET  1.0.460
+Diagnostic : marionnet --splash
 ```
 
-Le script `install.sh` s'occupe de tout automatiquement :
-- Active l'architecture 32-bit (`i386`) si nécessaire.
-- Télécharge automatiquement les paquets Debian depuis GitHub Releases s'ils ne sont pas présents localement.
-- **Vérifie l'intégrité cryptographique SHA256** des paquets via `SHA256SUMS`.
-- Installe toutes les dépendances requises (`vde2`, `graphviz`, `uml-utilities`, `xterm`, `socat`, etc.).
-- Configure les règles réseau sudoers pour votre utilisateur.
-- Valide immédiatement l'installation (`marionnet -v`).
-- **Options utiles** :
-  - `./install.sh --clean` : Force la suppression des paquets locaux et le retéléchargement propre depuis GitHub Releases.
-  - `./install.sh --without-wheezy` : Installation légère sans l'image Debian Wheezy.
+**`marionnet --splash`** affiche la version, la révision, les dates des sources
+et de compilation, OCaml et le système de construction, sans ouvrir l’interface.
+**`--debug`** conserve ces informations au démarrage. **`--version`** garde sa
+sortie courte, utilisée par les outils d’installation.
 
----
+## Mise à jour
 
-### 💻 Alternative : Installation manuelle
+Depuis un clone à jour, pour installer la version publiée :
 
 ```bash
-# 1. Télécharger depuis les assets de la release (ci-dessous) : les deux
-#    paquets .deb et le fichier SHA256SUMS
-
-# 2. Vérifier l'intégrité SHA256
-sha256sum -c SHA256SUMS --ignore-missing
-
-# 3. Activer l'architecture i386 et mettre à jour APT
-sudo dpkg --add-architecture i386
-sudo apt update
-
-# 4. Installer les paquets et leurs dépendances
-sudo apt install -y ./marionnet-all-in-one_*_amd64.deb ./marionnet-fs-debian-wheezy_*_all.deb
-
-# 5. Configurer les règles réseau sudoers pour votre utilisateur
-sudo marionnet-sudoers.sh install "$USER"
+./install.sh --release 1.0.460
+marionnet --version
 ```
+
+Options utiles : `--local` pour construire depuis les sources, `--no-wheezy`
+pour une installation sans Debian Wheezy et `--verbose` pour consulter tous
+les détails. Les projets existants restent lisibles ; leur format n’est pas modifié.
+
+## Vérifications
+
+Les changements ont été vérifiés par la compilation, le contrôle de tous les
+modules OCaml et les tests automatisés, ainsi que par des sessions GTK réelles
+pour les menus, les raccourcis, l’annulation, le dessin et les dialogues.
+Les tests couvrent également les sauvegardes en échec et **34 scénarios simulés
+d’installation**, dont les replis réseau réussis ou bloquants, sans installation
+système pendant ces simulations.
