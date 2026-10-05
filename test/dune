@@ -14,3 +14,9 @@
  (modules marionnet xforest_json treeview_json utf_8_reference project_archive_test)
  (libraries ocamlbricks marionnet_base)
  )
+
+;; Installer regression: isolated package/network/sudo fixtures, no root or GUI.
+(rule
+ (alias runtest)
+ (deps ../dist/install.sh ../dist/install-sudoers.bench.sh)
+ (action (run bash %{dep:../dist/install-sudoers.bench.sh} %{dep:../dist/install.sh})))
