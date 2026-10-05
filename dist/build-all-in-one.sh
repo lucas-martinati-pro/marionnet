@@ -91,10 +91,45 @@ mkdir -p "$BUILD_DIR/root/DEBIAN"
 echo "--> Génération des métadonnées du paquet Debian..."
 INSTALLED_SIZE="$(du -sk "$BUILD_DIR/root" | cut -f1)"
 
-# Le noyau i386 embarqué est un ELF dont l'interpréteur /lib/ld-linux.so.2
-# n'est fourni que par libc6:i386 (pas libc6-i386) : sans ce Depends, apt
-# n'installe pas le runtime, l'exec du noyau échoue et la première machine
-# meurt avec "died unexpectedly". Cf. package_kernels_i386 (release.deb.sh).
+# Union des Depends des couches, sans doublon, dans l'ordre de première
+# apparition (appli, kernels, kernels-i386, fs-guignol) : le découpage est la
+# SEULE source de vérité, ce script ne recopie AUCUNE dépendance à la main
+# (c'est une liste écrite à la main qui avait perdu libc6:i386). Les tokens qui
+# nomment nos propres paquets (ex. `marionnet' dans le Depends de kernels-i386,
+# satisfait par le Provides ci-dessous) sont filtrés.
+merged_depends() {  # <deb>...
+  local deb
+  for deb in "$@"; do
+    if [ -f "$deb" ]; then
+      dpkg-deb -f "$deb" Depends 2>/dev/null || continue
+    else
+      echo "[-] Avertissement : couche absente, Depends incomplet : $deb" >&2
+    fi
+  done | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n \+/ /g' \
+    | awk -F',' '{
+        for (i=1; i<=NF; i++) {
+          s=$i; sub(/^ +/, "", s); sub(/ +$/, "", s);
+          if (s == "" || s ~ /^marionnet(-|[ (]|$)/) continue;
+          if (!seen[s]++) out = (out == "" ? s : out ", " s);
+        }
+      } END { print out }'
+}
+
+echo "--> Calcul du Depends depuis les paquets découpés..."
+AIO_DEPENDS="$(merged_depends "$BASE_APP_DEB" "$KERNELS_DEB" "$KERNELS_I386_DEB" "$FS_DEB")"
+if [ -z "$AIO_DEPENDS" ]; then
+  echo "[-] ERREUR : Depends vide -- aucune couche ne déclare de dépendances." >&2
+  exit 1
+fi
+# Garde verrouillant le bug du noyau i386 inexécutable : son interpréteur
+# /lib/ld-linux.so.2 n'est fourni que par libc6:i386 (cf. package_kernels_i386).
+if [[ "$AIO_DEPENDS" != *"libc6:i386"* ]]; then
+  echo "[-] ERREUR : libc6:i386 absent du Depends calculé ($AIO_DEPENDS)." >&2
+  echo "    Le noyau linux-6.12.95-i386 serait inexécutable. Build annulé." >&2
+  exit 1
+fi
+echo "    Depends : $AIO_DEPENDS"
+
 cat << EOF > "$BUILD_DIR/root/DEBIAN/control"
 Package: marionnet-all-in-one
 Version: $VERSION
@@ -106,7 +141,7 @@ Homepage: https://www.marionnet.org
 Provides: marionnet (= $VERSION), marionnet-kernels (= $KERNEL_VER), marionnet-kernels-i386 (= $KERNEL_VER), marionnet-fs-guignol (= $FS_VER)
 Replaces: marionnet, marionnet-kernels, marionnet-kernels-i386, marionnet-fs-guignol
 Conflicts: marionnet (<< $VERSION)
-Depends: libc6 (>= 2.35), libc6:i386, libcairo2, libfontconfig1, libfreetype6, libgdk-pixbuf-2.0-0, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libgtksourceview-3.0-1, libpango-1.0-0, libpangocairo-1.0-0, vde2, graphviz, uml-utilities, xterm, iproute2, sudo, x11-xserver-utils, xauth, jq, socat, dnsmasq-base, xz-utils, curl
+Depends: $AIO_DEPENDS
 Description: Complete standalone distribution of Marionnet (Virtual Network Laboratory)
  Marionnet lets a student define, configure and run a complete computer network
  -- machines, routers, switches, hubs, cables, gateways -- on a single host, with
