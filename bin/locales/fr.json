@@ -1,4 +1,6 @@
 {
+  "workspace.show_component_labels": "Afficher les noms des composants",
+  "workspace.hide_component_labels": "Masquer les noms des composants",
   "workspace.palette.hub": "Hub",
   "workspace.palette.switch": "Commutateur",
   "workspace.no_project": "Aucun projet ouvert",
@@ -7,7 +9,7 @@
   "workspace.unsaved": "Modifications non enregistrées",
   "workspace.shortcuts": "Ctrl+N  Nouveau projet   ·   Ctrl+O  Ouvrir   ·   Ctrl+S  Enregistrer",
   "workspace.welcome": "Votre réseau commence ici",
-  "workspace.open_hint": "Créez un projet ou ouvrez un projet existant avec les boutons ci-dessus.",
+  "workspace.open_hint": "Créez un projet ou ouvrez un projet existant dans le menu Projet (Ctrl+N / Ctrl+O).",
   "workspace.empty_network": "Ajoutez votre premier composant",
   "workspace.add_hint": "Choisissez un composant dans la palette de gauche, puis Ajouter. Reliez ses ports avec un câble.",
   "workspace.palette.cloud": "Nuage",

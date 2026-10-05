@@ -6,16 +6,22 @@ de l’utilisateur. Aucun changement de règle sudoers n’entre dans cette éta
 
 ## Utilisation
 
-- Nouveau, Ouvrir et Enregistrer sont accessibles en haut de la fenêtre. Les
-  boutons utilisent les mêmes callbacks que les menus, avec leurs contraintes
-  de sauvegarde et de mode examen.
-- `Ctrl+N`, `Ctrl+O` et `Ctrl+S` correspondent à ces actions. Les anciens
+- Nouveau, Ouvrir et Enregistrer sont accessibles dans le menu Projet. Les
+  menus sont réunis dans la barre de titre native GTK, sans seconde barre de
+  boutons. Les contraintes de sauvegarde et de mode examen restent appliquées.
+- `Ctrl+N`, `Ctrl+O` et `Ctrl+S` correspondent à ces actions et sont affichés
+  dans le menu. Les anciens
   raccourcis d’ajout de switch et de pont NAT qui les interceptaient sont retirés.
-- Le nom du projet et son état d’enregistrement restent visibles. Le point `•`
-  dans le titre signale les modifications non enregistrées. Le statut utilise
+- Le nom du projet reste visible dans la barre de titre. Une pastille `•` le
+  précède uniquement lorsque des modifications ne sont pas enregistrées ;
+  l’état détaillé reste accessible en infobulle. Le titre natif devient
+  `• Marionnet - fichier.mar`, puis `Marionnet - fichier.mar` après sauvegarde.
+  Le statut utilise
   le prédicat de sauvegarde existant, y compris les changements des treeviews.
-- La palette affiche le nom des composants avec des icônes de 32 pixels. Les
-  onglets utilisent du texte droit et l’espace vide explique comment commencer.
+- La palette affiche par défaut uniquement les icônes de 32 pixels, avec leurs
+  infobulles. La bascule « Aa » affiche ou masque les noms des composants sans
+  modifier le projet ni reconstruire ses menus. Les onglets utilisent du texte
+  droit et l’espace vide explique comment commencer.
 - La fenêtre choisit une taille adaptée à l’écran. Les tableaux larges utilisent
   le défilement horizontal et la barre de réglage du dessin défile verticalement.
 - Les actions collectives suivent les possibilités actuelles du modèle. Les
@@ -59,7 +65,8 @@ Le test OCaml utilise le vrai Graphviz : rendu, publication différée, chemin
 contenant des caractères spéciaux, erreur de syntaxe, résultat abandonné et
 nettoyage. Le banc GTK utilise une vraie application avec deux hubs et un câble,
 sans démarrer d’invité et sans commande privilégiée. Il exerce les trois
-raccourcis et les trois boutons, les états enregistré/modifié, le cache, une
+raccourcis et les trois entrées du menu Projet, la bascule des libellés et les
+menus des composants dans les deux modes, les titres enregistré/modifié, le cache, une
 rafale de douze modifications, un Graphviz bloqué, un échec après écriture
 partielle, une reprise et un changement de projet pendant un rendu.
 

@@ -108,9 +108,16 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
     def xdo(*words):
         return subprocess.check_output(["xdotool", *map(str, words)], text=True).strip()
 
+    main_window = None
+
     def window():
-        # The title always ends with the application's title, including the dirty marker.
-        return xdo("search", "--onlyvisible", "--pid", app.pid, "--name", "[Mm]arionnet").splitlines()[0]
+        # The native title starts with an optional dirty marker followed by Marionnet.
+        # Cache its identity: GTK menus also create windows with the app's name.
+        global main_window
+        if main_window is None:
+            main_window = xdo("search", "--onlyvisible", "--pid", app.pid, "--name",
+                              "^(• )?Marionnet( - .*)?$").splitlines()[0]
+        return main_window
 
     def title():
         return xdo("getwindowname", window())
@@ -120,7 +127,11 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
             args.screenshots.mkdir(parents=True, exist_ok=True)
             xdo("mousemove", "0", "0")
             time.sleep(0.5)  # Dismiss hover tooltips before capturing the workspace.
-            subprocess.run(["import", "-window", window(), str(args.screenshots / (name + ".png"))], check=True)
+            geometry = dict(line.split("=", 1) for line in xdo("getwindowgeometry", "--shell", window()).splitlines())
+            crop = f'{geometry["WIDTH"]}x{geometry["HEIGHT"]}+{geometry["X"]}+{geometry["Y"]}'
+            # Capture the display so separate GTK popup windows are included.
+            subprocess.run(["import", "-window", "root", "-crop", crop,
+                            str(args.screenshots / (name + ".png"))], check=True)
 
     def chooser(expected, gesture):
         xdo("windowfocus", "--sync", window())
@@ -133,6 +144,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         xdo("windowfocus", "--sync", dialog.splitlines()[0])
         xdo("key", "--clearmodifiers", "Escape")
         time.sleep(0.2)
+        xdo("key", "Escape")  # Dismiss the originating menu as well.
 
     def digest(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -146,7 +158,9 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         wait_for(lambda: sock.exists() or app.poll() is not None, "control socket", timeout=30)
         assert app.poll() is None, log_path.read_text()
         ask("status")
-        time.sleep(0.5)
+        # The existing startup palette adjustment runs for six seconds and can
+        # recenter the window. Let it finish before pointing at popup entries.
+        time.sleep(6.5)
         check(geometry_fits(), "the workspace fits the available screen")
         screenshot("welcome")
         locales = json.loads((ROOT / "bin/locales/fr.json").read_text())
@@ -157,14 +171,22 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         check(True, "Ctrl+N opens New project rather than Add NAT bridge")
         chooser(open_title, lambda: xdo("key", "--clearmodifiers", "ctrl+o"))
         check(True, "Ctrl+O opens the project chooser")
-        chooser(new_title, lambda: (xdo("mousemove", "--window", window(), "40", "55"), xdo("click", "1")))
-        chooser(open_title, lambda: (xdo("mousemove", "--window", window(), "130", "55"), xdo("click", "1")))
-        check(True, "the New and Open toolbar buttons use the project dialogs")
+        def project_menu(index):
+            xdo("windowfocus", "--sync", window())
+            xdo("mousemove", "--window", window(), "35", "27")
+            xdo("click", "1")
+            time.sleep(0.15)
+            xdo("mousemove", "--window", window(), "125", 64 + 27 * index)
+            time.sleep(0.5)  # Let GTK select the hovered entry before pressing it.
+            xdo("click", "1")
+        chooser(new_title, lambda: project_menu(0))
+        chooser(open_title, lambda: project_menu(1))
+        check(True, "the Project menu offers New and Open")
         target = fixture / "TP d'aujourd'hui (réseau).mar"
         ask("new --timeout=30 " + str(target))
         ask("add hub h1 --ports=8")
         wait_for(drawing, "first drawing with a quoted project path")
-        wait_for(lambda: "•" in title(), "dirty title")
+        wait_for(lambda: title() == "• Marionnet - " + target.name, "dirty title")
         check(True, "special project paths render and unsaved changes are visible")
 
         # The same persistent label still triggers a refresh, but needs no new PNG.
@@ -176,20 +198,57 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
             time.sleep(0.2)
         check(len(renders()) == count, "unchanged drawings launch no new Graphviz process")
 
-        # A keyboard save uses the exact same flow as the existing Project menu.
+        # Keyboard and menu save share the existing save policy.
         xdo("windowfocus", "--sync", window())
         xdo("key", "--clearmodifiers", "ctrl+s")
         wait_for(lambda: target.exists() and ask("status")["saved"], "Ctrl+S save")
-        wait_for(lambda: "•" not in title(), "clean title after save")
+        wait_for(lambda: title() == "Marionnet - " + target.name, "clean title after save")
         check(True, "Ctrl+S saves and clears the unsaved marker")
 
-        # The visible Save button must also work, with a real click (not a direct callback).
+        # Save from the menu must also work, with a real gesture.
         ask("set h1 label Clicked")
-        wait_for(lambda: "•" in title(), "dirty title before button save")
-        xdo("mousemove", "--window", window(), "205", "55")
-        xdo("click", "1")
-        wait_for(lambda: ask("status")["saved"], "Save button")
-        check(True, "the toolbar Save button writes the project")
+        wait_for(lambda: title() == "• Marionnet - " + target.name, "dirty title before menu save")
+        project_menu(2)
+        wait_for(lambda: ask("status")["saved"], "Save menu")
+        wait_for(lambda: title() == "Marionnet - " + target.name, "clean title after menu save")
+        check(True, "the Project menu saves and removes the leading bullet")
+
+        # Labels are a reversible presentation choice. The same Hub action must
+        # stay usable through either the expanded text row or its compact icon.
+        def hub_menu(x):
+            xdo("mousemove", "--window", window(), x, "203")
+            xdo("click", "1")
+            time.sleep(0.3)
+            screenshot("hub-menu")
+            xdo("mousemove", "--window", window(), "80", "246")
+            time.sleep(0.3)
+            xdo("click", "1")
+        def toggle_labels():
+            xdo("key", "Escape")
+            xdo("windowfocus", "--sync", window())
+            xdo("mousemove", "--window", window(), "38", "110")
+            time.sleep(0.3)
+            xdo("click", "1")
+            time.sleep(0.3)
+        toggle_labels()
+        screenshot("palette-labels")
+        toggle_labels()
+        screenshot("palette-icons")
+        chooser(locales["Add hub"], lambda: hub_menu("38"))
+        toggle_labels()
+        chooser(locales["Add hub"], lambda: hub_menu("125"))
+        toggle_labels()
+        palette_states = [line.rsplit(": ", 1)[-1] for line in log_path.read_text().splitlines()
+                          if "Palette labels visible:" in line]
+        check(palette_states == ["false", "true", "false", "true", "false"],
+              "four real toggle gestures alternate labels and icons")
+        check(ask("status")["saved"] and title() == "Marionnet - " + target.name,
+              "palette labels toggle without changing the saved project or component menus")
+        if args.screenshots:
+            xdo("mousemove", "--window", window(), "35", "27")
+            xdo("click", "1")
+            screenshot("project-menu")
+            xdo("key", "Escape")
 
         ask("add hub h2 --ports=8")
         ask("connect c1 h1:port1 h2:port1")
@@ -255,6 +314,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         check(not ask("status")["active"], "closing restores the empty workspace")
         wait_for(lambda: not list(run.glob("**/.marionnet-sketch-*")), "temporary drawing cleanup")
     except Exception:
+        screenshot("failure")
         print(log_path.read_text()[-8000:], file=sys.stderr)
         raise
     finally:

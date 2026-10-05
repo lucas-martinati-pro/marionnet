@@ -180,6 +180,15 @@ class window_MARIONNET ?translation_domain () =
     val window_MARIONNET =
       new GWindow.window (GtkWindow.Window.cast (builder#get_object "window_MARIONNET"))
     method window_MARIONNET = window_MARIONNET
+    val box_WORKSPACE_ACTIONS =
+      new GPack.box (GtkPack.Box.cast (builder#get_object "box_WORKSPACE_ACTIONS"))
+    method box_WORKSPACE_ACTIONS = box_WORKSPACE_ACTIONS
+    val label_WORKSPACE_TITLE =
+      new GMisc.label (GtkMisc.Label.cast (builder#get_object "label_WORKSPACE_TITLE"))
+    method label_WORKSPACE_TITLE = label_WORKSPACE_TITLE
+    val toggle_COMPONENT_LABELS =
+      new GButton.toggle_button (GtkButton.ToggleButton.cast (builder#get_object "toggle_COMPONENT_LABELS"))
+    method toggle_COMPONENT_LABELS = toggle_COMPONENT_LABELS
     val vbox1 =
       new GPack.box (GtkPack.Box.cast (builder#get_object "vbox1"))
     method vbox1 = vbox1

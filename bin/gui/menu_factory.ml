@@ -40,7 +40,7 @@ module Image_menu_item = struct
   (* I don't know how to specify the size (i.e. GTK_ICON_SIZE_MENU):
       GtkWidget *icon = gtk_image_new_from_icon_name ("folder-music-symbolic", GTK_ICON_SIZE_MENU); *)
   (* --- *)
-  let make ?file ?stock ~text () : GMenu.menu_item =
+  let make ?shortcut ?file ?stock ~text () : GMenu.menu_item =
     if file=None && stock=None then invalid_arg "Menu_factory.Image_menu_item.make" else (* continue: *)
     (* val box : Gtk.Tags.orientation ->
         ?homogeneous:bool -> ?spacing:int -> ?border_width:int -> ?width:int -> ?height:int -> ?packing:(..) -> ?show:bool -> unit -> box *)
@@ -54,6 +54,13 @@ module Image_menu_item = struct
     let menu_item = GMenu.menu_item ~show:true () in
     let () = box#set_child_packing ~padding:0 (image#coerce) in
     let () = box#set_child_packing ~padding:0 (label#coerce) in
+    let () = match shortcut with
+      | None -> ()
+      | Some text ->
+          let shortcut = GMisc.label ~text ~xalign:1. ~show:true
+            ~packing:(box#pack ~from:`END ~expand:false) () in
+          shortcut#coerce#set_margin_start 20
+    in
     (*let () = box#coerce#set_margin_start 0 in*)
     (*let () = image#coerce#set_margin_start 0 in*)
     (* --- *)
@@ -134,12 +141,12 @@ module Make (M: Parents) = struct
    in result
 
  (* --- *)
- (* 20230528: Tutto bene tranne il fatto che
-    (1) non si vedono le lettere per la scorciatoia CONTROL-tasto
-    (2) risulta molto spazio vuoto a sinistra, prima dell'immagine stock/file *)
+ (* Show the same Control shortcut that is actually attached to the item. *)
  let add_stock_or_file_item(*_v1*) ?(menu = get_current_menu ()) ?submenu ?(key=0) label ?file ?stock ?(callback=(monitor label)) () =
    let () = if key>0 then Log.printf2 "Warning: Menu_factory.Make.add_stock_item: about to add a stock or file item with text='%s' and key=%d\n" (label) (key) in
-   let result = Image_menu_item.make ?file ?stock ~text:(label) () in
+   let shortcut = if key > 0 then
+     Some (GtkData.AccelGroup.get_label ~key ~modi:[`CONTROL]) else None in
+   let result = Image_menu_item.make ?shortcut ?file ?stock ~text:(label) () in
    (* --- *)
    let () = menu#menu#add (result) in
    let accel_group = menu#accel_group in

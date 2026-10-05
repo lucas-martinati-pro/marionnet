@@ -25,6 +25,17 @@ open Gettext
 (** Function which appends entries to a toolbar *)
 module Toolbar = struct
 
+(* A presentation choice belongs to the palette, independently of the project.
+   Keep the actual text widgets so toggling never rebuilds component menus. *)
+let palettes = ref []
+
+let set_labels_visible toolbar visible =
+  List.iter (fun (owner, widgets) ->
+    if owner = Gobject.get_oid toolbar#as_widget then
+      List.iter (fun widget ->
+        if visible then widget#misc#show () else widget#misc#hide ()) widgets
+  ) !palettes
+
   (* Note that ~label:"" is very important in the call of GMenu.image_menu_item. Actually, it is a workaround
       of something that resemble to a bug in lablgtk: if not present, another external function is internally
       called by this function and the result is a menu entry with an horizontal line in background... *)
@@ -70,9 +81,12 @@ let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
     | "ico.cable.crossed.palette.png" -> s_ "workspace.palette.crossover"
     | _ -> tooltip
   in
-  let _label = GMisc.label ~text:label ~xalign:0. ~show:true
+  let text = GMisc.label ~text:label ~xalign:0. ~show:false
     ~packing:(row#pack ~expand:true) () in
-  let _arrow = GMisc.label ~text:"▸" ~show:true ~packing:(row#pack ~expand:false) () in
+  let arrow = GMisc.label ~text:"▸" ~show:false ~packing:(row#pack ~expand:false) () in
+  text#coerce#set_no_show_all true;
+  arrow#coerce#set_no_show_all true;
+  palettes := (Gobject.get_oid toolbar#as_widget, [text#coerce; arrow#coerce]) :: !palettes;
   GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip;
   (try
     let provider = GObj.css_provider () in

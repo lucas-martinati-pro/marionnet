@@ -1,7 +1,8 @@
 # `driven-sessions/` — bancs rejouables, versionnés
 
-Le banc `workspace.py` vérifie la barre d’actions, les raccourcis, le statut du
-projet et le rendu du réseau dans une vraie session GTK sans invité. Il injecte
+Le banc `workspace.py` vérifie le menu Projet, les raccourcis, la bascule des
+libellés, le statut du projet et le rendu du réseau dans une vraie session GTK
+sans invité. Il injecte
 un délai et une écriture partielle uniquement dans Graphviz. Commande :
 `xvfb-run -a python3 driven-sessions/workspace.py`. Détails dans
 [`docs/modernisation-interface.md`](../docs/modernisation-interface.md).

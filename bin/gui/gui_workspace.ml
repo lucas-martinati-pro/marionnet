@@ -2,20 +2,13 @@
    Copyright (C) 2026 Marionnet contributors. *)
 
 module Cortex = Ocamlbricks.Cortex
-module StackExtra = Ocamlbricks.StackExtra
 open Gettext
 
-module Make
-  (State : sig val st : State.globalState end)
-  (Actions : sig
-    val new_project : unit -> unit
-    val open_project : unit -> unit
-    val save_project : unit -> unit
-  end) = struct
+module Make (State : sig val st : State.globalState end) = struct
   let st = State.st
   let w = st#mainwin
 
-  let bar = GPack.hbox ~spacing:8 ~border_width:10 ~show:true ()
+  let bar = w#box_WORKSPACE_ACTIONS
   let () =
     let width = min 1024 (max 640 (Gdk.Screen.width () - 48)) in
     let height = min 680 (max 480 (Gdk.Screen.height () - 80)) in
@@ -23,27 +16,22 @@ module Make
     (* The Glade window is already visible. Apply its initial size once the
        remaining palette and treeviews have been installed, before user gestures. *)
     ignore (GMain.Idle.add (fun () -> w#window_MARIONNET#resize ~width ~height; false));
-    w#vbox1#pack ~expand:false ~fill:true bar#coerce;
-    w#vbox1#reorder_child bar#coerce ~pos:1
+    w#vbox1#remove w#menubar_MARIONNET#coerce;
+    bar#pack ~expand:false w#menubar_MARIONNET#coerce
 
-  let button label icon shortcut callback =
-    let b = GButton.button ~label ~packing:(bar#pack ~expand:false) ~show:true () in
-    let image = GMisc.image ~icon_name:icon ~icon_size:`SMALL_TOOLBAR ~show:true () in
-    b#set_image image#coerce;
-    GtkBase.Widget.Tooltip.set_text b#as_widget (label ^ " (" ^ shortcut ^ ")");
-    ignore (b#connect#clicked ~callback);
-    b
-
-  let new_button = button (s_ "New") "document-new-symbolic" "Ctrl+N" Actions.new_project
-  let open_button = button (s_ "Open") "document-open-symbolic" "Ctrl+O" Actions.open_project
-  let save_button = button (s_ "Save") "document-save-symbolic" "Ctrl+S" Actions.save_project
-  let () = StackExtra.push save_button#coerce st#sensitive_when_Saveable
-
-  let project_box = GPack.vbox ~spacing:2 ~packing:(bar#pack ~expand:true) ~show:true ()
-  let project_name = GMisc.label ~xalign:1. ~ellipsize:`MIDDLE
-    ~packing:project_box#add ~show:true ()
-  let project_status = GMisc.label ~xalign:1. ~ellipsize:`END
-    ~packing:project_box#add ~show:true ()
+  let project_name = w#label_WORKSPACE_TITLE
+  let () =
+    let toggle = w#toggle_COMPONENT_LABELS in
+    w#hbox_COMPONENTS#reorder_child toggle#coerce ~pos:0;
+    let update_labels () =
+      Marionnet_log.printf1 "Palette labels visible: %b\n" toggle#active;
+      Gui_toolbar_COMPONENTS_layouts.Toolbar.set_labels_visible w#toolbar_COMPONENTS toggle#active;
+      GtkBase.Widget.Tooltip.set_text toggle#as_widget
+        (s_ (if toggle#active then "workspace.hide_component_labels"
+             else "workspace.show_component_labels"))
+    in
+    ignore (toggle#connect#toggled ~callback:update_labels);
+    update_labels ()
 
   (* A useful empty state replaces the broken-image glyph shown by set_file "". *)
   let canvas = GPack.vbox ~spacing:16 ~border_width:20 ~show:true ()
@@ -70,16 +58,17 @@ module Make
     let saved = active && st#project_already_saved in
     let filename = st#project_paths#get_filename in
     let name = match filename with
-      | None -> s_ "workspace.no_project"
+      | None -> Initialization.window_title
       | Some path -> Filename.basename path in
-    let status = if not active then s_ "workspace.ready"
-      else if saved then s_ "workspace.saved" else s_ "workspace.unsaved" in
-    project_name#set_text name;
-    project_status#set_text status;
+    let marker = if active && not saved then "• " else "" in
+    let visible_name = if active && Initialization.are_we_in_exam_mode then
+      Initialization.window_title ^ " - " ^ name else name in
+    project_name#set_text (marker ^ visible_name);
     GtkBase.Widget.Tooltip.set_text project_name#as_widget
-      (match filename with None -> name | Some path -> path);
+      (match filename with None -> name | Some path ->
+        path ^ "\n" ^ s_ (if saved then "workspace.saved" else "workspace.unsaved"));
     let title = if not active then Initialization.window_title else
-      Printf.sprintf "%s - %s%s" Initialization.window_title (if saved then "" else "• ") name in
+      Printf.sprintf "%s%s - %s" marker Initialization.window_title name in
     if title <> !previous_title then begin
       previous_title := title; w#window_MARIONNET#set_title title
     end;
@@ -118,14 +107,13 @@ module Make
   let () =
     try
       let provider = GObj.css_provider () in
-      provider#load_from_data "box { border-bottom: 1px solid alpha(@theme_fg_color, 0.12); }";
-      bar#misc#style_context#add_provider provider 600;
+      provider#load_from_data "menubar { background: transparent; box-shadow: none; border: none; }";
+      w#menubar_MARIONNET#misc#style_context#add_provider provider 600;
       let title_style = GObj.css_provider () in
       title_style#load_from_data "label { font-size: 18px; font-weight: bold; }";
       empty_title#misc#style_context#add_provider title_style 600;
       let muted = GObj.css_provider () in
       muted#load_from_data "label { color: alpha(@theme_fg_color, 0.65); }";
-      empty_help#misc#style_context#add_provider muted 600;
-      project_status#misc#style_context#add_provider muted 600
+      empty_help#misc#style_context#add_provider muted 600
     with e -> Marionnet_log.printf1 "Cannot style workspace: %s\n" (Printexc.to_string e)
 end

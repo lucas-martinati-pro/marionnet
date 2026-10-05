@@ -18,6 +18,8 @@
 
 module Toolbar : sig
  val append_image_menu : GButton.toolbar -> string -> string -> GMenu.menu_item (*GMenu.image_menu_item*)
+ (** Switch between icons only and labelled items, preserving their menus. *)
+ val set_labels_visible : GButton.toolbar -> bool -> unit
 end
 
 module type Toolbar_entry =
@@ -84,4 +86,3 @@ module Layout_for_network_edge :
         val callback : unit -> unit
       end
     end
-

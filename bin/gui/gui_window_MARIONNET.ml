@@ -47,11 +47,7 @@ module Motherboard = Motherboard_builder. Make (State)
 
 module Created_menubar_MARIONNET = Gui_menubar_MARIONNET.Make (State)
 
-module Workspace = Gui_workspace.Make (State) (struct
-  let new_project = Created_menubar_MARIONNET.Created_entry_project_new.callback
-  let open_project = Created_menubar_MARIONNET.Created_entry_project_open.callback
-  let save_project () = Created_menubar_MARIONNET.project_save#activate ()
-end)
+module Workspace = Gui_workspace.Make (State)
 
 
 

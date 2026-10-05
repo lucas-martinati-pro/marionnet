@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generated with glade 3.38.2 -->
 <interface>
-  <requires lib="gtk+" version="3.0"/>
+  <requires lib="gtk+" version="3.10"/>
   <object class="GtkDialog" id="dialog_A_PROPOS">
     <property name="width-request">700</property>
     <property name="visible">True</property>
@@ -641,6 +641,31 @@
     <!-- Initial workspace size; the runtime measurement still makes room for the
          component palette on themes with larger controls. -->
     <property name="icon">../images/marionnet-launcher.png</property>
+    <child type="titlebar">
+      <object class="GtkHeaderBar" id="header_WORKSPACE">
+        <property name="visible">True</property>
+        <property name="show-close-button">True</property>
+        <property name="has-subtitle">False</property>
+        <child>
+          <object class="GtkBox" id="box_WORKSPACE_ACTIONS">
+            <property name="visible">True</property>
+            <property name="spacing">4</property>
+          </object>
+          <packing>
+            <property name="pack-type">start</property>
+          </packing>
+        </child>
+        <child type="title">
+          <object class="GtkLabel" id="label_WORKSPACE_TITLE">
+            <property name="visible">True</property>
+            <property name="ellipsize">middle</property>
+            <property name="width-chars">8</property>
+            <property name="max-width-chars">28</property>
+            <style><class name="title"/></style>
+          </object>
+        </child>
+      </object>
+    </child>
     <child>
       <object class="GtkVBox" id="vbox1">
         <property name="visible">True</property>
@@ -666,7 +691,7 @@
                 <property name="can-focus">False</property>
                 <child>
                   <object class="GtkScrolledWindow" id="scrolledwindow2">
-                    <property name="width-request">88</property>
+                    <property name="width-request">60</property>
                     <property name="visible">True</property>
                     <property name="can-focus">True</property>
                     <property name="hscrollbar-policy">never</property>
@@ -677,10 +702,22 @@
                         <property name="can-focus">False</property>
                         <property name="shadow-type">none</property>
                         <child>
-                          <object class="GtkHBox" id="hbox_COMPONENTS">
+                          <object class="GtkVBox" id="hbox_COMPONENTS">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
-                            <property name="homogeneous">True</property>
+                            <property name="homogeneous">False</property>
+                            <child>
+                              <object class="GtkToggleButton" id="toggle_COMPONENT_LABELS">
+                                <property name="visible">True</property>
+                                <property name="label">Aa</property>
+                                <property name="active">False</property>
+                                <property name="margin">6</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                              </packing>
+                            </child>
                             <child>
                               <object class="GtkToolbar" id="toolbar_COMPONENTS">
                                 <property name="visible">True</property>
@@ -696,7 +733,7 @@
                               <packing>
                                 <property name="expand">False</property>
                                 <property name="fill">False</property>
-                                <property name="position">0</property>
+                                <property name="position">1</property>
                               </packing>
                             </child>
                           </object>

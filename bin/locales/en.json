@@ -1,4 +1,6 @@
 {
+  "workspace.show_component_labels": "Show component names",
+  "workspace.hide_component_labels": "Hide component names",
   "workspace.palette.hub": "Hub",
   "workspace.palette.switch": "Switch",
   "workspace.no_project": "No project open",
@@ -7,7 +9,7 @@
   "workspace.unsaved": "Unsaved changes",
   "workspace.shortcuts": "Ctrl+N  New project   ·   Ctrl+O  Open   ·   Ctrl+S  Save",
   "workspace.welcome": "Your network starts here",
-  "workspace.open_hint": "Create a project or open an existing one using the buttons above.",
+  "workspace.open_hint": "Create a project or open an existing one from the Project menu (Ctrl+N / Ctrl+O).",
   "workspace.empty_network": "Add your first component",
   "workspace.add_hint": "Choose a component in the left palette, then Add. Connect its ports with a cable.",
   "workspace.palette.cloud": "Cloud",

@@ -85,7 +85,7 @@ readonly SETTLE=10
 # bottom of the central area, above the collective action buttons. The x are the centres of
 # `Image', `Interfaces', `Defects' and `Disks'; the y is counted from the bottom edge. Both are
 # theme-dependent, which is why every click is WITNESSED (see click_tabs) instead of trusted.
-readonly TAB_XS=(236 355 473 591)
+readonly TAB_XS=(121 240 358 476)
 readonly TAB_FROM_BOTTOM=113
 
 declare -i passed=0 failed=0 skipped=0
@@ -179,13 +179,13 @@ start_display() {
   return 1
 }
 
-# The main window is the one titled "Marionnet" or "Marionnet - <project>"; the display belongs
+# The main window may prefix its title with a dirty marker; the display belongs
 # to this run alone, so nothing else can answer to that name.
 main_window_id() {
   local id name
-  for id in $(DISPLAY="$display" xdotool search --name '^Marionnet' 2>/dev/null); do
+  for id in $(DISPLAY="$display" xdotool search --name '^(• )?Marionnet' 2>/dev/null); do
      name="$(DISPLAY="$display" xdotool getwindowname "$id" 2>/dev/null)"
-     [[ "$name" =~ ^Marionnet( - .*)?$ ]] || continue
+     [[ "$name" =~ ^(•\ )?Marionnet(\ -\ .*)?$ ]] || continue
      echo "$id"; return 0
   done
   return 0

@@ -24,7 +24,7 @@ type menu_parent =
 
 (* --- *)
 module Image_menu_item : sig
-  val make : ?file:string -> ?stock:GtkStock.id ->  text:string -> unit -> GMenu.menu_item
+  val make : ?shortcut:string -> ?file:string -> ?stock:GtkStock.id -> text:string -> unit -> GMenu.menu_item
 end
 
 module type Factory =
