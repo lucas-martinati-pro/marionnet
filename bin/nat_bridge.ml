@@ -258,7 +258,7 @@ module Make_menus (Params : sig
       let network_config =
         Tool.network_config_of_network_address (Tool.first_free_network_address st#network)
       in
-      Dialog_add_or_update.make ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add NAT bridge") ~name ~network_config ~ok_callback ()
 
     let reaction { name = name; label = label; network_config = network_config;
                    dhcp_enabled = dhcp_enabled; ipv6_enabled = ipv6_enabled;
@@ -299,7 +299,7 @@ module Make_menus (Params : sig
      (* Not Const.port_no_min: the smallest number of ports which still holds every
         cable already connected to this component (as for a world gateway): *)
      let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~title ~name ~label ~network_config ~dhcp_enabled
        ~ipv6_enabled ~ipv6_address ~radvd_enabled
        ~port_no ~port_no_min
@@ -344,6 +344,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add NAT bridge")
  ?(name="")
  ?label
@@ -371,6 +373,7 @@ let make
   in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "nat_bridge.image_tooltip")

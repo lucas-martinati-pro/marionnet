@@ -70,7 +70,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "N" in
-      Dialog_add_or_update.make ~title:(s_ "Add cloud") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add cloud") ~name ~ok_callback ()
 
     let reaction { name = name; label = label; _ } =
       let action () = ignore (
@@ -91,7 +91,7 @@ module Make_menus (Params : sig
      let d = (st#network#get_node_by_name name) in
      let title = (s_ "Modify cloud")^" "^name in
      let label = d#get_label in
-     Dialog_add_or_update.make ~title ~name ~label ~ok_callback:Add.ok_callback ()
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title ~name ~label ~ok_callback:Add.ok_callback ()
 
     let reaction { name = name; label = label; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
@@ -123,6 +123,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add cloud")
  ?(name="")
  ?label
@@ -133,6 +135,7 @@ let make
   let old_name = name in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Unknown layer 2 sub-network")

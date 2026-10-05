@@ -96,7 +96,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "S" in
-      Dialog_add_or_update.make ~title:(s_ "Add switch") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add switch") ~name ~ok_callback ()
 
     let reaction
        { name = name; label = label; port_no = port_no; auto_mdix = auto_mdix;
@@ -127,7 +127,7 @@ module Make_menus (Params : sig
      let show_vde_terminal = s#get_show_vde_terminal in
      let activate_fstp = s#get_activate_fstp in
      let rc_config = s#get_rc_config in
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~title ~name ~label ~port_no ~port_no_min ~auto_mdix
        ~show_vde_terminal ~activate_fstp ~rc_config
        ~ok_callback:Add.ok_callback ()
@@ -168,6 +168,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add switch")
  ?(name="")
  ?label
@@ -185,6 +187,7 @@ let make
   let old_name = name in
   let (dialog_switch,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Switch")

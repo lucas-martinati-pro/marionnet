@@ -337,6 +337,11 @@ let check_name name old_name name_exists t =
 end (* module Ok_callback *)
 
 
+(* Shared component dialogs register their inline validation and form layout.
+   Other dialogs keep their existing validation callbacks. *)
+type component_dialog = { valid : unit -> bool; prepare : unit -> unit }
+let component_dialogs : (int, component_dialog) Hashtbl.t = Hashtbl.create 8
+
 (** Wrappers for the method [run] of a dialog window. *)
 module Dialog_run = struct
 
@@ -352,33 +357,37 @@ let ok_or_cancel
     ~(ok_callback:'a -> 'b option)
     ?help_callback () =
   begin
-  let help_callback = add_help_button_if_necessary w help_callback in
-  w#add_button_stock `CANCEL `CANCEL;
-  w#add_button_stock `OK `OK;
+  let hooks = Hashtbl.find_opt component_dialogs (Gobject.get_oid w#as_widget) in
+  let valid () = match hooks with None -> true | Some hooks -> hooks.valid () in
+  let help_callback = match hooks, help_callback with
+    | Some _, Some callback -> w#add_button (s_ "Help") `HELP; callback
+    | _ -> add_help_button_if_necessary w help_callback in
+  (match hooks with
+   | None -> w#add_button_stock `CANCEL `CANCEL; w#add_button_stock `OK `OK
+   | Some _ -> w#add_button (s_ "dialog.cancel") `CANCEL;
+               w#add_button (s_ "dialog.confirm") `OK);
+  Stdlib.Option.iter (fun hooks -> hooks.prepare ()) hooks;
   w#set_default_response `OK;
-  w#set_response_sensitive `OK true;
+  w#set_response_sensitive `OK (valid ());
   let result = ref None in
   let rec loop () =
     match w#run () with
     | `DELETE_EVENT | `CANCEL -> ()
     | `HELP -> (help_callback ()); loop ()
+    | `OK when not (valid ()) -> loop ()
     | `OK ->
         (match ok_callback (get_widget_data ()) with
 	| None   -> loop ()
 	| Some d -> result := Some d
         )
   in
-  (* The enter key has the same effect than pressing the OK button: *)
-  let f_enter () = match ok_callback (get_widget_data ()) with
-   | None   -> ()
-   | Some d -> (result := Some d; ignore (w#event#send (GdkEvent.create `DELETE)))
-  in
-  let _ = w#event#connect#key_press ~callback:
-    begin fun ev ->
-      (if GdkEvent.Key.keyval ev = GdkKeysyms._Return then f_enter ());
-      false
-    end
-  in
+  (* Route Enter through the same response loop as the button, exactly once. *)
+  ignore (w#event#connect#key_press ~callback:(fun ev ->
+    let key = GdkEvent.Key.keyval ev in
+    if key = GdkKeysyms._Return || key = GdkKeysyms._KP_Enter then begin
+      if valid () then w#response `OK;
+      true
+    end else false));
   loop ();
   w#destroy ();
   !result
@@ -582,31 +591,70 @@ let make_combo_boxes_of_vm_installations
 module Dialog_add_or_update = struct
 
 let make_window_image_name_and_label
-  ~title
-  ~image_file
-  ~image_tooltip
-  ~name
-  ~name_tooltip
-  ?label
-  ?label_tooltip
-  ()
-  =
-  let w = GWindow.dialog ~destroy_with_parent:true ~title ~modal:true ~position:`CENTER () in
+  ?parent ?name_exists
+  ~title ~image_file ~image_tooltip ~name ~name_tooltip
+  ?label ?label_tooltip () =
+  let old_name = name in
+  let w = GWindow.dialog ?parent:(parent : GWindow.window option)
+    ~destroy_with_parent:true ~title ~modal:true ~width:520
+    ~position:(match parent with None -> `CENTER | Some _ -> `CENTER_ON_PARENT) () in
   set_marionnet_icon w;
   let tooltips = make_tooltips_for_container w in
-  let hbox = GPack.hbox ~homogeneous:true ~border_width:20 ~spacing:10 ~packing:w#vbox#add () in
-  let image = GMisc.image ~file:image_file ~xalign:0.5 ~packing:hbox#add () in
+  let header = GPack.hbox ~border_width:16 ~spacing:16 ~packing:w#vbox#add () in
+  let pixbuf = GdkPixbuf.from_file_at_size image_file ~width:64 ~height:64 in
+  let image = GMisc.image ~pixbuf ~xalign:0.5 ~packing:(header#pack ~expand:false) () in
   tooltips image#coerce image_tooltip;
-  let vbox = GPack.vbox ~spacing:10 ~packing:hbox#add () in
-  let name  = entry_with_label ~tooltip:name_tooltip ~packing:vbox#add ~entry_text:name  (s_ "Name") in
-  let label =
-    let tooltip = match label_tooltip with
-    | None -> (s_ "Label to be written in the network sketch, next to the element icon." )
-    | Some x -> x
-    in
-    entry_with_label ~tooltip ~packing:vbox#add ?entry_text:label (s_ "Label")
-  in
-  ignore (GMisc.separator `HORIZONTAL ~packing:w#vbox#add ());
+  let fields = GPack.vbox ~spacing:8 ~packing:(header#pack ~expand:true ~fill:true) () in
+  let field caption tooltip text =
+    ignore (GMisc.label ~text:caption ~xalign:0. ~packing:fields#add ());
+    let entry = GEdit.entry ?text ~packing:fields#add () in
+    tooltips entry#coerce tooltip;
+    entry in
+  let name = field (s_ "Name") name_tooltip (Some name) in
+  let label = field (s_ "Label")
+    (Stdlib.Option.value label_tooltip
+      ~default:(s_ "Label to be written in the network sketch, next to the element icon.")) label in
+  let error = GMisc.label ~markup:"" ~xalign:0. ~line_wrap:true ~packing:fields#add () in
+  let separator = GMisc.separator `HORIZONTAL ~packing:w#vbox#add () in
+  let valid () =
+    let message =
+      if not (StrExtra.Class.identifierp name#text) then s_ "dialog.name_invalid"
+      else if name#text <> old_name &&
+        (match name_exists with None -> false | Some exists -> exists name#text)
+      then s_ "dialog.name_exists" else "" in
+    error#set_label ("<span foreground='#c01c28'>" ^ Glib.Markup.escape_text message ^ "</span>");
+    if message = "" then error#misc#hide () else error#misc#show ();
+    w#set_response_sensitive `OK (message = "");
+    message = "" in
+  ignore (name#connect#changed (fun () -> ignore (valid ())));
+  let prepared = ref false in
+  let prepare () = if not !prepared then begin
+    prepared := true;
+    let preserved = List.map (fun widget -> Gobject.get_oid widget#as_widget)
+      [header#coerce; separator#coerce; w#action_area#coerce] in
+    let children = List.filter (fun child ->
+      not (List.mem (Gobject.get_oid child#as_widget) preserved)
+      && not (w#action_area#misc#is_ancestor child)) w#vbox#children in
+    let scroll = GBin.scrolled_window ~hpolicy:`AUTOMATIC ~vpolicy:`AUTOMATIC
+      ~shadow_type:`NONE ~packing:(w#vbox#pack ~expand:true) () in
+    Gobject.Property.set_dyn scroll#as_widget "propagate-natural-height" (`BOOL true);
+    Gobject.Property.set_dyn scroll#as_widget "propagate-natural-width" (`BOOL true);
+    Gobject.Property.set_dyn scroll#as_widget "max-content-width"
+      (`INT (max 280 (Gdk.Screen.width () - 80)));
+    Gobject.Property.set_dyn scroll#as_widget "max-content-height"
+      (`INT (max 160 (Gdk.Screen.height () - 240)));
+    let body = GPack.vbox () in
+    List.iter (fun child -> w#vbox#remove child; body#pack ~expand:false child) children;
+    scroll#add_with_viewport body#coerce;
+    w#vbox#reorder_child header#coerce ~pos:0;
+    w#vbox#reorder_child separator#coerce ~pos:1;
+    w#vbox#reorder_child scroll#coerce ~pos:2;
+    name#misc#grab_focus ();
+    ignore (valid ())
+  end in
+  let id = Gobject.get_oid w#as_widget in
+  Hashtbl.replace component_dialogs id {valid; prepare};
+  ignore (w#misc#connect#destroy ~callback:(fun () -> Hashtbl.remove component_dialogs id));
   (w,image,name,label)
 
 end (* module Dialog_add_or_update *)

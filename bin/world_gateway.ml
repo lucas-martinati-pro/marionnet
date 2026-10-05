@@ -86,7 +86,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "G" in
-      Dialog_add_or_update.make
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
         ~title:(s_ "Add world gateway") ~name ~ok_callback ()
 
     let reaction {
@@ -130,7 +130,7 @@ module Make_menus (Params : sig
      let port_no = g#get_port_no in
      (* The user cannot remove receptacles used by a cable. *)
      let port_no_min = st#network#port_no_lower_of (g :> User_level.node) in
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~title ~name ~label ~network_config ~dhcp_enabled ~port_no ~port_no_min
        ~ok_callback:Add.ok_callback ()
 
@@ -173,6 +173,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add a world gateway")
  ?(name="")
  ?label
@@ -189,6 +191,7 @@ let make
   let ((b1,b2,b3,b4),b5) = network_config in
   let (w,_,name,label) =
      Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "World gateway")

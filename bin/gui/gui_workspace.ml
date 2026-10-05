@@ -45,7 +45,8 @@ module Make (State : sig val st : State.globalState end) = struct
     ~packing:empty_box#add ~show:true ()
   let () =
     empty_help#set_max_width_chars 42;
-    canvas#pack ~expand:true ~fill:true w#sketch#coerce; w#sketch#clear ()
+    w#sketch#clear ()
+  module Drawing = Gui_network_canvas.Make (State) (struct let canvas = canvas end)
 
   let summary = w#statusbar#new_context "workspace"
   let previous_summary = ref ""

@@ -14,5 +14,6 @@ type rendered
 val render :
   spawn:(string -> string array -> Unix.file_descr -> Unix.file_descr -> Unix.file_descr -> int) ->
   request -> (rendered, string) result
+val map_file : request -> string
 val publish : rendered -> unit
 val discard : rendered -> unit

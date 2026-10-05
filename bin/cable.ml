@@ -90,7 +90,7 @@ module Make_menus
       | false -> (st#network#suggestedName "d" , (s_ "Add straight cable"))
       | true  -> (st#network#suggestedName "c" , (s_ "Add crossover cable"))
       in
-    Dialog_add_or_update.make ~network:st#network ~title ~name ~crossover ~ok_callback ()
+    Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~network:st#network ~title ~name ~crossover ~ok_callback ()
 
     let reaction (r:Data.t) =
       let action () =
@@ -143,7 +143,7 @@ module Make_menus
        c#get_left#node#get_name  c#get_left#user_port_name
        c#get_right#node#get_name c#get_right#user_port_name
        ;
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~network:st#network
        ~title
        ~name
@@ -243,6 +243,8 @@ end
 module Dialog_add_or_update = struct
 
 let make
+ ?parent
+ ?name_exists
  ~(network:User_level.network)
  ?(title="Add cable")
  ?(name="")
@@ -282,6 +284,7 @@ let make
   let old_name = name in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip
@@ -437,6 +440,8 @@ class virtual cable_dot_zone ?(reversed=false) () =
    | true  -> "#6d8dc0"
 
    (* --- *)
+   method virtual id : int
+
    method dot_traduction ~(curved_lines:bool) ~labeldistance =
     let edgeoptions="" in
     let labeldistance_base = labeldistance in
@@ -486,7 +491,7 @@ class virtual cable_dot_zone ?(reversed=false) () =
     in
     let edgeoptions = if edgeoptions = "" then "" else (edgeoptions^",") in
     let cable_label = self#get_name ^ (if self#get_label = "" then "" else ("  "^self#get_label)) in
-    let edgeoptions = edgeoptions ^ "arrowhead=obox, arrowtail=obox, arrowsize=0.4," ^
+    let edgeoptions = edgeoptions ^ "URL=\"marionnet:cable:" ^ string_of_int self#id ^ "\",arrowhead=obox, arrowtail=obox, arrowsize=0.4," ^
       (if self#is_connected then "" else "style=dashed,")
     in
     let label_color = self#dot_color in

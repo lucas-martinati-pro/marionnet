@@ -153,3 +153,65 @@ raccourcis, les renommages avec câbles, suppression/rétablissement, la branche
 abandonnée et la restauration des fichiers d'une machine. Le test de fichiers
 exerce un vrai disque sparse, ses inodes et dates, un lien symbolique et un
 répertoire en lecture seule.
+
+
+## Dessin interactif et dialogues de composants
+
+Le PNG est accompagné d'une carte [Graphviz `cmapx`](https://graphviz.org/docs/outputs/imap/)
+produite par le même processus et avec le même instantané DOT. Les liens internes
+identifient les composants par leur identifiant vivant, sans ouvrir d'URL externe.
+La carte n'est publiée qu'avec le rendu encore courant ; pendant un changement,
+les zones précédentes sont désactivées. Un rendu identique réutilise également sa
+carte. Les rectangles des nœuds ont priorité sur les enveloppes des câbles.
+
+- Clic : sélection et contour, nom dans le titre du panneau.
+- Double-clic ou `Entrée` : propriétés.
+- Clic droit, touche Menu ou `Maj+F10` : menu d'actions du composant.
+- `Suppr` : suppression avec la confirmation existante ; `Échap` : désélection.
+- `Ctrl+molette` : zoom entre 25 % et 300 %, sur l'image déjà rendue.
+
+Les menus réutilisent les callbacks de la palette et revérifient leur disponibilité
+au déclenchement. Les opérations de démarrage/arrêt, suspension/reprise et
+connexion/déconnexion conservent donc leurs restrictions actuelles. Les éditions
+depuis les propriétés restent annulables sur un réseau arrêté. Sélection et zoom
+ne modifient ni le projet ni son export PNG/DOT. Le placement reste automatique
+avec Graphviz : cette étape n'ajoute pas le déplacement manuel des nœuds ni la
+création de câbles par glisser-déposer.
+
+Machines, routeurs, concentrateurs, commutateurs, câbles, nuages et les trois
+passerelles partagent maintenant le même en-tête avec une icône de 64 pixels,
+des champs Nom/Étiquette et une validation des noms dans le formulaire. Leur
+fenêtre est liée à la fenêtre principale. Les noms invalides ou déjà pris rendent
+Valider indisponible ; le contrôle métier existant reste la validation finale.
+Les boutons Aide/Annuler/Valider suivent la langue Marionnet. Les paramètres
+utilisent toute la hauteur disponible de l'écran ; ils ne défilent que lorsque
+le formulaire dépasse cette hauteur. L'en-tête et les boutons restent visibles. Entrée suit une seule boucle de validation.
+
+Vérification sans invité ni modification des droits :
+
+```sh
+opam exec -- dune build @install @check @runtest
+xvfb-run -a python3 driven-sessions/undo.py
+xvfb-run -a python3 driven-sessions/workspace.py
+xvfb-run -a -s '-screen 0 800x600x24' python3 driven-sessions/canvas.py --screenshots /tmp/marionnet-canvas-small
+```
+
+Le banc `canvas.py` localise le vrai PNG dans le viewport GTK avant de cliquer :
+il exerce sélection, propriétés et annulation, validation des noms, menus des
+câbles, confirmation de suppression, démarrage/arrêt d'un concentrateur VDE,
+zoom et ouverture des neuf dialogues. Il vérifie aussi que le bouton Annuler
+reste cliquable sous le formulaire d'une machine. Les tests sans écran couvrent
+la géométrie, les polygones concaves, les liens ignorés et la conservation de la
+carte lors d'un rendu Graphviz échoué ou devenu obsolète.
+
+Les tableaux Interfaces, Anomalies et Disques présentent la colonne Type avant
+Nom. Ce changement porte uniquement sur l'ordre visuel des colonnes ; les données
+et les archives de projets gardent leur format. Le dépliage de la hiérarchie
+reste attaché à la colonne Nom.
+
+
+Le menu contextuel est rattaché au widget du dessin avec
+[`gtk_menu_attach_to_widget`](https://docs.gtk.org/gtk3/method.Menu.attach_to_widget.html).
+GTK peut ainsi retrouver sa fenêtre parente, nécessaire au positionnement sous
+Wayland. Le banc GTK vérifie la relation réelle `WM_TRANSIENT_FOR` sous X11 pour
+le clic droit et `Maj+F10`. Il ne constitue pas un essai natif Wayland.

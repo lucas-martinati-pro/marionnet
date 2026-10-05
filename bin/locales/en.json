@@ -478,5 +478,14 @@
   "edit.stop_network": "Stop the network before undoing an edit.",
   "edit.history_changed": "The project changed outside the editing history; undo history has been cleared.",
   "edit.failed": "Unable to restore the network edit",
-  "edit.unavailable": "This edit could not be retained for undo; the editing history has been cleared."
+  "edit.unavailable": "This edit could not be retained for undo; the editing history has been cleared.",
+  "sketch.action_unavailable": "This action is unavailable in the current component state.",
+  "sketch.gestures": "Double-click: properties · Right-click: actions\nEnter: properties · Delete: remove · Ctrl+wheel: zoom",
+  "dialog.name_invalid": "Use letters, digits and underscores.",
+  "dialog.name_exists": "This name is already used in the network.",
+  "dialog.cancel": "Cancel",
+  "dialog.confirm": "Confirm",
+  "Hardware": "Hardware",
+  "Software": "Software",
+  "Access": "Access"
 }

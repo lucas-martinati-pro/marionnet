@@ -159,6 +159,8 @@ val make_combo_boxes_of_vm_installations:
 module Dialog_add_or_update : sig
 
  val make_window_image_name_and_label :
+   ?parent:GWindow.window ->
+   ?name_exists:(string -> bool) ->
    title:string ->
    image_file:string ->
    image_tooltip : string ->

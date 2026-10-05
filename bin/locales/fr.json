@@ -478,5 +478,14 @@
   "edit.stop_network": "Arrêtez le réseau avant d’annuler une modification.",
   "edit.history_changed": "Le projet a changé hors de l’historique des modifications ; cet historique a été réinitialisé.",
   "edit.failed": "Impossible de restaurer la modification du réseau",
-  "edit.unavailable": "Cette modification n’a pas pu être conservée pour l’annulation ; l’historique a été réinitialisé."
+  "edit.unavailable": "Cette modification n’a pas pu être conservée pour l’annulation ; l’historique a été réinitialisé.",
+  "sketch.action_unavailable": "Cette action est indisponible dans l’état actuel du composant.",
+  "sketch.gestures": "Double-clic : propriétés · Clic droit : actions\nEntrée : propriétés · Suppr : retirer · Ctrl+molette : zoom",
+  "dialog.name_invalid": "Utilisez des lettres, des chiffres et des traits de soulignement.",
+  "dialog.name_exists": "Ce nom est déjà utilisé dans le réseau.",
+  "dialog.cancel": "Annuler",
+  "dialog.confirm": "Valider",
+  "Hardware": "Matériel",
+  "Software": "Logiciel",
+  "Access": "Accès"
 }

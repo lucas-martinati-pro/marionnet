@@ -1079,7 +1079,7 @@ class virtual node_with_ports_card = fun
     let fontsize   = self#dot_fontsize_statement in
     let nodeoptions = if nodeoptions = "" then "" else (nodeoptions^",") in
     begin
-    self#get_name^" ["^fontsize^nodeoptions^"shape=plaintext,label=<
+    self#get_name^" [URL=\"marionnet:node:"^string_of_int self#id^"\","^fontsize^nodeoptions^"shape=plaintext,label=<
 <TABLE BORDER=\"0\" CELLBORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"0\">
   <TR><TD>"^self#get_name^"</TD></TR>
   <TR><TD PORT=\"img\"><IMG SRC=\""^(self#dotImg z)^"\"></IMG></TD></TR>

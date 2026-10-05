@@ -553,6 +553,12 @@ the machine itself (you should expand the tree).") pathname)
 
     (* Make internal data structures: no more columns can be added now: *)
     self#create_store_and_view;
+    (* Present Type before Name without changing the saved row schema. Keep
+       the hierarchy expander attached to Name. *)
+    let type_column = (self#get_column type_header)#gtree_view_column in
+    let name_column = (self#get_column name_header)#gtree_view_column in
+    ignore (self#view#move_column name_column ~after:type_column);
+    self#view#set_expander_column (Some name_column);
 
     (* Make the contextual menu: *)
     self#set_contextual_menu_title "Filesystem history operations";

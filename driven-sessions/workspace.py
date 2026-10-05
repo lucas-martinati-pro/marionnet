@@ -91,7 +91,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
     with log_path.open("w") as log:
         app = subprocess.Popen([str(Path(args.binary).resolve()), "--debug", "--no-welcome",
                                 "--control-socket", str(sock)], cwd=cwd, env=env,
-                               stdout=log, stderr=log)
+                               start_new_session=True, stdout=log, stderr=log)
 
     def ask(command):
         with socket.socket(socket.AF_UNIX) as connection:
@@ -148,7 +148,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         xdo("windowfocus", "--sync", window())
         gesture()
         def find_dialog():
-            result = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(app.pid),
+            result = subprocess.run(["xdotool", "search", "--all", "--onlyvisible", "--pid", str(app.pid),
                                      "--name", "^" + re.escape(expected) + "$"], capture_output=True, text=True)
             return result.stdout.strip() if result.returncode == 0 else None
         dialog = wait_for(find_dialog, expected)
@@ -176,7 +176,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         screenshot("welcome")
         locales = json.loads(locales_path.read_text())
         new_title = locales["Name of the new project"]
-        open_title = locales["Open a project"]
+        open_title = locales["Open an existing Marionnet project"]
         xdo("windowfocus", "--sync", window())
         chooser(new_title, lambda: xdo("key", "--clearmodifiers", "ctrl+n"))
         check(True, "Ctrl+N opens New project rather than Add NAT bridge")
@@ -247,7 +247,7 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         screenshot("palette-icons")
         chooser(locales["Add hub"], lambda: hub_menu("38"))
         toggle_labels()
-        chooser(locales["Add hub"], lambda: hub_menu("125"))
+        chooser(locales["Add hub"], lambda: hub_menu("75"))
         toggle_labels()
         palette_states = [line.rsplit(": ", 1)[-1] for line in log_path.read_text().splitlines()
                           if "Palette labels visible:" in line]
@@ -325,7 +325,10 @@ sys.exit(subprocess.call([os.environ["MARIONNET_WORKSPACE_REAL_DOT"]] + argument
         check(not ask("status")["active"], "closing restores the empty workspace")
         wait_for(lambda: not list(run.glob("**/.marionnet-sketch-*")), "temporary drawing cleanup")
     except Exception:
-        screenshot("failure")
+        try:
+            screenshot("failure")
+        except Exception as error:
+            print("Failure screenshot unavailable:", error, file=sys.stderr)
         print(log_path.read_text()[-8000:], file=sys.stderr)
         raise
     finally:

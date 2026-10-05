@@ -454,7 +454,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "R" in
-      Dialog_add_or_update.make
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
         ~title:(s_ "Add router") ~name ~ok_callback ()
 
     let reaction {
@@ -522,7 +522,7 @@ module Make_menus (Params : sig
      (* The user cannot remove receptacles used by a cable. *)
      let port_no_min = st#network#port_no_lower_of (r :> User_level.node)
      in
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~title ~name ~label ~distribution ?variant
        ~show_unix_terminal ~autologin ~rc_config_unix
        ~quagga_selected_srvs ~show_quagga_terminal ~rc_config_quagga
@@ -585,6 +585,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add a router")
  ?(name="")
  ?label
@@ -620,6 +622,7 @@ let make
   let vm_installations = Lazy_perishable.force (Disk.get_router_installations) in
   let (dialog_router,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Router")
@@ -645,7 +648,7 @@ let make
          (s_ "Services");
          ]
     in
-    form#add_section ~no_line:() "Hardware";
+    form#add_section ~no_line:() (s_ "Hardware");
     (* --- *)
     let on_distrib_change = ref [] (* a list of callbacks *) in
     (* --- *)
@@ -672,7 +675,7 @@ let make
         ()
     in
     (* --- *)
-    form#add_section "Software";
+    form#add_section (s_ "Software");
     (* --- *)
     let distribution_variant_kernel =
       let packing_distribution =
@@ -723,7 +726,7 @@ let make
       callback (current)
     in
     (* --- *)
-    form#add_section "Access";
+    form#add_section (s_ "Access");
     (* --- *)
     let show_unix_terminal =
       GButton.check_button

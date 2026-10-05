@@ -149,6 +149,27 @@ module Layout_for_network_component
  module Created_Properties = Menu_factory.Make_entry_with_children (Properties') (F)
  module Created_Remove     = Menu_factory.Make_entry_with_children (Remove')     (F)
 
+ let matches kind name = match kind with
+ | `Node when State.st#network#node_exists name ->
+     let icon = match (State.st#network#get_node_by_name name)#devkind with
+       | `Machine -> "machine" | `Router -> "router" | `Hub -> "hub"
+       | `Switch -> "switch" | `Cloud -> "cloud" | `World_gateway -> "world_gateway"
+       | `World_bridge -> "lan_bridge" | `Nat_bridge -> "nat_bridge" in
+     Toolbar_entry.imagefile = "ico." ^ icon ^ ".palette.png"
+ | `Cable when State.st#network#cable_exists name ->
+     let crossover = (State.st#network#get_cable_by_name name)#crossover in
+     Toolbar_entry.imagefile = (if crossover then "ico.cable.crossed.palette.png"
+                               else "ico.cable.direct.palette.png")
+ | _ -> false
+
+ let () = Gui_component_actions.register (fun kind name ->
+   if not (matches kind name) then [] else [
+     Gui_component_actions.make ~label:Properties'.text ~stock:Properties'.stock
+       ~names:Properties.dynlist ~callback:Created_Properties.callback name;
+     Gui_component_actions.make ~label:Remove'.text ~stock:Remove'.stock
+       ~names:Remove.dynlist ~callback:Created_Remove.callback name
+   ])
+
 end
 
 
@@ -196,6 +217,18 @@ module Layout_for_network_node
  let () = F.add_separator ()
  module Created_Suspend = Menu_factory.Make_entry_with_children (Suspend') (F)
  module Created_Resume  = Menu_factory.Make_entry_with_children (Resume')  (F)
+
+ let () = Gui_component_actions.register (fun kind name ->
+   if not (Created_entries_for_network_component.matches kind name) then [] else [
+     Gui_component_actions.make ~label:Startup'.text ~stock:Startup'.stock
+       ~names:Startup.dynlist ~callback:Created_Startup.callback name;
+     Gui_component_actions.make ~label:Stop'.text ~stock:Stop'.stock
+       ~names:Stop.dynlist ~callback:Created_Stop.callback name;
+     Gui_component_actions.make ~label:Suspend'.text ~stock:Suspend'.stock
+       ~names:Suspend.dynlist ~callback:Created_Suspend.callback name;
+     Gui_component_actions.make ~label:Resume'.text ~stock:Resume'.stock
+       ~names:Resume.dynlist ~callback:Created_Resume.callback name
+   ])
 
 end
 
@@ -280,6 +313,12 @@ module Layout_for_network_node_with_state
  let () = F.add_separator ()
  module Created_Ungracefully_stop = Menu_factory.Make_entry_with_children (Ungracefully_stop') (F)
 
+ let () = Gui_component_actions.register (fun kind name ->
+   if not (Created_entries_for_network_node.Created_entries_for_network_component.matches kind name)
+   then [] else [Gui_component_actions.make ~label:Ungracefully_stop'.text
+     ~stock:Ungracefully_stop'.stock ~names:Ungracefully_stop.dynlist
+     ~callback:Created_Ungracefully_stop.callback name])
+
 end
 
 
@@ -314,5 +353,13 @@ module Layout_for_network_edge
  (* Cable sensitiveness *)
  module Created_Add = Created_entries_for_network_component.Created_Add
  let () = StackExtra.push (Created_Add.item#coerce) (State.st#sensitive_cable_menu_entries)
+
+ let () = Gui_component_actions.register (fun kind name ->
+   if not (Created_entries_for_network_component.matches kind name) then [] else [
+     Gui_component_actions.make ~label:Disconnect'.text ~stock:Disconnect'.stock
+       ~names:Disconnect.dynlist ~callback:Created_Disconnect.callback name;
+     Gui_component_actions.make ~label:Reconnect'.text ~stock:Reconnect'.stock
+       ~names:Reconnect.dynlist ~callback:Created_Reconnect.callback name
+   ])
 
 end

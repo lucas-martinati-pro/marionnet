@@ -70,7 +70,7 @@ module Make_menus (Params : sig
     let dialog () =
       let () = Global_options.check_bridge_existence_and_warning () in
       let name = st#network#suggestedName "B" in
-      Dialog_add_or_update.make ~title:(s_ "Add LAN bridge") ~name ~ok_callback ()
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title:(s_ "Add LAN bridge") ~name ~ok_callback ()
 
     let reaction { name = name; label = label; port_no = port_no; _ } =
       let action () = ignore (
@@ -98,7 +98,7 @@ module Make_menus (Params : sig
      (* Not Const.port_no_min: the smallest number of ports which still holds every
         cable already connected to this component (as for a world gateway): *)
      let port_no_min = st#network#port_no_lower_of (h :> User_level.node) in
-     Dialog_add_or_update.make ~title ~name ~label ~port_no ~port_no_min ~ok_callback:Add.ok_callback ()
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists ~title ~name ~label ~port_no ~port_no_min ~ok_callback:Add.ok_callback ()
 
     let reaction { name = name; label = label; port_no = port_no; old_name = old_name } =
       let d = (st#network#get_node_by_name old_name) in
@@ -130,6 +130,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add LAN bridge")
  ?(name="")
  ?label
@@ -143,6 +145,7 @@ let make
   let old_name = name in
   let (w,_,name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "lan_bridge.image_tooltip")

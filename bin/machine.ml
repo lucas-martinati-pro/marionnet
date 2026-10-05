@@ -137,7 +137,7 @@ module Make_menus (Params : sig
 
     let dialog () =
       let name = st#network#suggestedName "m" in
-      Dialog_add_or_update.make
+      Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
         ~title:(s_ "Add machine") ~name ~ok_callback ()
 
     let reaction {
@@ -219,7 +219,7 @@ module Make_menus (Params : sig
      (* The user cannot remove receptacles used by a cable. *)
      let port_no_min = st#network#port_no_lower_of (m :> User_level.node)
      in
-     Dialog_add_or_update.make
+     Dialog_add_or_update.make ~parent:st#mainwin#window_MARIONNET ~name_exists:st#network#name_exists
        ~title ~name ~label
        ~memory ~port_no ~port_no_min
        ~distribution ?variant
@@ -284,6 +284,8 @@ module Dialog_add_or_update = struct
 (* This function may be useful for testing the widget creation without
    recompiling the whole project. *)
 let make
+ ?parent
+ ?name_exists
  ?(title="Add a machine")
  ?(name="")
  ?label
@@ -309,6 +311,7 @@ let make
   let vm_installations =  Lazy_perishable.force (Disk.get_machine_installations) in
   let (dialog_machine, _, name,label) =
     Gui_bricks.Dialog_add_or_update.make_window_image_name_and_label
+      ?parent ?name_exists
       ~title
       ~image_file:dialog_image_file
       ~image_tooltip:(s_ "Virtual machine")
@@ -333,7 +336,7 @@ let make
          (* (s_ "Terminal"); *)
          ]
     in
-    form#add_section ~no_line:() "Hardware";
+    form#add_section ~no_line:() (s_ "Hardware");
     (* --- *)
     let on_distrib_change = ref [] (* a list of callbacks *) in
     (* --- *)
@@ -347,7 +350,7 @@ let make
       Gui_bricks.spin_byte ~lower:port_no_min ~upper:port_no_max ~step_incr:1
       ~packing:(form#add_with_tooltip (s_ "Number of ethernet cards (eth0, eth1 ...) of the virtual machine")) port_no
     in
-    form#add_section "Software";
+    form#add_section (s_ "Software");
     let (distribution_variant_kernel) =
       let packing_distribution =
         form#add_with_tooltip
@@ -393,7 +396,7 @@ let make
       callback (current)
     in
     (* --- *)
-    form#add_section "Access";
+    form#add_section (s_ "Access");
     (* console_no widget and callback: *)
     let console_no =
       Gui_bricks.spin_byte ~lower:1 ~upper:8 ~step_incr:1

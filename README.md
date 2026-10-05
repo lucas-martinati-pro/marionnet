@@ -126,6 +126,14 @@ marionnet
 ```
 Vous pouvez charger vos projets réseau (fichiers `.mar`) existants ou en créer de nouveaux. Les machines et routeurs démarreront immédiatement dans leurs terminaux xterm sans aucune erreur d'I/O.
 
+Dans le dessin, cliquez sur un composant ou un câble pour le sélectionner,
+double-cliquez pour ouvrir ses propriétés et utilisez le clic droit pour ses
+actions. `Entrée` ouvre les propriétés, `Suppr` demande confirmation avant de
+retirer la sélection et `Ctrl+molette` zoome sans modifier le projet. Les fenêtres
+de configuration partagent un en-tête compact, une validation des noms dans le
+formulaire et une zone défilante pour les paramètres longs.
+
+
 ---
 
 ## 🔄 Récupérer les futures mises à jour officielles (Upstream)

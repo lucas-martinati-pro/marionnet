@@ -285,6 +285,8 @@ class globalState = fun () ->
   val mutable edit_busy = false
   val mutable edit_saved_content : edit_content option = None
   val edit_history_counter = Cortex.return 0
+  val mutable sketch_hit_map : Sketch_hit_map.area list = []
+  val sketch_map_counter = Cortex.return 0
 
   (** The main window: *)
   method mainwin = win
@@ -999,12 +1001,17 @@ class globalState = fun () ->
   val mutable sketch_pending : (int * Sketch_renderer.request) option = None
   val mutable sketch_last_rendered : Sketch_renderer.request option = None
 
+  method sketch_hit_map = sketch_hit_map
+  method sketch_map_counter = sketch_map_counter
+  method private sketch_map_notify = ignore (Cortex.move sketch_map_counter ((+) 1))
+
   method private cancel_sketch_render =
     sketch_generation <- sketch_generation + 1;
     (match sketch_timer with None -> () | Some id -> GMain.Timeout.remove id);
     sketch_timer <- None;
     sketch_pending <- None;
-    sketch_last_rendered <- None
+    sketch_last_rendered <- None;
+    sketch_hit_map <- []; self#sketch_map_notify
 
   method private start_pending_sketch_render =
     if not sketch_render_in_progress then
@@ -1012,7 +1019,11 @@ class globalState = fun () ->
       | None -> ()
       | Some (generation, request) ->
           sketch_pending <- None;
-          if sketch_last_rendered = Some request then () else begin
+          if sketch_last_rendered = Some request then begin
+            (* Unchanged content reuses both the image and its geometry. *)
+            sketch_hit_map <- Sketch_hit_map.parse (UnixExtra.cat (Sketch_renderer.map_file request));
+            self#sketch_map_notify
+          end else begin
             sketch_render_in_progress <- true;
             ignore (Thread.create (fun () ->
               Log.printf "About to refresh the sketch\n";
@@ -1027,6 +1038,8 @@ class globalState = fun () ->
                   | Ok rendered when current ->
                       Sketch_renderer.publish rendered;
                       self#mainwin#sketch#set_file request.Sketch_renderer.png_file;
+                      sketch_hit_map <- Sketch_hit_map.parse (UnixExtra.cat (Sketch_renderer.map_file request));
+                      self#sketch_map_notify;
                       sketch_last_rendered <- Some request
                   | Ok rendered -> Sketch_renderer.discard rendered
                   | Error details when current ->
@@ -1044,6 +1057,7 @@ class globalState = fun () ->
   method private really_refresh_sketch =
     GMain_actor.delegate ~async:() (fun () ->
       sketch_generation <- sketch_generation + 1;
+      sketch_hit_map <- []; self#sketch_map_notify;
       (match sketch_timer with None -> () | Some id -> GMain.Timeout.remove id);
       sketch_timer <- None;
       sketch_pending <- None;
