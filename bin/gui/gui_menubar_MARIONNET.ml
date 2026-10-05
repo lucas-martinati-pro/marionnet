@@ -463,7 +463,11 @@ let edit = add_menu (s_ "edit.menu")
 let editing_text () =
   try
     let focus = GtkWindow.Window.get_focus st#mainwin#window_MARIONNET#as_window in
-    Gobject.is_a focus "GtkEditable" || Gobject.is_a focus "GtkTextView"
+    (* GtkEditable is an interface, rejected by Gobject.is_a's object-only
+       check. GType's ancestry test handles both interfaces and classes. *)
+    let kind = Gobject.get_type focus in
+    let is_a name = Gobject.Type.is_a kind (Gobject.Type.from_name name) in
+    is_a "GtkEditable" || is_a "GtkTextView"
   with Gpointer.Null -> false
 let undo = edit#add_item (s_ "edit.undo") ~key:_z ~callback:(fun () -> if not (editing_text ()) then st#undo ())
 let redo = edit#add_item (s_ "edit.redo") ~key:_y ~callback:(fun () -> if not (editing_text ()) then st#redo ())

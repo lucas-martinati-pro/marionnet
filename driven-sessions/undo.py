@@ -63,6 +63,10 @@ with tempfile.TemporaryDirectory(prefix='marionnet-undo-test-') as tmp:
         ask('connect c1 h1:port1 h2:port1')
         ask('save --timeout=30')
         ask('set h1 label Avant')
+        # Focus a real GTK control: a null focus would bypass the text-entry
+        # guard and miss an incorrect GtkEditable interface type check.
+        subprocess.run(['xdotool', 'windowfocus', '--sync', window], check=True)
+        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'Tab'], check=True)
         key('ctrl+z')
         wait(lambda: field('h1', 'label') == '' and ask('status')['saved'], 'undo restores the saved topology and clean marker')
         key('ctrl+y')
