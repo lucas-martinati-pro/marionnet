@@ -14,18 +14,66 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 usage() {
   cat << EOF
 Usage: $(basename "$0") [OPTIONS] [VERSION]
+       $(basename "$0") --tarball [ENGINE-OPTIONS]
 
-Options:
+Installeur unique de Marionnet, deux moteurs (intacts, chacun avec son banc
+et son --help) :
+  .deb (défaut) : paquet All-in-One via apt (Ubuntu/Debian x86_64).
+  tarball (--tarball) : moteur marionnet-install.sh -- installation sous un
+    préfixe local, toutes distributions (--binary, --fetch-only...).
+
+Moteur .deb :
   -b, --local, --build     Construire et installer le paquet à partir des sources locales
   -r, --release            Installer la version officielle publiée sur GitHub Releases
   --no-wheezy              Ne pas installer l'image système Debian Wheezy
   --force-download         Supprimer les paquets de cache locaux et forcer le téléchargement
   -h, --help               Afficher cette aide et quitter
 
+Moteur tarball (arguments passés tels quels, --help du moteur pour le détail) :
+  $(basename "$0") --tarball --fetch-only [--choose|--no-choose]  Images et noyaux invités
+  $(basename "$0") --tarball --binary --with-deps                 Appli sous un préfixe
+  $(basename "$0") --tarball --help                              Aide complète du moteur
+
 Si exécuté dans le dépôt git et qu'un binaire fraîchement compilé existe
 (_build/default/bin/marionnet.exe), l'installation locale est automatiquement activée.
 EOF
 }
+
+# Point d'entrée unique : --tarball route vers le moteur tarball, sans quoi
+# c'est le moteur .deb ci-dessous. Les options .deb sont refusées avec
+# --tarball (exclusion mutuelle) ; le moteur tarball garde sa grammaire gelée
+# (banc marionnet-install.sh.bench, docs livrées, publication standalone).
+TARBALL_MODE=false
+for arg in "$@"; do
+  [ "$arg" = "--tarball" ] && TARBALL_MODE=true
+done
+if [ "$TARBALL_MODE" = true ]; then
+  TARBALL_ARGS=()
+  for arg in "$@"; do
+    [ "$arg" = "--tarball" ] && continue
+    TARBALL_ARGS+=("$arg")
+  done
+  for arg in "${TARBALL_ARGS[@]}"; do
+    case "$arg" in
+      -b|--local|--build|-r|--release|--no-wheezy|--without-wheezy|--force-download|--clean|--re-download)
+        echo "[-] $arg appartient au moteur .deb, incompatible avec --tarball." >&2
+        echo "    Sans --tarball pour le .deb ; avec --tarball, options tarball uniquement." >&2
+        exit 2
+        ;;
+    esac
+  done
+  ENGINE=""
+  if command -v marionnet-install.sh >/dev/null 2>&1; then
+    ENGINE="$(command -v marionnet-install.sh)"
+  elif [ -f "$REPO_ROOT/bin/scripts/marionnet-install.sh" ]; then
+    ENGINE="$REPO_ROOT/bin/scripts/marionnet-install.sh"
+  else
+    echo "[-] Moteur tarball introuvable (ni marionnet-install.sh installé, ni arbre git)." >&2
+    echo "    Sur une machine déjà installée : marionnet-get-images pour les images." >&2
+    exit 2
+  fi
+  exec "$ENGINE" "${TARBALL_ARGS[@]}"
+fi
 
 for arg in "$@"; do
   case "$arg" in
