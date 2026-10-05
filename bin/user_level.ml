@@ -549,6 +549,9 @@ class virtual ['parent] simulated_device () = object(self)
         although a switch which has run has written its rc journal.
       Cables are out of this: [cable.ml] overrides [can_destroy] to a constant true, on purpose —
       unplugging a wire while the network runs is a legitimate gesture, often the exercise itself. *)
+  (* Restoring an editing snapshot must retain exam locks and session provenance. *)
+  method remember_previous_run = ever_started <- true
+
   method has_left_traces =
     ever_started ||
     (try ((Treeview_history.extract ())#number_of_states_with_name self#get_name) > 1

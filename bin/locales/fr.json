@@ -469,5 +469,14 @@
   "to restart": "de redémarrer",
   "to stop": "d'arrêter",
   "you should choose a direction to define this parameter": "vous devez choisir une direction pour pouvoir définir ce paramètre",
-  "you should choose a port to define this parameter": "vous devez choisir une interface réseau pour pouvoir définir ce paramètre"
+  "you should choose a port to define this parameter": "vous devez choisir une interface réseau pour pouvoir définir ce paramètre",
+  "edit.menu": "_Édition",
+  "edit.undo": "Annuler",
+  "edit.redo": "Rétablir",
+  "edit.undone": "Modification du réseau annulée",
+  "edit.redone": "Modification du réseau rétablie",
+  "edit.stop_network": "Arrêtez le réseau avant d’annuler une modification.",
+  "edit.history_changed": "Le projet a changé hors de l’historique des modifications ; cet historique a été réinitialisé.",
+  "edit.failed": "Impossible de restaurer la modification du réseau",
+  "edit.unavailable": "Cette modification n’a pas pu être conservée pour l’annulation ; l’historique a été réinitialisé."
 }

@@ -12,6 +12,10 @@ ressources et rejoue `workspace.py` avec son binaire installé, hors du dépôt 
 `python3 driven-sessions/installed-workspace.py dist/marionnet-all-in-one_1.0.459_amd64.deb`.
 Il utilise son propre Xvfb et ne modifie pas l'installation système.
 
+Le banc `undo.py` joue les vrais raccourcis Annuler/Rétablir, les noms et câbles,
+la suppression/restauration, la sauvegarde et les fichiers des machines :
+`xvfb-run -a python3 driven-sessions/undo.py`.
+
 Le banc `atomic-save.sh` vérifie la conservation du dernier `.mar` et du projet ouvert
 après une écriture partielle, puis la reprise et la réouverture. L'option `--gui` joue
 aussi les menus Fermer et Quitter avec réponse Oui (xdotool requis). Voir

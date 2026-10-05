@@ -469,5 +469,14 @@
   "to restart": "to restart",
   "to stop": "to stop",
   "you should choose a direction to define this parameter": "you should choose a direction to define this parameter",
-  "you should choose a port to define this parameter": "you should choose a port to define this parameter"
+  "you should choose a port to define this parameter": "you should choose a port to define this parameter",
+  "edit.menu": "_Edit",
+  "edit.undo": "Undo",
+  "edit.redo": "Redo",
+  "edit.undone": "Network edit undone",
+  "edit.redone": "Network edit restored",
+  "edit.stop_network": "Stop the network before undoing an edit.",
+  "edit.history_changed": "The project changed outside the editing history; undo history has been cleared.",
+  "edit.failed": "Unable to restore the network edit",
+  "edit.unavailable": "This edit could not be retained for undo; the editing history has been cleared."
 }

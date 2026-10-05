@@ -29,6 +29,7 @@ module StrExtra = Ocamlbricks.StrExtra
 module StackExtra = Ocamlbricks.StackExtra
 module SysExtra = Ocamlbricks.SysExtra
 module UnixExtra = Ocamlbricks.UnixExtra
+module Forest = Ocamlbricks.Forest
 (* --- *)
 open Gettext;;
 
@@ -44,6 +45,14 @@ let commit_suicide signal =
    corruption that isn't there (work-stream `migration-marshal-to-text', episode 8b). *)
 exception Unsupported_project_version of string option
 ;;
+
+type edit_content = {
+  topology : Ocamlbricks.Xforest.tree;
+  tables : Treeview.Row.t Forest.t list;
+  scripts : (string * (string * string) list) list;
+  traces : (string * bool) list;
+}
+type edit_snapshot = { content : edit_content; files : string }
 
 type filename = string
  and pathname = string
@@ -271,6 +280,12 @@ class globalState = fun () ->
   (* --- *)
   object (self)
 
+  val mutable edit_undo : (edit_snapshot * edit_snapshot) list = []
+  val mutable edit_redo : (edit_snapshot * edit_snapshot) list = []
+  val mutable edit_busy = false
+  val mutable edit_saved_content : edit_content option = None
+  val edit_history_counter = Cortex.return 0
+
   (** The main window: *)
   method mainwin = win
 
@@ -355,6 +370,9 @@ class globalState = fun () ->
   (** New project which will be saved into the given filename.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
   method private private_new_project ~filename () =
+    if edit_busy then failwith "A network edit is being restored";
+    self#clear_edit_history;
+    edit_saved_content <- None;
     (* First reset the old network, waiting for all devices to terminate: *)
     let () = self#network#ledgrid_manager#reset in
     let () = self#network#reset () in
@@ -385,10 +403,13 @@ class globalState = fun () ->
   (** Close the current project. The project is lost if the user hasn't saved it.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
   method private private_close_project () =
+    if edit_busy then failwith "A network edit is being restored";
     if (not self#active_project) then Log.printf "state#close_project: no project opened.\n" else (* continue: *)
     begin
       (* --- *)
       Log.printf "state#close_project: BEGIN\n";
+      self#clear_edit_history;
+      edit_saved_content <- None;
       (* --- *)
       (* Anticipate: the user cannot do anything else during this procedure: *)
       let   () = self#project_paths#unset_filename in
@@ -763,6 +784,7 @@ class globalState = fun () ->
   method private register_state_after_save_or_open =
    begin
      project_dirty <- false;
+     edit_saved_content <- Some (GMain_actor.apply_extract self#edit_content ());
      (* The moment the project becomes clean. Logged on purpose (episode 7 of the script-driving
         work-stream), but beware of what that line proves: Log.printf takes a global mutex before
         writing (log_builder.ml:132-136), so a thread that has already mutated may be waiting for
@@ -1057,19 +1079,168 @@ class globalState = fun () ->
      saving entries, motherboard_builder.ml) subscribes here. *)
   method refresh_sketch_counter = refresh_sketch_counter
 
-  (* --- *)
-  method network_change : 'a. ('a -> unit) -> 'a -> unit =
-  fun action obj ->
-   GMain_actor.delegate (fun () ->
-   begin
-    action obj;
+  (* Editing history belongs to GTK. Runtime actions are excluded: restoring a
+     topology is possible only once every node and its queued tasks have stopped. *)
+  method editing = edit_busy
+  method edit_history_counter = edit_history_counter
+  method private edit_notify = ignore (Cortex.move edit_history_counter ((+) 1))
+
+  method private edit_content () = {
+    topology = self#network#to_tree;
+    tables = self#get_treeview_complete_forest_list;
+    scripts = List.map (fun c -> c#get_name, c#rc_contents) self#network#components;
+    traces = List.map (fun n -> n#get_name, n#has_left_traces) self#network#get_node_list;
+  }
+  method private edit_equal a b =
+    let clean tables = List.map2 (fun tv forest -> Forest.map tv#remove_reserved_fields forest)
+      self#get_treeview_list tables in
+    a.topology = b.topology && clean a.tables = clean b.tables
+    && a.scripts = b.scripts && a.traces = b.traces
+
+  method private edit_capture () =
+    let content = self#edit_content () in
+    { content; files = Edit_files.capture self#network#project_root_pathname }
+  method private edit_discard entries =
+    List.iter (fun (before, after) ->
+      Edit_files.discard before.files; Edit_files.discard after.files) entries
+  method private clear_edit_history =
+    GMain_actor.apply_extract (fun () ->
+      self#edit_discard (edit_undo @ edit_redo);
+      edit_undo <- []; edit_redo <- []; self#edit_notify) ()
+  method private edit_allowed =
+    self#active_project && not edit_busy
+    && List.for_all (fun n -> n#can_destroy) self#network#get_node_list
+  method can_undo = self#edit_allowed && edit_undo <> []
+  method can_redo = self#edit_allowed && edit_redo <> []
+
+  method private edit_restore snapshot =
+    Edit_files.restore ~root:self#network#project_root_pathname snapshot.files;
+    List.iter2 (fun tv forest -> tv#set_forest forest) self#get_treeview_list snapshot.content.tables;
+    let root, children = snapshot.content.topology in
+    self#network#from_tree root children;
+    List.iter (fun (name, scripts) ->
+      let c = self#network#get_component_by_name name in
+      List.iter (fun (basename, content) ->
+        if not (c#set_rc_content ~basename ~content) then
+          failwith ("Cannot restore startup script: " ^ name)) scripts) snapshot.content.scripts;
+    List.iter (fun (name, ran) ->
+      if ran then (self#network#get_node_by_name name)#remember_previous_run) snapshot.content.traces;
+    if not (self#edit_equal (self#edit_content ()) snapshot.content) then
+      failwith "The restored network differs from the editing snapshot";
+    project_dirty <- (match edit_saved_content with
+      | Some saved -> not (self#edit_equal snapshot.content saved)
+      | None -> true);
     self#dotoptions#shuffler_reset;
     self#dotoptions#extrasize_reset;
-    (* A network change (adding, removing or updating a component) is a change of the
-       persistent model, unlike a mere state transition of a component: *)
-    self#set_project_not_already_saved;
     self#refresh_sketch;
-   end) ()
+    ignore (Cortex.move project_status_counter ((+) 1))
+
+  method private edit_step ~redo () =
+    GMain_actor.apply_extract (fun () ->
+      let entries = if redo then edit_redo else edit_undo in
+      match entries with
+      | [] -> ()
+      | (before, after) :: rest when self#edit_allowed ->
+          let expected, target = if redo then before, after else after, before in
+          if not (self#edit_equal (self#edit_content ()) expected.content) then begin
+            self#clear_edit_history;
+            self#flash (s_ "edit.history_changed")
+          end else begin
+            edit_busy <- true;
+            self#mainwin#window_MARIONNET#misc#set_sensitive false;
+            self#edit_notify;
+            ignore (Thread.create (fun () ->
+              let reset_started = ref false in
+              let reset () =
+                Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks;
+                GMain_actor.apply_extract (fun () ->
+                  if not !reset_started then begin
+                    if not (List.for_all (fun n -> n#can_destroy) self#network#get_node_list) then
+                      failwith (s_ "edit.stop_network");
+                    if not (self#edit_equal (self#edit_content ()) expected.content) then
+                      failwith (s_ "edit.history_changed")
+                  end;
+                  reset_started := true;
+                  self#network#reset ()) ();
+                Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks
+              in
+              let result =
+                try
+                  reset ();
+                  GMain_actor.apply_extract (fun () -> self#edit_restore target) ();
+                  Ok ()
+                with e ->
+                  (if !reset_started then
+                    try reset (); GMain_actor.apply_extract (fun () -> self#edit_restore expected) ()
+                    with rollback -> Log.printf1 "Undo rollback failed: %s\n" (Printexc.to_string rollback));
+                  Error e
+              in
+              GMain_actor.delegate (fun () ->
+                edit_busy <- false;
+                self#mainwin#window_MARIONNET#misc#set_sensitive true;
+                (match result with
+                | Ok () ->
+                    if redo then begin edit_redo <- rest; edit_undo <- (before, after) :: edit_undo end
+                    else begin edit_undo <- rest; edit_redo <- (before, after) :: edit_redo end;
+                    self#flash (s_ (if redo then "edit.redone" else "edit.undone"))
+                | Error e ->
+                    self#clear_edit_history;
+                    Simple_dialogs.error (s_ "edit.failed") (Glib.Markup.escape_text (Printexc.to_string e)) ());
+                self#edit_notify
+              ) ()
+            ) ())
+          end
+      | _ -> self#flash (s_ "edit.stop_network")
+    ) ()
+  method undo () = self#edit_step ~redo:false ()
+  method redo () = self#edit_step ~redo:true ()
+
+  method network_change : 'a. ('a -> unit) -> 'a -> unit =
+  fun action obj ->
+    GMain_actor.apply_extract (fun () ->
+      if edit_busy then failwith "A network edit is being restored";
+      let before = if self#edit_allowed then
+        try Some (self#edit_capture ()) with e ->
+          Log.printf1 "Cannot retain edit history: %s\n" (Printexc.to_string e);
+          self#flash (s_ "edit.unavailable"); None
+        else None in
+      (match before, edit_undo with
+       | Some current, (_, previous) :: _ when not (self#edit_equal current.content previous.content) ->
+           self#clear_edit_history
+       | None, _ -> self#clear_edit_history
+       | _ -> ());
+      (try action obj with e ->
+        Option.iter (fun snapshot -> Edit_files.discard snapshot.files) before;
+        self#clear_edit_history;
+        self#set_project_not_already_saved; self#refresh_sketch;
+        raise e);
+      (match before with
+       | Some before ->
+           (try
+           let after = self#edit_capture () in
+           if self#edit_equal before.content after.content then begin
+             Edit_files.discard before.files; Edit_files.discard after.files
+           end else begin
+             self#edit_discard edit_redo; edit_redo <- [];
+             edit_undo <- (before, after) :: edit_undo;
+             if List.length edit_undo > 30 then begin
+               let kept = List.filteri (fun index _ -> index < 30) edit_undo in
+               let dropped = List.filteri (fun index _ -> index >= 30) edit_undo in
+               edit_undo <- kept; self#edit_discard dropped
+             end
+           end
+           with e ->
+             Edit_files.discard before.files;
+             self#clear_edit_history;
+             Log.printf1 "Cannot retain edit history: %s\n" (Printexc.to_string e);
+             self#flash (s_ "edit.unavailable"))
+       | None -> ());
+      self#dotoptions#shuffler_reset;
+      self#dotoptions#extrasize_reset;
+      self#set_project_not_already_saved;
+      self#refresh_sketch;
+      self#edit_notify
+    ) ()
 
  (* Begin of methods moved from talking.ml *)
  method make_names_and_thunks ?(node_list=self#network#get_node_list) (verb) (what_to_do_with_a_node) =
@@ -1162,6 +1333,7 @@ class globalState = fun () ->
     In every other case — the ordinary one — the method keeps its former behaviour to the letter:
     same thread, tasks scheduled on the task runner before returning. *)
  method startup_everything () =
+  if edit_busy then failwith "A network edit is being restored";
   let startup () =
     self#do_something_with_every_node_in_sequence
       ~node_list:(self#network#get_nodes_that_can_startup ())
@@ -1218,7 +1390,7 @@ class globalState = fun () ->
     the condition of the sensitive_when_Saveable stack: the forbidding is thus read *before*
     the gesture, not after it. *)
  method is_project_saveable =
-   self#active_project && (not (self#is_there_something_on_or_sleeping ()))
+   self#active_project && not edit_busy && (not (self#is_there_something_on_or_sleeping ()))
 
  (* End of functions moved from talking.ml *)
 

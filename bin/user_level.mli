@@ -64,6 +64,7 @@ class virtual ['a] simulated_device :
        hence produced states, journals or archived documents? It is a *fact* about the component,
        not the policy — the policy is in [can_destroy] — and the control channel reads it to name
        the real reason of a refusal instead of blaming the state. *)
+    method remember_previous_run : unit
     method has_left_traces : bool
     (* --- *)
     method create : unit
@@ -264,6 +265,7 @@ class virtual node_with_ports_card :
        hence produced states, journals or archived documents? It is a *fact* about the component,
        not the policy — the policy is in [can_destroy] — and the control channel reads it to name
        the real reason of a refusal instead of blaming the state. *)
+    method remember_previous_run : unit
     method has_left_traces : bool
     method create : unit
     method create_right_now : unit
@@ -393,6 +395,7 @@ class virtual node_with_defects :
        hence produced states, journals or archived documents? It is a *fact* about the component,
        not the policy — the policy is in [can_destroy] — and the control channel reads it to name
        the real reason of a refusal instead of blaming the state. *)
+    method remember_previous_run : unit
     method has_left_traces : bool
     method create : unit
     method create_right_now : unit
@@ -514,6 +517,7 @@ class virtual node_with_ledgrid_and_defects :
        hence produced states, journals or archived documents? It is a *fact* about the component,
        not the policy — the policy is in [can_destroy] — and the control channel reads it to name
        the real reason of a refusal instead of blaming the state. *)
+    method remember_previous_run : unit
     method has_left_traces : bool
     method create : unit
     method create_right_now : unit
@@ -699,6 +703,7 @@ class type virtual cable =
        hence produced states, journals or archived documents? It is a *fact* about the component,
        not the policy — the policy is in [can_destroy] — and the control channel reads it to name
        the real reason of a refusal instead of blaming the state. *)
+    method remember_previous_run : unit
     method has_left_traces : bool
     method create : unit
     method create_right_now : unit

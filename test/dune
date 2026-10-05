@@ -10,7 +10,7 @@
 ;; their codecs, deliberately kept out of the Gtk+ module Treeview so that they can be
 ;; tested without a display.
 (tests
- (names marionnet xforest_json treeview_json project_archive_test sketch_renderer_test)
- (modules marionnet xforest_json treeview_json utf_8_reference project_archive_test sketch_renderer_test)
+ (names marionnet xforest_json treeview_json project_archive_test sketch_renderer_test edit_files_test)
+ (modules marionnet xforest_json treeview_json utf_8_reference project_archive_test sketch_renderer_test edit_files_test)
  (libraries ocamlbricks marionnet_base)
  )

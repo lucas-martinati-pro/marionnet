@@ -595,6 +595,9 @@ let cmd_status (st : State.globalState) ~(timeout:float) : string =
             ("file",     jopt file);
             ("runnable", jbool runnable);
             ("saved",    jbool saved);
+            ("can_undo", jbool st#can_undo);
+            ("can_redo", jbool st#can_redo);
+            ("editing",  jbool st#editing);
             ("nodes",    jint nodes);
             (* Exam locks (journalisation-profonde, episode 22). [can] publishes what a *component*
                allows, which is enough for [poweroff] and [del]; it says nothing about the four
@@ -2229,6 +2232,7 @@ let cmd_transition (st : State.globalState) ~(timeout:float) ~(action:string) ~(
   | None ->
   ask ~timeout
     (fun () ->
+       if st#editing then failwith "A network edit is being restored";
        match List.find_opt (fun n -> n#get_name = name) (st#network#get_node_list) with
        | Some n ->
            (match transition_of_node action n with

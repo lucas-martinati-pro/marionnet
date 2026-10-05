@@ -200,6 +200,7 @@ module User_level_machine : sig
       (* Exam locks (journalisation-profonde, episode 22): has this component run at least once,
          hence produced states, journals or archived documents? A fact, not the policy — the
          policy is [can_destroy] — read by the control server to name the reason of a refusal. *)
+      method remember_previous_run : unit
       method has_left_traces                 : bool
       (* --- *)
       method add_my_history                  : unit

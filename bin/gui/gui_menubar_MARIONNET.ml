@@ -459,6 +459,24 @@ let project_quit = Created_entry_project_quit.item
  * **************************************** *)
 
 (* --- *)
+let edit = add_menu (s_ "edit.menu")
+let editing_text () =
+  try
+    let focus = GtkWindow.Window.get_focus st#mainwin#window_MARIONNET#as_window in
+    Gobject.is_a focus "GtkEditable" || Gobject.is_a focus "GtkTextView"
+  with Gpointer.Null -> false
+let undo = edit#add_item (s_ "edit.undo") ~key:_z ~callback:(fun () -> if not (editing_text ()) then st#undo ())
+let redo = edit#add_item (s_ "edit.redo") ~key:_y ~callback:(fun () -> if not (editing_text ()) then st#redo ())
+let () = redo#add_accelerator ~group:edit#accel_group ~modi:[`CONTROL; `SHIFT] _z
+let () =
+  let update () = GMain_actor.delegate ~async:() (fun () ->
+    undo#misc#set_sensitive st#can_undo;
+    redo#misc#set_sensitive st#can_redo) () in
+  ignore (Ocamlbricks.Cortex.on_commit_append st#edit_history_counter (fun _ _ -> update ()));
+  ignore (Ocamlbricks.Cortex.on_commit_append st#refresh_sketch_counter (fun _ _ -> update ()));
+  ignore (Ocamlbricks.Cortex.on_commit_append st#project_paths#filename (fun _ _ -> update ()));
+  update ()
+
 let options = add_menu (s_ "_Options")
 
 (* --- *)

@@ -122,3 +122,34 @@ du paquet sous `/usr/share/marionnet`, tout en conservant explicitement les
 chemins existants des images et noyaux sous `/usr/local/share/marionnet`. Une
 copie des configurations système et utilisateur originales est gardée avant
 cette adaptation ; le préfixe effectif est contrôlé avec `marionnet --paths`.
+
+## Annuler et rétablir les modifications du réseau
+
+Le menu Édition propose Annuler (`Ctrl+Z`) et Rétablir (`Ctrl+Y`, également
+`Ctrl+Maj+Z`). Il conserve les trente dernières modifications effectuées par les
+actions d'ajout, de propriétés et de suppression, ainsi que par leurs équivalents
+du canal de contrôle. Une nouvelle modification abandonne la branche de
+rétablissement ; changer de projet vide l'historique. Revenir à la configuration
+sauvegardée retire la pastille de modification.
+
+Cette première étape agit sur un réseau arrêté. Elle restaure la topologie, les
+paramètres des composants, les tables associées et les scripts de démarrage.
+Les démarrages/arrêts et les modifications directes des cellules des tableaux
+n'entrent pas dans l'historique : si ces dernières ont changé les données depuis
+l'édition enregistrée, l'annulation refuse de les écraser et réinitialise son
+historique. Les restrictions du mode examen restent vérifiées.
+
+Les fichiers supprimés avec un composant sont retenus par des liens physiques
+privés dans `tmp/`, sans copie des gros fichiers COW ni restauration d'anciens
+contenus de disques. Les scripts de démarrage sont conservés en mémoire. Les
+états et journaux restent associés au composant restauré. La restauration attend
+les tâches de simulation hors du thread GTK ; un échec tente de rétablir le
+réseau courant et affiche son diagnostic. Les fichiers d'historique sont exclus
+des archives `.mar`.
+
+Vérification : `opam exec -- dune build @install @check @runtest`, puis
+`xvfb-run -a python3 driven-sessions/undo.py`. Le banc GTK exerce les vrais
+raccourcis, les renommages avec câbles, suppression/rétablissement, la branche
+abandonnée et la restauration des fichiers d'une machine. Le test de fichiers
+exerce un vrai disque sparse, ses inodes et dates, un lien symbolique et un
+répertoire en lecture seule.
