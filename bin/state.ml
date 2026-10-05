@@ -398,7 +398,8 @@ class globalState = fun () ->
       (* Update the network sketch (now empty). This method runs in its own thread, so the widget
          call goes through the actor — same discipline as really_refresh_sketch below, and the
          same reason as the treeview mutations (episodes 9 and 10). *)
-      let () = GMain_actor.apply_extract (fun () -> self#mainwin#sketch#set_file "") () in
+      let () = GMain_actor.apply_extract (fun () ->
+        self#cancel_sketch_render; self#mainwin#sketch#clear ()) () in
       (* --- *)
       let () = Task_runner.the_task_runner#wait_for_all_currently_scheduled_tasks in
       (* --- *)
@@ -706,8 +707,11 @@ class globalState = fun () ->
      Note that this flag is *not* related to the sketch refreshing: starting, stopping
      or suspending a component redraws the sketch but changes nothing persistent. *)
   val mutable project_dirty = true
+  val project_status_counter = Cortex.return 0
+  method project_status_counter = project_status_counter
   method set_project_not_already_saved =
-   project_dirty <- true
+   project_dirty <- true;
+   ignore (Cortex.move project_status_counter (fun n -> n + 1))
 
   method treeview =
    object
@@ -766,6 +770,7 @@ class globalState = fun () ->
         the mutations; the line dates the event, it does not order it. *)
      Log.printf "state#register_state_after_save_or_open: the project is registered as saved\n";
      treeview_forest_list_after_save <- Some (self#get_treeview_complete_forest_list);
+     ignore (Cortex.move project_status_counter (fun n -> n + 1));
    end
 
   method project_already_saved =
@@ -964,73 +969,78 @@ class globalState = fun () ->
       with e -> (raise e)
     end
 
-  val sketch_render_mutex = Mutex.create ()
+  (* Scheduling state belongs exclusively to GTK. Workers only receive immutable
+     snapshots; they never inspect a changing network or touch a widget. *)
+  val mutable sketch_generation = 0
   val mutable sketch_render_in_progress = false
-  val mutable sketch_render_pending = false
+  val mutable sketch_timer : GMain.Timeout.id option = None
+  val mutable sketch_pending : (int * Sketch_renderer.request) option = None
+  val mutable sketch_last_rendered : Sketch_renderer.request option = None
 
-  method private schedule_sketch_render =
-    Mutex.lock sketch_render_mutex;
-    if sketch_render_in_progress then begin
-      sketch_render_pending <- true;
-      Mutex.unlock sketch_render_mutex
-    end else begin
-      sketch_render_in_progress <- true;
-      Mutex.unlock sketch_render_mutex;
-      self#do_async_sketch_render ()
-    end
+  method private cancel_sketch_render =
+    sketch_generation <- sketch_generation + 1;
+    (match sketch_timer with None -> () | Some id -> GMain.Timeout.remove id);
+    sketch_timer <- None;
+    sketch_pending <- None;
+    sketch_last_rendered <- None
 
-  method private do_async_sketch_render () =
-    ignore (Thread.create (fun () ->
-      let () = Log.printf "About to refresh the sketch\n" in
-      begin try
-        let fs = self#project_paths#dotSketchFile in
-        let ft = self#project_paths#pngSketchFile in
-        let dot_content = self#network#dotTrad () in
-        let splines = string_of_bool (Cortex.get self#network#dotoptions#curved_lines) in
-        let ch = open_out fs in
-        output_string ch dot_content;
-        close_out ch;
-        let cmdline =
-          Printf.sprintf "dot -Gsplines=%s -Efontname=FreeSans -Nfontname=FreeSans -Tpng -o '%s' '%s' 2>/dev/null" splines ft fs
-        in
-        let exit_code = Sys.command cmdline in
-        GMain_actor.delegate ~async:() (fun () ->
-          try
-            self#mainwin#sketch#set_file (self#project_paths#pngSketchFile);
-            if exit_code <> 0 then
-              Simple_dialogs.error
-                (s_ "dot failed")
-                (Printf.sprintf
-                    (f_ "Invoking dot failed. Did you install graphviz?\n\
-The command line is\n%s\nand the exit code is %i.\n\
-Marionnet will work, but you will not see the network graph picture until you fix the problem.\n\
-There is no need to restart the application.")
-                    cmdline
-                    exit_code)
-                ()
-          with e ->
-            Log.printf1
-              "Warning: exception updating sketch widget:\n%s\nIgnoring.\n"
-              (Printexc.to_string e)
-        ) ()
-      with e ->
-        Log.printf1
-           "Warning: exception raised in really_refresh_sketch:\n%s\nIgnoring.\n"
-           (Printexc.to_string e)
-      end;
-      Mutex.lock sketch_render_mutex;
-      if sketch_render_pending then begin
-        sketch_render_pending <- false;
-        Mutex.unlock sketch_render_mutex;
-        self#do_async_sketch_render ()
-      end else begin
-        sketch_render_in_progress <- false;
-        Mutex.unlock sketch_render_mutex
-      end
-    ) ())
+  method private start_pending_sketch_render =
+    if not sketch_render_in_progress then
+      match sketch_pending with
+      | None -> ()
+      | Some (generation, request) ->
+          sketch_pending <- None;
+          if sketch_last_rendered = Some request then () else begin
+            sketch_render_in_progress <- true;
+            ignore (Thread.create (fun () ->
+              Log.printf "About to refresh the sketch\n";
+              let result = Sketch_renderer.render ~spawn:Simulation_level.spawn_process request in
+              GMain_actor.delegate ~async:() (fun () ->
+                sketch_render_in_progress <- false;
+                let current = generation = sketch_generation
+                  && self#active_project
+                  && self#project_paths#pngSketchFile = request.Sketch_renderer.png_file in
+                (try
+                  match result with
+                  | Ok rendered when current ->
+                      Sketch_renderer.publish rendered;
+                      self#mainwin#sketch#set_file request.Sketch_renderer.png_file;
+                      sketch_last_rendered <- Some request
+                  | Ok rendered -> Sketch_renderer.discard rendered
+                  | Error details when current ->
+                      Log.printf1 "Sketch rendering failed: %s\n" details;
+                      Simple_dialogs.error (s_ "dot failed")
+                        (s_ "workspace.render_failed" ^ "\n\n" ^ Glib.Markup.escape_text details) ()
+                  | Error _ -> ()
+                with e ->
+                  Log.printf1 "Cannot publish network drawing: %s\n" (Printexc.to_string e));
+                self#start_pending_sketch_render
+              ) ()
+            ) ())
+          end
 
   method private really_refresh_sketch =
-    self#schedule_sketch_render
+    GMain_actor.delegate ~async:() (fun () ->
+      sketch_generation <- sketch_generation + 1;
+      (match sketch_timer with None -> () | Some id -> GMain.Timeout.remove id);
+      sketch_timer <- None;
+      sketch_pending <- None;
+      if self#active_project then
+        sketch_timer <- Some (GMain.Timeout.add ~ms:120 ~callback:(fun () ->
+          sketch_timer <- None;
+          if self#active_project then begin
+            let request = {
+              Sketch_renderer.dot_file = self#project_paths#dotSketchFile;
+              png_file = self#project_paths#pngSketchFile;
+              content = self#network#dotTrad ();
+              splines = Cortex.get self#network#dotoptions#curved_lines;
+            } in
+            sketch_pending <- Some (sketch_generation, request);
+            self#start_pending_sketch_render
+          end;
+          false))
+      else self#cancel_sketch_render
+    ) ()
 
   (* The structure (counter) for the reactive sketch refreshing. It is purely internal:
      nothing but the rendering depends on it (in particular, not `project_already_saved'). *)

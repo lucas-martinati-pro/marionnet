@@ -636,10 +636,10 @@
     <property name="can-focus">False</property>
     <property name="title" translatable="yes">Marionnet</property>
     <property name="window-position">center</property>
-    <property name="default-width">350</property>
-    <!-- No default-height: what the window needs is measured at run time, once the
-         components palette is filled (bin/gui/gui_window_MARIONNET.ml). A constant here
-         was at once too tall on one machine and too short on the next. -->
+    <property name="default-width">1024</property>
+    <property name="default-height">680</property>
+    <!-- Initial workspace size; the runtime measurement still makes room for the
+         component palette on themes with larger controls. -->
     <property name="icon">../images/marionnet-launcher.png</property>
     <child>
       <object class="GtkVBox" id="vbox1">

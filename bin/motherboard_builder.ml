@@ -35,22 +35,6 @@ module Make (S : sig val st:State.globalState end) = struct
  let w = S.st#mainwin
 
   (* ----------------------------------------
-              Reactive window title
-     ---------------------------------------- *)
-
-  (* Reactive setting: S.st#project_filename -> w#window_MARIONNET#title *)
-  let update_main_window_title : Thunk.id =
-    Cortex.on_commit_append
-      (S.st#project_paths#filename)
-      (fun _ filename ->      (* previous and commited state *)
-         let title = match filename with
-         | None          ->  Initialization.window_title
-         | Some filename ->  Printf.sprintf "%s - %s" (Initialization.window_title) (filename)
-         in
-         w#window_MARIONNET#set_title (title)
-         )
-
-  (* ----------------------------------------
             Reactive sensitiveness
      ---------------------------------------- *)
 

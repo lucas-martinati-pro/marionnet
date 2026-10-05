@@ -657,7 +657,15 @@ let () = begin
 st#mainwin#toplevel#set_icon (Some Icon.icon_pixbuf);
 st#mainwin#window_MARIONNET#set_title Initialization.window_title;
 
-StackExtra.push (st#mainwin#notebook_CENTRAL#coerce) (st#sensitive_when_Active);
+(* Keep the workspace and its guidance readable with no project open. Disable
+   the editing controls individually rather than dimming the whole notebook. *)
+List.iter (fun widget -> StackExtra.push widget st#sensitive_when_Active)
+  [ st#mainwin#toolbar_COMPONENTS#coerce;
+    st#mainwin#toolbar_DOT_TUNING#coerce;
+    st#mainwin#ifconfig_viewport#coerce;
+    st#mainwin#defects_viewport#coerce;
+    st#mainwin#filesystem_history_viewport#coerce;
+    st#mainwin#documents_viewport#coerce ];
 StackExtra.push (st#mainwin#hbox_BASE#coerce)        (st#sensitive_when_Runnable);
 
 let () = Motherboard.sensitive_widgets_initializer () in

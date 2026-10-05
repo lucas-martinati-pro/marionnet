@@ -605,13 +605,13 @@ in
    unlike `NEVER', without letting the content determine the size (gtkscrolledwindow.h). The two
    scrollbars below -- the ones the user sees -- keep driving it: gtk_scrolled_window_add hands
    the child its own adjustments, and they are built after the view.
-   The HORIZONTAL policy stays `NEVER' on purpose, which is what propagates the width: the width
-   of the columns is what has always decided how wide the main window opens (measured: 1130 px
-   here, 814 px in the classroom), and `EXTERNAL' on both axes drops it to 595 px -- a change
-   nobody asked for. Only the height was broken; only the height is changed. *)
+   Both axes use `EXTERNAL': the columns must not impose their full width on
+   the main window either. The workspace now chooses its initial size to fit
+   the screen; wide tables remain reachable through the horizontal scrollbar
+   below, which already drives the view's adjustment. *)
 let scrolled =
   GBin.scrolled_window
-    ~hpolicy:`NEVER
+    ~hpolicy:`EXTERNAL
     ~vpolicy:`EXTERNAL
     ~shadow_type:`NONE
     ~packing:(hbox#pack ~expand:true ~padding:0)

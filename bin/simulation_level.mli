@@ -20,6 +20,12 @@ exception ProcessIsntInTheRightState of string
 type process_name = string
 type pid = int
 
+(** Launch through the permanent spawner thread, using the application's
+    parent-death signal policy. The caller owns waiting for the returned PID. *)
+val spawn_process :
+  ?environment:string array -> string -> string array ->
+  Unix.file_descr -> Unix.file_descr -> Unix.file_descr -> pid
+
 class virtual process :
   process_name ->
   process_name list ->

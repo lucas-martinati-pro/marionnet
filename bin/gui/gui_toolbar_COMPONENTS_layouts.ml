@@ -50,13 +50,36 @@ let append_image_menu_v0 (toolbar:GButton.toolbar) filename tooltip =
   result
 
 (* NEW version, lablgtk3 compatible: *)
-let append_image_menu(*_v1*) (toolbar:GButton.toolbar) filename tooltip =
-  let slot    = GButton.tool_item ~packing:toolbar#insert () in
-  let box     = GPack.hbox ~border_width:2 ~packing:(slot#add) ~show:true () in
-  let menubar = GMenu.menu_bar ~border_width:0 ~width:0 ~height:56 (* 60 *) ~packing:(box#pack) () in
-  let result  : GMenu.menu_item = Menu_factory.Image_menu_item.make ~file:(Filename.concat Initialization.Path.images filename) ~text:" 🢒" () in
-  let () = menubar#add (result) in
-  let () = GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip in
+let append_image_menu (toolbar:GButton.toolbar) filename tooltip =
+  let slot = GButton.tool_item ~packing:toolbar#insert () in
+  let menubar = GMenu.menu_bar ~border_width:0 ~packing:slot#add () in
+  let result = GMenu.menu_item ~show:true ~packing:menubar#add () in
+  let row = GPack.hbox ~spacing:8 ~border_width:3 ~show:true ~packing:result#add () in
+  let file = Filename.concat Initialization.Path.images filename in
+  let pixbuf = GdkPixbuf.from_file_at_size file ~width:32 ~height:32 in
+  let _image = GMisc.image ~pixbuf ~width:32 ~height:32 ~show:true
+    ~packing:(row#pack ~expand:false) () in
+  let label = match filename with
+    | "ico.machine.palette.png" -> s_ "Machine"
+    | "ico.hub.palette.png" -> s_ "workspace.palette.hub"
+    | "ico.switch.palette.png" -> s_ "workspace.palette.switch"
+    | "ico.router.palette.png" -> s_ "Router"
+    | "ico.cloud.palette.png" -> s_ "workspace.palette.cloud"
+    | "ico.world.palette.png" -> s_ "workspace.palette.world"
+    | "ico.cable.direct.palette.png" -> s_ "workspace.palette.cable"
+    | "ico.cable.crossed.palette.png" -> s_ "workspace.palette.crossover"
+    | _ -> tooltip
+  in
+  let _label = GMisc.label ~text:label ~xalign:0. ~show:true
+    ~packing:(row#pack ~expand:true) () in
+  let _arrow = GMisc.label ~text:"▸" ~show:true ~packing:(row#pack ~expand:false) () in
+  GtkBase.Widget.Tooltip.set_text slot#as_widget tooltip;
+  (try
+    let provider = GObj.css_provider () in
+    provider#load_from_data "menubar { background: transparent; box-shadow: none; border: none; } menuitem { border-radius: 6px; }";
+    menubar#misc#style_context#add_provider provider 600;
+    result#misc#style_context#add_provider provider 600
+  with _ -> ());
   result
 
 end (* module Toolbar *)
@@ -279,4 +302,3 @@ module Layout_for_network_edge
  let () = StackExtra.push (Created_Add.item#coerce) (State.st#sensitive_cable_menu_entries)
 
 end
-

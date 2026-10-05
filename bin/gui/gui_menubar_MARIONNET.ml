@@ -202,6 +202,7 @@ let project_open = Created_entry_project_open.item
 let project_save =
   add_stock_item (s_ "Save" )
     ~stock:`SAVE
+    ~key:_S
     ~callback:(fun () ->
       if st#is_there_something_on_or_sleeping ()
 	then Msg.error_saving_while_something_up ()

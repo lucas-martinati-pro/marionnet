@@ -225,7 +225,8 @@ module Make_menus (Params : sig
   module Add = struct
     include Data
 
-    let key = Some GdkKeysyms._N
+    (* Ctrl+N belongs to the project New action. *)
+    let key = None
 
     (* Two questions, in that order: the name, as everywhere else, and -- when IPv6
        is enabled -- the address. The red text of the entry is a hint, not a

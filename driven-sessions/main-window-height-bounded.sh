@@ -85,8 +85,8 @@ readonly SETTLE=10
 # bottom of the central area, above the collective action buttons. The x are the centres of
 # `Image', `Interfaces', `Defects' and `Disks'; the y is counted from the bottom edge. Both are
 # theme-dependent, which is why every click is WITNESSED (see click_tabs) instead of trusted.
-readonly TAB_XS=(160 264 369 473)
-readonly TAB_FROM_BOTTOM=173
+readonly TAB_XS=(236 355 473 591)
+readonly TAB_FROM_BOTTOM=113
 
 declare -i passed=0 failed=0 skipped=0
 declare tmpdir="" sock="" pid="" mrn_pid="" xvfb_pid="" display=""

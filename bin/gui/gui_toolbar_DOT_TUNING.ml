@@ -32,11 +32,31 @@ module Make (State : sig val st:State.globalState end)  = struct
 open State
 let w = st#mainwin
 
+(* A GtkToolbar can hide overflowing items without requesting their height.
+   Put the actual controls into a normal box so the scrolled window knows the
+   full content size, including the controls at the bottom. Widget identities
+   and all existing callbacks are preserved. *)
+let tuning_scroll =
+  w#hbox31#remove w#toolbar_DOT_TUNING#coerce;
+  let scroll = GBin.scrolled_window ~hpolicy:`NEVER ~vpolicy:`AUTOMATIC
+    ~shadow_type:`NONE ~width:82 ~packing:(w#hbox31#pack ~expand:false) () in
+  let controls = GPack.vbox ~spacing:4 ~show:true () in
+  List.iter (fun widget ->
+    let item = new GButton.tool_item (GtkButton.ToolItem.cast widget#as_widget) in
+    List.iter (fun child ->
+      item#remove child;
+      controls#pack ~expand:false ~fill:true child
+    ) item#children
+  ) w#toolbar_DOT_TUNING#children;
+  scroll#add_with_viewport controls#coerce;
+  Ocamlbricks.StackExtra.push scroll#coerce st#sensitive_when_Active;
+  scroll
+
 (* Labels *)
 let () = begin
  let set label text =
   label#set_use_markup true;
-  label#set_label ("<small><small>"^text^"</small></small>")
+  label#set_label ("<small>"^text^"</small>")
  in
  set w#label_DOT_TUNING_NODES  (s_ "Nodes")   ;
  set w#label_DOT_TUNING_EDGES  (s_ "Edges" )  ;

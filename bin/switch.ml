@@ -89,7 +89,8 @@ module Make_menus (Params : sig
   module Add = struct
     include Data
 
-    let key = Some GdkKeysyms._S
+    (* Ctrl+S belongs to the project Save action. *)
+    let key = None
 
     let ok_callback t = Gui_bricks.Ok_callback.check_name t.name t.old_name st#network#name_exists t
 

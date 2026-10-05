@@ -1,5 +1,11 @@
 # `driven-sessions/` — bancs rejouables, versionnés
 
+Le banc `workspace.py` vérifie la barre d’actions, les raccourcis, le statut du
+projet et le rendu du réseau dans une vraie session GTK sans invité. Il injecte
+un délai et une écriture partielle uniquement dans Graphviz. Commande :
+`xvfb-run -a python3 driven-sessions/workspace.py`. Détails dans
+[`docs/modernisation-interface.md`](../docs/modernisation-interface.md).
+
 Le banc `atomic-save.sh` vérifie la conservation du dernier `.mar` et du projet ouvert
 après une écriture partielle, puis la reprise et la réouverture. L'option `--gui` joue
 aussi les menus Fermer et Quitter avec réponse Oui (xdotool requis). Voir

@@ -47,6 +47,13 @@ module Motherboard = Motherboard_builder. Make (State)
 
 module Created_menubar_MARIONNET = Gui_menubar_MARIONNET.Make (State)
 
+module Workspace = Gui_workspace.Make (State) (struct
+  let new_project = Created_menubar_MARIONNET.Created_entry_project_new.callback
+  let open_project = Created_menubar_MARIONNET.Created_entry_project_open.callback
+  let save_project () = Created_menubar_MARIONNET.project_save#activate ()
+end)
+
+
 
 (* ***************************************** *
              notebook_CENTRAL
@@ -64,8 +71,8 @@ let () = begin
  let labels = get_tab_labels_of w#notebook_CENTRAL in
  let (l1,l2) = tuple2_of_list labels in
  List.iter (fun l -> l#set_use_markup true) labels ;
- l1#set_label (Printf.sprintf "<i>%s</i>" (s_ "Components"));
- l2#set_label (Printf.sprintf "<i>%s</i>" (s_ "Documents"));
+ l1#set_text (s_ "Components");
+ l2#set_text (s_ "Documents");
 end
 
 (* ***************************************** *
@@ -76,7 +83,7 @@ let () = begin
  let labels = get_tab_labels_of w#notebook_INTERNAL in
  let (l1,l2,l3,l4) = tuple4_of_list labels in
  List.iter (fun l -> l#set_use_markup true) labels ;
- let set l text = l#set_label ("<i>"^text^"</i>") in
+ let set l text = l#set_text text in
  set l1 (s_ "Image")       ;
  set l2 (s_ "Interfaces")  ;
  set l3 (s_ "Defects")     ;
@@ -161,6 +168,29 @@ let button_BASE_POWEROFF_EVERYTHING =
   in
   let () = if not allowed then button#misc#set_sensitive false in
   button
+
+(* Show which collective gestures are useful in the current state. The parent
+   box still follows project availability; the model remains the authority for
+   every callback and for the exam restrictions. *)
+let () =
+  let update () =
+    GMain_actor.delegate ~async:() (fun () ->
+      let nodes = st#network#get_node_list in
+      let active = st#active_project in
+      button_BASE_STARTUP_EVERYTHING#misc#set_sensitive
+        (active && List.exists (fun n -> n#can_startup) nodes);
+      button_BASE_SHUTDOWN_EVERYTHING#misc#set_sensitive
+        (active && List.exists (fun n -> n#can_gracefully_shutdown) nodes);
+      button_BASE_POWEROFF_EVERYTHING#misc#set_sensitive
+        (active && Initialization.are_we_allowed_to_poweroff
+         && List.exists (fun n -> n#can_poweroff) nodes);
+      button_BASE_PAUSE_SOMETHING#misc#set_sensitive
+        (active && st#network#get_component_names_that_can_suspend_or_resume () <> [])
+    ) ()
+  in
+  ignore (Ocamlbricks.Cortex.on_commit_append st#refresh_sketch_counter (fun _ _ -> update ()));
+  ignore (Ocamlbricks.Cortex.on_commit_append st#project_paths#filename (fun _ _ -> update ()));
+  update ()
 
 (* Just a thunk, the button is not really built. We leave this code
    in order to not remove the gettext key associated to this `tooltip'
