@@ -132,13 +132,16 @@ if [ -f "$LOCAL_BIN" ]; then
 fi
 NEED_BUILD=false
 if [ ! -f "$LOCAL_BIN" ]; then
-  echo "--> Binaire non trouvé. Compilation avec dune..."
   NEED_BUILD=true
 elif [ -n "$EXPECTED_VERSION" ] && [ "$LOCAL_VER" != "$EXPECTED_VERSION" ]; then
-  echo "--> Binaire local périmé ($LOCAL_VER contre $EXPECTED_VERSION). Reconstruction avec dune..."
   NEED_BUILD=true
 fi
 if [ "$BUILD_LOCAL" = true ] && [ "$NEED_BUILD" = true ]; then
+  if [ -f "$LOCAL_BIN" ]; then
+    echo "--> Binaire local périmé ($LOCAL_VER contre $EXPECTED_VERSION). Reconstruction avec dune..."
+  else
+    echo "--> Binaire non trouvé. Compilation avec dune..."
+  fi
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
     su - "$SUDO_USER" -c "cd '$REPO_ROOT' && if command -v opam >/dev/null 2>&1; then opam exec -- dune build; else dune build; fi"
   elif command -v opam >/dev/null 2>&1; then
