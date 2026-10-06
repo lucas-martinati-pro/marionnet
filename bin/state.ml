@@ -588,10 +588,9 @@ class globalState = fun () ->
         self#load_treeviews ~project_version ()
       with e -> begin
         Log.printf1 "state#open_project_async: load_treeviews failed: %s\n" (Printexc.to_string e);
-        Simple_dialogs.error
-          (s_ "label.failed_loading_project")
-          (Printexc.to_string e)
-          ()
+        Simple_dialogs.report_exception ~title:(s_ "label.failed_loading_project")
+          ~message:(s_ "label.failed_loading_project") ~filename
+          ~advice:(s_ "error.advice.import") e ()
         end);
       (* --- *)
       Log.printf ("state#open_project_async: calling import_network\n");
@@ -635,10 +634,10 @@ class globalState = fun () ->
           (* Report the failure properly, including the import warnings that may
              explain it (e.g. an abandoned distribution with saved disk states): *)
           let ws = List.map User_level.string_of_import_warning self#network#get_and_reset_import_warnings in
-          Simple_dialogs.error
-            (s_ "label.failed_loading_project")
-            (String.concat "\n\n" (ws @ [Printexc.to_string e]))
-            ()
+          Simple_dialogs.report_error ~title:(s_ "label.failed_loading_project")
+            ~message:((s_ "label.failed_loading_project") ^ "\n" ^ filename)
+            ~advice:(s_ "error.advice.open")
+            ~details:(String.concat "\n\n" (ws @ [Printexc.to_string e])) ()
         end
       in
       let () = GMain_actor.delegate import () in
@@ -682,24 +681,18 @@ class globalState = fun () ->
 		      (s_ "label.project_format_not_recognized"),
 		      (s_ "error.project_unknown_format")
 		in
-		let error_msg =
-		  Printf.sprintf "<tt><small>%s</small></tt>\n\n%s%s"
-		    filename
-		    explanation
-		    (match tag with None -> "" | Some t -> Printf.sprintf "\n\n<tt>version = %s</tt>" t)
-		in
-		Simple_dialogs.error title error_msg ();
+                Simple_dialogs.report_error ~title
+                  ~message:(filename ^ "\n\n" ^ explanation)
+                  ~advice:(s_ "error.advice.open")
+                  ~details:(match tag with None -> "No project version tag" | Some t -> "version = " ^ t) ();
 		raise e;
 	      end
 	    | e ->
 	      begin
 		Log.printf1 "Failed loading the project `%s'. The next reported exception is harmless.\n" filename;
-		let error_msg =
-		  Printf.sprintf "<tt><small>%s</small></tt>\n\n%s"
-		    filename
-		    (s_ "label.please_ensure_file_well_formed")
-		in
-		Simple_dialogs.error (s_ "label.failed_loading_project") error_msg ();
+                Simple_dialogs.report_exception ~title:(s_ "label.failed_loading_project")
+                  ~message:(s_ "label.failed_loading_project") ~filename
+                  ~advice:(s_ "error.advice.open") e ();
 		raise e;
 	      end)) ()
     in
@@ -949,11 +942,9 @@ class globalState = fun () ->
     with e -> begin
       Log.printf1 "state#save_project END. FAILED: %s\n" (Printexc.to_string e);
       self#set_project_not_already_saved;
-      Simple_dialogs.error
-        (s_ "label.save")
-        ((s_ "label.failed_save_project_into_file") ^ (Glib.Markup.escape_text filename)
-         ^ "\n\n" ^ (Glib.Markup.escape_text (Printexc.to_string e)))
-        ()
+      Simple_dialogs.report_exception ~title:(s_ "label.save")
+        ~message:(s_ "label.failed_save_project_into_file") ~filename
+        ~advice:(s_ "error.advice.save") e ()
       end
   end
 
@@ -1044,8 +1035,9 @@ class globalState = fun () ->
                   | Ok rendered -> Sketch_renderer.discard rendered
                   | Error details when current ->
                       Log.printf1 "Sketch rendering failed: %s\n" details;
-                      Simple_dialogs.error (s_ "label.dot_failed")
-                        (s_ "workspace.render_failed" ^ "\n\n" ^ Glib.Markup.escape_text details) ()
+                      Simple_dialogs.report_error ~title:(s_ "error.drawing_failed")
+                        ~message:(s_ "workspace.render_failed")
+                        ~advice:(s_ "error.advice.report") ~details ()
                   | Error _ -> ()
                 with e ->
                   Log.printf1 "Cannot publish network drawing: %s\n" (Printexc.to_string e));
@@ -1199,7 +1191,8 @@ class globalState = fun () ->
                     self#flash (s_ (if redo then "edit.redone" else "edit.undone"))
                 | Error e ->
                     self#clear_edit_history;
-                    Simple_dialogs.error (s_ "edit.failed") (Glib.Markup.escape_text (Printexc.to_string e)) ());
+                    Simple_dialogs.report_exception ~title:(s_ "edit.failed")
+                      ~message:(s_ "edit.failed") ~advice:(s_ "error.advice.report") e ());
                 self#edit_notify
               ) ()
             ) ())

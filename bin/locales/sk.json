@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Nový projekt   ·   Ctrl+O  Otvoriť   ·   Ctrl+S  Uložiť",
   "workspace.show_component_labels": "Zobraziť názvy komponentov",
   "workspace.unsaved": "Neuložené zmeny",
-  "workspace.welcome": "Vaša sieť začína tu"
+  "workspace.welcome": "Vaša sieť začína tu",
+  "error.details": "Technické podrobnosti",
+  "error.copy": "Kopírovať hlásenie",
+  "error.copied": "Hlásenie skopírované",
+  "error.component_failed": "Požadovanú akciu s komponentom sa nepodarilo dokončiť.",
+  "error.advice.open": "Overte, či je archív projektu neporušený a čitateľný, a skúste to znova.",
+  "error.advice.save": "Vyberte priečinok s právom zápisu a skúste uložiť znova.",
+  "error.advice.import": "Niektoré údaje projektu sa nepodarilo načítať. Pred uložením skontrolujte projekt.",
+  "error.advice.component": "Pred ďalším pokusom skontrolujte nastavenia komponentu a záznam terminálu.",
+  "error.advice.permission": "Skontrolujte prístupové práva k príslušnému súboru alebo priečinku.",
+  "error.advice.missing": "Overte, či požadovaný súbor, priečinok alebo program existuje.",
+  "error.advice.space": "Uvoľnite miesto na disku a skúste to znova.",
+  "error.advice.readonly": "Vyberte umiestnenie na disku s právom zápisu.",
+  "error.advice.report": "Ak problém pretrváva, priložte toto hlásenie pri nahlásení problému.",
+  "error.drawing_failed": "Nákres siete sa nepodarilo aktualizovať"
 }

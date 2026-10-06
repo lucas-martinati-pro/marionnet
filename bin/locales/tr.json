@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Yeni proje   ·   Ctrl+O  Aç   ·   Ctrl+S  Kaydet",
   "workspace.show_component_labels": "Bileşen adlarını göster",
   "workspace.unsaved": "Kaydedilmemiş değişiklikler",
-  "workspace.welcome": "Ağınız burada başlıyor"
+  "workspace.welcome": "Ağınız burada başlıyor",
+  "error.details": "Teknik ayrıntılar",
+  "error.copy": "Raporu kopyala",
+  "error.copied": "Rapor kopyalandı",
+  "error.component_failed": "Bileşen için istenen işlem tamamlanamadı.",
+  "error.advice.open": "Proje arşivinin sağlam ve okunabilir olduğunu kontrol edip yeniden deneyin.",
+  "error.advice.save": "Yazılabilir bir klasör seçip kaydetmeyi yeniden deneyin.",
+  "error.advice.import": "Bazı proje verileri yüklenemedi. Kaydetmeden önce projeyi kontrol edin.",
+  "error.advice.component": "Yeniden denemeden önce bileşen yapılandırmasını ve terminal günlüğünü kontrol edin.",
+  "error.advice.permission": "İlgili dosya veya klasörün erişim izinlerini kontrol edin.",
+  "error.advice.missing": "Gerekli dosya, klasör veya programın var olduğunu kontrol edin.",
+  "error.advice.space": "Diskte yer açıp yeniden deneyin.",
+  "error.advice.readonly": "Yazılabilir bir diskte konum seçin.",
+  "error.advice.report": "Sorun devam ederse sorunu bildirirken bu raporu ekleyin.",
+  "error.drawing_failed": "Ağ çizimi güncellenemedi"
 }

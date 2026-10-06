@@ -184,7 +184,8 @@ module Created_entry_project_open = Menu_factory.Make_entry(struct
            let () = if (active_project) then st#close_project in
            (* --- *)
            try ignore (st#open_project_async filename)
-           with e -> ((Simple_dialogs.error (s_ "label.open_project") ((s_ "label.failed_open_file")^filename) ()); raise e)
+           with e -> Simple_dialogs.report_exception ~title:(s_ "label.open_project")
+             ~message:(s_ "label.failed_open_file") ~filename ~advice:(s_ "error.advice.open") e ()
            end
       in
       (* --- *)
@@ -237,7 +238,8 @@ module Created_entry_project_save_as = Menu_factory.Make_entry(struct
        let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.save_as_project\n" in
          try st#save_project_as ~filename ()
-         with _ -> (Simple_dialogs.error (s_ "label.save_project_as") ((s_ "label.failed_save_project_into_file")^filename) ())
+         with e -> Simple_dialogs.report_exception ~title:(s_ "label.save_project_as")
+           ~message:(s_ "label.failed_save_project_into_file") ~filename ~advice:(s_ "error.advice.save") e ()
        in
        (* --- *)
        (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.save_as_project" actions *)
@@ -277,7 +279,8 @@ module Created_entry_project_copy_to = Menu_factory.Make_entry(struct
        let actions () =
          let () = Log.printf "About to react to Gui_menubar_MARIONNET.copy_to_project\n" in
          try st#copy_project_into ~filename ()
-         with _ -> (Simple_dialogs.error (s_ "label.project_copy" ) ((s_ "label.failed_copy_project_into_file")^filename) ())
+         with e -> Simple_dialogs.report_exception ~title:(s_ "label.project_copy")
+           ~message:(s_ "label.failed_copy_project_into_file") ~filename ~advice:(s_ "error.advice.save") e ()
        in
        (* --- *)
        (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.copy_to_project" actions *)
@@ -361,16 +364,15 @@ module Created_entry_project_export = Menu_factory.Make_entry
      let output_format = (r#get "extra_widget") in
      let filename = Talking.check_filename_validity_and_add_extension_if_needed ~extension:output_format (r#get "filename") in
      let command = Printf.sprintf "dot -T%s -o '%s' '%s'" output_format filename st#project_paths#dotSketchFile in
-     let on_error () =
-	Simple_dialogs.error
-	  "Export network image"
-	  ((s_ "label.failed_export_network_image_file")^filename^" (format "^output_format^")")
-	  ()
+     let on_error e =
+       Simple_dialogs.report_exception ~title:(s_ "label.export_network_image")
+         ~message:(s_ "label.failed_export_network_image_file") ~filename
+         ~advice:(s_ "error.advice.save") e ()
      in
      try
        Log.system_or_fail command;
        st#flash ~delay:8000 ((s_ "label.network_image_correctly_exported_file")^filename)
-     with _ -> on_error ()
+     with e -> on_error e
 
   end) (F)
 let project_export = Created_entry_project_export.item

@@ -63,7 +63,7 @@ let capture_and_dismiss ~(kind:Script_mode.kind) ~(title:string) ?items (body:st
     hand the work to a thread). They are packed into the action area exposed by the generated
     bin/gui.ml, so the glade file is not touched: an added widget only has to be shown
     explicitly, the dialog being mapped already. *)
-let message win_title ?modal ?(kind=`Info) ?(actions : (string * (unit -> unit)) list = []) (msg_title) (msg_content) (img_file) () =
+let message win_title ?modal ?details ?copy_text ?(kind=`Info) ?(actions : (string * (unit -> unit)) list = []) (msg_title) (msg_content) (img_file) () =
   GMain_actor.apply_extract (fun () ->
   let d = new Gui.dialog_MESSAGE () in
   (* The dialog is deliberately left NON resizable, as dialog_QUESTION is. The glade marks it
@@ -101,8 +101,29 @@ let message win_title ?modal ?(kind=`Info) ?(actions : (string * (unit -> unit))
   d#content#set_label msg_content;
   d#content#set_selectable true;
   d#image#set_file (Initialization.Path.images ^ img_file);
+  Option.iter (fun details ->
+    d#toplevel#set_position `CENTER_ALWAYS;
+    d#closebutton_MESSAGE#set_use_stock false;
+    d#closebutton_MESSAGE#set_label (s_ "label.close");
+    let expander = GBin.expander ~label:(s_ "error.details") ~show:true
+      ~packing:(d#vbox11#pack ~expand:false ~fill:true) () in
+    let scroll = GBin.scrolled_window ~height:160 ~hpolicy:`AUTOMATIC ~vpolicy:`AUTOMATIC
+      ~show:true ~packing:expander#add () in
+    let view = GText.view ~editable:false ~cursor_visible:false ~wrap_mode:`WORD_CHAR
+      ~show:true ~packing:scroll#add () in
+    view#buffer#set_text details;
+    let button = GButton.button ~label:(s_ "error.copy") ~show:true
+      ~packing:d#dialog_action_area3#add () in
+    d#dialog_action_area3#reorder_child button#coerce ~pos:0;
+    ignore (button#connect#clicked ~callback:(fun () ->
+      let report = match copy_text with Some text -> text
+        | None -> msg_title ^ "\n\n" ^ msg_content ^ "\n\n" ^ details in
+      (GData.clipboard Gdk.Atom.clipboard)#set_text report;
+      button#set_label (s_ "error.copied")));
+    d#closebutton_MESSAGE#misc#grab_focus ()) details;
   (* One point of passage for help/error/warning/info, hence for the ~50 call sites. *)
-  capture_and_dismiss ~kind ~title:msg_title msg_content (fun () -> d#toplevel#destroy ());
+  capture_and_dismiss ~kind ~title:msg_title
+    (msg_content ^ (match details with None -> "" | Some text -> "\n\n" ^ text)) (fun () -> d#toplevel#destroy ());
   ()) ()
 ;;
 
@@ -111,8 +132,27 @@ let help ?modal title msg () =
   message ?modal ~kind:`Help (s_ "label.help") title msg "ico.help.orig.png" ();;
 
 (** Specific constructor for error messages *)
-let error ?modal title msg () =
-  message ?modal ~kind:`Error (s_ "label.error") title msg "ico.error.orig.png" ();;
+let error ?modal ?details ?copy_text title msg () =
+  message ?modal ?details ?copy_text ~kind:`Error (s_ "label.error") title msg "ico.error.orig.png" ();;
+
+(** Report a failure using plain text, with separate technical details. All user
+    input is escaped before reaching the Pango label. No action runs implicitly. *)
+let report_error ~title ~message ~advice ~details () =
+  Log.printf2 "Failure: %s: %s\n" title details;
+  error ~details ~copy_text:(title ^ "\n\n" ^ message ^ "\n\n" ^ advice ^ "\n\n" ^ details)
+    (Glib.Markup.escape_text title) (Glib.Markup.escape_text (message ^ "\n\n" ^ advice)) ()
+
+(** Add context and suggest a remedy for explicit filesystem errors. Other
+    exceptions retain the caller's advice rather than guessing their cause. *)
+let report_exception ~title ~message ~advice ?filename exception_ () =
+  let advice = match exception_ with
+    | Unix.Unix_error ((Unix.EACCES | Unix.EPERM), _, _) -> s_ "error.advice.permission"
+    | Unix.Unix_error (Unix.ENOENT, _, _) -> s_ "error.advice.missing"
+    | Unix.Unix_error (Unix.ENOSPC, _, _) -> s_ "error.advice.space"
+    | Unix.Unix_error (Unix.EROFS, _, _) -> s_ "error.advice.readonly"
+    | _ -> advice in
+  let message = message ^ (match filename with None -> "" | Some path -> "\n" ^ path) in
+  report_error ~title ~message ~advice ~details:(Printexc.to_string exception_) ()
 
 (** Specific constructor for warning messages. [actions] (see [message]) is what makes a
     warning actionable: the startup notice about the run directories left behind offers to

@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Nuevo proyecto   ·   Ctrl+O  Abrir   ·   Ctrl+S  Guardar",
   "workspace.show_component_labels": "Mostrar nombres de componentes",
   "workspace.unsaved": "Cambios sin guardar",
-  "workspace.welcome": "Su red empieza aquí"
+  "workspace.welcome": "Su red empieza aquí",
+  "error.details": "Detalles técnicos",
+  "error.copy": "Copiar informe",
+  "error.copied": "Informe copiado",
+  "error.component_failed": "No se pudo completar la acción solicitada en el componente.",
+  "error.advice.open": "Compruebe que el archivo del proyecto esté intacto y sea legible, y vuelva a intentarlo.",
+  "error.advice.save": "Elija una carpeta con permiso de escritura y vuelva a guardar.",
+  "error.advice.import": "No se pudieron cargar algunos datos del proyecto. Revise el proyecto antes de guardarlo.",
+  "error.advice.component": "Revise la configuración del componente y el registro del terminal antes de volver a intentarlo.",
+  "error.advice.permission": "Compruebe los permisos de acceso al archivo o carpeta afectados.",
+  "error.advice.missing": "Compruebe que exista el archivo, carpeta o programa necesario.",
+  "error.advice.space": "Libere espacio en disco y vuelva a intentarlo.",
+  "error.advice.readonly": "Elija una ubicación en un disco con permiso de escritura.",
+  "error.advice.report": "Si el problema persiste, adjunte este informe al comunicar el problema.",
+  "error.drawing_failed": "No se pudo actualizar el dibujo de la red"
 }

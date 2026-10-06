@@ -534,5 +534,19 @@
   "label.warning_disk_reset": "Attention : réinitialisation du disque",
   "project.temporary_directory_selected": "Nous avons choisi %s comme répertoire de travail temporaire parce que les répertoires par défaut ne sont pas satisfaisants (droits sur les fichiers et support des fichiers creux/sparse).",
   "component.confirm_restart": "Vos modifications seront appliquées après le prochain redémarrage de %s.\nVoulez-vous redémarrer maintenant ce composant de type %s ?",
-  "network.lan.bridge_not_found": "n'a pas été trouvé sur cet ordinateur. Nommer un pont dans ce fichier n'est plus qu'une façon de SURCHARGER le comportement automatique : si vous commentez (ou videz) cette ligne, Marionnet construit son propre pont quand un composant pont LAN démarre, et le démonte quand il s'arrête. Plus rien n'a besoin d'être préparé à la main.\n\nSi vous préférez continuer à utiliser votre propre pont, demandez à votre administrateur de le créer, avec des commandes comme :"
+  "network.lan.bridge_not_found": "n'a pas été trouvé sur cet ordinateur. Nommer un pont dans ce fichier n'est plus qu'une façon de SURCHARGER le comportement automatique : si vous commentez (ou videz) cette ligne, Marionnet construit son propre pont quand un composant pont LAN démarre, et le démonte quand il s'arrête. Plus rien n'a besoin d'être préparé à la main.\n\nSi vous préférez continuer à utiliser votre propre pont, demandez à votre administrateur de le créer, avec des commandes comme :",
+  "error.details": "Détails techniques",
+  "error.copy": "Copier le rapport",
+  "error.copied": "Rapport copié",
+  "error.component_failed": "L’action demandée sur le composant n’a pas pu être terminée.",
+  "error.advice.open": "Vérifiez que l’archive du projet est intacte et lisible, puis réessayez.",
+  "error.advice.save": "Choisissez un dossier accessible en écriture et réessayez la sauvegarde.",
+  "error.advice.import": "Certaines données du projet n’ont pas pu être chargées. Vérifiez le projet avant de le sauvegarder.",
+  "error.advice.component": "Vérifiez la configuration du composant et le journal du terminal avant de réessayer.",
+  "error.advice.permission": "Vérifiez les droits d’accès au fichier ou au dossier concerné.",
+  "error.advice.missing": "Vérifiez que le fichier, le dossier ou le programme requis existe.",
+  "error.advice.space": "Libérez de l’espace disque, puis réessayez.",
+  "error.advice.readonly": "Choisissez un emplacement sur un disque accessible en écriture.",
+  "error.advice.report": "Si le problème persiste, joignez ce rapport au signalement du problème.",
+  "error.drawing_failed": "Impossible d’actualiser le dessin du réseau"
 }

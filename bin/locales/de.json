@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Strg+N  Neues Projekt   ·   Strg+O  Öffnen   ·   Strg+S  Speichern",
   "workspace.show_component_labels": "Komponentennamen anzeigen",
   "workspace.unsaved": "Ungespeicherte Änderungen",
-  "workspace.welcome": "Ihr Netzwerk beginnt hier"
+  "workspace.welcome": "Ihr Netzwerk beginnt hier",
+  "error.details": "Technische Details",
+  "error.copy": "Bericht kopieren",
+  "error.copied": "Bericht kopiert",
+  "error.component_failed": "Die angeforderte Komponentenaktion konnte nicht abgeschlossen werden.",
+  "error.advice.open": "Prüfen Sie, ob das Projektarchiv vollständig und lesbar ist, und versuchen Sie es erneut.",
+  "error.advice.save": "Wählen Sie einen beschreibbaren Ordner und speichern Sie erneut.",
+  "error.advice.import": "Einige Projektdaten konnten nicht geladen werden. Prüfen Sie das Projekt vor dem Speichern.",
+  "error.advice.component": "Prüfen Sie die Komponentenkonfiguration und das Terminalprotokoll, bevor Sie es erneut versuchen.",
+  "error.advice.permission": "Prüfen Sie die Zugriffsrechte für die betroffene Datei oder den Ordner.",
+  "error.advice.missing": "Prüfen Sie, ob die benötigte Datei, der Ordner oder das Programm existiert.",
+  "error.advice.space": "Geben Sie Speicherplatz frei und versuchen Sie es erneut.",
+  "error.advice.readonly": "Wählen Sie einen Ort auf einem beschreibbaren Datenträger.",
+  "error.advice.report": "Falls das Problem weiterhin besteht, fügen Sie diesen Bericht Ihrer Fehlermeldung bei.",
+  "error.drawing_failed": "Netzwerkzeichnung konnte nicht aktualisiert werden"
 }

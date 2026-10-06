@@ -534,5 +534,19 @@
   "label.warning_disk_reset": "Warning: disk reset",
   "project.temporary_directory_selected": "We chose %s as the temporary working directory, because the default candidates were not suitable (file rights and sparse files support).",
   "component.confirm_restart": "Your changes will be applied after the reboot of %s.\nDo you want to restart this %s now?",
-  "network.lan.bridge_not_found": "was not found on this computer. Naming a bridge in that file is now merely a way to OVERRIDE the automatic behaviour: if you comment out (or empty) that line, Marionnet builds its own bridge when a LAN bridge component starts, and takes it down when it stops. Nothing has to be prepared by hand any more.\n\nIf you do prefer to keep using a bridge of your own, ask your administrator to create it, with commands like:"
+  "network.lan.bridge_not_found": "was not found on this computer. Naming a bridge in that file is now merely a way to OVERRIDE the automatic behaviour: if you comment out (or empty) that line, Marionnet builds its own bridge when a LAN bridge component starts, and takes it down when it stops. Nothing has to be prepared by hand any more.\n\nIf you do prefer to keep using a bridge of your own, ask your administrator to create it, with commands like:",
+  "error.details": "Technical details",
+  "error.copy": "Copy report",
+  "error.copied": "Report copied",
+  "error.component_failed": "The requested component action could not be completed.",
+  "error.advice.open": "Check that the project archive is intact and readable, then try again.",
+  "error.advice.save": "Choose a writable folder and try saving again.",
+  "error.advice.import": "Some project data could not be loaded. Check the project before saving it.",
+  "error.advice.component": "Check the component configuration and the terminal log before trying again.",
+  "error.advice.permission": "Check access permissions for the file or folder concerned.",
+  "error.advice.missing": "Check that the required file, folder or program exists.",
+  "error.advice.space": "Free disk space, then try again.",
+  "error.advice.readonly": "Choose a location on a writable disk.",
+  "error.advice.report": "If the problem persists, include this report when reporting the issue.",
+  "error.drawing_failed": "Could not update the network drawing"
 }

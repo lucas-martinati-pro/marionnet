@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Nova projekto   ·   Ctrl+O  Malfermi   ·   Ctrl+S  Konservi",
   "workspace.show_component_labels": "Montri komponantajn nomojn",
   "workspace.unsaved": "Nekonservitaj ŝanĝoj",
-  "workspace.welcome": "Via reto komenciĝas ĉi tie"
+  "workspace.welcome": "Via reto komenciĝas ĉi tie",
+  "error.details": "Teknikaj detaloj",
+  "error.copy": "Kopii raporton",
+  "error.copied": "Raporto kopiita",
+  "error.component_failed": "La petita ago pri la komponanto ne povis finiĝi.",
+  "error.advice.open": "Kontrolu, ke la projekta arkivo estas sendifekta kaj legebla, kaj reprovu.",
+  "error.advice.save": "Elektu skribeblan dosierujon kaj reprovu konservi.",
+  "error.advice.import": "Iuj projektaj datumoj ne povis esti ŝargitaj. Kontrolu la projekton antaŭ ol konservi ĝin.",
+  "error.advice.component": "Kontrolu la agordojn de la komponanto kaj la terminalan protokolon antaŭ ol reprovi.",
+  "error.advice.permission": "Kontrolu la alirpermesojn de la koncerna dosiero aŭ dosierujo.",
+  "error.advice.missing": "Kontrolu, ke la bezonata dosiero, dosierujo aŭ programo ekzistas.",
+  "error.advice.space": "Liberigu diskospacon kaj reprovu.",
+  "error.advice.readonly": "Elektu lokon sur skribebla disko.",
+  "error.advice.report": "Se la problemo daŭras, aldonu ĉi tiun raporton al via problemraporto.",
+  "error.drawing_failed": "Ne eblis ĝisdatigi la retan desegnon"
 }

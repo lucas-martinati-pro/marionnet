@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Proiect nou   ·   Ctrl+O  Deschidere   ·   Ctrl+S  Salvare",
   "workspace.show_component_labels": "Afișează numele componentelor",
   "workspace.unsaved": "Modificări nesalvate",
-  "workspace.welcome": "Rețeaua dvs. începe aici"
+  "workspace.welcome": "Rețeaua dvs. începe aici",
+  "error.details": "Detalii tehnice",
+  "error.copy": "Copiază raportul",
+  "error.copied": "Raport copiat",
+  "error.component_failed": "Acțiunea solicitată asupra componentei nu a putut fi finalizată.",
+  "error.advice.open": "Verificați dacă arhiva proiectului este intactă și poate fi citită, apoi încercați din nou.",
+  "error.advice.save": "Alegeți un dosar în care puteți scrie și încercați să salvați din nou.",
+  "error.advice.import": "Unele date ale proiectului nu au putut fi încărcate. Verificați proiectul înainte de salvare.",
+  "error.advice.component": "Verificați configurația componentei și jurnalul terminalului înainte de a încerca din nou.",
+  "error.advice.permission": "Verificați permisiunile de acces la fișierul sau dosarul respectiv.",
+  "error.advice.missing": "Verificați dacă fișierul, dosarul sau programul necesar există.",
+  "error.advice.space": "Eliberați spațiu pe disc, apoi încercați din nou.",
+  "error.advice.readonly": "Alegeți o locație pe un disc pe care puteți scrie.",
+  "error.advice.report": "Dacă problema persistă, includeți acest raport când semnalați problema.",
+  "error.drawing_failed": "Desenul rețelei nu a putut fi actualizat"
 }

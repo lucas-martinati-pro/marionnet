@@ -534,5 +534,19 @@
   "workspace.shortcuts": "Ctrl+N  Nuovo progetto   ·   Ctrl+O  Apri   ·   Ctrl+S  Salva",
   "workspace.show_component_labels": "Mostra i nomi dei componenti",
   "workspace.unsaved": "Modifiche non salvate",
-  "workspace.welcome": "La tua rete inizia qui"
+  "workspace.welcome": "La tua rete inizia qui",
+  "error.details": "Dettagli tecnici",
+  "error.copy": "Copia rapporto",
+  "error.copied": "Rapporto copiato",
+  "error.component_failed": "Non è stato possibile completare l’azione richiesta sul componente.",
+  "error.advice.open": "Verificare che l’archivio del progetto sia integro e leggibile, quindi riprovare.",
+  "error.advice.save": "Scegliere una cartella scrivibile e provare a salvare di nuovo.",
+  "error.advice.import": "Alcuni dati del progetto non sono stati caricati. Controllare il progetto prima di salvarlo.",
+  "error.advice.component": "Controllare la configurazione del componente e il registro del terminale prima di riprovare.",
+  "error.advice.permission": "Controllare i permessi di accesso al file o alla cartella interessati.",
+  "error.advice.missing": "Verificare che il file, la cartella o il programma richiesto esista.",
+  "error.advice.space": "Liberare spazio su disco, quindi riprovare.",
+  "error.advice.readonly": "Scegliere una posizione su un disco scrivibile.",
+  "error.advice.report": "Se il problema persiste, allegare questo rapporto alla segnalazione.",
+  "error.drawing_failed": "Impossibile aggiornare il disegno della rete"
 }

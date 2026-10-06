@@ -16,6 +16,11 @@ Le banc `undo.py` joue les vrais raccourcis Annuler/Rétablir, les noms et câbl
 la suppression/restauration, la sauvegarde et les fichiers des machines :
 `xvfb-run -a python3 driven-sessions/undo.py`.
 
+Le banc `errors.py` provoque des erreurs de rendu, de sauvegarde et d’ouverture
+pour vérifier les conseils, les détails repliables, la copie du rapport et la
+conservation de la dernière archive. Il démarre son propre Xvfb :
+`python3 driven-sessions/errors.py` (option `--screenshots DOSSIER`).
+
 Le banc `atomic-save.sh` vérifie la conservation du dernier `.mar` et du projet ouvert
 après une écriture partielle, puis la reprise et la réouverture. L'option `--gui` joue
 aussi les menus Fermer et Quitter avec réponse Oui (xdotool requis). Voir

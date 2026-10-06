@@ -217,7 +217,9 @@ class virtual ['parent] simulated_device () = object(self)
             Printf.sprintf "enqueue_task_with_progress_bar: %s %s failed (%s)"
               verb self#get_name (Printexc.to_string e) in
           Log.printf1 "%s\n" message;
-          Simple_dialogs.warning message message ();
+          Simple_dialogs.report_exception ~title:(verb ^ " " ^ self#get_name)
+            ~message:(s_ "error.component_failed")
+            ~advice:(s_ "error.advice.component") e ();
           Log.printf "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
         end));
     Task_runner.the_task_runner#schedule
