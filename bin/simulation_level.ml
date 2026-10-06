@@ -30,6 +30,7 @@ module Option = Ocamlbricks.Option
 module ListExtra = Ocamlbricks.ListExtra
 module StringExtra = Ocamlbricks.StringExtra
 module StrExtra = Ocamlbricks.StrExtra
+module Spinning = Ocamlbricks.Spinning
 module UnixExtra = Ocamlbricks.UnixExtra
 module Ipv4 = Ocamlbricks.Ipv4
 module MutexExtra = Ocamlbricks.MutexExtra
@@ -160,6 +161,7 @@ fun program
   method append_arguments xs = (arguments <- List.append arguments xs)
 
   val pid : int option ref = ref None
+  val mutable exit_waiter : (int * Thread.t * bool ref) option = None
 
   (** Get the spawn process pid, or fail if the process has
       not been spawn yet: *)
@@ -230,22 +232,40 @@ fun program
     match !pid with
       Some current_pid ->
         self#stop_monitoring ~current_pid ();
-        Thread.delay 0.1;
         self#kill_with_signal ~current_pid Sys.sigint;
-        Thread.delay 0.1;
-        self#kill_with_signal ~tries:10 ~delay:0.1 ~current_pid Sys.sigkill;
+        self#allow_for_some_seconds_to_die 0.2;
+        if self#is_alive then begin
+          self#kill_with_signal ~current_pid Sys.sigkill;
+          self#allow_for_some_seconds_to_die 1.0
+        end;
+        if self#is_alive then
+          failwith (Printf.sprintf "Process %s (pid %d) did not terminate" basename current_pid);
+        self#wait_for_exit ~current_pid ();
         pid := None
     | None ->
         Log.printf1 "Simulation_level: process#terminate: '%s' seems already terminated, nothing to do.\n" (basename)
         (*raise (ProcessIsntInTheRightState "terminate")*)
 
   method private start_thread_waiting ~current_pid =
-    ignore
-      (Thread.create
-         (fun () ->
-            ignore (UnixExtra.Process.waitpid_non_intr current_pid);
-            Log.printf1 "Simulation_level: process#start_thread_waiting: waitpid %d exited.\n" current_pid)
-          ())
+    let finished = ref false in
+    let waiter = Thread.create
+      (fun () ->
+         ignore (UnixExtra.Process.waitpid_non_intr current_pid);
+         finished := true;
+         Log.printf1 "Simulation_level: process#start_thread_waiting: waitpid %d exited.\n" current_pid)
+      () in
+    exit_waiter <- Some (current_pid, waiter, finished)
+
+  (* There is exactly one waitpid owner. Joining it also confirms the child has
+     been reaped before sockets, taps or the next instance reuse its resources. *)
+  method private wait_for_exit ?(timeout=2.) ~current_pid () =
+    match exit_waiter with
+    | Some (waiting_pid, waiter, finished) when waiting_pid = current_pid ->
+        let wait = Spinning.wait_until ~max_delay:0.05 ~slot:0.01 () in
+        wait ~timeout ~guard:(fun () -> !finished) ();
+        Thread.join waiter;
+        exit_waiter <- None
+    | _ -> raise (ProcessIsntInTheRightState "wait_for_exit")
 
   (** Note that this does *not* affect death monitoring. *)
   method private kill_with_signal ?(tries=1) ?(delay=0.1) ~current_pid signal =
@@ -561,19 +581,19 @@ class virtual process_which_creates_a_socket_at_spawning_time =
   method! spawn =
     Log.printf1 "Simulation_level: process_w_c_a_socket_at_s_time#spawn: spawning the process which will create the socket %s\n" (Shell.escaped_filename self#get_socket_name);
     super#spawn;
-    (* We also check that the process is alive: if spawning it failed than the death
-       monitor will take care of everything it's needed and destroy the device: in
-       this case we just exit and let the death monitor clean up after us. *)
-    while self#is_alive && not (self#sockets_have_been_created) do
-      (* The socket is not ready yet, but the process is up: let's wait and then
-         check again: *)
-      Thread.delay 0.05;
-      Log.printf "Simulation_level: process_w_c_a_socket_at_s_time#spawn: the process has not created the socket yet.\n";
-    done;
-    Log.printf "Simulation_level: process_w_c_a_socket_at_s_time#spawn: Ok, the socket now exists. Spawning succeeded.\n";
-    (* This should not be needed, but we want to play it super-safe for the first public
-       release: *)
-    Thread.delay 0.3;
+    (* Readiness is the sockets, not a fixed delay. A dead child or a live child
+       which never creates them must fail this startup and release its resources. *)
+    (try
+      let wait = Spinning.wait_until ~max_delay:0.05 ~slot:0.01 () in
+      wait ~timeout:10.
+        ~guard:(fun () -> self#sockets_have_been_created || not self#is_alive) ();
+      if not self#is_alive || not self#sockets_have_been_created then
+        failwith (Printf.sprintf "Process exited before creating socket %s" self#get_socket_name)
+    with e ->
+      (* Unregister expected termination before killing the failed startup. *)
+      self#terminate;
+      raise e);
+    Log.printf "Simulation_level: socket is ready; spawning succeeded.\n";
 
   (** We want to be absolutely sure to remove the socket, so we also send a SIGKILL to the
       process and explicitly delete the file: *)
@@ -1722,18 +1742,10 @@ class uml_process =
              self#kill_descendants_then_myself ~pid:current_pid;
            end
        in
-       (* Wait for the process to die: *)
-       let () =
-	 try begin
-	  Log.printf2 "Simulation_level: %s#gracefully_terminate: waiting pid %d...\n" umid current_pid;
-	  ignore (UnixExtra.Process.waitpid_non_intr current_pid);
-	  Log.printf2 "Simulation_level: %s#gracefully_terminate: pid %d correctly waited. Fine.\n" umid current_pid;
-	 end with e ->
-	  begin
-	    Log.printf3 "Simulation_level: %s#gracefully_terminate: pid %d uncorrectly waited: %s\n"
-	      umid current_pid (Printexc.to_string e);
-	  end
-       in
+       (* Join the single reaper before deleting resources or publishing Off. *)
+       Log.printf2 "Simulation_level: %s#gracefully_terminate: waiting pid %d...\n" umid current_pid;
+       self#wait_for_exit ~timeout:(uml_hierarchy_kill_deadline +. 2.) ~current_pid ();
+       Log.printf2 "Simulation_level: %s#gracefully_terminate: pid %d correctly waited.\n" umid current_pid;
        (* Remove other resources: *)
        begin
 	Log.printf2 "Simulation_level: %s#gracefully_terminate: removing swap file allocated for %d\n" umid current_pid;
@@ -1767,31 +1779,23 @@ class uml_process =
              self#kill_descendants_then_myself ~pid:current_pid;
            end
        in
-       let () = begin
-         self#allow_for_some_seconds_to_die 2.0;
-         (* The process has not complied yet after interval seconds. Kill it the hard way: *)
-         (try
-           while self#is_alive do
-             self#allow_for_some_seconds_to_die 2.0;
-             self#kill_with_signal ~current_pid Sys.sigint;
-             self#allow_for_some_seconds_to_die 2.0;
-             self#kill_with_signal ~tries:5 ~delay:0.1 ~current_pid Sys.sigkill;
-           done;
-         with _ -> ());
-        end
-       in
-       (* Wait for the process to die: *)
-       let () =
-	 try begin
-	  Log.printf2 "Simulation_level: %s#terminate: waiting pid %d...\n" umid current_pid;
-	  ignore (UnixExtra.Process.waitpid_non_intr current_pid);
-	  Log.printf2 "Simulation_level: %s#terminate: pid %d correctly waited. Fine.\n" umid current_pid;
-	 end with e ->
-	  begin
-	    Log.printf3 "Simulation_level: %s#terminate: pid %d uncorrectly waited: %s\n"
-	      umid current_pid (Printexc.to_string e);
-	  end
-       in
+       (* Escalate with a bounded budget. An unkillable guest is an error,
+          never a completed shutdown or permission to spawn its replacement. *)
+       self#allow_for_some_seconds_to_die 2.0;
+       if self#is_alive then begin
+         self#kill_with_signal ~current_pid Sys.sigint;
+         self#allow_for_some_seconds_to_die 2.0
+       end;
+       if self#is_alive then begin
+         self#kill_with_signal ~tries:5 ~delay:0.1 ~current_pid Sys.sigkill;
+         self#allow_for_some_seconds_to_die 2.0
+       end;
+       if self#is_alive then
+         failwith (Printf.sprintf "UML process %s (pid %d) did not terminate" umid current_pid);
+       (* Join the single reaper before deleting resources or publishing Off. *)
+       Log.printf2 "Simulation_level: %s#terminate: waiting pid %d...\n" umid current_pid;
+       self#wait_for_exit ~current_pid ();
+       Log.printf2 "Simulation_level: %s#terminate: pid %d correctly waited.\n" umid current_pid;
        (* Remove other resources: *)
        begin
 	Log.printf2 "Simulation_level: %s#terminate: removing swap file allocated for %d\n" umid current_pid;
@@ -2068,17 +2072,22 @@ class virtual ['parent] device
       is performed in subclasses. *)
   method startup =
     match state with
-    | Off -> state <- On; self#spawn_processes
+    | Off ->
+        state <- On;
+        (try self#spawn_processes with e ->
+          self#terminate_processes;
+          state <- Off;
+          raise e)
     | _   -> failwith "can't startup a non-off device"
 
   method shutdown =
     match state with
-    | On -> state <- Off; (try self#terminate_processes with _ -> ())
+    | On -> self#terminate_processes; state <- Off
     | _  -> failwith "can't shutdown a non-on device"
 
   method gracefully_shutdown =
     match state with
-    | On -> state <- Off; self#gracefully_terminate_processes
+    | On -> self#gracefully_terminate_processes; state <- Off
     | _  -> failwith "can't gracefully_shutdown a non-on device"
 
   method suspend =
@@ -2223,7 +2232,7 @@ object(self)
 
   method terminate_processes =
     (* Terminate internal cables and the main switch process: *)
-    Task_runner.do_in_parallel
+    Task_runner.do_in_parallel ~propagate_exceptions:true
       ((fun () -> self#get_main_process#terminate)
        ::
        (List.map (* here map returns a list of thunks *)
@@ -2497,18 +2506,16 @@ object(self)
     self#spawn_internal_cables
 
   method private spawn_internal_cables =
-    (* Spawn internal cables processes and the UML process: *)
-    Task_runner.do_in_parallel
+    (* Report a failed UML/cable worker to device#startup, which joins cleanup
+       before returning to the off state. *)
+    Task_runner.do_in_parallel ~propagate_exceptions:true
       ((fun () -> self#get_uml_process#spawn)
-       ::
-       (List.map (* here map returns a list of thunks *)
-          (fun internal_cable_process () -> internal_cable_process#spawn)
-          !internal_cable_processes));
+       :: List.map (fun p () -> p#spawn) !internal_cable_processes)
 
   method private terminate_processes_private ~gracefully  () =
     Log.printf1 "Simulation_level: machine_or_router#terminate_processes_private: about to terminate the internal cable processes of %s...\n" parent#get_name;
     (* Terminate internal cables and unreference them: *)
-    Task_runner.do_in_parallel
+    Task_runner.do_in_parallel ~propagate_exceptions:true
       ((fun () ->
         if gracefully then
           self#get_uml_process#gracefully_terminate

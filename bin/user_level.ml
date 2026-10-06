@@ -226,8 +226,7 @@ class virtual ['parent] simulated_device () = object(self)
         match !progress_bar with
           Some progress_bar ->
             Simple_dialogs.destroy_progress_bar_dialog progress_bar
-        | None ->
-            assert false)
+        | None -> ())
 
   method create =
     (* This is invisible for the user: no progress bar here *)
@@ -251,17 +250,17 @@ class virtual ['parent] simulated_device () = object(self)
     self#enqueue_task_with_progress_bar (s_ "label.stopping") (fun () -> if self#can_gracefully_shutdown then self#gracefully_shutdown_right_now)
 
   method gracefully_restart =
-    (* The [begin…end] is required: [;] binds less tightly than [if/then/else], so without
-       it the guard would only protect [self#gracefully_shutdown] and the "Restarting" task
-       would be scheduled even on an already stopped component. *)
-    if not self#can_gracefully_shutdown then () else begin (* continue *)
-    self#gracefully_shutdown;
-    self#enqueue_task_with_progress_bar
-      (s_ "label.restarting")
+    self#enqueue_task_with_progress_bar (s_ "label.restarting")
       (fun () ->
-         Thread.delay 7.; (* Ugly: to prevent a killer signal (all this part must be rewritten with Cortex_lib as soon as possible!!) *)
-         if self#can_startup then self#startup_right_now)
-    end
+        (* Check when the queued operation runs, then keep both transitions under
+           the same lock. Shutdown returns only once the old processes are gone;
+           an exception aborts the restart instead of starting a second guest. *)
+        Recursive_mutex.with_mutex mutex
+          (fun () ->
+            if self#can_gracefully_shutdown then begin
+              self#gracefully_shutdown_right_now;
+              if self#can_startup then self#startup_right_now
+            end))
 
   method poweroff =
     self#enqueue_task_with_progress_bar (s_ "label.shutting_down") (fun () -> if self#can_poweroff then self#poweroff_right_now)

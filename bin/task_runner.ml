@@ -22,30 +22,39 @@ module Log = Marionnet_log
 open Graph;;
 open Message_passing;;
 
-let do_in_parallel thunks =
+let do_in_parallel ?(propagate_exceptions=false) thunks =
   (* Make a thread per thunk: *)
   let threads =
     List.map
       (fun thunk ->
-        Thread.create
+        let failure = ref None in
+        let thread = Thread.create
           (fun () ->
             try
               thunk ()
             with e -> begin
+              failure := Some e;
               Log.printf1 "!!!! do_in_parallel: a thunk failed (%s)\n" (Printexc.to_string e);
             end)
-          ())
+          () in
+        (thread, failure))
       thunks in
   (* Wait that they terminate: *)
   List.iter
-    (fun thread ->
+    (fun (thread, failure) ->
       try
         Thread.join thread;
       with e -> begin
+        failure := Some e;
         Log.printf1 "!!!!!!!!!!!!!!! This should not happen: join failed (%s)\n"
           (Printexc.to_string e);
       end)
-    threads;;
+    threads;
+  (* Join every worker before reporting failure: successful siblings must not
+     outlive this operation, even when the first worker failed immediately. *)
+  if propagate_exceptions then
+    List.iter (fun (_, failure) -> match !failure with
+      | None -> () | Some e -> raise e) threads;;
 
 (** A thunk is trivially represented a unit->unit function: *)
 type thunk =

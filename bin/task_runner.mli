@@ -20,7 +20,9 @@
 type thunk = unit -> unit
  and  task = thunk
 
-val do_in_parallel : thunk list -> unit
+(** Run every thunk and join every worker. With [propagate_exceptions], raise
+    the first failure in input order after all workers finish; otherwise log it. *)
+val do_in_parallel : ?propagate_exceptions:bool -> thunk list -> unit
 
 exception Kill_task_runner
 
