@@ -177,11 +177,11 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
     def selected(name, action):
         offset = log_path.stat().st_size
         action()
-        wait(lambda: 'Drawing selection: ' + name in log_path.read_text()[offset:], 'canvas selects ' + name)
+        wait(lambda: 'Drawing selection: ' + name in log_path.read_text(errors="replace")[offset:], 'canvas selects ' + name)
 
     try:
         wait(lambda: sock.exists() or app.poll() is not None, 'application starts')
-        assert app.poll() is None, log_path.read_text()
+        assert app.poll() is None, log_path.read_text(errors="replace")
         window = windows('Marionnet')[0]
         time.sleep(6.5)  # Wait for the existing startup palette recentering.
         ask('new --timeout=30 ' + str(fixture / 'canvas.mar'))
@@ -268,6 +268,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         assert fits(add_window)
         keys('Return')
         wait(lambda: not windows(add_title) and ask('status')['nodes'] == 3, 'add a machine through its real configuration dialog')
+        wait(lambda: ask('status')['can_undo'], 'machine addition enters undo history')
         xdo('windowfocus', '--sync', window)
         keys('ctrl+z')
         wait(lambda: not ask('status')['editing'] and ask('status')['nodes'] == 2, 'Ctrl+Z removes a machine added through the dialog')
@@ -314,12 +315,12 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
             assert fits(component_window), geometry(component_window)
             capture(component_window, kind + '-properties')
             close_dialog(title)
-        assert 'uncaught exception' not in log_path.read_text(), 'unexpected GTK callback failure'
-        assert 'temporary window without parent' not in log_path.read_text()
-        assert 'Gdk-CRITICAL' not in log_path.read_text(), 'unexpected GDK popup failure'
+        assert 'uncaught exception' not in log_path.read_text(errors="replace"), 'unexpected GTK callback failure'
+        assert 'temporary window without parent' not in log_path.read_text(errors="replace")
+        assert 'Gdk-CRITICAL' not in log_path.read_text(errors="replace"), 'unexpected GDK popup failure'
         print('PASS: shared short and long configuration dialogs fit the screen', flush=True)
     except Exception:
-        print(log_path.read_text()[-14000:], file=sys.stderr)
+        print(log_path.read_text(errors="replace")[-14000:], file=sys.stderr)
         raise
     finally:
         if app.poll() is None:

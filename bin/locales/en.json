@@ -548,5 +548,6 @@
   "error.advice.space": "Free disk space, then try again.",
   "error.advice.readonly": "Choose a location on a writable disk.",
   "error.advice.report": "If the problem persists, include this report when reporting the issue.",
-  "error.drawing_failed": "Could not update the network drawing"
+  "error.drawing_failed": "Could not update the network drawing",
+  "dialog.optional_label": "Optional label"
 }

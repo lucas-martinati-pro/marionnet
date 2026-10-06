@@ -548,5 +548,6 @@
   "error.advice.space": "Uvoľnite miesto na disku a skúste to znova.",
   "error.advice.readonly": "Vyberte umiestnenie na disku s právom zápisu.",
   "error.advice.report": "Ak problém pretrváva, priložte toto hlásenie pri nahlásení problému.",
-  "error.drawing_failed": "Nákres siete sa nepodarilo aktualizovať"
+  "error.drawing_failed": "Nákres siete sa nepodarilo aktualizovať",
+  "dialog.optional_label": "Voliteľný popis"
 }

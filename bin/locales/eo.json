@@ -548,5 +548,6 @@
   "error.advice.space": "Liberigu diskospacon kaj reprovu.",
   "error.advice.readonly": "Elektu lokon sur skribebla disko.",
   "error.advice.report": "Se la problemo daŭras, aldonu ĉi tiun raporton al via problemraporto.",
-  "error.drawing_failed": "Ne eblis ĝisdatigi la retan desegnon"
+  "error.drawing_failed": "Ne eblis ĝisdatigi la retan desegnon",
+  "dialog.optional_label": "Nedeviga etikedo"
 }

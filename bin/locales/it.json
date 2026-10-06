@@ -548,5 +548,6 @@
   "error.advice.space": "Liberare spazio su disco, quindi riprovare.",
   "error.advice.readonly": "Scegliere una posizione su un disco scrivibile.",
   "error.advice.report": "Se il problema persiste, allegare questo rapporto alla segnalazione.",
-  "error.drawing_failed": "Impossibile aggiornare il disegno della rete"
+  "error.drawing_failed": "Impossibile aggiornare il disegno della rete",
+  "dialog.optional_label": "Etichetta facoltativa"
 }

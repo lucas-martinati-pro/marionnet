@@ -548,5 +548,6 @@
   "error.advice.space": "Eliberați spațiu pe disc, apoi încercați din nou.",
   "error.advice.readonly": "Alegeți o locație pe un disc pe care puteți scrie.",
   "error.advice.report": "Dacă problema persistă, includeți acest raport când semnalați problema.",
-  "error.drawing_failed": "Desenul rețelei nu a putut fi actualizat"
+  "error.drawing_failed": "Desenul rețelei nu a putut fi actualizat",
+  "dialog.optional_label": "Etichetă opțională"
 }

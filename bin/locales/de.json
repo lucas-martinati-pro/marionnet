@@ -548,5 +548,6 @@
   "error.advice.space": "Geben Sie Speicherplatz frei und versuchen Sie es erneut.",
   "error.advice.readonly": "Wählen Sie einen Ort auf einem beschreibbaren Datenträger.",
   "error.advice.report": "Falls das Problem weiterhin besteht, fügen Sie diesen Bericht Ihrer Fehlermeldung bei.",
-  "error.drawing_failed": "Netzwerkzeichnung konnte nicht aktualisiert werden"
+  "error.drawing_failed": "Netzwerkzeichnung konnte nicht aktualisiert werden",
+  "dialog.optional_label": "Optionale Beschriftung"
 }

@@ -65,13 +65,15 @@ let ipv4address  = GEdit.entry ~text:"10.0.2.1" ~packing:form#add () in
 let dhcp_enabled = GButton.check_button ~packing:form#add () in
 ...\}\]
 *)
-let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) ?packing string_list : form =
+let make_form_with_labels ?(section_no=0) ?(row_spacings=8) ?(col_spacings=18) ?packing string_list : form =
  let rows = (List.length string_list) + (section_no * 2) in
  let table = GPack.table ~row_spacings ~col_spacings ~rows ~columns:2 ~homogeneous:false ?packing () in
  let labels =
    Array.mapi
      (fun i label_text ->
-        let label = GMisc.label ~xalign:0. ~markup:label_text () in
+        let label = GMisc.label ~xalign:0. ~yalign:0.5 ~line_wrap:true ~markup:label_text () in
+        label#set_width_chars 22;
+        label#set_max_width_chars 28;
         label)
      (Array.of_list string_list)
  in
@@ -90,7 +92,10 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      field_index <- field_index+1;
 
    method private aligned_widget widget =
-     let box = GBin.alignment ~xalign:0. ~yalign:0.5 ~xscale:0.0 ~yscale:0.0 () in
+     let kind = Gobject.get_type widget#as_widget in
+     let is_a name = Gobject.Type.is_a kind (Gobject.Type.from_name name) in
+     let fill = (is_a "GtkEntry" && not (is_a "GtkSpinButton")) || is_a "GtkComboBox" in
+     let box = GBin.alignment ~xalign:0. ~yalign:0.5 ~xscale:(if fill then 1. else 0.) ~yscale:0.0 () in
      box#add widget#coerce;
      box
 
@@ -101,25 +106,21 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      self#register_mapping_then_increment_row_and_field_indexes;
      (* --- *)
      (function widget ->
-       table#attach ~left:1 ~top (self#aligned_widget widget)#coerce;
+       labels.(field)#set_mnemonic_widget (Some widget#coerce);
+       table#attach ~left:1 ~top ~expand:`X ~fill:`X (self#aligned_widget widget)#coerce;
        widgets.(field) <- widget#coerce;
        )
 
-   method add_section ?(fg="#b4b4b4") (* was "lightgray" *) ?(size="large") ?no_line markup =
-     let markup =
-       Printf.sprintf "<span foreground='%s' size='%s'><b>%s</b></span>" fg size markup;
-     in
-     let label = GMisc.label ~xalign:0. ~markup () in
-     let top = row_index+1 in
-     row_index <- row_index+2; (* additional line for vertical spacing *)
-     table#attach ~left:0 ~top label#coerce;
-     (match no_line with
-     | None ->
-         (* No, lablgtk draws a strange big line, so in any case we do nothing: *)
-         (* let sep = GMisc.separator `HORIZONTAL ~show:true () in
-         table#attach ~left:1 ~top sep#coerce *)
-         ()
-     | _    -> ());
+   method add_section ?fg ?(size="medium") ?no_line markup =
+     let foreground = match fg with None -> "" | Some color ->
+       " foreground='" ^ Glib.Markup.escape_text color ^ "'" in
+     let label = GMisc.label ~xalign:0. ~markup:(Printf.sprintf
+       "<span%s size='%s'><b>%s</b></span>" foreground size markup) () in
+     (* Keep headings attached to their fields, using the theme's text color. *)
+     let top = row_index in
+     row_index <- row_index + 1;
+     if top > 0 && no_line = None then table#set_row_spacing (top - 1) 16;
+     table#attach ~left:0 ~right:2 ~top label#coerce;
 
    method add_with_tooltip ?just_for_label text =
      let top = row_index in (* top is in the closure *)
@@ -128,7 +129,8 @@ let make_form_with_labels ?(section_no=0) ?(row_spacings=10) ?(col_spacings=10) 
      self#register_mapping_then_increment_row_and_field_indexes;
      (* --- *)
      (function widget ->
-       table#attach ~left:1 ~top (self#aligned_widget widget)#coerce;
+       labels.(field)#set_mnemonic_widget (Some widget#coerce);
+       table#attach ~left:1 ~top ~expand:`X ~fill:`X (self#aligned_widget widget)#coerce;
        (if just_for_label = None then tooltip widget text);
        tooltip ((labels.(field))#coerce) text;
        widgets.(field) <- widget#coerce;
@@ -366,7 +368,14 @@ let ok_or_cancel
    | None -> w#add_button_stock `CANCEL `CANCEL; w#add_button_stock `OK `OK
    | Some _ -> w#add_button (s_ "dialog.cancel") `CANCEL;
                w#add_button (s_ "dialog.confirm") `OK);
-  Stdlib.Option.iter (fun hooks -> hooks.prepare ()) hooks;
+  Stdlib.Option.iter (fun hooks ->
+    w#action_area#set_layout `END;
+    w#action_area#set_spacing 12;
+    w#action_area#set_border_width 12;
+    List.iter (fun button ->
+      Gobject.Property.set_dyn button#as_widget "margin-start" (`INT 4);
+      Gobject.Property.set_dyn button#as_widget "margin-end" (`INT 4)) w#action_area#children;
+    hooks.prepare ()) hooks;
   w#set_default_response `OK;
   w#set_response_sensitive `OK (valid ());
   let result = ref None in
@@ -596,7 +605,7 @@ let make_window_image_name_and_label
   ?label ?label_tooltip () =
   let old_name = name in
   let w = GWindow.dialog ?parent:(parent : GWindow.window option)
-    ~destroy_with_parent:true ~title ~modal:true ~width:520
+    ~destroy_with_parent:true ~title ~modal:true ~width:620
     ~position:(match parent with None -> `CENTER | Some _ -> `CENTER_ON_PARENT) () in
   set_marionnet_icon w;
   let tooltips = make_tooltips_for_container w in
@@ -604,17 +613,22 @@ let make_window_image_name_and_label
   let pixbuf = GdkPixbuf.from_file_at_size image_file ~width:64 ~height:64 in
   let image = GMisc.image ~pixbuf ~xalign:0.5 ~packing:(header#pack ~expand:false) () in
   tooltips image#coerce image_tooltip;
-  let fields = GPack.vbox ~spacing:8 ~packing:(header#pack ~expand:true ~fill:true) () in
-  let field caption tooltip text =
-    ignore (GMisc.label ~text:caption ~xalign:0. ~packing:fields#add ());
-    let entry = GEdit.entry ?text ~packing:fields#add () in
+  let fields = GPack.vbox ~spacing:6 ~packing:(header#pack ~expand:true ~fill:true) () in
+  let identity = GPack.hbox ~spacing:16 ~packing:fields#add () in
+  let field ~expand ~width caption tooltip text =
+    let column = GPack.vbox ~spacing:4 ~packing:(identity#pack ~expand ~fill:true) () in
+    let caption = GMisc.label ~text:caption ~xalign:0. ~packing:column#add () in
+    let entry = GEdit.entry ?text ~width_chars:width ~packing:column#add () in
+    caption#set_mnemonic_widget (Some entry#coerce);
     tooltips entry#coerce tooltip;
     entry in
-  let name = field (s_ "label.name") name_tooltip (Some name) in
-  let label = field (s_ "label.label")
+  let name = field ~expand:false ~width:16 (s_ "label.name") name_tooltip (Some name) in
+  let label = field ~expand:true ~width:20 (s_ "label.label")
     (Stdlib.Option.value label_tooltip
       ~default:(s_ "message.label_written_in_network_sketch_next_element")) label in
+  label#set_placeholder_text (s_ "dialog.optional_label");
   let error = GMisc.label ~markup:"" ~xalign:0. ~line_wrap:true ~packing:fields#add () in
+  error#set_max_width_chars 56;
   let separator = GMisc.separator `HORIZONTAL ~packing:w#vbox#add () in
   let valid () =
     let message =
@@ -622,6 +636,8 @@ let make_window_image_name_and_label
       else if name#text <> old_name &&
         (match name_exists with None -> false | Some exists -> exists name#text)
       then s_ "dialog.name_exists" else "" in
+    (if message = "" then name#misc#style_context#remove_class "error"
+     else name#misc#style_context#add_class "error");
     error#set_label ("<span foreground='#c01c28'>" ^ Glib.Markup.escape_text message ^ "</span>");
     if message = "" then error#misc#hide () else error#misc#show ();
     w#set_response_sensitive `OK (message = "");
@@ -1025,11 +1041,11 @@ let make_check_items_renewer_v2
 let make_rc_config_widget ?height ?width ?(filter_names=[`CONF; `RC; `BASH; `SCRIPT; `TXT; `ALL]) ~parent ~packing ~active ~content ~device_name ~language () =
   (* let set_tooltip widget text = (GData.tooltips ())#set_tip widget#coerce ~text in *)
   let set_tooltip widget text = GtkBase.Widget.Tooltip.set_text widget#as_widget text in
-  let hbox = GPack.hbox ~packing ~homogeneous:false(*true*) () in
+  let hbox = GPack.hbox ~packing ~homogeneous:false ~spacing:8 () in
   (* --- *)
   let check_button = GButton.check_button ~active ~packing:(hbox#add) () in
   (* --- *)
-  let edit_button = GButton.button ~stock:`EDIT ~packing:hbox#add () in
+  let edit_button = GButton.button ~label:(s_ "label.modify") ~packing:hbox#add () in
   let () = set_tooltip (edit_button) (s_ "label.edit_configuration_file") in
   (* --- *)
   let open_button : GButton.button = button_image
@@ -1154,13 +1170,15 @@ let make_notebook_of_assoc_array_with_check_buttons
   let notebook = GPack.notebook (*?homogeneous_tabs*) ~packing () in
   Array.map
     (fun (text, active, widget) ->
-        let hbox = GPack.hbox ~homogeneous:false(*true*) () in
+        let hbox = GPack.hbox ~homogeneous:false ~spacing:6 ~border_width:4 () in
         let _label = GMisc.label ~text ~packing:(hbox#add) () in
         let activate = GButton.check_button ~active ~packing:(hbox#add) () in
         let _ = activate#connect#toggled (fun () -> widget#misc#set_sensitive activate#active) in
         let () = widget#misc#set_sensitive activate#active in
         let () = set_tooltip hbox (tooltip) in
-        let _ = notebook#append_page ~tab_label:(hbox#coerce) widget in
+        let page = GPack.vbox ~border_width:12 () in
+        page#pack ~expand:false widget;
+        let _ = notebook#append_page ~tab_label:hbox#coerce page#coerce in
         activate)
     tbws
 

@@ -548,5 +548,6 @@
   "error.advice.space": "Libérez de l’espace disque, puis réessayez.",
   "error.advice.readonly": "Choisissez un emplacement sur un disque accessible en écriture.",
   "error.advice.report": "Si le problème persiste, joignez ce rapport au signalement du problème.",
-  "error.drawing_failed": "Impossible d’actualiser le dessin du réseau"
+  "error.drawing_failed": "Impossible d’actualiser le dessin du réseau",
+  "dialog.optional_label": "Étiquette facultative"
 }

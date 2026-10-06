@@ -548,5 +548,6 @@
   "error.advice.space": "Diskte yer açıp yeniden deneyin.",
   "error.advice.readonly": "Yazılabilir bir diskte konum seçin.",
   "error.advice.report": "Sorun devam ederse sorunu bildirirken bu raporu ekleyin.",
-  "error.drawing_failed": "Ağ çizimi güncellenemedi"
+  "error.drawing_failed": "Ağ çizimi güncellenemedi",
+  "dialog.optional_label": "İsteğe bağlı etiket"
 }

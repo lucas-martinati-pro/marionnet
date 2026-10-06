@@ -548,5 +548,6 @@
   "error.advice.space": "Libere espaço em disco e tente novamente.",
   "error.advice.readonly": "Escolha um local em um disco com permissão de escrita.",
   "error.advice.report": "Se o problema persistir, inclua este relatório ao informar o problema.",
-  "error.drawing_failed": "Não foi possível atualizar o desenho da rede"
+  "error.drawing_failed": "Não foi possível atualizar o desenho da rede",
+  "dialog.optional_label": "Rótulo opcional"
 }
