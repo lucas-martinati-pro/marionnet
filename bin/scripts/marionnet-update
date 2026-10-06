@@ -213,10 +213,12 @@ RELEASE_INFO=$(fetch_latest_release) || exit 2
 TAG_NAME=""
 HTML_URL=""
 DEB_URL=""
+SUMS_URL=""
 
 if command -v jq >/dev/null 2>&1; then
   TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name // empty')
   HTML_URL=$(echo "$RELEASE_INFO" | jq -r '.html_url // empty')
+  SUMS_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' 2>/dev/null | head -n1 || true)
   DEB_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("marionnet-all-in-one.*amd64\\.deb$")) | .browser_download_url' 2>/dev/null | head -n1 || true)
   if [ -z "$DEB_URL" ]; then
     DEB_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("marionnet.*amd64\\.deb$")) | .browser_download_url' 2>/dev/null | head -n1 || true)
@@ -263,6 +265,7 @@ UPDATE_LOG="$(mktemp "${TMPDIR:-/tmp}/marionnet-update.XXXXXX.log" 2>/dev/null |
 if [ -z "$UPDATE_LOG" ]; then VERBOSE=true; fi
 CURRENT_STEP="Préparation"
 TEMP_DEB=""
+TEMP_SUMS=""
 ui_line() {
   local color="$1" message="$2"
   printf '%s%s%s\n' "$color" "$message" "$UI_RESET"
@@ -361,6 +364,7 @@ run_task() {
 cleanup() {
   local status=$?
   if [ -n "$TEMP_DEB" ]; then rm -f "$TEMP_DEB"; fi
+  if [ -n "$TEMP_SUMS" ]; then rm -f "$TEMP_SUMS"; fi
   if [ "$status" -ne 0 ]; then
     ui_error "Mise à jour interrompue pendant : $CURRENT_STEP (code $status)."
     if [ -n "$UPDATE_LOG" ]; then ui_error "Journal : $UPDATE_LOG"; fi
@@ -391,7 +395,12 @@ if [ -z "$DEB_URL" ]; then
 fi
 
 ui_step 1 "Téléchargement"
+if ! command -v sha256sum >/dev/null 2>&1; then
+  ui_error "sha256sum est nécessaire pour vérifier le paquet avant installation."
+  exit 1
+fi
 TEMP_DEB=$(mktemp /tmp/marionnet-update.XXXXXX.deb) || exit 1
+TEMP_SUMS=$(mktemp /tmp/marionnet-update.XXXXXX.sha256) || exit 1
 if [ "$VERBOSE" = true ]; then ui_info "Source : $DEB_URL"; fi
 run_task "Paquet All-in-One" curl -fsSL "$DEB_URL" -o "$TEMP_DEB" || exit 1
 FILE_SIZE=$(wc -c < "$TEMP_DEB" 2>/dev/null || echo 0)
@@ -400,6 +409,24 @@ if [ "$FILE_SIZE" -lt 1000000 ]; then
   exit 1
 fi
 ui_info "Paquet reçu · $((FILE_SIZE / 1024 / 1024)) Mio"
+if [ -z "$SUMS_URL" ]; then
+  SUMS_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG_NAME}/SHA256SUMS"
+fi
+run_task "Empreintes de la release" curl -fsSL "$SUMS_URL" -o "$TEMP_SUMS" || exit 1
+# Match the selected asset exactly, never use paths supplied by the manifest.
+DEB_NAME="${DEB_URL##*/}"
+EXPECTED_SHA=$(awk -v name="$DEB_NAME" '{ file=$2; sub(/^\*/, "", file); if (file==name) print $1 }' "$TEMP_SUMS")
+if [[ ! "$EXPECTED_SHA" =~ ^[[:xdigit:]]{64}$ ]]; then
+  ui_error "Empreinte absente, invalide ou multiple dans SHA256SUMS pour $DEB_NAME."
+  exit 1
+fi
+ACTUAL_SHA=$(sha256sum "$TEMP_DEB") || exit 1
+ACTUAL_SHA="${ACTUAL_SHA%% *}"
+if [ "${ACTUAL_SHA,,}" != "${EXPECTED_SHA,,}" ]; then
+  ui_error "SHA256 incorrect · paquet corrompu ou incomplet. Installation annulée."
+  exit 1
+fi
+ui_ok "SHA256 validé · $DEB_NAME"
 
 ui_step 2 "Installation"
 if ! run_task --recoverable "Actualisation des dépôts" sudo apt update; then
