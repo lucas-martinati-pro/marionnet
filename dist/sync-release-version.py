@@ -16,8 +16,11 @@ def synchronize(repository, branch, version):
     if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)+', version):
         raise ValueError('Invalid release version: ' + version)
     endpoint = 'repos/' + repository + '/contents/META'
+    # setup-ocaml forces colors, including ANSI escapes in gh's JSON output.
+    api_env = dict(os.environ, NO_COLOR='1', CLICOLOR_FORCE='0')
+    api_env.pop('GH_FORCE_TTY', None)
     result = subprocess.run(['gh', 'api', endpoint + '?ref=' + quote(branch, safe='')],
-                            check=True, text=True, capture_output=True)
+                            check=True, text=True, capture_output=True, env=api_env)
     metadata = json.loads(result.stdout)
     original = base64.b64decode(metadata['content']).decode('utf-8')
     pattern = r'^version="([^"]+)"$'
@@ -35,7 +38,7 @@ def synchronize(repository, branch, version):
                    sha=metadata['sha'], branch=branch)
     # Updating by blob SHA preserves other files and rejects a conflicting META edit.
     subprocess.run(['gh', 'api', '--method', 'PUT', endpoint, '--input', '-'],
-                   input=json.dumps(payload), text=True, check=True, capture_output=True)
+                   input=json.dumps(payload), text=True, check=True, capture_output=True, env=api_env)
     print('Published version ' + version + ' committed to ' + branch + '.')
 
 
