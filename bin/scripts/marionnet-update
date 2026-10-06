@@ -21,6 +21,7 @@
 #   --cli      : download and install update interactively in the terminal
 #   --gui      : spawn terminal emulator to perform update and wait for keypress
 #   --force    : force download and reinstallation even if already at latest version
+#   --verbose  : display package manager output in full
 
 set -uo pipefail
 
@@ -30,6 +31,7 @@ CURL_TIMEOUT=8
 
 MODE="cli"
 FORCE=false
+VERBOSE=false
 OVERRIDE_CURRENT=""
 
 function usage {
@@ -42,6 +44,7 @@ Options:
   -u, --cli, --update    Update Marionnet in current terminal (default)
   -g, --gui              Launch update inside a terminal window (for GUI invocation)
   -f, --force            Force downloading and reinstalling the latest release
+      --verbose          Display full download and installation details
       --current <VER>    Explicitly specify the current version for comparison
   -h, --help             Display this help message and exit
 EOF
@@ -63,6 +66,10 @@ while [ $# -gt 0 ]; do
       ;;
     -f|--force)
       FORCE=true
+      shift
+      ;;
+    --verbose)
+      VERBOSE=true
       shift
       ;;
     --current)
@@ -171,6 +178,9 @@ fetch_latest_release() {
 if [ "$MODE" = "gui" ]; then
   THIS_SCRIPT="$(readlink -f "$0")"
   CMD_ARGS="--cli"
+  if [ "$VERBOSE" = true ]; then
+    CMD_ARGS="$CMD_ARGS --verbose"
+  fi
   if [ "$FORCE" = true ]; then
     CMD_ARGS="$CMD_ARGS --force"
   fi
@@ -242,72 +252,174 @@ if [ "$MODE" = "check" ]; then
   fi
 fi
 
-# 2. Mode: CLI Update
-echo "=========================================================="
-echo "         Gestionnaire de mise à jour Marionnet"
-echo "=========================================================="
-echo "Version actuelle : $CURRENT_VER"
-echo "Dernière version : $LATEST_VER ($TAG_NAME)"
+# Presentation mirrors install.sh; the updater's operations remain unchanged.
+UI_BOLD="" UI_DIM="" UI_CYAN="" UI_GREEN="" UI_YELLOW="" UI_RED="" UI_RESET=""
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ] && [ -z "${NO_COLOR+x}" ]; then
+  UI_BOLD=$'\033[1m' UI_DIM=$'\033[2m' UI_CYAN=$'\033[36m'
+  UI_GREEN=$'\033[32m' UI_YELLOW=$'\033[33m' UI_RED=$'\033[31m' UI_RESET=$'\033[0m'
+fi
+UPDATE_STARTED=$SECONDS
+UPDATE_LOG="$(mktemp "${TMPDIR:-/tmp}/marionnet-update.XXXXXX.log" 2>/dev/null || true)"
+if [ -z "$UPDATE_LOG" ]; then VERBOSE=true; fi
+CURRENT_STEP="Préparation"
+TEMP_DEB=""
+ui_line() {
+  local color="$1" message="$2"
+  printf '%s%s%s\n' "$color" "$message" "$UI_RESET"
+  if [ -n "$UPDATE_LOG" ]; then printf '%s\n' "$message" >> "$UPDATE_LOG" || true; fi
+}
+ui_info() { ui_line "$UI_DIM" "    $*"; }
+ui_ok() { ui_line "$UI_GREEN" "    ✓ $*"; }
+ui_warn() { ui_line "$UI_YELLOW" "    ! $*"; }
+ui_error() { ui_line "$UI_RED" "    ✗ $*" >&2; }
+ui_step() {
+  CURRENT_STEP="$2"
+  printf '\n'
+  ui_line "$UI_BOLD$UI_CYAN" "  [$1/3] $2"
+}
+
+# Les lignes ordinaires vont au journal. Les avertissements restent visibles.
+# Une sortie sans retour à la ligne est affichée après 200 ms : on conserve les
+# barres de téléchargement ET les invites interactives (dpkg, debconf, etc.).
+# Ne pas remplacer cette lecture par grep/une capture intégrale : une invite
+# pourrait alors rester invisible pendant que la commande attend une réponse.
+ui_command_output() {
+  local line status partial=false recoverable="${1:-false}"
+  local alerts="(^|[[:space:][:punct:]])([Ww][Aa][Rr][Nn][Ii][Nn][Gg]|[Ee][Rr][Rr][Oo][Rr]|[Ee][Rr][Rr][Ee][Uu][Rr]|[Aa][Vv][Ee][Rr][Tt][Ii][Ss][Ss][Ee][Mm][Ee][Nn][Tt]|[Aa][Tt][Tt][Ee][Nn][Tt][Ii][Oo][Nn]|[Nn][Oo][Tt][Ii][Cc][Ee])([[:space:][:punct:]]|$)|^E:|^W:|^debconf:"
+  local prompts="\?|\[[YyOoNn]/|[Pp]assword|[Mm]ot de passe|[Cc]onfirm|[Pp]ress.*([Ee]nter|[Rr]eturn)|[Aa]ppuyez"
+  while true; do
+    line=""
+    if IFS= read -r -t 0.2 line; then
+      if [ -n "$UPDATE_LOG" ]; then printf '%s\n' "$line" >> "$UPDATE_LOG" || true; fi
+      if [ "$VERBOSE" = true ] || [ "$partial" = true ]; then
+        printf '%s\n' "$line"
+      elif [[ "$line" =~ $prompts ]]; then
+        printf '%s\n' "$line"
+      elif [ "$recoverable" = false ] && [[ "$line" =~ $alerts ]]; then
+        # Ce rappel générique d’APT apparaît à chaque invocation du CLI.
+        if [[ "$line" != *"apt does not have a stable CLI interface"* ]]; then
+          printf '    %s! %s%s\n' "$UI_YELLOW" "$line" "$UI_RESET"
+        fi
+      fi
+      partial=false
+    else
+      status=$?
+      if [ -n "$line" ]; then
+        if [ -n "$UPDATE_LOG" ]; then printf '%s' "$line" >> "$UPDATE_LOG" || true; fi
+        printf '%s' "$line"
+        partial=true
+      fi
+      # read retourne >128 sur délai expiré, 1 sur fin de flux.
+      if [ "$status" -le 128 ]; then break; fi
+    fi
+  done
+  if [ "$partial" = true ]; then printf '\n'; fi
+  return 0
+}
+
+# Appeler seulement des commandes externes ici, pas une fonction métier Bash :
+# le contexte conditionnel d’un pipeline modifierait son comportement set -e.
+run_task() {
+  local recoverable=false
+  if [ "${1:-}" = --recoverable ]; then recoverable=true; shift; fi
+  local title="$1" started=$SECONDS status first_line=1
+  shift
+  ui_info "$title…"
+  if [ -n "$UPDATE_LOG" ]; then
+    first_line=$(( $(wc -l < "$UPDATE_LOG") + 1 ))
+    printf '\n$ ' >> "$UPDATE_LOG" || true
+    printf '%q ' "$@" >> "$UPDATE_LOG" || true
+    printf '\n' >> "$UPDATE_LOG" || true
+  fi
+  # La commande conserve stdin (et sudo son /dev/tty). PIPESTATUS[0] conserve
+  # son code exact, y compris lorsque l’appelant ignore volontairement l’échec.
+  if "$@" 2>&1 | ui_command_output "$recoverable"; then
+    status=0
+  else
+    status=${PIPESTATUS[0]}
+  fi
+  if [ "$status" -eq 0 ]; then
+    ui_ok "$title ($((SECONDS - started)) s)"
+  elif [ "$recoverable" = true ]; then
+    # L'appelant annonce et applique le repli. Garder les diagnostics de cette
+    # tentative dans le journal ; --verbose les affiche toujours en direct.
+    if [ -n "$UPDATE_LOG" ]; then
+      printf '\n%s : repli nécessaire (code %s).\n' "$title" "$status" >> "$UPDATE_LOG" || true
+    fi
+    if [ "$VERBOSE" = true ]; then ui_warn "$title : repli nécessaire (code $status)."; fi
+  else
+    ui_error "$title : échec (code $status)."
+    if [ -n "$UPDATE_LOG" ] && [ "$VERBOSE" = false ]; then
+      printf '\n    Dernières lignes de la commande :\n' >&2
+      sed -n "${first_line},\$p" "$UPDATE_LOG" | tail -n 35 >&2
+    fi
+  fi
+  return "$status"
+}
+
+
+cleanup() {
+  local status=$?
+  if [ -n "$TEMP_DEB" ]; then rm -f "$TEMP_DEB"; fi
+  if [ "$status" -ne 0 ]; then
+    ui_error "Mise à jour interrompue pendant : $CURRENT_STEP (code $status)."
+    if [ -n "$UPDATE_LOG" ]; then ui_error "Journal : $UPDATE_LOG"; fi
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+printf '\n'
+ui_line "$UI_BOLD$UI_CYAN" "  MARIONNET  /  Mise à jour"
+ui_line "$UI_DIM" "  ──────────────────────────────────────────────────"
+ui_info "Version : $CURRENT_VER → $LATEST_VER"
+if [ -n "$UPDATE_LOG" ]; then ui_info "Journal détaillé : $UPDATE_LOG"; fi
 
 UPDATE_NEEDED=false
-if compare_versions_gt "$LATEST_VER" "$CURRENT_VER"; then
-  UPDATE_NEEDED=true
-fi
-
+if compare_versions_gt "$LATEST_VER" "$CURRENT_VER"; then UPDATE_NEEDED=true; fi
 if [ "$UPDATE_NEEDED" = false ] && [ "$FORCE" = false ]; then
-  echo "----------------------------------------------------------"
-  echo "[+] Marionnet est déjà à jour (version $CURRENT_VER)."
-  echo "    Pour forcer la réinstallation, relancez avec --force."
-  echo "=========================================================="
+  ui_ok "Marionnet est déjà à jour (version $CURRENT_VER)."
+  ui_info "Utilisez --force pour réinstaller cette version."
   exit 0
 fi
-
 if [ "$FORCE" = true ] && [ "$UPDATE_NEEDED" = false ]; then
-  echo "--> Option --force activée : réinstallation de la version $LATEST_VER..."
-else
-  echo "--> Nouvelle version disponible : $LATEST_VER !"
+  ui_info "Réinstallation demandée avec --force"
 fi
-
 if [ -z "$DEB_URL" ]; then
   DEB_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG_NAME}/marionnet-all-in-one_${LATEST_VER}_amd64.deb"
 fi
 
-TEMP_DEB=$(mktemp /tmp/marionnet-update.XXXXXX.deb)
-cleanup() {
-  rm -f "$TEMP_DEB"
-}
-trap cleanup EXIT
-
-echo "--> Téléchargement du paquet All-in-One..."
-echo "    URL : $DEB_URL"
-curl -fL --progress-bar "$DEB_URL" -o "$TEMP_DEB" || {
-  echo "[-] Erreur : le téléchargement du paquet Debian a échoué." >&2
-  exit 1
-}
-
-# Verify file size (> 1MB)
+ui_step 1 "Téléchargement"
+TEMP_DEB=$(mktemp /tmp/marionnet-update.XXXXXX.deb) || exit 1
+if [ "$VERBOSE" = true ]; then ui_info "Source : $DEB_URL"; fi
+run_task "Paquet All-in-One" curl -fsSL "$DEB_URL" -o "$TEMP_DEB" || exit 1
 FILE_SIZE=$(wc -c < "$TEMP_DEB" 2>/dev/null || echo 0)
 if [ "$FILE_SIZE" -lt 1000000 ]; then
-  echo "[-] Erreur : le fichier téléchargé semble corrompu ou incomplet ($FILE_SIZE octets)." >&2
+  ui_error "Paquet incomplet ou corrompu ($FILE_SIZE octets)."
   exit 1
 fi
+ui_info "Paquet reçu · $((FILE_SIZE / 1024 / 1024)) Mio"
 
-echo "--> Installation du paquet Debian..."
-sudo apt update || true
-sudo apt install -o Dpkg::Options::="--force-overwrite" --reinstall -y "$TEMP_DEB" || {
-  echo "[-] Erreur : l'installation du paquet via apt a échoué." >&2
-  exit 1
-}
+ui_step 2 "Installation"
+if ! run_task --recoverable "Actualisation des dépôts" sudo apt update; then
+  ui_warn "Dépôts non actualisés ; poursuite avec les informations disponibles."
+fi
+run_task "Installation du paquet Debian" sudo apt install -o Dpkg::Options::="--force-overwrite" --reinstall -y "$TEMP_DEB" || exit 1
 
+ui_step 3 "Configuration réseau"
 TARGET_USER="${SUDO_USER:-$USER}"
-echo "--> Actualisation des droits réseau (sudoers) pour $TARGET_USER..."
 if command -v marionnet-sudoers.sh >/dev/null 2>&1; then
-  sudo marionnet-sudoers.sh install "$TARGET_USER" 2>/dev/null || true
+  if ! run_task --recoverable "Droits réseau · $TARGET_USER" sudo marionnet-sudoers.sh install "$TARGET_USER"; then
+    ui_warn "Droits réseau non actualisés ; consultez le journal détaillé."
+  fi
+else
+  ui_warn "Outil de configuration réseau indisponible."
 fi
 
-echo "=========================================================="
-echo "[+] Marionnet a été mis à jour avec succès vers la version $LATEST_VER !"
-echo "=========================================================="
-echo "Vous pouvez relancer Marionnet pour profiter des nouveautés."
-echo "=========================================================="
+printf '\n'
+ui_ok "Marionnet $LATEST_VER installé · $((SECONDS - UPDATE_STARTED)) s"
+ui_info "Relancez Marionnet pour utiliser cette version."
+if [ -n "$UPDATE_LOG" ]; then ui_info "Détails : $UPDATE_LOG"; fi
+printf '\n'
 exit 0

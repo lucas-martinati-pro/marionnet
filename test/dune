@@ -25,3 +25,8 @@
  (alias runtest)
  (deps release_version_test.py ../dist/sync-release-version.py)
  (action (run python3 %{dep:release_version_test.py})))
+
+(rule
+ (alias runtest)
+ (deps update_presentation_test.py ../bin/scripts/marionnet-update)
+ (action (run python3 %{dep:update_presentation_test.py})))
