@@ -1062,7 +1062,7 @@ class globalState = fun () ->
       sketch_timer <- None;
       sketch_pending <- None;
       if self#active_project then
-        sketch_timer <- Some (GMain.Timeout.add ~ms:120 ~callback:(fun () ->
+        sketch_timer <- Some (GMain.Timeout.add ~ms:16 ~callback:(fun () ->
           sketch_timer <- None;
           if self#active_project then begin
             let request = {
