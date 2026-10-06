@@ -140,20 +140,7 @@ class task_runner = object(self)
     in
     let parallel_task_thunk =
       fun () ->
-        let threads =
-          List.map
-            (fun (name, thunk) -> name, Thread.create thunk ())
-            names_and_thunks
-        in
-        threads |> List.iter (fun (name, thread) ->
-           Log.printf1 "Joining \"%s\"...\n" name;
-           (try
-              Thread.join thread;
-            with e -> begin
-              Log.printf1 "!!!!!!!!!!!!!!! This should not happen: join failed (%s)\n" (Printexc.to_string e);
-            end);
-           Log.printf1 "I have joined \"%s\" with success\n" name;
-           )
+        do_in_parallel ~propagate_exceptions:true (List.map snd names_and_thunks)
     in
     (*  self#schedule ~name:parallel_task_name parallel_task_thunk *)
     self#prepend ~name:parallel_task_name parallel_task_thunk

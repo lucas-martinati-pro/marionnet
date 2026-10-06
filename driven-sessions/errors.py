@@ -59,9 +59,12 @@ with tempfile.TemporaryDirectory(prefix='marionnet-errors-') as tmp:
         assert executable, command
         wrapper = commands / command
         marker = fixture / (command + '.fail')
-        wrapper.write_text('#!/usr/bin/python3\nimport os,sys\nfrom pathlib import Path\n'
+        wrapper.write_text('#!/usr/bin/python3\nimport os,sys,time\nfrom pathlib import Path\n'
                            + f'if Path({str(marker)!r}).exists():\n'
                            + f'    sys.stderr.write({diagnostic!r}); sys.exit(1)\n'
+                           + (f'if Path({str(fixture / "tar.pause")!r}).exists():\n'
+                              + f'    with open({str(fixture / "tar.calls")!r}, "a") as count: count.write("call\\n")\n'
+                              + '    time.sleep(1.5)\n' if command == 'tar' else '')
                            + f'os.execv({executable!r}, [{command!r}] + sys.argv[1:])\n')
         wrapper.chmod(0o700)
     sock = fixture / 'control.sock'
@@ -107,6 +110,7 @@ with tempfile.TemporaryDirectory(prefix='marionnet-errors-') as tmp:
     try:
         wait(lambda: sock.exists() or app.poll() is not None, 'application starts')
         assert app.poll() is None
+        time.sleep(6.5)  # Initial palette centering must finish before real key events.
         project = fixture / 'projet <réseau> & test.mar'
         ask('new --timeout=30 ' + str(project))
         ask('add hub h1 --ports=8')
@@ -115,6 +119,25 @@ with tempfile.TemporaryDirectory(prefix='marionnet-errors-') as tmp:
         old_drawing = png.read_bytes()
         ask('save --timeout=30')
         old_archive = hashlib.sha256(project.read_bytes()).hexdigest()
+        ask('set h1 label Asynchrone')
+        pause = fixture / 'tar.pause'
+        pause.touch()
+        main = xdo('search', '--all', '--onlyvisible', '--pid', app.pid,
+                   '--name', 'Marionnet').splitlines()[0]
+        xdo('windowfocus', '--sync', main)
+        xdo('key', '--clearmodifiers', 'ctrl+s', 'ctrl+s')
+        wait(lambda: any(op['key'] == 'project' and op['label'] == locale['label.saving']
+                         for op in ask('status')['operations']), 'slow save remains observable while GTK responds')
+        if args.screenshots:
+            subprocess.run(['import', '-window', main, str(args.screenshots / 'save-in-progress.png')], check=True)
+        wait(lambda: not ask('status')['operations'] and ask('status')['saved'],
+             'save reservation is released after completion')
+        # One archive creation and one validation, not two concurrent saves.
+        assert (fixture / 'tar.calls').read_text().splitlines() == ['call', 'call']
+        pause.unlink()
+        print('PASS: consecutive Ctrl+S triggers one save and leaves GTK responsive', flush=True)
+        old_archive = hashlib.sha256(project.read_bytes()).hexdigest()
+        old_drawing = png.read_bytes()
         (fixture / 'dot.fail').touch()
         ask('add hub h2 --ports=8')
         report = wait(lambda: notification('Test diagnostic'), 'render failure keeps its technical diagnostic')

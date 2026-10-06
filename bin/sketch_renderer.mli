@@ -17,3 +17,9 @@ val render :
 val map_file : request -> string
 val publish : rendered -> unit
 val discard : rendered -> unit
+
+(** Wall time spent launching and waiting for Graphviz, in milliseconds. *)
+val graphviz_ms : rendered -> float
+
+(** Read the private geometry before publication or discard. *)
+val hit_map : rendered -> string

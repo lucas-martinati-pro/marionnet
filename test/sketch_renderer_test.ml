@@ -28,6 +28,10 @@ let () =
       | Ok result -> result | Error error -> failwith error in
     let first = render request in
     require (not (Sys.file_exists request.png_file)) "render published without permission";
+    require (Sketch_renderer.graphviz_ms first >= 0.) "invalid Graphviz timing";
+    let private_map = Sketch_renderer.hit_map first in
+    require (List.exists (fun a -> a.Sketch_hit_map.target = Sketch_hit_map.Node 1)
+      (Sketch_hit_map.parse private_map)) "private hit map unavailable before publication";
     Sketch_renderer.publish first;
     let png = read request.png_file in
     let map = read (Sketch_renderer.map_file request) in

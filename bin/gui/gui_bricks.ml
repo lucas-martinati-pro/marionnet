@@ -361,6 +361,7 @@ let ok_or_cancel
   begin
   let hooks = Hashtbl.find_opt component_dialogs (Gobject.get_oid w#as_widget) in
   let valid () = match hooks with None -> true | Some hooks -> hooks.valid () in
+  let has_help = match help_callback with None -> false | Some _ -> true in
   let help_callback = match hooks, help_callback with
     | Some _, Some callback -> w#add_button (s_ "label.help") `HELP; callback
     | _ -> add_help_button_if_necessary w help_callback in
@@ -376,6 +377,9 @@ let ok_or_cancel
       Gobject.Property.set_dyn button#as_widget "margin-start" (`INT 4);
       Gobject.Property.set_dyn button#as_widget "margin-end" (`INT 4)) w#action_area#children;
     hooks.prepare ()) hooks;
+  (if has_help then match w#action_area#children with
+   | button :: _ -> GtkBase.Widget.Tooltip.set_text button#as_widget (s_ "label.help" ^ " (F1)")
+   | [] -> ());
   w#set_default_response `OK;
   w#set_response_sensitive `OK (valid ());
   let result = ref None in
@@ -393,9 +397,19 @@ let ok_or_cancel
   (* Route Enter through the same response loop as the button, exactly once. *)
   ignore (w#event#connect#key_press ~callback:(fun ev ->
     let key = GdkEvent.Key.keyval ev in
-    if key = GdkKeysyms._Return || key = GdkKeysyms._KP_Enter then begin
-      if valid () then w#response `OK;
-      true
+    if key = GdkKeysyms._Escape then begin w#response `CANCEL; true end
+    else if key = GdkKeysyms._F1 then begin help_callback (); true end
+    else if key = GdkKeysyms._Return || key = GdkKeysyms._KP_Enter then begin
+      let native_activation = try
+        let focused = GtkWindow.Window.get_focus w#as_window in
+        let kind = Gobject.get_type focused in
+        List.exists (fun name -> Gobject.Type.is_a kind (Gobject.Type.from_name name))
+          ["GtkButton"; "GtkTextView"]
+        with Gpointer.Null -> false in
+      if native_activation then false else begin
+        if valid () then w#response `OK;
+        true
+      end
     end else false));
   loop ();
   w#destroy ();

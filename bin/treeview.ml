@@ -1157,7 +1157,12 @@ object(self)
     (* Episode 13: same reason as `add_complete_row_with_no_checking' above. Note that the nested
        `self#clear' is itself wrapped: apply_extract applies on the spot once we are the main
        thread, so the nesting costs nothing and cannot deadlock. *)
-    GMain_actor.apply_extract (fun () -> self#private_set_complete_forest new_forest) ()
+    GMain_actor.apply_extract (fun () ->
+      let started = Unix.gettimeofday () in
+      Fun.protect ~finally:(fun () ->
+        Log.printf1 "Refresh table model: %.2f ms\n"
+          (1000. *. (Unix.gettimeofday () -. started)))
+        (fun () -> self#private_set_complete_forest new_forest)) ()
 
   method private private_set_complete_forest (new_forest : Row.t Forest.t) =
     (* Clear our structures and Gtk structures: *)
@@ -1346,17 +1351,25 @@ object(self)
   (** This needs to be public (it would be 'friend' in C++), but please don't directly
       call it. It's meant for use by the subclasses of 'column. *)
   method set_row (row_id : string) row =
-    Hashtbl.add id_to_row row_id row
+    Hashtbl.replace id_to_row row_id row
 
   method set_row_field (row_id : string) field new_item =
-    let complete_forest = self#get_complete_forest in
-    let updated_complete_forest =
-      Forest.search_and_replace
-        (fun row -> (self#id_of_complete_row row) = row_id)
-        (fun row -> Row.set_field ~field ~value:new_item row)
-        complete_forest
-    in
-    self#set_complete_forest updated_complete_forest
+    GMain_actor.apply_extract (fun () ->
+      if self#get_row_field row_id field <> new_item then begin
+        let started = Unix.gettimeofday () in
+        Fun.protect ~finally:(fun () ->
+          Log.printf1 "Refresh table cell: %.2f ms\n"
+            (1000. *. (Unix.gettimeofday () -. started))) (fun () ->
+          if field = "_id" then begin
+            let forest = Forest.search_and_replace
+              (fun row -> self#id_of_complete_row row = row_id)
+              (fun row -> Row.set_field ~field ~value:new_item row) self#get_complete_forest in
+            self#set_complete_forest forest
+          end else
+            (* Same programmatic semantics: no validation or edit callbacks.
+               Update one cell, retaining selection and expansion of other rows. *)
+            (self#get_column field)#set ~ignore_constraints:true row_id new_item)
+      end) ()
 
   method get_String_field field (row_id:string) =
     Row_item.extract_String (self#get_row_field row_id field)

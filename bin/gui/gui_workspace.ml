@@ -49,6 +49,22 @@ module Make (State : sig val st : State.globalState end) = struct
   module Drawing = Gui_network_canvas.Make (State) (struct let canvas = canvas end)
 
   let summary = w#statusbar#new_context "workspace"
+  let operations = w#statusbar#new_context "operations"
+  let update_operations () =
+    let tasks = Background_tasks.active () in
+    operations#pop ();
+    if tasks <> [] then
+      ignore (operations#push (String.concat " · "
+        (List.map (fun (_, label) -> label ^ "…") (List.sort compare tasks))));
+    let project_busy = List.mem_assoc "project" tasks in
+    (* Disable parents, preserving each child's own reactive sensitivity. *)
+    List.iter (fun widget -> widget#misc#set_sensitive (not project_busy))
+      [w#menubar_MARIONNET#coerce; w#notebook_CENTRAL#coerce];
+    List.iter (fun widget -> widget#misc#set_sensitive (st#active_project && not project_busy))
+      [w#toolbar_COMPONENTS#coerce; w#toolbar_DOT_TUNING#coerce];
+    w#hbox_BASE#misc#set_sensitive (st#runnable_project && not project_busy)
+  let () = Background_tasks.on_change update_operations
+
   let previous_summary = ref ""
   let previous_title = ref ""
 
@@ -87,7 +103,8 @@ module Make (State : sig val st : State.globalState end) = struct
       empty_box#misc#show (); w#sketch#misc#hide ()
     end else begin
       empty_box#misc#hide (); w#sketch#misc#show ()
-    end
+    end;
+    update_operations ()
 
   (* Coalesce notifications instead of polling and traversing every treeview
      on each tick. Every widget mutation happens on the GTK main thread. *)

@@ -598,6 +598,8 @@ let cmd_status (st : State.globalState) ~(timeout:float) : string =
             ("can_undo", jbool st#can_undo);
             ("can_redo", jbool st#can_redo);
             ("editing",  jbool st#editing);
+            ("operations", jlist (List.map (fun (key, label) ->
+              jobj [("key", jstr key); ("label", jstr label)]) (Background_tasks.active ())));
             ("nodes",    jint nodes);
             (* Exam locks (journalisation-profonde, episode 22). [can] publishes what a *component*
                allows, which is enough for [poweroff] and [del]; it says nothing about the four
@@ -3490,6 +3492,7 @@ let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : stri
   let since = Script_mode.last_seq () in
   (* No Thread.join here: on this path the method returns Thread.self (), joining it would
      deadlock. *)
+  (try
   let _ : Thread.t = st#open_project_async ~filename in
   let outcome =
     ask ~timeout
@@ -3531,6 +3534,10 @@ let cmd_open (st : State.globalState) ~(timeout:float) ~(filename:string) : stri
           | _ ->
               reply_error_with ~extra ~code:"internal"
                 ~detail:(Printf.sprintf "no active project after opening %S (see the log)" filename))
+
+   with e -> reply_error_with
+     ~extra:[("notifications", jnotifications (Script_mode.notifications ~since ()))]
+     ~code:"internal" ~detail:(Printexc.to_string e))
 
 (* --- the project: new, save, save-as, close ---------------------- *)
 

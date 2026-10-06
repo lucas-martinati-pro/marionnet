@@ -204,31 +204,13 @@ class virtual ['parent] simulated_device () = object(self)
 
   method private enqueue_task_with_progress_bar verb thunk =
     let text = verb ^ " " ^ self#get_name in
-    let progress_bar = ref None in
-    Task_runner.the_task_runner#schedule
-      ~name:text
+    ignore (Background_tasks.enqueue
+      ~key:("component:" ^ string_of_int (Oo.id self)) ~label:text
+      ~schedule:(fun task -> Task_runner.the_task_runner#schedule ~name:text task)
       (fun () ->
-        (try
-          progress_bar := Some (Simple_dialogs.make_progress_bar_dialog ~title:text ());
-          thunk ();
-        with e -> begin
-          Log.printf "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-          let message =
-            Printf.sprintf "enqueue_task_with_progress_bar: %s %s failed (%s)"
-              verb self#get_name (Printexc.to_string e) in
-          Log.printf1 "%s\n" message;
-          Simple_dialogs.report_exception ~title:(verb ^ " " ^ self#get_name)
-            ~message:(s_ "error.component_failed")
-            ~advice:(s_ "error.advice.component") e ();
-          Log.printf "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-        end));
-    Task_runner.the_task_runner#schedule
-      ~name:("Destroy the progress bar for \"" ^ text ^ "\"")
-      (fun () ->
-        match !progress_bar with
-          Some progress_bar ->
-            Simple_dialogs.destroy_progress_bar_dialog progress_bar
-        | None -> ())
+        let progress = Simple_dialogs.make_progress_bar_dialog ~title:text () in
+        Fun.protect ~finally:(fun () -> Simple_dialogs.destroy_progress_bar_dialog progress)
+          thunk))
 
   method create =
     (* This is invisible for the user: no progress bar here *)

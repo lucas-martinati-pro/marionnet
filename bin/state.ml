@@ -288,6 +288,14 @@ class globalState = fun () ->
   val mutable sketch_hit_map : Sketch_hit_map.area list = []
   val sketch_map_counter = Cortex.return 0
 
+  method launch_project_action ~label task =
+    ignore (Background_tasks.start ~key:"project" ~label task)
+
+  method private project_task ~label task =
+    if GMain_actor.am_I_the_GTK_main_thread () then
+      self#launch_project_action ~label task
+    else Background_tasks.run ~key:"project" ~label task
+
   (** The main window: *)
   method mainwin = win
 
@@ -302,8 +310,9 @@ class globalState = fun () ->
 
   (** Show something on statusbar. *)
   method flash ?(delay:int=2000) (msg:string) =
-   let statusbar_ctx = win#statusbar#new_context "global" in
-   statusbar_ctx#flash ~delay msg
+   GMain_actor.delegate (fun () ->
+     let statusbar_ctx = win#statusbar#new_context "global" in
+     statusbar_ctx#flash ~delay msg) ()
 
   (** Are we working with an active project? *)
   method active_project = (self#project_paths#get_filename <> None)
@@ -390,7 +399,7 @@ class globalState = fun () ->
     (* Treeview data should be saved within prefix: *)
     let () = self#clear_treeviews in
     (* Reset dotoptions *)
-    let () = self#dotoptions#reset_defaults () in
+    let () = GMain_actor.apply_extract (self#dotoptions#reset_defaults) () in
     (* A brand new project has never been saved (do not inherit the flag from the
        previously opened one): *)
     let () = self#set_project_not_already_saved in
@@ -400,7 +409,7 @@ class globalState = fun () ->
 
   (* Interface: *)
   method new_project ~filename =
-    GMain_actor.delegate (self#private_new_project ~filename) ()
+    self#project_task ~label:(s_ "label.new") (self#private_new_project ~filename)
 
   (** Close the current project. The project is lost if the user hasn't saved it.
       This method is synchronous: the caller should ensure the correct order of tasks. *)
@@ -436,9 +445,7 @@ class globalState = fun () ->
 
   (* Interface: *)
   method close_project =
-    if GMain_actor.am_I_the_GTK_main_thread ()
-    then Thread.create (self#private_close_project) () |> ignore
-    else (self#private_close_project ())
+    self#project_task ~label:(s_ "label.close") self#private_close_project
 
  (** Read the pseudo-XML file containing the network definition. *)
  method import_network
@@ -497,6 +504,9 @@ class globalState = fun () ->
         ()
     in
     let _ = GMain_actor.delegate (opening_project_progress_bar#show) () in
+    Fun.protect
+      ~finally:(fun () -> Progress_bar.destroy_progress_bar_dialog opening_project_progress_bar)
+      (fun () ->
     (* --- *)
     let synchronous_loading () = begin
       (* --- *)
@@ -658,7 +668,7 @@ class globalState = fun () ->
     let _ =
 (*      Task_runner.the_task_runner#schedule
         ~name:"state#open_project.synchronous_loading"*)
-        (GMain_actor.delegate (fun () ->
+        ((fun () ->
 	    try
 	      synchronous_loading ()
 	    with
@@ -696,25 +706,25 @@ class globalState = fun () ->
 		raise e;
 	      end)) ()
     in
-    (* Remove now the progress_bar: *)
-    let _ =
-(*      Task_runner.the_task_runner#schedule
-        ~name:"destroy opening project progress bar"*)
-        (fun () -> Progress_bar.destroy_progress_bar_dialog (opening_project_progress_bar)) ()
-    in
-    ()
+    ())
     end
 
   (* Interface: *)
   (* NOTE: if the thread is not the gtk_main we don't create another thread: *)
   method open_project_async ~filename : Thread.t =
-    if GMain_actor.am_I_the_GTK_main_thread ()
-    then Thread.create (self#private_open_project_async ~filename) ()
-    else (let () = self#private_open_project_async ~filename () in Thread.self ())
+    if GMain_actor.am_I_the_GTK_main_thread () then
+      (match Background_tasks.start ~key:"project" ~label:(s_ "label.opening")
+         (self#private_open_project_async ~filename) with
+       | Some worker -> worker | None -> Thread.self ())
+    else begin
+      Background_tasks.run ~key:"project" ~label:(s_ "label.opening")
+        (self#private_open_project_async ~filename);
+      Thread.self ()
+    end
 
-  (* Second version: create a new thread anyway: *)
+  (* Compatibility entry point: all callers share the project reservation. *)
   method open_project_async_anyway ~filename : Thread.t =
-    Thread.create (self#private_open_project_async ~filename) ()
+    self#open_project_async ~filename
 
 
   (*** BEGIN: this part of code tries to understand if the project must be really saved before exiting. *)
@@ -895,13 +905,14 @@ class globalState = fun () ->
           (* Write the rc scripts of the components into states/, and sweep the ones no
              component claims any more. BEFORE the network file, which carries their basenames
              (work-stream `migration-marshal-to-text', episode 5; see User_level.Rc_files). *)
-          self#network#save_rc_files;
+          GMain_actor.apply_extract (fun () -> self#network#save_rc_files) ();
           (* --- *)
           (* Write the network file (JSON since `v3, hence the new name) *)
-          User_level.Xml.save_network (self#network) (self#project_paths#networkFile_json);
+          GMain_actor.apply_extract (fun () ->
+            User_level.Xml.save_network (self#network) (self#project_paths#networkFile_json)) ();
           (* --- *)
           (* Save also dotoptions for drawing image. *)
-          self#dotoptions#save_to_file (self#project_paths#dotoptionsFile_json);
+          GMain_actor.apply_extract (fun () -> self#dotoptions#save_to_file (self#project_paths#dotoptionsFile_json)) ();
           (* --- *)
           (* Save treeviews (just to play it safe, because treeview files should be automatically)
              re-written at every update): *)
@@ -950,13 +961,12 @@ class globalState = fun () ->
 
   (* Interface: *)
   method save_project =
-    if GMain_actor.am_I_the_GTK_main_thread ()
-    then Thread.create (self#private_save_project) () |> ignore
-    else (self#private_save_project ())
+    self#project_task ~label:(s_ "label.saving") self#private_save_project
 
 
   (** Update the project filename to the given string, and save: *)
   method save_project_as ?root_basename ~filename () =
+    self#project_task ~label:(s_ "label.saving") (fun () ->
     if self#active_project then begin
       try
         (* Set the project filename, name and root_basename: *)
@@ -964,25 +974,22 @@ class globalState = fun () ->
         (* Save the project *)
         self#save_project;
       with e -> (raise e)
-    end
+    end)
 
   (** Save the project into the given file, but without changing its name in the
       copy we're editing. Implemented by temporarily updating the name, saving
       then switch back to the old name. *)
   method copy_project_into ?root_basename ~filename () =
+    self#project_task ~label:(s_ "label.saving") (fun () ->
     if self#active_project then begin
-      try
-        let filename0      = Option.extract (self#project_paths#get_filename) in
-        let root_basename0 = Option.extract (self#project_paths#get_root_basename) in
-        (* Set the project filename, name and root_basename: *)
-        let () = self#project_paths#change_filename_and_root_basename ?root_basename ~filename () in
-        (* Save the project *)
-        let () = self#save_project in
-        (* Revert to the previous names: *)
-        let () = self#project_paths#change_filename_and_root_basename ~root_basename:(root_basename0) ~filename:(filename0) () in
-        ()
-      with e -> (raise e)
-    end
+      let filename0 = Option.extract self#project_paths#get_filename in
+      let root_basename0 = Option.extract self#project_paths#get_root_basename in
+      self#project_paths#change_filename_and_root_basename ?root_basename ~filename ();
+      Fun.protect
+        ~finally:(fun () -> self#project_paths#change_filename_and_root_basename
+          ~root_basename:root_basename0 ~filename:filename0 ())
+        (fun () -> self#save_project)
+    end)
 
   (* Scheduling state belongs exclusively to GTK. Workers only receive immutable
      snapshots; they never inspect a changing network or touch a widget. *)
@@ -991,6 +998,7 @@ class globalState = fun () ->
   val mutable sketch_timer : GMain.Timeout.id option = None
   val mutable sketch_pending : (int * Sketch_renderer.request) option = None
   val mutable sketch_last_rendered : Sketch_renderer.request option = None
+  val mutable sketch_cached_map : Sketch_hit_map.area list = []
 
   method sketch_hit_map = sketch_hit_map
   method sketch_map_counter = sketch_map_counter
@@ -1002,6 +1010,7 @@ class globalState = fun () ->
     sketch_timer <- None;
     sketch_pending <- None;
     sketch_last_rendered <- None;
+    sketch_cached_map <- [];
     sketch_hit_map <- []; self#sketch_map_notify
 
   method private start_pending_sketch_render =
@@ -1012,13 +1021,21 @@ class globalState = fun () ->
           sketch_pending <- None;
           if sketch_last_rendered = Some request then begin
             (* Unchanged content reuses both the image and its geometry. *)
-            sketch_hit_map <- Sketch_hit_map.parse (UnixExtra.cat (Sketch_renderer.map_file request));
-            self#sketch_map_notify
+            if sketch_hit_map <> sketch_cached_map then begin
+              sketch_hit_map <- sketch_cached_map; self#sketch_map_notify
+            end;
+            Log.printf "Refresh: reused unchanged drawing and hit map\n"
           end else begin
             sketch_render_in_progress <- true;
             ignore (Thread.create (fun () ->
               Log.printf "About to refresh the sketch\n";
               let result = Sketch_renderer.render ~spawn:Simulation_level.spawn_process request in
+              let areas = match result with
+                | Ok rendered ->
+                    Log.printf1 "Refresh Graphviz: %.2f ms\n" (Sketch_renderer.graphviz_ms rendered);
+                    (try Sketch_hit_map.parse (Sketch_renderer.hit_map rendered)
+                     with _ -> [])
+                | Error _ -> [] in
               GMain_actor.delegate ~async:() (fun () ->
                 sketch_render_in_progress <- false;
                 let current = generation = sketch_generation
@@ -1028,8 +1045,12 @@ class globalState = fun () ->
                   match result with
                   | Ok rendered when current ->
                       Sketch_renderer.publish rendered;
+                      let started = Unix.gettimeofday () in
                       self#mainwin#sketch#set_file request.Sketch_renderer.png_file;
-                      sketch_hit_map <- Sketch_hit_map.parse (UnixExtra.cat (Sketch_renderer.map_file request));
+                      Log.printf1 "Refresh image: %.2f ms\n"
+                        (1000. *. (Unix.gettimeofday () -. started));
+                      sketch_hit_map <- areas;
+                      sketch_cached_map <- areas;
                       self#sketch_map_notify;
                       sketch_last_rendered <- Some request
                   | Ok rendered -> Sketch_renderer.discard rendered
@@ -1049,7 +1070,6 @@ class globalState = fun () ->
   method private really_refresh_sketch =
     GMain_actor.delegate ~async:() (fun () ->
       sketch_generation <- sketch_generation + 1;
-      sketch_hit_map <- []; self#sketch_map_notify;
       (match sketch_timer with None -> () | Some id -> GMain.Timeout.remove id);
       sketch_timer <- None;
       sketch_pending <- None;
@@ -1057,12 +1077,18 @@ class globalState = fun () ->
         sketch_timer <- Some (GMain.Timeout.add ~ms:16 ~callback:(fun () ->
           sketch_timer <- None;
           if self#active_project then begin
+            let started = Unix.gettimeofday () in
             let request = {
               Sketch_renderer.dot_file = self#project_paths#dotSketchFile;
               png_file = self#project_paths#pngSketchFile;
               content = self#network#dotTrad ();
               splines = Cortex.get self#network#dotoptions#curved_lines;
             } in
+            Log.printf1 "Refresh DOT snapshot: %.2f ms\n"
+              (1000. *. (Unix.gettimeofday () -. started));
+            if sketch_last_rendered <> Some request then begin
+              sketch_hit_map <- []; self#sketch_map_notify
+            end;
             sketch_pending <- Some (sketch_generation, request);
             self#start_pending_sketch_render
           end;
@@ -1286,14 +1312,21 @@ class globalState = fun () ->
     )
     node_list
 
- method do_something_with_every_node_in_sequence ?node_list (verb) (what_to_do_with_a_node) =
-  List.iter
-    (fun (name, thunk) -> Task_runner.the_task_runner#schedule ~name thunk)
-    (self#make_names_and_thunks ?node_list verb what_to_do_with_a_node)
+ method do_something_with_every_node_in_sequence ?(node_list=self#network#get_node_list) verb what_to_do_with_a_node =
+  List.iter2 (fun node (name, thunk) ->
+    ignore (Background_tasks.enqueue
+      ~key:("component:" ^ string_of_int (Oo.id node)) ~label:name
+      ~schedule:(fun task -> Task_runner.the_task_runner#schedule ~name task) thunk))
+    node_list (self#make_names_and_thunks ~node_list verb what_to_do_with_a_node)
 
- method do_something_with_every_node_in_parallel ?node_list (verb) (what_to_do_with_a_node) =
-  Task_runner.the_task_runner#schedule_parallel
-    (self#make_names_and_thunks ?node_list verb what_to_do_with_a_node);;
+ method do_something_with_every_node_in_parallel ?(node_list=self#network#get_node_list) verb what_to_do_with_a_node =
+  let tasks = ref [] in
+  List.iter2 (fun node (name, thunk) ->
+    ignore (Background_tasks.enqueue
+      ~key:("component:" ^ string_of_int (Oo.id node)) ~label:name
+      ~schedule:(fun task -> tasks := (name, task) :: !tasks) thunk))
+    node_list (self#make_names_and_thunks ~node_list verb what_to_do_with_a_node);
+  if !tasks <> [] then Task_runner.the_task_runner#schedule_parallel (List.rev !tasks);;
 
  (* A topology is worth more than a run. A student draws (or completes) their network, then presses
     "Start everything" without ever saving: from that instant the .mar on disk does NOT hold the
@@ -1344,7 +1377,7 @@ class globalState = fun () ->
   let startup () =
     self#do_something_with_every_node_in_sequence
       ~node_list:(self#network#get_nodes_that_can_startup ())
-      "Startup" (fun node -> node#startup_right_now)
+      (s_ "label.starting") (fun node -> node#startup_right_now)
   in
   if not (self#virgin_project_needs_saving) then startup () else
   let save_then_startup () =
@@ -1354,13 +1387,13 @@ class globalState = fun () ->
     startup ()
   in
   if GMain_actor.am_I_the_GTK_main_thread ()
-  then (Thread.create save_then_startup () |> ignore)
+  then self#launch_project_action ~label:(s_ "label.starting") save_then_startup
   else save_then_startup ()
 
  method shutdown_everything () =
   self#do_something_with_every_node_in_parallel
     ~node_list:(self#network#get_nodes_that_can_gracefully_shutdown ())
-    "Shut down"
+    (s_ "label.stopping")
     (fun node -> node#gracefully_shutdown_right_now)
 
  (* Exam locks (journalisation-profonde, episode 22). The belt, the GUI button being the braces:
@@ -1377,7 +1410,7 @@ class globalState = fun () ->
  (* self#do_something_with_every_node_in_sequence *)
   self#do_something_with_every_node_in_parallel
     ~node_list:(self#network#get_nodes_that_can_gracefully_shutdown ())
-    "Power-off"
+    (s_ "label.shutting_down")
     (fun node -> node#poweroff_right_now)
 
 (** Return true iff there is some node on or sleeping *)

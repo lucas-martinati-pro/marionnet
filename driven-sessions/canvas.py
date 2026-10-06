@@ -244,9 +244,14 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         wait(lambda: ask('can h1')['state'] == 'off', 'Stop from the node context menu')
         ask('set h1 label Identique')
         ask('save --timeout=30')
+        wait(lambda: 'Identique' in drawing().with_suffix('.dot').read_text(), 'changed drawing is published')
+        identical_stamp = drawing().with_suffix('.dot').stat().st_mtime_ns
         ask('set h1 label Identique')
         ask('save --timeout=30')
         time.sleep(.2)
+        assert drawing().with_suffix('.dot').stat().st_mtime_ns == identical_stamp
+        assert 'reused unchanged drawing and hit map' in log_path.read_text(errors='replace')
+        print('PASS: unchanged drawing reuses its image and geometry', flush=True)
         p, origin, map_point, size = point('h1')
         before = hashlib.sha256(drawing().read_bytes()).hexdigest()
         stamp = drawing().with_suffix('.dot').stat().st_mtime_ns
@@ -260,14 +265,25 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         print('PASS: Ctrl+wheel zoom keeps hit testing accurate without rendering or dirtying the project', flush=True)
         capture(window, 'zoom')
         xdo('keydown', 'ctrl'); xdo('click', 5); xdo('keyup', 'ctrl')
+        wait(lambda: not ask('status')['operations'], 'individual operation reservations are released')
+        ask('start-all')
+        wait(lambda: ask('can h1')['state'] == 'on' and ask('can h2')['state'] == 'on'
+             and not ask('status')['operations'], 'collective startup completes and releases reservations')
+        ask('shutdown-all')
+        wait(lambda: ask('can h1')['state'] == 'off' and ask('can h2')['state'] == 'off'
+             and not ask('status')['operations'], 'parallel shutdown completes and releases reservations')
         # Exercise the longest shared form on the available screen as well.
         xdo('windowfocus', '--sync', window)
         keys('ctrl+m')
         add_title = locales['action.add_machine']
         add_window = dialog(add_title)
         assert fits(add_window)
+        keys('Tab')
+        xdo('type', '--clearmodifiers', 'Etiquette clavier')
+        keys('shift+Tab')
         keys('Return')
         wait(lambda: not windows(add_title) and ask('status')['nodes'] == 3, 'add a machine through its real configuration dialog')
+        assert field('m1', 'label') == 'Etiquette clavier', 'Tab must reach the label field'
         wait(lambda: ask('status')['can_undo'], 'machine addition enters undo history')
         xdo('windowfocus', '--sync', window)
         keys('ctrl+z')
@@ -284,15 +300,18 @@ with tempfile.TemporaryDirectory(prefix='marionnet-canvas-') as tmp:
         wait(lambda: not windows(machine_title) and field('m1', 'label') == 'Proprietes modifiees', 'change machine properties through the dialog')
         xdo('windowfocus', '--sync', window)
         keys('ctrl+z')
-        wait(lambda: not ask('status')['editing'] and field('m1', 'label') == '', 'Ctrl+Z restores machine properties')
+        wait(lambda: not ask('status')['editing'] and field('m1', 'label') == 'Etiquette clavier', 'Ctrl+Z restores machine properties')
         p, _, _, _ = point('m1')
         click(p, double=True)
         machine_window = dialog(machine_title)
         bounds = geometry(machine_window)
         xdo('windowfocus', '--sync', machine_window)
         xdo('mousemove', '--window', machine_window, int(bounds['WIDTH']) - 130, int(bounds['HEIGHT']) - 20)
-        xdo('click', 1)
-        wait(lambda: not windows(machine_title), 'Cancel remains visible below the long form')
+        xdo('mousedown', 1)
+        xdo('mousemove', '--window', machine_window, 0, 0)
+        xdo('mouseup', 1)
+        keys('Return')
+        wait(lambda: not windows(machine_title), 'Enter activates focused Cancel below the long form')
         xdo('windowfocus', '--sync', window)
         tab_y = int(geometry(window)['HEIGHT']) - 118
         for tab_x, name in [(258, 'interfaces'), (382, 'defects'), (502, 'disks')]:

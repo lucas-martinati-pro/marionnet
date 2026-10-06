@@ -146,8 +146,7 @@ module Created_entry_project_new = Menu_factory.Make_entry(struct
            end
       in
       (* --- *)
-      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.new_project" actions *)
-      let _ = Thread.create (actions) () in
+      let () = st#launch_project_action ~label:(s_ "label.new") actions in
       ()
       (* --- *)
      end
@@ -189,8 +188,7 @@ module Created_entry_project_open = Menu_factory.Make_entry(struct
            end
       in
       (* --- *)
-      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.open_project" actions *)
-      let _ = Thread.create (actions) () in
+      let () = st#launch_project_action ~label:(s_ "label.opening") actions in
       ()
       (* --- *)
      end
@@ -242,8 +240,7 @@ module Created_entry_project_save_as = Menu_factory.Make_entry(struct
            ~message:(s_ "label.failed_save_project_into_file") ~filename ~advice:(s_ "error.advice.save") e ()
        in
        (* --- *)
-       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.save_as_project" actions *)
-       let _ = Thread.create (actions) () in
+        let () = st#launch_project_action ~label:(s_ "label.save_as") actions in
        ()
        (* --- *)
      end
@@ -283,8 +280,7 @@ module Created_entry_project_copy_to = Menu_factory.Make_entry(struct
            ~message:(s_ "label.failed_copy_project_into_file") ~filename ~advice:(s_ "error.advice.save") e ()
        in
        (* --- *)
-       (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.copy_to_project" actions *)
-       let _ = Thread.create (actions) () in
+        let () = st#launch_project_action ~label:(s_ "label.copy") actions in
        ()
        (* --- *)
      end
@@ -316,8 +312,7 @@ module Created_entry_project_close = Menu_factory.Make_entry
          if Common_dialogs.shutdown_then_save ~must_be_saved () then st#close_project
       in
       (* --- *)
-      (* Task_runner.the_task_runner#schedule ~name:"Gui_menubar_MARIONNET.close_project" actions *)
-      let _ = Thread.create (actions) () in
+      let () = st#launch_project_action ~label:(s_ "label.close") actions in
       ()
       (* --- *)
      end
@@ -449,7 +444,7 @@ module Created_entry_project_quit = Menu_factory.Make_entry
         end
     in
     (* --- *)
-    let _ = Thread.create (actions) () in
+    let () = st#launch_project_action ~label:(s_ "label.quit") actions in
     ()
 
   end) (F)

@@ -93,6 +93,11 @@ let message win_title ?modal ?details ?copy_text ?(kind=`Info) ?(actions : (stri
      first button does -- and one of them removes directories. Close keeps the focus, so Return
      and space close the window, as they did before there were any buttons. *)
   (if actions <> [] then d#closebutton_MESSAGE#misc#grab_focus ());
+  d#closebutton_MESSAGE#misc#grab_focus ();
+  ignore (d#toplevel#event#connect#key_press ~callback:(fun ev ->
+    if GdkEvent.Key.keyval ev = GdkKeysyms._Escape then begin
+      d#toplevel#destroy (); true
+    end else false));
   d#toplevel#set_icon (Some Icon.icon_pixbuf);
   d#toplevel#set_title (utf8 win_title);
   d#title#set_use_markup true;

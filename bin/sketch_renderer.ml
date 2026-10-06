@@ -8,7 +8,7 @@ type request = {
   splines : bool;
 }
 
-type rendered = { request : request; dot_tmp : string; png_tmp : string; map_tmp : string }
+type rendered = { request : request; dot_tmp : string; png_tmp : string; map_tmp : string; graphviz_ms : float }
 
 let map_file request = Filename.remove_extension request.png_file ^ ".cmapx"
 
@@ -33,6 +33,7 @@ let render ~spawn request =
     Fun.protect ~finally:(fun () -> close_out_noerr channel)
       (fun () -> output_string channel request.content);
     let stderr = Unix.openfile errors [Unix.O_WRONLY; Unix.O_TRUNC] 0o600 in
+    let graphviz_started = Unix.gettimeofday () in
     let status = Fun.protect ~finally:(fun () -> Unix.close stderr) (fun () ->
       let argv = [| "dot"; "-Gsplines=" ^ string_of_bool request.splines;
         "-Efontname=FreeSans"; "-Nfontname=FreeSans"; "-Tpng";
@@ -45,7 +46,8 @@ let render ~spawn request =
     match status with
     | Unix.WEXITED 0 when (Unix.stat png_tmp).Unix.st_size > 0 && (Unix.stat map_tmp).Unix.st_size > 0 ->
         unlink errors;
-        Ok { request; dot_tmp; png_tmp; map_tmp }
+        Ok { request; dot_tmp; png_tmp; map_tmp;
+             graphviz_ms = 1000. *. (Unix.gettimeofday () -. graphviz_started) }
     | _ ->
         let channel = open_in_bin errors in
         let details = Fun.protect ~finally:(fun () -> close_in_noerr channel)
@@ -65,3 +67,10 @@ let publish result =
     Unix.rename result.dot_tmp result.request.dot_file;
     Unix.rename result.map_tmp (map_file result.request);
     Unix.rename result.png_tmp result.request.png_file)
+
+let graphviz_ms result = result.graphviz_ms
+
+let hit_map result =
+  let channel = open_in_bin result.map_tmp in
+  Fun.protect ~finally:(fun () -> close_in_noerr channel)
+    (fun () -> really_input_string channel (in_channel_length channel))
