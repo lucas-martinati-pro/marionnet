@@ -38,7 +38,7 @@ jobs:
         run: |
           VERSION=""
           if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
+            VERSION="${INPUT_VERSION#v}"
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           fi
@@ -104,15 +104,17 @@ jobs:
       - name: Publication de la Release GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TITLE: ${{ github.event.inputs.release_title }}
+          INPUT_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
           TAG="v${VERSION}"
-          TITLE="${{ github.event.inputs.release_title }}"
+          TITLE="$INPUT_TITLE"
           if [ -z "$TITLE" ]; then
             TITLE="Marionnet ${VERSION} (Édition Linux Moderne)"
           fi
 
-          if [ -n "${{ github.event.inputs.release_notes }}" ]; then
-            NOTES_ARG=(--notes "${{ github.event.inputs.release_notes }}")
+          if [ -n "$INPUT_NOTES" ]; then
+            NOTES_ARG=(--notes "$INPUT_NOTES")
           elif [ -f release.md ]; then
             sed "s/@VERSION@/${VERSION}/g" release.md > /tmp/release_notes.md
             NOTES_ARG=(--notes-file /tmp/release_notes.md)
@@ -135,6 +137,13 @@ jobs:
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
             gh release create "$TAG" "${ASSETS[@]}" \
+              --target "$GITHUB_SHA" \
               --title "$TITLE" \
               "${NOTES_ARG[@]}"
           fi
+
+      - name: Enregistrement de la version publiée dans le dépôt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python3 dist/sync-release-version.py

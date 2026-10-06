@@ -20,3 +20,8 @@
  (alias runtest)
  (deps install_presentation_test.py ../install.sh ../dist/install.sh)
  (action (run python3 %{dep:install_presentation_test.py})))
+
+(rule
+ (alias runtest)
+ (deps release_version_test.py ../dist/sync-release-version.py)
+ (action (run python3 %{dep:release_version_test.py})))
