@@ -136,6 +136,16 @@ if [ -d "$REPO_ROOT/bin/scripts" ]; then
   done
 fi
 
+# A fresh identity for each package construction, including repeated CI attempts.
+# Embed it in both installed updater locations and publish the same value alongside
+# the package. This avoids downloading a multi-gigabyte .deb just to detect updates.
+RELEASE_BUILD_ID=$(printf '%s\n' "$VERSION" "${GITHUB_RUN_ID:-local}" "${GITHUB_RUN_ATTEMPT:-0}" "$(date +%s%N)" | sha256sum)
+RELEASE_BUILD_ID="${RELEASE_BUILD_ID%% *}"
+printf '%s\n' "$RELEASE_BUILD_ID" > "$SCRIPT_DIR/BUILD_ID"
+while IFS= read -r -d '' updater; do
+  sed -i "s/@MARIONNET_RELEASE_BUILD_ID@/$RELEASE_BUILD_ID/g" "$updater"
+done < <(find "$BUILD_DIR/root/usr" -type f -name marionnet-update -print0)
+
 # Pas d'extension ni de scripts d'invités sur le PATH : les 4 doublons `.sh`
 # (morts depuis 2b2fc87 : check, cleanup, ctl, verify) et les 8 fichiers qui ne
 # sont jamais exécutés depuis un PATH -- contenus embarqués par INCLUDE_AS_STRING

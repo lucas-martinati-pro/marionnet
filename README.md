@@ -175,3 +175,28 @@ git push origin main
 - Site officiel : [www.marionnet.org](https://www.marionnet.org)
 - Dépôt officiel amont : [https://git.launchpad.net/marionnet](https://git.launchpad.net/marionnet)
 - Suivi des bugs officiel : [https://bugs.launchpad.net/marionnet](https://bugs.launchpad.net/marionnet)
+
+## Consoles des machines virtuelles
+
+Les consoles xterm utilisent une police monospace lissée de 8 points, un thème
+sombre contrasté et un historique de 10 000 lignes, sans barre de défilement.
+`Maj` + `Page précédente` / `Page suivante` permet de parcourir l’historique.
+`Ctrl` + `+` ou `Ctrl` +
+molette vers le haut agrandit le texte ; `Ctrl` + `-` ou la molette vers le bas
+le réduit. `Ctrl` + `0` rétablit la taille initiale. Le menu de polices natif
+reste accessible avec `Ctrl` + clic droit.
+
+Pour choisir une taille initiale différente, ajoutez par exemple
+`MARIONNET_TERMINAL_FONT_SIZE=14` dans `~/.marionnet/marionnet.conf`, puis relancez
+Marionnet. Les tailles acceptées vont de 6 à 32 points. Ces réglages concernent
+les consoles xterm ouvertes par Marionnet ; un autre émulateur configuré conserve
+ses propres réglages. `Ctrl+C` interrompt toujours la commande, et
+`Ctrl+Maj+C` / `Ctrl+Maj+V` copient et collent via le presse-papiers du PC.
+
+Les paquets Tout-en-un embarquent également un identifiant de construction.
+Lorsqu’un paquet est reconstruit par le workflow sous la même version, Marionnet
+peut proposer sa réinstallation sans télécharger le paquet pour effectuer la
+vérification. Les installations antérieures à ce mécanisme doivent recevoir une
+première mise à jour avec un numéro de version supérieur (ou une réinstallation
+avec `marionnet-update --force`). Les installations depuis les sources continuent
+à comparer les numéros de version.

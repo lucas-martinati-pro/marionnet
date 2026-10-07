@@ -28,6 +28,8 @@ set -uo pipefail
 GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
 API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 CURL_TIMEOUT=8
+# Replaced only in the staged Debian package; source installations keep version checks.
+INSTALLED_BUILD_ID="@MARIONNET_RELEASE_BUILD_ID@"
 
 MODE="cli"
 FORCE=false
@@ -214,10 +216,12 @@ TAG_NAME=""
 HTML_URL=""
 DEB_URL=""
 SUMS_URL=""
+BUILD_ID_URL=""
 
 if command -v jq >/dev/null 2>&1; then
   TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name // empty')
   HTML_URL=$(echo "$RELEASE_INFO" | jq -r '.html_url // empty')
+  BUILD_ID_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name == "BUILD_ID") | .browser_download_url' 2>/dev/null | head -n1 || true)
   SUMS_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name == "SHA256SUMS") | .browser_download_url' 2>/dev/null | head -n1 || true)
   DEB_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | test("marionnet-all-in-one.*amd64\\.deb$")) | .browser_download_url' 2>/dev/null | head -n1 || true)
   if [ -z "$DEB_URL" ]; then
@@ -243,9 +247,32 @@ if [ -z "$LATEST_VER" ]; then
   exit 2
 fi
 
+# Without jq, new packages still know the fixed metadata asset name. A missing
+# asset then reports a check error rather than silently claiming to be current.
+if ! command -v jq >/dev/null 2>&1 && [[ "$INSTALLED_BUILD_ID" =~ ^[[:xdigit:]]{64}$ ]]; then
+  BUILD_ID_URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG_NAME}/BUILD_ID"
+fi
+
+# Both the notification and installation use this decision. Older releases without
+# build metadata, and source installations, retain the version-only behaviour.
+UPDATE_NEEDED=false
+if compare_versions_gt "$LATEST_VER" "$CURRENT_VER"; then
+  UPDATE_NEEDED=true
+elif [ "$LATEST_VER" = "$CURRENT_VER" ] && [[ "$INSTALLED_BUILD_ID" =~ ^[[:xdigit:]]{64}$ ]] && [ -n "$BUILD_ID_URL" ]; then
+  REMOTE_BUILD_ID=$(curl -fsSL --connect-timeout "$CURL_TIMEOUT" -m 15 "$BUILD_ID_URL" 2>/dev/null) || {
+    echo "[-] Impossible de vérifier la construction du paquet publié." >&2
+    exit 2
+  }
+  if [[ ! "$REMOTE_BUILD_ID" =~ ^[[:xdigit:]]{64}$ ]]; then
+    echo "[-] Identifiant de construction publié invalide." >&2
+    exit 2
+  fi
+  if [ "$REMOTE_BUILD_ID" != "$INSTALLED_BUILD_ID" ]; then UPDATE_NEEDED=true; fi
+fi
+
 # 1. Mode: Check
 if [ "$MODE" = "check" ]; then
-  if compare_versions_gt "$LATEST_VER" "$CURRENT_VER"; then
+  if [ "$UPDATE_NEEDED" = true ]; then
     echo "UPDATE_AVAILABLE $LATEST_VER $CURRENT_VER $HTML_URL"
     exit 0
   else
@@ -378,10 +405,11 @@ printf '\n'
 ui_line "$UI_BOLD$UI_CYAN" "  MARIONNET  /  Mise à jour"
 ui_line "$UI_DIM" "  ──────────────────────────────────────────────────"
 ui_info "Version : $CURRENT_VER → $LATEST_VER"
+if [ "$CURRENT_VER" = "$LATEST_VER" ] && [ "$UPDATE_NEEDED" = true ]; then
+  ui_info "Une nouvelle construction du paquet est disponible."
+fi
 if [ -n "$UPDATE_LOG" ]; then ui_info "Journal détaillé : $UPDATE_LOG"; fi
 
-UPDATE_NEEDED=false
-if compare_versions_gt "$LATEST_VER" "$CURRENT_VER"; then UPDATE_NEEDED=true; fi
 if [ "$UPDATE_NEEDED" = false ] && [ "$FORCE" = false ]; then
   ui_ok "Marionnet est déjà à jour (version $CURRENT_VER)."
   ui_info "Utilisez --force pour réinstaller cette version."

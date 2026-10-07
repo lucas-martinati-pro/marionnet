@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # ---------------------------------------------------------------------------
-# xterm WITH HOST CLIPBOARD SUPPORT. Every terminal Marionnet opens on the
+# Readable xterm consoles WITH HOST CLIPBOARD SUPPORT. Every terminal Marionnet opens on the
 # host (UML consoles, router telnet terminals, switch unixterm terminals)
 # goes through this wrapper instead of calling xterm directly
 # (simulation_level.ml), so that copy-paste between the PC and the guests
@@ -31,7 +31,7 @@
 # console only pasted back with the middle button. Ctrl+Shift+C/V, the
 # gesture gnome-terminal and every modern emulator honour, did nothing.
 #
-# WHAT THIS DOES. One X resource, passed with -xrm so that no ~/.Xresources
+# WHAT THIS DOES. Resources passed with -xrm so that no ~/.Xresources
 # is needed and a customised host stays untouched:
 #
 #   XTerm*VT100.translations: #override ...
@@ -86,9 +86,31 @@ fi
 # `exec' succeeds the shell is gone, and if it cannot even start, bash
 # says so itself. The missing-binary case is the one answered here.)
 if command -v "$binary" >/dev/null 2>&1; then
-  exec "$binary" \
-    -xrm 'XTerm*VT100.translations: #override Ctrl Shift <Key>C: copy-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)\nCtrl Shift <Key>V: insert-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)\nShift <Key>Insert: insert-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)' \
-    "$@"
+  font_size="${MARIONNET_TERMINAL_FONT_SIZE:-8}"
+  if [[ "$font_size" =~ ^[0-9]{1,2}$ ]] && (( 10#$font_size >= 6 && 10#$font_size <= 32 )); then
+    font_size=$((10#$font_size))
+  else
+    echo "marionnet-xterm.sh: invalid font size '$font_size' (expected 6–32); using 8" >&2
+    font_size=8
+  fi
+  # Xft uses the host's installed monospace font with antialiasing. Wildcard
+  # resources also cover uxterm's UXTerm class, without changing ~/.Xresources.
+  resources=(
+    '*renderFont: true' '*faceName: monospace' "*faceSize: $font_size"
+    '*faceSize1: 8' '*faceSize2: 10' '*faceSize3: 14' '*faceSize4: 16'
+    '*faceSize5: 18' '*faceSize6: 24' '*faceSize7: 32'
+    '*background: #161b22' '*foreground: #e6edf3' '*cursorColor: #79c0ff'
+    '*color0: #161b22' '*color1: #ff7b72' '*color2: #7ee787' '*color3: #e3b341'
+    '*color4: #79c0ff' '*color5: #d2a8ff' '*color6: #a5d6ff' '*color7: #e6edf3'
+    '*color8: #8b949e' '*color9: #ffa198' '*color10: #aff5b4' '*color11: #f8e3a1'
+    '*color12: #a5d6ff' '*color13: #e2c5ff' '*color14: #b6e3ff' '*color15: #ffffff'
+    '*internalBorder: 10' '*saveLines: 10000' '*scrollBar: false'
+    '*scrollTtyOutput: false' '*scrollKey: true'
+    '*VT100.translations: #override Ctrl Shift <Key>C: copy-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)\nCtrl Shift <Key>V: insert-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)\nShift <Key>Insert: insert-selection(CLIPBOARD, PRIMARY, CUT_BUFFER0)\nCtrl <Key>plus: larger-vt-font()\nCtrl <Key>equal: larger-vt-font()\nCtrl <Key>KP_Add: larger-vt-font()\nCtrl <Key>minus: smaller-vt-font()\nCtrl <Key>KP_Subtract: smaller-vt-font()\nCtrl <Key>0: set-vt-font(d)\nCtrl <Btn4Down>: larger-vt-font()\nCtrl <Btn5Down>: smaller-vt-font()'
+  )
+  terminal_args=()
+  for resource in "${resources[@]}"; do terminal_args+=(-xrm "$resource"); done
+  exec "$binary" "${terminal_args[@]}" "$@"
 else
   echo "marionnet-xterm.sh: terminal emulator '$binary' not found in PATH" >&2
   exit 127

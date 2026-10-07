@@ -123,7 +123,7 @@ jobs:
           fi
 
           echo "Publication de la release $TAG..."
-           ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb )
+           ASSETS=( dist/marionnet-all-in-one_"${VERSION}"_amd64.deb dist/BUILD_ID )
            # Wheezy ÉPINGLÉ sur la release de base, jamais dupliqué ici : fichier
            # invariant (08367), dist/install.sh le télécharge et le vérifie contre
            # le SHA256SUMS de la release épinglée (BASE_RELEASE_TAG).

@@ -333,6 +333,11 @@ let marionnet_terminal =
   let default = "xterm,-T,-e" in
   Configuration.extract_string_variable_or ~default "MARIONNET_TERMINAL" ;;
 
+(* Every console wrapper inherits the same configured starting size, including
+   UML and router/switch consoles. The wrapper validates the numeric range. *)
+let () = Unix.putenv "MARIONNET_TERMINAL_FONT_SIZE"
+  (Configuration.extract_string_variable_or ~default:"8" "MARIONNET_TERMINAL_FONT_SIZE") ;;
+
 let router_filesystem_default_epithet =
   let default = "default" in
   Configuration.extract_string_variable_or ~default "MARIONNET_ROUTER_FILESYSTEM"

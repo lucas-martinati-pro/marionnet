@@ -96,6 +96,7 @@ let configuration =
                 "MARIONNET_TEXT_EDITOR";
                 (* *Optional* configuration variables: *)
 		"MARIONNET_TERMINAL";
+                "MARIONNET_TERMINAL_FONT_SIZE";
                 "MARIONNET_PREFIX";
                 "MARIONNET_LOCALEPREFIX";
                 "MARIONNET_FILESYSTEMS_PATH";

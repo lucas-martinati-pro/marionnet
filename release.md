@@ -1,79 +1,72 @@
-# Marionnet @VERSION@ — Des formulaires plus lisibles et des erreurs plus utiles
+# Marionnet @VERSION@ — Consoles plus lisibles et opérations plus fiables
 
-Cette version améliore la configuration des équipements, les diagnostics et la
-réactivité du dessin. Elle fiabilise également l’arrêt et le redémarrage des
-composants.
+Cette version améliore les consoles des machines virtuelles, les mises à jour
+et la gestion des opérations en arrière-plan.
 
-## Des formulaires mieux organisés
+## Consoles des machines virtuelles
 
-- Les champs **Nom** et **Étiquette** sont regroupés dans un en-tête plus compact.
-  Une indication précise que l’étiquette est facultative.
-- Les champs de saisie et les listes déroulantes utilisent mieux la largeur
-  disponible ; les libellés restent lisibles et les sections sont plus distinctes.
-- Des marges séparent les boutons **Modifier / Importer**, les options des services
-  du routeur et les boutons **Aide / Annuler / Valider**.
-- Les titres de section utilisent la couleur du thème GTK.
-- Les noms invalides ou déjà utilisés sont signalés directement dans le formulaire.
-- Les paramètres profitent de la hauteur disponible ; sur un petit écran, le
-  contenu peut défiler et les boutons de validation restent accessibles.
-- L’indication d’étiquette facultative est traduite dans les **13 langues** disponibles.
+- Police monospace lissée et thème sombre contrasté, avec des marges.
+- Taille initiale compacte de **8 points**, sans barre de défilement, pour
+  garder plusieurs consoles à l’écran.
+- Zoom avec **Ctrl + / Ctrl −** ou **Ctrl + molette** ; **Ctrl + 0** rétablit
+  la taille initiale.
+- Taille initiale personnalisable entre 6 et 32 points avec
+  `MARIONNET_TERMINAL_FONT_SIZE` dans `~/.marionnet/marionnet.conf`.
+- Historique de 10 000 lignes, accessible avec **Maj + Page précédente / suivante**.
+- Le copier-coller **Ctrl + Maj + C / V** et l’interruption **Ctrl + C** sont conservés.
 
-## Des messages d’erreur qui aident à agir
+Ces réglages concernent les consoles xterm et uxterm ouvertes par Marionnet.
 
-Les erreurs d’ouverture, de sauvegarde, d’export, de rendu, d’annulation et de
-fonctionnement des composants présentent un message compréhensible et, lorsque
-la cause est identifiée, une piste de résolution : permissions insuffisantes,
-fichier absent, disque plein ou système de fichiers en lecture seule.
+## Mises à jour
 
-Les détails techniques sont regroupés dans une zone dépliable et défilante.
-Un bouton permet de **copier le rapport** pour faciliter le diagnostic. Ces
-nouveaux messages sont traduits dans les **13 langues** de Marionnet.
+- Affichage plus compact : progression en trois étapes, journal détaillé privé
+  et erreurs plus visibles ; l’option `--verbose` affiche les détails.
+- Vérification du **SHA256** du paquet avant son installation : un paquet
+  incomplet ou dont l’empreinte est incorrecte est refusé.
+- Chaque paquet Tout-en-un reçoit un identifiant de construction. Après
+  installation de cette version, un paquet republié sous le même numéro de
+  version pourra également déclencher une proposition de mise à jour.
+- Le workflow publie cet identifiant avec le paquet et conserve la synchronisation
+  du numéro de version dans `META` après publication.
 
-Une sauvegarde en échec conserve la sauvegarde précédente et laisse le projet
-marqué comme modifié. Si le rendu du dessin échoue, la dernière image valide
-reste affichée.
+Les versions antérieures doivent d’abord installer cette version pour recevoir
+la détection des nouvelles constructions.
 
-## Un dessin qui réagit plus vite
+## Opérations en arrière-plan et réactivité
 
-Le délai de regroupement des demandes de dessin passe de **120 ms à 16 ms**.
-Le recalcul démarre donc plus rapidement après l’ajout, la suppression ou la
-modification d’un équipement. Le temps de calcul de Graphviz dépend toujours
-de la taille du réseau.
+- Coordination de l’ouverture, des sauvegardes et des opérations sur les
+  équipements, avec transmission des changements GTK au thread principal.
+- Affichage des opérations en cours et protection contre les demandes en double.
+- Rafraîchissements plus ciblés des tableaux et réutilisation du dessin lorsque
+  son contenu n’a pas changé.
+- Mesures séparées du calcul Graphviz, du chargement de l’image et des mises à
+  jour des tableaux pour faciliter le diagnostic des lenteurs.
+- Comportement plus cohérent du clavier dans les formulaires : focus initial,
+  validation, annulation et aide.
 
-## Des arrêts et redémarrages plus fiables
+## Installation
 
-Le redémarrage attend désormais la fin effective des processus du composant,
-avec une attente bornée, au lieu d’imposer une pause fixe de sept secondes.
-La gestion des erreurs de démarrage et de terminaison est également renforcée.
-
-## Une version publiée retrouvée dans les sources
-
-Après une publication réussie, le workflow enregistre le numéro de version
-publié dans **META** sur la branche principale. Un `git pull` permet ainsi de
-récupérer ce numéro pour les prochaines constructions locales.
-
-## Mise à jour
-
-Pour installer cette version publiée :
+Depuis une installation existante, utilisez la proposition de mise à jour de
+Marionnet ou :
 
 ```bash
-./install.sh --release @VERSION@
-marionnet --version
+marionnet-update
 ```
 
-Pour construire depuis les sources à jour :
+Depuis le dépôt :
 
 ```bash
 git pull
-./install.sh --local
+./install.sh --release @VERSION@
 ```
 
 Le format des projets reste inchangé.
 
 ## Vérifications
 
-Compilation, contrôle de l’ensemble des modules OCaml et tests automatisés.
-Des sessions GTK réelles vérifient les formulaires sur petit et grand écran,
-les raccourcis d’annulation, les erreurs de sauvegarde et de rendu ainsi que
-la copie des rapports. Les tests de processus couvrent également les attentes
-de terminaison et le cycle de vie d’un concentrateur.
+Compilation, contrôle de tous les modules OCaml et tests automatisés, avec des
+sessions GTK pour les opérations et les formulaires. Le zoom, le retour à la
+police initiale, le copier-coller et Ctrl + C ont été vérifiés dans de vrais
+xterm et uxterm. Les tests de mise à jour couvrent les empreintes incorrectes,
+les nouvelles constructions à version identique, les erreurs réseau et
+l’absence de nouvelle proposition après installation du même paquet.

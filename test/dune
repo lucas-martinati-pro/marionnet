@@ -30,3 +30,8 @@
  (alias runtest)
  (deps update_presentation_test.py ../bin/scripts/marionnet-update)
  (action (run python3 %{dep:update_presentation_test.py})))
+
+(rule
+ (alias runtest)
+ (deps terminal_wrapper_test.py ../bin/scripts/marionnet-xterm.sh)
+ (action (run python3 %{dep:terminal_wrapper_test.py})))

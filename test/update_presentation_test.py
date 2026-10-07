@@ -15,7 +15,10 @@ import sys
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == 'curl':
-    if '-o' in args:
+    if any(arg.endswith('/BUILD_ID') for arg in args):
+        if os.environ.get('TEST_FAILURE') == 'build-download': sys.exit(22)
+        print(os.environ.get('TEST_REMOTE_BUILD', 'b' * 64))
+    elif '-o' in args:
         target = Path(args[args.index('-o') + 1])
         if any(arg.endswith('/SHA256SUMS') for arg in args):
             failure = os.environ.get('TEST_FAILURE')
@@ -34,9 +37,12 @@ if name == 'curl':
         else:
             target.write_bytes(b'x' * 1100000)
     else:
+        assets = []
+        if os.environ.get('TEST_REMOTE_BUILD'):
+            assets.append({'name': 'BUILD_ID', 'browser_download_url': 'https://example.test/BUILD_ID'})
         print(json.dumps({'tag_name': 'v1.0.461', 'html_url': 'https://example.test/release',
             'assets': [{'name': 'marionnet-all-in-one_1.0.461_amd64.deb',
-                        'browser_download_url': 'https://example.test/marionnet-all-in-one_1.0.461_amd64.deb'}]}))
+                        'browser_download_url': 'https://example.test/marionnet-all-in-one_1.0.461_amd64.deb'}] + assets}))
 elif name == 'sudo':
     with open(os.environ['TEST_CALLS'], 'a') as f:
         f.write(json.dumps(args) + '\n')
@@ -51,7 +57,7 @@ elif name == 'sudo':
 
 
 class UpdatePresentationTests(unittest.TestCase):
-    def run_update(self, *args, failure='', current='1.0.460'):
+    def run_update(self, *args, failure='', current='1.0.460', installed_build='', remote_build=''):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ('curl', 'sudo', 'marionnet-sudoers.sh'):
@@ -61,8 +67,12 @@ class UpdatePresentationTests(unittest.TestCase):
             calls = root / 'calls'
             env = dict(os.environ, PATH=str(root) + ':' + os.environ['PATH'],
                        TMPDIR=tmp, TEST_CALLS=str(calls), TEST_FAILURE=failure,
+                       TEST_REMOTE_BUILD=remote_build,
                        NO_COLOR='1')
-            result = subprocess.run(['bash', str(SCRIPT), '--current', current, *args],
+            script = root / 'marionnet-update'
+            script.write_text(SCRIPT.read_text().replace('@MARIONNET_RELEASE_BUILD_ID@',
+                                                       installed_build or '@MARIONNET_RELEASE_BUILD_ID@'))
+            result = subprocess.run(['bash', str(script), '--current', current, *args],
                                     env=env, capture_output=True, text=True, timeout=15)
             log_files = list(root.glob('marionnet-update.*.log'))
             logs = ''.join(p.read_text() for p in log_files)
@@ -149,6 +159,38 @@ class UpdatePresentationTests(unittest.TestCase):
         result, _, commands = self.run_update('--force', current='1.0.461')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(commands), 3)
+
+    def test_rebuilt_same_version_is_notified_and_installed(self):
+        options = dict(current='1.0.461', installed_build='a' * 64, remote_build='b' * 64)
+        result, _, commands = self.run_update('--check', **options)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, 'UPDATE_AVAILABLE 1.0.461 1.0.461 https://example.test/release\n')
+        self.assertEqual(commands, [])
+        result, _, commands = self.run_update(**options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('nouvelle construction', result.stdout)
+        self.assertEqual(len(commands), 3)
+
+    def test_installed_build_is_not_offered_again(self):
+        result, _, commands = self.run_update('--check', current='1.0.461',
+                                             installed_build='b' * 64, remote_build='b' * 64)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, 'UP_TO_DATE 1.0.461\n')
+        self.assertEqual(commands, [])
+
+    def test_bad_build_metadata_is_an_error_and_never_installs(self):
+        for remote, failure in [('invalid', ''), ('b' * 64, 'build-download')]:
+            result, _, commands = self.run_update('--check', current='1.0.461',
+                installed_build='a' * 64, remote_build=remote, failure=failure)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(commands, [])
+
+    def test_legacy_and_newer_versions_are_not_reinstalled_by_build_id(self):
+        for current, installed in [('1.0.461', ''), ('1.0.462', 'a' * 64)]:
+            result, _, commands = self.run_update('--check', current=current,
+                                                 installed_build=installed, remote_build='b' * 64)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(commands, [])
 
 
 if __name__ == '__main__':
