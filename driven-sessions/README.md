@@ -119,3 +119,9 @@ Ctrl+S submissions produce a single archive and validation, GTK remains responsi
 and the operation reservation is released afterward. The canvas session checks Tab
 between identity fields, Enter on the focused Cancel button, and undo after edits.
 Refresh timings (DOT snapshot, Graphviz, image, table model/cell) appear with `--debug`.
+
+Le banc `cleanup.py` clique sur le bouton de récupération puis quitte immédiatement.
+Il vérifie que le nettoyage termine avant la fermeture et conserve le contenu du
+projet dans un `.mar`. Au redémarrage, aucune alerte répétée n’apparaît et les
+répertoires récents restent intacts :
+`xvfb-run -a python3 driven-sessions/cleanup.py`.

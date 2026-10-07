@@ -80,7 +80,9 @@ make_rundir() {  # make_rundir <tmp> <n> <project>
 T1="$WORK/t1"; D1="$WORK/dest1"; mkdir -p "$T1" "$D1"
 make_rundir "$T1" 101 alpha >/dev/null
 make_rundir "$T1" 102 beta  >/dev/null
-mkdir -p "$T1/marionnet-103.dir"; touch -d "5 hours ago" "$T1/marionnet-103.dir"   # no project inside
+mkdir -p "$T1/marionnet-103.dir"
+echo 'unrecognized work' > "$T1/marionnet-103.dir/loose-file"   # nonempty, no project root
+touch -d "5 hours ago" "$T1/marionnet-103.dir"
 out1=$(TMPDIR="$T1" "$SCRIPT" --archive-dirs "$D1" 2>&1); rc1=$?
 
 if [ "$rc1" -ne 0 ]; then
@@ -125,7 +127,9 @@ fi
 T1B="$WORK/t1b"; D1B="$WORK/dest1b"; mkdir -p "$T1B" "$D1B"
 make_rundir "$T1B" 111 delta >/dev/null
 make_rundir "$T1B" 112 epsilon >/dev/null
-mkdir -p "$T1B/marionnet-113.dir"; touch -d "5 hours ago" "$T1B/marionnet-113.dir"   # unarchivable
+mkdir -p "$T1B/marionnet-113.dir"
+echo 'unrecognized work' > "$T1B/marionnet-113.dir/loose-file"   # unarchivable, not empty
+touch -d "5 hours ago" "$T1B/marionnet-113.dir"
 TMPDIR="$T1B" "$SCRIPT" --archive-dirs "$D1B" --purge-dirs >/dev/null 2>&1
 rc1b=$?
 if [ "$rc1b" -ne 0 ]; then

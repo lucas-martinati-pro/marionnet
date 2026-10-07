@@ -44,6 +44,23 @@ la détection des nouvelles constructions.
 - Comportement plus cohérent du clavier dans les formulaires : focus initial,
   validation, annulation et aide.
 
+## Correctif de récupération des sessions
+
+- L’avertissement de démarrage utilise la même détection que l’outil de nettoyage :
+  les dossiers récents et les sessions encore actives ne déclenchent plus une
+  proposition de nettoyage inutilisable.
+- La récupération utilise le dossier temporaire configuré dans Marionnet.
+- Une fermeture normale attend la fin du nettoyage et de l’archivage, au lieu
+  de tuer leur processus en cours d’exécution.
+- Les dossiers entièrement vides peuvent être nettoyés sans créer d’archive ;
+  les dossiers non vides dont le projet ne peut pas être récupéré sont conservés.
+- Une interruption du contrôle de mise à jour au démarrage ne laisse plus
+  d’exception non gérée dans son thread.
+
+Ce correctif est publié dans une nouvelle construction de **1.0.462**. Les
+installations de la précédente construction peuvent le détecter grâce à
+l’identifiant de construction, sans changer de numéro de version.
+
 ## Installation
 
 Depuis une installation existante, utilisez la proposition de mise à jour de

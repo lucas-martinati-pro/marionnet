@@ -399,19 +399,31 @@ let () =
     end
   end
 
-(* Nobody sweeps the run directories `<tmp>/marionnet-<n>.dir/' of past sessions. A clean exit
-   through the GUI removes its own (state.ml, [reset_and_remove_the_project_working_directory],
-   called by [close_project] on the way out), but a session killed brutally leaves it behind,
-   and so does a session quitted through the control channel, which does not close the project.
-   Each of them holds the *unsaved* working copy of its project: that is precisely why Marionnet
-   must not purge them by itself — even an old one may be the only copy that was left. So it
-   counts them, names the tool, and removes nothing.
-   Which ones are still in use is deliberately NOT decided here: `bin/scripts/marionnet-cleanup'
-   scans /proc to tell a live session from a dead one, and a second implementation of that scan
-   would be a second source of truth serving a message whose whole point is to hand over to that
-   script. Hence a count and no claim of death. *)
+(* Abandoned directories may hold the only unsaved copy of a project. Never
+   remove them at startup. Ask the cleanup tool for its actionable count so the
+   notice excludes recent directories and working copies of live sessions. *)
 let () =
+  let inspect () =
   let dir = st#project_paths#get_temporary_directory in
+  let cleanup_command () : string option =
+    let name = try Sys.getenv "MARIONNET_CLEANUP_SCRIPT" with Not_found -> "marionnet-cleanup" in
+    if String.contains name '/' then (if Sys.file_exists name then Some name else None) else
+    match UnixExtra.run (Printf.sprintf "command -v %s" (Filename.quote name)) with
+    | (output, Unix.WEXITED 0) when String.trim output <> "" -> Some (String.trim output)
+    | _ -> None
+  in
+  let run_cleanup (script : string) (args : string list) : string * bool =
+    let identity =
+      (Printf.sprintf "--caller-marionnet %d" (Unix.getpid ())) ::
+      (match st#project_paths#get_working_directory with
+       | Some d -> [Printf.sprintf "--spare-dir %s" (Filename.quote d)]
+       | None   -> [])
+    in
+    let command = Printf.sprintf "TMPDIR=%s " (Filename.quote dir) ^ String.concat " " ((Filename.quote script) :: args @ identity) in
+    let () = Log.printf1 "marionnet: running the cleanup tool: %s\n" command in
+    let (output, status) = UnixExtra.run (command ^ " 2>&1") in
+    (output, status = Unix.WEXITED 0)
+  in
   (* The shape UnixExtra.temp_dir builds in state.ml (~prefix:"marionnet-" ~suffix:".dir"). *)
   let is_a_run_directory name =
     (StringExtra.is_prefix "marionnet-" name) && (Filename.check_suffix name ".dir")
@@ -428,6 +440,13 @@ let () =
            (SysExtra.readdir_as_list ~only_directories:() ~name_filter:is_a_run_directory dir))
     with _ -> 0
   in
+  let n = if n = 0 then 0 else
+    match cleanup_command () with
+    | Some script ->
+        let (output, ok) = run_cleanup script ["--count-dirs"] in
+        if ok then (try int_of_string (String.trim output) with _ -> 0) else 0
+    | None -> 0
+  in
   if n = 0 then () else
   let () =
     Log.printf2 ~force:true
@@ -437,52 +456,12 @@ let () =
   (* An exam is not the place for housekeeping advice, and the student cannot act on it. *)
   if Initialization.are_we_in_exam_mode || Initialization.Disable_warnings.orphan_run_directories
   then () else
-  (* --- The tool, if this host has it.
-     ---
-     It is installed in $PREFIX/bin/ (bin/dune puts it among the scripts of the share section,
-     which the Makefile mirrors into bin/), hence reachable by name -- exactly like
-     marionnet-lanbridge.sh. In the source tree, where nothing is installed, set
-     MARIONNET_CLEANUP_SCRIPT to its ABSOLUTE path: Marionnet chdir's to its own home at startup,
-     so a relative one would no longer mean what it says. No tool, no buttons: the text alone
-     then remains, and it says what to run. *)
-  let cleanup_command () : string option =
-    let name = try Sys.getenv "MARIONNET_CLEANUP_SCRIPT" with Not_found -> "marionnet-cleanup" in
-    if String.contains name '/' then (if Sys.file_exists name then Some name else None) else
-    match UnixExtra.run (Printf.sprintf "command -v %s" (Filename.quote name)) with
-    | (output, Unix.WEXITED 0) when String.trim output <> "" -> Some (String.trim output)
-    | _ -> None
-  in
   (* Where the recovered projects are written: the folder `Project -> Save as' opens on
      (gui/talking.ml), so that a recovered project shows up where the user looks for projects. *)
   let archive_destination () =
     let candidates = [ Initialization.cwd_at_startup_time; Initialization.Path.user_home ] in
     try List.find (fun d -> (try Unix.access d [Unix.W_OK]; true with _ -> false)) candidates
     with Not_found -> Initialization.Path.user_home
-  in
-  (* --- Running it.
-     ---
-     A full /proc scan costs seconds (2.9 s measured on the development machine), so it must not
-     run in the GTK main loop, where the button click lands: hence a thread. The dialogs opened
-     from it are safe, every Simple_dialogs entry going back to the main thread by itself
-     (GMain_actor.apply_extract).
-     ---
-     Two arguments say who is asking. --caller-marionnet <pid>: the script refuses --purge-dirs
-     while a Marionnet is running, and rightly so -- we are that Marionnet, and it checks the pid
-     rather than trusting it; any OTHER live session still forbids the purge. --spare-dir <dir>:
-     our own run directory, which nothing else on this host names as long as we have started no
-     component. It is read at CLICK time, not now: this dialog is not modal, and a project may
-     have been created in between. *)
-  let run_cleanup (script : string) (args : string list) : string * bool =
-    let identity =
-      (Printf.sprintf "--caller-marionnet %d" (Unix.getpid ())) ::
-      (match st#project_paths#get_working_directory with
-       | Some d -> [Printf.sprintf "--spare-dir %s" (Filename.quote d)]
-       | None   -> [])
-    in
-    let command = String.concat " " ((Filename.quote script) :: args @ identity) in
-    let () = Log.printf1 "marionnet: running the cleanup tool: %s\n" command in
-    let (output, status) = UnixExtra.run (command ^ " 2>&1") in
-    (output, status = Unix.WEXITED 0)
   in
   (* The confirmation shows what the tool sees about the DIRECTORIES, not its whole report (the
      orphan processes and the socket files are another matter, and the question dialog has no
@@ -507,10 +486,12 @@ let () =
     | []    -> output
     | lines -> String.concat "\n" lines
   in
-  let in_a_thread (f : unit -> unit) () =
-    ignore (Thread.create (fun () ->
-      try f () with e ->
-        Log.printf1 "marionnet: the cleanup tool raised: %s\n" (Printexc.to_string e)) ())
+  let enqueue_cleanup (f : unit -> unit) () =
+    ignore (Background_tasks.enqueue ~key:"cleanup"
+      ~label:(s_ "label.run_directories_left_behind")
+      ~schedule:(fun task -> Task_runner.the_task_runner#schedule ~name:"cleanup" task)
+      (fun () -> try f () with e ->
+        Log.printf1 "marionnet: the cleanup tool raised: %s\n" (Printexc.to_string e)))
   in
   let show ~script ~title (output : string) =
     Simple_dialogs.info title (Glib.Markup.escape_text (action_lines script output)) ()
@@ -556,8 +537,8 @@ let () =
     match cleanup_command () with
     | None -> []
     | Some script ->
-        [ ((s_ "label.recover_clean_up"), in_a_thread (recover script));
-          ((s_ "action.remove_directories"), in_a_thread (clean script)) ]
+        [ ((s_ "label.recover_clean_up"), enqueue_cleanup (recover script));
+          ((s_ "action.remove_directories"), enqueue_cleanup (clean script)) ]
   in
   Simple_dialogs.warning
     ~actions
@@ -568,6 +549,16 @@ let () =
        (if actions = [] then "" else
           "\n\n" ^ (s_ "label.buttons_below_do_exactly_right_now")))
     ()
+
+  in
+  (* Scan /proc off the GTK thread. Use the same queue as shutdown, so a normal
+     exit waits for recovery rather than killing tar or the cleanup subprocess. *)
+  ignore (GMain.Idle.add (fun () ->
+    ignore (Background_tasks.enqueue ~key:"cleanup"
+      ~label:(s_ "label.run_directories_left_behind")
+      ~schedule:(fun task -> Task_runner.the_task_runner#schedule ~name:"cleanup" task)
+      inspect);
+    false))
 
 (* Check that we're *not* running as root. Yes, this has been reversed
    since the last version: *)
@@ -586,6 +577,7 @@ let () = begin
       ();
   end
 end
+
 
 (* --- *)
 (** Make sure that the user installed all the needed software: *)

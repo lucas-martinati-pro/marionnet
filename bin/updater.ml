@@ -160,6 +160,7 @@ let start_background_check_on_startup () : unit =
        ~ms:2500
        ~callback:(fun () ->
          let _ = Thread.create (fun () ->
+           try
            match check_update () with
            | Update_available info ->
                GMain_actor.apply_extract (fun () ->
@@ -169,6 +170,7 @@ let start_background_check_on_startup () : unit =
                  | _ -> ()
                ) ()
            | _ -> ()
+           with e -> Log.printf1 "Startup update check interrupted: %s\n" (Printexc.to_string e)
          ) () in
          false
        ))

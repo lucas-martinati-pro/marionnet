@@ -35,3 +35,8 @@
  (alias runtest)
  (deps terminal_wrapper_test.py ../bin/scripts/marionnet-xterm.sh)
  (action (run python3 %{dep:terminal_wrapper_test.py})))
+
+(rule
+ (alias runtest)
+ (deps cleanup_test.py ../bin/scripts/marionnet-cleanup)
+ (action (run python3 %{dep:cleanup_test.py})))

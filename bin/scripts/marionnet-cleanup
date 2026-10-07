@@ -121,6 +121,8 @@ REPORTS: nothing is killed, nothing is removed.
 
   --kill            Terminate the orphan auxiliary processes (TERM, then KILL for those
                     that survive), by exact pid. Refuses beyond $MAX_PROCESSES processes.
+  --count-dirs      Print only the number of abandoned run directories eligible for cleanup.
+                    Read-only; intended for Marionnet's startup notice.
   --purge-sockets   Remove the blinker socket files of $TMP that no live process is bound to.
   --archive-dirs DEST
                     Save each removable run directory as a Marionnet project file
@@ -555,6 +557,13 @@ do_archive_dirs() {
   [ "${#DEAD_DIRS[@]}" -eq 0 ] && { echo "$PROGNAME: no run directory to archive."; return 0; }
   stamp=$(date +%Y-%m-%d.%Hh%M)
   for d in "${DEAD_DIRS[@]}"; do
+    # A crash before project creation can leave an entirely empty directory.
+    # There is no work to archive, so a requested archive-and-purge may remove it.
+    if [ -z "$(find "$d" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+      ARCHIVED_DIRS+=("$d")
+      echo "$PROGNAME: $d is empty; no project to archive."
+      continue
+    fi
     roots=()
     while read -r root; do [ -n "$root" ] && roots+=("$root")
     done < <(find "$d" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null)
@@ -598,9 +607,10 @@ value_of() {  # value_of <option-name> <remaining args...>
 }
 
 main() {
-  local kill_them=0 purge_sockets=0 purge_dirs=0 purge_uml_dirs=0 value
+  local kill_them=0 purge_sockets=0 purge_dirs=0 purge_uml_dirs=0 count_dirs=0 value
   while [ $# -gt 0 ]; do
     case "$1" in
+      --count-dirs)     count_dirs=1 ;;
       --kill)           kill_them=1 ;;
       --purge-sockets)  purge_sockets=1 ;;
       --purge-dirs)     purge_dirs=1 ;;
@@ -639,6 +649,21 @@ main() {
 
   scan
   apply_spare_dirs
+  if [ "$count_dirs" -eq 1 ]; then
+    if [ "$kill_them$purge_sockets$purge_dirs$purge_uml_dirs" != 0000 ] || [ -n "$ARCHIVE_DEST" ]; then
+      echo "$PROGNAME: --count-dirs cannot be combined with cleanup actions." >&2
+      return $EXIT_USAGE
+    fi
+    scan_dirs
+    for value in "${LIVE_MARIONNETS[@]:-}"; do
+      if [ -n "$value" ] && [ "$value" != "$CALLER_MARIONNET" ]; then
+        printf '0\n'
+        return 0
+      fi
+    done
+    printf '%s\n' "${#DEAD_DIRS[@]}"
+    return 0
+  fi
   scan_sockets
   scan_dirs
   scan_uml_dirs
