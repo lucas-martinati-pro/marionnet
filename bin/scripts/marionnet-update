@@ -162,18 +162,31 @@ fetch_latest_release() {
     return 2
   fi
 
-  local json
-  json=$(curl -fsSL --connect-timeout "$CURL_TIMEOUT" -m 15 "$API_URL" 2>/dev/null) || {
-    echo "[-] Network error: unable to contact GitHub releases API ($API_URL)." >&2
-    return 2
-  }
-
-  if [ -z "$json" ]; then
-    echo "[-] Empty response from GitHub releases API." >&2
-    return 2
+  local json url tag version base
+  if json=$(curl -fsSL --connect-timeout "$CURL_TIMEOUT" -m 15 "$API_URL" 2>/dev/null) && [ -n "$json" ]; then
+    echo "$json"
+    return 0
   fi
 
-  echo "$json"
+  # GitHub's anonymous API quota is shared by all computers behind a public IP.
+  # The public release redirect is independent of that quota. Follow it instead
+  # of asking users for a token, retaining checksum and build identity checks.
+  url=$(curl -fsSL --connect-timeout "$CURL_TIMEOUT" -m 15 -o /dev/null \
+    -w '%{url_effective}' "https://github.com/${GITHUB_REPO}/releases/latest" 2>/dev/null) || {
+    echo "[-] Impossible de joindre GitHub (API et page des releases). Le service peut être temporairement indisponible ; réessayez plus tard." >&2
+    return 2
+  }
+  tag="${url##*/}"
+  if [[ ! "$tag" =~ ^v?[0-9]+(\.[0-9]+)+$ ]] || \
+     [ "$url" != "https://github.com/${GITHUB_REPO}/releases/tag/$tag" ] || \
+     [[ ! "$GITHUB_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+    echo "[-] GitHub n’a pas indiqué de release valide ; réessayez plus tard." >&2
+    return 2
+  fi
+  version="${tag#v}"
+  base="https://github.com/${GITHUB_REPO}/releases/download/$tag"
+  printf '{"tag_name":"%s","html_url":"%s","assets":[{"name":"marionnet-all-in-one_%s_amd64.deb","browser_download_url":"%s/marionnet-all-in-one_%s_amd64.deb"},{"name":"SHA256SUMS","browser_download_url":"%s/SHA256SUMS"},{"name":"BUILD_ID","browser_download_url":"%s/BUILD_ID"}]}\n' \
+    "$tag" "$url" "$version" "$base" "$version" "$base" "$base"
 }
 
 # GUI mode handler: spawn terminal emulator

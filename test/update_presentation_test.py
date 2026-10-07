@@ -15,7 +15,14 @@ import sys
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == 'curl':
-    if any(arg.endswith('/BUILD_ID') for arg in args):
+    failure = os.environ.get('TEST_FAILURE')
+    if any('api.github.com/' in arg for arg in args) and failure in ('api', 'offline', 'redirect-invalid'):
+        sys.exit(22)
+    if any(arg.endswith('/releases/latest') and 'github.com/' in arg and 'api.github.com/' not in arg for arg in args):
+        if failure == 'offline': sys.exit(6)
+        print('https://github.com/lucas-martinati-pro/marionnet/releases/tag/' +
+              ('invalid' if failure == 'redirect-invalid' else 'v1.0.461'), end='')
+    elif any(arg.endswith('/BUILD_ID') for arg in args):
         if os.environ.get('TEST_FAILURE') == 'build-download': sys.exit(22)
         print(os.environ.get('TEST_REMOTE_BUILD', 'b' * 64))
     elif '-o' in args:
@@ -150,6 +157,31 @@ class UpdatePresentationTests(unittest.TestCase):
         self.assertEqual(result.stdout, 'UPDATE_AVAILABLE 1.0.461 1.0.460 https://example.test/release\n')
         self.assertEqual(log, '')
         self.assertEqual(commands, [])
+
+    def test_api_quota_fallback_detects_and_installs_updates(self):
+        result, _, commands = self.run_update('--check', failure='api')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('UPDATE_AVAILABLE 1.0.461 1.0.460', result.stdout)
+        self.assertEqual(commands, [])
+        result, _, commands = self.run_update(failure='api')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('SHA256 validé', result.stdout)
+        self.assertEqual(len(commands), 3)
+
+    def test_api_fallback_keeps_same_version_build_checks(self):
+        for installed, expected in [('a' * 64, 0), ('b' * 64, 1)]:
+            result, _, commands = self.run_update('--check', failure='api',
+                current='1.0.461', installed_build=installed, remote_build='b' * 64)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            self.assertEqual(commands, [])
+
+    def test_unavailable_or_invalid_release_is_not_an_update(self):
+        for failure in ('offline', 'redirect-invalid'):
+            result, _, commands = self.run_update('--check', failure=failure)
+            self.assertEqual(result.returncode, 2)
+            self.assertNotIn('UPDATE_AVAILABLE', result.stdout)
+            self.assertNotIn('UP_TO_DATE', result.stdout)
+            self.assertEqual(commands, [])
 
     def test_up_to_date_and_force(self):
         result, _, commands = self.run_update(current='1.0.461')

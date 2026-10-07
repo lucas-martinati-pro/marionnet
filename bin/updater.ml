@@ -148,7 +148,7 @@ let prompt_manual_update_check () : unit =
       | Check_error err ->
           Simple_dialogs.warning
             (s_ "label.software_update")
-            (Printf.sprintf (f_key "update.check_failed_details" "Unable to check for updates.\nPlease check your Internet connection.\n\nDetail: %s") err)
+            (Printf.sprintf (f_key "update.check_failed_details" "Unable to check for updates.\n\nDetail: %s") (Glib.Markup.escape_text err))
             ()
     ) ()
   ) () in

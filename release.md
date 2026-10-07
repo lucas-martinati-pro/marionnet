@@ -56,6 +56,11 @@ la détection des nouvelles constructions.
   les dossiers non vides dont le projet ne peut pas être récupéré sont conservés.
 - Une interruption du contrôle de mise à jour au démarrage ne laisse plus
   d’exception non gérée dans son thread.
+- Si l’API GitHub refuse la vérification (notamment lorsqu’un réseau partagé
+  atteint son quota), l’outil utilise la page publique des releases en secours.
+  Les contrôles de construction et de SHA256 restent actifs, sans jeton GitHub.
+- Le message d’échec de vérification ne suppose plus systématiquement une
+  coupure Internet ; cette correction est appliquée aux 13 langues.
 
 Ce correctif est publié dans une nouvelle construction de **1.0.462**. Les
 installations de la précédente construction peuvent le détecter grâce à
