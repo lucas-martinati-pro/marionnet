@@ -3,10 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/release-components.sh"
 cd "$SCRIPT_DIR"
 
-FS_VERSION="08367"
-TARGET_DEB="marionnet-fs-debian-wheezy_${FS_VERSION}_all.deb"
+FS_VERSION="$WHEEZY_VERSION"
+TARGET_DEB="$WHEEZY_DEB_DEFAULT"
 
 echo "=========================================================="
 echo "    Construction du paquet Debian pour Debian Wheezy"
@@ -21,14 +22,14 @@ SEARCH_PATHS=(
 
 SOURCE_DIR=""
 for p in "${SEARCH_PATHS[@]}"; do
-  if [ -f "$p/machine-debian-wheezy-08367" ]; then
+  if [ -f "$p/$WHEEZY_IMAGE" ]; then
     SOURCE_DIR="$p"
     break
   fi
 done
 
 if [ -z "$SOURCE_DIR" ]; then
-  echo "[-] ERREUR : Impossible de trouver 'machine-debian-wheezy-08367'." >&2
+  echo "[-] ERREUR : Impossible de trouver '$WHEEZY_IMAGE'." >&2
   echo "    Recherché dans : ${SEARCH_PATHS[*]}" >&2
   exit 1
 fi
@@ -43,13 +44,13 @@ DEBIAN_DEST="$BUILD_DIR/root/DEBIAN"
 mkdir -p "$FS_DEST" "$DEBIAN_DEST"
 
 echo "--> Copie des fichiers système..."
-cp -p "$SOURCE_DIR/machine-debian-wheezy-08367" "$FS_DEST/"
-cp -p "$SOURCE_DIR/machine-debian-wheezy-08367.conf" "$FS_DEST/" 2>/dev/null || true
-mkdir -p "$FS_DEST/machine-debian-wheezy-08367_variants"
+cp -p "$SOURCE_DIR/$WHEEZY_IMAGE" "$FS_DEST/"
+cp -p "$SOURCE_DIR/$WHEEZY_IMAGE.conf" "$FS_DEST/" 2>/dev/null || true
+mkdir -p "$FS_DEST/${WHEEZY_IMAGE}_variants"
 
 # Règle impérative UML : préserver le MTIME exact de l'image (1404061349)
 MTIME="1404061349"
-touch -d "@$MTIME" "$FS_DEST/machine-debian-wheezy-08367"
+touch -d "@$MTIME" "$FS_DEST/$WHEEZY_IMAGE"
 
 echo "--> Génération des métadonnées du paquet..."
 INSTALLED_SIZE="$(du -sk "$BUILD_DIR/root" | cut -f1)"

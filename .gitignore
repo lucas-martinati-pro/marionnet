@@ -100,5 +100,6 @@ _bugs/
 
 # Release packages and checksums
 *.deb
+dist/_build.*/
 dist/SHA256SUMS
 dist/BUILD_ID

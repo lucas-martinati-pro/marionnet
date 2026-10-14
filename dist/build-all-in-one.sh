@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/release-components.sh"
 cd "$SCRIPT_DIR"
 
 # Dune remains the source of truth for BOTH the executable and its resources.
@@ -41,20 +42,13 @@ if [[ ! $VERSION =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
   exit 1
 fi
 
-KERNEL_VER="6.12.95"
-FS_VER="18474"
-GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
-BASE_RELEASE_TAG="v1.0.456"
 
 echo "=========================================================="
 echo "    Génération du paquet All-in-One pour Marionnet $VERSION"
 echo "=========================================================="
 
 # 2. Vérification / Récupération des paquets de base (noyaux et images système)
-KERNELS_DEB="marionnet-kernels_${KERNEL_VER}_amd64.deb"
-KERNELS_I386_DEB="marionnet-kernels-i386_${KERNEL_VER}_amd64.deb"
-FS_DEB="marionnet-fs-guignol_${FS_VER}_all.deb"
-WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
+WHEEZY_DEB="$WHEEZY_DEB_DEFAULT"
 APP_DEB="marionnet_${VERSION}_amd64.deb"
 AIO_DEB="marionnet-all-in-one_${VERSION}_amd64.deb"
 
@@ -79,6 +73,21 @@ fetch_layer() {  # <deb> : reprend le partiel (-C -), réessaie, puis échoue du
 for deb in "$KERNELS_DEB" "$KERNELS_I386_DEB" "$FS_DEB"; do
   deb_ok "$deb" || fetch_layer "$deb"
 done
+# A structurally valid cached layer may still contain the pre-Netfilter kernel.
+# Reject stale bytes as well as structurally damaged packages.
+i386_firewall_ok() {
+  dpkg-deb --fsys-tarfile "$KERNELS_I386_DEB" | tar -xO \
+    "./usr/share/marionnet/kernels/$KERNEL_I386_NAME.config" | awk '
+      /^CONFIG_(NETFILTER|NF_CONNTRACK|NF_NAT|IP_NF_IPTABLES|IP_NF_FILTER|IP_NF_NAT)=y$/ {seen[$0]=1}
+      END {for (key in seen) n++; exit n != 6}'
+}
+if ! i386_firewall_ok; then
+  echo "--> Ancien noyau i386 sans pare-feu en cache : téléchargement du composant corrigé..."
+  rm -f "$KERNELS_I386_DEB"
+  fetch_layer "$KERNELS_I386_DEB"
+  i386_firewall_ok || { echo "[-] Le composant publié ne fournit pas Netfilter/NAT intégré." >&2; exit 1; }
+fi
+KERNEL_I386_PACKAGE_VERSION="$(dpkg-deb -f "$KERNELS_I386_DEB" Version)"
 # Wheezy volontairement EXCLU : 403 Mo jamais dépaquetés dans l'AIO (seul son
 # hash partait dans SHA256SUMS du temps des uploads par release). Il est
 # épinglé sur la release de base et servi par install.sh, pas reconstruit ici.
@@ -94,7 +103,7 @@ if ! deb_ok "$APP_DEB"; then
     BASE_APP_DEB=""
   fi
   if [ -z "$BASE_APP_DEB" ]; then
-    BASE_APP_DEB="marionnet_1.0.456_amd64.deb"
+    BASE_APP_DEB="marionnet_${BASE_RELEASE_TAG#v}_amd64.deb"
     fetch_layer "$BASE_APP_DEB"
   fi
 else
@@ -176,7 +185,11 @@ merged_depends() {  # <deb>...
   local deb
   for deb in "$@"; do
     if [ -f "$deb" ]; then
-      dpkg-deb -f "$deb" Depends 2>/dev/null || continue
+      if [ "$deb" = "$BASE_APP_DEB" ] && [ "$USE_LOCAL_APP" = true ]; then
+        printf '%s, %s\n' "$APP_SHLIBDEPS" "$APP_RUNTIME_DEPENDS"
+      else
+        dpkg-deb -f "$deb" Depends 2>/dev/null || continue
+      fi
     else
       echo "[-] Avertissement : couche absente, Depends incomplet : $deb" >&2
     fi
@@ -191,6 +204,17 @@ merged_depends() {  # <deb>...
 }
 
 echo "--> Calcul du Depends depuis les paquets découpés..."
+# The old application layer was packaged on a newer distribution. Once its
+# executable has been replaced, its libc floor and t64 package names no longer
+# describe what is shipped. Derive them from the staged ELF on the build host.
+if [ "$USE_LOCAL_APP" = true ]; then
+  mkdir -p "$BUILD_DIR/shlibdeps/debian"
+  printf 'Source: marionnet\n\nPackage: marionnet\nArchitecture: amd64\n' > "$BUILD_DIR/shlibdeps/debian/control"
+  APP_SHLIBDEPS="$(cd "$BUILD_DIR/shlibdeps" && dpkg-shlibdeps -O "$BUILD_DIR/root/usr/bin/marionnet.native")"
+  APP_SHLIBDEPS="${APP_SHLIBDEPS#shlibs:Depends=}"
+  [ -n "$APP_SHLIBDEPS" ] || { echo '[-] Dépendances ELF introuvables.' >&2; exit 1; }
+  APP_RUNTIME_DEPENDS="$(make -s --no-print-directory -C "$REPO_ROOT" print-required-packages-runtime | xargs | sed 's/ /, /g')"
+fi
 AIO_DEPENDS="$(merged_depends "$BASE_APP_DEB" "$KERNELS_DEB" "$KERNELS_I386_DEB" "$FS_DEB")"
 if [ -z "$AIO_DEPENDS" ]; then
   echo "[-] ERREUR : Depends vide -- aucune couche ne déclare de dépendances." >&2
@@ -200,7 +224,7 @@ fi
 # /lib/ld-linux.so.2 n'est fourni que par libc6:i386 (cf. package_kernels_i386).
 if [[ "$AIO_DEPENDS" != *"libc6:i386"* ]]; then
   echo "[-] ERREUR : libc6:i386 absent du Depends calculé ($AIO_DEPENDS)." >&2
-  echo "    Le noyau linux-6.12.95-i386 serait inexécutable. Build annulé." >&2
+  echo "    Le noyau $KERNEL_I386_NAME serait inexécutable. Build annulé." >&2
   exit 1
 fi
 echo "    Depends : $AIO_DEPENDS"
@@ -213,7 +237,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Lucas Martinati <lucasm54800@gmail.com>
 Homepage: https://www.marionnet.org
-Provides: marionnet (= $VERSION), marionnet-kernels (= $KERNEL_VER), marionnet-kernels-i386 (= $KERNEL_VER), marionnet-fs-guignol (= $FS_VER)
+Provides: marionnet (= $VERSION), marionnet-kernels (= $KERNEL_VER), marionnet-kernels-i386 (= $KERNEL_I386_PACKAGE_VERSION), marionnet-fs-guignol (= $FS_VER)
 Replaces: marionnet, marionnet-kernels, marionnet-kernels-i386, marionnet-fs-guignol
 Conflicts: marionnet (<< $VERSION)
 Depends: $AIO_DEPENDS

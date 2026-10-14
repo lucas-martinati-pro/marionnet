@@ -59,7 +59,14 @@ cd marionnet
 ./install.sh
 ```
 
+L'installation standard utilise le **paquet tout-en-un publié**, même si le dépôt
+contient un binaire compilé localement. Ce paquet apporte l'application, les deux
+noyaux UML et Guignol ; Wheezy est téléchargée séparément par le script. Aucun
+choix manuel entre noyau 32 et 64 bits n'est nécessaire. La compilation locale
+reste disponible avec `--local`.
+
 Le script s'occupe de tout automatiquement :
+
 - Active l'architecture 32-bit `i386` si nécessaire
 - Télécharge automatiquement les paquets depuis [GitHub Releases (latest)](https://github.com/lucas-martinati-pro/marionnet/releases/latest)
 - **Vérifie l'intégrité (SHA256)** des paquets téléchargés contre toute corruption de transfert via le fichier `SHA256SUMS`
@@ -100,29 +107,30 @@ marionnet --update
 L'utilitaire télécharge la dernière version depuis GitHub, met à jour le paquet tout-en-un et relance la configuration en conservant vos réglages et vos projets.
 
 ### Installation manuelle (alternative via GitHub Releases) :
-Les paquets `.deb` pré-compilés et leurs sommes de contrôle SHA256 sont publiés sur [GitHub Releases](https://github.com/lucas-martinati-pro/marionnet/releases/latest) :
+Le paquet **tout-en-un** et ses sommes de contrôle SHA256 sont disponibles sur
+[GitHub Releases](https://github.com/lucas-martinati-pro/marionnet/releases/latest).
+Il suffit pour l'application, les noyaux et Guignol. Pour ajouter aussi Wheezy,
+utilisez l'installation standard ci-dessus, qui récupère son paquet partagé.
 
 ```bash
 # 1. Télécharger le fichier de sommes de contrôle de la dernière release
 wget https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/SHA256SUMS
 
-# Identifier les paquets exacts répertoriés
+# Identifier le paquet tout-en-un exact
 AIO_DEB="$(awk '$2 ~ /^marionnet-all-in-one_.*\.deb$/ {print $2; exit}' SHA256SUMS)"
-WHEEZY_DEB="$(awk '$2 ~ /^marionnet-fs-debian-wheezy_.*\.deb$/ {print $2; exit}' SHA256SUMS)"
 
-# Télécharger les paquets Debian correspondants
+# Télécharger le paquet Debian
 wget "https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/${AIO_DEB}"
-wget "https://github.com/lucas-martinati-pro/marionnet/releases/latest/download/${WHEEZY_DEB}"
 
-# 2. Vérifier l'intégrité SHA256 des fichiers téléchargés
-sha256sum -c SHA256SUMS
+# 2. Vérifier l'intégrité du paquet téléchargé
+sha256sum -c --ignore-missing SHA256SUMS
 
 # 3. Activer l'architecture i386 et mettre à jour APT
 sudo dpkg --add-architecture i386
 sudo apt update
 
-# 4. Installer les paquets Debian
-sudo apt install -y "./${AIO_DEB}" "./${WHEEZY_DEB}"
+# 4. Installer le paquet tout-en-un
+sudo apt install -y "./${AIO_DEB}"
 
 # 5. Configurer les droits réseau (sudoers) pour votre utilisateur
 sudo marionnet-sudoers.sh install "$USER"

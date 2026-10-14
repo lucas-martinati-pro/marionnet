@@ -18,3 +18,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 All the icons in this directory are released by the authors under the GNU
 GPL version 2 or later.
+
+marionnet-launcher.png is the single source of the standard application icon.
+Replace this file to update the main window, dialogs and desktop launcher.
+The legacy ../marionnet-launcher.png path is a relative symbolic link to it.
+Dune installs the desktop theme icon and pixmaps fallback from this same source.
+marionnet-exam-launcher.png is the deliberately separate exam-mode variant.

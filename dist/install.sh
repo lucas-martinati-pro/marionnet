@@ -6,11 +6,11 @@ VERSION="${MARIONNET_VERSION:-}"
 INSTALL_WHEEZY=true
 FORCE_DOWNLOAD=false
 BUILD_LOCAL=false
-RELEASE_MODE=false
 VERBOSE=false
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/release-components.sh"
 
 usage() {
   cat << EOF
@@ -25,7 +25,7 @@ et son --help) :
 
 Moteur .deb :
   -b, --local, --build     Construire et installer le paquet à partir des sources locales
-  -r, --release            Installer la version officielle publiée sur GitHub Releases
+  -r, --release            Installer la version publiée sur GitHub Releases (défaut)
   --no-wheezy              Ne pas installer l'image système Debian Wheezy
   --force-download         Supprimer les paquets de cache locaux et forcer le téléchargement
   --verbose                Afficher en direct tous les détails de compilation et d’APT
@@ -36,8 +36,8 @@ Moteur tarball (arguments passés tels quels, --help du moteur pour le détail) 
   $(basename "$0") --tarball --binary --with-deps                 Appli sous un préfixe
   $(basename "$0") --tarball --help                              Aide complète du moteur
 
-Si exécuté dans le dépôt git et qu'un binaire fraîchement compilé existe
-(_build/default/bin/marionnet.exe), l'installation locale est automatiquement activée.
+Sans option, installe le paquet tout-en-un publié et Debian Wheezy.
+La compilation locale nécessite --local, même si un binaire existe dans le dépôt.
 EOF
 }
 
@@ -83,7 +83,7 @@ for arg in "$@"; do
       BUILD_LOCAL=true
       ;;
     -r|--release)
-      RELEASE_MODE=true
+      BUILD_LOCAL=false
       ;;
     --no-wheezy|--without-wheezy)
       INSTALL_WHEEZY=false
@@ -244,14 +244,6 @@ else
 fi
 ui_step 1 "Préparation"
 
-# Détection automatique : si on est dans le dépôt git et qu'un binaire local existe
-if [ "$RELEASE_MODE" = false ] && [ "$BUILD_LOCAL" = false ]; then
-  if [ -f "$REPO_ROOT/dune-project" ] && [ -f "$REPO_ROOT/_build/default/bin/marionnet.exe" ]; then
-    ui_info "Sources locales détectées · mode local activé"
-    BUILD_LOCAL=true
-  fi
-fi
-
 # Si le mode local est demandé mais que le binaire est absent ou périmé, on
 # (re)construit : dune ne reconstruit que quand on le lui demande, et sans cela
 # on empaquetterait en silence l'ancienne version (vécu : binaire 1.0.457
@@ -290,8 +282,6 @@ if [ "$BUILD_LOCAL" = true ] && [ "$NEED_BUILD" = true ]; then
   fi
 fi
 
-GITHUB_REPO="${MARIONNET_REPO:-lucas-martinati-pro/marionnet}"
-BASE_RELEASE_TAG="v1.0.456"
 cd "$SCRIPT_DIR"
 
 # Détection de l'outil de téléchargement HTTP (curl ou wget)
@@ -363,7 +353,7 @@ if [ "$BUILD_LOCAL" = true ]; then
     exit 1
   fi
   DEB_NAME="marionnet-all-in-one_${VERSION}_amd64.deb"
-  WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
+  WHEEZY_DEB="$WHEEZY_DEB_DEFAULT"
   DOWNLOAD_BASE_URL=""
 else
   # Mode téléchargement depuis GitHub Releases
@@ -414,7 +404,7 @@ else
   # depuis la release de base (voir § 2 ci-dessous).
   WHEEZY_DEB="$(awk '$2 ~ /^marionnet-fs-debian-wheezy_.*\.deb$/ {print $2; exit}' "$SUMS_FILE")"
   if [ -z "$WHEEZY_DEB" ]; then
-    WHEEZY_DEB="marionnet-fs-debian-wheezy_08367_all.deb"
+    WHEEZY_DEB="$WHEEZY_DEB_DEFAULT"
   fi
 fi
 
@@ -490,9 +480,8 @@ fi
 # (fichier identique de 423478976 octets sur les 4 releases) + téléchargement
 # local vérifié par `sha256sum -c`.
 ui_step 3 "Images des machines virtuelles"
-WHEEZY_PINNED_SHA256="7972fa3cc8a6c9389c29a8173c574781ac14d07783fbaa4b954c98a71d8653fd"
 WHEEZY_INSTALLED=false
-if [ -f /usr/share/marionnet/filesystems/machine-debian-wheezy-08367 ] || dpkg -s marionnet-fs-debian-wheezy >/dev/null 2>&1; then
+if [ -f "/usr/share/marionnet/filesystems/$WHEEZY_IMAGE" ] || dpkg -s marionnet-fs-debian-wheezy >/dev/null 2>&1; then
   ui_info "Debian Wheezy déjà installé"
   WHEEZY_INSTALLED=true
 fi
@@ -582,7 +571,7 @@ run_task "Index des paquets APT" sudo apt update
 ui_step 6 "Dépendances système"
 if ! run_task "Runtime des noyaux 32 bits · libc6:i386" sudo apt install -y libc6:i386; then
   ui_error "impossible d'installer libc6:i386." >&2
-  ui_info "Le noyau 32-bit linux-6.12.95-i386 restera inexécutable." >&2
+  ui_info "Le noyau 32-bit $KERNEL_I386_NAME restera inexécutable." >&2
   exit 1
 fi
 ui_step 7 "Installation de Marionnet"
@@ -632,9 +621,9 @@ run_task "Version du binaire installé" marionnet -v || true
 I386_KERNEL=""
 if command -v marionnet.native >/dev/null 2>&1; then
   KERNELS_DIR="$(marionnet.native --paths 2>/dev/null | sed -n 's|^kernels[[:space:]]*:[[:space:]]*||p' | head -n 1)"
-  [ -n "${KERNELS_DIR:-}" ] && I386_KERNEL="$KERNELS_DIR/linux-6.12.95-i386"
+  [ -n "${KERNELS_DIR:-}" ] && I386_KERNEL="$KERNELS_DIR/$KERNEL_I386_NAME"
 fi
-[ -n "$I386_KERNEL" ] || I386_KERNEL="/usr/share/marionnet/kernels/linux-6.12.95-i386"
+[ -n "$I386_KERNEL" ] || I386_KERNEL="/usr/share/marionnet/kernels/$KERNEL_I386_NAME"
 if [ ! -x "$I386_KERNEL" ]; then
   ui_error "noyau 32-bit absent ou non exécutable : $I386_KERNEL" >&2
   exit 1

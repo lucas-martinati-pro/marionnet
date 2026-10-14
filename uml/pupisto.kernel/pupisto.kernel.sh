@@ -452,6 +452,16 @@ else
   return 2
 fi
 
+# Legacy guests provide iptables but no loadable modules. Apply the same
+# built-in firewall capabilities as the modern amd64 kernel, for frozen configs
+# as well as fresh defconfig seeds (including future kernel versions).
+if (( ${VERSION%%.*} >= 5 )) && [[ $I386 = y ]]; then
+  local FIREWALL_CONFIG=$OUR_KERNEL_DIR/CONFIG-i386-netfilter
+  [[ -f $FIREWALL_CONFIG ]] || { echo "Missing firewall config: $FIREWALL_CONFIG" >&2; return 2; }
+  scripts/kconfig/merge_config.sh -m .config "$FIREWALL_CONFIG"
+  make olddefconfig ARCH=um $SUBARCH_OPT
+fi
+
 # Modify CONFIG_LOCALVERSION="-ghost" according to the
 # presence of the "ghostification" patch:
 if [[ -n $GHOST_SUFFIX ]]; then
@@ -463,6 +473,18 @@ fi
 if [[ $CUSTOM = y ]]; then
  local PSEUDO_TERMINAL=$(tty)
  make menuconfig ARCH=um SUBARCH=i386 0<$PSEUDO_TERMINAL 1>$PSEUDO_TERMINAL
+fi
+
+# Fail before compiling if Kconfig (or menuconfig) disabled a required feature.
+if (( ${VERSION%%.*} >= 5 )) && [[ $I386 = y ]]; then
+  local REQUIRED_SETTING
+  while IFS= read -r REQUIRED_SETTING; do
+    [[ $REQUIRED_SETTING = CONFIG_*=y ]] || continue
+    grep -qxF "$REQUIRED_SETTING" .config || {
+      echo "Required built-in firewall feature missing: $REQUIRED_SETTING" >&2
+      return 2
+    }
+  done < "$FIREWALL_CONFIG"
 fi
 
 # Add `ccache' in the PATH if needed:

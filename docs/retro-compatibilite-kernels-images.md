@@ -293,3 +293,110 @@ lancement des couples *modernes* (trixie), couvert par `marionnet-kernel-rootfs`
   - canal script : `set`/`add --kernel=` cassé-hôte → refus explicite avec alternatives ;
   - `machine-template.conf` et fichiers `.conf` installés : `/-i386$/` en tête de `SUPPORTED_KERNELS`.
   - Preuve : `dune build @check` rc=0, tests driven-sessions validés, test de démarrage réel d'invités UML réussi.
+
+## Correction Netfilter i386 — 2026-10-14
+
+Le noyau `linux-6.12.95-i386` installé et sa configuration gelée avaient
+`# CONFIG_NETFILTER is not set`. Wheezy et Guignol démarraient, mais `iptables -L`
+échouait avec `Table does not exist`, puis `modprobe` signalait l'absence de
+`/lib/modules`. Les images ne fournissent pas de modules pour ce noyau : le
+support du pare-feu doit être intégré (`=y`). La configuration amd64 avait déjà
+été corrigée, pas la filière i386 fondée sur `defconfig`.
+
+- `uml/kernel/CONFIG-i386-netfilter` fournit 38 options intégrées : IPv6,
+  Netfilter, conntrack, NAT, iptables/ip6tables (filter/nat/mangle), extensions
+  state/conntrack/multiport/limit/mac, LOG/REJECT/MASQUERADE et nftables.
+- `pupisto.kernel.sh` fusionne ce fragment pour les noyaux modernes i386,
+  configurations gelées comme nouveaux seeds. Après résolution Kconfig et une
+  éventuelle personnalisation, il refuse de compiler si une option requise
+  n'est pas `=y`. `CONFIG-6.12.95-i386` est régénérée avec gcc 13.4 multilib.
+- Reconstruction du **même 6.12.95**, conservant l'épithet `6.12.95-i386` : les
+  projets et images existants ne changent pas. Une montée de version n'est pas
+  nécessaire pour cette correction ; sa compatibilité devrait être testée
+  séparément. `uname -r` reste `6.12.95`, `uname -m` indique `i686`.
+
+Validation effectuée dans l'application Marionnet, pilotée par son canal de
+contrôle, sur des COW jetables de `machine-debian-wheezy-08367` et de
+`router-guignol-18474`, reliés par un câble croisé :
+
+- démarrage complet, `iptables -L -n`, `iptables -t nat -L -n` et équivalents
+  IPv6 réussis ;
+- installation des règles state, multiport, LOG, REJECT, MASQUERADE, DNAT et
+  SNAT, puis `iptables-save` réussis (iptables 1.4.14 et 1.4.21) ;
+- pings via DNAT en OUTPUT et MASQUERADE en POSTROUTING : 3/3 réponses dans
+  chaque sens, compteurs des deux règles incrémentés ;
+- pings via SNAT avec une adresse source secondaire : 2/2 réponses dans chaque
+  sens, compteurs SNAT incrémentés ;
+- seed UML i386 frais + fragment : 38/38 options `=y` ; rejeu de la configuration
+  gelée par `olddefconfig` identique ; syntaxe Bash et `git diff --check` validés.
+
+Installation locale du binaire testé et de sa `.config` dans
+`/usr/local/share/marionnet/kernels` et `/usr/share/marionnet/kernels`, par
+remplacement atomique après sauvegarde des deux couples dans
+`/var/backups/marionnet/kernels/20261014T173312/`. Les machines doivent être
+arrêtées puis redémarrées pour charger le nouveau binaire. Cette première étape
+locale ne reconstruisait pas encore les paquets et archives de diffusion.
+
+## Distribution du correctif — 2026-10-14
+
+Le premier build local exigeait `GLIBC_2.42` : il ne pouvait pas être distribué
+aux hôtes plus anciens. `dist/build-kernel-i386.sh` construit maintenant le noyau
+dans `dist/kernel-i386.Dockerfile` (Ubuntu 22.04, gcc 12 multilib), contrôle les
+38 options intégrées et refuse toute exigence glibc supérieure à 2.35. Le
+binaire publié exige au maximum **glibc 2.34**. La configuration gelée i386 est
+remplacée par celle de ce build de distribution.
+
+`dist/rebuild-kernel-assets.py` réassemble les paquets déjà publiés, en conservant
+leurs exécutables applicatifs et ressources. Le noyau seul passe en version
+Debian **6.12.95-1**. Le nom `linux-6.12.95-i386` reste identique pour les projets.
+Le paquet tout-en-un fournit cette nouvelle révision, et un nouveau `BUILD_ID`
+permet à `marionnet-update` de détecter la reconstruction de 1.0.462.
+
+Un second défaut de diffusion a été mesuré : le paquet 1.0.462 déclarait
+`libc6 (>= 2.38)` et des noms `*t64` hérités de sa couche applicative de base,
+alors que son ELF demande au maximum glibc 2.35. Les dépendances du paquet corrigé
+sont recalculées par `dpkg-shlibdeps` sur Ubuntu 22.04. `dist/build-all-in-one.sh`
+fait désormais ce calcul lorsqu'il remplace l'application de base par le build
+local ; il refuse aussi une couche i386 en cache sans Netfilter/NAT et reprend
+la vraie version du paquet i386 dans `Provides`.
+
+Validation avec `dist/kernel-release-test.Dockerfile` et
+`dist/test-kernel-guest.py` (images en lecture seule, COW jetables, ptrace autorisé
+dans les conteneurs, fichiers mémoire UML sur un TMPDIR exécutable) :
+
+| Hôte | Installation | Invités validés |
+|---|---|---|
+| Ubuntu 22.04 | installation APT neuve du tout-en-un corrigé | Guignol, Wheezy |
+| Debian 12 | installation APT neuve du tout-en-un corrigé | Guignol, Wheezy |
+| Ubuntu 24.04 | ancien tout-en-un 1.0.462 puis réinstallation corrigée | Guignol, Wheezy |
+| Ubuntu 24.04 | noyau séparé 6.12.95 puis mise à jour APT vers 6.12.95-1 | configuration NAT intégrée vérifiée |
+
+Chaque boot teste la connexion root, `iptables`/`ip6tables` filter et nat, les
+matches state/multiport, LOG, REJECT, MASQUERADE, DNAT, SNAT, `iptables-save`, puis
+l'arrêt propre. Une vérification supplémentaire utilise **les images extraites
+des paquets réellement distribués** : Guignol du tout-en-un corrigé et Wheezy du
+`.deb` téléchargé de GitHub, dont le SHA256 est inchangé
+(`7972fa3c…d8653fd`). Aucune reconstruction des images n'est nécessaire.
+
+Publication dans les releases GitHub existantes, sans nouveau tag ni push Git :
+
+- [v1.0.456](https://github.com/lucas-martinati-pro/marionnet/releases/tag/v1.0.456) :
+  paquet noyau 6.12.95-1, alias historique du paquet pour les constructeurs CI,
+  archive noyau + `.config`, kit de reconstruction (Dockerfile, scripts,
+  configurations), tout-en-un historique avec le noyau corrigé, SHA256SUMS et
+  notes actualisées. L'application historique de cette release conserve ses
+  exigences glibc 2.38 ; Ubuntu 22.04 et Debian 12 doivent utiliser le paquet
+  courant 1.0.462.
+- [v1.0.462](https://github.com/lucas-martinati-pro/marionnet/releases/tag/v1.0.462) :
+  tout-en-un corrigé, SHA256SUMS, nouveau BUILD_ID, instructions de mise à jour.
+
+La commande de réparation pour une installation existante est
+`marionnet-update --cli --force`. Une machine virtuelle doit être complètement
+arrêtée puis redémarrée ; aucun projet ni système invité n'est à recréer.
+
+Après publication : tous les digests des assets GitHub concordent avec les
+fichiers préparés ; le tout-en-un et le paquet noyau retéléchargés sont vérifiés.
+L'ELF applicatif de 1.0.462 est identique à celui d'origine. L'ancien updater
+répond `UPDATE_AVAILABLE 1.0.462 1.0.462`, et celui du paquet corrigé répond
+`UP_TO_DATE 1.0.462` contre la vraie release GitHub. Le noyau portable publié est
+également installé localement dans les deux préfixes, avec sa configuration.

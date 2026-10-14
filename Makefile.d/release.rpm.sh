@@ -797,6 +797,9 @@ chown -R root:root %{buildroot}
 /usr/bin/*
 /usr/share/marionnet
 /usr/share/bash-completion/completions/*
+/usr/share/applications/marionnet.desktop
+/usr/share/icons/hicolor/64x64/apps/marionnet.png
+/usr/share/pixmaps/marionnet.png
 # Listed as ordinary files rather than with %%doc -- which changes NOTHING, and that is the
 # point worth writing down here. Measured on the built package: rpm flags every file under
 # %%{_docdir} as documentation BY ITSELF (26 of the 31 paths below), so "tsflags=nodocs" --

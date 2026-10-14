@@ -1,75 +1,40 @@
-# Marionnet @VERSION@ — Consoles plus lisibles et opérations plus fiables
+# Marionnet @VERSION@ — Pare-feu fonctionnel et nouvelle icône
 
-Cette version améliore les consoles des machines virtuelles, les mises à jour
-et la gestion des opérations en arrière-plan.
+Cette mise à jour corrige le pare-feu des invités 32 bits, ajoute Marionnet au
+menu des applications et simplifie le choix du paquet à installer.
 
-## Consoles des machines virtuelles
+## Pare-feu et NAT
 
-- Police monospace lissée et thème sombre contrasté, avec des marges.
-- Taille initiale compacte de **8 points**, sans barre de défilement, pour
-  garder plusieurs consoles à l’écran.
-- Zoom avec **Ctrl + / Ctrl −** ou **Ctrl + molette** ; **Ctrl + 0** rétablit
-  la taille initiale.
-- Taille initiale personnalisable entre 6 et 32 points avec
-  `MARIONNET_TERMINAL_FONT_SIZE` dans `~/.marionnet/marionnet.conf`.
-- Historique de 10 000 lignes, accessible avec **Maj + Page précédente / suivante**.
-- Le copier-coller **Ctrl + Maj + C / V** et l’interruption **Ctrl + C** sont conservés.
+- Le noyau UML `6.12.95-i386` intègre désormais Netfilter, le suivi des connexions
+  et le NAT. Les commandes `iptables` et `ip6tables` peuvent utiliser les tables
+  de filtrage et de NAT dans Debian Wheezy et Guignol.
+- Les fonctions nécessaires sont intégrées au noyau : les invités n'ont pas
+  besoin d'un dossier `/lib/modules` pour les charger.
+- Le paquet tout-en-un embarque le noyau corrigé. Les prochaines constructions
+  vérifient les options du pare-feu pour éviter de réintroduire ce problème.
 
-Ces réglages concernent les consoles xterm et uxterm ouvertes par Marionnet.
+## Raccourci et icône
 
-## Mises à jour
-
-- Affichage plus compact : progression en trois étapes, journal détaillé privé
-  et erreurs plus visibles ; l’option `--verbose` affiche les détails.
-- Vérification du **SHA256** du paquet avant son installation : un paquet
-  incomplet ou dont l’empreinte est incorrecte est refusé.
-- Chaque paquet Tout-en-un reçoit un identifiant de construction. Après
-  installation de cette version, un paquet republié sous le même numéro de
-  version pourra également déclencher une proposition de mise à jour.
-- Le workflow publie cet identifiant avec le paquet et conserve la synchronisation
-  du numéro de version dans `META` après publication.
-
-Les versions antérieures doivent d’abord installer cette version pour recevoir
-la détection des nouvelles constructions.
-
-## Opérations en arrière-plan et réactivité
-
-- Coordination de l’ouverture, des sauvegardes et des opérations sur les
-  équipements, avec transmission des changements GTK au thread principal.
-- Affichage des opérations en cours et protection contre les demandes en double.
-- Rafraîchissements plus ciblés des tableaux et réutilisation du dessin lorsque
-  son contenu n’a pas changé.
-- Mesures séparées du calcul Graphviz, du chargement de l’image et des mises à
-  jour des tableaux pour faciliter le diagnostic des lenteurs.
-- Comportement plus cohérent du clavier dans les formulaires : focus initial,
-  validation, annulation et aide.
-
-## Correctif de récupération des sessions
-
-- L’avertissement de démarrage utilise la même détection que l’outil de nettoyage :
-  les dossiers récents et les sessions encore actives ne déclenchent plus une
-  proposition de nettoyage inutilisable.
-- La récupération utilise le dossier temporaire configuré dans Marionnet.
-- Une fermeture normale attend la fin du nettoyage et de l’archivage, au lieu
-  de tuer leur processus en cours d’exécution.
-- Les dossiers entièrement vides peuvent être nettoyés sans créer d’archive ;
-  les dossiers non vides dont le projet ne peut pas être récupéré sont conservés.
-- Une interruption du contrôle de mise à jour au démarrage ne laisse plus
-  d’exception non gérée dans son thread.
-- Si l’API GitHub refuse la vérification (notamment lorsqu’un réseau partagé
-  atteint son quota), l’outil utilise la page publique des releases en secours.
-  Les contrôles de construction et de SHA256 restent actifs, sans jeton GitHub.
-- Le message d’échec de vérification ne suppose plus systématiquement une
-  coupure Internet ; cette correction est appliquée aux 13 langues.
-
-Ce correctif est publié dans une nouvelle construction de **1.0.462**. Les
-installations de la précédente construction peuvent le détecter grâce à
-l’identifiant de construction, sans changer de numéro de version.
+- Une nouvelle icône accompagne l'application, ses fenêtres et son raccourci.
+- Marionnet apparaît dans le menu des applications grâce au fichier `.desktop`,
+  installé aussi lors d'une mise à jour du paquet.
+- L'image de l'icône est centralisée dans les sources : son remplacement met à
+  jour les différents emplacements lors de la construction du paquet.
 
 ## Installation
 
-Depuis une installation existante, utilisez la proposition de mise à jour de
-Marionnet ou :
+- `./install.sh` installe par défaut le paquet **tout-en-un publié**, qui contient
+  l'application, les noyaux UML 32 et 64 bits et Guignol.
+- Le script ajoute Debian Wheezy depuis son paquet partagé, sans devoir la
+  télécharger à nouveau à chaque mise à jour de l'application.
+- `./install.sh --local` construit et installe les modifications du dépôt local.
+- Les paramètres des composants sont partagés entre les scripts d'installation
+  et de construction. Les dépendances du paquet sont calculées depuis le binaire
+  effectivement distribué, construit sur Ubuntu 22.04.
+- Les téléchargements restent vérifiés avec `SHA256SUMS`. `BUILD_ID` permet de
+  détecter aussi une nouvelle construction publiée sous le même numéro.
+
+Depuis une installation existante, utilisez la proposition de mise à jour ou :
 
 ```bash
 marionnet-update
@@ -82,13 +47,12 @@ git pull
 ./install.sh --release @VERSION@
 ```
 
-Le format des projets reste inchangé.
-
 ## Vérifications
 
-Compilation, contrôle de tous les modules OCaml et tests automatisés, avec des
-sessions GTK pour les opérations et les formulaires. Le zoom, le retour à la
-police initiale, le copier-coller et Ctrl + C ont été vérifiés dans de vrais
-xterm et uxterm. Les tests de mise à jour couvrent les empreintes incorrectes,
-les nouvelles constructions à version identique, les erreurs réseau et
-l’absence de nouvelle proposition après installation du même paquet.
+Le noyau corrigé a été testé avec de vrais démarrages de Debian Wheezy et Guignol,
+les tables IPv4/IPv6 et des échanges réseau avec DNAT, SNAT et MASQUERADE. Les
+installations et réinstallations du correctif ont été vérifiées sur Ubuntu 22.04,
+Ubuntu 24.04 et Debian 12. Le raccourci et l'installation de l'icône ont également
+été vérifiés localement.
+
+Les images des distributions invitées et le format des projets sont conservés.

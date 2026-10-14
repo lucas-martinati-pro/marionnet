@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Marionnet
+GenericName=Virtual network laboratory
+GenericName[fr]=Laboratoire réseau virtuel
+Comment=Build and run virtual computer networks
+Comment[fr]=Créer et simuler des réseaux informatiques
+Exec=marionnet %f
+TryExec=marionnet
+Icon=marionnet
+Terminal=false
+Categories=Education;ComputerScience;
+Keywords=network;simulation;virtual;Linux;TCP;IP;
+Keywords[fr]=réseau;simulation;virtuel;Linux;TCP;IP;
+StartupWMClass=Marionnet

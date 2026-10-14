@@ -363,3 +363,13 @@
   (section share_root)
   (package marionnet) ;;; optional
  )
+
+;;; Desktop integration is shared by source installs, tarballs and packages.
+;;; Reuse the application window icon; pixmaps is the icon lookup fallback.
+(install
+  (files
+    (../etc/marionnet.desktop as applications/marionnet.desktop)
+    (images/launcher-icons/marionnet-launcher.png as icons/hicolor/64x64/apps/marionnet.png)
+    (images/launcher-icons/marionnet-launcher.png as pixmaps/marionnet.png))
+  (section share_root)
+  (package marionnet))
